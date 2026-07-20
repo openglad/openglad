@@ -1925,7 +1925,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_go_no_team.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_fairy_death.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_overpowered_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
@@ -2327,7 +2326,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_new_game.cpp
             test_hire_team.cpp
             test_train_team.cpp
-            test_save_menu.cpp
             test_save_load_team.cpp
             test_options_menu.cpp
             test_networking_menu.cpp

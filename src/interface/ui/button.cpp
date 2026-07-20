@@ -535,16 +535,15 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 	    case ButtonAction::QuitMenu:
 	        quit(call_arg);
 	        return 1;
-	    case ButtonAction::CreateViewMenu:
-	        return create_view_menu(call_arg);
 	    case ButtonAction::CreateTrainMenu:
 	        return create_train_menu(call_arg);
 	    case ButtonAction::CreateHireMenu:
 	        return create_hire_menu(call_arg);
-	    case ButtonAction::CreateLoadMenu:
-	        return create_load_menu(call_arg);
-	    case ButtonAction::CreateSaveMenu:
-	        return create_save_menu(call_arg);
+	    // CreateLoadMenu reaches do_call only when the MainMenu-scope
+	    // intercept did not consume it (the §2.1 LOAD door); with the slot
+	    // menus retired there is nothing left to open — fall through to the
+	    // no-op default alongside the fully retired actions
+	    // (CreateViewMenu / CreateSaveMenu / DoSave / DoLoad).
 	    case ButtonAction::CreateProgressMenu:
 	        return create_progress_menu(call_arg);
 	    case ButtonAction::GoMenu:
@@ -563,10 +562,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return cycle_guy(arg);
     case ButtonAction::AddGuy:
         return add_guy(arg);
-    case ButtonAction::DoSave:
-        return do_save(arg);
-    case ButtonAction::DoLoad:
-        return do_load(arg);
     case ButtonAction::NameGuy: // name some guy
         return name_guy(arg);
     case ButtonAction::CreateDetailMenu:

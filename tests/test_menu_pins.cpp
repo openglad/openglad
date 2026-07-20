@@ -244,25 +244,9 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     ASSERT_EQ("options", buttons[count - 2].id);
 }
 
-// ---------------------------------------------------------------------------
-// View-team (k_viewteam_buttons): GO | BACK under the roster listing. BACK
-// returns MENU_REDRAW here (the parent create_team_menu keeps running).
-// ---------------------------------------------------------------------------
-
-TEST(MenuEnginePins, viewteam_exact_table)
-{
-    static const ExpectedButton kExpected[] = {
-        {"go", "GO", KEYSTATE_UNKNOWN, 270, 170, 40, 20,
-         button_action_id(ButtonAction::GoMenu), -1, MenuNav{.left = 1}},
-        {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20,
-         button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
-         MenuNav{.right = 0}},
-    };
-    button* buttons = picker_viewteam_buttons();
-    const int count = picker_viewteam_button_count();
-    check_exact_table(buttons, count, kExpected,
-                      static_cast<int>(std::size(kExpected)), "viewteam");
-}
+// The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (design
+// §2.5/§3.8) — their exact-table pins retired with them; the base-camp
+// roster's table is pinned in test_menu_layout (createmenu_basecamp_*).
 
 // ---------------------------------------------------------------------------
 // §2.2 new-company name entry: a Layer-F engine screen. All four rows dispatch
@@ -434,7 +418,7 @@ TEST(MenuEnginePins, trainmenu_exact_table)
          MenuNav{.down = 2, .right = 1}},
         {"next", "NEXT", KEYSTATE_UNKNOWN, 110, 40, 40, 20,
          button_action_id(ButtonAction::CycleTeamGuy), 1,
-         MenuNav{.down = 3, .left = 0, .right = 16}},
+         MenuNav{.down = 3, .left = 0, .right = 15}},
         {"dec_str", "", KEYSTATE_UNKNOWN, 16, 70, 16, 10,
          button_action_id(ButtonAction::DecreaseStat), BUT_STR,
          MenuNav{.up = 0, .down = 4, .right = 3}},
@@ -467,29 +451,31 @@ TEST(MenuEnginePins, trainmenu_exact_table)
          MenuNav{.up = 9, .down = 13, .left = 10}},
         {"dec_level", "", KEYSTATE_UNKNOWN, 16, 145, 16, 10,
          button_action_id(ButtonAction::DecreaseStat), BUT_LEVEL,
-         MenuNav{.up = 10, .down = 19, .right = 13}},
+         MenuNav{.up = 10, .down = 18, .right = 13}},
         {"inc_level", "", KEYSTATE_UNKNOWN, 126, 145, 16, 12,
          button_action_id(ButtonAction::IncreaseStat), BUT_LEVEL,
-         MenuNav{.up = 11, .down = 15, .left = 12, .right = 18}},
-        {"view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 190, 170, 90, 20,
-         button_action_id(ButtonAction::CreateViewMenu), -1,
-         MenuNav{.up = 18, .left = 15}},
+         MenuNav{.up = 11, .down = 14, .left = 12, .right = 17}},
+        // §2.5: the VIEW TEAM door retired with its screen (the base-camp
+        // roster IS the team view) — rows past the stat pairs shifted down
+        // one; kTrainMenuChangeTeamIndex (17) anchors the live label write.
         {"accept", "ACCEPT", KEYSTATE_UNKNOWN, 80, 170, 80, 20,
          button_action_id(ButtonAction::EditGuy), -1,
-         MenuNav{.up = 13, .left = 19, .right = 14}},
+         MenuNav{.up = 13, .left = 18}},
         {"rename", "RENAME", KEYSTATE_UNKNOWN, 174, 8, 64, 22,
          button_action_id(ButtonAction::NameGuy), 1,
-         MenuNav{.down = 18, .left = 1, .right = 17}},
+         MenuNav{.down = 17, .left = 1, .right = 16}},
         {"details", "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22,
          button_action_id(ButtonAction::CreateDetailMenu), 0,
-         MenuNav{.down = 18, .left = 16}},
+         MenuNav{.down = 17, .left = 15}},
         {"change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133,
          22, button_action_id(ButtonAction::ChangeTeam), 1,
-         MenuNav{.up = 17, .down = 14, .left = 13}},
+         MenuNav{.up = 16, .down = 14, .left = 13}},
         {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 12, .right = 15}},
+         MenuNav{.up = 12, .right = 14}},
     };
+    static_assert(std::size(kExpected) == 19,
+                  "train table: change_team at kTrainMenuChangeTeamIndex");
     button* buttons = picker_trainmenu_buttons();
     const int count = picker_trainmenu_button_count();
     check_exact_table(buttons, count, kExpected,
@@ -525,66 +511,6 @@ TEST(MenuEnginePins, hiremenu_exact_table)
     const int count = picker_hiremenu_button_count();
     check_exact_table(buttons, count, kExpected,
                       static_cast<int>(std::size(kExpected)), "hiremenu");
-}
-
-// ---------------------------------------------------------------------------
-// Save/load slot menus (k_saveteam_buttons / k_loadteam_buttons): ten
-// 220x10 slot rows at 15px pitch from y=25 plus BACK, one vertical nav
-// cycle. The two tables differ only in ids, action, and static labels
-// (which do_save_or_load overwrites from the slot headers at draw time —
-// including the shipped mixed-case "SLOT Six".."SLOT Ten" defaults pinned
-// here).
-// ---------------------------------------------------------------------------
-
-namespace
-{
-// Shared shape for both slot menus; `slot_labels` are the static table
-// defaults, row i covers slot i+1.
-void check_slot_menu(button* buttons, int count, const char* id_prefix,
-                     ButtonAction action, const char* screen_name)
-{
-    static const char* kSlotLabels[10] = {
-        "SLOT ONE", "SLOT TWO", "SLOT THREE", "SLOT FOUR", "SLOT FIVE",
-        "SLOT Six", "SLOT Seven", "SLOT Eight", "SLOT Nine", "SLOT Ten",
-    };
-    ASSERT_EQ(11, count) << screen_name;
-    std::vector<ExpectedButton> expected;
-    std::vector<std::string> ids;
-    ids.reserve(10);
-    for (int i = 0; i < 10; ++i)
-        ids.push_back(std::string(id_prefix) + std::to_string(i + 1));
-    for (int i = 0; i < 10; ++i)
-    {
-        expected.push_back(ExpectedButton{
-            ids[static_cast<std::size_t>(i)].c_str(), kSlotLabels[i],
-            KEYSTATE_UNKNOWN, 25, 25 + 15 * i, 220, 10,
-            button_action_id(action), i + 1,
-            MenuNav{.up = (i == 0) ? 10 : i - 1, .down = i + 1}});
-    }
-    expected.push_back(ExpectedButton{
-        "back", "BACK", KEYSTATE_ESCAPE, 25, 175, 40, 20,
-        button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-        MenuNav{.up = 9, .down = 0}});
-    check_exact_table(buttons, count, expected.data(),
-                      static_cast<int>(expected.size()), screen_name);
-}
-} // namespace
-
-TEST(MenuEnginePins, saveteam_exact_table)
-{
-    // The accessor materializes the table the count reads — call it first.
-    button* buttons = picker_saveteam_buttons();
-    const int count = picker_saveteam_button_count();
-    check_slot_menu(buttons, count, "save_slot_", ButtonAction::DoSave,
-                    "saveteam");
-}
-
-TEST(MenuEnginePins, loadteam_exact_table)
-{
-    button* buttons = picker_loadteam_buttons();
-    const int count = picker_loadteam_button_count();
-    check_slot_menu(buttons, count, "load_slot_", ButtonAction::DoLoad,
-                    "loadteam");
 }
 
 // ---------------------------------------------------------------------------

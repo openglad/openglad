@@ -138,11 +138,8 @@ Sint32 load2(Sint32 arg1);
 Sint32 load3(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
 Sint32 create_detail_menu(guy *arg1); // detailed character information
-Sint32 create_view_menu(Sint32 arg1); // View team members
 Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
-Sint32 create_load_menu(Sint32 arg1); // Load a team
-Sint32 create_save_menu(Sint32 arg1); // Save a team
 Sint32 create_progress_menu(Sint32 arg1); // View level progress
 Sint32 go_menu(Sint32 arg1); // run glad..
 Sint32 increase_stat(Sint32 arg1, Sint32 howmuch=1); // increase a guy's stats
@@ -151,8 +148,6 @@ Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
 Sint32 add_guy(Sint32 ignoreme);
 Sint32 edit_guy(Sint32 arg1); // transfer stats .. hardcoded
-Sint32 do_save(Sint32 arg1);  // dummy function for saving team list
-Sint32 do_load(Sint32 arg1); // dummy function for loading team list
 Sint32 delete_all(); // delete entire team
 Sint32 delete_first(); // delete first guy on team list
 Sint32 how_many(Sint32 whatfamily);   // how many guys of family X on the team?
@@ -212,11 +207,13 @@ enum class ButtonAction : Sint32
     CreateTeamMenu = 2,
     SetPlayerMode = 3,
     QuitMenu = 4,
-    CreateViewMenu = 5,
+    CreateViewMenu = 5,   // RETIRED (§2.5: the base-camp roster IS the team view)
     CreateTrainMenu = 6,
     CreateHireMenu = 7,
+    // CreateLoadMenu doubles as the §2.1 main-menu LOAD door (intercepted to
+    // the Company List); the team-build slot menu it once opened is retired.
     CreateLoadMenu = 8,
-    CreateSaveMenu = 9,
+    CreateSaveMenu = 9,   // RETIRED (§3.8: saving is automatic)
     GoMenu = 10,
     ReturnMenu = 11,
     CycleTeamGuy = 12,
@@ -225,8 +222,8 @@ enum class ButtonAction : Sint32
     EditGuy = 15,
     CycleGuy = 16,
     AddGuy = 17,
-    DoSave = 18,
-    DoLoad = 19,
+    DoSave = 18,          // RETIRED with the slot menus (§3.8)
+    DoLoad = 19,          // RETIRED with the slot menus (§3.8)
     NameGuy = 20,
     CreateDetailMenu = 21,
     NullMenu = 22,

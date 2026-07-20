@@ -1050,7 +1050,7 @@ int networking_host_injector(void* data)
 
     SDL_Delay(150);
     state->entered_team_menu = interact_until_any_interactable(
-        "network_host", {"view_team", "go", "back"}, 15000);
+        "network_host", {"hire_troops", "go", "back"}, 15000);
 
     if (state->entered_team_menu && wait_for_interactable("back", 5000))
     {

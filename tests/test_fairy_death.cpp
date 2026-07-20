@@ -45,8 +45,10 @@ constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
 constexpr int kFairyPollMs = 10;
-constexpr int kTeamMenuBackGameX = 60;
-constexpr int kTeamMenuBackGameY = 155;
+// §2.5 base camp: BACK sits on the command strip at (8,178,44,18) —
+// click its center.
+constexpr int kTeamMenuBackGameX = 30;
+constexpr int kTeamMenuBackGameY = 187;
 
 template <typename Predicate>
 bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kFairyPollMs)
@@ -67,7 +69,7 @@ bool wait_for_team_menu(int timeout_ms = kGameStartTimeoutMs)
     int since_last_retry = 250;
     const int poll_ms = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("view_team") && has_interactable("go"))
+        if (has_interactable("hire_troops") && has_interactable("go"))
             return true;
 
         if (since_last_retry >= 250 && has_interactable("hire_me")) {

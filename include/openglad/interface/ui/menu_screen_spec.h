@@ -239,9 +239,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 enum class MenuScreenId : std::uint8_t {
     MainMenu,
     TeamBuild,
-    ViewTeam,
-    SaveSlots,
-    LoadSlots,
     MainOptions,
     DisplaySettings,
     ControlSettings,
@@ -294,6 +291,32 @@ const MenuScreenSpec& main_menu_screen_spec_nomp();
 // per frame — list_companies() touches the filesystem). Tests pin the view.
 void refresh_main_menu_company_view();
 void set_main_menu_company_view_for_tests(bool present, std::string display_name);
+
+// §2.5 base camp (the reimagined Team Build) screen state: the display-slot
+// list (occupied team_list slots, re-collected every frame so positional
+// indices are never held across a roster change or a win fold — §3.3), the
+// PageModel window over it, and the reload-guard cursor the frame tick
+// shares with the SCENARIO family. Public so tests can drive the per-frame
+// rewire's visibility variants ({empty, partial, full, 2 pages} × {host});
+// production state is owned by create_team_menu.
+struct BaseCampScreenState {
+    // The team-build family's level-reload obligation (§1.4 frame_tick).
+    short last_level_id = -1;
+    bool was_reset = false;
+    // Display row i (page-relative windowing via `page`) shows
+    // save.team_list[slots[page.first_index() + i]].
+    std::vector<int> slots;
+    PageModel page{};
+};
+
+// The base camp spec is team_build_menu_screen_spec() (the screen keeps its
+// registry identity); the per-frame rewire reads the installed state (the
+// company-list seam pattern; null renders the empty-roster shape).
+void install_base_camp_state_for_screen(BaseCampScreenState* state);
+
+// Re-collect the display-slot list from the save and clamp the page window
+// (§3.3 positional-refresh rule; called every frame tick and by tests).
+void base_camp_refresh_rows(BaseCampScreenState& state);
 
 // §2.2 new-company name entry (Layer F engine screen): a generated fantasy
 // default shown in an editable strip, REROLL, a slug preview teaching the

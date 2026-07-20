@@ -61,7 +61,7 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
     int elapsed = 0;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("view_team") && has_interactable("networking"))
+        if (has_interactable("hire_troops") && has_interactable("networking"))
             return true;
         SDL_Delay(poll_interval);
         elapsed += poll_interval;

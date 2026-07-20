@@ -1,5 +1,6 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/input.h>
@@ -44,8 +45,6 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Sint32 add_guy(guy* newguy);
-Sint32 do_save(Sint32 arg1);
-Sint32 do_load(Sint32 arg1);
 std::string get_saved_name(const char* filename);
 Sint32 delete_all();
 void quit(Sint32 arg1);
@@ -636,7 +635,7 @@ TEST(PickerFuncs, how_many_with_team)
     vbutton* old2 = og::runtime::current_session->allbuttons_[2];
     vbutton* old6 = og::runtime::current_session->allbuttons_[6];
     vbutton* old7 = og::runtime::current_session->allbuttons_[7];
-    vbutton* old18 = og::runtime::current_session->allbuttons_[18];
+    vbutton* old18 = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
     short old_team_num = og::runtime::current_session->current_team_num_;
     Sint32 old_diff = og::runtime::current_session->current_difficulty_;
@@ -646,7 +645,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->allbuttons_[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
-    og::runtime::current_session->allbuttons_[18] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
 
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->current_guy_->teamnum = 1;
@@ -662,7 +661,7 @@ TEST(PickerFuncs, how_many_with_team)
 
     ASSERT_EQ(4, (int)change_teamnum(1)) << "change_teamnum should return OK";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0) << "team label should be updated";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Playing on Team ") == 0) << "team label should be updated";
 
     og::runtime::current_session->current_team_num_ = 0;
     ASSERT_EQ(4, (int)change_hire_teamnum(1)) << "change_hire_teamnum should return OK";
@@ -701,9 +700,8 @@ TEST(PickerFuncs, how_many_with_team)
         og::runtime::current_session->allbuttons_[0] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b0", KEYSTATE_UNKNOWN);
     }
     og::runtime::current_session->allbuttons_[0]->label = "UNIT_TEST_SAVE";
-    Sint32 save_ret = do_save(1);
-    Sint32 load_ret = do_load(1);
-    ASSERT_TRUE(save_ret == load_ret) << "do_save/do_load should return same menu status";
+    // (do_save/do_load retired with the slot menus — §3.8: saving is
+    // automatic; loading is the Company List.)
 
     ASSERT_EQ(1234, (int)return_menu(1234)) << "return_menu should echo its argument";
     quit(0); // test mode: should not exit
@@ -723,7 +721,7 @@ TEST(PickerFuncs, how_many_with_team)
     delete og::runtime::current_session->allbuttons_[2];
     delete og::runtime::current_session->allbuttons_[6];
     delete og::runtime::current_session->allbuttons_[7];
-    delete og::runtime::current_session->allbuttons_[18];
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     if (old0 == nullptr) {
         delete og::runtime::current_session->allbuttons_[0];
     }
@@ -732,7 +730,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->allbuttons_[2] = old2;
     og::runtime::current_session->allbuttons_[6] = old6;
     og::runtime::current_session->allbuttons_[7] = old7;
-    og::runtime::current_session->allbuttons_[18] = old18;
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old18;
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         og::runtime::current_session->myscreen_->save_data.team_list[i].reset(saved_team_list[i]);
@@ -1171,62 +1169,9 @@ TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
     level_editor_testing_prompt_queue_clear();
 }
 
-TEST(PickerFuncs, do_load_syncs_active_lobby_client_without_reinitializing)
-{
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    const std::string old_save_name = save.save_name;
-    const std::string old_campaign = save.current_campaign;
-    const short old_scen_num = save.scen_num;
-    const unsigned char old_team_size = save.team_size;
-    const unsigned char old_numplayers = save.numplayers;
-    const short old_allied_mode = save.allied_mode;
-    const short old_my_team = save.my_team;
-    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
-
-    save.save_name = "NETWORK LOAD";
-    save.current_campaign = "org.openglad.gladiator";
-    save.scen_num = 1;
-    save.team_size = 1;
-    save.numplayers = 1;
-    save.allied_mode = 0;
-    save.my_team = 0;
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->name = "Loader";
-    save.team_list[0]->teamnum = 0;
-    for (int i = 1; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i].reset();
-
-    ASSERT_TRUE(save.save("save1"));
-
-    save.scen_num = 2;
-    save.team_list[0]->name = "Modified";
-
-    auto trace = std::make_shared<PickerLobbyClientTrace>();
-    TraceablePickerLobbyClient client(trace);
-    ActivePickerLobbyClientGuard guard(&client);
-
-    ASSERT_EQ(2, do_load(1));
-    EXPECT_EQ(0, trace->initialize_calls);
-    EXPECT_EQ(0, trace->shutdown_calls);
-    EXPECT_EQ(1, trace->sync_from_save_calls);
-    EXPECT_EQ(0, trace->sync_roster_calls);
-    EXPECT_EQ(0, trace->sync_settings_calls);
-    EXPECT_EQ(1, save.scen_num);
-    ASSERT_TRUE(save.team_list[0] != nullptr);
-    EXPECT_EQ("Loader", save.team_list[0]->name);
-
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
-    save.save_name = old_save_name;
-    save.current_campaign = old_campaign;
-    save.scen_num = old_scen_num;
-    save.team_size = old_team_size;
-    save.numplayers = old_numplayers;
-    save.allied_mode = old_allied_mode;
-    save.my_team = old_my_team;
-}
+// (do_load retired with the slot menus; the lobby sync-on-load behavior is
+// exercised by the Company List open path — open_company_slot -> load ->
+// picker_lobby_sync_from_save — in the og_test_basecamp flows.)
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
 {
@@ -1826,7 +1771,7 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
 
     std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
     const short old_team_num = og::runtime::current_session->current_team_num_;
-    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+    auto* old_team_button = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     auto* old_train_session = pks().train_session;
 
     save.team_size = 1;
@@ -1837,7 +1782,7 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
     save.team_list[0]->teamnum = 0;
     save.team_list[0]->name = "Trainer";
 
-    og::runtime::current_session->allbuttons_[18] =
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] =
         new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
                     "team", KEYSTATE_UNKNOWN);
 
@@ -1857,8 +1802,8 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
 
     picker_lobby_shutdown();
     pks().train_session = old_train_session;
-    delete og::runtime::current_session->allbuttons_[18];
-    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old_team_button;
     og::runtime::current_session->current_guy_ = std::move(old_current);
     og::runtime::current_session->current_team_num_ = old_team_num;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
@@ -1921,7 +1866,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
         std::move(og::runtime::current_session->current_guy_);
     const short old_team_num = og::runtime::current_session->current_team_num_;
     const int old_editguy = og::runtime::current_session->editguy_;
-    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+    auto* old_team_button = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
 
     save.team_size = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1930,7 +1875,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
         std::make_unique<guy>(*save.team_list[0]);
     og::runtime::current_session->current_team_num_ = 0;
     og::runtime::current_session->editguy_ = 0;
-    og::runtime::current_session->allbuttons_[18] =
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] =
         new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
                     "team", KEYSTATE_UNKNOWN);
 
@@ -1943,8 +1888,8 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
     ASSERT_EQ(0, static_cast<int>(change_teamnum(1)));
     EXPECT_EQ(0, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
 
-    delete og::runtime::current_session->allbuttons_[18];
-    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old_team_button;
     og::runtime::current_session->current_guy_ = std::move(old_current);
     og::runtime::current_session->current_team_num_ = old_team_num;
     og::runtime::current_session->editguy_ = old_editguy;

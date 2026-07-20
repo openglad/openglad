@@ -63,7 +63,7 @@ static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
     int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("view_team") && has_interactable("go"))
+        if (has_interactable("hire_troops") && has_interactable("go"))
         {
             return true;
         }

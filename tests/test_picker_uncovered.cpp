@@ -1,8 +1,10 @@
 #include <openglad/interface/button.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/interface/screen.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
@@ -100,6 +102,15 @@ int name_guy_injector(void*)
 TEST(PickerUncovered, picker_name_guy_paths)
 {
     PickerStateGuard guard;
+    // §3.8: a rename ACCEPT (Enter keeps the prefilled name = has_value) now
+    // runs the base-camp mutation tail, which lazily creates the local lobby
+    // client and seeds its cached roster with THIS test's guys. Any later
+    // picker loop's picker_lobby_poll() would rewrite save.team_list from
+    // that stale cache (the documented promote-test wedge) — shut the client
+    // down on every exit path.
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
 
     std::unique_ptr<guy> original_current = std::move(og::runtime::current_session->current_guy_);
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -175,7 +186,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 {
     PickerStateGuard guard;
     OwnedButtonReplacementGuard button2_guard(2, "b2");
-    OwnedButtonReplacementGuard button18_guard(18, "b18");
+    OwnedButtonReplacementGuard button18_guard(kTrainMenuChangeTeamIndex, "b18");
     const short saved_team_num = og::runtime::current_session->current_team_num_;
 
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -184,7 +195,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 
     ASSERT_EQ(4, (int)change_teamnum(-1)) << "change_teamnum should return OK";
     ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum) << "change_teamnum should wrap 0 -> 3 for arg -1";
-    ASSERT_STREQ("Playing on Team 4", og::runtime::current_session->allbuttons_[18]->label.c_str()) << "team label should wrap to Team 4";
+    ASSERT_STREQ("Playing on Team 4", og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label.c_str()) << "team label should wrap to Team 4";
 
     og::runtime::current_session->current_guy_->teamnum = static_cast<short>(0);
     og::runtime::current_session->current_team_num_ = static_cast<short>(0);

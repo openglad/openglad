@@ -16,7 +16,9 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 # Drive sequence (1-based menu indices):
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign.
-#   Team Build (12 items): 3=Hire Troops (n/h/b), 5=Save Team, 4=Load Team,
+#   Base camp / Team Build (12 items, §2.5 substitution): 3=Hire Troops
+#     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster
+#     (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys row 2),
 #     9=Scenario, 6=GO!, 7=Back.
 #   Scenario submenu (6 items): 4=Teams (play 1, blank exits),
 #     3=View Scenario (blank dismisses), 6=Back.
@@ -30,8 +32,11 @@ cat > "$TMPIN" << 'INP'
 n
 h
 b
-5
+1
+deploy 2
+
 4
+2
 9
 4
 play 1
@@ -103,8 +108,16 @@ if not any(isinstance(e.get('family'), int) and e.get('family') != 0 for e in te
     print('FAIL: expected at least one non-zero family in player team after hire/load', file=sys.stderr)
     sys.exit(1)
 
-if not any("Loaded 'text_quicksave'" in l and 'team=2' in l for l in lines):
-    print('FAIL: expected load confirmation with team=2 after save/load round-trip', file=sys.stderr)
+# §2.5 roster: 'deploy 2' benches the hired member, the Deploy item (4)
+# re-deploys it; both print the toggle confirmation.
+if not any(l.endswith('benched.') for l in lines):
+    print('FAIL: expected a roster bench confirmation', file=sys.stderr)
+    sys.exit(1)
+if not any(l.endswith('deployed.') for l in lines):
+    print('FAIL: expected a deploy confirmation', file=sys.stderr)
+    sys.exit(1)
+if not any('DEP ' in l for l in lines):
+    print('FAIL: expected the roster DEP n/m footer', file=sys.stderr)
     sys.exit(1)
 
 # Scenario submenu: the nested menu between Team Build and its screens.
@@ -133,10 +146,12 @@ if not quit_ok:
     print('FAIL: missing protocol quit confirmation', file=sys.stderr)
     sys.exit(1)
 
+# §3.8: the hire/deploy mutations AUTOSAVED the active company slot (the
+# text client's quicksave slot) — no manual save command exists anymore.
 save_path = os.path.join(home, '.openglad', 'save', 'text_quicksave.gtl')
 if not os.path.exists(save_path):
-    print(f'FAIL: expected save file missing: {save_path}', file=sys.stderr)
+    print(f'FAIL: expected autosaved company file missing: {save_path}', file=sys.stderr)
     sys.exit(1)
 
-print('PASS: interactive picker smoke and save/load round-trip')
+print('PASS: interactive picker smoke and mutation-autosave round-trip')
 PY

@@ -650,11 +650,11 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 17)
+    EXPECT_GE(engine_screens, 14)
         << "difficulty + the FX trio + display + controls + main options + "
-           "main menu + the full team-build cluster (team build, view team, "
-           "slot menus, SCENARIO, TEAMS) + hire + train + progress + "
-           "view level must be engine-hosted by this stage";
+           "main menu + the team-build cluster (base camp, SCENARIO, TEAMS) "
+           "+ hire + train + progress + view level must be engine-hosted "
+           "(VIEW TEAM and the slot menus RETIRED with WP4's base camp)";
 }
 
 // §2.2 new-company name entry: a Layer-F engine screen entered directly from
@@ -1200,20 +1200,14 @@ TEST(MenuEngine, options_family_registry_hosts)
 }
 
 // ---------------------------------------------------------------------------
-// §1.8 step 5 registry state: the team-build cluster migrates in order
-// (view team + slot menus, then SCENARIO + TEAMS, then team build itself).
-// Updated in the SAME commit as each registry flip.
+// §1.8 step 5 registry state: the team-build cluster. VIEW TEAM and the
+// SAVE/LOAD slot menus RETIRED with WP4's base camp (§2.5/§3.8) — their
+// MenuScreenId rows are gone entirely.
 TEST(MenuEngine, team_build_cluster_registry_hosts)
 {
     using Kind = og::ui::MenuScreenHost::Kind;
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).kind);
-    EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::ViewTeam).kind);
-    EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::SaveSlots).kind);
-    EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::LoadSlots).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).kind);
     EXPECT_EQ(Kind::Engine,
@@ -1222,30 +1216,9 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
 
 // The exit_on_redraw contract on the migrated cluster: BACK on these
 // subscreens carries MENU_REDRAW and must END the screen (the parent loop
-// keeps running), while MENU_EXIT-bearing exits still propagate. Pinned on
-// the spec flags — the direct-call behavior is covered by the unchanged
-// legacy tests (test_view_team / test_save_menu).
+// keeps running), while MENU_EXIT-bearing exits still propagate.
 TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
 {
-    const og::ui::MenuScreenSpec* view_team =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::ViewTeam).spec;
-    ASSERT_NE(nullptr, view_team);
-    EXPECT_TRUE(view_team->exit_on_redraw);
-    EXPECT_EQ(MENU_EXIT, view_team->exit_value);
-    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
-              view_team->remote_start);
-
-    for (const og::ui::MenuScreenId id : {og::ui::MenuScreenId::SaveSlots,
-                                          og::ui::MenuScreenId::LoadSlots}) {
-        const og::ui::MenuScreenSpec* slots = og::ui::menu_screen_host(id).spec;
-        ASSERT_NE(nullptr, slots);
-        EXPECT_TRUE(slots->exit_on_redraw);
-        EXPECT_EQ(MENU_REDRAW, slots->exit_value);
-        EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
-                  slots->remote_start);
-        EXPECT_EQ(10, slots->default_highlight);
-    }
-
     // TEAMS: BACK carries MENU_REDRAW (redraw-exit); MENU_EXIT propagates.
     const og::ui::MenuScreenSpec* teams =
         og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
@@ -1279,9 +1252,13 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_EQ(MENU_EXIT, team_build->exit_value);
     EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
               team_build->remote_start);
-    EXPECT_EQ(1, team_build->default_highlight);
+    // §2.5 roster-first: the default highlight is row 0's deploy toggle
+    // (the rewire seeds HIRE when the roster is empty).
+    EXPECT_EQ(0, team_build->default_highlight);
     EXPECT_NE(nullptr, team_build->frame_tick);
     EXPECT_NE(nullptr, team_build->on_reset);
+    EXPECT_NE(nullptr, team_build->on_spec_row)
+        << "roster rows dispatch through MenuSpecRow (G3)";
 }
 
 // ---------------------------------------------------------------------------
@@ -1340,8 +1317,9 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     }
 
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
-    // start was selected); nested DETAILS/RENAME/VIEW TEAM MENU_REDRAWs are
-    // consumed by reset_buttons; the +/- pixie faces are art bindings.
+    // start was selected); nested DETAILS/RENAME MENU_REDRAWs are consumed
+    // by reset_buttons; the +/- pixie faces are art bindings. (The VIEW
+    // TEAM door retired with its screen — 19 rows now, §2.5.)
     const og::ui::MenuScreenSpec* train =
         og::ui::menu_screen_host(og::ui::MenuScreenId::Train).spec;
     ASSERT_NE(nullptr, train);
@@ -1351,7 +1329,7 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     EXPECT_TRUE(train->right_click_enabled);
     EXPECT_EQ(1, train->default_highlight);
     EXPECT_NE(nullptr, train->on_reset) << "the bug-A9 promotion resync";
-    ASSERT_EQ(20, train->row_count);
+    ASSERT_EQ(19, train->row_count);
     for (int i = 2; i < 14; ++i) {
         EXPECT_EQ((i % 2 == 0) ? FAMILY_MINUS : FAMILY_PLUS,
                   static_cast<int>(train->rows[i].art_family))

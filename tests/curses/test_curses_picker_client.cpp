@@ -58,6 +58,19 @@ struct PickerFixture {
 
     HeadlessTerminal& t() { return term; }
     SaveData& save() { return client.save_data(); }
+
+    // §3.8: hire/train/deploy mutations AUTOSAVE the active slot now, so a
+    // fixture test can leave a company file behind — which would pollute
+    // the company-list tests' row ordering under any test order. Reap the
+    // fixture slot's file (the active slot may have been repointed by an
+    // open flow, so reap both).
+    ~PickerFixture()
+    {
+        (void)remove_user_file("save/" + config.save_name + ".gtl");
+        (void)remove_user_file(
+            "save/" + og::data::active_company_slot() + ".gtl");
+        og::data::set_active_company_slot("save0");
+    }
 };
 
 // Select the item at 0-based selectable index `n` from the current menu:
@@ -412,8 +425,9 @@ TEST(CursesPickerClient, view_roster_renders_names)
     const auto* item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     ASSERT_NE(item, nullptr);
-    // View Team shows a scrollable roster screen that consumes one key.
-    dismiss(f.t());
+    // §2.5: the roster is an interactive list now (Enter=train, d=deploy,
+    // r=ready) — Escape exits it; the drawn list stays on the terminal.
+    f.t().push_special(KeyCode::Escape);
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
 
     bool found = false;
@@ -673,31 +687,48 @@ TEST(CursesPickerClient, save_then_load_round_trips_team)
     EXPECT_EQ(config.level, 3) << "level should restore from the save's scen_num";
 }
 
-TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_campaign)
+TEST(CursesPickerClient, team_build_dispatches_deploy_ready_progress_network_and_campaign)
 {
     PickerFixture f;
     f.config.save_name = "curses_dispatch_slot";
 
-    const auto* save_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SaveTeam);
-    const auto* load_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::LoadTeam);
+    // §2.5 substitution: deploy (was Load Team) and ready (was Save Team).
+    const auto* deploy_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleDeploy);
+    const auto* ready_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleReady);
     const auto* progress_item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::ShowProgress);
     const auto* network_item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::Networking);
     const auto* campaign_item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetCampaign);
-    ASSERT_NE(save_item, nullptr);
-    ASSERT_NE(load_item, nullptr);
+    ASSERT_NE(deploy_item, nullptr);
+    ASSERT_NE(ready_item, nullptr);
     ASSERT_NE(progress_item, nullptr);
     ASSERT_NE(network_item, nullptr);
     ASSERT_NE(campaign_item, nullptr);
 
+    // Deploy: the prompt's default "1" toggles roster row 1 (slot 0);
+    // Enter accepts, one dismiss for the confirmation. §3.8: the toggle
+    // AUTOSAVES; §2.6 state 1: ready is guarded outside networked lobbies.
+    ASSERT_TRUE(f.save().team_list[0] != nullptr);
+    ASSERT_TRUE(f.save().team_list[0]->deployed);
+    f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *save_item);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *deploy_item);
+    EXPECT_FALSE(f.save().team_list[0]->deployed)
+        << "the deploy prompt should bench roster row 1";
+
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *load_item);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *ready_item);
+    {
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find("Ready applies to networked lobbies only."),
+                  std::string::npos)
+            << dump;
+    }
+
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *progress_item);
     pick(f.t(), 2);

@@ -36,12 +36,16 @@ constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
     {"load_company", "Load Company", PickerMenuCommand::LoadGame},
 }};
 
+// §2.5 base camp: the TeamBuild model stays 12 items by IN-PLACE substitution
+// (minimizes 1-based churn for the text/curses index contract): 1 roster (was
+// view_team), 4 deploy (was load_team), 5 ready (was save_team). Save/Load
+// left the base camp entirely — saving is automatic (§3.8).
 constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
-    {"view_team", "View Team", PickerMenuCommand::ViewTeam},
+    {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
-    {"load_team", "Load Team", PickerMenuCommand::LoadTeam},
-    {"save_team", "Save Team", PickerMenuCommand::SaveTeam},
+    {"deploy", "Deploy", PickerMenuCommand::ToggleDeploy},
+    {"ready", "Ready", PickerMenuCommand::ToggleReady},
     {"go", "GO!", PickerMenuCommand::StartGame},
     {"back", "Back", PickerMenuCommand::Back},
     {"networking", "Networking", PickerMenuCommand::Networking},

@@ -85,13 +85,19 @@ public:
     // one. Returns the chosen entry index, or -1 on cancel (Esc/q/Backspace or
     // exhausted scripted input). `initial` is the starting highlight (clamped to
     // a selectable entry).
+    // `extra_keys`/`out_key`: opt-in single-key actions (the §2.5 roster's
+    // d=deploy / r=ready) — a listed key returns the cursor row with
+    // *out_key set; Enter/space return with *out_key == 0.
     int choose(std::string_view title, const std::vector<ListEntry>& entries,
-               std::string_view hint, int initial)
+               std::string_view hint, int initial,
+               std::u32string_view extra_keys = {}, char32_t* out_key = nullptr)
     {
         const int start = clamp_to_selectable(entries, initial, +1);
         if (start < 0)
             return -1; // nothing selectable
         int cursor = start;
+        if (out_key != nullptr)
+            *out_key = 0;
 
         for (;;) {
             draw_list(title, entries, hint, cursor);
@@ -101,6 +107,11 @@ public:
                 return -1; // scripted input exhausted -> treat as cancel
             if (key.is_release())
                 continue; // act on presses/repeats only; ignore key-up + focus
+            if (out_key != nullptr && key.is_char() &&
+                extra_keys.find(key.ch) != std::u32string_view::npos) {
+                *out_key = key.ch;
+                return cursor;
+            }
             if (is_cancel(key))
                 return -1;
             if (key.is_enter() || key.is_char(U' '))
@@ -351,24 +362,74 @@ int prompt_backup_index(Menu& menu, int count, std::string_view title)
 
 // --- team views: roster / hire / train -----------------------------------
 
-void view_team_roster(Menu& menu, const SaveData& save)
+// §3.8: every curses base-camp mutation autosaves the active company slot
+// ([SAVE-R2]: the curses client's slot authority points it at the user's
+// chosen quicksave slot). The §4.3 ready-clear is a no-op here — the curses
+// picker holds no networked lobby (the network lobby's 'r' key is separate).
+void autosave_company_after_mutation(SaveData& save)
 {
-    std::vector<std::string> lines;
-    if (save.team_size == 0) {
-        lines.push_back("(empty)");
-    } else {
-        int idx = 1;
-        og::ui::for_each_team_member(save, [&](int, const guy& member) {
-            lines.push_back(std::format(
-                "{:2}. {:<14} {:<14} L={} STR={} DEX={} CON={} INT={} ARM={}",
-                idx++, member.name, og::ui::family_display_name(member.family),
-                member.level, member.strength, member.dexterity,
-                member.constitution, member.intelligence, member.armor));
-        });
+    (void)og::ui::company_autosave_after_mutation(save, false);
+}
+
+void train_team(Menu& menu, SaveData& save, int seed_slot = -1);
+
+// §2.5 command roster (curses shape): deploy flags lead each row;
+// Enter = train that character, 'd' = toggle deploy, 'r' = ready (guarded
+// outside networked lobbies), Esc = back.
+void view_team_roster(Menu& menu, SaveData& save)
+{
+    int cursor = 0;
+    for (;;) {
+        const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+        if (slots.empty()) {
+            menu.show_text("Team Roster", {"(empty)", "",
+                std::format("Gold: {}",
+                    static_cast<unsigned>(save.m_totalcash[0]))});
+            return;
+        }
+
+        std::vector<ListEntry> entries;
+        for (std::size_t i = 0; i < slots.size(); ++i) {
+            const guy& member =
+                *save.team_list[static_cast<std::size_t>(slots[i])];
+            entries.push_back(ListEntry{std::format(
+                "[{}] {:<14} {:<14} L={} STR={} DEX={} CON={} INT={} ARM={}",
+                member.deployed ? 'X' : ' ', member.name,
+                og::ui::family_display_name(member.family), member.level,
+                member.strength, member.dexterity, member.constitution,
+                member.intelligence, member.armor), true});
+        }
+        entries.push_back(ListEntry{std::format("DEP {}/{}   Gold: {}",
+            og::ui::count_deployed_members(save),
+            static_cast<int>(slots.size()),
+            static_cast<unsigned>(save.m_totalcash[0])), false});
+
+        char32_t key = 0;
+        const int choice = menu.choose("Team Roster", entries,
+            "Enter train | d deploy | r ready | Esc back", cursor,
+            U"dDrR", &key);
+        if (choice < 0)
+            return;
+        cursor = choice;
+        if (choice >= static_cast<int>(slots.size()))
+            continue;
+        const int slot = slots[static_cast<std::size_t>(choice)];
+
+        if (key == U'd' || key == U'D') {
+            const bool deployed = og::ui::toggle_deploy_slot(save, slot);
+            (void)deployed;
+            autosave_company_after_mutation(save);
+            continue;
+        }
+        if (key == U'r' || key == U'R') {
+            // §2.6 state 1: no ready machinery outside a networked lobby
+            // (the curses network lobby keeps its own 'r' key).
+            menu.show_text("Ready",
+                {"Ready applies to networked lobbies only."});
+            continue;
+        }
+        train_team(menu, save, slot);
     }
-    lines.push_back("");
-    lines.push_back(std::format("Gold: {}", static_cast<unsigned>(save.m_totalcash[0])));
-    menu.show_text("Team Roster", lines);
 }
 
 // Returns the updated team_families so the caller can re-sync config.
@@ -422,6 +483,7 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
                 {std::format("Hired {}!",
                     save.team_list[static_cast<size_t>(slot)]->name)});
             config.team_families = og::ui::collect_team_families(save);
+            autosave_company_after_mutation(save);  // §3.8
             if (session.team_full()) {
                 menu.show_text("Hire Troops", {"Team is now full."});
                 return;
@@ -440,13 +502,44 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
     }
 }
 
-void train_team(Menu& menu, SaveData& save)
+// The §2.5 'deploy' item (was Load Team): prompt for a roster row and flip
+// its mission-deploy flag (§3.8 autosave rides the flip).
+void deploy_prompt(Menu& menu, SaveData& save)
+{
+    const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+    if (slots.empty()) {
+        menu.show_text("Deploy", {"(empty roster - hire someone first)"});
+        return;
+    }
+    bool accepted = false;
+    const std::string entered = menu.prompt("Deploy",
+        std::format("Toggle deploy for roster row [1-{}]: ", slots.size()),
+        "1", accepted);
+    if (!accepted)
+        return;
+    const auto value = parse_int_strict(entered);
+    if (!value || *value < 1 ||
+        static_cast<std::size_t>(*value) > slots.size()) {
+        menu.show_text("Deploy", {"Invalid roster row."});
+        return;
+    }
+    const int slot = slots[static_cast<std::size_t>(*value - 1)];
+    const bool deployed = og::ui::toggle_deploy_slot(save, slot);
+    menu.show_text("Deploy", {std::format("{} {}.",
+        save.team_list[static_cast<std::size_t>(slot)]->name,
+        deployed ? "deployed" : "benched")});
+    autosave_company_after_mutation(save);
+}
+
+void train_team(Menu& menu, SaveData& save, int seed_slot)
 {
     og::ui::TrainSession session(save);
     if (session.empty()) {
         menu.show_text("Train Team", {"No team members available to train."});
         return;
     }
+    if (seed_slot >= 0)
+        (void)session.seek_slot(seed_slot);  // §2.5 Enter-on-row direct-open
 
     using S = og::ui::TrainSession::Stat;
     for (;;) {
@@ -493,8 +586,12 @@ void train_team(Menu& menu, SaveData& save)
         }
         switch (choice - first_action) {
         case 0: // Accept
-            menu.show_text("Train Team",
-                {session.accept() ? "Training accepted." : "Can't afford training."});
+            if (session.accept()) {
+                menu.show_text("Train Team", {"Training accepted."});
+                autosave_company_after_mutation(save);  // §3.8
+            } else {
+                menu.show_text("Train Team", {"Can't afford training."});
+            }
             break;
         case 1:
             session.next_member();
@@ -756,12 +853,11 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::HireTroops:
         hire_troops(menu, save_data_, config_);
         break;
-    case PickerMenuCommand::LoadTeam:
-        (void)load_game();
+    case PickerMenuCommand::ToggleDeploy:
+        deploy_prompt(menu, save_data_);
         break;
-    case PickerMenuCommand::SaveTeam:
-        (void)save_game();
-        break;
+    // ToggleReady is gated NetworkedOnly: the guard above already showed
+    // its message (the curses picker holds no networked lobby).
     case PickerMenuCommand::ShowProgress:
         menu.show_text("Progress",
             {std::format("Campaign: {}",

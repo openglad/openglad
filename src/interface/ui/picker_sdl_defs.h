@@ -119,12 +119,6 @@ int picker_mainmenu_button_count();
 int picker_mainmenu_options_index();
 button* picker_createmenu_buttons();
 int picker_createmenu_button_count();
-button* picker_viewteam_buttons();
-int picker_viewteam_button_count();
-button* picker_saveteam_buttons();
-int picker_saveteam_button_count();
-button* picker_loadteam_buttons();
-int picker_loadteam_button_count();
 
 button* picker_main_options_buttons();
 button* picker_display_settings_buttons();
@@ -164,16 +158,22 @@ int picker_company_list_button_count();
 button* picker_company_backups_buttons();
 int picker_company_backups_button_count();
 
-// --- Team-build layout contract -------------------------------------------
-// 3x3 grid: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
-// BACK | SCENARIO | NETWORKING (y=140). GO is the only host-gated button.
-inline constexpr int kCreateMenuHireIndex = 2;
-inline constexpr int kCreateMenuSaveIndex = 4;
-inline constexpr int kCreateMenuGoIndex = 5;
-inline constexpr int kCreateMenuBackIndex = 6;
-inline constexpr int kCreateMenuScenarioIndex = 7;
-inline constexpr int kCreateMenuNetworkingIndex = 8;
-inline constexpr int kCreateMenuButtonCount = 9;
+// --- Base camp (team build) layout contract (design §2.5) ------------------
+// The command roster: 12 roster rows/page (deploy toggle at x=8, TRAIN at
+// x=272, y=32+12r), the page cluster top-right, and the bottom command strip
+// BACK | HIRE | SCENARIO | NETWORK | GO at y=178. Spec ordinals group by
+// kind so the MenuSpecRow arg (== ordinal, G3) decodes as row/kind directly.
+// GO is the only host-gated button.
+inline constexpr int kBaseCampRosterRowsPerPage = 12; // roster_dep_r = 0..11
+inline constexpr int kBaseCampTrainBase = 12;         // roster_train_r = 12+r
+inline constexpr int kBaseCampPagePrevIndex = 24;
+inline constexpr int kBaseCampPageNextIndex = 25;
+inline constexpr int kCreateMenuBackIndex = 26;
+inline constexpr int kCreateMenuHireIndex = 27;
+inline constexpr int kCreateMenuScenarioIndex = 28;
+inline constexpr int kCreateMenuNetworkingIndex = 29;
+inline constexpr int kCreateMenuGoIndex = 30;
+inline constexpr int kCreateMenuButtonCount = 31;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
@@ -221,16 +221,23 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
                                 const TeamsMenuWiring& wiring);
 
 // Conditional rewiring for the host-gated buttons (same convention: nav
-// never links to a hidden button). Team build gates GO; the SCENARIO
-// subscreen gates SET CAMPAIGN / SET LEVEL.
-void picker_wire_team_build_nav(button* buttons, int count,
-                                bool host_controls_visible);
+// never links to a hidden button). The base camp rewires its full roster
+// graph per frame (pattern b — the rewire lives on the spec and reads the
+// installed BaseCampScreenState); the SCENARIO subscreen gates
+// SET CAMPAIGN / SET LEVEL.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
                                    bool host_controls_visible);
 
 // The TEAMS subscreen's selected roster slot, normalized onto an occupied
 // slot (-1 when the roster is empty).
 int teams_menu_selected_guy_slot();
+
+// --- TRAIN screen layout contract ------------------------------------------
+// Positional index of the team cycler ("Playing on Team N") in
+// kTrainMenuRows / picker_trainmenu_buttons(). The train content pass and
+// the ChangeTeam/cycle callbacks write its live label/outline by this index
+// (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).
+inline constexpr int kTrainMenuChangeTeamIndex = 17;
 
 // --- VIEW LEVEL (scenario viewer) layout contract --------------------------
 inline constexpr int kViewScenarioBackIndex = 0;

@@ -235,7 +235,7 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
     ASSERT_NE(nullptr, go);
     ASSERT_NE(nullptr, allied);
 
-    EXPECT_EQ("View Team", og::ui::menu_item_label(*view_team, context_for(save)));
+    EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, context_for(save)));
     EXPECT_EQ("GO!", og::ui::menu_item_label(*go, context_for(save)));
 
     // A save-backed binding without a save falls back to the fixed label.
@@ -247,7 +247,7 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
     save.allied_mode = 0;
     MenuLabelContext spectator = context_for(save);
     spectator.spectator = true;
-    EXPECT_EQ("View Team", og::ui::menu_item_label(*view_team, spectator));
+    EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, spectator));
     EXPECT_EQ("PVP: Enemy", og::ui::menu_item_label(*allied, spectator));
 }
 

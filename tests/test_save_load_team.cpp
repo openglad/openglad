@@ -330,20 +330,23 @@ TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
     scr->save_data.reset();
 }
 
-// Test: Navigate to Load Team menu via UI, see the load slots, and exit
+// §2.5 flow 5 + §3.8: the base-camp deploy toggle flips the roster row's
+// mission-deploy flag, the mutation AUTOSAVES the active company slot, and
+// the flag round-trips through the v14 save (the slot UI is retired — this
+// replaced the old load_team_menu slot flow).
 //
-// Flow: Main Menu -> Continue -> Load Team -> Back -> Back
+// Flow: Main Menu -> Continue -> base camp -> toggle roster_dep_1 -> Back
 
-struct LoadMenuState {
+struct DeployToggleState {
     bool started;
     bool finished;
-    bool saw_load_menu;
+    bool saw_roster;
 };
 
-static int load_menu_injector(void* data)
+static int deploy_toggle_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    LoadMenuState* state = static_cast<LoadMenuState*>(data);
+    DeployToggleState* state = static_cast<DeployToggleState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -353,19 +356,15 @@ static int load_menu_injector(void* data)
     interact("continue_game");
 
     SDL_Delay(500);
-    wait_for_interactable("load_team", 10000);
-    SDL_Delay(750);
+    if (wait_for_interactable("roster_dep_1", 10000)) {
+        state->saw_roster = true;
+        SDL_Delay(750);
 
-    fprintf(stderr, "  [test] clicking load_team\n");
-    interact("load_team");
+        fprintf(stderr, "  [test] toggling roster_dep_1\n");
+        interact("roster_dep_1");
+        SDL_Delay(500);  // label flip + §3.8 autosave land this frame
 
-    // Load menu has load_slot_1 through load_slot_10 and back
-    SDL_Delay(500);
-    if (wait_for_interactable("load_slot_1", 10000)) {
-        state->saw_load_menu = true;
-        SDL_Delay(500);
-
-        fprintf(stderr, "  [test] clicking back from load menu\n");
+        fprintf(stderr, "  [test] clicking back from the base camp\n");
         interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
@@ -375,17 +374,8 @@ static int load_menu_injector(void* data)
         if (wait_for_interactable("continue_game", 150))
             break;
 
-        if (wait_for_interactable("load_team", 150))
-        {
-            fprintf(stderr, "  [test] clicking back from team menu\n");
-            interact_match("back", [](const Interactable& item) { return item.y < 170; });
-            SDL_Delay(150);
-            continue;
-        }
-
         if (wait_for_interactable("back", 150))
         {
-            fprintf(stderr, "  [test] retry clicking back from load menu\n");
             interact_match("back", [](const Interactable& item) { return item.y >= 170; });
             SDL_Delay(150);
             continue;
@@ -399,17 +389,27 @@ static int load_menu_injector(void* data)
     return 0;
 }
 
-TEST(SaveLoadTeam, load_team_menu) {
+TEST(SaveLoadTeam, base_camp_deploy_toggle_autosaves_and_round_trips) {
     trace_clear();
 
-    // Need a save so continue_game works
+    // Need a save so continue_game works; two members so row 1 exists.
+    og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    {
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = "KEEPER";
+        auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+        archer->name = "BENCHME";
+        og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+        og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+        og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    }
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    LoadMenuState state = { false, false, false };
-    SDL_Thread* thread = SDL_CreateThread(load_menu_injector, "load_menu_test", &state);
+    DeployToggleState state = { false, false, false };
+    SDL_Thread* thread = SDL_CreateThread(deploy_toggle_injector, "deploy_toggle_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
@@ -424,7 +424,20 @@ TEST(SaveLoadTeam, load_team_menu) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.saw_load_menu) << "should have seen the load team menu";
+    ASSERT_TRUE(state.saw_roster) << "should have seen the base-camp roster";
+    ASSERT_TRUE(trace_contains("basecamp", "deploy slot=1 off"))
+        << "the deploy dispatch should toggle display row 1 (slot 1) off";
+
+    // §3.8: the toggle AUTOSAVED — the flag must be on disk without any
+    // manual save (v14 guy+50 deployed byte).
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_EQ(2, static_cast<int>(reloaded.team_size));
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    ASSERT_TRUE(reloaded.team_list[1] != nullptr);
+    EXPECT_TRUE(reloaded.team_list[0]->deployed) << "row 0 untouched";
+    EXPECT_FALSE(reloaded.team_list[1]->deployed)
+        << "the toggled row must persist benched via the mutation autosave";
 }
 
 // Permadeath toggle (keep_fallen_heroes): with the flag set, update_guys keeps

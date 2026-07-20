@@ -555,7 +555,8 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 12 items now (7=back, 8=networking, 9=Scenario); the
+    // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
+    // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=teams, 5=progress,
     // 6=back). Main 7=difficulty opens the DIFFICULTY submenu
@@ -582,10 +583,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "10\n"      // main: options again
         "textslot\n"
         "123\n"
-        "2\n"       // main: continue -> team build
-        "1\n"       // team build: view team
-        "\n"
-        "2\n"       // team build: train
+        "2\n"       // main: continue -> team build (base camp)
+        "1\n"       // base camp: roster (deploy flags + sub-prompt)
+        "deploy 1\n" //   roster: bench display row 1
+        "deploy 1\n" //   roster: re-deploy it
+        "train 1\n"  //   roster: train row 1 directly
+        "b\n"        //   train: back to the roster
+        "\n"         //   roster: blank exits
+        "2\n"       // base camp: train
         "n\n"
         "p\n"
         "1\n"
@@ -593,13 +598,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"
         "a\n"
         "b\n"
-        "3\n"       // team build: hire
+        "3\n"       // base camp: hire
         "p\n"
         "n\n"
         "h\n"
         "b\n"
-        "5\n"       // team build: save team
-        "4\n"       // team build: load team
+        "5\n"       // base camp: ready (guarded outside networked lobbies)
+        "4\n"       // base camp: deploy prompt
+        "2\n"       //   toggle display row 2
         "9\n"       // team build: Scenario submenu
         "5\n"       // scenario: progress
         "2\n"       // scenario: set level (invalid value)

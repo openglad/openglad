@@ -19,6 +19,7 @@
 #include <cstring>
 #include <format>
 #include <list>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -2965,4 +2966,176 @@ TEST(BackupFormat, restore_error_strings)
                  og::ui::company_restore_error_string(E::ReloadFailed));
     EXPECT_STREQ("REWOUND, BUT THE TIMESTAMP WRITE FAILED",
                  og::ui::company_restore_error_string(E::RestampFailed));
+}
+
+// --- §2.5 base camp roster helpers (WP4) -----------------------------------
+
+namespace {
+
+std::unique_ptr<guy> make_base_camp_member(const char* name, int family)
+{
+    auto member = std::make_unique<guy>(family);
+    member->name = name;
+    return member;
+}
+
+} // namespace
+
+TEST(BaseCampRoster, collect_slots_and_deploy_counts_follow_the_save)
+{
+    SaveData save;
+    EXPECT_TRUE(og::ui::collect_base_camp_slots(save).empty());
+    EXPECT_EQ(0, og::ui::count_deployed_members(save));
+
+    // Sparse occupancy: display order is slot order, holes skipped.
+    save.team_list[1] = make_base_camp_member("ONE", FAMILY_SOLDIER);
+    save.team_list[4] = make_base_camp_member("FOUR", FAMILY_MAGE);
+    save.team_list[7] = make_base_camp_member("SEVEN", FAMILY_ARCHER);
+    save.team_size = 3;
+
+    const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+    ASSERT_EQ(3u, slots.size());
+    EXPECT_EQ(1, slots[0]);
+    EXPECT_EQ(4, slots[1]);
+    EXPECT_EQ(7, slots[2]);
+
+    // New members default deployed (v14 default; §2.5 hires deploy).
+    EXPECT_EQ(3, og::ui::count_deployed_members(save));
+}
+
+TEST(BaseCampRoster, toggle_deploy_slot_flips_and_guards)
+{
+    SaveData save;
+    save.team_list[2] = make_base_camp_member("GORT", FAMILY_SOLDIER);
+    save.team_size = 1;
+
+    // Empty / out-of-range slots: no flip, false.
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, 0));
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, -1));
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, MAX_TEAM_SIZE));
+
+    ASSERT_TRUE(save.team_list[2]->deployed);
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, 2)) << "flip to benched";
+    EXPECT_FALSE(save.team_list[2]->deployed);
+    EXPECT_EQ(0, og::ui::count_deployed_members(save));
+    EXPECT_TRUE(og::ui::toggle_deploy_slot(save, 2)) << "flip back";
+    EXPECT_TRUE(save.team_list[2]->deployed);
+}
+
+TEST(BaseCampRoster, format_row_clips_every_column)
+{
+    guy member(FAMILY_SOLDIER);
+    member.name = "AVERYLONGNAMEINDEED";
+    member.level = 1234;
+    member.exp = 32200;
+
+    const og::ui::BaseCampRowText row =
+        og::ui::format_base_camp_row(member, 12345);
+    EXPECT_EQ("AVERYLONGNAM", row.name) << "name clips to 12";
+    EXPECT_EQ("SOLDIER", row.cls) << "uppercased family display name";
+    EXPECT_LE(row.cls.size(), 9u);
+    EXPECT_EQ("123", row.level) << "level clips to 3";
+    EXPECT_EQ("1234", row.hp) << "hp clips to 4";
+    EXPECT_EQ("32200", row.exp);
+    EXPECT_LE(row.exp.size(), 6u);
+}
+
+TEST(BaseCampRoster, header_lines_budget_and_content)
+{
+    SaveData save;
+    save.m_totalcash[0] = 12345;
+    EXPECT_EQ("GOLD 12345", og::ui::format_base_camp_gold_label(save));
+    save.m_totalcash[0] = 4000000000u;
+    EXPECT_LE(og::ui::format_base_camp_gold_label(save).size(), 11u)
+        << "the gold block clips to the 11-char right column";
+
+    // The gold label reads the player's wallet (my_team, clamped).
+    save.my_team = 2;
+    save.m_totalcash[2] = 777;
+    EXPECT_EQ("GOLD 777", og::ui::format_base_camp_gold_label(save));
+
+    save.team_list[0] = make_base_camp_member("A", FAMILY_SOLDIER);
+    save.team_list[1] = make_base_camp_member("B", FAMILY_MAGE);
+    save.team_size = 2;
+    save.team_list[1]->deployed = false;
+    save.scen_num = 7;
+
+    const std::string line =
+        og::ui::format_base_camp_scen_line(save, "THE FORTRESS");
+    EXPECT_EQ("SCEN 7: THE FORTRESS  DEP 1/2", line);
+    EXPECT_LE(line.size(), 34u);
+
+    // An over-long title clips so the DEP block always fits the budget.
+    const std::string clipped = og::ui::format_base_camp_scen_line(
+        save, "AN ABSURDLY LONG SCENARIO TITLE THAT CANNOT FIT");
+    EXPECT_LE(clipped.size(), 34u);
+    EXPECT_NE(std::string::npos, clipped.find("  DEP 1/2"))
+        << "the DEP block survives the clip: " << clipped;
+}
+
+TEST(BaseCampRoster, train_session_seek_slot_seats_directly)
+{
+    SaveData save;
+    save.team_list[0] = make_base_camp_member("FRONT", FAMILY_SOLDIER);
+    save.team_list[3] = make_base_camp_member("PICKED", FAMILY_MAGE);
+    save.team_size = 2;
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+    EXPECT_EQ(0, session.current_slot());
+
+    // §2.5 per-row TRAIN: seek lands exactly on the clicked slot.
+    EXPECT_TRUE(session.seek_slot(3));
+    EXPECT_EQ(3, session.current_slot());
+    EXPECT_EQ("PICKED", session.working_copy().name);
+
+    // Empty / out-of-range seeks refuse and keep the position.
+    EXPECT_FALSE(session.seek_slot(1));
+    EXPECT_FALSE(session.seek_slot(-1));
+    EXPECT_FALSE(session.seek_slot(MAX_TEAM_SIZE));
+    EXPECT_EQ(3, session.current_slot());
+}
+
+// §3.3 positional-refresh rule: update_guys' held-back pass REORDERS the
+// roster (survivors first, held-back members appended), so display rows must
+// be re-collected — never held — across a win fold. collect_base_camp_slots
+// re-derives from the save by construction; this pins the reorder it must
+// absorb.
+TEST(BaseCampRoster, positional_rows_refresh_after_update_guys_reorder)
+{
+    SaveData save;
+    save.team_list[0] = make_base_camp_member("BENCHED", FAMILY_SOLDIER);
+    save.team_list[0]->deployed = false;
+    save.team_list[1] = make_base_camp_member("FIGHTER", FAMILY_MAGE);
+    save.team_size = 2;
+
+    // Pre-fold display order: slot order (BENCHED leads).
+    {
+        const std::vector<int> before = og::ui::collect_base_camp_slots(save);
+        ASSERT_EQ(2u, before.size());
+        EXPECT_EQ("BENCHED", save.team_list[before[0]]->name);
+    }
+
+    // The win fold: only FIGHTER deployed into the level and survived.
+    std::list<std::unique_ptr<walker>> oblist;
+    {
+        auto w = std::make_unique<walker>();
+        auto g = std::make_unique<guy>(FAMILY_MAGE);
+        g->name = "FIGHTER";
+        w->set_dead(0);
+        w->set_owned_myguy(std::move(g));
+        oblist.push_back(std::move(w));
+    }
+    save.update_guys(oblist);
+
+    // Post-fold: pass 1 copies the survivor into slot 0, pass 2 appends the
+    // held-back member — the display order FLIPPED; a stale pre-fold row
+    // index would now point at the wrong character.
+    const std::vector<int> after = og::ui::collect_base_camp_slots(save);
+    ASSERT_EQ(2u, after.size());
+    EXPECT_EQ("FIGHTER", save.team_list[after[0]]->name);
+    EXPECT_TRUE(save.team_list[after[0]]->deployed);
+    EXPECT_EQ("BENCHED", save.team_list[after[1]]->name);
+    EXPECT_FALSE(save.team_list[after[1]]->deployed)
+        << "the held-back flag survives the fold (§3.3 [SAVE-R4])";
 }

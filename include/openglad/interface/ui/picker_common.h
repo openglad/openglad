@@ -224,6 +224,44 @@ og::data::CompanyAutosaveContext company_autosave_context(
 [[nodiscard]] SaveDataIoError company_autosave_after_mutation(
     SaveData& save, bool networked_lobby_active);
 
+// --- Base camp roster (design §2.5) ---
+
+// The display-slot list behind the base-camp roster rows: the occupied
+// team_list slot indices in slot order. Callers re-collect after every
+// roster change (and after a win fold — §3.3: update_guys' held-back pass
+// reorders the roster, so positional display indices must never be held
+// across a merge/fold).
+std::vector<int> collect_base_camp_slots(const SaveData& save);
+
+// Number of roster members with the v14 deployed flag set.
+int count_deployed_members(const SaveData& save);
+
+// The §2.5 deploy-toggle setter: flips guy::deployed at team_list `slot`.
+// Returns the NEW deployed state; false (and no change) for an empty slot.
+// Pure flip — the caller owns the §3.8 autosave and the §4.3 ready-clear
+// (a no-op in solo/local sessions).
+bool toggle_deploy_slot(SaveData& save, int slot);
+
+// One §2.5 roster row's text columns (solo shape). `derived_hp` is the
+// screen-side derived hitpoint value (loader-dependent, so it stays a
+// parameter and this helper stays headlessly testable).
+struct BaseCampRowText {
+    std::string name;  // <= 12 chars
+    std::string cls;   // <= 9 chars, uppercased family display name
+    std::string level; // <= 3 chars
+    std::string hp;    // <= 4 chars
+    std::string exp;   // <= 6 chars
+};
+BaseCampRowText format_base_camp_row(const guy& member, int derived_hp);
+
+// §2.5 header line A right block: "GOLD {n}" (clipped to the 11-char block).
+std::string format_base_camp_gold_label(const SaveData& save);
+
+// §2.5 header line B, solo shape: "SCEN {n}: {title}  DEP {dep}/{total}",
+// title clipped so the whole line fits the 34-char budget.
+std::string format_base_camp_scen_line(const SaveData& save,
+                                       std::string_view level_title);
+
 // One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
 // team with no humans and no local heroes), or "{n} HEROES".
@@ -610,6 +648,11 @@ public:
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
     void set_team(int team_num);
+
+    // §2.5 per-row TRAIN: seat the session directly on `slot` (no more
+    // enter-then-cycle). Returns false (position unchanged) when the slot is
+    // empty or not editable by this machine.
+    bool seek_slot(int slot);
 
     // Accept: validates cost, deducts gold, copies working copy -> real team member.
     // If level changed, calls upgrade_to_level(). Returns false if can't afford.

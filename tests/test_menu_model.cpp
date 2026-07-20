@@ -111,13 +111,45 @@ TEST(MenuModel, team_build_lookup)
               static_cast<int>(scenario->command))
         << "scenario should map to the Scenario submenu command";
 
-    // The scenario-shaped commands moved OUT of the team-build menu.
+    // §2.5 base camp: the 12-item IN-PLACE substitution — roster (was
+    // view_team) leads, deploy (was load_team) and ready (was save_team)
+    // hold the 1-based positions 4 and 5, and the retired ids are gone.
+    const PickerMenuItem* roster =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "roster");
+    ASSERT_TRUE(roster != nullptr) << "roster id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ViewTeam),
+              static_cast<int>(roster->command))
+        << "roster keeps the ViewTeam command (the roster IS the team view)";
+    ASSERT_TRUE(&def.items[0] == roster)
+        << "roster leads the base camp (1-based position 1)";
+
+    const PickerMenuItem* deploy =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "deploy");
+    ASSERT_TRUE(deploy != nullptr) << "deploy id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleDeploy),
+              static_cast<int>(deploy->command))
+        << "deploy should map to ToggleDeploy";
+    ASSERT_TRUE(&def.items[3] == deploy)
+        << "deploy holds load_team's old 1-based position 4";
+
+    const PickerMenuItem* ready =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ready");
+    ASSERT_TRUE(ready != nullptr) << "ready id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleReady),
+              static_cast<int>(ready->command))
+        << "ready should map to ToggleReady";
+    ASSERT_TRUE(&def.items[4] == ready)
+        << "ready holds save_team's old 1-based position 5";
+
+    // The scenario-shaped commands moved OUT of the team-build menu, and
+    // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
-         {"teams", "view_scenario", "set_level", "set_campaign", "progress"})
+         {"teams", "view_scenario", "set_level", "set_campaign", "progress",
+          "view_team", "load_team", "save_team"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, moved_id) ==
                     nullptr)
-            << moved_id << " should live in the Scenario submenu now";
+            << moved_id << " must not resolve in the base camp";
     }
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)

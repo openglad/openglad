@@ -24,6 +24,7 @@
 #include <openglad/core/irandom.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -903,6 +904,86 @@ SaveDataIoError company_autosave_after_mutation(SaveData& save,
         company_autosave_context(save, networked_lobby_active));
 }
 
+std::vector<int> collect_base_camp_slots(const SaveData& save)
+{
+    std::vector<int> slots;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i])
+            slots.push_back(i);
+    }
+    return slots;
+}
+
+int count_deployed_members(const SaveData& save)
+{
+    int deployed = 0;
+    for (const auto& member : save.team_list) {
+        if (member && member->deployed)
+            ++deployed;
+    }
+    return deployed;
+}
+
+bool toggle_deploy_slot(SaveData& save, int slot)
+{
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+        return false;
+    guy& member = *save.team_list[slot];
+    member.deployed = !member.deployed;
+    return member.deployed;
+}
+
+namespace {
+
+std::string clip_chars(std::string value, std::size_t max_chars)
+{
+    if (value.size() > max_chars)
+        value.resize(max_chars);
+    return value;
+}
+
+} // namespace
+
+BaseCampRowText format_base_camp_row(const guy& member, int derived_hp)
+{
+    BaseCampRowText row;
+    row.name = clip_chars(member.name, 12);
+    std::string cls = family_display_name(member.family);
+    for (char& c : cls)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    row.cls = clip_chars(std::move(cls), 9);
+    row.level = clip_chars(std::format("{}", member.level), 3);
+    row.hp = clip_chars(std::format("{}", derived_hp), 4);
+    row.exp = clip_chars(std::format("{}", member.exp), 6);
+    return row;
+}
+
+std::string format_base_camp_gold_label(const SaveData& save)
+{
+    const int team =
+        (save.my_team >= 0 && save.my_team < MAX_PLAYERS) ? save.my_team : 0;
+    return clip_chars(
+        std::format("GOLD {}",
+                    static_cast<unsigned>(
+                        save.m_totalcash[static_cast<std::size_t>(team)])),
+        11);
+}
+
+std::string format_base_camp_scen_line(const SaveData& save,
+                                       std::string_view level_title)
+{
+    const std::string dep_part =
+        std::format("  DEP {}/{}", count_deployed_members(save),
+                    static_cast<int>(collect_base_camp_slots(save).size()));
+    std::string scen_part =
+        std::format("SCEN {}: {}", save.scen_num, level_title);
+    const std::size_t budget = 34;
+    const std::size_t scen_budget =
+        dep_part.size() < budget ? budget - dep_part.size() : 0;
+    scen_part = clip_chars(std::move(scen_part), scen_budget);
+    return scen_part + dep_part;
+}
+
 std::string format_team_row_label(short team,
                                   int hero_count,
                                   bool is_ctf,
@@ -1583,6 +1664,18 @@ void TrainSession::next_member()
              edit_slot_ != start);
 
     select_current_slot();
+}
+
+bool TrainSession::seek_slot(int slot)
+{
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save_.team_list[slot] ||
+        !picker_lobby_save_slot_editable(slot))
+    {
+        return false;
+    }
+    edit_slot_ = slot;
+    select_current_slot();
+    return true;
 }
 
 void TrainSession::prev_member()

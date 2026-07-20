@@ -72,6 +72,9 @@ enum class PickerMenuCommand : std::int32_t
     // §2.1 main-menu LOAD door. Temporarily opens the legacy load flow until
     // WP3's Company List screen lands; then this routes to LoadCompany.
     LoadGame,
+    // §2.5 base camp (append-only):
+    ToggleDeploy, // flip a roster member's mission-deploy flag
+    ToggleReady,  // networked lobbies only: flip this machine's ready state
 };
 
 struct PickerMenuItem

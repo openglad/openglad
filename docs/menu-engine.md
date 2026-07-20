@@ -22,9 +22,9 @@ window. Keep this table in sync with the registry:
 | CONTROLS | **Engine** | `control_options_menu_screen_spec()` via `main_controls_options()` |
 | MAIN OPTIONS | **Engine** | `main_options_menu_screen_spec()` via `main_options()` (which keeps the family-wide cfg-persist exit epilogue) |
 | Main menu | **Engine** | `main_menu_screen_spec()` via `mainmenu()` — the §1.6 MP/no-MP spec pair (build-gated quit/help fork), `FadeWithInitialDraw` entry, MainScope remote-start with `BreakWithSelection`, the G14 full-re-vdisplay content hook, and the outline/label/art bindings that retired `redraw_mainmenu`'s raw `allbuttons_[N]` writes and both `OPTIONS_BUTTON_INDEX` #defines (`picker_mainmenu_options_index()` now) |
-| Team build | **Engine** | `team_build_menu_screen_spec()` via `create_team_menu()` (`FadeAroundEntry`; GO gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard, entered at -1 so the first frame always reloads) |
-| View team | **Engine** | `view_team_menu_screen_spec()` via `create_view_menu()` (`exit_on_redraw`; GO gating = the legacy sync as its Rewire program) |
-| Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
+| Team build (base camp) | **Engine** | `team_build_menu_screen_spec()` via `create_team_menu()` — the §2.5 command roster (WP4): 12 deploy/TRAIN row pairs over a PageModel window, MenuSpecRow dispatch, the legacy-action command strip, GO host-gating inside the full-graph rewire, `FadeAroundEntry`, and the level-reload guard + §3.3 row refresh in `frame_tick` (entered at -1 so the first frame always reloads) |
+| View team | **RETIRED** (§2.5) | the base-camp roster IS the team view; `create_view_menu`/its spec/`MenuScreenId::ViewTeam` are gone (the in-game `view_team()` draw helper in picker.cpp survives for the gameplay HUD) |
+| Save/Load slots | **RETIRED** (§3.8) | saving is automatic on every base-camp mutation + level win; loading is the §2.3 Company List. `DoSave`/`DoLoad`/`CreateSaveMenu` actions are no-ops; `CreateLoadMenu` survives only as the intercepted main-menu LOAD door |
 | Hire | **Engine** | `hire_menu_screen_spec()` via `create_hire_menu()` (entry-time PREV/NEXT repositioning = `prepare_buttons`, so the accessor keeps the pinned table shape; solo-hidden team cycler = state override + nav-closure rewire; new-game popup = `frame_tick`; stat/cost/description panels = content hook in picker_team_build.cpp) |
 | Train | **Engine** | `train_menu_screen_spec()` via `create_train_menu()` (the +/- pixie faces = `art_family` bindings re-applied after every reset; the bug-A9 promotion resync = `on_reset`; the wrapper keeps the need-a-team entry guards and the start-selected exit fold) |
 | Progress | **Engine** | `progress_menu_screen_spec()` via `create_progress_menu()` (PREV/NEXT stay KEYBOARD-DEAD — the shipped myfun=0 shape, a declared exception to the liveness invariant; raw mouse-rect dispatch + per-row GO shortcuts + held-click spin-wait = `frame_tick`; no backdrop) |
@@ -127,8 +127,17 @@ V2 valve — this list is the reminder):
       screens that read the loaded world carry it in `frame_tick`
       (team build, SCENARIO, TEAMS); NETWORKING does not read the loaded
       world
-- [ ] G12 `autosave_on_mutation` / `ready_reset_on_mutation` — Layer F
-      flags, dormant until the company/ready features land
+- [x] G12 autosave-on-mutation + ready-clear — LIVE since WP4 via the WP2
+      choke point rather than the declarative spec flags (which remain
+      unset): every roster-mutation site (the base-camp deploy dispatch,
+      hire `add_guy`, train-accept `edit_guy`, rename `name_guy`, and the
+      terminal hire/train/deploy flows) calls
+      `picker_base_camp_after_roster_mutation()` /
+      `company_autosave_after_mutation()` — lobby roster re-sync (a
+      networked content change clears that machine's ready server-side),
+      optimistic local ready drop, then the §3.8 autosave ([SAVE-F1] merge
+      write in networked lobbies). NETWORKING hosts no mutation UI, so the
+      legacy loop needs no sweep for this obligation.
 
 Scope-down valves: **V1** — a screen whose injector tests disagree with the
 normalized frame ordering keeps a per-screen FramePlan replaying its legacy

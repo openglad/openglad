@@ -109,7 +109,7 @@ static int hire_injector(void* data)
 
     // Back to main menu
     SDL_Delay(500);
-    wait_for_interactable("view_team", 10000);
+    wait_for_interactable("hire_troops", 10000);
     SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");

@@ -677,12 +677,11 @@ private:
         case PickerMenuCommand::HireTroops:
             hire_troops();
             break;
-        case PickerMenuCommand::LoadTeam:
-            (void)load_game();
+        case PickerMenuCommand::ToggleDeploy:
+            deploy_prompt();
             break;
-        case PickerMenuCommand::SaveTeam:
-            (void)save_game();
-            break;
+        // ToggleReady is gated NetworkedOnly: the guard above already
+        // printed its message (the text picker holds no networked lobby).
         case PickerMenuCommand::ShowProgress:
             std::printf("Current campaign progress: campaign=%s level=%s.\n",
                 og::data::campaign_display_title(config_.campaign).c_str(),
@@ -885,39 +884,117 @@ private:
         return level_display_guarded(config_.campaign, level);
     }
 
+    // §2.5 command roster (text shape): the deploy flags lead each row;
+    // 'deploy N' toggles, 'train N' opens the train flow directly on that
+    // character, a blank line exits (so legacy "1 then Enter" drives still
+    // work).
     void view_team_roster()
     {
-        std::printf("\n--- Team Roster ---\n");
-        if (save_data_.team_size == 0) {
-            std::printf("(empty)\n");
-            wait_for_enter();
-            return;
+        for (;;) {
+            std::printf("\n--- Team Roster ---\n");
+            const std::vector<int> slots = collect_base_camp_slots(save_data_);
+            if (slots.empty()) {
+                std::printf("(empty)\n");
+                wait_for_enter();
+                return;
+            }
+
+            for (std::size_t i = 0; i < slots.size(); ++i) {
+                const guy& member =
+                    *save_data_.team_list[static_cast<std::size_t>(slots[i])];
+                std::printf("%2zu. [%c] %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
+                    i + 1,
+                    member.deployed ? 'X' : ' ',
+                    member.name.c_str(),
+                    family_display_name(member.family),
+                    member.level,
+                    member.strength,
+                    member.dexterity,
+                    member.constitution,
+                    member.intelligence,
+                    member.armor);
+            }
+            std::printf("DEP %d/%d\n", count_deployed_members(save_data_),
+                static_cast<int>(slots.size()));
+            std::printf("Roster: 'deploy N' | 'train N' | blank line exits: ");
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+
+            int value = 0;
+            if (std::sscanf(line.c_str(), "deploy %d", &value) == 1) {
+                toggle_deploy_display_row(slots, value);
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "train %d", &value) == 1) {
+                if (value < 1 || static_cast<std::size_t>(value) > slots.size())
+                    std::printf("Invalid roster row.\n");
+                else
+                    train_team(slots[static_cast<std::size_t>(value - 1)]);
+                continue;
+            }
+            std::printf("Unrecognized command.\n");
         }
-
-        int idx = 1;
-        for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
-            std::printf("%2d. %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
-                idx++,
-                member.name.c_str(),
-                family_display_name(member.family),
-                member.level,
-                member.strength,
-                member.dexterity,
-                member.constitution,
-                member.intelligence,
-                member.armor);
-        });
-
-        wait_for_enter();
     }
 
-    void train_team()
+    // Toggle deploy for 1-based display row `value` of `slots`; §3.8
+    // autosave rides every flip (the §4.3 ready-clear is a no-op here — the
+    // text picker holds no networked lobby).
+    void toggle_deploy_display_row(const std::vector<int>& slots, int value)
+    {
+        if (value < 1 || static_cast<std::size_t>(value) > slots.size()) {
+            std::printf("Invalid roster row.\n");
+            return;
+        }
+        const int slot = slots[static_cast<std::size_t>(value - 1)];
+        const bool deployed = toggle_deploy_slot(save_data_, slot);
+        std::printf("%s %s.\n", save_data_.team_list[slot]->name.c_str(),
+            deployed ? "deployed" : "benched");
+        autosave_company_after_mutation();
+    }
+
+    // The §2.5 'deploy' item (was Load Team): prompt for a roster row and
+    // flip its mission-deploy flag.
+    void deploy_prompt()
+    {
+        const std::vector<int> slots = collect_base_camp_slots(save_data_);
+        if (slots.empty()) {
+            std::printf("(empty roster - hire someone first)\n");
+            return;
+        }
+        std::printf("Toggle deploy for roster row [1-%d]: ",
+            static_cast<int>(slots.size()));
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line) || line.empty())
+            return;
+        const auto value = parse_int_strict(line);
+        if (!value) {
+            std::printf("Invalid roster row.\n");
+            return;
+        }
+        toggle_deploy_display_row(slots, *value);
+    }
+
+    // §3.8: every base-camp mutation autosaves the active company slot
+    // ([SAVE-R2]: the text client's slot authority points it at the user's
+    // chosen quicksave slot, never save0).
+    void autosave_company_after_mutation()
+    {
+        (void)company_autosave_after_mutation(save_data_, false);
+    }
+
+    void train_team(int seed_slot = -1)
     {
         TrainSession session(save_data_);
         if (session.empty()) {
             std::printf("No team members available to train.\n");
             return;
         }
+        if (seed_slot >= 0)
+            (void)session.seek_slot(seed_slot);  // §2.5 'train N' direct-open
 
         using S = TrainSession::Stat;
         std::string line;
@@ -956,10 +1033,12 @@ private:
             if (c == 'n' || c == 'N') { session.next_member(); continue; }
             if (c == 'p' || c == 'P') { session.prev_member(); continue; }
             if (c == 'a' || c == 'A') {
-                if (session.accept())
+                if (session.accept()) {
                     std::printf("Training accepted.\n");
-                else
+                    autosave_company_after_mutation();  // §3.8
+                } else {
                     std::printf("Can't afford training.\n");
+                }
                 continue;
             }
 
@@ -1021,6 +1100,7 @@ private:
                 }
                 std::printf("Hired %s!\n", save_data_.team_list[slot]->name.c_str());
                 sync_config_from_save();
+                autosave_company_after_mutation();  // §3.8
                 if (session.team_full()) {
                     std::printf("Team is now full.\n");
                     return;

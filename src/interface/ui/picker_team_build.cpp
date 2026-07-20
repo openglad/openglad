@@ -106,7 +106,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 void show_guy(Sint32 frames, Sint32 who, Sint32 centerx = 80, Sint32 centery = 45);
-void view_team(short left, short top, short right, short bottom);
 void draw_backdrop();
 Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
@@ -116,7 +115,6 @@ bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint3
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 std::string get_saved_name(const char* filename);
-Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
 Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
@@ -147,6 +145,34 @@ static bool save_has_trainable_team_member(const SaveData& save)
             return true;
     }
     return false;
+}
+
+// §2.5 per-row TRAIN seed: the base-camp dispatch stashes the clicked
+// roster slot here; create_train_menu consumes it (one-shot) so the train
+// screen opens directly on that character instead of the first editable one.
+static int g_train_seed_slot = -1;
+
+void picker_set_train_seed_slot(int slot)
+{
+    g_train_seed_slot = slot;
+}
+
+// The §3.8 base-camp mutation tail (design G12, live via the WP2 choke
+// point): re-sync the lobby roster (a networked content change clears that
+// machine's ready server-side — §4.3), optimistically drop the local ready
+// flag (a no-op for solo/local lobby clients), and autosave the company
+// (networked lobbies take the [SAVE-F1] owner-preserving merge write).
+// Called from every roster-mutation site: the deploy toggle, hire, train
+// accept, and rename.
+void picker_base_camp_after_roster_mutation()
+{
+    picker_lobby_sync_roster_from_save();
+    (void)picker_lobby_set_ready(false);
+    // Failures log inside company_autosave; the base camp never blocks on a
+    // failed autosave (§3.8 — callers surface but don't crash).
+    (void)og::ui::company_autosave_after_mutation(
+        og::runtime::current_session->myscreen_->save_data,
+        picker_lobby_is_networked());
 }
 
 void picker_prepare_async_team_build_start_request()
@@ -190,9 +216,6 @@ bool team_build_start_selected()
             og::ui::PickerMenuCommand::StartGame;
 }
 
-constexpr int kTeamBuildGoButtonIndex = kCreateMenuGoIndex;
-constexpr int kViewTeamGoButtonIndex = 0;
-
 void sync_button_hidden_state(const button* buttons, int button_index)
 {
     if (buttons == nullptr || button_index < 0)
@@ -229,28 +252,8 @@ void ensure_highlighted_button_visible(const button* buttons,
     highlighted_button = 0;
 }
 
-// Nav must never link to a hidden button: route hire_troops/save_team/
-// networking around GO when it is hidden (and back through it when not).
-void picker_wire_team_build_nav(button* buttons,
-                                int count,
-                                bool host_controls_visible)
-{
-    if (buttons == nullptr || count < kCreateMenuButtonCount)
-        return;
-
-    if (host_controls_visible)
-    {
-        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuGoIndex;
-        buttons[kCreateMenuSaveIndex].nav.right = kCreateMenuGoIndex;
-        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuGoIndex;
-    }
-    else
-    {
-        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuNetworkingIndex;
-        buttons[kCreateMenuSaveIndex].nav.right = -1;
-        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuHireIndex;
-    }
-}
+// The §2.5 base camp rewires its full roster graph per frame (pattern b) —
+// the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Rewire the always-visible VIEW LEVEL | TEAMS | PROGRESS row's up-links
 // around the host-gated SET CAMPAIGN / SET LEVEL column.
@@ -266,24 +269,6 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
     buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
     buttons[kScenarioMenuProgressIndex].nav.up = row_up;
-}
-
-void sync_team_build_host_control_visibility(button* buttons,
-                                             int num_buttons,
-                                             int& highlighted_button)
-{
-    if (buttons == nullptr || num_buttons < kCreateMenuButtonCount)
-        return;
-
-    // GO is the only host-gated team-build button now: SET CAMPAIGN and
-    // SET LEVEL moved into the SCENARIO subscreen (with their own gating),
-    // and the CTF match settings live inside the TEAMS subscreen.
-    const bool host_controls_visible = picker_lobby_host_controls_visible();
-    buttons[kTeamBuildGoButtonIndex].hidden = !host_controls_visible;
-    sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
-    picker_wire_team_build_nav(buttons, num_buttons, host_controls_visible);
-
-    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -302,19 +287,6 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
     picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible);
 
-    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
-}
-
-void sync_view_team_host_control_visibility(button* buttons,
-                                            int num_buttons,
-                                            int& highlighted_button)
-{
-    if (buttons == nullptr || num_buttons <= kViewTeamGoButtonIndex)
-        return;
-
-    buttons[kViewTeamGoButtonIndex].hidden =
-        !picker_lobby_host_controls_visible();
-    sync_button_hidden_state(buttons, kViewTeamGoButtonIndex);
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
@@ -355,7 +327,9 @@ void sync_difficulty_menu_visibility(button* buttons,
 #define STAT_DERIVED DARK_BLUE + 3
 
 // Compute derived stats for a guy using the current screen's loader data.
-static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
+// Non-static: the base-camp roster's HP column (menu_screen_specs.cpp)
+// computes per-row derived hitpoints through this too.
+og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g)
 {
     // guy::family comes verbatim from the .gtl save file with no range check;
     // a malicious/negative value would index the loader stat arrays out of
@@ -399,12 +373,10 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
     mytext.write_xy(x + derived_offset + 21, y_fn(line), value_color, "%.1f", ds.atk_spd);
 }
 
-// create_team_menu (TEAM BUILD): engine-hosted — the spec, the lobby-status
-// and scenario-hint content pass, the level-reload guard, and the entry
-// wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
-
-// create_view_menu (VIEW TEAM): engine-hosted — the spec and the entry
-// wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
+// create_team_menu (TEAM BUILD -> BASE CAMP, §2.5): engine-hosted — the
+// roster spec, its content/rewire/frame hooks, and the entry wrapper live in
+// menu_screen_specs.cpp (docs/menu-engine.md). The VIEW TEAM screen retired
+// into the roster view.
 
 // ---------------------------------------------------------------------------
 // TEAMS subscreen: per-team JOIN (local my_team / networked TeamChange), the
@@ -1650,7 +1622,7 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         r.x, r.y, r.w, r.h);
 
     int derived_offset = 3*STAT_NUM_OFFSET/4;
-    auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
+    auto ds = picker_compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
 
     linesdown++;
     int hire_line = linesdown;
@@ -1717,12 +1689,12 @@ void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
                                      int& /*highlighted_button*/)
 {
 #ifdef DISABLE_MULTIPLAYER
-    if (num_buttons > 18 && buttons[18].hidden)
+    if (num_buttons > kTrainMenuChangeTeamIndex &&
+        buttons[kTrainMenuChangeTeamIndex].hidden)
     {
         buttons[13].nav.right = -1;  // inc_level
-        buttons[14].nav.up = -1;     // view_team
-        buttons[16].nav.down = -1;   // rename
-        buttons[17].nav.down = -1;   // details
+        buttons[15].nav.down = -1;   // rename
+        buttons[16].nav.down = -1;   // details
     }
 #else
     (void)buttons;
@@ -1861,7 +1833,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
         linesdown += 0.4f;
 
         {
-            auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
+            auto ds = picker_compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
             float base_line = linesdown;
             int train_line = 0;
             draw_derived_stats_block(mytext, ds, info_box_content.x, derived_offset, showcolor,
@@ -1898,8 +1870,8 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 
         // Display our team setting ..
         og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
-        og::runtime::current_session->allbuttons_[18]->label = og::runtime::current_session->message_;
-        og::runtime::current_session->allbuttons_[18]->vdisplay();
+        og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = og::runtime::current_session->message_;
+        og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->vdisplay();
 }
 
 // TRAIN, engine-hosted (the legacy loop is gone). The entry guards, session
@@ -1917,6 +1889,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	// Make sure we have a local team member we can train.
 	if (save.team_size < 1 || !save_has_trainable_team_member(save))
 	{
+        g_train_seed_slot = -1;
         show_need_team_to_train_popup();
 
 		return MENU_OK;
@@ -1925,6 +1898,13 @@ Sint32 create_train_menu(Sint32 arg1)
 	og::runtime::current_session->myscreen_->clearbuffer();
 
     og::ui::TrainSession train_session(save);
+    // §2.5 per-row TRAIN: a stashed base-camp seed slot opens the session
+    // directly on that character (one-shot; empty/foreign slots fall back to
+    // the legacy first-editable seat).
+    if (g_train_seed_slot >= 0) {
+        (void)train_session.seek_slot(g_train_seed_slot);
+        g_train_seed_slot = -1;
+    }
     pks().train_session = &train_session;
     sync_current_guy_from_train();
     if (pks().train_session->empty()) {
@@ -1956,9 +1936,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	return MENU_REDRAW;
 }
 
-// create_save_menu / create_load_menu (the slot menus): engine-hosted — the
-// specs, the shared slot-panel content pass, and the entry wrappers live in
-// menu_screen_specs.cpp (docs/menu-engine.md).
+// The SAVE/LOAD slot menus are retired (§3.8): saving is automatic.
 
 // --- Session-based thin wrappers for button callbacks ---
 
@@ -2060,8 +2038,8 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	og::runtime::current_session->current_team_num_ = og::runtime::current_session->current_guy_->teamnum;
 
 	// Set our team button back to normal color
-	if (og::runtime::current_session->allbuttons_[18])
-		og::runtime::current_session->allbuttons_[18]->do_outline = 0;
+	if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex])
+		og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->do_outline = 0;
 
 	return MENU_OK;
 }
@@ -2105,7 +2083,14 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	clear_keyboard();
     std::optional<std::string> new_text = nametext.input_string_value(176, 20, 11, someguy->name.c_str());
 	if(new_text.has_value())
+	{
 		someguy->name = *new_text;
+		// §3.8: renaming a ROSTER member (arg != 0) is a base-camp mutation.
+		// The arg==0 path names the hire screen's not-yet-hired recruit —
+		// nothing on the roster changed, so nothing to save.
+		if (arg)
+			picker_base_camp_after_roster_mutation();
+	}
 	og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
 
 	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
@@ -2133,7 +2118,9 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	// Sync current_guy from the session's next recruit
 	sync_current_guy_from_hire();
-    picker_lobby_sync_roster_from_save();
+    // §3.8: a hire is a base-camp mutation — autosave + ready-clear ride the
+    // shared tail (which also re-syncs the lobby roster).
+    picker_base_camp_after_roster_mutation();
 
 	return MENU_OK;
 }
@@ -2158,11 +2145,13 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
-    picker_lobby_sync_roster_from_save();
+    // §3.8: an accepted training is a base-camp mutation — autosave +
+    // ready-clear ride the shared tail (which re-syncs the lobby roster).
+    picker_base_camp_after_roster_mutation();
     sync_current_guy_from_train();
 
 	// Color our team button normally
-	og::runtime::current_session->allbuttons_[18]->do_outline = 0;
+	og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->do_outline = 0;
 
 	return MENU_OK;
 }
@@ -2172,48 +2161,10 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, og::runtime::current_session->myscreen_->save_data));
 }
 
-Sint32 do_save(Sint32 arg1)
-{
-	release_mouse();
-	clear_keyboard();
-	
-	std::string name = og::runtime::current_session->allbuttons_[arg1-1]->label;
-	if(prompt_for_string("NAME YOUR SAVED GAME", name))
-    {
-        og::runtime::current_session->myscreen_->save_data.save_name = name;
-        
-        std::string newname = std::format("save{}", arg1);
-        if(og::runtime::current_session->myscreen_->save_data.save(newname))
-            timed_dialog("GAME SAVED");
-        else
-            timed_dialog("SAVE FAILED");
-    }
-    else
-    {
-        timed_dialog("SAVE CANCELED");
-    }
-
-    grab_mouse();
-
-	return MENU_REDRAW;
-}
-
-Sint32 do_load(Sint32 arg1)
-{
-	std::string newname = std::format("save{}", arg1);
-
-	if(og::runtime::current_session->myscreen_->save_data.load(newname))
-    {
-        timed_dialog("GAME LOADED");
-        picker_lobby_sync_from_save();
-    }
-    else
-    {
-        timed_dialog("LOAD FAILED");
-    }
-
-    return MENU_REDRAW;
-}
+// do_save/do_load (the slot-menu actions) are RETIRED (§3.8): saving is
+// automatic on every base-camp mutation + level win; loading goes through
+// the §2.3 Company List. get_saved_name stays (header-only slot peek used
+// by tests; §3.5 records the scanner consolidation as debt).
 
 std::string get_saved_name(const char * filename)
 {
@@ -2611,18 +2562,8 @@ int picker_team_build_testing_exercise_internal_paths()
     check(highlighted == 0);
 
     highlighted = 5;
-    client.host_visible = false;
-    sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    check(buttons[kTeamBuildGoButtonIndex].hidden &&
-        buttons[kCreateMenuHireIndex].nav.down == kCreateMenuNetworkingIndex &&
-        buttons[kCreateMenuSaveIndex].nav.right == -1 &&
-        buttons[kCreateMenuNetworkingIndex].nav.up == kCreateMenuHireIndex);
-    client.host_visible = true;
-    sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    check(!buttons[kTeamBuildGoButtonIndex].hidden &&
-        buttons[kCreateMenuHireIndex].nav.down == kTeamBuildGoButtonIndex &&
-        buttons[kCreateMenuSaveIndex].nav.right == kTeamBuildGoButtonIndex &&
-        buttons[kCreateMenuNetworkingIndex].nav.up == kTeamBuildGoButtonIndex);
+    // (The base camp's full-graph rewire — GO gating included — lives on the
+    // spec in menu_screen_specs.cpp and is exercised by the engine tests.)
     client.host_visible = false;
     sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);
     check(buttons[kScenarioMenuSetCampaignIndex].hidden &&
@@ -2636,8 +2577,6 @@ int picker_team_build_testing_exercise_internal_paths()
         !buttons[kScenarioMenuSetLevelIndex].hidden &&
         buttons[kScenarioMenuViewScenarioIndex].nav.up ==
             kScenarioMenuSetLevelIndex);
-    sync_view_team_host_control_visibility(buttons, 1, highlighted);
-    check(!buttons[kViewTeamGoButtonIndex].hidden);
 
     // DIFFICULTY subscreen gating: every settings row hides for a non-host;
     // BACK's vertical cycle is rewired and the highlight is pulled onto BACK.

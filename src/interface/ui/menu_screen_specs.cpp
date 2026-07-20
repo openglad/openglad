@@ -18,6 +18,7 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
@@ -58,16 +59,16 @@ void draw_version_number();
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
-void sync_view_team_host_control_visibility(button* buttons, int num_buttons,
-                                            int& highlighted_button);
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);
-void sync_team_build_host_control_visibility(button* buttons, int num_buttons,
-                                             int& highlighted_button);
-void view_team(short left, short top, short right, short bottom);
-std::string get_saved_name(const char* filename);
 bool team_build_start_selected();
+// Base camp helpers (defined beside the train/hire sessions in
+// picker_team_build.cpp).
+og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g);
+void picker_set_train_seed_slot(int slot);
+void picker_base_camp_after_roster_mutation();
+Sint32 create_train_menu(Sint32 arg1);
 void popup_dialog(const char* title, const char* message);
 bool no_or_yes_prompt(const char* title, const char* message,
                       bool default_value);
@@ -1149,25 +1150,6 @@ void main_menu_draw_content(void* /*screen_state*/)
 #endif
 }
 
-// ---------------------------------------------------------------------------
-// VIEW TEAM (§1.8 step 5): the roster listing with GO | BACK. Rows
-// transcribed VERBATIM from the deleted k_viewteam_buttons. BACK carries
-// MENU_REDRAW (the parent create_team_menu keeps running) — exit_on_redraw;
-// GO propagates MENU_EXIT (an intercepted GO maps to StartGame). The
-// legacy loop cleared the buffer around the screen (the wrapper keeps
-// that) and drew cold — no fade.
-
-constexpr MenuButtonSpec kViewTeamRows[] = {
-    {.id = "go", .label = "GO",
-     .x = 270, .y = 170, .w = 40, .h = 20,
-     .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.left = 1}},
-    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 170, .w = 44, .h = 20,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
-     .nav = {.right = 0}},
-};
-
 // The classic picker frame: clear, then the tiled backdrop (the shape every
 // team-build-family loop drew per frame).
 void picker_backdrop_draw_background(void* /*screen_state*/)
@@ -1176,219 +1158,9 @@ void picker_backdrop_draw_background(void* /*screen_state*/)
     draw_backdrop();
 }
 
-// G1: the legacy per-frame sync (GO host-gating) plugged verbatim, plus the
-// nav closure the engine invariant requires: legacy left BACK's right-link
-// pointing at the hidden GO — a no-op in handle_menu_nav (it refuses hidden
-// targets) — so writing the explicit no-op (-1) is behavior-identical.
-void view_team_rewire(button* buttons, int num_buttons,
-                      int& highlighted_button)
-{
-    sync_view_team_host_control_visibility(buttons, num_buttons,
-                                           highlighted_button);
-    if (num_buttons > 1)
-        buttons[1].nav.right = buttons[0].hidden ? -1 : 0;
-}
-
-void view_team_draw_content(void* /*screen_state*/)
-{
-    view_team(5, 5, 314, 160);
-}
-
-const MenuScreenSpec& view_team_menu_screen_spec()
-{
-    static const MenuScreenSpec spec{
-        .name = "view_team",
-        .rows = kViewTeamRows,
-        .row_count = static_cast<int>(std::size(kViewTeamRows)),
-        .buttons_accessor = &picker_viewteam_buttons,
-        .count_accessor = &picker_viewteam_button_count,
-        .nav = {.kind = NavProgramKind::Rewire, .rewire = &view_team_rewire},
-        // A host GO must launch a joiner parked here (the legacy loop's
-        // team_build_remote_start_requested check).
-        .remote_start = RemoteStartScope::TeamBuildScope,
-        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        .default_highlight = 1,  // back, as the legacy loop
-        .exit_on_redraw = true,
-        .polls_lobby = true,
-        .draw_background = &picker_backdrop_draw_background,
-        .draw_content = &view_team_draw_content,
-        // MENU_EXIT-bearing exits propagate so TeamBuild interception can
-        // map GO -> StartGame; BACK's redraw-break returns MENU_REDRAW.
-        .exit_value = MENU_EXIT,
-    };
-    return spec;
-}
-
-// ---------------------------------------------------------------------------
-// SAVE / LOAD slot menus (§1.8 step 5): ten 220x10 slot rows at 15px pitch
-// from y=25 plus BACK, one vertical nav cycle — transcribed VERBATIM from
-// the deleted k_saveteam_buttons / k_loadteam_buttons (including the shipped
-// mixed-case "SLOT Six".."SLOT Ten" static labels). The static labels stay
-// on the descriptor rows; the content pass overwrites the LIVE labels from
-// the slot headers every frame (get_saved_name), exactly as the legacy
-// create_slot_menu drew. A slot action (DoSave/DoLoad) returns MENU_REDRAW
-// — the screen exits back to team build (exit_on_redraw).
-
-constexpr MenuButtonSpec kSaveSlotsRows[] = {
-    {.id = "save_slot_1", .label = "SLOT ONE", .x = 25, .y = 25, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 1,
-     .nav = {.up = 10, .down = 1}},
-    {.id = "save_slot_2", .label = "SLOT TWO", .x = 25, .y = 40, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 2,
-     .nav = {.up = 0, .down = 2}},
-    {.id = "save_slot_3", .label = "SLOT THREE", .x = 25, .y = 55, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 3,
-     .nav = {.up = 1, .down = 3}},
-    {.id = "save_slot_4", .label = "SLOT FOUR", .x = 25, .y = 70, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 4,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "save_slot_5", .label = "SLOT FIVE", .x = 25, .y = 85, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 5,
-     .nav = {.up = 3, .down = 5}},
-    {.id = "save_slot_6", .label = "SLOT Six", .x = 25, .y = 100, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 6,
-     .nav = {.up = 4, .down = 6}},
-    {.id = "save_slot_7", .label = "SLOT Seven", .x = 25, .y = 115, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 7,
-     .nav = {.up = 5, .down = 7}},
-    {.id = "save_slot_8", .label = "SLOT Eight", .x = 25, .y = 130, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 8,
-     .nav = {.up = 6, .down = 8}},
-    {.id = "save_slot_9", .label = "SLOT Nine", .x = 25, .y = 145, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 9,
-     .nav = {.up = 7, .down = 9}},
-    {.id = "save_slot_10", .label = "SLOT Ten", .x = 25, .y = 160, .w = 220,
-     .h = 10, .action = ButtonAction::DoSave, .arg = 10,
-     .nav = {.up = 8, .down = 10}},
-    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 25, .y = 175, .w = 40, .h = 20,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 9, .down = 0}},
-};
-
-constexpr MenuButtonSpec kLoadSlotsRows[] = {
-    {.id = "load_slot_1", .label = "SLOT ONE", .x = 25, .y = 25, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 1,
-     .nav = {.up = 10, .down = 1}},
-    {.id = "load_slot_2", .label = "SLOT TWO", .x = 25, .y = 40, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 2,
-     .nav = {.up = 0, .down = 2}},
-    {.id = "load_slot_3", .label = "SLOT THREE", .x = 25, .y = 55, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 3,
-     .nav = {.up = 1, .down = 3}},
-    {.id = "load_slot_4", .label = "SLOT FOUR", .x = 25, .y = 70, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 4,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "load_slot_5", .label = "SLOT FIVE", .x = 25, .y = 85, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 5,
-     .nav = {.up = 3, .down = 5}},
-    {.id = "load_slot_6", .label = "SLOT Six", .x = 25, .y = 100, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 6,
-     .nav = {.up = 4, .down = 6}},
-    {.id = "load_slot_7", .label = "SLOT Seven", .x = 25, .y = 115, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 7,
-     .nav = {.up = 5, .down = 7}},
-    {.id = "load_slot_8", .label = "SLOT Eight", .x = 25, .y = 130, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 8,
-     .nav = {.up = 6, .down = 8}},
-    {.id = "load_slot_9", .label = "SLOT Nine", .x = 25, .y = 145, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 9,
-     .nav = {.up = 7, .down = 9}},
-    {.id = "load_slot_10", .label = "SLOT Ten", .x = 25, .y = 160, .w = 220,
-     .h = 10, .action = ButtonAction::DoLoad, .arg = 10,
-     .nav = {.up = 8, .down = 10}},
-    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 25, .y = 175, .w = 40, .h = 20,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 9, .down = 0}},
-};
-
-// The legacy create_slot_menu draw, verbatim: panel frame + title bar over
-// the buttons draw_buttons already painted (the frame covers them), then
-// the ten slot rows re-labeled LIVE from the slot headers and re-vdisplayed
-// with their text bars and boxes, then BACK's bar/box.
-void slot_menu_draw_content(const char* title)
-{
-    screen* const scr = og::runtime::current_session->myscreen_;
-    text& menutext = scr->text_normal;
-    auto& allbuttons = og::runtime::current_session->allbuttons_;
-
-    scr->draw_button(15, 9, 255, 199, 1, 1);
-    scr->draw_text_bar(19, 13, 251, 21);
-    const int title_len = static_cast<int>(std::strlen(title));
-    menutext.write_xy(135 - (title_len * 3), 15, title, RED, 1);
-    for (Sint32 i = 0; i < 10; i++)
-    {
-        std::string temp_filename = std::format("save{}", i + 1);
-        allbuttons[i]->label = get_saved_name(temp_filename.c_str());
-        scr->draw_text_bar(23, 23 + i * BUTTON_HEIGHT, 246,
-                           36 + BUTTON_HEIGHT * i);
-        allbuttons[i]->vdisplay();
-        scr->draw_box(allbuttons[i]->xloc - 1, allbuttons[i]->yloc - 1,
-                      allbuttons[i]->xend, allbuttons[i]->yend, 0, 0, 1);
-    }
-    scr->draw_text_bar(23, allbuttons[10]->yloc - 2, 66,
-                       allbuttons[10]->yend + 1);
-    allbuttons[10]->vdisplay();
-    scr->draw_box(allbuttons[10]->xloc - 1, allbuttons[10]->yloc - 1,
-                  allbuttons[10]->xend, allbuttons[10]->yend, 0, 0, 1);
-}
-
-void save_slots_draw_content(void* /*screen_state*/)
-{
-    slot_menu_draw_content("Gladiator: Save Game");
-}
-
-void load_slots_draw_content(void* /*screen_state*/)
-{
-    slot_menu_draw_content("Gladiator: Load Game");
-}
-
-constexpr MenuScreenSpec make_slot_menu_spec(const char* name,
-                                             const MenuButtonSpec* rows,
-                                             int row_count,
-                                             button* (*buttons_accessor)(),
-                                             int (*count_accessor)(),
-                                             void (*draw_content)(void*))
-{
-    MenuScreenSpec spec{};
-    spec.name = name;
-    spec.rows = rows;
-    spec.row_count = row_count;
-    spec.buttons_accessor = buttons_accessor;
-    spec.count_accessor = count_accessor;
-    // A host GO must launch a joiner parked in a slot menu (the legacy
-    // loop's check). The remote MENU_EXIT propagates directly — the parent
-    // team-build loop breaks with StartGame selected (legacy folded it to
-    // MENU_REDRAW and re-detected the start one loop later; same launch).
-    spec.remote_start = RemoteStartScope::TeamBuildScope;
-    spec.remote_start_exit = RemoteStartExit::ReturnMenuExit;
-    spec.default_highlight = 10;  // back, as the legacy loop
-    spec.exit_on_redraw = true;
-    spec.polls_lobby = true;
-    spec.draw_background = &picker_backdrop_draw_background;
-    spec.draw_content = draw_content;
-    spec.exit_value = MENU_REDRAW;
-    return spec;
-}
-
-const MenuScreenSpec& save_slots_menu_screen_spec()
-{
-    static const MenuScreenSpec spec = make_slot_menu_spec(
-        "save_slots", kSaveSlotsRows,
-        static_cast<int>(std::size(kSaveSlotsRows)), &picker_saveteam_buttons,
-        &picker_saveteam_button_count, &save_slots_draw_content);
-    return spec;
-}
-
-const MenuScreenSpec& load_slots_menu_screen_spec()
-{
-    static const MenuScreenSpec spec = make_slot_menu_spec(
-        "load_slots", kLoadSlotsRows,
-        static_cast<int>(std::size(kLoadSlotsRows)), &picker_loadteam_buttons,
-        &picker_loadteam_button_count, &load_slots_draw_content);
-    return spec;
-}
+// The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (§2.5/§3.8):
+// the base camp's command roster IS the team view now, and saving is
+// automatic on every base-camp mutation + level win — no slot UI remains.
 
 // ---------------------------------------------------------------------------
 // Level-reload guard (§1.4 frame_tick): the team-build family's per-frame
@@ -1700,13 +1472,13 @@ constexpr MenuButtonSpec kHireMenuRows[] = {
 // faces FAMILY_MINUS/FAMILY_PLUS — the legacy set_graphic loop after
 // init_buttons and after every MENU_REDRAW reset is the art_family binding,
 // which the runner re-applies after EVERY reset), PREV/NEXT team cyclers,
-// RENAME / DETAILS.. header row, the team cycler, ACCEPT / VIEW TEAM / BACK.
-// Rows transcribed VERBATIM from the deleted k_trainmenu_buttons. The stat
-// panels and the live allbuttons_[18] "Playing on Team N" write (G8: swept
-// only at Layer F) stay in the content hook. Nested submenus (DETAILS,
-// RENAME, VIEW TEAM) return MENU_REDRAW for reset_buttons to consume
-// (exit_on_redraw stays false); a VIEW TEAM GO or a remote start propagates
-// MENU_EXIT, and the wrapper folds the exit exactly as the legacy loop did.
+// RENAME / DETAILS.. header row, the team cycler, ACCEPT / BACK (the VIEW
+// TEAM door retired with its screen — §2.5). The stat panels and the live
+// team-cycler label write (kTrainMenuChangeTeamIndex — the G8 sweep of the
+// raw allbuttons_[18] writes) stay in the content hook. Nested submenus
+// (DETAILS, RENAME) return MENU_REDRAW for reset_buttons to consume
+// (exit_on_redraw stays false); a remote start propagates MENU_EXIT, and
+// the wrapper folds the exit exactly as the legacy loop did.
 
 // The team cycler only exists with multiplayer compiled in (the legacy
 // `buttons[18].hidden = true` under DISABLE_MULTIPLAYER).
@@ -1728,7 +1500,7 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "next", .label = "NEXT",
      .x = 110, .y = 40, .w = 40, .h = 20,
      .action = ButtonAction::CycleTeamGuy, .arg = 1,
-     .nav = {.down = 3, .left = 0, .right = 16}},
+     .nav = {.down = 3, .left = 0, .right = 15}},
     {.id = "dec_str", .label = "",
      .x = 16, .y = 70, .w = 16, .h = 10,
      .action = ButtonAction::DecreaseStat, .arg = BUT_STR,
@@ -1782,39 +1554,43 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "dec_level", .label = "",
      .x = 16, .y = 145, .w = 16, .h = 10,
      .action = ButtonAction::DecreaseStat, .arg = BUT_LEVEL,
-     .nav = {.up = 10, .down = 19, .right = 13},
+     .nav = {.up = 10, .down = 18, .right = 13},
      .art_family = FAMILY_MINUS},
     {.id = "inc_level", .label = "",
      .x = 126, .y = 145, .w = 16, .h = 12,
      .action = ButtonAction::IncreaseStat, .arg = BUT_LEVEL,
-     .nav = {.up = 11, .down = 15, .left = 12, .right = 18},
+     .nav = {.up = 11, .down = 14, .left = 12,
+             .right = kTrainMenuChangeTeamIndex},
      .art_family = FAMILY_PLUS},
-    {.id = "view_team", .label = "VIEW TEAM",
-     .x = 190, .y = 170, .w = 90, .h = 20,
-     .action = ButtonAction::CreateViewMenu, .arg = -1,
-     .nav = {.up = 18, .left = 15}},
+    // The VIEW TEAM door retired with its screen (§2.5: the base-camp
+    // roster IS the team view, one BACK away) — rows past the stat pairs
+    // shifted down one; kTrainMenuChangeTeamIndex is the pinned anchor.
     {.id = "accept", .label = "ACCEPT",
      .x = 80, .y = 170, .w = 80, .h = 20,
      .action = ButtonAction::EditGuy, .arg = -1,
-     .nav = {.up = 13, .left = 19, .right = 14}},
+     .nav = {.up = 13, .left = 18}},
     {.id = "rename", .label = "RENAME",
      .x = 174, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::NameGuy, .arg = 1,
-     .nav = {.down = 18, .left = 1, .right = 17}},
+     .nav = {.down = kTrainMenuChangeTeamIndex, .left = 1, .right = 16}},
     {.id = "details", .label = "DETAILS..",
      .x = 240, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::CreateDetailMenu, .arg = 0,
-     .nav = {.down = 18, .left = 16}},
+     .nav = {.down = kTrainMenuChangeTeamIndex, .left = 15}},
     {.id = "change_team", .label = "Playing on Team X",
      .x = 174, .y = 138, .w = 133, .h = 22,
      .action = ButtonAction::ChangeTeam, .arg = 1,
-     .nav = {.up = 17, .down = 14, .left = 13},
+     .nav = {.up = 16, .down = 14, .left = 13},
      .state_override = &train_change_team_row_state},
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 170, .w = 40, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 12, .right = 15}},
+     .nav = {.up = 12, .right = 14}},
 };
+
+static_assert(std::size(kTrainMenuRows) == 19,
+              "train table anchor: change_team sits at "
+              "kTrainMenuChangeTeamIndex");
 
 // ---------------------------------------------------------------------------
 // PROGRESS (§1.8 step 6): the campaign-progress report (cleared levels,
@@ -1877,118 +1653,414 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 };
 
 // ---------------------------------------------------------------------------
-// TEAM BUILD (§1.8 step 5, the cluster's parent screen). A clean 3x3 grid on
-// the classic x=30/120/210 columns, transcribed VERBATIM from the deleted
-// k_createmenu_buttons: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
-// BACK | SCENARIO | NETWORKING (y=140). GO is the only host-gated button —
-// the legacy sync (hide + picker_wire_team_build_nav) is the spec's Rewire
-// program (G1). FadeAroundEntry replays the legacy fade-out / cold
-// backdrop+buttons draw / fade-in entry; the level-reload guard
-// (frame_tick/on_reset, entered with last_level_id = -1) reloads the picker
-// world on the first frame and after every SET LEVEL / nested-screen reset,
-// exactly where the legacy loop reloaded.
+// TEAM BUILD -> BASE CAMP (§2.5): the command roster. The roster IS the
+// default view (the VIEW TEAM screen retired into it): 12 rows/page at 12px
+// pitch — a deploy toggle (8,32+12r,14,10) and a per-row TRAIN button
+// (272,32+12r,40,10) — the page cluster top-right (< p/N >), and the bottom
+// command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
+// left the base camp (§3.8: saving is automatic on every mutation).
+// Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
+// arg == spec ordinal); the strip keeps the legacy ButtonActions so do_call
+// routing, the GO -> StartGame interception, and interact("go") survive
+// unchanged. Per-frame full-graph rewire (pattern b) over the installed
+// screen state; GO stays the only host-gated button.
 
-constexpr MenuButtonSpec kTeamBuildRows[] = {
-    {.id = "view_team", .label = "VIEW TEAM",
-     .x = 30, .y = 70, .w = 80, .h = 15,
-     .action = ButtonAction::CreateViewMenu, .arg = -1,
-     .nav = {.down = 3, .right = 1}},
-    {.id = "train_team", .label = "TRAIN TEAM",
-     .x = 120, .y = 70, .w = 80, .h = 15,
-     .action = ButtonAction::CreateTrainMenu, .arg = -1,
-     .nav = {.down = 4, .left = 0, .right = 2}},
-    {.id = "hire_troops", .label = "HIRE TROOPS",
-     .x = 210, .y = 70, .w = 80, .h = 15,
-     .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.down = 5, .left = 1}},
-    {.id = "load_team", .label = "LOAD TEAM",
-     .x = 30, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::CreateLoadMenu, .arg = -1,
-     .nav = {.up = 0, .down = 6, .right = 4}},
-    {.id = "save_team", .label = "SAVE TEAM",
-     .x = 120, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::CreateSaveMenu, .arg = -1,
-     .nav = {.up = 1, .down = 7, .left = 3, .right = 5}},
-    {.id = "go", .label = "GO",
-     .x = 210, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.up = 2, .down = 8, .left = 4}},
+// The company-list seam pattern: the per-frame rewire reads this file-static
+// pointer; run_menu_screen's screen_state points at the SAME object.
+BaseCampScreenState* g_base_camp_state = nullptr;
+
+constexpr int kBaseCampRowY0 = 32;
+constexpr int kBaseCampRowPitch = 12;
+
+// Static nav encodes the full-page shape (12 visible rows, pagers hidden,
+// GO visible); the per-frame rewire recomputes every link from the live
+// state anyway (§2.5 keyboard-nav pattern b).
+#define OG_BASE_CAMP_DEP(i)                                                  \
+    {.id = "roster_dep_" #i, .label = "",                                    \
+     .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
+     .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
+     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+             .down = (i) < 11 ? (i) + 1 : kCreateMenuBackIndex,               \
+             .right = kBaseCampTrainBase + (i)}}
+#define OG_BASE_CAMP_TRAIN(i)                                                \
+    {.id = "roster_train_" #i, .label = "TRAIN",                             \
+     .x = 272, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 40,        \
+     .h = 10, .action = ButtonAction::MenuSpecRow,                           \
+     .arg = kBaseCampTrainBase + (i),                                        \
+     .nav = {.up = (i) > 0 ? kBaseCampTrainBase + (i) - 1 : -1,               \
+             .down = (i) < 11 ? kBaseCampTrainBase + (i) + 1                  \
+                              : kCreateMenuGoIndex,                           \
+             .left = (i)}}
+
+constexpr MenuButtonSpec kBaseCampRows[] = {
+    OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
+    OG_BASE_CAMP_DEP(3), OG_BASE_CAMP_DEP(4), OG_BASE_CAMP_DEP(5),
+    OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7), OG_BASE_CAMP_DEP(8),
+    OG_BASE_CAMP_DEP(9), OG_BASE_CAMP_DEP(10), OG_BASE_CAMP_DEP(11),
+    OG_BASE_CAMP_TRAIN(0), OG_BASE_CAMP_TRAIN(1), OG_BASE_CAMP_TRAIN(2),
+    OG_BASE_CAMP_TRAIN(3), OG_BASE_CAMP_TRAIN(4), OG_BASE_CAMP_TRAIN(5),
+    OG_BASE_CAMP_TRAIN(6), OG_BASE_CAMP_TRAIN(7), OG_BASE_CAMP_TRAIN(8),
+    OG_BASE_CAMP_TRAIN(9), OG_BASE_CAMP_TRAIN(10), OG_BASE_CAMP_TRAIN(11),
+    // Page cluster (§2.5 header line B right edge); real MenuSpecRow pager
+    // actions (keyboard-live), hidden until the roster spans pages.
+    {.id = "roster_page_prev", .label = "<",
+     .x = 263, .y = 11, .w = 14, .h = 10,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
+     .nav = {.down = kBaseCampTrainBase, .right = kBaseCampPageNextIndex},
+     .hidden = true},
+    {.id = "roster_page_next", .label = ">",
+     .x = 302, .y = 11, .w = 14, .h = 10,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
+     .nav = {.down = kBaseCampTrainBase, .left = kBaseCampPagePrevIndex},
+     .hidden = true},
+    // Bottom command strip (y=178, 18px tall). BACK keeps the Escape hotkey
+    // (the shared cancel grammar).
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 30, .y = 140, .w = 60, .h = 30,
+     .x = 8, .y = 178, .w = 44, .h = 18,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3, .right = 7}},
+     .nav = {.up = 11, .right = kCreateMenuHireIndex}},
+    {.id = "hire_troops", .label = "HIRE",
+     .x = 58, .y = 178, .w = 50, .h = 18,
+     .action = ButtonAction::CreateHireMenu, .arg = -1,
+     .nav = {.up = 11, .left = kCreateMenuBackIndex,
+             .right = kCreateMenuScenarioIndex}},
     {.id = "scenario", .label = "SCENARIO",
-     .x = 120, .y = 140, .w = 80, .h = 20,
+     .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = 4, .left = 6, .right = 8}},
-    {.id = "networking", .label = "NETWORKING",
-     .x = 210, .y = 140, .w = 80, .h = 20,
+     .nav = {.up = kBaseCampTrainBase + 11, .left = kCreateMenuHireIndex,
+             .right = kCreateMenuNetworkingIndex}},
+    {.id = "networking", .label = "NETWORK",
+     .x = 182, .y = 178, .w = 56, .h = 18,
      .action = ButtonAction::Networking, .arg = -1,
-     .nav = {.up = 5, .left = 7}},
+     .nav = {.up = kBaseCampTrainBase + 11, .left = kCreateMenuScenarioIndex,
+             .right = kCreateMenuGoIndex}},
+    // §2.6 state 1: solo/local GO keeps the plain grey bevel and the exact
+    // legacy behavior (GoMenu -> go_menu / the TeamBuild-scope StartGame
+    // interception). The READY twin (same rect, networked clients) lands
+    // with the WP4 MP stage.
+    {.id = "go", .label = "GO",
+     .x = 244, .y = 178, .w = 68, .h = 18,
+     .action = ButtonAction::GoMenu, .arg = -1,
+     .nav = {.up = kBaseCampTrainBase + 11,
+             .left = kCreateMenuNetworkingIndex}},
 };
 
-// The legacy per-frame content, verbatim: up to two translucent lobby-status
-// lines at the top, and the compact current-scenario hint in the empty y=40
-// band (the full level-title / campaign-name strips live in the SCENARIO
-// subscreen, next to the buttons that change them).
-void team_build_draw_content(void* /*screen_state*/)
-{
-    screen* const myscreen = og::runtime::current_session->myscreen_;
-    text& mytext = myscreen->text_normal;
+#undef OG_BASE_CAMP_DEP
+#undef OG_BASE_CAMP_TRAIN
 
-    const std::vector<std::string> lobby_status = picker_lobby_status_lines();
-    for (std::size_t line_index = 0;
-         line_index < lobby_status.size() && line_index < 2; ++line_index)
-    {
-        const std::string& line = lobby_status[line_index];
-        if (line.empty())
+static_assert(static_cast<int>(std::size(kBaseCampRows))
+                  == kCreateMenuButtonCount,
+              "base camp spec ordinals are the layout contract");
+
+// Per-frame visibility + labels + nav over the live roster state (pattern
+// b): page-window the rows, stamp the deploy glyphs on BOTH label surfaces,
+// host-gate GO, close the strip/pager links, and seed the empty-roster
+// highlight on HIRE (§2.5).
+void base_camp_rewire(button* buttons, int count, int& highlighted_button)
+{
+    if (buttons == nullptr || count < kCreateMenuButtonCount)
+        return;
+    const BaseCampScreenState* st = g_base_camp_state;
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = std::max(0, end - first);
+    const bool pagers = st != nullptr && st->page.multi_page();
+    const bool host_visible = picker_lobby_host_controls_visible();
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
+        const bool on = r < visible;
+        button& dep = buttons[r];
+        button& train = buttons[kBaseCampTrainBase + r];
+        dep.hidden = !on;
+        train.hidden = !on;
+        if (!on)
             continue;
 
-        const int status_y = 8 + static_cast<int>(line_index) * 10;
-        const int status_w = static_cast<int>(line.size()) * 6;
-        myscreen->draw_rect_filled(10, status_y - 1, status_w + 4, 8,
-                                   PURE_BLACK, 150);
-        mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
+        const int slot = st->slots[static_cast<std::size_t>(first + r)];
+        const guy* member =
+            (slot >= 0 && slot < MAX_TEAM_SIZE) ? save.team_list[slot].get()
+                                                : nullptr;
+        // §2.5 deploy glyph: "X" deployed / "" benched — both surfaces (the
+        // descriptor row AND the live vbutton), so a toggle shows this frame.
+        dep.label = (member != nullptr && member->deployed) ? "X" : "";
+        vbutton* live = og::runtime::current_session->allbuttons_[r];
+        if (live != nullptr)
+            live->label = dep.label;
+
+        dep.nav = {.up = r > 0 ? r - 1 : -1,
+                   .down = r + 1 < visible ? r + 1 : kCreateMenuBackIndex,
+                   .left = -1,
+                   .right = kBaseCampTrainBase + r};
+        train.nav = {
+            .up = r > 0 ? kBaseCampTrainBase + r - 1 : -1,
+            .down = r + 1 < visible
+                ? kBaseCampTrainBase + r + 1
+                : (host_visible ? kCreateMenuGoIndex
+                                : kCreateMenuNetworkingIndex),
+            .left = r,
+            .right = pagers ? kBaseCampPagePrevIndex : -1};
     }
 
+    buttons[kBaseCampPagePrevIndex].hidden = !pagers;
+    buttons[kBaseCampPageNextIndex].hidden = !pagers;
+    buttons[kBaseCampPagePrevIndex].nav = {
+        .up = -1,
+        .down = visible > 0 ? kBaseCampTrainBase : kCreateMenuGoIndex,
+        .left = -1,
+        .right = kBaseCampPageNextIndex};
+    buttons[kBaseCampPageNextIndex].nav = {
+        .up = -1,
+        .down = visible > 0 ? kBaseCampTrainBase : kCreateMenuGoIndex,
+        .left = kBaseCampPagePrevIndex,
+        .right = -1};
+
+    // GO is the only host-gated button (the legacy sync, verbatim rule).
+    buttons[kCreateMenuGoIndex].hidden = !host_visible;
+
+    const int dep_last = visible > 0 ? visible - 1 : -1;
+    const int train_last =
+        visible > 0 ? kBaseCampTrainBase + visible - 1 : -1;
+    buttons[kCreateMenuBackIndex].nav = {
+        .up = dep_last, .down = -1, .left = -1,
+        .right = kCreateMenuHireIndex};
+    buttons[kCreateMenuHireIndex].nav = {
+        .up = dep_last, .down = -1, .left = kCreateMenuBackIndex,
+        .right = kCreateMenuScenarioIndex};
+    buttons[kCreateMenuScenarioIndex].nav = {
+        .up = train_last, .down = -1, .left = kCreateMenuHireIndex,
+        .right = kCreateMenuNetworkingIndex};
+    buttons[kCreateMenuNetworkingIndex].nav = {
+        .up = train_last, .down = -1, .left = kCreateMenuScenarioIndex,
+        .right = host_visible ? kCreateMenuGoIndex : -1};
+    buttons[kCreateMenuGoIndex].nav = {
+        .up = train_last, .down = -1,
+        .left = kCreateMenuNetworkingIndex, .right = -1};
+
+    // Empty roster: seed the highlight on HIRE (§2.5) instead of the first
+    // visible button.
+    if (visible == 0 && highlighted_button >= 0
+        && highlighted_button < count
+        && buttons[highlighted_button].hidden)
     {
-        std::string hint = std::format("SCEN {}: {}",
-                                       myscreen->save_data.scen_num,
-                                       myscreen->world().title);
-        if (hint.size() > 34)
-            hint.resize(34);
-        const int hint_w = static_cast<int>(hint.size()) * 6;
-        myscreen->draw_rect_filled(10, 43, hint_w + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(12, 44, WHITE, "%s", hint.c_str());
+        highlighted_button = kCreateMenuHireIndex;
+    }
+
+    for (int i = 0; i < count; ++i)
+        sync_button_hidden_state(buttons, i);
+    ensure_highlighted_button_visible(buttons, count, highlighted_button);
+}
+
+// Pre-buttons pass (§2.0 draw-order rule): backdrop, then the readability
+// bars behind the column-header line and each visible roster row.
+void base_camp_draw_background(void* /*screen_state*/)
+{
+    picker_backdrop_draw_background(nullptr);
+    screen* const game = og::runtime::current_session->myscreen_;
+    const BaseCampScreenState* st = g_base_camp_state;
+    const int visible =
+        st != nullptr ? std::max(0, st->page.end_index() -
+                                        st->page.first_index())
+                      : 0;
+    game->draw_rect_filled(4, 23, 312, 9, PURE_BLACK, 150);
+    for (int r = 0; r < visible; ++r) {
+        game->draw_rect_filled(4, kBaseCampRowY0 - 1 + kBaseCampRowPitch * r,
+                               312, kBaseCampRowPitch - 1, PURE_BLACK, 150);
     }
 }
 
-void team_build_rewire(button* buttons, int num_buttons,
-                       int& highlighted_button)
+// The §2.5 content pass (after draw_buttons): header lines A/B, the page
+// indicator, the column headers, the roster row text/family chips, and the
+// empty state.
+void base_camp_draw_content(void* screen_state)
 {
-    sync_team_build_host_control_visibility(buttons, num_buttons,
-                                            highlighted_button);
+    const BaseCampScreenState* st =
+        static_cast<const BaseCampScreenState*>(screen_state);
+    screen* const game = og::runtime::current_session->myscreen_;
+    const SaveData& save = game->save_data;
+    text& mytext = game->text_normal;
+
+    const auto strip_text = [game](int x, int y, const std::string& value,
+                                   unsigned char color) {
+        if (value.empty())
+            return;
+        const int width = static_cast<int>(value.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, width + 4, 8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
+    };
+
+    // Line A: company name (the 40-byte save_name) + the gold block.
+    std::string company = save.save_name;
+    if (company.size() > 26)
+        company.resize(26);
+    strip_text(8, 3, company, WHITE);
+    strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
+
+    // Line B: solo scenario/deploy header. Networked lobbies keep the legacy
+    // status line here (joined + clipped) until the WP4 MP stage lands the
+    // READY n/m header shape.
+    std::string line_b;
+    if (picker_lobby_is_networked()) {
+        for (const std::string& line : picker_lobby_status_lines()) {
+            if (line.empty())
+                continue;
+            if (!line_b.empty())
+                line_b += " | ";
+            line_b += line;
+        }
+        if (line_b.size() > 40)
+            line_b.resize(40);
+    } else {
+        line_b = format_base_camp_scen_line(save, game->world().title);
+    }
+    strip_text(8, 13, line_b, WHITE);
+
+    if (st != nullptr && st->page.multi_page())
+        strip_text(283, 13, st->page.indicator(), WHITE);
+
+    // Column headers (solo shape) over the pre-pass bar.
+    mytext.write_xy(2, 24, "DEPLOY", WHITE, 1);
+    mytext.write_xy(40, 24, "NAME", WHITE, 1);
+    mytext.write_xy(118, 24, "CLASS", WHITE, 1);
+    mytext.write_xy(172, 24, "LV", WHITE, 1);
+    mytext.write_xy(196, 24, "HP", WHITE, 1);
+    mytext.write_xy(226, 24, "EXP", WHITE, 1);
+    mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    if (end - first <= 0) {
+        mytext.write_xy(73, 90, "NO SOLDIERS - HIRE YOUR FIRST",
+                        static_cast<unsigned char>(ORANGE_START), 1);
+        return;
+    }
+
+    for (int r = 0; r < end - first; ++r) {
+        const int slot = st->slots[static_cast<std::size_t>(first + r)];
+        if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+            continue;
+        const guy& member = *save.team_list[slot];
+        const int y = kBaseCampRowY0 + kBaseCampRowPitch * r;
+
+        // Family chip: the view_team color convention ((family+1)<<4).
+        const unsigned char family_color =
+            static_cast<unsigned char>(((member.family + 1) << 4) & 255);
+        game->fastbox(26, y, 10, 10, family_color);
+
+        // Benched rows dim to GREY — the second deploy cue (§2.5).
+        const unsigned char name_color =
+            member.deployed ? family_color : static_cast<unsigned char>(GREY);
+        const unsigned char stat_color =
+            member.deployed ? static_cast<unsigned char>(WHITE)
+                            : static_cast<unsigned char>(GREY);
+
+        const BaseCampRowText row = format_base_camp_row(
+            member,
+            static_cast<int>(picker_compute_guy_derived_stats(member).hp));
+        mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
+        mytext.write_xy(118, y + 1, row.cls.c_str(), name_color, 1);
+        mytext.write_xy(172, y + 1, row.level.c_str(), stat_color, 1);
+        mytext.write_xy(196, y + 1, row.hp.c_str(), stat_color, 1);
+        mytext.write_xy(226, y + 1, row.exp.c_str(), stat_color, 1);
+    }
+}
+
+// The team-build family's frame obligations: the level-reload guard (a SET
+// LEVEL pick or a host sync must reload the picker world) plus the §3.3
+// positional refresh of the roster rows.
+bool base_camp_frame_tick(void* screen_state, int /*frame*/)
+{
+    if (screen_state == nullptr)
+        return true;
+    auto* const state = static_cast<BaseCampScreenState*>(screen_state);
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (state->last_level_id != myscreen->save_data.scen_num ||
+        state->was_reset)
+    {
+        state->was_reset = false;
+        state->last_level_id = myscreen->save_data.scen_num;
+        myscreen->world().id = state->last_level_id;
+        myscreen->load_level();
+    }
+    base_camp_refresh_rows(*state);
+    return true;
+}
+
+void base_camp_on_reset(void* screen_state)
+{
+    if (screen_state == nullptr)
+        return;
+    auto* const state = static_cast<BaseCampScreenState*>(screen_state);
+    state->was_reset = true;
+    // A nested screen (hire/train) may have changed the roster: re-collect
+    // before the next rewire runs (§3.3).
+    base_camp_refresh_rows(*state);
+}
+
+// G3 row dispatch: deploy toggles, per-row TRAIN, and the pagers.
+Sint32 base_camp_on_spec_row(int row, void* screen_state)
+{
+    auto* const st = static_cast<BaseCampScreenState*>(screen_state);
+    if (st == nullptr)
+        return 0;
+
+    if (row == kBaseCampPagePrevIndex || row == kBaseCampPageNextIndex) {
+        if (st->page.step(row == kBaseCampPagePrevIndex ? -1 : 1))
+            TRACE("basecamp", "page %s", st->page.indicator().c_str());
+        return MENU_OK;
+    }
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const bool is_train = row >= kBaseCampTrainBase;
+    const int visual_row = is_train ? row - kBaseCampTrainBase : row;
+    const int idx = st->page.first_index() + visual_row;
+    if (idx < 0 || idx >= static_cast<int>(st->slots.size()))
+        return 0;  // stale click on a row hidden this frame
+    const int slot = st->slots[static_cast<std::size_t>(idx)];
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+        return 0;
+
+    if (!is_train) {
+        // §2.5 deploy toggle (flow 5): flip + dim + DEP count same frame;
+        // §3.8 autosave + §4.3 ready-clear ride the shared mutation tail.
+        [[maybe_unused]] const bool deployed = toggle_deploy_slot(save, slot);
+        TRACE("basecamp", "deploy slot=%d %s", slot,
+              deployed ? "on" : "off");
+        picker_base_camp_after_roster_mutation();
+        return MENU_OK;
+    }
+
+    // §2.5 per-row TRAIN (flow 4): open the train screen directly on this
+    // character (the nested-engine-screen pattern). A remote start that
+    // unparked the train screen propagates; BACK re-inits our buttons.
+    picker_set_train_seed_slot(slot);
+    TRACE("basecamp", "train slot=%d", slot);
+    const Sint32 ret = create_train_menu(0);
+    if ((ret & MENU_EXIT) && team_build_start_selected())
+        return MENU_EXIT;
+    return MENU_REDRAW;
 }
 
 const MenuScreenSpec& team_build_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
         .name = "team_build",
-        .rows = kTeamBuildRows,
-        .row_count = static_cast<int>(std::size(kTeamBuildRows)),
+        .rows = kBaseCampRows,
+        .row_count = static_cast<int>(std::size(kBaseCampRows)),
         .buttons_accessor = &picker_createmenu_buttons,
         .count_accessor = &picker_createmenu_button_count,
-        .nav = {.kind = NavProgramKind::Rewire, .rewire = &team_build_rewire},
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = &base_camp_rewire},
         // The loop-top host-GO check that launches a joiner parked here.
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .enter = EnterTransition::FadeAroundEntry,
-        .default_highlight = 1,  // train_team, as the legacy loop
+        .default_highlight = 0,  // roster-first: row 0's deploy toggle
         .polls_lobby = true,
-        .draw_background = &picker_backdrop_draw_background,
-        .draw_content = &team_build_draw_content,
-        .frame_tick = &level_reload_guard_frame_tick,
-        .on_reset = &level_reload_guard_on_reset,
+        .draw_background = &base_camp_draw_background,
+        .draw_content = &base_camp_draw_content,
+        .frame_tick = &base_camp_frame_tick,
+        .on_reset = &base_camp_on_reset,
+        .on_spec_row = &base_camp_on_spec_row,
         // Every legacy exit carried MENU_EXIT (nested MENU_REDRAWs are
         // consumed by reset_buttons; the reload guard keeps the loop alive).
         .exit_value = MENU_EXIT,
@@ -2968,6 +3040,24 @@ const MenuScreenSpec& company_list_menu_screen_spec()
     return spec;
 }
 
+void install_base_camp_state_for_screen(BaseCampScreenState* state)
+{
+    g_base_camp_state = state;
+}
+
+void base_camp_refresh_rows(BaseCampScreenState& state)
+{
+    // §3.3: positional display indices are never held across a roster
+    // change or a win fold — re-collect from the save every time.
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    state.slots = collect_base_camp_slots(save);
+    const int page_before = state.page.page;
+    state.page = PageModel::make(static_cast<int>(state.slots.size()),
+                                 kBaseCampRosterRowsPerPage);
+    state.page.page =
+        std::clamp(page_before, 0, state.page.page_count() - 1);
+}
+
 void install_company_list_state_for_screen(CompanyListScreenState* state)
 {
     g_company_list_state = state;
@@ -3061,12 +3151,6 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
                 {.kind = Kind::Engine, .spec = &main_menu_screen_spec()});
             set(MenuScreenId::TeamBuild,
                 {.kind = Kind::Engine, .spec = &team_build_menu_screen_spec()});
-            set(MenuScreenId::ViewTeam,
-                {.kind = Kind::Engine, .spec = &view_team_menu_screen_spec()});
-            set(MenuScreenId::SaveSlots,
-                {.kind = Kind::Engine, .spec = &save_slots_menu_screen_spec()});
-            set(MenuScreenId::LoadSlots,
-                {.kind = Kind::Engine, .spec = &load_slots_menu_screen_spec()});
             set(MenuScreenId::MainOptions,
                 {.kind = Kind::Engine,
                  .spec = &main_options_menu_screen_spec()});
@@ -3156,42 +3240,6 @@ Sint32 mainmenu(Sint32 arg1)
     return og::ui::run_menu_screen(og::ui::main_menu_screen_spec());
 }
 
-button* picker_viewteam_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::view_team_menu_screen_spec(),
-                                     pks().viewteam_buttons);
-    return pks().viewteam_buttons.data();
-}
-
-int picker_viewteam_button_count()
-{
-    return static_cast<int>(pks().viewteam_buttons.size());
-}
-
-button* picker_saveteam_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::save_slots_menu_screen_spec(),
-                                     pks().saveteam_buttons);
-    return pks().saveteam_buttons.data();
-}
-
-int picker_saveteam_button_count()
-{
-    return static_cast<int>(pks().saveteam_buttons.size());
-}
-
-button* picker_loadteam_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::load_slots_menu_screen_spec(),
-                                     pks().loadteam_buttons);
-    return pks().loadteam_buttons.data();
-}
-
-int picker_loadteam_button_count()
-{
-    return static_cast<int>(pks().loadteam_buttons.size());
-}
-
 button* picker_createmenu_buttons()
 {
     og::ui::materialize_menu_buttons(og::ui::team_build_menu_screen_spec(),
@@ -3204,18 +3252,21 @@ int picker_createmenu_button_count()
     return static_cast<int>(pks().createmenu_buttons.size());
 }
 
-// TEAM BUILD, engine-hosted (the legacy loop is gone). The reload cursor
-// enters at -1: the first frame always reloads the picker world (the legacy
-// entry behavior — the screen must reflect the save's level whatever was
-// loaded before it). Every legacy exit carried MENU_EXIT; the fold below
-// keeps the legacy return shape verbatim.
+// TEAM BUILD -> BASE CAMP (§2.5), engine-hosted. The reload cursor enters at
+// -1: the first frame always reloads the picker world (the legacy entry
+// behavior — the screen must reflect the save's level whatever was loaded
+// before it). The roster rows materialize from the installed screen state
+// (refreshed before the first frame and per tick — §3.3). Every legacy exit
+// carried MENU_EXIT; the fold below keeps the legacy return shape verbatim.
 Sint32 create_team_menu(Sint32 arg1)
 {
     (void)arg1;
-    og::ui::LevelReloadGuardState guard{.last_level_id = -1,
-                                        .was_reset = false};
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
     const Sint32 retvalue =
-        og::ui::run_menu_screen(og::ui::team_build_menu_screen_spec(), &guard);
+        og::ui::run_menu_screen(og::ui::team_build_menu_screen_spec(), &state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
     if (retvalue & MENU_EXIT)
         return retvalue;
     return MENU_REDRAW;
@@ -3369,46 +3420,9 @@ Sint32 create_teams_menu(Sint32 arg1)
     return MENU_REDRAW;
 }
 
-// VIEW TEAM, engine-hosted (the legacy loop is gone). The buffer clears
-// around the screen and the exit fold are the legacy entry/exit, verbatim:
-// MENU_EXIT propagates so TeamBuild interception can map GO -> StartGame;
-// BACK returns MENU_REDRAW to keep the parent create_team_menu running.
-Sint32 create_view_menu(Sint32 arg1)
-{
-    (void)arg1;
-    og::runtime::current_session->myscreen_->clearbuffer();
-    const Sint32 retvalue =
-        og::ui::run_menu_screen(og::ui::view_team_menu_screen_spec());
-    og::runtime::current_session->myscreen_->clearbuffer();
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-    return MENU_REDRAW;
-}
-
-// The slot menus, engine-hosted (the shared legacy create_slot_menu loop is
-// gone). Every legacy exit ran return_to_parent (clear_allbuttons +
-// MENU_REDRAW); the engine keeps that for local exits and lets a remote
-// start propagate its MENU_EXIT directly (the parent breaks with StartGame
-// selected instead of re-detecting the start one loop later — same launch).
-Sint32 create_save_menu(Sint32 /*arg1*/)
-{
-    const Sint32 retvalue =
-        og::ui::run_menu_screen(og::ui::save_slots_menu_screen_spec());
-    clear_allbuttons();
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-    return MENU_REDRAW;
-}
-
-Sint32 create_load_menu(Sint32 /*arg1*/)
-{
-    const Sint32 retvalue =
-        og::ui::run_menu_screen(og::ui::load_slots_menu_screen_spec());
-    clear_allbuttons();
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-    return MENU_REDRAW;
-}
+// create_view_menu and the create_save_menu/create_load_menu slot wrappers
+// are RETIRED with their screens (§2.5/§3.8): the base camp roster replaced
+// the team view, and saving is automatic.
 
 button* picker_difficulty_menu_buttons()
 {

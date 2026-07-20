@@ -1075,14 +1075,20 @@ public:
 
     bool load_game() override
     {
-        create_load_menu(0);
-        return true;
+        // §2.3: the slot menu is retired — loading IS the Company List.
+        // (Reached only via run_picker's legacy LoadGame transition; the
+        // main-menu LOAD door routes through show_company_list directly.)
+        return og::ui::run_company_list_screen();
     }
 
     bool save_game() override
     {
-        create_save_menu(0);
-        return true;
+        // §3.8: the manual save UI is retired — the company autosaves on
+        // every base-camp mutation; a legacy SaveGame transition just runs
+        // one autosave against the active slot.
+        return og::ui::company_autosave_after_mutation(
+                   og::runtime::current_session->myscreen_->save_data,
+                   picker_lobby_is_networked()) == SaveDataIoError::None;
     }
 
     bool show_company_list() override
@@ -1514,9 +1520,6 @@ void picker_cleanup_resources()
     pks().main_title_logo_data.free();
     pks().mainmenu_buttons.clear();
     pks().createmenu_buttons.clear();
-    pks().viewteam_buttons.clear();
-    pks().saveteam_buttons.clear();
-    pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
     pks().display_settings_buttons.clear();
@@ -1562,11 +1565,10 @@ void picker_quit()
 // accessor shims, and the entry functions live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
 
-// TEAM BUILD (create_team_menu): engine-hosted — spec, accessor shims, and
-// the entry wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
-
-// VIEW TEAM: engine-hosted — spec, accessor shims, and create_view_menu live
-// in menu_screen_specs.cpp (docs/menu-engine.md).
+// TEAM BUILD -> BASE CAMP (create_team_menu, design §2.5): engine-hosted —
+// spec, accessor shims, and the entry wrapper live in menu_screen_specs.cpp
+// (docs/menu-engine.md). The VIEW TEAM screen and the SAVE/LOAD slot menus
+// are retired (the roster IS the default view; saving is automatic).
 
 static const button k_details_buttons[] =
     {
@@ -1654,10 +1656,6 @@ void reset_mutable_button_layout(std::vector<button>& out, const button (&defaul
 
 // picker_createmenu_buttons()/picker_createmenu_button_count():
 // engine-hosted screen — the D3 materialization shims live in
-// menu_screen_specs.cpp.
-
-// picker_viewteam_buttons()/picker_saveteam_buttons()/picker_loadteam_buttons()
-// (+ counts): engine-hosted screens — the D3 materialization shims live in
 // menu_screen_specs.cpp.
 
 button* picker_details_buttons()
@@ -2701,8 +2699,8 @@ Sint32 change_teamnum(Sint32 arg)
    og::runtime::current_session->current_guy_->teamnum = static_cast<short>(current_team);
 
    // Update our button display
-   if (og::runtime::current_session->allbuttons_[18] != nullptr)
-       og::runtime::current_session->allbuttons_[18]->label = std::format("Playing on Team {}", current_team + 1);
+   if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = std::format("Playing on Team {}", current_team + 1);
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);

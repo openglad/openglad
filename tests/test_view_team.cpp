@@ -7,6 +7,7 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -32,7 +33,6 @@ constexpr int kTeamBuildInterceptScope = 2;
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1);
 Sint32 create_train_menu(Sint32 arg1);
 extern bool g_start_game_requested;
@@ -236,30 +236,25 @@ static bool unwind_to_main_menu(int timeout_ms = 7000)
     return has_interactable("continue_game");
 }
 
-static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
+// §2.5 base camp: the roster IS the default view — wait for a roster row
+// pair plus the command strip (GO/BACK at y=178).
+static bool wait_for_base_camp_roster(int timeout_ms = 6000)
 {
-    const auto is_view_menu_button = [](const Interactable& item) { return item.y >= 160; };
+    const auto is_strip_button = [](const Interactable& item) { return item.y >= 160; };
     int elapsed = 0;
-    int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (!has_interactable("view_team")
-            && has_interactable_match("go", is_view_menu_button)
-            && has_interactable_match("back", is_view_menu_button))
+        if (has_interactable("roster_dep_0")
+            && has_interactable("roster_train_0")
+            && has_interactable_match("go", is_strip_button)
+            && has_interactable_match("back", is_strip_button))
             return true;
-
-        if (since_last_retry >= 250 && has_interactable("view_team")) {
-            fprintf(stderr, "  [test] retry clicking view_team\n");
-            interact("view_team");
-            since_last_retry = 0;
-        }
 
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
-        since_last_retry += poll_interval;
     }
 
-    fprintf(stderr, "  [interact] TIMEOUT entering view_team menu (%d ms)\n", timeout_ms);
+    fprintf(stderr, "  [interact] TIMEOUT waiting for the base-camp roster (%d ms)\n", timeout_ms);
     return false;
 }
 
@@ -328,7 +323,7 @@ static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
     interact("continue_game");
 
     int elapsed = 0;
-    while (elapsed < timeout_ms && !has_interactable("view_team")) {
+    while (elapsed < timeout_ms && !has_interactable("hire_troops")) {
         if (has_interactable("continue_game")) {
             fprintf(stderr, "  [test] retry clicking continue_game\n");
             interact("continue_game");
@@ -336,14 +331,14 @@ static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
         SDL_Delay(50);
         elapsed += 50;
     }
-    return has_interactable("view_team");
+    return has_interactable("hire_troops");
 }
 
-// Test: Continue -> View Team -> Back -> Back
+// Test: Continue -> base camp roster (the default view, §2.5) -> Back
 //
 // Verifies:
-//   1. View Team menu opens with a team
-//   2. The view menu has GO and BACK buttons
+//   1. The base camp opens straight onto the roster rows
+//   2. The command strip has GO and BACK
 //   3. Can navigate back cleanly
 
 struct ViewState {
@@ -364,14 +359,11 @@ static int view_team_injector(void* data)
         return 0;
     }
 
-    fprintf(stderr, "  [test] clicking view_team\n");
-    interact("view_team");
-
-    const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
-    if (wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    const auto is_strip_back = [](const Interactable& item) { return item.y >= 160; };
+    if (wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
-        fprintf(stderr, "  [test] clicking back from view menu\n");
-        interact_match("back", is_view_menu_back);
+        fprintf(stderr, "  [test] clicking back from the base camp\n");
+        interact_match("back", is_strip_back);
     }
 
     // Always try to unwind so picker_main cannot deadlock on failed interactions.
@@ -440,10 +432,9 @@ static int view_team_go_injector(void* data)
         state->finished = true;
         return 0;
     }
-    interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    if (!wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
@@ -517,40 +508,53 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
-struct TrainMenuViewTeamGoState {
+// §2.5 per-row TRAIN: clicking a roster row's TRAIN button opens the train
+// screen seeded ON THAT CHARACTER (no more enter-then-cycle), and backing
+// out returns to the base camp with the roster intact.
+struct BaseCampRowTrainState {
     bool finished;
     bool saw_train_menu;
-    bool saw_view_menu;
-    bool clicked_go;
+    int seeded_slot;
 };
 
-static int train_menu_view_team_go_injector(void* data)
+static int base_camp_row_train_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* state = static_cast<TrainMenuViewTeamGoState*>(data);
+    auto* state = static_cast<BaseCampRowTrainState*>(data);
+
+    if (!wait_for_interactable("roster_train_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    interact("roster_train_1");
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
     state->saw_train_menu = true;
+    if (pks().train_session != nullptr)
+        state->seeded_slot = pks().train_session->current_slot();
 
-    interact("view_team");
+    SDL_Delay(300);
+    interact("back");  // exit the train screen back to the base camp
 
-    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    state->saw_view_menu = true;
-    state->clicked_go = click_intercepted_start_from_view_menu(
-        kGameStartTimeoutMs, is_view_menu_go);
+    SDL_Delay(300);
+    interact("back");  // exit the base camp
 
     state->finished = true;
     return 0;
 }
 
-TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
+TEST(ViewTeam, base_camp_row_train_opens_seeded_on_that_character)
 {
     trace_clear();
 
@@ -559,14 +563,11 @@ TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
     og::runtime::current_session->myscreen_->save_data.current_campaign =
         "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.totalcash = 50000;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     auto archer = std::make_unique<guy>(FAMILY_ARCHER);
-    soldier->strength = soldier->dexterity = soldier->constitution =
-        soldier->intelligence = soldier->armor = 200;
-    archer->strength = archer->dexterity = archer->constitution =
-        archer->intelligence = archer->armor = 200;
+    soldier->name = "FRONT";
+    archer->name = "SECOND";
     og::runtime::current_session->myscreen_->save_data.team_list[0] =
         std::move(soldier);
     og::runtime::current_session->myscreen_->save_data.team_list[1] =
@@ -574,33 +575,25 @@ TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
     og::runtime::current_session->myscreen_->save_data.team_size = 2;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    TrainMenuViewTeamGoState state = { false, false, false, false };
+    BaseCampRowTrainState state = { false, false, -1 };
     SDL_Thread* thread = SDL_CreateThread(
-        train_menu_view_team_go_injector,
-        "train_menu_view_team_go",
-        &state);
+        base_camp_row_train_injector, "base_camp_row_train", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     pks().selected_menu_item = nullptr;
-    pks().intercept_scope = kTeamBuildInterceptScope;
-    const Sint32 ret = create_train_menu(0);
-    const og::ui::PickerMenuItem* const selected = pks().selected_menu_item;
-    pks().intercept_scope = 0;
+    const Sint32 ret = create_team_menu(0);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
-
     cleanup_picker_state();
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
-    ASSERT_TRUE(state.saw_view_menu) << "should have entered the nested view menu";
-    ASSERT_TRUE(state.clicked_go) << "nested view menu should click GO";
-    ASSERT_TRUE(ret & 1) << "train menu should propagate EXIT to start game";
-    ASSERT_NE(nullptr, selected);
-    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
+    ASSERT_TRUE(state.saw_train_menu)
+        << "roster TRAIN should open the train screen";
+    EXPECT_EQ(1, state.seeded_slot)
+        << "row 1's TRAIN must seed the session on team_list slot 1 (§2.5)";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
-
 
 struct DirectMenuClickState {
     bool finished;
@@ -707,36 +700,6 @@ static int direct_menu_visibility_injector(void* data)
     state->finished = true;
     return 0;
 }
-
-TEST(ViewTeam, create_view_menu_direct_back)
-{
-    trace_clear();
-
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-
-    std::atomic<bool> menu_done{false};
-    DirectMenuClickState state = { false, false, "back", 160, &menu_done };
-    SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create direct view-menu injector thread";
-
-    const Sint32 ret = create_view_menu(0);
-    menu_done.store(true, std::memory_order_release);
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    cleanup_picker_state();
-
-    ASSERT_TRUE(state.finished) << "direct view-menu injector should complete";
-    ASSERT_TRUE(state.clicked_target) << "direct view-menu injector should click back";
-    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
-}
-
 
 TEST(ViewTeam, create_team_menu_direct_back)
 {
@@ -937,49 +900,6 @@ TEST(ViewTeam, create_scenario_menu_shows_host_controls_for_host)
     ASSERT_TRUE(ret & 2) << "create_scenario_menu(back) should return REDRAW";
 }
 
-TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)
-{
-    trace_clear();
-
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-
-    HostVisibilityPickerLobbyClient client(false);
-    ActivePickerLobbyClientGuard guard(&client);
-    std::atomic<bool> menu_done{false};
-    DirectMenuVisibilityState state{
-        .finished = false,
-        .saw_menu = false,
-        .go_visible = false,
-        .set_level_visible = false,
-        .set_campaign_visible = false,
-        .scenario_visible = false,
-        .min_y = 160,
-        .menu_done = &menu_done,
-    };
-    SDL_Thread* thread =
-        SDL_CreateThread(direct_menu_visibility_injector, "direct_view_visibility", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create view-menu visibility injector thread";
-
-    const Sint32 ret = create_view_menu(0);
-    menu_done.store(true, std::memory_order_release);
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    cleanup_picker_state();
-
-    ASSERT_TRUE(state.finished) << "view-menu visibility injector should complete";
-    ASSERT_TRUE(state.saw_menu) << "view menu should become visible";
-    EXPECT_FALSE(state.go_visible);
-    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
-}
-
-
 struct ViewTeamGoLevel17State {
     bool finished;
     bool saw_view_menu;
@@ -999,10 +919,9 @@ static int view_team_go_level17_injector(void* data)
         state->finished = true;
         return 0;
     }
-    interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(7000)) {
+    if (!wait_for_base_camp_roster(7000)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
