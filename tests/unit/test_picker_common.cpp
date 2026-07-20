@@ -2519,3 +2519,62 @@ TEST(PickerCommon, zoom_and_smoothing_labels_fit_the_button_face)
     }
     ASSERT_EQ("off", smoothing) << "three steps must complete the lap";
 }
+
+// --- Company autosave context (design §3.8 [SAVE-F1] / §1.2 G12) ----------
+
+TEST(PickerCommon, company_autosave_context_local_is_plain)
+{
+    SaveData save;
+    save.my_team = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 2;
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/false);
+    EXPECT_FALSE(context.networked_lobby)
+        << "without a networked lobby the write stays a plain save";
+    for (const bool owned : context.owned_teams)
+        EXPECT_FALSE(owned) << "owned teams are meaningless off the merge path";
+}
+
+TEST(PickerCommon, company_autosave_context_owned_teams_from_roster_and_seat)
+{
+    SaveData save;
+    save.my_team = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 3;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[2]->teamnum = 9; // out of wallet range: ignored
+    save.team_size = 3;
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    ASSERT_TRUE(context.networked_lobby);
+    EXPECT_FALSE(context.owned_teams[0]);
+    EXPECT_TRUE(context.owned_teams[1]) << "my_team + roster team";
+    EXPECT_FALSE(context.owned_teams[2]);
+    EXPECT_TRUE(context.owned_teams[3]) << "second seat's roster team";
+}
+
+TEST(PickerCommon, company_autosave_context_empty_roster_uses_my_team)
+{
+    SaveData save;
+    save.my_team = 0; // team 0 is a REAL wallet index (unlike seat labels)
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    ASSERT_TRUE(context.networked_lobby);
+    EXPECT_TRUE(context.owned_teams[0])
+        << "hiring into an empty roster spends from my_team's wallet";
+    EXPECT_FALSE(context.owned_teams[1]);
+    EXPECT_FALSE(context.owned_teams[2]);
+    EXPECT_FALSE(context.owned_teams[3]);
+
+    save.my_team = 7; // out of wallet range: no team marked
+    const og::data::CompanyAutosaveContext clamped =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    for (const bool owned : clamped.owned_teams)
+        EXPECT_FALSE(owned);
+}

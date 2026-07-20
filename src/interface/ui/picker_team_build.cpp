@@ -27,6 +27,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -2345,7 +2346,8 @@ Sint32 go_menu(Sint32 arg1)
 
 #ifdef __EMSCRIPTEN__
     picker_prepare_async_team_build_start_request();
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.save(
+        og::data::active_company_slot());
     og::runtime::current_session->current_guy_.reset();
     Log("go_menu: Lobby start requested, returning MENU_EXIT\n");
     return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
@@ -2373,7 +2375,8 @@ Sint32 go_menu(Sint32 arg1)
     // Native build: use blocking loop
     do
     {
-        og::runtime::current_session->myscreen_->save_data.save("save0");
+        og::runtime::current_session->myscreen_->save_data.save(
+            og::data::active_company_slot());
         release_mouse();
 
         //*******************************
@@ -2428,10 +2431,12 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->reset(1);
         og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
 
-        auto loadgame = og::io::og_open_read("save/", "save0.gtl");
+        const std::string slot_file = og::data::active_company_slot() + ".gtl";
+        auto loadgame = og::io::og_open_read("save/", slot_file.c_str());
         if (loadgame)
         {
-            og::runtime::current_session->myscreen_->save_data.load("save0");
+            og::runtime::current_session->myscreen_->save_data.load(
+                og::data::active_company_slot());
         }
     }
     while(og::runtime::current_session->myscreen_->world().retry);

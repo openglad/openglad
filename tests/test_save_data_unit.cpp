@@ -31,3 +31,155 @@ TEST(SaveDataUnit, save_data_update_guys_clamps_to_max_team_size)
     ASSERT_TRUE(save.team_list.back() != nullptr);
     ASSERT_TRUE(save.team_list[MAX_TEAM_SIZE - 1]->exp == static_cast<std::uint32_t>(100 + (MAX_TEAM_SIZE - 1)));
 }
+
+// --- GTL v14 held-back preservation (docs/company-basecamp-design.md §3.3) ---
+
+namespace {
+
+std::unique_ptr<guy> make_roster_guy(const char* name,
+                                     std::uint32_t exp,
+                                     bool deployed)
+{
+    auto g = std::make_unique<guy>(FAMILY_SOLDIER);
+    g->name = name;
+    g->exp = exp;
+    g->deployed = deployed;
+    return g;
+}
+
+std::unique_ptr<walker> make_survivor_walker(const guy& source)
+{
+    auto w = std::make_unique<walker>();
+    w->set_dead(0);
+    w->set_owned_myguy(std::make_unique<guy>(source));
+    return w;
+}
+
+} // namespace
+
+TEST(SaveDataUnit, update_guys_preserves_held_back_entries)
+{
+    SaveData save;
+    save.team_list[0] = make_roster_guy("HELD", 777, /*deployed=*/false);
+    save.team_list[1] = make_roster_guy("SENT", 100, /*deployed=*/true);
+    save.team_size = 2;
+
+    // Only the deployed character entered the level; it survived and grew.
+    std::list<std::unique_ptr<walker>> oblist;
+    {
+        guy sent(FAMILY_SOLDIER);
+        sent.name = "SENT";
+        sent.exp = 500;
+        oblist.push_back(make_survivor_walker(sent));
+    }
+
+    save.update_guys(oblist);
+
+    ASSERT_EQ(2, static_cast<int>(save.team_size))
+        << "held-back entry must survive the roster rebuild";
+    // Pass 1 places survivors first; pass 2 appends the held-back entries.
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_TRUE(save.team_list[1] != nullptr);
+    ASSERT_EQ(std::string("SENT"), save.team_list[0]->name);
+    ASSERT_EQ(500u, save.team_list[0]->exp) << "survivor exp preserved";
+    ASSERT_TRUE(save.team_list[0]->deployed);
+    ASSERT_EQ(std::string("HELD"), save.team_list[1]->name)
+        << "held-back entry appended after survivors";
+    ASSERT_EQ(777u, save.team_list[1]->exp)
+        << "held-back guy object preserved untouched (no re-level)";
+    ASSERT_FALSE(save.team_list[1]->deployed)
+        << "held-back entry keeps deployed == false";
+}
+
+TEST(SaveDataUnit, update_guys_survives_held_back_with_empty_oblist)
+{
+    // Every deployed character died under permadeath: survivors = 0, but the
+    // held-back characters were never at risk and must remain.
+    SaveData save;
+    save.keep_fallen_heroes = 0;
+    save.team_list[0] = make_roster_guy("SENT", 100, /*deployed=*/true);
+    save.team_list[1] = make_roster_guy("HELD", 200, /*deployed=*/false);
+    save.team_size = 2;
+
+    std::list<std::unique_ptr<walker>> oblist; // nobody came back
+
+    save.update_guys(oblist);
+
+    ASSERT_EQ(1, static_cast<int>(save.team_size));
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_EQ(std::string("HELD"), save.team_list[0]->name);
+    ASSERT_FALSE(save.team_list[0]->deployed);
+    ASSERT_TRUE(save.team_list[1] == nullptr) << "roster stays dense";
+}
+
+TEST(SaveDataUnit, update_guys_cap_drops_new_recruits_before_held_back)
+{
+    // 24-cap priority rule (§3.3, pinned): held-back characters always
+    // survive; newly-acquired recruits are dropped first when the cap binds.
+    SaveData save;
+    constexpr int kHeldBack = 4;
+    for (int i = 0; i < kHeldBack; ++i)
+    {
+        save.team_list[i] = make_roster_guy("HELD", 9000u + static_cast<std::uint32_t>(i),
+                                            /*deployed=*/false);
+    }
+    save.team_size = kHeldBack;
+
+    // A full 24 survivors come out of the level (existing team + new
+    // recruits); only 24 - 4 = 20 of them can be kept.
+    std::list<std::unique_ptr<walker>> oblist;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+    {
+        guy g(FAMILY_SOLDIER);
+        g.name = "SURV";
+        g.exp = 100u + static_cast<std::uint32_t>(i);
+        oblist.push_back(make_survivor_walker(g));
+    }
+
+    save.update_guys(oblist);
+
+    ASSERT_EQ(MAX_TEAM_SIZE, static_cast<int>(save.team_size));
+    const int survivor_capacity = MAX_TEAM_SIZE - kHeldBack;
+    for (int i = 0; i < survivor_capacity; ++i)
+    {
+        ASSERT_TRUE(save.team_list[i] != nullptr);
+        ASSERT_TRUE(save.team_list[i]->deployed)
+            << "slot " << i << " should hold a survivor";
+        ASSERT_EQ(100u + static_cast<std::uint32_t>(i), save.team_list[i]->exp)
+            << "survivors kept in oblist order; the LAST (newly-acquired) "
+               "recruits are the ones dropped";
+    }
+    for (int i = survivor_capacity; i < MAX_TEAM_SIZE; ++i)
+    {
+        ASSERT_TRUE(save.team_list[i] != nullptr);
+        ASSERT_FALSE(save.team_list[i]->deployed)
+            << "slot " << i << " should hold a preserved held-back entry";
+        ASSERT_EQ(9000u + static_cast<std::uint32_t>(i - survivor_capacity),
+                  save.team_list[i]->exp);
+    }
+}
+
+TEST(SaveDataUnit, reset_does_not_clear_last_played_timestamp)
+{
+    // §3.1: last_played_unix_s is NOT cleared by reset() (v10+ precedent:
+    // reset() untouched) — it is company identity, not campaign state.
+    SaveData save;
+    save.last_played_unix_s = 1234567890;
+    save.team_list[0] = make_roster_guy("ANY", 1, /*deployed=*/false);
+    save.team_size = 1;
+
+    save.reset();
+
+    ASSERT_EQ(static_cast<std::int64_t>(1234567890), save.last_played_unix_s);
+    ASSERT_EQ(0, static_cast<int>(save.team_size)) << "reset still clears roster";
+}
+
+TEST(SaveDataUnit, guy_copy_constructor_propagates_deployed)
+{
+    guy source(FAMILY_SOLDIER);
+    source.deployed = false;
+    guy copy(source);
+    ASSERT_FALSE(copy.deployed)
+        << "guy::guy(const guy&) = default must carry the deploy flag "
+           "through update_guys/merge_owned_guys_from";
+}

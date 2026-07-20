@@ -36,6 +36,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
@@ -208,7 +209,7 @@ public:
         // checkpoint — losses persist nothing else. Mid-run the disk save's
         // campaign IS the tower, so the SaveData::load-mounts trap is moot.
         SaveData disk;
-        if (disk.load("save0"))
+        if (disk.load(og::data::active_company_slot()))
         {
             disk.scen_num = og::kTowerGateLevel;
             disk.current_levels[std::string(og::kTowerCampaignId)] =
@@ -217,7 +218,7 @@ public:
             disk.tower_best_floor =
                 std::max(disk.tower_best_floor, session_best);
             disk.tower_run_seed = save.tower_run_seed; // keep (shareable)
-            if (!disk.save("save0"))
+            if (!disk.save(og::data::active_company_slot()))
                 LogError("tower: run-end save0 write failed\n");
             save.tower_best_floor = disk.tower_best_floor;
         }
@@ -226,7 +227,7 @@ public:
             // No readable checkpoint: best-effort write of the reset live
             // save so a relaunch still starts at the Gate.
             LogError("tower: run-end save0 reload failed; writing live\n");
-            (void)save.save("save0");
+            (void)save.save(og::data::active_company_slot());
         }
     }
 

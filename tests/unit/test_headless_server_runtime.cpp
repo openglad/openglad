@@ -486,4 +486,39 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
         << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
+// §3.4 dropped-field bug class: the server/checkpoint copies must carry the
+// GTL v14 company fields — the last-played timestamp explicitly, the per-guy
+// deploy flag via the guy deep copies. (The tower fields were the previous
+// instance of this bug class; the copy is an explicit field list, so every
+// new SaveData member needs a line there AND a pin here.)
+TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
+{
+    SaveData source;
+    source.last_played_unix_s = 0x0A0B0C0D0E0F1011LL;
+    source.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    source.team_list[0]->name = "BROUGHT";
+    source.team_list[0]->deployed = true;
+    source.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    source.team_list[1]->name = "HELDBACK";
+    source.team_list[1]->deployed = false;
+    source.team_size = 2;
+
+    SaveData destination;
+    destination.last_played_unix_s = 42; // must be overwritten, not merged
+
+    og::server::copy_headless_server_save_data(destination, source);
+
+    EXPECT_EQ(0x0A0B0C0D0E0F1011LL, destination.last_played_unix_s)
+        << "timestamp must survive the server/checkpoint copy";
+    ASSERT_TRUE(destination.team_list[0] != nullptr);
+    ASSERT_TRUE(destination.team_list[1] != nullptr);
+    EXPECT_NE(destination.team_list[0].get(), source.team_list[0].get())
+        << "guys are deep copies, not shared pointers";
+    EXPECT_TRUE(destination.team_list[0]->deployed);
+    EXPECT_FALSE(destination.team_list[1]->deployed)
+        << "the deploy flag rides the guy copy";
+    EXPECT_TRUE(destination.team_list[1]->name == "HELDBACK");
+    EXPECT_EQ(2, (int)destination.team_size);
+}
+
 } // namespace

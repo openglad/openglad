@@ -30,6 +30,11 @@ bool deinit()
     return PHYSFS_deinit() != 0;
 }
 
+bool is_initialized()
+{
+    return PHYSFS_isInit() != 0;
+}
+
 bool set_write_dir(const std::string& path)
 {
     return PHYSFS_setWriteDir(path.c_str()) != 0;

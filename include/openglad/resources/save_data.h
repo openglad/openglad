@@ -79,6 +79,13 @@ public:
     // seed persist. The seed is serialized as 2 x int16 (lo, hi).
     short tower_best_floor = 0;         // highest floor ever REACHED
     std::uint32_t tower_run_seed = 0;   // current run's generation seed
+    // Company bookkeeping (GTL v14; docs/company-basecamp-design.md §3.1).
+    // Wall-clock unix seconds when this company was last played; serialized
+    // raw (host-endian, per format precedent) into the first 8 bytes of the
+    // header's former reserved block at offset 133. NOT cleared by reset()
+    // and stamped ONLY by company_autosave — save() just serializes it, so
+    // SaveData::save() itself stays deterministic (§3.2).
+    std::int64_t last_played_unix_s = 0;
 
     SaveData();
     ~SaveData();

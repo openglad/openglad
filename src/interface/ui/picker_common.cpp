@@ -813,6 +813,42 @@ std::vector<short> derive_local_seat_teams(const SaveData& save)
     return teams;
 }
 
+og::data::CompanyAutosaveContext company_autosave_context(
+    const SaveData& save, bool networked_lobby_active)
+{
+    og::data::CompanyAutosaveContext context;
+    context.networked_lobby = networked_lobby_active;
+    if (!networked_lobby_active)
+        return context;
+
+    // Owned wallets = every m_totalcash index this machine's mutations spend
+    // from. In a networked lobby the in-memory roster is private to this
+    // machine (apply_lobby_state_to_save stamps session teams onto LOCAL
+    // members only), so its in-range teamnums are the machine's seats;
+    // my_team covers hiring into an empty roster. Team 0 is a real wallet
+    // index here — unlike derive_local_seat_teams, which is about SEATS.
+    if (save.my_team >= 0 && save.my_team < SCORE_TEAM_COUNT)
+        context.owned_teams[static_cast<std::size_t>(save.my_team)] = true;
+    for (const auto& member : save.team_list)
+    {
+        if (!member)
+            continue;
+        const short team = member->teamnum;
+        if (team >= 0 && team < SCORE_TEAM_COUNT)
+            context.owned_teams[static_cast<std::size_t>(team)] = true;
+    }
+    return context;
+}
+
+SaveDataIoError company_autosave_after_mutation(SaveData& save,
+                                                bool networked_lobby_active)
+{
+    return og::data::company_autosave(
+        save,
+        og::data::CompanyAutosaveKind::BaseCampMutation,
+        company_autosave_context(save, networked_lobby_active));
+}
+
 std::string format_team_row_label(short team,
                                   int hero_count,
                                   bool is_ctf,

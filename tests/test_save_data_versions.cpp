@@ -3,9 +3,11 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
+#include <openglad/resources/company.h>
 #include <openglad/resources/io.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>
@@ -44,9 +46,10 @@ struct GuyRecord
     int32_t total_hits = 6;
     int32_t total_shots = 9;
     short teamnum = 1;
+    unsigned char deployed = 1; // v14+: 0 = held back (guy offset +50)
 };
 
-static void write_guy(SDL_IOStream* out, const GuyRecord& g)
+static void write_guy(SDL_IOStream* out, const GuyRecord& g, char version = 13)
 {
     rw_write_val(out, g.order);
     rw_write_val(out, g.family);
@@ -71,8 +74,15 @@ static void write_guy(SDL_IOStream* out, const GuyRecord& g)
     rw_write_val(out, g.total_shots);
     rw_write_val(out, g.teamnum);
 
-    char filler8[8] = {0};
-    rw_write(out, filler8, sizeof(filler8));
+    if (version >= 14) {
+        // v14+ reinterprets the first reserved byte as the deploy flag.
+        rw_write_val(out, g.deployed);
+        char filler7[7] = {0};
+        rw_write(out, filler7, sizeof(filler7));
+    } else {
+        char filler8[8] = {0};
+        rw_write(out, filler8, sizeof(filler8));
+    }
 }
 
 static void write_save_file(const std::string& filename_no_ext,
@@ -97,7 +107,8 @@ static void write_save_file(const std::string& filename_no_ext,
                             short generator_rate = 0,
                             short keep_fallen_heroes = 0,
                             short tower_best_floor = 0,
-                            uint32_t tower_run_seed = 0)
+                            uint32_t tower_run_seed = 0,
+                            int64_t last_played_unix_s = 0)
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_IOStream* out = open_write_file("save/", fname.c_str());
@@ -143,14 +154,21 @@ static void write_save_file(const std::string& filename_no_ext,
         rw_write_val(out, allied_mode);
     }
 
-    // Listsize, numplayers, reserved
+    // Listsize, numplayers, reserved (v14+ reinterprets the first 8 reserved
+    // bytes at offset 133 as the last-played unix timestamp)
     rw_write_val(out, listsize);
     rw_write_val(out, numplayers);
-    char filler31[31] = {0};
-    rw_write(out, filler31, sizeof(filler31));
+    if (version >= 14) {
+        rw_write_val(out, last_played_unix_s);
+        char filler23[23] = {0};
+        rw_write(out, filler23, sizeof(filler23));
+    } else {
+        char filler31[31] = {0};
+        rw_write(out, filler31, sizeof(filler31));
+    }
 
     for (int i = 0; i < listsize; i++) {
-        write_guy(out, guys[i]);
+        write_guy(out, guys[i], version);
     }
 
     if (!use_v8plus_campaigns) {
@@ -479,7 +497,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
               static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
         << "v11 writer should succeed";
 
-    // The writer must stamp version 13 in the GTL header.
+    // The writer must stamp version 14 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -488,7 +506,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
+    ASSERT_EQ(14, (int)version_byte) << "writer should stamp version 14";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -674,7 +692,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
               static_cast<int>(src.save_with_error("typed_save_tower_roundtrip")))
         << "v13 writer should succeed";
 
-    // The writer must stamp version 13 in the GTL header.
+    // The writer must stamp version 14 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -683,7 +701,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
+    ASSERT_EQ(14, (int)version_byte) << "writer should stamp version 14";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -1037,4 +1055,388 @@ TEST(SaveDataVersions, save_data_round9_reset_campaign_missing_entry_is_noop)
 
     ASSERT_EQ(0, data.get_num_levels_completed("round9.a")) << "reset_campaign should clear target campaign progress";
     ASSERT_EQ(1, data.get_num_levels_completed("round9.b")) << "reset_campaign should not clear other campaign progress";
+}
+
+
+// --- GTL v14: reserved-block embedding (docs/company-basecamp-design.md §3.1) ---
+
+// Reads an entire "save/<name>" file into a byte vector for raw offset checks.
+static std::vector<uint8_t> read_save_bytes(const char* fname)
+{
+    std::vector<uint8_t> bytes;
+    SDL_IOStream* in = open_read_file("save/", fname);
+    if (in == nullptr)
+        return bytes;
+    const Sint64 size = SDL_GetIOSize(in);
+    if (size > 0) {
+        bytes.resize(static_cast<size_t>(size));
+        if (SDL_ReadIO(in, bytes.data(), bytes.size()) != bytes.size())
+            bytes.clear();
+    }
+    SDL_CloseIO(in);
+    return bytes;
+}
+
+TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_flags)
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    // Distinct byte pattern in every one of the 8 timestamp bytes.
+    src.last_played_unix_s = 0x1122334455667788LL;
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "BROUGHT";
+    src.team_list[0]->exp = 1000;
+    src.team_list[0]->deployed = true;
+    src.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    src.team_list[1]->name = "HELDBACK";
+    src.team_list[1]->exp = 2000;
+    src.team_list[1]->deployed = false;
+    src.team_size = 2;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v14_roundtrip")))
+        << "v14 writer should succeed";
+
+    // RAW offset spot-checks (§3.1 fixed offsets):
+    //   3        version byte = 14
+    //   133..140 last_played_unix_s (host-endian i64)
+    //   141..163 reserved, zero-filled
+    //   164      first guy record; guy+50 deployed flag, guy+51..57 zero
+    const std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_roundtrip.gtl");
+    constexpr size_t kHeaderSize = 164;
+    constexpr size_t kGuySize = 58;
+    ASSERT_GE(bytes.size(), kHeaderSize + 2 * kGuySize) << "file too small";
+    ASSERT_EQ(14, (int)bytes[3]) << "version byte at offset 3";
+
+    std::int64_t raw_ts = 0;
+    std::memcpy(&raw_ts, bytes.data() + 133, 8);
+    ASSERT_EQ(0x1122334455667788LL, raw_ts)
+        << "timestamp embedded at header offset 133";
+    for (size_t i = 141; i < kHeaderSize; ++i)
+        ASSERT_EQ(0, (int)bytes[i]) << "header reserved byte " << i
+                                    << " must be zero-filled";
+
+    const size_t guy0 = kHeaderSize;
+    const size_t guy1 = kHeaderSize + kGuySize;
+    ASSERT_EQ(1, (int)bytes[guy0 + 50]) << "deployed flag at guy+50";
+    ASSERT_EQ(0, (int)bytes[guy1 + 50]) << "held-back flag at guy+50";
+    for (size_t i = 51; i < kGuySize; ++i) {
+        ASSERT_EQ(0, (int)bytes[guy0 + i]) << "guy0 reserved byte " << i;
+        ASSERT_EQ(0, (int)bytes[guy1 + i]) << "guy1 reserved byte " << i;
+    }
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v14_roundtrip")))
+        << "v14 reader should succeed";
+    ASSERT_EQ(0x1122334455667788LL, loaded.last_played_unix_s)
+        << "last_played_unix_s should roundtrip";
+    ASSERT_EQ(2, (int)loaded.team_size);
+    ASSERT_TRUE(loaded.team_list[0]->deployed) << "deployed=true roundtrips";
+    ASSERT_FALSE(loaded.team_list[1]->deployed) << "deployed=false roundtrips";
+    ASSERT_TRUE(loaded.team_list[1]->name == "HELDBACK");
+}
+
+TEST(SaveDataVersions, save_data_load_v14_reads_timestamp_and_deployed)
+{
+    GuyRecord guys[2];
+    guys[0].name = "SENT";
+    guys[0].deployed = 1;
+    guys[1].name = "HELD";
+    guys[1].deployed = 0;
+    write_save_file("ver14_company",
+                    /*version=*/14,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/guys,
+                    /*listsize=*/2,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0,
+                    /*last_played_unix_s=*/987654321LL);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver14_company")) << "v14 load should succeed";
+    ASSERT_EQ(static_cast<std::int64_t>(987654321LL), tmp.last_played_unix_s)
+        << "v14 should read last_played_unix_s from offset 133";
+    ASSERT_EQ(2, (int)tmp.team_size);
+    ASSERT_TRUE(tmp.team_list[0]->deployed) << "v14 should read deployed=1";
+    ASSERT_FALSE(tmp.team_list[1]->deployed) << "v14 should read deployed=0";
+}
+
+TEST(SaveDataVersions, save_data_load_v13_payload_defaults_v14_fields)
+{
+    GuyRecord guys[1];
+    guys[0].name = "OLDGUY";
+    // v13 files carry 'GTL' filler / arbitrary bytes in the reserved ranges;
+    // the deployed member of GuyRecord is IGNORED for version < 14.
+    guys[0].deployed = 0;
+    write_save_file("ver13_no_company",
+                    /*version=*/13,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/guys,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    // Poison the in-memory fields: a v13 payload must restore the defaults.
+    tmp.last_played_unix_s = 999;
+    ASSERT_TRUE(tmp.load("ver13_no_company")) << "v13 load should succeed";
+    ASSERT_EQ(static_cast<std::int64_t>(0), tmp.last_played_unix_s)
+        << "v13 saves default last_played_unix_s to 0 (never sniffed)";
+    ASSERT_EQ(1, (int)tmp.team_size);
+    ASSERT_TRUE(tmp.team_list[0]->deployed)
+        << "v13 saves default deployed to true (everyone was always brought)";
+}
+
+TEST(SaveDataVersions, save_data_v13_shaped_reader_tolerance_proxy)
+{
+    // §3.9 v13-binary-reads-v14 proxy: a v14 file re-labeled as v13 must load
+    // perfectly with the reserved ranges skipped (same byte counts consumed,
+    // no new tail), exactly as a v13 binary reads a v14 file. The v14-only
+    // fields fall back to their defaults.
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.totalcash = 4321;
+    src.last_played_unix_s = 0x0102030405060708LL;
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "PROXY";
+    src.team_list[0]->exp = 555;
+    src.team_list[0]->deployed = false;
+    src.team_size = 1;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v14_as_v13")))
+        << "v14 writer should succeed";
+
+    std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_as_v13.gtl");
+    ASSERT_GT(bytes.size(), (size_t)164) << "readable v14 file expected";
+    ASSERT_EQ(14, (int)bytes[3]);
+    bytes[3] = 13; // re-label: v13-shaped reader sees reserved filler
+
+    SDL_IOStream* out = open_write_file("save/", "typed_save_v14_as_v13.gtl");
+    ASSERT_TRUE(out != nullptr) << "rewrite of re-labeled file";
+    ASSERT_EQ(bytes.size(), SDL_WriteIO(out, bytes.data(), bytes.size()));
+    SDL_CloseIO(out);
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v14_as_v13")))
+        << "v13-shaped read of a v14 payload must succeed (tolerant reader)";
+    ASSERT_EQ(4321u, loaded.totalcash) << "non-reserved fields intact";
+    ASSERT_EQ(1, (int)loaded.team_size);
+    ASSERT_TRUE(loaded.team_list[0]->name == "PROXY");
+    ASSERT_EQ(555u, loaded.team_list[0]->exp);
+    ASSERT_EQ(static_cast<std::int64_t>(0), loaded.last_played_unix_s)
+        << "a v13-shaped read drops the timestamp (default restored)";
+    ASSERT_TRUE(loaded.team_list[0]->deployed)
+        << "a v13-shaped read drops the deploy flag (default true)";
+}
+
+TEST(SaveDataVersions, save_data_load_v7_ladder_defaults_v14_fields)
+{
+    // [SAVE-R1] the v<8 prefix ladder has no campaign id and uses the flat
+    // levelstatus tail; the v14 fields must still default cleanly and the
+    // version-gated sequence must keep every older field at its correct
+    // position (allied mode + per-team scores prove the ladder held).
+    GuyRecord guys[1];
+    guys[0].name = "VETERAN";
+    write_save_file("ver7_ladder_company",
+                    /*version=*/7,
+                    /*campaign_id=*/"org.openglad.gladiator", // unused < v8
+                    /*scen_num=*/5,
+                    /*cash=*/300,
+                    /*score=*/400,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/2,
+                    /*guys=*/guys,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/false,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    tmp.last_played_unix_s = 777; // must be reset by the load
+    ASSERT_TRUE(tmp.load("ver7_ladder_company")) << "v7 load should succeed";
+    ASSERT_EQ(5, (int)tmp.scen_num) << "scen_num at the v7 ladder position";
+    ASSERT_EQ(300u, tmp.totalcash);
+    ASSERT_EQ(1, (int)tmp.allied_mode) << "v7 allied field read";
+    ASSERT_EQ(2, (int)tmp.numplayers);
+    ASSERT_EQ(static_cast<std::int64_t>(0), tmp.last_played_unix_s)
+        << "v7 saves default last_played_unix_s to 0";
+    ASSERT_EQ(1, (int)tmp.team_size);
+    ASSERT_TRUE(tmp.team_list[0]->deployed)
+        << "v7 saves default deployed to true";
+}
+
+TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place)
+{
+    // §3.9 direction 1 (v14 binary reads v13): a REAL v13 file carries
+    // nonzero 'GTLGTL…' filler in BOTH reserved ranges (the master writer's
+    // 50-byte filler array); the v14 fields are hard-gated on the version
+    // byte, so that filler must never be sniffed. The first company_autosave
+    // then upgrades the file to v14 in place (the silent-upgrade precedent).
+    GuyRecord guys[1];
+    guys[0].name = "UPGRADED";
+    guys[0].exp = 4242;
+    write_save_file("ver13_upgrade_company",
+                    /*version=*/13,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/2,
+                    /*cash=*/500,
+                    /*score=*/600,
+                    /*allied_mode=*/0,
+                    /*numplayers=*/1,
+                    /*guys=*/guys,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    // Patch both reserved ranges with the real master-writer filler bytes.
+    std::vector<uint8_t> bytes = read_save_bytes("ver13_upgrade_company.gtl");
+    constexpr size_t kHeaderSize = 164;
+    constexpr size_t kGuySize = 58;
+    ASSERT_GE(bytes.size(), kHeaderSize + kGuySize) << "readable v13 file";
+    ASSERT_EQ(13, (int)bytes[3]);
+    static const char kGtl[3] = {'G', 'T', 'L'};
+    for (size_t i = 133; i < kHeaderSize; ++i)
+        bytes[i] = static_cast<uint8_t>(kGtl[(i - 133) % 3]);
+    for (size_t i = 50; i < kGuySize; ++i)
+        bytes[kHeaderSize + i] = static_cast<uint8_t>(kGtl[(i - 50) % 3]);
+    SDL_IOStream* out = open_write_file("save/", "ver13_upgrade_company.gtl");
+    ASSERT_TRUE(out != nullptr) << "rewrite of GTL-filler v13 file";
+    ASSERT_EQ(bytes.size(), SDL_WriteIO(out, bytes.data(), bytes.size()));
+    SDL_CloseIO(out);
+
+    SaveData loaded;
+    loaded.last_played_unix_s = 424242; // must be defaulted, never sniffed
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("ver13_upgrade_company")))
+        << "a v13 file with real GTL filler must load clean";
+    ASSERT_EQ(static_cast<std::int64_t>(0), loaded.last_played_unix_s)
+        << "the 'GTL' bytes at offset 133 must never be read as a timestamp";
+    ASSERT_EQ(1, (int)loaded.team_size);
+    ASSERT_TRUE(loaded.team_list[0]->deployed)
+        << "the 'G' byte at guy+50 must never be read as a deploy flag";
+    ASSERT_EQ(500u, loaded.totalcash);
+
+    // First autosave upgrades in place: same slot, now v14 with a stamped
+    // timestamp — and NO backup snapshot for a non-LevelWin kind.
+    {
+        og::data::ScopedActiveCompany scope("ver13_upgrade_company");
+        og::data::set_company_clock_for_tests(1700000123LL);
+        const SaveDataIoError io = og::data::company_autosave(
+            loaded, og::data::CompanyAutosaveKind::BaseCampMutation);
+        og::data::set_company_clock_for_tests(std::nullopt);
+        ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                  static_cast<int>(io)) << "upgrade autosave should succeed";
+    }
+
+    const std::vector<uint8_t> upgraded =
+        read_save_bytes("ver13_upgrade_company.gtl");
+    ASSERT_GE(upgraded.size(), kHeaderSize + kGuySize);
+    ASSERT_EQ(14, (int)upgraded[3]) << "in-place upgrade rewrites version 14";
+    std::int64_t raw_ts = 0;
+    std::memcpy(&raw_ts, upgraded.data() + 133, 8);
+    ASSERT_EQ(1700000123LL, raw_ts) << "upgrade stamps the pinned clock";
+    for (size_t i = 141; i < kHeaderSize; ++i)
+        ASSERT_EQ(0, (int)upgraded[i])
+            << "upgrade zero-fills header reserved byte " << i;
+    ASSERT_EQ(1, (int)upgraded[kHeaderSize + 50])
+        << "default deployed=true serialized at guy+50 after the upgrade";
+    for (size_t i = 51; i < kGuySize; ++i)
+        ASSERT_EQ(0, (int)upgraded[kHeaderSize + i])
+            << "upgrade zero-fills guy reserved byte " << i;
+
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("ver13_upgrade_company");
+    ASSERT_TRUE(header.has_value() && header->valid)
+        << "upgraded file must header-scan clean";
+    ASSERT_EQ(14, (int)header->version);
+    ASSERT_EQ(1700000123LL, header->last_played_unix_s);
+    ASSERT_TRUE(og::data::list_company_backups("ver13_upgrade_company").empty())
+        << "a mutation autosave must not snapshot a backup";
+}
+
+TEST(SaveDataVersions, save_data_v13_resave_of_v14_drops_company_fields)
+{
+    // §3.9 direction 2, second half: a v13 binary reads a v14 file
+    // tolerantly, then re-SAVES it — the v13 writer has no timestamp/deploy
+    // members, so the round trip drops both; the next v14 read restores the
+    // defaults while every other field survives.
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.totalcash = 7777;
+    src.last_played_unix_s = 55555555LL;
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "ROUNDTRIP";
+    src.team_list[0]->exp = 9999;
+    src.team_list[0]->deployed = false; // held back before the detour
+    src.team_size = 1;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v13_detour")))
+        << "v14 writer should succeed";
+
+    // The v13 binary's tolerant view of the file: same logical content, no
+    // company members. Its re-save writes the v13 shape over the same slot.
+    SaveData detour;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(detour.load_with_error("typed_save_v13_detour")));
+    GuyRecord guys[1];
+    guys[0].name = "ROUNDTRIP";
+    guys[0].exp = 9999;
+    guys[0].deployed = 0; // ignored below v14: the v13 writer can't know it
+    write_save_file("typed_save_v13_detour",
+                    /*version=*/13,
+                    /*campaign_id=*/detour.current_campaign,
+                    /*scen_num=*/detour.scen_num,
+                    /*cash=*/detour.totalcash,
+                    /*score=*/detour.totalscore,
+                    /*allied_mode=*/detour.allied_mode,
+                    /*numplayers=*/detour.numplayers,
+                    /*guys=*/guys,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData rounded;
+    rounded.last_played_unix_s = 121212; // must be defaulted by the load
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(rounded.load_with_error("typed_save_v13_detour")))
+        << "v14 reader should accept the v13 re-save";
+    ASSERT_EQ(static_cast<std::int64_t>(0), rounded.last_played_unix_s)
+        << "the v13 re-save dropped the timestamp (default 0 restored)";
+    ASSERT_EQ(1, (int)rounded.team_size);
+    ASSERT_TRUE(rounded.team_list[0]->deployed)
+        << "the v13 re-save dropped the deploy flag (default true restored)";
+    ASSERT_TRUE(rounded.team_list[0]->name == "ROUNDTRIP");
+    ASSERT_EQ(9999u, rounded.team_list[0]->exp);
+    ASSERT_EQ(7777u, rounded.totalcash) << "non-company fields intact";
 }

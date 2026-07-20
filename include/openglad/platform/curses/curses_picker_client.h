@@ -67,6 +67,10 @@ private:
     CursesPickerOptions options_;
     SaveData save_data_;
 
+    // [SAVE-R2] Re-points the process-wide active-company slot at this
+    // client's configured slot (default "curses_quicksave" via CursesApp).
+    void assert_company_slot_authority() const;
+
     // Drive a host/join lobby to a started game, then run the networked level.
     void run_network_lobby(std::unique_ptr<CursesLobby> lobby);
 };

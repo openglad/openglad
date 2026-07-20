@@ -29,6 +29,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
@@ -717,6 +718,47 @@ TEST(CursesPickerClient, options_set_save_slot_and_seed)
 
     EXPECT_EQ(f.config.save_name, "new_slot");
     EXPECT_EQ(f.config.seed, 123u);
+}
+
+// [SAVE-R2] Terminal slot authority: the client repoints the process-wide
+// active-company slot at construction, on the Options slot command, and on
+// prepare_new_game, so company-level writes always target the user's chosen
+// slot, never save0. (The curses_test_main [SAVE-R8] listener restores
+// "save0" after each test.)
+TEST(CursesPickerClient, asserts_company_slot_authority)
+{
+    {
+        PickerFixture f; // default TextPickerConfig slot: "text_quicksave"
+        EXPECT_EQ("text_quicksave", og::data::active_company_slot())
+            << "construction must assert the configured slot";
+
+        // The Options slot command repoints the active company. The prompt is
+        // prefilled with the current slot; erase it and type the new one.
+        const std::string old_slot = f.config.save_name;
+        for (size_t i = 0; i < old_slot.size(); ++i)
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("curses-authority-slot");
+        f.t().push_special(KeyCode::Enter);
+        f.t().push_special(KeyCode::Escape); // cancel the seed prompt
+        f.client.show_options();
+        EXPECT_EQ(f.config.save_name, "curses-authority-slot");
+        EXPECT_EQ("curses-authority-slot", og::data::active_company_slot());
+    }
+
+    // The CursesApp launch flow passes its --save option (default
+    // "curses_quicksave") through the config; construction applies it.
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    config.save_name = "curses_quicksave";
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+    EXPECT_EQ("curses_quicksave", og::data::active_company_slot());
+
+    // A stale process-wide slot must not survive a new game.
+    ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+    ASSERT_TRUE(client.prepare_new_game());
+    EXPECT_EQ("curses_quicksave", og::data::active_company_slot());
 }
 
 // Cancelling the options prompts (Esc) leaves config untouched.

@@ -83,4 +83,13 @@ class guy
         // (its own save0 slot, NOT the combined-roster index). Lets the owner
         // write progress back to the right slot. Transient; never on disk.
         std::uint8_t owner_save_slot = kNoOwner;
+        // Mission-deploy flag (GTL v14, docs/company-basecamp-design.md §3.1):
+        // false = held back at base camp; held-back characters never enter a
+        // level's oblist and survive SaveData::update_guys untouched (§3.3).
+        // Persisted as a u8 at guy record offset +50 (former reserved bytes).
+        // Base-camp/save-layer state ONLY — sim code must never read it.
+        // statscopy deliberately does NOT copy it (train/rename must not
+        // clobber deployment); the defaulted copy constructor DOES, so it
+        // rides guy objects through the update/merge paths.
+        bool deployed = true;
 };

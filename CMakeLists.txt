@@ -285,6 +285,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -368,6 +369,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/company.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -1993,6 +1995,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_zip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_company_io.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_libzip.cpp
@@ -2377,6 +2380,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_gparser_funcs.cpp
             test_util.cpp
             test_save_data_versions.cpp
+            test_company_io.cpp
             test_save_load.cpp
             test_load_levels.cpp
             test_io_coverage.cpp
@@ -2593,6 +2597,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         og_add_unit_group(og_unit_data FILES
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp

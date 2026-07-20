@@ -33,6 +33,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 
@@ -54,6 +55,10 @@ void reset_integration_ui_state()
     clear_keyboard();
     clear_key_press_event();
     set_game_speed(1.0f);
+    // [SAVE-R8] Structural active-company reset: a test that repoints the
+    // process-wide slot (directly or via ScopedActiveCompany misuse) must not
+    // leak it into later tests under --gtest_shuffle.
+    (void)og::data::set_active_company_slot("save0");
 
     if (og::runtime::current_session == nullptr)
         return;

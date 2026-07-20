@@ -1496,3 +1496,250 @@ TEST(RuntimeCoveragePaths, issue98_no_double_dialog_on_withdraw_exit)
     og::runtime::current_session->myscreen_->world().type = 0;
     clear_level_lists();
 }
+
+// --- §3.8 WindowEvent autosaves through the company choke point -----------
+// [SAVE-F2]: no company write during networked GAMEPLAY; [SAVE-F1]: a
+// networked LOBBY WindowEvent becomes an owner-preserving merge write.
+
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/gameplay/guy.h>
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+
+namespace {
+
+std::string read_save0_bytes()
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                         "save0.gtl",
+                     std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+// Minimal networked lobby client so the input bridge's
+// picker_lobby_is_networked() sees a genuine networked session without any
+// sockets.
+class FakeNetworkedLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+};
+
+// Restores every piece of process state the WindowEvent autosave tests touch
+// — session flags, the installed lobby client, the pinned company clock and
+// the campaign mount — even when an EXPECT fails (the shuffle-safety rule).
+class WindowAutosaveTestEnv
+{
+public:
+    WindowAutosaveTestEnv()
+        : saved_gameplay_active_(og::runtime::current_session->gameplay_active_)
+        , saved_networked_session_(
+              og::runtime::current_session->networked_session_)
+        , saved_client_(og::ui::active_picker_lobby_client())
+        , mounted_before_(get_mounted_campaign())
+    {
+    }
+
+    ~WindowAutosaveTestEnv()
+    {
+        og::runtime::current_session->gameplay_active_ = saved_gameplay_active_;
+        og::runtime::current_session->networked_session_ =
+            saved_networked_session_;
+        og::ui::install_active_picker_lobby_client(saved_client_);
+        og::data::set_company_clock_for_tests(std::nullopt);
+        const std::string mounted_after = get_mounted_campaign();
+        if (mounted_after != mounted_before_ && !mounted_before_.empty())
+        {
+            (void)unmount_campaign_package_with_error(mounted_after);
+            (void)mount_campaign_package_with_error(mounted_before_);
+        }
+    }
+
+private:
+    bool saved_gameplay_active_;
+    bool saved_networked_session_;
+    og::ui::IPickerLobbyClient* saved_client_;
+    std::string mounted_before_;
+};
+
+} // namespace
+
+TEST(RuntimeCoveragePaths, window_autosave_targets_company_and_gates_networked_gameplay)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+    WindowAutosaveTestEnv env;
+
+    const std::string saved_campaign = s->save_data.current_campaign;
+    const short saved_scen_num = s->save_data.scen_num;
+    const std::int64_t saved_last_played = s->save_data.last_played_unix_s;
+
+    // Local menus (no gameplay, no lobby): the minimize autosave routes
+    // through the §3.8 choke point — stamped timestamp, atomic write to the
+    // active company, no staging file left behind.
+    og::runtime::current_session->gameplay_active_ = false;
+    og::runtime::current_session->networked_session_ = false;
+    og::ui::install_active_picker_lobby_client(nullptr);
+    og::data::set_company_clock_for_tests(5150);
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_WINDOW_MINIMIZED;
+    handle_window_event(e);
+
+    const auto header = og::data::read_company_header("save0");
+    ASSERT_TRUE(header.has_value());
+    EXPECT_EQ(5150, header->last_played_unix_s)
+        << "the WindowEvent autosave must stamp the active company";
+    EXPECT_EQ(5150, s->save_data.last_played_unix_s);
+    EXPECT_FALSE(user_file_exists("save/save0.tmp.gtl"))
+        << "the §3.6 atomic write must leave no staging file";
+
+    // [SAVE-F2]: during a NETWORKED level neither minimize nor close may
+    // touch the company file — bytes unchanged, timestamp un-promoted, and
+    // no world->save sync side effect either.
+    const std::string bytes_before = read_save0_bytes();
+    ASSERT_FALSE(bytes_before.empty());
+    og::runtime::current_session->gameplay_active_ = true;
+    og::runtime::current_session->networked_session_ = true;
+    og::data::set_company_clock_for_tests(6280);
+    s->save_data.scen_num = 42;
+    s->world_.current_scenario = 77;
+
+    e.type = SDL_EVENT_WINDOW_MINIMIZED;
+    handle_window_event(e);
+    e.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+    handle_window_event(e);
+
+    EXPECT_EQ(bytes_before, read_save0_bytes())
+        << "[SAVE-F2] networked gameplay must leave the company file "
+           "byte-unchanged";
+    EXPECT_EQ(42, static_cast<int>(s->save_data.scen_num))
+        << "the gate must fire before the world->save sync";
+    EXPECT_EQ(5150, og::data::read_company_header("save0")->last_played_unix_s)
+        << "the company timestamp must stay un-promoted";
+
+    s->save_data.current_campaign = saved_campaign;
+    s->save_data.scen_num = saved_scen_num;
+    s->save_data.last_played_unix_s = saved_last_played;
+}
+
+TEST(RuntimeCoveragePaths, window_autosave_networked_lobby_is_a_merge_write)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+    WindowAutosaveTestEnv env;
+
+    // Private company on disk: cursor at level 4, wallet 500 on team 0, one
+    // roster member of its own.
+    {
+        SaveData priv;
+        priv.save_name = "Bridge Merge Co";
+        priv.current_campaign = "org.openglad.gladiator";
+        priv.scen_num = 4;
+        priv.my_team = 0;
+        priv.numplayers = 1;
+        priv.m_totalcash[0] = 500;
+        priv.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        priv.team_list[0]->name = "Dana";
+        priv.team_list[0]->teamnum = 0;
+        priv.team_size = 1;
+        ASSERT_TRUE(priv.save("save0"));
+    }
+
+    // Shape the in-memory save the way apply_lobby_state_to_save leaves it:
+    // HOST cursor/seat fields, this machine's private roster stamped onto
+    // its session team. Stash the screen's real roster first.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> stashed_roster;
+    for (std::size_t i = 0; i < stashed_roster.size(); ++i)
+        stashed_roster[i] = std::move(s->save_data.team_list[i]);
+    const unsigned char saved_team_size = s->save_data.team_size;
+    const std::string saved_campaign = s->save_data.current_campaign;
+    const short saved_scen_num = s->save_data.scen_num;
+    const short saved_my_team = s->save_data.my_team;
+    const std::int64_t saved_last_played = s->save_data.last_played_unix_s;
+    const std::uint32_t saved_cash1 = s->save_data.m_totalcash[1];
+
+    s->save_data.current_campaign = "org.openglad.gladiator";
+    s->save_data.scen_num = 11; // the HOST's level, not ours
+    s->save_data.my_team = 1;
+    s->save_data.m_totalcash[1] = 250; // owned wallet post-spend
+    s->save_data.team_list[0] = std::make_unique<guy>(FAMILY_ELF);
+    s->save_data.team_list[0]->name = "Echo";
+    s->save_data.team_list[0]->teamnum = 1;
+    s->save_data.team_size = 1;
+
+    og::runtime::current_session->gameplay_active_ = false;
+    og::runtime::current_session->networked_session_ = false;
+    FakeNetworkedLobbyClient fake_lobby;
+    og::ui::install_active_picker_lobby_client(&fake_lobby);
+    og::data::set_company_clock_for_tests(6000);
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_WINDOW_MINIMIZED;
+    handle_window_event(e);
+
+    og::ui::install_active_picker_lobby_client(nullptr);
+
+    // [SAVE-F1]: the disk company keeps its own cursor/seat fields while the
+    // roster and the owned wallet arrive from the lobby session.
+    SaveData reloaded;
+    EXPECT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
+    EXPECT_EQ(4, reloaded.scen_num)
+        << "the private campaign cursor must survive a lobby minimize";
+    EXPECT_EQ(0, reloaded.my_team);
+    EXPECT_EQ(500u, reloaded.m_totalcash[0])
+        << "non-owned wallets keep their disk values";
+    EXPECT_EQ(250u, reloaded.m_totalcash[1]) << "owned wallet overlaid";
+    EXPECT_EQ(6000, reloaded.last_played_unix_s);
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ("Echo", reloaded.team_list[0]->name)
+        << "the machine's own (lobby-held) roster is what persists";
+    EXPECT_EQ(saved_last_played, s->save_data.last_played_unix_s)
+        << "the merge stamps only the merged disk copy";
+
+    for (std::size_t i = 0; i < stashed_roster.size(); ++i)
+        s->save_data.team_list[i] = std::move(stashed_roster[i]);
+    s->save_data.team_size = saved_team_size;
+    s->save_data.current_campaign = saved_campaign;
+    s->save_data.scen_num = saved_scen_num;
+    s->save_data.my_team = saved_my_team;
+    s->save_data.last_played_unix_s = saved_last_played;
+    s->save_data.m_totalcash[1] = saved_cash1;
+}
