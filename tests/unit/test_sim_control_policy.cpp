@@ -11,6 +11,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_input_handler.h>
@@ -634,6 +635,84 @@ TEST(SimControlPolicy, derive_encode_and_classify_helpers)
     EXPECT_TRUE(seat_is_follow_only(fx.world(), 7));
     EXPECT_TRUE(seat_is_follow_only(fx.world(), -1));
     EXPECT_TRUE(seat_is_follow_only(fx.world(), 99));
+}
+
+// §4.4 install helpers: the machine map derives from the lobby bindings
+// (machine id = the peer's lowest bound global player index) and the
+// deploy-filtered roster's owner tags (bit7 ORs across a machine's seats);
+// install_control_policy stamps the derived policy + map in one call.
+TEST(SimControlPolicy, install_helpers_build_machine_map_from_bindings_and_roster)
+{
+    // Roster: owners 1 (twice), 3, one unowned (kNoOwner), one null slot,
+    // one out-of-range tag — only players 1 and 3 count as deployed.
+    std::vector<std::unique_ptr<guy>> roster;
+    roster.push_back(std::make_unique<guy>(FAMILY_SOLDIER));
+    roster.back()->owner_player_index = 1;
+    roster.push_back(std::make_unique<guy>(FAMILY_ELF));
+    roster.back()->owner_player_index = 1;
+    roster.push_back(std::make_unique<guy>(FAMILY_MAGE));
+    roster.back()->owner_player_index = 3;
+    roster.push_back(std::make_unique<guy>(FAMILY_ARCHER));
+    EXPECT_EQ(guy::kNoOwner, roster.back()->owner_player_index);
+    roster.push_back(nullptr);
+    roster.push_back(std::make_unique<guy>(FAMILY_THIEF));
+    roster.back()->owner_player_index = 200;
+
+    const std::array<bool, kPlayerMachineSlots> deployed =
+        og::sim::deployed_players_from_roster(roster);
+    for (std::size_t index = 0; index < deployed.size(); ++index)
+        EXPECT_EQ(index == 1 || index == 3, deployed[index]) << index;
+
+    // Bindings: peer 10 seats players 0+1 (multi-seat machine), peer 20
+    // seats player 3, peer 30 seats player 5 (0-deploy), plus one unbound
+    // (0xff) binding that must be ignored.
+    std::vector<og::sim::LobbyPlayerBinding> bindings;
+    bindings.push_back(
+        og::sim::LobbyPlayerBinding{.peer_id = 10u, .player_index = 1u, .team = 0});
+    bindings.push_back(
+        og::sim::LobbyPlayerBinding{.peer_id = 10u, .player_index = 0u, .team = 0});
+    bindings.push_back(
+        og::sim::LobbyPlayerBinding{.peer_id = 20u, .player_index = 3u, .team = 1});
+    bindings.push_back(
+        og::sim::LobbyPlayerBinding{.peer_id = 30u, .player_index = 5u, .team = 2});
+    bindings.push_back(
+        og::sim::LobbyPlayerBinding{.peer_id = 40u, .player_index = 0xffu, .team = 0});
+
+    const MachineMap machines =
+        og::sim::build_player_machine_map(bindings, deployed);
+    // Peer 10: machine id 0 (lowest of {0,1}), deployed via player 1's tag —
+    // BOTH its seats carry the bit ("this player's machine deployed").
+    EXPECT_EQ(encode_player_machine(0, true), machines[0]);
+    EXPECT_EQ(encode_player_machine(0, true), machines[1]);
+    // Peer 20: single-seat machine 3, deployed.
+    EXPECT_EQ(encode_player_machine(3, true), machines[3]);
+    // Peer 30: single-seat machine 5, 0-deploy.
+    EXPECT_EQ(encode_player_machine(5, false), machines[5]);
+    // Everyone else (incl. the ignored unbound binding): no player.
+    EXPECT_EQ(kPlayerMachineNone, machines[2]);
+    EXPECT_EQ(kPlayerMachineNone, machines[4]);
+    for (std::size_t index = 6; index < machines.size(); ++index)
+        EXPECT_EQ(kPlayerMachineNone, machines[index]) << index;
+
+    // install_control_policy = derive + build + stamp in one call.
+    ControlPolicyFixture fx;
+    og::sim::install_control_policy(fx.world(), /*networked=*/true,
+                                    /*cross_control=*/false, bindings, roster);
+    EXPECT_EQ(kControlPolicyOwnerLocked, fx.world().control_policy);
+    EXPECT_EQ(machines, fx.world().player_machine);
+
+    // Cross-control ON keeps the legacy policy; the map is still stamped
+    // (legacy claims ignore it).
+    og::sim::install_control_policy(fx.world(), /*networked=*/true,
+                                    /*cross_control=*/true, bindings, roster);
+    EXPECT_EQ(kControlPolicyLegacy, fx.world().control_policy);
+    EXPECT_EQ(machines, fx.world().player_machine);
+
+    // Non-networked derivation stays legacy (the production local installs
+    // never even call this).
+    og::sim::install_control_policy(fx.world(), /*networked=*/false,
+                                    /*cross_control=*/false, bindings, roster);
+    EXPECT_EQ(kControlPolicyLegacy, fx.world().control_policy);
 }
 
 } // namespace

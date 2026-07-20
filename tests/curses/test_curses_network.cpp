@@ -29,6 +29,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
@@ -450,6 +451,66 @@ TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
         ++matched;
     }
     EXPECT_GT(matched, 0) << "at least one entity should be mirrored on both sides";
+}
+
+// §4.4 install + snapshot v9 consumption on the curses stack: the host
+// session derives the control policy from the negotiated cross-control
+// setting at install time (owner-locked iff cross-control is OFF) and
+// stamps the machine map (host machine 0 deployed, joiner machine 1
+// deployed); BOTH mirrors render the scalars straight from the wire.
+TEST(CursesNetwork, install_derives_control_policy_and_mirrors_consume_v9)
+{
+    {
+        SaveData host_save;
+        SaveData join_save;
+        init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+        init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+        ASSERT_EQ(0, static_cast<int>(host_save.cross_control))
+            << "cross-control defaults OFF: the install derives owner-locked";
+
+        StartedGame game = negotiate_and_start(host_save, join_save);
+        ASSERT_NE(game.host_session, nullptr);
+        ASSERT_NE(game.join_session, nullptr);
+        advance_all(*game.host_session, *game.join_session, 30);
+
+        for (const GameWorld* mirror : {&game.host_session->mirror_world(),
+                                        &game.join_session->mirror_world()})
+        {
+            EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+                      mirror->control_policy)
+                << "cross-control OFF must reach the mirror as owner-locked";
+            EXPECT_EQ(og::sim::encode_player_machine(0, true),
+                      mirror->player_machine[0]);
+            EXPECT_EQ(og::sim::encode_player_machine(1, true),
+                      mirror->player_machine[1]);
+            EXPECT_EQ(og::sim::kPlayerMachineNone, mirror->player_machine[2]);
+        }
+    }
+    {
+        // Cross-control ON twin: the identical staging derives the LEGACY
+        // policy; the machine map is still stamped and replicated.
+        SaveData host_save;
+        SaveData join_save;
+        init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+        init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+        host_save.cross_control = 1;
+
+        StartedGame game = negotiate_and_start(host_save, join_save);
+        ASSERT_NE(game.host_session, nullptr);
+        ASSERT_NE(game.join_session, nullptr);
+        advance_all(*game.host_session, *game.join_session, 30);
+
+        for (const GameWorld* mirror : {&game.host_session->mirror_world(),
+                                        &game.join_session->mirror_world()})
+        {
+            EXPECT_EQ(og::sim::kControlPolicyLegacy, mirror->control_policy)
+                << "cross-control ON must reach the mirror as legacy";
+            EXPECT_EQ(og::sim::encode_player_machine(0, true),
+                      mirror->player_machine[0]);
+            EXPECT_EQ(og::sim::encode_player_machine(1, true),
+                      mirror->player_machine[1]);
+        }
+    }
 }
 
 // §4.2 deploy filter over the curses stack: a benched host member never

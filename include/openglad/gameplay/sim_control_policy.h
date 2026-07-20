@@ -31,9 +31,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
+#include <vector>
 
 class GameWorld;
+class guy;
 class walker;
 struct SimInputResult;
 
@@ -73,6 +76,43 @@ inline constexpr std::size_t kPlayerMachineSlots = 16;
 void set_control_policy(
     GameWorld& world, std::uint8_t policy,
     const std::array<std::uint8_t, kPlayerMachineSlots>& machines) noexcept;
+
+// --- §4.4 install helpers (networked host installs + dedicated server) ---
+
+// Defined in lobby_server.h; only referenced here so the install callers can
+// hand their lobby bindings straight through.
+struct LobbyPlayerBinding;
+
+// Per-global-player "owns >= 1 character in the deploy-filtered game-start
+// roster": true at index p when some non-null roster member carries
+// owner_player_index == p. Roster assembly only materializes DEPLOYED slots,
+// so an owner tag present in the roster IS a deployed character (the
+// [NET-F3] bit7 source). kNoOwner / out-of-range tags are ignored.
+[[nodiscard]] std::array<bool, kPlayerMachineSlots>
+deployed_players_from_roster(
+    std::span<const std::unique_ptr<guy>> roster) noexcept;
+
+// Build the player_machine map (§4.1) from the lobby player bindings:
+// machine id = the owning peer's lowest bound global player index; bit7 is
+// set for EVERY player of a machine when any of that machine's players is
+// deployed. Unbound / out-of-range player indices stay kPlayerMachineNone.
+[[nodiscard]] std::array<std::uint8_t, kPlayerMachineSlots>
+build_player_machine_map(
+    const std::vector<LobbyPlayerBinding>& bindings,
+    const std::array<bool, kPlayerMachineSlots>& player_deployed) noexcept;
+
+// One-call §4.4 install for the three production callers (SDL network host
+// shadow, curses host session, dedicated server): derive the policy from
+// the game-start config (owner-locked iff networked && !cross_control) and
+// stamp it together with the machine map built from the bindings + the
+// deploy-filtered roster. The map is stamped under BOTH policies (legacy
+// ignores it); local installs never call this at all, so local/solo/parity
+// worlds keep the all-default legacy scalars.
+void install_control_policy(GameWorld& world,
+                            bool networked,
+                            bool cross_control,
+                            const std::vector<LobbyPlayerBinding>& bindings,
+                            std::span<const std::unique_ptr<guy>> roster);
 
 // may_control: is `player_index` allowed to claim control of `w`? Pure
 // ownership only — call sites keep their own liveness/user()/team filters.

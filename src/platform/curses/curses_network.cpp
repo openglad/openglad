@@ -768,6 +768,17 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
         return set_error("failed to load level for host game");
     }
 
+    // §4.4 control-policy install: derive owner-locked from the negotiated
+    // lobby config (session-only cross_control rides the equivalent, never a
+    // disk round-trip) and stamp the machine map BEFORE bind_player scans run
+    // below; snapshot v9 replicates both scalars to every mirror, including
+    // the host's own.
+    og::sim::install_control_policy(sw,
+                                    /*networked=*/true,
+                                    s->server_save_.cross_control != 0,
+                                    bindings,
+                                    s->server_save_.team_list);
+
     // --- Client mirror world: load the same level (grid + smoother) ---
     s->client_level_ = std::make_unique<LevelRuntimeData>(
         level, true, &headless_level_data_hooks());

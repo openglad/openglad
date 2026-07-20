@@ -1884,6 +1884,19 @@ void reset_network_host_transport_shadow(
     if (server_screen == nullptr)
         return;
 
+    // §4.4 control-policy install: derive owner-locked from the game-start
+    // config (the display save carries cross_control + the deploy-filtered
+    // owner tags from apply_lobby_game_start_config — never a
+    // disk-round-tripped save) and stamp the machine map BEFORE the seats
+    // bind below: owner-locked bind scans consult it, and snapshot v9
+    // replicates both scalars to every client mirror.
+    og::sim::install_control_policy(
+        server_screen->world(),
+        runtime->networked,
+        gameplay_screen.save_data.cross_control != 0,
+        player_bindings,
+        gameplay_screen.save_data.team_list);
+
     runtime->server = std::make_unique<og::sim::GameServer>(
         server_screen->world(),
         *runtime->server_session->game_.sim_events,

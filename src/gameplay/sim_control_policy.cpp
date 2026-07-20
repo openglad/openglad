@@ -13,8 +13,12 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/walker.h>
+
+#include <algorithm>
+#include <memory>
 
 namespace og::sim {
 
@@ -73,6 +77,70 @@ void set_control_policy(
     // GameWorld::player_machine (mismatched std::array sizes do not assign).
     world.control_policy = policy;
     world.player_machine = machines;
+}
+
+std::array<bool, kPlayerMachineSlots> deployed_players_from_roster(
+    std::span<const std::unique_ptr<guy>> roster) noexcept
+{
+    std::array<bool, kPlayerMachineSlots> deployed = {};
+    for (const std::unique_ptr<guy>& member : roster)
+    {
+        if (member == nullptr)
+            continue;
+        // guy::kNoOwner (0xff) and any other out-of-range tag never marks a
+        // player deployed.
+        if (static_cast<std::size_t>(member->owner_player_index) <
+            deployed.size())
+        {
+            deployed[static_cast<std::size_t>(member->owner_player_index)] =
+                true;
+        }
+    }
+    return deployed;
+}
+
+std::array<std::uint8_t, kPlayerMachineSlots> build_player_machine_map(
+    const std::vector<LobbyPlayerBinding>& bindings,
+    const std::array<bool, kPlayerMachineSlots>& player_deployed) noexcept
+{
+    std::array<std::uint8_t, kPlayerMachineSlots> machines;
+    machines.fill(kPlayerMachineNone);
+    for (const LobbyPlayerBinding& binding : bindings)
+    {
+        if (static_cast<std::size_t>(binding.player_index) >= machines.size())
+            continue;
+        // The machine id is the peer's lowest bound global player index;
+        // bit7 ORs "deployed" across every player the peer machine seats.
+        std::uint8_t machine_id = binding.player_index;
+        bool machine_deployed = false;
+        for (const LobbyPlayerBinding& seat : bindings)
+        {
+            if (seat.peer_id != binding.peer_id ||
+                static_cast<std::size_t>(seat.player_index) >= machines.size())
+            {
+                continue;
+            }
+            machine_id = std::min(machine_id, seat.player_index);
+            machine_deployed =
+                machine_deployed ||
+                player_deployed[static_cast<std::size_t>(seat.player_index)];
+        }
+        machines[static_cast<std::size_t>(binding.player_index)] =
+            encode_player_machine(machine_id, machine_deployed);
+    }
+    return machines;
+}
+
+void install_control_policy(GameWorld& world,
+                            bool networked,
+                            bool cross_control,
+                            const std::vector<LobbyPlayerBinding>& bindings,
+                            std::span<const std::unique_ptr<guy>> roster)
+{
+    set_control_policy(world,
+                       derive_control_policy(networked, cross_control),
+                       build_player_machine_map(
+                           bindings, deployed_players_from_roster(roster)));
 }
 
 bool control_claim_allowed(const GameWorld& world, const walker* w,
