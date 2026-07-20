@@ -1327,6 +1327,46 @@ std::vector<const og::sim::LobbyPlayer*> find_local_seats(
     return seats;
 }
 
+// Between-levels resume: the go_menu disk reload restores the SOLO-shaped
+// private roster (the win merge banks WORLD-normalized teamnums — team 0
+// under allied) while this machine's lobby seats keep their session teams.
+// build_local_lobby_player partitions the re-joined slots by teamnum, so a
+// reloaded roster left on a non-seat team would re-join with NO character
+// slots and this machine's characters would vanish from the lobby (and the
+// next level). Restore the in-lobby invariant instead — the same member
+// stamping apply_lobby_state_to_save performs: members already on one of the
+// seat teams keep their partition; the rest collapse onto seat 0 (the reload
+// lost any finer multi-seat split; TEAMS can re-partition).
+void restamp_reloaded_members_to_seat_teams(
+    SaveData& save,
+    const std::optional<og::sim::LobbyState>& state,
+    std::string_view player_name,
+    short seat0_team)
+{
+    std::vector<short> seat_teams;
+    if (state.has_value())
+    {
+        for (const og::sim::LobbyPlayer* const seat :
+             find_local_seats(*state, player_name))
+        {
+            seat_teams.push_back(seat->team);
+        }
+    }
+    if (seat_teams.empty())
+        seat_teams.push_back(seat0_team);
+
+    for (auto& member : save.team_list)
+    {
+        if (member == nullptr)
+            continue;
+        if (std::find(seat_teams.begin(), seat_teams.end(),
+                      member->teamnum) == seat_teams.end())
+        {
+            member->teamnum = seat_teams.front();
+        }
+    }
+}
+
 std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
     const og::sim::LobbyState& state)
 {
@@ -2984,6 +3024,20 @@ public:
         // it so the next round's settings/joins are accepted again.
         server_->unlock_for_new_round();
 
+        // The go_menu disk reload restored the SOLO-shaped private company
+        // (the win merge banks world-normalized teamnums — team 0 under
+        // allied), while this machine's lobby seats keep their session
+        // teams. Restore the in-lobby invariant (private members carry the
+        // session team — the same stamping apply_lobby_state_to_save does)
+        // before re-joining, or build_local_lobby_player's teamnum partition
+        // would filter the re-sent roster down to NOTHING and this machine's
+        // characters would vanish from the between-levels lobby.
+        if (SaveData* const save = current_picker_save())
+        {
+            og::ui::detail::restamp_reloaded_members_to_seat_teams(
+                *save, state_, player_name_, local_team_);
+        }
+
         // Reuse the live connection: re-broadcast the advanced campaign cursor
         // (scen_num) and this host's own roster from the reloaded save0, then
         // poll so the LobbyServer re-converges every still-connected peer on the
@@ -3617,6 +3671,20 @@ public:
         {
             initialize_from_save();
             return;
+        }
+
+        // The go_menu disk reload restored the SOLO-shaped private company
+        // (the win merge banks world-normalized teamnums — team 0 under
+        // allied), while this machine's lobby seats keep their session
+        // teams. Restore the in-lobby invariant (private members carry the
+        // session team — the same stamping apply_lobby_state_to_save does)
+        // before re-joining, or build_local_lobby_player's teamnum partition
+        // would filter the re-sent roster down to NOTHING and this machine's
+        // characters would vanish from the between-levels lobby.
+        if (SaveData* const save = current_picker_save())
+        {
+            og::ui::detail::restamp_reloaded_members_to_seat_teams(
+                *save, state_, player_name_, local_team_);
         }
 
         // Reuse the still-open socket: re-send this peer's join from the

@@ -760,6 +760,17 @@ TEST(CursesPickerClient, team_build_dispatches_deploy_ready_progress_network_and
     EXPECT_FALSE(f.save().team_list[0]->deployed)
         << "the deploy prompt should bench roster row 1";
 
+    // §3.8 disk round trip (§2.9 flow 5 on the curses client): the toggle's
+    // autosave banked the benched flag in the ACTIVE company file.
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(og::data::active_company_slot()));
+        ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+        EXPECT_FALSE(reloaded.team_list[0]->deployed)
+            << "the deploy-toggle autosave must persist the benched flag";
+    }
+
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *ready_item);
     {

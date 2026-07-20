@@ -22,6 +22,7 @@
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 
 #include <gtest/gtest.h>
@@ -62,6 +63,11 @@ namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
 Sint32 go_menu(Sint32 arg1);
+// The §3.8/§4.3 base-camp mutation tail (picker_team_build.cpp): roster
+// re-sync + optimistic ready drop + company autosave ([SAVE-F1] merge write
+// in networked lobbies). External linkage; production callers are the deploy
+// dispatch, hire, train-accept and rename sites.
+void picker_base_camp_after_roster_mutation();
 void glad_init(bool preserve_frame_timing,
                const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void ready_screen_for_game_start(
@@ -2968,11 +2974,47 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
 {
     IxNetSystemScope net_system;
 
+    // Per-machine private company slots (§2.9 flows 4-6). In production every
+    // machine has its OWN disk company; the active-company slot is
+    // process-global, so this in-process harness repoints it around each
+    // peer's persist/reload sites (the set_active_company_slot calls below) —
+    // otherwise both peers would alias one file and the split-wallet /
+    // merge-write assertions would be meaningless.
+    static constexpr const char kWp4HostSlot[] = "wp4camphost";
+    static constexpr const char kWp4JoinSlot[] = "wp4campjoin";
+    struct CompanySlotFixture
+    {
+        ~CompanySlotFixture()
+        {
+            (void)og::data::set_active_company_slot("save0");
+            (void)remove_user_file(std::string("save/") + kWp4HostSlot +
+                                   ".gtl");
+            (void)remove_user_file(std::string("save/") + kWp4JoinSlot +
+                                   ".gtl");
+            // The LevelWin persists snapshot one backup per machine per win.
+            for (const std::string& name : list_files("save/backups"))
+            {
+                if (name.starts_with(kWp4HostSlot) ||
+                    name.starts_with(kWp4JoinSlot))
+                {
+                    (void)remove_user_file("save/backups/" + name);
+                }
+            }
+        }
+    } company_slot_fixture;
+
     SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard host_save_guard(host_save);
     PickerRuntimeGuard runtime_guard;
     GameplayRunGuard gameplay_run_guard;
     prepare_allied_host_network_save(host_save);
+    const std::string old_host_company = host_save.save_name;
+    host_save.save_name = "IRON KETTLE BAND";
+    // §4.6 wallet baselines: allied play puts every hero on TEAM 0, so both
+    // machines contribute to (and split) the one team-0 pot; team 1 is a
+    // sentinel wallet that must never move in either file.
+    host_save.m_totalcash[0] = 5000;
+    host_save.m_totalcash[1] = 111;
     g_start_game_requested = false;
 #ifdef TESTING
     g_test_remove_exits = true; // clearing foes leaves level_done==2 (a win)
@@ -2990,6 +3032,12 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     og::runtime::GameSession join_session(join_cfg);
     prepare_single_member_network_save(
         join_session.myscreen_->save_data, 1, "Joiner");
+    join_session.myscreen_->save_data.save_name = "JOIN RIVER BAND";
+    // The joiner's private company banks on team 0 too (allied play
+    // normalizes every hero onto team 0, and a reloaded solo save always
+    // reads my_team=0); team 1 is a sentinel that must never move.
+    join_session.myscreen_->save_data.m_totalcash[0] = 3000;
+    join_session.myscreen_->save_data.m_totalcash[1] = 222;
 
     og::ui::PickerJoinGameOptions join_options;
     join_options.mode = og::ui::PickerJoinMode::Direct;
@@ -3086,6 +3134,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         ASSERT_TRUE(host_start_config.has_value()) << phase;
         {
             auto host_scope = cleanup.host_session->activate();
+            og::data::set_active_company_slot(kWp4HostSlot);
             ActivePickerLobbyClientGuard active_client(host_client.get());
             ready_screen_for_game_start(
                 *cleanup.host_session->myscreen_, &*host_start_config);
@@ -3093,6 +3142,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         }
         {
             auto join_scope = join_session.activate();
+            og::data::set_active_company_slot(kWp4JoinSlot);
             auto join_start_config = join_client->consume_game_start_config();
             ASSERT_TRUE(join_start_config.has_value()) << phase;
             ActivePickerLobbyClientGuard active_client(join_client.get());
@@ -3105,6 +3155,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             bool host_ready = false;
             {
                 auto host_scope = cleanup.host_session->activate();
+                og::data::set_active_company_slot(kWp4HostSlot);
                 og::runtime::local_transport_shadow_finish_tick(
                     *cleanup.host_session);
                 const og::sim::GameClient* const dc =
@@ -3114,6 +3165,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             bool join_ready = false;
             {
                 auto join_scope = join_session.activate();
+                og::data::set_active_company_slot(kWp4JoinSlot);
                 og::runtime::local_transport_shadow_finish_tick(join_session);
                 const og::sim::GameClient* const dc =
                     join_session.myscreen_->render_interpolation_client();
@@ -3125,15 +3177,37 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
 
     converge_lobby("level 1");
 
-    ASSERT_TRUE(host_save.save("save0"));
+    // Each machine's pre-level private company file (the win persists MERGE
+    // into these — a missing file is skipped, never clobber-created).
+    ASSERT_TRUE(host_save.save(kWp4HostSlot));
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(join_session.myscreen_->save_data.save(kWp4JoinSlot));
+    }
     start_level("level 1");
 
-    // ---- Force a deterministic WIN on level 1. ----
+    // §4.6: measure each peer's team-0 wallet as the level STARTS (the
+    // gameplay display save is the server-built netsession equivalent whose
+    // wallets come from the host session, not each machine's private file) so
+    // the per-peer fold delta can be derived after the win.
+    const std::uint32_t host_cash0_at_start = host_save.m_totalcash[0];
+    std::uint32_t join_cash0_at_start = 0;
+    {
+        auto join_scope = join_session.activate();
+        join_cash0_at_start = join_session.myscreen_->save_data.m_totalcash[0];
+    }
+
+    // ---- Force a deterministic WIN on level 1, with a REAL pot: seed the
+    // authoritative server world's team-0 level score (m_score is
+    // snapshot-synced to every mirror, and each peer's fold re-derives
+    // save.m_score from ITS world via sync_save_data_from_world), so the
+    // §4.6 split has a nonzero delta to distribute. ----
     {
         screen* const server_screen =
             og::runtime::local_transport_shadow_testing_server_screen(
                 *cleanup.host_session);
         ASSERT_NE(nullptr, server_screen);
+        server_screen->world().m_score[0] = 300;
         const unsigned char my_team =
             static_cast<unsigned char>(server_screen->world().my_team);
         for (auto& uptr : server_screen->world().oblist)
@@ -3151,6 +3225,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         {
             {
                 auto host_scope = cleanup.host_session->activate();
+                og::data::set_active_company_slot(kWp4HostSlot);
                 og::runtime::local_transport_shadow_send_input(
                     *cleanup.host_session, neutral, pump_tick);
                 og::runtime::local_transport_shadow_finish_tick(
@@ -3158,6 +3233,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             }
             {
                 auto join_scope = join_session.activate();
+                og::data::set_active_company_slot(kWp4JoinSlot);
                 og::runtime::local_transport_shadow_send_input(
                     join_session, neutral, pump_tick);
                 og::runtime::local_transport_shadow_finish_tick(join_session);
@@ -3177,6 +3253,24 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     }
     ASSERT_TRUE(both_ended) << "both peers must return to the menu after the win";
 
+    // §4.6: derive each peer's team-0 fold delta from its own display save
+    // (post-fold minus level-start). Allied play put all three heroes on
+    // team 0 — the host contributed TWO deployed characters and the joiner
+    // ONE, so the one team-0 pot splits 2:1 below. Both mirrors must agree
+    // on the delta (m_score is snapshot-synced).
+    const std::uint32_t host_delta0 =
+        host_save.m_totalcash[0] - host_cash0_at_start;
+    std::uint32_t join_delta0 = 0;
+    {
+        auto join_scope = join_session.activate();
+        join_delta0 =
+            join_session.myscreen_->save_data.m_totalcash[0] -
+            join_cash0_at_start;
+    }
+    ASSERT_GT(host_delta0, 0u)
+        << "the seeded score + first-win time bonus make a nonzero pot";
+    ASSERT_EQ(host_delta0, join_delta0)
+        << "both mirrors must fold the same team-0 delta";
 
     // ---- Simulate each peer's glad_main exit: the per-level runtime is torn
     // down, but the lobby client's transport (and the host's LobbyServer)
@@ -3190,9 +3284,50 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         og::runtime::clear_local_transport_shadow(join_session);
     }
 
+    // ---- Production glad_main-exit mirror (go_menu): each machine reloads
+    // its private company from ITS OWN disk file before re-entering the base
+    // camp — the §4.6 bank and the merged own-roster fold live there. The
+    // load succeeding at scen 2 is itself the proof that BOTH win-persist
+    // paths ran (the host's server-shadow finalize and the joiner's
+    // client-side once-latched persist). ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        og::data::set_active_company_slot(kWp4HostSlot);
+        ASSERT_TRUE(host_save.load(kWp4HostSlot))
+            << "the host win persist must have written its private file";
+    }
+    {
+        auto join_scope = join_session.activate();
+        og::data::set_active_company_slot(kWp4JoinSlot);
+        ASSERT_TRUE(join_session.myscreen_->save_data.load(kWp4JoinSlot))
+            << "the joiner win persist must have written its private file";
+    }
+
+    // §2.9 "split wallets": the ONE team-0 pot splits by deployed-character
+    // ratio — the joiner banks floor(delta/3) (its 1 of 3 deployed heroes),
+    // the host the rest (2/3 share + the remainder as largest contributor).
+    // Each machine's file gains ONLY its own share on its own baseline, the
+    // shares conserve the pot exactly, and the sentinel team-1 wallets never
+    // move — the replaced full-pot duplication would have banked the whole
+    // delta on BOTH machines.
+    const std::uint32_t join_share = host_delta0 / 3u;
+    const std::uint32_t host_share = host_delta0 - join_share;
+    EXPECT_EQ(5000u + host_share, host_save.m_totalcash[0])
+        << "host banks baseline + its 2/3-plus-remainder share";
+    EXPECT_EQ(111u, host_save.m_totalcash[1])
+        << "the host's sentinel team-1 wallet must never move";
+    {
+        auto join_scope = join_session.activate();
+        const SaveData& join_save = join_session.myscreen_->save_data;
+        EXPECT_EQ(3000u + join_share, join_save.m_totalcash[0])
+            << "joiner banks baseline + its 1/3 share, never the full pot";
+        EXPECT_EQ(222u, join_save.m_totalcash[1])
+            << "the joiner's sentinel team-1 wallet must never move";
+    }
+
     // ---- Re-enter the lobby over the LIVE connection (what go_menu does via
-    // picker_reinitialize_lobby_after_game). Both displays advanced scen_num to
-    // 2 in memory on the win, so the host re-broadcasts level 2. ----
+    // picker_reinitialize_lobby_after_game). Both private files advanced
+    // scen_num to 2 on the win persist, so the host re-broadcasts level 2. ----
     {
         auto host_scope = cleanup.host_session->activate();
         ActivePickerLobbyClientGuard active_client(host_client.get());
@@ -3225,24 +3360,183 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     })) << "the advanced level-2 cursor must reach both peers over the live "
            "connection while staying a two-player lobby";
 
-    // ---- §4.2 per-level reassembly: bench Bravo for level 2. The host's
-    // roster re-send updates the server's stored seats, and the next level's
-    // assembly (the SAME build_save_data_equivalent source of truth the
-    // rebind path consumes) must exclude the benched character. ----
-    {
-        bool benched = false;
-        for (auto& member : host_save.team_list)
+
+    // Both re-sent rosters must land on the server before the merged views
+    // are pinned (resume_after_level re-sends each machine's roster; the
+    // status-line wait above proves seats, not slot content).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_sees_three = false;
         {
-            if (member != nullptr && member->name == "Bravo")
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            ActivePickerLobbyClientGuard active_client(join_client.get());
+            og::ui::BaseCampScreenState state;
+            og::ui::base_camp_refresh_rows(state);
+            join_sees_three = state.slots.size() == 3u;
+        }
+        bool host_sees_three = false;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            ActivePickerLobbyClientGuard active_client(host_client.get());
+            og::ui::BaseCampScreenState state;
+            og::ui::base_camp_refresh_rows(state);
+            host_sees_three = state.slots.size() == 3u;
+        }
+        return join_sees_three && host_sees_three;
+    })) << "both peers' merged base-camp displays must reach 3 rows";
+
+    // ---- §2.5 between-levels base camp, HOST view: merged roster (own rows
+    // first from the reloaded private file, then the joiner's replicated
+    // slot), split-wallet GOLD label, READY n/m + DEP n/m header (§2.9
+    // flow 6: between levels every machine re-readies, so READY is 0/1). ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ASSERT_TRUE(save_contains_named_member(host_save, "Alpha"));
+        ASSERT_TRUE(save_contains_named_member(host_save, "Bravo"));
+        og::ui::BaseCampScreenState state;
+        og::ui::base_camp_refresh_rows(state);
+        ASSERT_EQ(3u, state.slots.size())
+            << "host view: two own rows + the joiner's replicated row";
+        EXPECT_TRUE(state.slots[0].owned);
+        EXPECT_TRUE(state.slots[1].owned);
+        ASSERT_FALSE(state.slots[2].owned);
+        EXPECT_EQ("JOIN RIVER BAND", state.slots[2].company)
+            << "the COMPANY column reads the joiner's wire company";
+        EXPECT_EQ("Joiner", state.slots[2].character.name);
+        EXPECT_EQ(std::format("GOLD {}", host_save.m_totalcash[0]),
+                  og::ui::format_base_camp_gold_label(host_save))
+            << "the GOLD block reads this machine's own banked wallet";
+        const og::ui::BaseCampDeployCounts deploys =
+            og::ui::count_base_camp_display_deploys(state.slots, host_save);
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(
+                host_client->lobby_players());
+        EXPECT_EQ("READY 0/1  DEP 3/3  SCEN 2",
+                  og::ui::format_base_camp_net_line(ready, deploys,
+                                                    host_save.scen_num));
+    }
+
+    // ---- Same window, JOINER view: own row first, the host's two rows
+    // foreign, GOLD reads the joiner's own banked (team-0) wallet — a
+    // reloaded solo company always reads my_team=0. ----
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        SaveData& join_save = join_session.myscreen_->save_data;
+        og::ui::BaseCampScreenState state;
+        og::ui::base_camp_refresh_rows(state);
+        ASSERT_EQ(3u, state.slots.size())
+            << "join view: one own row + the host's two replicated rows";
+        ASSERT_TRUE(state.slots[0].owned);
+        ASSERT_TRUE(join_save.team_list[state.slots[0].save_slot] != nullptr);
+        EXPECT_EQ("Joiner",
+                  join_save.team_list[state.slots[0].save_slot]->name);
+        ASSERT_FALSE(state.slots[1].owned);
+        ASSERT_FALSE(state.slots[2].owned);
+        EXPECT_EQ("IRON KETTLE BAND", state.slots[1].company);
+        EXPECT_EQ("IRON KETTLE BAND", state.slots[2].company);
+        // Production shape, pinned as-is: the lobby re-stamps my_team to the
+        // SEAT team (1) on every poll, so the in-lobby GOLD label reads the
+        // session wallet — while the allied win share banked into the solo
+        // team-0 wallet (asserted on the file above). Recorded as a WP7
+        // follow-up (display source vs banking team under allied MP).
+        ASSERT_EQ(1, join_save.my_team);
+        EXPECT_EQ("GOLD 222", og::ui::format_base_camp_gold_label(join_save));
+        const og::ui::BaseCampDeployCounts deploys =
+            og::ui::count_base_camp_display_deploys(state.slots, join_save);
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(
+                join_client->lobby_players());
+        EXPECT_EQ("READY 0/1  DEP 3/3  SCEN 2",
+                  og::ui::format_base_camp_net_line(ready, deploys,
+                                                    join_save.scen_num));
+    }
+
+    // ---- §2.9 flow 5 / §4.2 per-level reassembly, through the PRODUCTION
+    // base-camp dispatch: benching Bravo flips the private flag the same
+    // call, drops the DEP count, runs the §4.3/§3.8 mutation tail (roster
+    // re-sync + ready drop + [SAVE-F1] merge autosave into the machine's own
+    // file), and the next level's assembly must exclude the benched
+    // character. ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        og::data::set_active_company_slot(kWp4HostSlot);
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        const og::ui::MenuScreenSpec* const spec =
+            og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+        ASSERT_NE(nullptr, spec);
+        ASSERT_NE(nullptr, spec->on_spec_row);
+        og::ui::BaseCampScreenState state;
+        og::ui::base_camp_refresh_rows(state);
+        int bravo_row = -1;
+        for (std::size_t i = 0; i < state.slots.size(); ++i)
+        {
+            const og::ui::BaseCampDisplaySlot& slot = state.slots[i];
+            if (slot.owned && host_save.team_list[slot.save_slot] != nullptr &&
+                host_save.team_list[slot.save_slot]->name == "Bravo")
             {
-                member->deployed = false;
-                benched = true;
+                bravo_row = static_cast<int>(i);
             }
         }
-        ASSERT_TRUE(benched) << "Bravo must still be on the host's private roster";
-        ActivePickerLobbyClientGuard active_client(host_client.get());
-        host_client->sync_roster_from_save();
+        ASSERT_GE(bravo_row, 0)
+            << "Bravo must still be on the host's private roster";
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec->on_spec_row(bravo_row, &state));
+        EXPECT_TRUE(trace_contains("basecamp", "deploy slot="));
+        bool bravo_benched = false;
+        for (const auto& member : host_save.team_list)
+        {
+            if (member != nullptr && member->name == "Bravo")
+                bravo_benched = !member->deployed;
+        }
+        EXPECT_TRUE(bravo_benched)
+            << "the toggle benches Bravo in the private save the same call";
+        // DEP drops the same frame on the re-derived display...
+        og::ui::base_camp_refresh_rows(state);
+        const og::ui::BaseCampDeployCounts deploys =
+            og::ui::count_base_camp_display_deploys(state.slots, host_save);
+        EXPECT_EQ(2, deploys.deployed);
+        EXPECT_EQ(3, deploys.total);
+        // ...and the [SAVE-F1] merge autosave banked the flag on disk while
+        // keeping the file's cursor at the lobby's level.
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(kWp4HostSlot));
+        bool bravo_benched_on_disk = false;
+        for (const auto& member : reloaded.team_list)
+        {
+            if (member != nullptr && member->name == "Bravo")
+                bravo_benched_on_disk = !member->deployed;
+        }
+        EXPECT_TRUE(bravo_benched_on_disk)
+            << "the mutation autosave must merge-write the benched flag";
+        EXPECT_EQ(2, reloaded.scen_num);
     }
+
+    // The benched flag replicates into the JOINER's merged display (the
+    // foreign row's X/- glyph data — §2.5).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool benched_on_join = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            ActivePickerLobbyClientGuard active_client(join_client.get());
+            og::ui::BaseCampScreenState state;
+            og::ui::base_camp_refresh_rows(state);
+            for (const og::ui::BaseCampDisplaySlot& slot : state.slots)
+            {
+                if (!slot.owned && slot.character.name == "Bravo" &&
+                    !slot.deployed)
+                {
+                    benched_on_join = true;
+                }
+            }
+        }
+        return benched_on_join;
+    })) << "the benched flag must replicate into the joiner's merged display";
 
     // ---- Ready up and start LEVEL 2 over the persisted connection. ----
     start_level("level 2");
@@ -3288,6 +3582,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
                   find_named_team_member(server_screen->world(), "Bravo"))
             << "a character benched between levels must not enter level 2";
     }
+
+    host_save.save_name = old_host_company;
 }
 
 // §4.3 ready gate, end to end over real websockets (cheap: no level runs).
@@ -6760,6 +7056,213 @@ TEST(PickerNetworkClient,
 
     host_save.save_name = old_host_company;
     host_save.cross_control = 0;
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}
+
+// §3.8 [SAVE-F1] over a REAL direct lobby (the WP2-deferred join-and-train
+// e2e): a networked-lobby mutation autosave is a MERGE write, never a plain
+// save. The joiner's private company file sits at scen 5 with its own
+// settings; joining a host parked on scen 2 overwrites the IN-MEMORY save
+// with the host's cursor/settings (apply_lobby_state_to_save), and training
+// a character runs the PRODUCTION mutation tail (TrainSession::accept +
+// picker_base_camp_after_roster_mutation). The autosave must overlay ONLY
+// the machine's own roster + owned wallet onto the DISK file, preserve the
+// private cursor/settings byte-for-byte, leave the session save untouched —
+// and the roster re-sync must clear the machine's ready (§4.3).
+TEST(PickerNetworkClient,
+     save_f1_join_and_train_merge_preserves_private_cursor)
+{
+    IxNetSystemScope net_system;
+
+    static constexpr const char kWp4F1JoinSlot[] = "wp4f1join";
+    struct SlotFileReaper
+    {
+        ~SlotFileReaper()
+        {
+            (void)remove_user_file(std::string("save/") + kWp4F1JoinSlot +
+                                   ".gtl");
+        }
+    } slot_file_reaper;
+    og::data::ScopedActiveCompany active_company(kWp4F1JoinSlot);
+    ASSERT_TRUE(active_company.applied());
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host Front");
+    const std::string old_host_company = host_save.save_name;
+    host_save.save_name = "IRON HOST BAND";
+    // The host is parked past the joiner's private cursor: its scen 2
+    // becomes the lobby's level and lands in the joiner's SESSION save.
+    host_save.scen_num = 2;
+    host_save.current_levels[host_save.current_campaign] = 2;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Join Front");
+    join_save.save_name = "F1 PRIVATE BAND";
+    join_save.scen_num = 5;
+    join_save.current_levels[join_save.current_campaign] = 5;
+    join_save.respawn_mode = 1;
+    join_save.generator_rate = 2;
+    join_save.m_totalcash[1] = 5000;
+    // The private on-disk company [SAVE-F1] merges into (a missing file is a
+    // logged no-op, never a clobber-create).
+    ASSERT_TRUE(join_save.save(kWp4F1JoinSlot));
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        ASSERT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    // Converge: two players, and the host's level-2 cursor lands in the
+    // joiner's SESSION save (the in-memory overwrite [SAVE-F1] defends the
+    // disk file against).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_ready = join_save.scen_num == 2 &&
+                status_lines_contain_exact(join_client->status_lines(),
+                                           "Lobby: 2 players");
+        }
+        return join_ready &&
+            status_lines_contain_exact(host_client->status_lines(),
+                                       "Lobby: 2 players");
+    })) << "the joiner must adopt the host's level-2 session cursor";
+
+    std::uint8_t join_index = 0xff;
+    for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+    {
+        if (!player.is_host)
+            join_index = player.player_index;
+    }
+    ASSERT_NE(0xff, join_index);
+
+    // Ready up first so the mutation's §4.3 ready-clear is observable.
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+
+    // Train one character through the production session + mutation tail.
+    short trained_strength = 0;
+    std::uint32_t train_cost = 0;
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        ASSERT_TRUE(join_save.team_list[0] != nullptr);
+        const short base_strength = join_save.team_list[0]->strength;
+        og::ui::TrainSession session(join_save);
+        ASSERT_FALSE(session.empty());
+        session.increase_stat(og::ui::TrainSession::Stat::Strength);
+        train_cost = session.current_cost();
+        ASSERT_GT(train_cost, 0u);
+        ASSERT_LT(train_cost, 5000u);
+        ASSERT_TRUE(session.accept());
+        trained_strength = join_save.team_list[0]->strength;
+        EXPECT_EQ(base_strength + 1, trained_strength);
+        EXPECT_EQ(5000u - train_cost, join_save.m_totalcash[1]);
+        // The production train-accept tail: roster re-sync (a content change
+        // the server answers with a ready-clear), local ready drop, and the
+        // [SAVE-F1] merge autosave against the active company slot.
+        picker_base_camp_after_roster_mutation();
+        EXPECT_EQ(2, join_save.scen_num)
+            << "the merge write must never touch the session save";
+    }
+
+    // The DISK file: roster + owned wallet overlaid, everything private
+    // preserved (the plain-save shape would have rewound scen_num to 2 and
+    // adopted the host's settings).
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(kWp4F1JoinSlot));
+        EXPECT_EQ(5, reloaded.scen_num)
+            << "[SAVE-F1]: the private campaign cursor must survive";
+        EXPECT_EQ(5, reloaded.current_levels.at("org.openglad.gladiator"));
+        EXPECT_EQ(1, reloaded.respawn_mode)
+            << "[SAVE-F1]: private settings must survive";
+        EXPECT_EQ(2, reloaded.generator_rate);
+        // (my_team is session-only and never serialized — nothing to pin.)
+        EXPECT_EQ("F1 PRIVATE BAND", reloaded.save_name);
+        ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+        EXPECT_EQ(trained_strength, reloaded.team_list[0]->strength)
+            << "the trained stat is the roster overlay";
+        EXPECT_TRUE(reloaded.team_list[0]->deployed);
+        EXPECT_EQ(5000u - train_cost, reloaded.m_totalcash[1])
+            << "the owned wallet overlays the training spend";
+        EXPECT_NE(0, reloaded.last_played_unix_s)
+            << "the autosave stamps last_played";
+    }
+
+    // §4.3: the re-synced roster is a content change — the server clears the
+    // machine's ready and echoes it to every peer.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_unready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_unready = !join_client->local_ready();
+        }
+        if (!join_unready)
+            return false;
+        for (const og::sim::LobbyPlayer& player :
+             host_client->lobby_players())
+        {
+            if (player.player_index == join_index)
+                return !player.ready;
+        }
+        return false;
+    })) << "the train mutation must clear the joiner's ready on the server";
+
+    host_save.save_name = old_host_company;
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();
