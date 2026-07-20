@@ -718,3 +718,219 @@ TEST(CompanyClock, gameplay_sources_never_reference_company_or_last_played)
     }
     ASSERT_GT(scanned, 50) << "tripwire scanned suspiciously few files";
 }
+
+// --- Backups (§3.7) -------------------------------------------------------
+
+namespace {
+
+std::string read_file_bytes(const std::filesystem::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    std::stringstream contents;
+    contents << in.rdbuf();
+    return contents.str();
+}
+
+// Plants a raw file under save/backups/ (creating the directory the way
+// create_dataopenglad would have).
+void write_backup_raw(const SaveDirSandbox& sandbox, const std::string& name,
+                      const std::string& bytes)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(sandbox.dir() / "backups", ec);
+    ASSERT_FALSE(ec) << "failed to create save/backups";
+    sandbox.write_raw("backups/" + name, bytes);
+}
+
+} // namespace
+
+TEST(CompanyBackups, snapshot_is_a_byte_copy_with_padded_seq)
+{
+    SaveDirSandbox sandbox;
+    // Deliberately NOT a valid GTL file: §3.7 snapshots are byte copies with
+    // no validation and no re-serialization (validation happens at restore).
+    const std::string raw = "RAW COMPANY BYTES \x01\x02\x03 not a GTL header";
+    sandbox.write_raw("bytecopy.gtl", raw);
+
+    ASSERT_TRUE(og::data::backup_company_now("bytecopy"));
+    ASSERT_TRUE(user_file_exists("save/backups/bytecopy.001.gtl"))
+        << "the first snapshot must be seq 1, zero-padded to 3 digits";
+    EXPECT_EQ(raw, read_file_bytes(sandbox.dir() / "backups" /
+                                   "bytecopy.001.gtl"))
+        << "a snapshot must be byte-identical to the company file";
+
+    ASSERT_TRUE(og::data::backup_company_now("bytecopy"));
+    EXPECT_TRUE(user_file_exists("save/backups/bytecopy.002.gtl"));
+
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("bytecopy");
+    ASSERT_EQ(2u, backups.size());
+    EXPECT_EQ(2, backups[0].seq) << "listing is newest (highest seq) first";
+    EXPECT_EQ(1, backups[1].seq);
+    EXPECT_EQ("bytecopy.002.gtl", backups[0].filename);
+    EXPECT_FALSE(backups[0].header.valid)
+        << "a corrupt snapshot stays listed with header.valid == false";
+}
+
+TEST(CompanyBackups, refuses_netsession_missing_and_unsafe_slots)
+{
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("netsession.gtl", "SERVER ECONOMY SCRATCH");
+
+    EXPECT_FALSE(og::data::backup_company_now("netsession"))
+        << "the level-win producer's netsession no-op contract (§3.7)";
+    EXPECT_FALSE(user_file_exists("save/backups/netsession.001.gtl"));
+
+    EXPECT_FALSE(og::data::backup_company_now("missingco"))
+        << "a company with no file has nothing to snapshot";
+    EXPECT_FALSE(og::data::backup_company_now("bad name"));
+    EXPECT_FALSE(og::data::backup_company_now("../escape"));
+    EXPECT_TRUE(og::data::list_company_backups("../escape").empty())
+        << "unsafe slots list no backups";
+}
+
+TEST(CompanyBackups, seq_derives_from_directory_max_and_parses_strictly)
+{
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("ledger.gtl", "LEDGER STATE");
+    write_backup_raw(sandbox, "ledger.007.gtl", "OLD SEVEN");
+    write_backup_raw(sandbox, "ledger.2.gtl", "UNPADDED TWO");
+    // None of these are backups of "ledger":
+    write_backup_raw(sandbox, "ledger.abc.gtl", "no digits");
+    write_backup_raw(sandbox, "ledger.7x.gtl", "mixed token");
+    write_backup_raw(sandbox, "ledger.7.extra.gtl", "seq token not rightmost");
+    write_backup_raw(sandbox, "other.009.gtl", "different slot");
+
+    ASSERT_TRUE(og::data::backup_company_now("ledger"));
+    EXPECT_TRUE(user_file_exists("save/backups/ledger.008.gtl"))
+        << "next seq = max(existing) + 1, derived from the directory";
+
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("ledger");
+    ASSERT_EQ(3u, backups.size())
+        << "non-conforming names must be ignored by the scan";
+    EXPECT_EQ(8, backups[0].seq);
+    EXPECT_EQ(7, backups[1].seq);
+    EXPECT_EQ(2, backups[2].seq)
+        << "an unpadded all-digit token still parses as its seq";
+}
+
+TEST(CompanyBackups, dotted_slots_stay_unambiguous)
+{
+    SaveDirSandbox sandbox;
+    // is_safe_virtual_basename allows dots in hand-named slots; the
+    // rightmost-all-digit-token rule keeps ownership unambiguous (§3.7).
+    write_backup_raw(sandbox, "led.7.004.gtl", "DOTTED SLOT BACKUP");
+
+    EXPECT_TRUE(og::data::list_company_backups("led").empty())
+        << "led.7.004.gtl belongs to slot 'led.7', never 'led'";
+    const std::vector<og::data::CompanyBackupInfo> dotted =
+        og::data::list_company_backups("led.7");
+    ASSERT_EQ(1u, dotted.size());
+    EXPECT_EQ(4, dotted[0].seq);
+    EXPECT_EQ("led.7.004.gtl", dotted[0].filename);
+}
+
+TEST(CompanyBackups, retention_prunes_lowest_seqs_deterministically)
+{
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("ret.gtl", "RETENTION STATE");
+    for (int round = 0; round < og::data::kCompanyBackupRetention + 3; ++round)
+        ASSERT_TRUE(og::data::backup_company_now("ret")) << "round " << round;
+
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("ret");
+    ASSERT_EQ(static_cast<std::size_t>(og::data::kCompanyBackupRetention),
+              backups.size());
+    EXPECT_EQ(og::data::kCompanyBackupRetention + 3, backups.front().seq)
+        << "the newest snapshot survives";
+    EXPECT_EQ(4, backups.back().seq)
+        << "exactly the lowest seqs are pruned (deterministic order)";
+    EXPECT_FALSE(user_file_exists("save/backups/ret.001.gtl"));
+    EXPECT_FALSE(user_file_exists("save/backups/ret.003.gtl"));
+    EXPECT_TRUE(user_file_exists("save/backups/ret.004.gtl"));
+}
+
+TEST(CompanyBackups, header_scan_reads_backup_identity_without_mounting)
+{
+    SaveDirSandbox sandbox;
+    SaveData save;
+    save.save_name = "Snapshot Co";
+    save.totalcash = 4242;
+    save.last_played_unix_s = 777;
+    ASSERT_TRUE(save.save("snapco"));
+    ASSERT_TRUE(og::data::backup_company_now("snapco"));
+
+    const std::string mounted_before = get_mounted_campaign();
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("snapco");
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_TRUE(backups[0].header.valid);
+    EXPECT_EQ("Snapshot Co", backups[0].header.display_name);
+    EXPECT_EQ(4242u, backups[0].header.totalcash);
+    EXPECT_EQ(777, backups[0].header.last_played_unix_s);
+    EXPECT_EQ(14, backups[0].header.version);
+    EXPECT_EQ(mounted_before, get_mounted_campaign())
+        << "the Backups view scan must never mount (§3.7)";
+}
+
+TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
+{
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("delco.gtl", "DELETABLE STATE");
+    ASSERT_TRUE(og::data::backup_company_now("delco")); // 001
+    ASSERT_TRUE(og::data::backup_company_now("delco")); // 002
+
+    EXPECT_TRUE(og::data::delete_company_backup("delco", 1));
+    EXPECT_FALSE(user_file_exists("save/backups/delco.001.gtl"));
+    EXPECT_FALSE(og::data::delete_company_backup("delco", 1))
+        << "deleting a missing backup reports false";
+
+    {
+        og::data::ScopedActiveCompany guard("delco");
+        ASSERT_TRUE(guard.applied());
+        EXPECT_FALSE(og::data::delete_company("delco"))
+            << "the currently-active slot can never be deleted (§3.7)";
+        EXPECT_TRUE(user_file_exists("save/delco.gtl"));
+        EXPECT_TRUE(user_file_exists("save/backups/delco.002.gtl"));
+    }
+
+    EXPECT_FALSE(og::data::delete_company("netsession"));
+    EXPECT_TRUE(og::data::delete_company("delco"));
+    EXPECT_FALSE(user_file_exists("save/delco.gtl"));
+    EXPECT_FALSE(user_file_exists("save/backups/delco.002.gtl"))
+        << "delete_company reaps ALL backups with the file";
+    EXPECT_FALSE(og::data::delete_company("delco"))
+        << "a company with no file left reports false";
+}
+
+TEST(CompanyBackups, restore_aborts_on_corrupt_or_missing_backup)
+{
+    SaveDirSandbox sandbox;
+    const std::string current = "CURRENT STATE BYTES";
+    sandbox.write_raw("abortco.gtl", current);
+    write_backup_raw(sandbox, "abortco.003.gtl", "NOT A VALID GTL SNAPSHOT");
+
+    SaveData memory;
+    memory.totalcash = 123;
+
+    // Step-0 validation failures must touch NOTHING: no pre-restore backup,
+    // no slot rewrite, no memory churn ([SAVE-R3]).
+    EXPECT_EQ(og::data::CompanyRestoreError::InvalidBackup,
+              og::data::restore_company_backup(memory, "abortco", 3))
+        << "a corrupt backup aborts the restore";
+    EXPECT_EQ(og::data::CompanyRestoreError::InvalidBackup,
+              og::data::restore_company_backup(memory, "abortco", 99))
+        << "a seq with no file aborts the restore";
+    EXPECT_EQ(og::data::CompanyRestoreError::InvalidBackup,
+              og::data::restore_company_backup(memory, "../escape", 1));
+    EXPECT_EQ(og::data::CompanyRestoreError::InvalidBackup,
+              og::data::restore_company_backup(memory, "netsession", 1));
+
+    EXPECT_EQ(current, read_file_bytes(sandbox.dir() / "abortco.gtl"))
+        << "an aborted restore leaves the company file untouched";
+    EXPECT_EQ(1u, og::data::list_company_backups("abortco").size())
+        << "an aborted restore must not create a pre-restore backup";
+    EXPECT_EQ(123u, memory.totalcash)
+        << "an aborted restore leaves the in-memory save untouched";
+}

@@ -1515,6 +1515,12 @@ short screen::endgame(short ending, short nextlevel)
 		{
 			// Autosave because we won
 			save_data.save(og::data::active_company_slot());
+			// §3.7: every local level win snapshots the freshly-saved
+			// company into save/backups/ (retention-pruned byte copy).
+			// backup_company_now refuses the netsession scratch slot,
+			// and the networked branch never reaches here, so the
+			// server economy can never leave snapshots behind.
+			og::data::backup_company_now(og::data::active_company_slot());
 		}
 
 		// Every win ends this display session. Single-player and local play

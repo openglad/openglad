@@ -146,4 +146,91 @@ std::string select_startup_company();
 [[nodiscard]] SaveDataIoError atomic_company_save(SaveData& save,
                                                   const std::string& slot);
 
+// ---------------------------------------------------------------------------
+// Backups (§3.7)
+// ---------------------------------------------------------------------------
+
+// Retention per company: backup_company_now prunes the LOWEST sequence
+// numbers until at most this many snapshots remain.
+inline constexpr int kCompanyBackupRetention = 20;
+
+// One snapshot file save/backups/<slot>.<SEQ>.gtl. Every backup is a byte
+// copy of a company file, so `header` carries the same identity a company
+// row does (header-scanned like a company, never mounted; header.valid ==
+// false marks a corrupt snapshot but keeps it listable).
+struct CompanyBackupInfo
+{
+    std::string slot;
+    int seq = 0;
+    std::string filename; // "<slot>.<SEQ>.gtl", relative to save/backups/
+    CompanyInfo header;
+};
+
+// All backups of `slot`, newest (highest seq) first. The seq is the
+// rightmost all-digit dot-token of the filename, so slots containing dots
+// stay unambiguous ("led.7.004.gtl" belongs to slot "led.7", never "led").
+// An unsafe slot name yields an empty list.
+std::vector<CompanyBackupInfo> list_company_backups(const std::string& slot);
+
+// Byte-copies save/<slot>.gtl to save/backups/<slot>.<next seq>.gtl, where
+// next seq = max(existing) + 1 is derived from the directory so a rewind can
+// never reuse a seq. The snapshot is synced BEFORE the lowest seqs are
+// pruned down to kCompanyBackupRetention (§3.7 torn-write ordering: every
+// destructive step is preceded by a persisted copy, so the worst
+// interruption outcome is one extra backup). Snapshots are byte copies,
+// never re-serializations (save() has a cursor side effect), and are not
+// validated here — restore validates. Returns false — leaving no trace —
+// for unsafe slots, the reserved "netsession" scratch (the level-win
+// producer's no-op contract), and a missing company file.
+bool backup_company_now(const std::string& slot);
+
+// Why restore_company_backup stopped (§3.7 [SAVE-R3]). Every error except
+// RestampFailed leaves the on-disk slot file — and, for ReloadFailed via the
+// rollback, the in-memory SaveData — holding the pre-restore state.
+// RestampFailed means the rewind itself finished (disk and memory hold the
+// restored company) but the final timestamp write failed.
+enum class CompanyRestoreError
+{
+    None = 0,
+    InvalidBackup,          // step 0: missing/corrupt backup — nothing touched
+    PreRestoreBackupFailed, // step 1: could not snapshot the current state
+    CopyFailed,             // step 2: copy failed — slot file untouched
+    ReloadFailed,           // step 3: reload failed — rolled back to the
+                            //         step-1 backup on disk and in memory
+    RestampFailed,          // step 4: restored, but the re-stamp write failed
+};
+
+// Validated rewind-in-place (§3.7 [SAVE-R3]):
+//   0. header-validate the CHOSEN backup — the API-level check is the guard
+//      (the UI's corrupt-row marking is not); abort touches nothing. The
+//      chosen bytes are then staged outside the backups directory, because
+//      restoring the OLDEST snapshot at full retention would otherwise see
+//      step 1's prune reap the chosen file itself (the rewound state still
+//      lands in the slot; only the pruned snapshot file is gone afterward).
+//   1. backup_company_now(slot) — the pre-restore state becomes the newest
+//      backup (synced) before anything destructive runs.
+//   2. tmp+rename the staged backup bytes over save/<slot>.gtl.
+//   3. save.load_with_error(slot) — refresh memory + mount the restored
+//      campaign. On ANY failure: skip step 4, copy the step-1 backup back
+//      over the slot and reload, so disk and memory hold the pre-restore
+//      state again.
+//   4. re-stamp last_played and atomic-save so Continue still points at this
+//      company (a pure byte copy would resurrect the old timestamp).
+[[nodiscard]] CompanyRestoreError restore_company_backup(SaveData& save,
+                                                         const std::string& slot,
+                                                         int seq);
+
+// Deletes one snapshot (deletion synced). False when no such backup exists.
+bool delete_company_backup(const std::string& slot, int seq);
+
+// Deletes save/<slot>.gtl plus ALL its backups and any stray staging file
+// (each deletion synced; backups are reaped first so an interruption leaves
+// the company intact rather than orphaning hidden backups). Refuses the
+// currently-active slot — the UI enforces "switch first", and the false
+// return is itself popup-surfaced so a UI slip stays visible — and the
+// reserved "netsession" scratch. Returns whether the company file itself
+// was removed (stray backups of an already-missing company are still
+// reaped).
+bool delete_company(const std::string& slot);
+
 } // namespace og::data

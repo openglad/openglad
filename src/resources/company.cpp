@@ -29,6 +29,7 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <string_view>
 #include <system_error>
 
@@ -160,18 +161,22 @@ std::string derive_company_slot(const std::string& display_name)
 // Header-only company scan (§3.5)
 // ---------------------------------------------------------------------------
 
-std::optional<CompanyInfo> read_company_header(const std::string& slot)
-{
-    if (!is_safe_virtual_basename(slot))
-        return std::nullopt;
+namespace {
 
-    const std::string filename = slot + ".gtl";
-    og::io::OgFilePtr infile = og::io::og_open_read("save/", filename.c_str());
+// The version-gated ladder shared by company files (save/<slot>.gtl) and
+// their byte-copy backups (save/backups/<slot>.<seq>.gtl) — a backup IS a
+// company file, so the Backups view header-scans it exactly like a company
+// (§3.7).
+std::optional<CompanyInfo> read_header_from(const char* dir,
+                                            const std::string& filename,
+                                            const std::string& slot_label)
+{
+    og::io::OgFilePtr infile = og::io::og_open_read(dir, filename.c_str());
     if (!infile)
         return std::nullopt;
 
     CompanyInfo info;
-    info.slot = slot;
+    info.slot = slot_label;
     info.campaign_id = "org.openglad.gladiator";
 
     const auto read_exact = [&infile](void* dst, std::size_t bytes) {
@@ -266,6 +271,15 @@ std::optional<CompanyInfo> read_company_header(const std::string& slot)
 
     info.valid = true;
     return info;
+}
+
+} // namespace
+
+std::optional<CompanyInfo> read_company_header(const std::string& slot)
+{
+    if (!is_safe_virtual_basename(slot))
+        return std::nullopt;
+    return read_header_from("save/", slot + ".gtl", slot);
 }
 
 std::vector<CompanyInfo> list_companies()
@@ -376,6 +390,305 @@ SaveDataIoError atomic_company_save(SaveData& save, const std::string& slot)
     // to persist on IDBFS.
     sync_filesystem();
     return SaveDataIoError::None;
+}
+
+// ---------------------------------------------------------------------------
+// Backups (§3.7)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr const char* kBackupDirPrefix = "save/backups/";
+
+// "<slot>.<SEQ>.gtl" with SEQ zero-padded to at least 3 digits.
+std::string backup_filename(const std::string& slot, int seq)
+{
+    return std::format("{}.{:03}.gtl", slot, seq);
+}
+
+// A backup of `slot` is exactly "<slot>.<digits>.gtl": the seq is the
+// rightmost all-digit dot-token, so slots containing dots (or digit-only
+// dot-tokens of their own) stay unambiguous — "led.7.004.gtl" parses as
+// slot "led.7" seq 4 and never as a backup of "led" (its remainder
+// "7.004" contains a dot). Anything else in the directory is ignored,
+// including the "<name>.gtl.tmp" staging files copy_user_file renames away.
+std::optional<int> parse_backup_seq(std::string_view name, std::string_view slot)
+{
+    if (name.size() <= slot.size() + 1 ||
+        name.substr(0, slot.size()) != slot || name[slot.size()] != '.')
+    {
+        return std::nullopt;
+    }
+    std::string_view rest = name.substr(slot.size() + 1);
+    if (!ends_with(rest, ".gtl"))
+        return std::nullopt;
+    const std::string_view digits = rest.substr(0, rest.size() - 4);
+    // 9-digit cap keeps the parse comfortably inside int range.
+    if (digits.empty() || digits.size() > 9)
+        return std::nullopt;
+    int seq = 0;
+    for (const char ch : digits)
+    {
+        if (ch < '0' || ch > '9')
+            return std::nullopt;
+        seq = seq * 10 + (ch - '0');
+    }
+    return seq;
+}
+
+struct BackupFile
+{
+    int seq = 0;
+    std::string filename;
+};
+
+// Every backup file of `slot` in save/backups/, newest (highest seq) first;
+// equal seqs (differently padded duplicates) order canonically padded name
+// first. Mirrors list_companies' listing strategy: PhysFS when initialized,
+// std::filesystem fallback otherwise; a missing directory is an empty list.
+std::vector<BackupFile> scan_company_backups(const std::string& slot)
+{
+    std::vector<std::string> names;
+    if (og::resources::is_initialized())
+    {
+        for (const std::string& name : og::resources::list_files("save/backups"))
+            names.push_back(name);
+    }
+    else
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path backups_dir =
+            fs::path(get_user_path()) / "save" / "backups";
+        fs::directory_iterator it(backups_dir, ec);
+        if (!ec)
+        {
+            for (const fs::directory_entry& entry : it)
+            {
+                std::error_code entry_ec;
+                if (entry.is_regular_file(entry_ec))
+                    names.push_back(entry.path().filename().string());
+            }
+        }
+    }
+
+    std::vector<BackupFile> found;
+    for (const std::string& name : names)
+    {
+        if (const std::optional<int> seq = parse_backup_seq(name, slot))
+            found.push_back({*seq, name});
+    }
+    std::sort(found.begin(), found.end(),
+              [](const BackupFile& a, const BackupFile& b) {
+                  if (a.seq != b.seq)
+                      return a.seq > b.seq;
+                  return a.filename < b.filename;
+              });
+    return found;
+}
+
+// backup_company_now, returning the new snapshot's seq (0 = refused/failed)
+// so restore_company_backup can address its step-1 pre-restore snapshot.
+int backup_company_capture_seq(const std::string& slot)
+{
+    // No-op for the reserved "netsession" server-economy scratch: the
+    // level-win producer may call this unconditionally and the networked
+    // session must never leave snapshots behind.
+    if (slot == kNetsessionSlot || !is_safe_virtual_basename(slot))
+        return 0;
+    const std::string slot_rel = "save/" + slot + ".gtl";
+    if (!user_file_exists(slot_rel))
+        return 0;
+
+    std::vector<BackupFile> existing = scan_company_backups(slot);
+    const int next_seq = (existing.empty() ? 0 : existing.front().seq) + 1;
+    const std::string name = backup_filename(slot, next_seq);
+    if (!copy_user_file(slot_rel, kBackupDirPrefix + name))
+    {
+        LogError("backup_company_copy_failed slot={} seq={}\n", slot, next_seq);
+        return 0;
+    }
+    // Torn-write ordering (§3.7): persist the snapshot BEFORE pruning starts
+    // deleting older ones, so an interruption can only leave "one extra
+    // backup", never fewer. remove_user_file syncs each deletion itself.
+    sync_filesystem();
+
+    existing.insert(existing.begin(), {next_seq, name});
+    while (existing.size() > static_cast<std::size_t>(kCompanyBackupRetention))
+    {
+        if (!remove_user_file(kBackupDirPrefix + existing.back().filename))
+        {
+            LogError("backup_company_prune_failed slot={} file={}\n", slot,
+                     existing.back().filename);
+        }
+        existing.pop_back();
+    }
+    return next_seq;
+}
+
+} // namespace
+
+std::vector<CompanyBackupInfo> list_company_backups(const std::string& slot)
+{
+    std::vector<CompanyBackupInfo> backups;
+    if (!is_safe_virtual_basename(slot))
+        return backups;
+    for (const BackupFile& file : scan_company_backups(slot))
+    {
+        CompanyBackupInfo info;
+        info.slot = slot;
+        info.seq = file.seq;
+        info.filename = file.filename;
+        if (std::optional<CompanyInfo> header =
+                read_header_from(kBackupDirPrefix, file.filename, slot))
+        {
+            info.header = std::move(*header);
+        }
+        // An unopenable file keeps the default header (valid == false) but
+        // stays listed, mirroring the corrupt-company policy.
+        backups.push_back(std::move(info));
+    }
+    return backups;
+}
+
+bool backup_company_now(const std::string& slot)
+{
+    return backup_company_capture_seq(slot) > 0;
+}
+
+CompanyRestoreError restore_company_backup(SaveData& save,
+                                           const std::string& slot, int seq)
+{
+    if (slot == kNetsessionSlot || !is_safe_virtual_basename(slot))
+        return CompanyRestoreError::InvalidBackup;
+
+    // Resolve the chosen seq against the directory (never trusting caller
+    // padding); a seq with no file is indistinguishable from a missing
+    // backup.
+    std::string chosen;
+    for (const BackupFile& file : scan_company_backups(slot))
+    {
+        if (file.seq == seq)
+        {
+            chosen = file.filename;
+            break;
+        }
+    }
+    if (chosen.empty())
+        return CompanyRestoreError::InvalidBackup;
+
+    // Step 0 [SAVE-R3]: this API-level validation is the guard (the UI's
+    // corrupt-row marking is not). Aborting here touches nothing.
+    const std::optional<CompanyInfo> header =
+        read_header_from(kBackupDirPrefix, chosen, slot);
+    if (!header.has_value() || !header->valid)
+    {
+        LogError("restore_company_backup_invalid slot={} seq={}\n", slot, seq);
+        return CompanyRestoreError::InvalidBackup;
+    }
+
+    // Stage the chosen bytes OUTSIDE the pruning domain first: when the
+    // chosen backup is the oldest snapshot at full retention, step 1's
+    // prune would reap exactly that file. The staging name carries no .gtl
+    // suffix, so neither the company listing nor the backup scan can ever
+    // see it; staging a copy destroys nothing.
+    const std::string slot_rel = "save/" + slot + ".gtl";
+    const std::string staging_rel = slot_rel + ".restoretmp";
+    if (!copy_user_file(kBackupDirPrefix + chosen, staging_rel))
+    {
+        LogError("restore_company_backup_stage_failed slot={} seq={}\n", slot,
+                 seq);
+        return CompanyRestoreError::CopyFailed;
+    }
+
+    // Step 1: the pre-restore state becomes the newest backup (synced by
+    // backup_company_capture_seq), so the destructive steps below are
+    // preceded by a persisted copy of what they destroy — and the chosen
+    // seq can never be reused by a later snapshot. A company file that is
+    // already missing has nothing to preserve; the rewind then simply
+    // recreates it.
+    int pre_restore_seq = 0;
+    if (user_file_exists(slot_rel))
+    {
+        pre_restore_seq = backup_company_capture_seq(slot);
+        if (pre_restore_seq <= 0)
+        {
+            (void)remove_user_file(staging_rel);
+            return CompanyRestoreError::PreRestoreBackupFailed;
+        }
+    }
+
+    // Step 2: tmp+rename byte copy — a failure leaves the slot file
+    // untouched (§3.6).
+    const bool copied = copy_user_file(staging_rel, slot_rel);
+    (void)remove_user_file(staging_rel);
+    if (!copied)
+    {
+        LogError("restore_company_backup_copy_failed slot={} seq={}\n", slot,
+                 seq);
+        return CompanyRestoreError::CopyFailed;
+    }
+    sync_filesystem();
+
+    // Step 3: refresh memory + mount the restored campaign. On ANY failure:
+    // skip step 4, copy the step-1 backup back over the slot, and reload so
+    // disk and memory both hold the pre-restore state again.
+    const SaveDataIoError load_error = save.load_with_error(slot);
+    if (load_error != SaveDataIoError::None)
+    {
+        LogError("restore_company_backup_reload_failed slot={} seq={} err={}\n",
+                 slot, seq, static_cast<int>(load_error));
+        if (pre_restore_seq > 0)
+        {
+            (void)copy_user_file(
+                kBackupDirPrefix + backup_filename(slot, pre_restore_seq),
+                slot_rel);
+            sync_filesystem();
+            (void)save.load_with_error(slot);
+        }
+        return CompanyRestoreError::ReloadFailed;
+    }
+
+    // Step 4: re-stamp last_played so Continue still points at this company
+    // (a pure byte copy would resurrect the old timestamp). Re-serializing
+    // right after a fresh load makes save()'s cursor side effect a no-op.
+    // §3.8 routes this through company_autosave(WindowEvent) once the
+    // autosave choke point exists.
+    save.last_played_unix_s = company_clock_now_s();
+    if (atomic_company_save(save, slot) != SaveDataIoError::None)
+        return CompanyRestoreError::RestampFailed;
+    return CompanyRestoreError::None;
+}
+
+bool delete_company_backup(const std::string& slot, int seq)
+{
+    if (!is_safe_virtual_basename(slot))
+        return false;
+    for (const BackupFile& file : scan_company_backups(slot))
+    {
+        if (file.seq == seq)
+            return remove_user_file(kBackupDirPrefix + file.filename);
+    }
+    return false;
+}
+
+bool delete_company(const std::string& slot)
+{
+    if (slot == kNetsessionSlot || !is_safe_virtual_basename(slot))
+        return false;
+    if (slot == active_company_slot())
+    {
+        LogError("delete_company_refused_active slot={}\n", slot);
+        return false; // the UI enforces "switch first"; surfaced as a popup
+    }
+    // Backups first: an interrupted delete leaves the company itself intact
+    // (minus some backups) instead of orphaning hidden backup strays.
+    for (const BackupFile& file : scan_company_backups(slot))
+        (void)remove_user_file(kBackupDirPrefix + file.filename);
+    // Stray staging files (atomic write / interrupted restore).
+    (void)remove_user_file("save/" + slot + ".tmp.gtl");
+    (void)remove_user_file("save/" + slot + ".gtl.restoretmp");
+    return remove_user_file("save/" + slot + ".gtl");
 }
 
 } // namespace og::data
