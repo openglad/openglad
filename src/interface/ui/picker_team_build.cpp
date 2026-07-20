@@ -39,6 +39,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -1388,363 +1389,345 @@ std::string get_class_description(unsigned char family)
     }
 }
 
-Sint32 create_hire_menu(Sint32 arg1)
-{
-	Sint32 linesdown, retvalue = 0;
-	Sint32 start_time = query_timer();
-	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
-	Uint32 current_cost;
-	Sint32 clickvalue;
+// ---------------------------------------------------------------------------
+// HIRE: engine-hosted (§1.8 step 6; the spec lives in menu_screen_specs.cpp,
+// docs/menu-engine.md). The hooks below carry everything the deleted legacy
+// loop did around the shared frame skeleton: the entry-time PREV/NEXT
+// repositioning, the solo-hidden team cycler's nav closure, the reset tail,
+// the new-game popup, and the stat/cost/description content pass — all
+// verbatim, beside the file-local helpers they use.
+// ---------------------------------------------------------------------------
 
-    
+// The legacy box geometry, verbatim (pure constants; shared by the
+// prepare-buttons hook and the content pass).
+struct HireMenuLayout
+{
     UiRect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
     UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
-    
+
     UiRect cost_box = {196, 130, 104, 31};
     UiRect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
     UiRect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
-    
+
     UiRect description_box = {11, 71, 180, 90};
     UiRect description_box_inner = {description_box.x + 4, description_box.y + 4, description_box.w - 8, description_box.h - 8};
     UiRect description_box_content = {description_box_inner.x + 4, description_box_inner.y + 4, description_box_inner.w - 8, description_box_inner.h - 8};
-    
+
     UiRect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     UiRect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
-    
-    button* buttons = picker_hiremenu_buttons();
-    const int num_buttons = picker_hiremenu_button_count();
+};
 
-    buttons[0].x = description_box.x + description_box.w/2 - buttons[0].sizex - 4 - 30;
-    buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[0].sizey/2;
-    
-    buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
-    buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[1].sizey/2;
-    
-    buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
-    
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct HireEngineState
+{
+    Sint32 start_time = 0;
+    unsigned char last_family = 0;
+    std::string description;
+    std::list<std::string> desc;
+    const char* family_name = "";
+    // arg1 == 1: show the new-game intro popup after the first presented
+    // frame (no production caller passes 1 today — team build passes -1 —
+    // but the signature contract is preserved).
+    bool pending_new_game_popup = false;
+};
+
+// Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
+// the deleted loop (runs once, before init_buttons; the accessor output —
+// what the G2 pins transcribe — keeps the table shape).
+void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
+                                             void* /*screen_state*/)
+{
+    if (num_buttons < 2)
+        return;
+    const HireMenuLayout l;
+    buttons[0].x = l.description_box.x + l.description_box.w/2 - buttons[0].sizex - 4 - 30;
+    buttons[0].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[0].sizey/2;
+
+    buttons[1].x = l.description_box.x + l.description_box.w/2 + 4 + 30;
+    buttons[1].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[1].sizey/2;
+}
+
+// Nav closure over the solo-hidden team cycler: legacy left HIRE ME's
+// right-link pointing at the hidden row — a no-op in handle_menu_nav (it
+// refuses hidden targets) — so the explicit no-op (-1) is
+// behavior-identical and satisfies the engine's §1.5 nav invariant.
+void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
+                                    int& /*highlighted_button*/)
+{
+    if (num_buttons > 3)
+        buttons[3].nav.right = buttons[2].hidden ? -1 : 2;
+}
+
+// The legacy reset tail: after any consumed MENU_OK/MENU_REDRAW re-init,
+// re-derive the hire-team label onto the fresh live surface.
+void picker_hire_menu_engine_on_reset(void* /*screen_state*/)
+{
+    change_hire_teamnum(0);
+}
+
+// The legacy loop-bottom arg1 == 1 branch: one intro popup after the first
+// presented frame (frame 1 draws at the END of iteration 1; the tick for
+// iteration 2 is the first point after that present), then a re-init
+// because the production popup swaps allbuttons_ under the screen.
+bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame)
+{
+    auto* const state = static_cast<HireEngineState*>(screen_state);
+    if (state == nullptr)
+        return true;
+    if (state->pending_new_game_popup && frame >= 2)
+    {
+        state->pending_new_game_popup = false;
+        popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
+        // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+        og::runtime::current_session->localbuttons_ =
+            init_buttons(pks().hiremenu_buttons.data(),
+                         static_cast<int>(pks().hiremenu_buttons.size()));
+    }
+    return true;
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons):
+// name box, portrait, description, cost, and the stat panel. Note the
+// shipped one-frame quirk preserved on purpose: the name-box label is drawn
+// from last frame's family_name, and the family-change re-derive happens
+// mid-pass (between the portrait and the description lines).
+void picker_hire_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<HireEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
+    const HireMenuLayout l;
+
+    if (!og::runtime::current_session->current_guy_)
+        sync_current_guy_from_hire();
+
+    // Name box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.name_box.x, l.name_box.y, l.name_box.x + l.name_box.w - 1,
+        l.name_box.y + l.name_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.name_box_inner.x, l.name_box_inner.y, l.name_box_inner.w,
+        l.name_box_inner.h);
+
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    mytext.write_xy(l.name_box.x + l.name_box.w/2 - 3*static_cast<Sint32>(strlen(state->family_name)), l.name_box.y + 6, state->family_name, static_cast<unsigned char>(DARK_BLUE), 1);
+
+    show_guy(query_timer()-state->start_time, 0, l.description_box.x + l.description_box.w/2, l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2); // 0 means current_guy
+    change_hire_teamnum(0);
+
+
+    // Description box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.description_box.x, l.description_box.y,
+        l.description_box.x + l.description_box.w - 1,
+        l.description_box.y + l.description_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.description_box_inner.x, l.description_box_inner.y,
+        l.description_box_inner.w, l.description_box_inner.h);
+
+    if(og::runtime::current_session->current_guy_->family != state->last_family)
+    {
+        // Update description
+        state->last_family = og::runtime::current_session->current_guy_->family;
+        state->description = get_class_description(state->last_family);
+        state->desc = explode(state->description);
+
+        state->family_name = get_family_string(state->last_family);
+    }
+
+    int i = 0;
+    for(auto& line : state->desc)
+    {
+        mytext.write_xy(l.description_box_content.x, l.description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
+        i++;
+    }
+
+    // Cost box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.cost_box.x, l.cost_box.y, l.cost_box.x + l.cost_box.w - 1,
+        l.cost_box.y + l.cost_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.cost_box_inner.x, l.cost_box_inner.y, l.cost_box_inner.w,
+        l.cost_box_inner.h);
+
+    // current_team_num_ is derived from a save-loaded guy::teamnum (which
+    // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
+    const int hire_cash_team =
+        (og::runtime::current_session->current_team_num_ < 0 ||
+         og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
+            ? 0
+            : static_cast<int>(og::runtime::current_session->current_team_num_);
+    og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
+    mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+    const Uint32 current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
+    mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
+    og::runtime::current_session->message_ = std::format("      {}", current_cost );
+    if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
+        mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
+    else
+        mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
+
+    // Stat box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.stat_box.x, l.stat_box.y, l.stat_box.x + l.stat_box.w - 1,
+        l.stat_box.y + l.stat_box.h - 1, 1);
+    mytext.write_xy(l.stat_box.x + 65, l.stat_box.y + 2, DARK_BLUE, "Train");
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.stat_box_inner.x, l.stat_box_inner.y, l.stat_box_inner.w,
+        l.stat_box_inner.h);
+
+    // Stat box content
+    Sint32 linesdown = 0;
+    int line_height = 10;
+
+    unsigned char showcolor = STAT_COLOR;
+
+    struct { const char* label; short value; } hire_stats[] = {
+        {"STR:",  og::runtime::current_session->current_guy_->strength},
+        {"DEX:",  og::runtime::current_session->current_guy_->dexterity},
+        {"CON:",  og::runtime::current_session->current_guy_->constitution},
+        {"INT:",  og::runtime::current_session->current_guy_->intelligence},
+        {"ARMOR:", og::runtime::current_session->current_guy_->armor},
+    };
+    for (int si = 0; si < 5; si++) {
+        int y = l.stat_box_content.y + linesdown * line_height;
+        og::runtime::current_session->message_ = std::format("{}", hire_stats[si].value);
+        mytext.write_xy(l.stat_box_content.x, y, hire_stats[si].label,
+                         static_cast<unsigned char>(STAT_COLOR), 1);
+        mytext.write_xy(l.stat_box_content.x + STAT_NUM_OFFSET, y, og::runtime::current_session->message_.c_str(), showcolor, 1);
+        if (si < 4) // cost rating for STR/DEX/CON/INT only
+            mytext.write_xy(l.stat_box_content.x + STAT_NUM_OFFSET + 18, y,
+                            get_training_cost_rating(state->last_family, si), showcolor, 1);
+        if (si < 4)
+            linesdown++;
+    }
+
+    // Separator bar
+    UiRect r = {l.stat_box_content.x + 10, l.stat_box_content.y + (linesdown+1)*line_height - 2, l.stat_box_content.w - 20, 2};
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        r.x, r.y, r.w, r.h);
+
+    int derived_offset = 3*STAT_NUM_OFFSET/4;
+    auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
+
+    linesdown++;
+    int hire_line = linesdown;
+    draw_derived_stats_block(mytext, ds, l.stat_box_content.x, derived_offset, showcolor,
+        [&](int lline) { return l.stat_box_content.y + lline*line_height + 4; }, hire_line);
+}
+
+// HIRE, engine-hosted (the legacy loop is gone). Entry setup, session
+// lifetime, and the exit shape are the legacy code, verbatim: BACK folds to
+// MENU_REDRAW (the spec's exit_value); a remote start propagates its
+// MENU_EXIT directly (the slot-menu normalization — the parent breaks with
+// StartGame selected instead of re-detecting the start one loop later).
+Sint32 create_hire_menu(Sint32 arg1)
+{
 	og::runtime::current_session->myscreen_->clearbuffer();
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	#ifdef DISABLE_MULTIPLAYER
-	buttons[2].hidden = true;
-	#endif
-
-	int highlighted_button = 1;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     og::ui::HireSession hire_session(og::runtime::current_session->myscreen_->save_data, og::runtime::current_session->current_team_num_);
     pks().hire_session = &hire_session;
     sync_current_guy_from_hire();
+    // Legacy entry side effects (team stamp on the recruit); the label write
+    // inside is null-guarded and re-derived on the first frame regardless.
     change_hire_teamnum(0);
-    
-    
-    unsigned char last_family = og::runtime::current_session->current_guy_->family;
-    std::string description = get_class_description(last_family);
-    std::list<std::string> desc = explode(description);
-    const char* family_name = get_family_string(last_family);
-	
+
+    HireEngineState state;
+    state.start_time = query_timer();
+    state.last_family = og::runtime::current_session->current_guy_->family;
+    state.description = get_class_description(state.last_family);
+    state.desc = explode(state.description);
+    state.family_name = get_family_string(state.last_family);
+    state.pending_new_game_popup = (arg1 == 1);
+
 	grab_mouse();
 
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		clickvalue = leftmouse(buttons);
-		if (clickvalue == 1)
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-		else if (clickvalue == 2)
-			retvalue = og::runtime::current_session->localbuttons_->rightclick();
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        // Reset buttons
-        if(retvalue == MENU_OK || retvalue == MENU_REDRAW)
-        {
-	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::hire_menu_screen_spec(), &state);
 
-            // Update our team-number display ..
-            change_hire_teamnum(0);
-            
-            retvalue = 0;
-        }
-		
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-		
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-        if (!og::runtime::current_session->current_guy_)
-            sync_current_guy_from_hire();
-        
-        // Name box
-        og::runtime::current_session->myscreen_->draw_button(
-            name_box.x, name_box.y, name_box.x + name_box.w - 1,
-            name_box.y + name_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            name_box_inner.x, name_box_inner.y, name_box_inner.w,
-            name_box_inner.h);
-        
-        text& mytext = og::runtime::current_session->myscreen_->text_normal;
-        mytext.write_xy(name_box.x + name_box.w/2 - 3*static_cast<Sint32>(strlen(family_name)), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
-        
-		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
-        change_hire_teamnum(0);
-        
-        
-        // Description box
-        og::runtime::current_session->myscreen_->draw_button(
-            description_box.x, description_box.y,
-            description_box.x + description_box.w - 1,
-            description_box.y + description_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            description_box_inner.x, description_box_inner.y,
-            description_box_inner.w, description_box_inner.h);
-        
-        if(og::runtime::current_session->current_guy_->family != last_family)
-        {
-            // Update description
-            last_family = og::runtime::current_session->current_guy_->family;
-            description = get_class_description(last_family);
-            desc = explode(description);
-            
-            family_name = get_family_string(last_family);
-        }
-        
-        int i = 0;
-        for(auto& line : desc)
-        {
-            mytext.write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
-            i++;
-        }
-        
-        // Cost box
-        og::runtime::current_session->myscreen_->draw_button(
-            cost_box.x, cost_box.y, cost_box.x + cost_box.w - 1,
-            cost_box.y + cost_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            cost_box_inner.x, cost_box_inner.y, cost_box_inner.w,
-            cost_box_inner.h);
-        
-        // current_team_num_ is derived from a save-loaded guy::teamnum (which
-        // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
-        const int hire_cash_team =
-            (og::runtime::current_session->current_team_num_ < 0 ||
-             og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
-                ? 0
-                : static_cast<int>(og::runtime::current_session->current_team_num_);
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
-        mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
-        mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
-        og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
-        else
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
-
-        // Stat box
-        og::runtime::current_session->myscreen_->draw_button(
-            stat_box.x, stat_box.y, stat_box.x + stat_box.w - 1,
-            stat_box.y + stat_box.h - 1, 1);
-        mytext.write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            stat_box_inner.x, stat_box_inner.y, stat_box_inner.w,
-            stat_box_inner.h);
-
-        // Stat box content
-        linesdown = 0;
-        int line_height = 10;
-
-        showcolor = STAT_COLOR;
-
-        struct { const char* label; short value; } hire_stats[] = {
-            {"STR:",  og::runtime::current_session->current_guy_->strength},
-            {"DEX:",  og::runtime::current_session->current_guy_->dexterity},
-            {"CON:",  og::runtime::current_session->current_guy_->constitution},
-            {"INT:",  og::runtime::current_session->current_guy_->intelligence},
-            {"ARMOR:", og::runtime::current_session->current_guy_->armor},
-        };
-        for (int si = 0; si < 5; si++) {
-            int y = stat_box_content.y + linesdown * line_height;
-            og::runtime::current_session->message_ = std::format("{}", hire_stats[si].value);
-            mytext.write_xy(stat_box_content.x, y, hire_stats[si].label,
-                             static_cast<unsigned char>(STAT_COLOR), 1);
-            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, og::runtime::current_session->message_.c_str(), showcolor, 1);
-            if (si < 4) // cost rating for STR/DEX/CON/INT only
-                mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, y,
-                                get_training_cost_rating(last_family, si), showcolor, 1);
-            if (si < 4)
-                linesdown++;
-        }
-		
-		// Separator bar
-		UiRect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
-		og::runtime::current_session->myscreen_->draw_button_inverted(
-			r.x, r.y, r.w, r.h);
-		
-		int derived_offset = 3*STAT_NUM_OFFSET/4;
-		auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
-
-        linesdown++;
-        int hire_line = linesdown;
-        draw_derived_stats_block(mytext, ds, stat_box_content.x, derived_offset, showcolor,
-            [&](int l) { return stat_box_content.y + l*line_height + 4; }, hire_line);
-        linesdown = hire_line;
-
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-        
-        if(arg1 == 1)
-        {
-            // Show popup on new game
-            arg1 = -1;
-            popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
-            
-	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-        }
-	}
-	
 	pks().hire_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
-	return MENU_REDRAW;
+	return retvalue;
 }
 
-Sint32 create_train_menu(Sint32 arg1)
+// ---------------------------------------------------------------------------
+// TRAIN: engine-hosted (§1.8 step 6; the spec lives in menu_screen_specs.cpp,
+// docs/menu-engine.md). The +/- pixie faces are the spec's art_family
+// bindings (re-applied by the runner after init_buttons and after every
+// reset — legacy re-applied only on MENU_REDRAW re-inits, but under the
+// engine EVERY consumed reset re-inits, so the re-apply must ride along);
+// the reset tail is the on_reset hook; the stat/info panels and the live
+// allbuttons_[18] label write are the content pass, verbatim.
+// ---------------------------------------------------------------------------
+
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct TrainEngineState
 {
-	float linesdown = 0.0f;
-	Sint32 i, retvalue=0;
-	unsigned char showcolor;
-	Sint32 start_time = query_timer();
-	Uint32 current_cost;
-	Sint32 clickvalue;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-	
+    Sint32 start_time = 0;
+};
+
+// DISABLE_MULTIPLAYER hides the team cycler (the spec's state_override);
+// the legacy static links into it were refused by handle_menu_nav, so the
+// explicit no-ops keep behavior identical under the §1.5 nav invariant.
+// With multiplayer compiled in this is a no-op (row 18 is always visible).
+void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& /*highlighted_button*/)
+{
+#ifdef DISABLE_MULTIPLAYER
+    if (num_buttons > 18 && buttons[18].hidden)
+    {
+        buttons[13].nav.right = -1;  // inc_level
+        buttons[14].nav.up = -1;     // view_team
+        buttons[16].nav.down = -1;   // rename
+        buttons[17].nav.down = -1;   // details
+    }
+#else
+    (void)buttons;
+    (void)num_buttons;
+#endif
+}
+
+// The legacy reset tail. On MENU_REDRAW resets: the DETAILS submenu can
+// promote (family-change) the REAL team member in place — re-snapshot the
+// working copy first or the stale copy hides the promotion on screen and a
+// later ACCEPT statscopy()s the old family back (bug A9). The runner fires
+// this on MENU_OK resets too, where both calls are idempotent no-ops (the
+// stat callbacks already synced; no promotion is pending).
+void picker_train_menu_engine_on_reset(void* /*screen_state*/)
+{
+    if (pks().train_session)
+        pks().train_session->resync_if_promoted();
+    sync_current_guy_from_train();
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons):
+// portrait, name box, stat box with change-coloring against the original,
+// the info box (kills/accuracy/exp, derived stats, cash/cost), and the live
+// allbuttons_[18] "Playing on Team N" write + vdisplay (G8: swept only at
+// Layer F). current_cost re-derives from the session each frame — it only
+// changes through clicks, which is when the legacy loop re-read it.
+void picker_train_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<TrainEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
+    float linesdown = 0.0f;
+    unsigned char showcolor;
+
     UiRect stat_box = {38, 66, 82, 94};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
     UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
-    
+
     UiRect info_box_inner = {176, 34, 304-176, 112+22-34};
     UiRect info_box_content = {info_box_inner.x + 4, info_box_inner.y + 4, info_box_inner.w - 8, info_box_inner.h - 8};
-    
-	if (arg1)
-		arg1 = 1;
 
-	// Make sure we have a local team member we can train.
-	if (save.team_size < 1 || !save_has_trainable_team_member(save))
-	{
-        show_need_team_to_train_popup();
-		
-		return MENU_OK;
-	}
+    const Uint32 current_cost =
+        pks().train_session ? pks().train_session->current_cost() : 0;
 
-	og::runtime::current_session->myscreen_->clearbuffer();
+		show_guy(query_timer()-state->start_time, 1); // 1 means ourteam[editguy]
 
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	
-	#ifdef DISABLE_MULTIPLAYER
-	button* buttons = picker_trainmenu_buttons();
-	const int num_buttons = picker_trainmenu_button_count();
-	buttons[18].hidden = true;
-	#else
-	button* buttons = picker_trainmenu_buttons();
-	const int num_buttons = picker_trainmenu_button_count();
-	#endif
-
-	int highlighted_button = 1;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-	
-	for (i=2; i < 14; i++)
-	{
-		if (!(i%2)) // 2, 4, ..., 12
-			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
-		else
-			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
-	}
-
-    og::ui::TrainSession train_session(save);
-    pks().train_session = &train_session;
-    sync_current_guy_from_train();
-    if (pks().train_session->empty()) {
-        pks().train_session = nullptr;
-        show_need_team_to_train_popup();
-        return MENU_OK;
-    }
-    current_cost = pks().train_session->current_cost();
-
-	grab_mouse();
-	
-    clear_keyboard();
-    
-    clear_key_press_event();
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		clickvalue = leftmouse(buttons);
-		if (clickvalue == 1)
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-		else if (clickvalue == 2)
-			retvalue = og::runtime::current_session->localbuttons_->rightclick();
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Nested menus can replace the global button array before returning.
-        // Once a submenu requests EXIT, stop drawing this menu immediately.
-        if (retvalue & MENU_EXIT)
-            break;
-        
-        // Reset buttons
-        if(og::runtime::current_session->localbuttons_ && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
-        {
-            if(retvalue == MENU_REDRAW)
-            {
-					og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-				for (i=2; i < 14; i++)
-				{
-					if (!(i%2)) // 2, 4, ..., 12
-						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
-					else
-						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
-				}
-				// The DETAILS submenu can promote (family-change) the REAL
-				// team member in place. Re-snapshot the working copy first
-				// or the stale copy hides the promotion on screen and a
-				// later ACCEPT statscopy()s the old family back (bug A9).
-				if (pks().train_session)
-					pks().train_session->resync_if_promoted();
-				sync_current_guy_from_train();
-            }
-
-            if (!og::runtime::current_session->current_guy_)
-                sync_current_guy_from_train();
-            current_cost = pks().train_session->current_cost();
-            retvalue = 0;
-        }
-		
-        //current_cost = calculate_train_cost(here);
-        
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-		
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-		show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
-		
 
         linesdown = 0;
 
@@ -1876,11 +1859,51 @@ Sint32 create_train_menu(Sint32 arg1)
         og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
         og::runtime::current_session->allbuttons_[18]->label = og::runtime::current_session->message_;
         og::runtime::current_session->allbuttons_[18]->vdisplay();
+}
 
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
+// TRAIN, engine-hosted (the legacy loop is gone). The entry guards, session
+// lifetime, and the exit fold are the legacy code, verbatim: nested
+// submenus' MENU_REDRAWs are consumed by reset_buttons; every exit-bearing
+// path carries MENU_EXIT and folds to MENU_REDRAW unless a start (VIEW TEAM
+// GO or a remote host GO) was selected.
+Sint32 create_train_menu(Sint32 arg1)
+{
+    // arg1 is part of the button.h signature but was never read by the
+    // legacy loop (it only normalized it and moved on).
+    (void)arg1;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+	// Make sure we have a local team member we can train.
+	if (save.team_size < 1 || !save_has_trainable_team_member(save))
+	{
+        show_need_team_to_train_popup();
+
+		return MENU_OK;
 	}
+
+	og::runtime::current_session->myscreen_->clearbuffer();
+
+    og::ui::TrainSession train_session(save);
+    pks().train_session = &train_session;
+    sync_current_guy_from_train();
+    if (pks().train_session->empty()) {
+        pks().train_session = nullptr;
+        show_need_team_to_train_popup();
+        return MENU_OK;
+    }
+
+    TrainEngineState state;
+    state.start_time = query_timer();
+
+	grab_mouse();
+
+    clear_keyboard();
+
+    clear_key_press_event();
+
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::train_menu_screen_spec(), &state);
+
 	pks().train_session = nullptr;
 	pks().old_guy = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();

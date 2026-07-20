@@ -23,7 +23,9 @@ window. Keep this table in sync with the registry:
 | Team build | **Engine** | `team_build_menu_screen_spec()` via `create_team_menu()` (`FadeAroundEntry`; GO gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard, entered at -1 so the first frame always reloads) |
 | View team | **Engine** | `view_team_menu_screen_spec()` via `create_view_menu()` (`exit_on_redraw`; GO gating = the legacy sync as its Rewire program) |
 | Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
-| Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
+| Hire | **Engine** | `hire_menu_screen_spec()` via `create_hire_menu()` (entry-time PREV/NEXT repositioning = `prepare_buttons`, so the accessor keeps the pinned table shape; solo-hidden team cycler = state override + nav-closure rewire; new-game popup = `frame_tick`; stat/cost/description panels = content hook in picker_team_build.cpp) |
+| Train | **Engine** | `train_menu_screen_spec()` via `create_train_menu()` (the +/- pixie faces = `art_family` bindings re-applied after every reset; the bug-A9 promotion resync = `on_reset`; the wrapper keeps the need-a-team entry guards and the start-selected exit fold) |
+| Progress / View level | Legacy | `create_progress_menu()` / `create_view_scenario_menu()` |
 | Scenario | **Engine** | `scenario_menu_screen_spec()` via `create_scenario_menu()` (host gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard; the wrapper folds BACK's MENU_EXIT unless a start was selected) |
 | TEAMS | **Engine** | `teams_menu_screen_spec()` via `create_teams_menu()` (`exit_on_redraw`; the Rewire program replays the legacy compute+sync+trace verbatim from picker_team_build.cpp; row bars draw beneath the buttons in `draw_background`; the reload guard sits in `frame_tick` — one frame later than the legacy loop-top reload, the flows poll with timeouts) |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
@@ -66,9 +68,11 @@ itself. `myfun != 0` keeps every engine row keyboard-live.
 Per §1.4, transcribed from the canonical legacy loops:
 
 1. Materialize via the D3 accessor pair (buttons() fills what count()
-   reads — always call buttons() first), `init_buttons`, `clear_keyboard`,
-   art bindings (pixie `set_graphic` AFTER init_buttons — it overwrites
-   w/h), initial gate/nav pass.
+   reads — always call buttons() first), `prepare_buttons` (entry-time
+   descriptor fix-ups, once — hire's computed PREV/NEXT repositioning;
+   per-frame visibility never lives here), `init_buttons`,
+   `clear_keyboard`, art bindings (pixie `set_graphic` AFTER init_buttons —
+   it overwrites w/h), initial gate/nav pass.
 2. Loop while `!(retvalue & MENU_EXIT)`:
    - `picker_lobby_poll()` if `polls_lobby`;
    - gate pass → `RowState` per row → hidden on BOTH surfaces

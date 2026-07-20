@@ -637,10 +637,11 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 13)
+    EXPECT_GE(engine_screens, 15)
         << "difficulty + the FX trio + display + controls + main options + "
            "main menu + the full team-build cluster (team build, view team, "
-           "slot menus, SCENARIO, TEAMS) must be engine-hosted by this stage";
+           "slot menus, SCENARIO, TEAMS) + hire + train must be "
+           "engine-hosted by this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +748,82 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_EQ(1, team_build->default_highlight);
     EXPECT_NE(nullptr, team_build->frame_tick);
     EXPECT_NE(nullptr, team_build->on_reset);
+}
+
+// ---------------------------------------------------------------------------
+// §1.8 step 6 registry state + exit/entry semantics for the content-hook-
+// heavy screens. Updated in the SAME commit as each registry flip.
+TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
+{
+    using Kind = og::ui::MenuScreenHost::Kind;
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::Hire).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::Train).kind);
+
+    // HIRE: every legacy local exit returned MENU_REDRAW (BACK folds to the
+    // exit_value); the remote MENU_EXIT propagates (slot-menu shape). The
+    // entry-time PREV/NEXT repositioning is the prepare_buttons hook — the
+    // accessor output stays the pinned table shape (test_menu_pins).
+    const og::ui::MenuScreenSpec* hire =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Hire).spec;
+    ASSERT_NE(nullptr, hire);
+    EXPECT_EQ(MENU_REDRAW, hire->exit_value);
+    EXPECT_FALSE(hire->exit_on_redraw)
+        << "hire callbacks return MENU_REDRAW for reset_buttons to consume";
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, hire->remote_start);
+    EXPECT_TRUE(hire->right_click_enabled) << "reverse candidate cycling";
+    EXPECT_EQ(1, hire->default_highlight);
+    ASSERT_NE(nullptr, hire->prepare_buttons);
+    {
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(*hire, rows);
+        ASSERT_EQ(5, static_cast<int>(rows.size()));
+        hire->prepare_buttons(rows.data(), static_cast<int>(rows.size()),
+                              nullptr);
+        // The computed portrait-flanking positions the legacy loop wrote
+        // over the table shape before init_buttons.
+        EXPECT_EQ(27, rows[0].x) << "prev";
+        EXPECT_EQ(37, rows[0].y) << "prev";
+        EXPECT_EQ(135, rows[1].x) << "next";
+        EXPECT_EQ(37, rows[1].y) << "next";
+    }
+    // The solo-hidden team cycler is a per-frame state override
+    // (entry-equivalent: numplayers cannot change under the open screen).
+    ASSERT_NE(nullptr, hire->rows[2].state_override);
+    {
+        SaveData save;
+        og::ui::MenuLabelContext context;
+        context.save = &save;
+        save.numplayers = 1;
+        EXPECT_EQ(og::ui::RowState::Hidden,
+                  hire->rows[2].state_override(context));
+#ifndef DISABLE_MULTIPLAYER
+        save.numplayers = 2;
+        EXPECT_EQ(og::ui::RowState::Visible,
+                  hire->rows[2].state_override(context));
+#endif
+    }
+
+    // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
+    // start was selected); nested DETAILS/RENAME/VIEW TEAM MENU_REDRAWs are
+    // consumed by reset_buttons; the +/- pixie faces are art bindings.
+    const og::ui::MenuScreenSpec* train =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Train).spec;
+    ASSERT_NE(nullptr, train);
+    EXPECT_EQ(MENU_EXIT, train->exit_value);
+    EXPECT_FALSE(train->exit_on_redraw);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, train->remote_start);
+    EXPECT_TRUE(train->right_click_enabled);
+    EXPECT_EQ(1, train->default_highlight);
+    EXPECT_NE(nullptr, train->on_reset) << "the bug-A9 promotion resync";
+    ASSERT_EQ(20, train->row_count);
+    for (int i = 2; i < 14; ++i) {
+        EXPECT_EQ((i % 2 == 0) ? FAMILY_MINUS : FAMILY_PLUS,
+                  static_cast<int>(train->rows[i].art_family))
+            << "row " << i
+            << ": the legacy set_graphic loop must be the art binding";
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -305,6 +305,10 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     OG_MENU_ENGINE_CHECK(static_cast<int>(spec_rows.size()) == num_buttons,
                          "accessor row count diverges from the spec's "
                          "build-gate materialization");
+    // Entry-time descriptor fix-ups (the legacy pre-init mutations), once,
+    // before the live vbuttons are created from the descriptor rows.
+    if (spec.prepare_buttons != nullptr)
+        spec.prepare_buttons(buttons, num_buttons, screen_state);
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();

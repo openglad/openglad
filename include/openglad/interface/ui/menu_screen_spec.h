@@ -180,6 +180,12 @@ struct MenuScreenSpec {
     bool ready_reset_on_mutation = false;     // Layer F
     bool sync_settings_after_mutation = false; // after handled MenuSpecRow clicks
     // Per-screen hooks (screen_state is run_menu_screen's opaque argument).
+    // Entry-time descriptor fix-ups, run ONCE after materialization and
+    // BEFORE init_buttons (the legacy pre-init mutations: hire's computed
+    // PREV/NEXT repositioning). Per-frame visibility belongs to gates and
+    // rewires, never here — the gate pass rewrites hidden every frame.
+    void (*prepare_buttons)(button* buttons, int num_buttons,
+                            void* screen_state) = nullptr;
     void (*draw_background)(void* screen_state) = nullptr; // full pre-buttons pass, incl. clear
     void (*draw_content)(void* screen_state) = nullptr;    // after draw_buttons (G14 hooks here)
     bool (*frame_tick)(void* screen_state, int frame) = nullptr; // false => exit loop
@@ -254,6 +260,12 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id);
 
 // The first migrated screen (§1.8 step 2).
 const MenuScreenSpec& difficulty_menu_screen_spec();
+
+// The content-hook-heavy screens (§1.8 step 6). Their per-frame hooks and
+// entry wrappers live beside their file-local helpers in
+// picker_team_build.cpp; the wrappers call run_menu_screen on these.
+const MenuScreenSpec& hire_menu_screen_spec();
+const MenuScreenSpec& train_menu_screen_spec();
 
 // The main menu (§1.8 step 4). §1.6: ONE MP spec + ONE no-MP spec (the no-MP
 // variant genuinely repositions rows), selected at registry init by

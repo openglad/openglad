@@ -70,6 +70,20 @@ void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
 bool picker_teams_menu_engine_frame_tick(void* screen_state, int frame);
 void picker_teams_menu_engine_draw_background(void* screen_state);
 void picker_teams_menu_engine_draw_content(void* screen_state);
+// HIRE / TRAIN engine hooks (§1.8 step 6; defined beside their file-local
+// helpers — sessions, show_guy, the stat-panel painters — in
+// picker_team_build.cpp).
+void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
+                                             void* screen_state);
+void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
+                                    int& highlighted_button);
+bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame);
+void picker_hire_menu_engine_on_reset(void* screen_state);
+void picker_hire_menu_engine_draw_content(void* screen_state);
+void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& highlighted_button);
+void picker_train_menu_engine_on_reset(void* screen_state);
+void picker_train_menu_engine_draw_content(void* screen_state);
 
 static inline PickerState& pks()
 {
@@ -1484,6 +1498,181 @@ const MenuScreenSpec& teams_menu_screen_spec()
 }
 
 // ---------------------------------------------------------------------------
+// HIRE (§1.8 step 6): PREV/NEXT candidate cyclers over the recruit portrait,
+// the hire-team cycler, HIRE ME, BACK. Rows transcribed VERBATIM from the
+// deleted k_hiremenu_buttons — including the PREV/NEXT table positions
+// (10,40)/(110,40) that the legacy loop immediately recomputed from the
+// description/name box geometry before init_buttons: that entry-time
+// repositioning is the spec's prepare_buttons hook, so the accessor output
+// (what test_menu_pins pins) stays the table shape while the live screen
+// keeps the computed layout. The heavy stat/cost/description panels stay a
+// client-side content hook (§1.3). Right-click is live (reverse cycling via
+// do_call_right). BACK carries MENU_EXIT; the runner folds it to the
+// spec's MENU_REDRAW exit_value (the legacy return); a remote start
+// propagates its MENU_EXIT directly (the slot-menu normalization).
+
+// The team cycler is hidden for solo play (the legacy entry-time
+// `buttons[2].hidden = (numplayers == 1)` — numplayers can only change on
+// screens that are never open at the same time, so the per-frame gate is
+// entry-equivalent) and on DISABLE_MULTIPLAYER builds.
+RowState hire_change_team_row_state(const MenuLabelContext& context)
+{
+#ifdef DISABLE_MULTIPLAYER
+    (void)context;
+    return RowState::Hidden;
+#else
+    return (context.save != nullptr && context.save->numplayers == 1)
+        ? RowState::Hidden
+        : RowState::Visible;
+#endif
+}
+
+constexpr MenuButtonSpec kHireMenuRows[] = {
+    {.id = "prev", .label = "PREV",
+     .x = 10, .y = 40, .w = 40, .h = 20,
+     .action = ButtonAction::CycleGuy, .arg = -1,
+     .nav = {.down = 4, .right = 1}},
+    {.id = "next", .label = "NEXT",
+     .x = 110, .y = 40, .w = 40, .h = 20,
+     .action = ButtonAction::CycleGuy, .arg = 1,
+     .nav = {.down = 3, .left = 0, .right = 3}},
+    {.id = "change_hire_team", .label = "hiring for team X",
+     .x = 190, .y = 170, .w = 110, .h = 20,
+     .action = ButtonAction::ChangeHireTeam, .arg = 1,
+     .nav = {.up = 1, .left = 3},
+     .state_override = &hire_change_team_row_state},
+    {.id = "hire_me", .label = "HIRE ME",
+     .x = 82, .y = 166, .w = 88, .h = 28,
+     .action = ButtonAction::AddGuy, .arg = -1,
+     .nav = {.up = 1, .left = 4, .right = 2}},
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 0, .right = 3}},
+};
+
+// ---------------------------------------------------------------------------
+// TRAIN (§1.8 step 6): the six +/- stat pairs beside the portrait (pixie
+// faces FAMILY_MINUS/FAMILY_PLUS — the legacy set_graphic loop after
+// init_buttons and after every MENU_REDRAW reset is the art_family binding,
+// which the runner re-applies after EVERY reset), PREV/NEXT team cyclers,
+// RENAME / DETAILS.. header row, the team cycler, ACCEPT / VIEW TEAM / BACK.
+// Rows transcribed VERBATIM from the deleted k_trainmenu_buttons. The stat
+// panels and the live allbuttons_[18] "Playing on Team N" write (G8: swept
+// only at Layer F) stay in the content hook. Nested submenus (DETAILS,
+// RENAME, VIEW TEAM) return MENU_REDRAW for reset_buttons to consume
+// (exit_on_redraw stays false); a VIEW TEAM GO or a remote start propagates
+// MENU_EXIT, and the wrapper folds the exit exactly as the legacy loop did.
+
+// The team cycler only exists with multiplayer compiled in (the legacy
+// `buttons[18].hidden = true` under DISABLE_MULTIPLAYER).
+RowState train_change_team_row_state(const MenuLabelContext& context)
+{
+    (void)context;
+#ifdef DISABLE_MULTIPLAYER
+    return RowState::Hidden;
+#else
+    return RowState::Visible;
+#endif
+}
+
+constexpr MenuButtonSpec kTrainMenuRows[] = {
+    {.id = "prev", .label = "PREV",
+     .x = 10, .y = 40, .w = 40, .h = 20,
+     .action = ButtonAction::CycleTeamGuy, .arg = -1,
+     .nav = {.down = 2, .right = 1}},
+    {.id = "next", .label = "NEXT",
+     .x = 110, .y = 40, .w = 40, .h = 20,
+     .action = ButtonAction::CycleTeamGuy, .arg = 1,
+     .nav = {.down = 3, .left = 0, .right = 16}},
+    {.id = "dec_str", .label = "",
+     .x = 16, .y = 70, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_STR,
+     .nav = {.up = 0, .down = 4, .right = 3},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_str", .label = "",
+     .x = 126, .y = 70, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_STR,
+     .nav = {.up = 1, .down = 5, .left = 2},
+     .art_family = FAMILY_PLUS},
+    {.id = "dec_dex", .label = "",
+     .x = 16, .y = 85, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_DEX,
+     .nav = {.up = 2, .down = 6, .right = 5},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_dex", .label = "",
+     .x = 126, .y = 85, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_DEX,
+     .nav = {.up = 3, .down = 7, .left = 4},
+     .art_family = FAMILY_PLUS},
+    {.id = "dec_con", .label = "",
+     .x = 16, .y = 100, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_CON,
+     .nav = {.up = 4, .down = 8, .right = 7},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_con", .label = "",
+     .x = 126, .y = 100, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_CON,
+     .nav = {.up = 5, .down = 9, .left = 6},
+     .art_family = FAMILY_PLUS},
+    {.id = "dec_int", .label = "",
+     .x = 16, .y = 115, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_INT,
+     .nav = {.up = 6, .down = 10, .right = 9},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_int", .label = "",
+     .x = 126, .y = 115, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_INT,
+     .nav = {.up = 7, .down = 11, .left = 8},
+     .art_family = FAMILY_PLUS},
+    {.id = "dec_armor", .label = "",
+     .x = 16, .y = 130, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_ARMOR,
+     .nav = {.up = 8, .down = 12, .right = 11},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_armor", .label = "",
+     .x = 126, .y = 130, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_ARMOR,
+     .nav = {.up = 9, .down = 13, .left = 10},
+     .art_family = FAMILY_PLUS},
+    {.id = "dec_level", .label = "",
+     .x = 16, .y = 145, .w = 16, .h = 10,
+     .action = ButtonAction::DecreaseStat, .arg = BUT_LEVEL,
+     .nav = {.up = 10, .down = 19, .right = 13},
+     .art_family = FAMILY_MINUS},
+    {.id = "inc_level", .label = "",
+     .x = 126, .y = 145, .w = 16, .h = 12,
+     .action = ButtonAction::IncreaseStat, .arg = BUT_LEVEL,
+     .nav = {.up = 11, .down = 15, .left = 12, .right = 18},
+     .art_family = FAMILY_PLUS},
+    {.id = "view_team", .label = "VIEW TEAM",
+     .x = 190, .y = 170, .w = 90, .h = 20,
+     .action = ButtonAction::CreateViewMenu, .arg = -1,
+     .nav = {.up = 18, .left = 15}},
+    {.id = "accept", .label = "ACCEPT",
+     .x = 80, .y = 170, .w = 80, .h = 20,
+     .action = ButtonAction::EditGuy, .arg = -1,
+     .nav = {.up = 13, .left = 19, .right = 14}},
+    {.id = "rename", .label = "RENAME",
+     .x = 174, .y = 8, .w = 64, .h = 22,
+     .action = ButtonAction::NameGuy, .arg = 1,
+     .nav = {.down = 18, .left = 1, .right = 17}},
+    {.id = "details", .label = "DETAILS..",
+     .x = 240, .y = 8, .w = 64, .h = 22,
+     .action = ButtonAction::CreateDetailMenu, .arg = 0,
+     .nav = {.down = 18, .left = 16}},
+    {.id = "change_team", .label = "Playing on Team X",
+     .x = 174, .y = 138, .w = 133, .h = 22,
+     .action = ButtonAction::ChangeTeam, .arg = 1,
+     .nav = {.up = 17, .down = 14, .left = 13},
+     .state_override = &train_change_team_row_state},
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 12, .right = 15}},
+};
+
+// ---------------------------------------------------------------------------
 // TEAM BUILD (§1.8 step 5, the cluster's parent screen). A clean 3x3 grid on
 // the classic x=30/120/210 columns, transcribed VERBATIM from the deleted
 // k_createmenu_buttons: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
@@ -1686,6 +1875,72 @@ const MenuScreenSpec& difficulty_menu_screen_spec()
     return spec;
 }
 
+const MenuScreenSpec& hire_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "hire",
+        .rows = kHireMenuRows,
+        .row_count = static_cast<int>(std::size(kHireMenuRows)),
+        .buttons_accessor = &picker_hiremenu_buttons,
+        .count_accessor = &picker_hiremenu_button_count,
+        // Nav closure over the solo-hidden team cycler (the legacy links
+        // into it were refused by handle_menu_nav; the engine writes the
+        // explicit no-op instead — §1.5 invariant).
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &picker_hire_menu_engine_rewire},
+        // The loop-top host-GO check that launches a joiner parked here.
+        // The remote MENU_EXIT propagates directly (legacy folded it to
+        // MENU_REDRAW and the parent re-detected the start one loop later —
+        // the slot-menu normalization, same launch).
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = 1,  // next, as the legacy loop
+        // clickvalue == 2 -> rightclick (reverse candidate cycling).
+        .right_click_enabled = true,
+        .polls_lobby = true,
+        // Entry-time PREV/NEXT repositioning (see the spec comment).
+        .prepare_buttons = &picker_hire_menu_engine_prepare_buttons,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &picker_hire_menu_engine_draw_content,
+        // The new-game intro popup fires after the first presented frame
+        // (legacy loop-bottom arg1 == 1 branch).
+        .frame_tick = &picker_hire_menu_engine_frame_tick,
+        // The legacy reset tail: re-derive the hire-team label surfaces.
+        .on_reset = &picker_hire_menu_engine_on_reset,
+        // Every legacy local exit returned MENU_REDRAW.
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+const MenuScreenSpec& train_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "train",
+        .rows = kTrainMenuRows,
+        .row_count = static_cast<int>(std::size(kTrainMenuRows)),
+        .buttons_accessor = &picker_trainmenu_buttons,
+        .count_accessor = &picker_trainmenu_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &picker_train_menu_engine_rewire},
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = 1,  // next, as the legacy loop
+        // clickvalue == 2 -> rightclick (reverse stat/team cycling).
+        .right_click_enabled = true,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &picker_train_menu_engine_draw_content,
+        // The legacy MENU_REDRAW reset tail (promotion resync, bug A9) —
+        // harmless on MENU_OK resets; see the hook comment.
+        .on_reset = &picker_train_menu_engine_on_reset,
+        // Every exit-bearing path carried MENU_EXIT; the wrapper folds it
+        // to MENU_REDRAW unless a start was selected (legacy shape).
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -1729,9 +1984,9 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::Difficulty,
                 {.kind = Kind::Engine, .spec = &difficulty_menu_screen_spec()});
             set(MenuScreenId::Hire,
-                {.kind = Kind::Legacy, .legacy_entry = &create_hire_menu});
+                {.kind = Kind::Engine, .spec = &hire_menu_screen_spec()});
             set(MenuScreenId::Train,
-                {.kind = Kind::Legacy, .legacy_entry = &create_train_menu});
+                {.kind = Kind::Engine, .spec = &train_menu_screen_spec()});
             set(MenuScreenId::Progress,
                 {.kind = Kind::Legacy, .legacy_entry = &create_progress_menu});
             set(MenuScreenId::ViewScenario,
@@ -1880,6 +2135,30 @@ button* picker_teamsmenu_buttons()
 int picker_teamsmenu_button_count()
 {
     return static_cast<int>(pks().teamsmenu_buttons.size());
+}
+
+button* picker_hiremenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::hire_menu_screen_spec(),
+                                     pks().hiremenu_buttons);
+    return pks().hiremenu_buttons.data();
+}
+
+int picker_hiremenu_button_count()
+{
+    return static_cast<int>(pks().hiremenu_buttons.size());
+}
+
+button* picker_trainmenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::train_menu_screen_spec(),
+                                     pks().trainmenu_buttons);
+    return pks().trainmenu_buttons.data();
+}
+
+int picker_trainmenu_button_count()
+{
+    return static_cast<int>(pks().trainmenu_buttons.size());
 }
 
 // The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit

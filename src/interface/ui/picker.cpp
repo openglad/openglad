@@ -1512,40 +1512,9 @@ static const button k_details_buttons[] =
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
     };
 
-static const button k_trainmenu_buttons[] =
-    {
-        button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), -1, MenuNav{.down=2, .right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), 1, MenuNav{.down=3, .left=0, .right=16}),
-        button("dec_str", "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_STR, MenuNav{.up=0, .down=4, .right=3}),
-        button("inc_str", "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_STR, MenuNav{.up=1, .down=5, .left=2}),
-        button("dec_dex", "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_DEX, MenuNav{.up=2, .down=6, .right=5}),
-        button("inc_dex", "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_DEX, MenuNav{.up=3, .down=7, .left=4}),
-        button("dec_con", "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_CON, MenuNav{.up=4, .down=8, .right=7}),
-        button("inc_con", "", KEYSTATE_UNKNOWN,  126,100, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_CON, MenuNav{.up=5, .down=9, .left=6}),
-        button("dec_int", "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_INT, MenuNav{.up=6, .down=10, .right=9}),
-        button("inc_int", "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_INT, MenuNav{.up=7, .down=11, .left=8}),
-        button("dec_armor", "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_ARMOR, MenuNav{.up=8, .down=12, .right=11}),
-        button("inc_armor", "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_ARMOR, MenuNav{.up=9, .down=13, .left=10}),
-        button("dec_level", "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_LEVEL, MenuNav{.up=10, .down=19, .right=13}),
-        button("inc_level", "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_LEVEL, MenuNav{.up=11, .down=15, .left=12, .right=18}),
-        button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.up=18, .left=15}),
-        button("accept", "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, button_action_id(ButtonAction::EditGuy), -1, MenuNav{.up=13, .left=19, .right=14}),
-        button("rename", "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, button_action_id(ButtonAction::NameGuy), 1, MenuNav{.down=18, .left=1, .right=17}),
-        button("details", "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, button_action_id(ButtonAction::CreateDetailMenu), 0, MenuNav{.down=18, .left=16}),
-        button("change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, button_action_id(ButtonAction::ChangeTeam), 1, MenuNav{.up=17, .down=14, .left=13}),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=12, .right=15}),
-
-    };
-
-static const button k_hiremenu_buttons[] =
-    {
-        button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), -1, MenuNav{.down=4, .right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), 1, MenuNav{.down=3, .left=0, .right=3}),
-        button("change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 190, 170, 110, 20, button_action_id(ButtonAction::ChangeHireTeam), 1, MenuNav{.up=1, .left=3}),
-        button("hire_me", "HIRE ME", KEYSTATE_UNKNOWN,  82, 166, 88, 28, button_action_id(ButtonAction::AddGuy), -1, MenuNav{.up=1, .left=4, .right=2}),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=0, .right=3}),
-
-    };
+// TRAIN / HIRE: engine-hosted — specs, accessor shims, and the per-frame
+// hooks/entry wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
+// (docs/menu-engine.md).
 
 // NETWORKING subscreen (relay-first — see the layout contract in
 // picker_sdl_defs.h). Static nav encodes the zero-visible-rooms variant;
@@ -1644,27 +1613,9 @@ int picker_details_button_count()
     return static_cast<int>(pks().details_buttons.size());
 }
 
-button* picker_trainmenu_buttons()
-{
-    reset_mutable_button_layout(pks().trainmenu_buttons, k_trainmenu_buttons);
-    return pks().trainmenu_buttons.data();
-}
-
-int picker_trainmenu_button_count()
-{
-    return static_cast<int>(pks().trainmenu_buttons.size());
-}
-
-button* picker_hiremenu_buttons()
-{
-    reset_mutable_button_layout(pks().hiremenu_buttons, k_hiremenu_buttons);
-    return pks().hiremenu_buttons.data();
-}
-
-int picker_hiremenu_button_count()
-{
-    return static_cast<int>(pks().hiremenu_buttons.size());
-}
+// picker_trainmenu_buttons()/picker_hiremenu_buttons() (+ counts):
+// engine-hosted screens — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 button* picker_networking_buttons()
 {
