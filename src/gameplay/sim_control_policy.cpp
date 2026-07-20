@@ -217,4 +217,22 @@ SimReacquire sim_reacquire_control(GameWorld& level, short my_team,
     return SimReacquire::EndGame;
 }
 
+bool sim_reacquire_apply(GameWorld& level, short my_team, short player_index,
+                         walker*& control_out, SimInputResult& result)
+{
+    switch (sim_reacquire_control(level, my_team, player_index, control_out))
+    {
+        case SimReacquire::Claimed:
+            return false; // the caller runs today's claim tail on control_out
+        case SimReacquire::Follow:
+            return true; // null seat, `result` untouched: NO endgame request
+        case SimReacquire::EndGame:
+        default:
+            // Exactly today's "no control found" result (§4.4 site 2).
+            result.endgame_requested = true;
+            result.endgame_type = 1;
+            return true;
+    }
+}
+
 } // namespace og::sim

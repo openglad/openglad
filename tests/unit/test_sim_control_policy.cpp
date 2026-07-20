@@ -538,6 +538,61 @@ TEST(SimControlPolicy, cycle_filter_conjunction_skips_foreign_heroes)
 }
 
 // ---------------------------------------------------------------------------
+// The §4.4 site-2 hook: sim_reacquire_apply maps the reacquire verdict onto
+// the caller's SimInputResult (Claimed ⇒ false + control set + result
+// untouched; Follow ⇒ true + null control + result untouched; EndGame ⇒
+// true + today's endgame fields).
+
+TEST(SimControlPolicy, reacquire_apply_maps_verdicts_onto_sim_input_result)
+{
+    ControlPolicyFixture fx;
+
+    // Claimed: the hook is transparent — the caller runs today's claim tail.
+    walker* const own_hero =
+        fx.add({.team = 0, .user = -1, .hero = true, .owner = 0});
+    walker* control = nullptr;
+    SimInputResult result;
+    EXPECT_FALSE(og::sim::sim_reacquire_apply(fx.world(), 0, 0, control, result));
+    EXPECT_EQ(own_hero, control);
+    EXPECT_FALSE(result.endgame_requested);
+    EXPECT_EQ(0, result.endgame_type);
+    EXPECT_FALSE(result.control_hp_changed);
+
+    // Follow (owner-locked pure ownership denial): return-now with the
+    // result untouched — the null seat is the only observable.
+    fx.clear_walkers();
+    walker* const foreign =
+        fx.add({.team = 0, .user = -1, .hero = true, .owner = 2});
+    set_control_policy(fx.world(), kControlPolicyOwnerLocked,
+                       canonical_machine_map());
+    ASSERT_EQ(foreign, sim_find_next_control(fx.world(), 0))
+        << "the legacy pool WOULD claim the foreign hero";
+    control = nullptr;
+    result = {};
+    EXPECT_TRUE(og::sim::sim_reacquire_apply(fx.world(), 0, 0, control, result));
+    EXPECT_EQ(nullptr, control);
+    EXPECT_FALSE(result.endgame_requested);
+    EXPECT_EQ(0, result.endgame_type);
+    EXPECT_FALSE(result.control_hp_changed);
+
+    // EndGame: exactly today's "no control found" result fields, in both
+    // policies (full wipe).
+    foreign->set_dead(1);
+    control = nullptr;
+    result = {};
+    EXPECT_TRUE(og::sim::sim_reacquire_apply(fx.world(), 0, 0, control, result));
+    EXPECT_EQ(nullptr, control);
+    EXPECT_TRUE(result.endgame_requested);
+    EXPECT_EQ(1, result.endgame_type);
+    set_control_policy(fx.world(), kControlPolicyLegacy, empty_machine_map());
+    control = nullptr;
+    result = {};
+    EXPECT_TRUE(og::sim::sim_reacquire_apply(fx.world(), 0, 0, control, result));
+    EXPECT_TRUE(result.endgame_requested);
+    EXPECT_EQ(1, result.endgame_type);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers: derivation, encoding, classification, stamping.
 
 TEST(SimControlPolicy, derive_encode_and_classify_helpers)

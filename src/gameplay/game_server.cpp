@@ -11,6 +11,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -1191,7 +1192,17 @@ void GameServer::bind_player(PeerId peer_id,
             }
         }
         if (control == nullptr)
-            control = sim_find_next_control(world_, team_num);
+        {
+            // §4.4 site 3: the bind-time claim honors the control policy
+            // (policy off delegates to the legacy pool scan). Under
+            // owner-locked a seat with nothing claimable — a 0-deploy
+            // machine, or every candidate owned by a foreign machine —
+            // binds null: a follow seat whose watched walkers keep their
+            // AI. Site 4 (rebind_players_for_loaded_level) funnels through
+            // this same claim.
+            control = og::sim::sim_find_next_control_owned(
+                world_, team_num, static_cast<short>(player_index));
+        }
         if (control != nullptr && control->user() == -1)
         {
             control->set_user(static_cast<signed char>(player_index));

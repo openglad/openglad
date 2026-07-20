@@ -34,6 +34,7 @@
 
 class GameWorld;
 class walker;
+struct SimInputResult;
 
 namespace og::sim {
 
@@ -111,5 +112,21 @@ enum class SimReacquire : std::uint8_t {
 
 SimReacquire sim_reacquire_control(GameWorld& level, short my_team,
                                    short player_index, walker*& control_out);
+
+// §4.4 site 2 single-line hook for sim_process_player_input: runs
+// sim_reacquire_control and maps the verdict onto the caller's
+// SimInputResult. Returns true when the caller must return `result`
+// immediately:
+//  - Follow: `result` untouched and control_out null — the seat spectates
+//    with NO endgame request (the server broadcasts ControlChange entity 0
+//    from the seat's null control exactly as today);
+//  - EndGame: today's endgame result fields (endgame_requested = true,
+//    endgame_type = 1).
+// Claimed returns false with control_out set; the caller runs today's claim
+// tail (user stamp, ACT_CONTROL, control_hp fields) unchanged.
+[[nodiscard]] bool sim_reacquire_apply(GameWorld& level, short my_team,
+                                       short player_index,
+                                       walker*& control_out,
+                                       SimInputResult& result);
 
 } // namespace og::sim
