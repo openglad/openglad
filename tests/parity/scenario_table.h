@@ -859,6 +859,18 @@ inline constexpr FactPredicate kFacts_smoke_nonempty_scen99_inputs[] = {
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
 };
 
+inline constexpr FactPredicate kFacts_smoke_empty_scen99[] = {
+    // The empty arena has no walkers by design; the only sim observable
+    // its schema-v1 dump records is the world tick counter, which reads
+    // tick=1 after the single budgeted tick. kMut_smoke_tick_freeze stops
+    // the counter (tick stays 0), flipping this predicate through the
+    // canary's --evaluate-facts channel — the row's Invariant gtest is a
+    // dumper-determinism check that no deterministic mutation can flip,
+    // so this fact is the row's ONLY mutation channel (WP7 canary triage
+    // 2026-07-20).
+    pred::TickReached(1),
+};
+
 // --- family_<name>_scen99: every row asserts the spec-mandated
 //     WalkerFamilyCount(FAMILY_<NAME>, ...) + WalkerOfTeamAlive(team=0)
 //     + named-family-specific liveness predicate. Ranges are pinned to
@@ -1147,12 +1159,11 @@ inline constexpr Mutation kMut_exit_withdraw_path = {
     "Forces the withdraw branch of exit_on_eat (the FAMILY_EXIT treasure's on_eat) to be skipped. When the player steps on an EXIT whose destination level is already completed while enemies remain on the current level, the game normally emits WithdrawToLevel + RequestExitConfirmation and sets world.withdraw_requested. Disabling can_withdraw suppresses BOTH events, flipping EventKindExactly(withdraw_to_level=8,1) and EventKindExactly(request_exit_confirmation=7,1) from count=1 to count=0. This is the behavior scripted_input_scen9301 is named for; the prior shared kMut_walker_ai_wander (combat-damage zeroing) is toothless here because the scenario never lands a melee hit (both soldiers end at full 120/120 HP)."
 };
 
-inline constexpr Mutation kMut_smoke_score_event = {
-    "src/gameplay/walker_combat.cpp", 99,
-    "og::sim::EventKind::ScoreChange,",
-    "og::sim::EventKind::None,",
-    "Re-labels score_change emissions to EventKind::None; the canonical event-kind field flips so EventKindAtLeast(score_change,2) reads 0 occurrences, flipping that predicate in both smoke rows."
-};
+// (kMut_smoke_score_event, the walker_combat.cpp:99 ScoreChange re-label,
+// was removed by the WP7 canary triage 2026-07-20: the smoke arena has no
+// combat, so award_score never runs there and the row's own facts pin
+// score_change to exactly 0 — the mutation was runtime-dead. Both smoke
+// rows now share kMut_smoke_tick_freeze below.)
 
 inline constexpr Mutation kMut_smoke_inputs_no_move = {
     "src/gameplay/walker_movement.cpp", 174,
@@ -1161,11 +1172,11 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
     "Zeroes the movement delta inside walker::walkstep — the line the parity driver actually reaches (WP7 canary triage 2026-07-20: scenario_runtime.cpp computes walkx/walky itself and calls control->walkstep directly, so the old sim_input_handler.cpp:345 pin was runtime-dead — zero-flip, pre-existing on master). walk(0,0) returns success without moving, so the K_RIGHT soldier never steps east and WalkerPositionMoved(SOLDIER,240,0) flips."
 };
 
-inline constexpr Mutation kMut_smoke_empty_tick_count = {
+inline constexpr Mutation kMut_smoke_tick_freeze = {
     "src/gameplay/game_world.cpp", 1622,
     "tick_count_++;",
     "tick_count_ += 0;",
-    "Stops the per-tick world counter from advancing. The empty smoke row has no gameplay entities by design, but its schema-v1 dump still records tick=1 after one tick; this mutation changes that field and flips the byte-level empty-dump canary without inventing gameplay predicates."
+    "Stops the per-tick world counter from advancing; the schema-v1 dump's tick field freezes at 0. Shared by both smoke rows (WP7 canary triage 2026-07-20): smoke_empty_scen99 flips its TickReached(1) fact through the --evaluate-facts channel (its Invariant gtest is a dumper-determinism check and can never flip), and smoke_nonempty_scen99 flips TickReached(60) plus the SemanticParity gtest (master golden records tick=60)."
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
@@ -1676,6 +1687,16 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindExactly(9, 0),
+    // The soldier eats the bar through the obmap overlap dispatch at tick
+    // 3: gold_bar_on_eat banks 200 * level 3 = 600 into m_score[0]
+    // (score_per_team[0]=600 on BOTH arms — golden and branch dumps
+    // measured equal, WP7 canary triage 2026-07-20). This absolute pin is
+    // the row's live mutation channel: ScoreChange events never enter the
+    // parity event stream (the EventKindExactly(9,0) above is vacuous)
+    // and the removal predicate degrades to indeterminate when the bar
+    // survives, so nulling the on_eat hook (kMut_treasure_gold_bar_pickup)
+    // is only observable as score_per_team[0] staying 0.
+    pred::ScoreDelta(/*team*/0, 600, 600),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
@@ -2194,12 +2215,15 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7400, 7400),
 };
 
-inline constexpr Mutation kMut_weapon_blood_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 72,
-    "return true;",
-    "self->setxy(static_cast<short>(self->xpos() + 8), self->ypos()); return true;",
-    "Injects an 8-px/tick eastward drift into tree_blood_on_animate (the BLOOD/TREE animate callback) so the death-spatter BLOOD weapon advances each tick instead of staying at the kill tile. The static_cast<short> on the x-arg keeps both setxy args short so weap::setxy(short,short) is selected unambiguously (xpos()/ypos() return short; xpos()+8 promotes to int). max consecutive-tick step becomes hypot(8,0)*100 = 800 centi-px/tick and pathlen over 4 samples becomes ~2400 centi-px, so WeaponSpeed(FAMILY_BLOOD,0,0) and WeaponNetTravel(FAMILY_BLOOD,STATIONARY,50) both flip pass->fail on the branch arm."
-};
+// (kMut_weapon_blood_emission, the weapon_family_animate.cpp:72 BLOOD-drift
+// injection, was removed by the WP7 canary triage 2026-07-20: after the
+// dual-RNG repair no combat death occurs in this arena on either arm — the
+// facts block below records it — so tree_blood_on_animate never runs for a
+// BLOOD weapon and the WeaponSpeed/WeaponNetTravel(BLOOD) predicates the
+// drift used to flip were removed with that repair. The row now shares
+// kMut_walker_ai_wander: zeroing the melee damage dispatch leaves the
+// soldier at full 120 HP, flipping WalkerHpRangeAtFinalTick(SOLDIER,
+// 7400,7400) — the faerie's counter-attacks are what bring it to 74.0.)
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
     { FAMILY_SLIME, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_SLIME wielder (natural emitter for FAMILY_BLOB)
@@ -3501,6 +3525,12 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_ARCHER, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 7),
     pred::EventKindExactly(/*notification*/2, 0),
+    // Caster HP pin: the archer ends the dance at exactly 34.00 HP on
+    // BOTH arms (golden == branch, measured WP7 canary triage 2026-07-20).
+    // The row's +9000 init-HP crank mutation is only observable here —
+    // the caster survives on both arms, so the liveness/count predicates
+    // above cannot see the crank.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400),
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
@@ -3523,6 +3553,10 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
     // mage's slot-2 special expends the caster without landing damage.
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    // Caster HP pin: the mage ends at exactly 31.00 HP on both arms
+    // (golden == branch, WP7 canary triage 2026-07-20); the +9000 crank
+    // mutation's only observable is this field.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100),
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
@@ -3733,10 +3767,10 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 221,
-    "BASE_GUY_HP+50",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SMALL_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "src/gameplay/families/family_slime.cpp", 125,
+    "    if (self->spaces_clear() > 7)",
+    "    if (false)",
+    "Blocks small_slime_do_special's grow gate so the caster never transform_to(FAMILY_MEDIUM_SLIME): the small slime survives to the final tick and no medium ever exists, flipping WalkerFamilyCount(SMALL_SLIME,0,0), WalkerFamilyCount(MEDIUM_SLIME,1,1) and WalkerDiedByFinal(SMALL_SLIME). Replaces the prior init-HP crank (family_slime.cpp:221), which was runtime-dead: transform_to() gives the grown walker the TARGET family's descriptor stats, so the golden's lone MEDIUM ends at exactly its own 80.0 table max and the small's cranked HP never reaches the final dump (WP7 canary triage 2026-07-20)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
@@ -3754,10 +3788,10 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 281,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_MEDIUM_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "src/gameplay/families/family_slime.cpp", 139,
+    "    if (self->spaces_clear() > 7)",
+    "    if (false)",
+    "Blocks medium_slime_do_special's grow gate so the caster never transform_to(FAMILY_SLIME): the medium slime survives to the final tick, flipping WalkerFamilyCount(MEDIUM_SLIME,0,0) (the negative assertion) and dropping the grow/act sounds below the play_sound floor. Replaces the prior init-HP crank (family_slime.cpp:281), which was runtime-dead for the same transform_to reason as the small-slime row (WP7 canary triage 2026-07-20)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_2_scen99[] = {
@@ -3815,6 +3849,10 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindAtLeast(/*play_sound*/1, 14),
     pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
+    // Caster HP pin: the thief ends at exactly 16.00 HP on both arms
+    // (golden == branch, WP7 canary triage 2026-07-20); the +9000 crank
+    // mutation's only observable is this field.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600),
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
@@ -3834,6 +3872,10 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
     pred::EventKindExactly(/*score_change*/9, 0),
+    // Caster HP pin: the ghost ends at exactly 21.00 HP on both arms
+    // (golden == branch, WP7 canary triage 2026-07-20); the +9000 crank
+    // mutation's only observable is this field.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100),
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
@@ -3933,6 +3975,10 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
     pred::EventKindExactly(/*score_change*/9, 0),
+    // Caster HP pin: the orc ends at exactly 82.00 HP on both arms
+    // (golden == branch, WP7 canary triage 2026-07-20); the +9000 crank
+    // mutation's only observable is this field.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200),
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
@@ -4837,16 +4883,16 @@ inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
 inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
     pred::TickReached(200),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    pred::LevelDoneEquals(2, "consequence: withdraw path returns level_done=2; mutation forces withdraw_requested=false so the loop completes and level_done becomes 0"),
+    pred::LevelDoneEquals(2, "consequence: withdraw path returns level_done=2; the can_withdraw-skip mutation suppresses the withdraw completion so level_done leaves 2"),
     pred::EventKindAtLeast(/*withdraw_to_level*/8, 1),
     pred::EventKindAtLeast(/*request_exit_confirmation*/7, 1),
 };
 
 inline constexpr Mutation kMut_level_withdraw_scen99 = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 87,
-    "        world.withdraw_requested = true;",
-    "        world.withdraw_requested = false;",
-    "Forces the withdraw-request flag false at the instant the player eats the FAMILY_EXIT treasure on a completed destination level; the early-break guards at game_world.cpp:1393/1438 never fire, the entity-act loop runs to completion, the surviving team-1 enemy sets level_done=0 at game_world.cpp:1408, and the level_done==2 completion branch at 1484 is skipped — so LevelDoneEquals(2) flips to level_done==0 (verified against the mutated branch dump)."
+    "src/gameplay/families/treasure_family_navigation.cpp", 85,
+    "    if (can_withdraw)",
+    "    if (false)",
+    "Skips exit_on_eat's entire can_withdraw branch, so neither RequestExitConfirmation nor WithdrawToLevel is ever emitted and the withdraw completion state is never reached — flipping both EventKindAtLeast rows and LevelDoneEquals(2) (the identical site+edit is kMut_exit_withdraw_path, canary-positive with 5 flips on scripted_input_scen9301). Replaces the prior withdraw_requested=false write at :87, which went runtime-dead: both events emit inside the branch before anything reads the flag and the run still ends level_done=2 with the flag forced false — its rationale's game_world.cpp:1393/1408/1438/1484 line refs predate the z-axis-era refactors (WP7 canary triage 2026-07-20)."
 };
 
 
@@ -5151,20 +5197,23 @@ inline constexpr ScenarioSpec kScenarios[] = {
     // smoke_empty_scen99 is the canonical "world has no walkers" smoke
     // probe used by phase 02 verifier 02b to assert the schema-v1 dumper
     // emits a structurally valid JSON for an empty oblist (walkers: []).
-    // It is Invariant (no master golden required) and carries no
-    // predicates — the dumper-determinism check in test_parity_scenarios
-    // covers it by running the scenario twice and asserting byte-equal
-    // serialisation.
+    // It is Invariant (no master golden required); the dumper-determinism
+    // check in test_parity_scenarios covers the gtest side by running the
+    // scenario twice and asserting byte-equal serialisation, and the
+    // single TickReached(1) fact gives its tick-freeze mutation a live
+    // --evaluate-facts flip channel (the determinism gtest itself can
+    // never flip under a deterministic mutation).
     { "smoke_empty_scen99",            "scen/scen1.fss", 0x00000042u,
       nullptr, 0,                                                       1,   CompareMode::Invariant, false,
       nullptr, 0, 0, true, true, Exercises::None,
-      nullptr, 0, kMut_smoke_empty_tick_count },
+      kFacts_smoke_empty_scen99, std::size(kFacts_smoke_empty_scen99),
+      kMut_smoke_tick_freeze },
 
     { "smoke_nonempty_scen99",         "scen/scen1.fss", 0x00000042u,
       nullptr, 0,                                                       60,  CompareMode::SemanticParity, false,
       kSmokeArenaSpawns, std::size(kSmokeArenaSpawns), 0, false, true, Exercises::None,
       kFacts_smoke_nonempty_scen99, std::size(kFacts_smoke_nonempty_scen99),
-      kMut_smoke_score_event },
+      kMut_smoke_tick_freeze },
 
     { "smoke_nonempty_scen99_inputs",  "scen/scen1.fss", 0x00000042u,
       kInputsSmokeMoveRight, std::size(kInputsSmokeMoveRight),          60,  CompareMode::SemanticParity, false,
@@ -5534,7 +5583,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_weapon_blood_emission, std::size(kFamilySpawns_weapon_blood_emission),
       0, false, true, Exercises::None,
       kFacts_weapon_blood_emission_scen99, std::size(kFacts_weapon_blood_emission_scen99),
-      kMut_weapon_blood_emission },
+      kMut_walker_ai_wander },
 
     { "weapon_blob_emission_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsWeaponEmit, std::size(kInputsWeaponEmit), 30,
