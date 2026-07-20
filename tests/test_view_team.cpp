@@ -1132,10 +1132,9 @@ public:
     void shutdown() override {}
     void sync_from_save() override {}
     void sync_roster_from_save() override { ++roster_syncs; }
-    void sync_settings_from_save() override {}
+    void sync_settings_from_save() override { ++settings_syncs; }
     void poll_and_apply() override {}
     void set_player_mode(int) override {}
-    bool request_start_game() override { return false; }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
     build_game_start_config() const override { return std::nullopt; }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
@@ -1151,7 +1150,24 @@ public:
     bool set_ready(bool ready) override
     {
         ready_calls.push_back(ready);
+        // Mimic the production convergence: both SDL network clients block
+        // until the echo lands, so local_ready() reflects the send in-call.
+        ready_state = ready;
         return true;
+    }
+    [[nodiscard]] bool local_ready() const noexcept override
+    {
+        return ready_state;
+    }
+    bool request_start_game() override
+    {
+        requested = true;
+        return false;
+    }
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        return denial;
     }
     [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
         const override
@@ -1169,10 +1185,14 @@ public:
     }
 
     bool host = false;
+    bool ready_state = false;
+    bool requested = false;
+    og::sim::StartDenialReason denial = og::sim::StartDenialReason::None;
     std::vector<og::sim::LobbyPlayer> players;
     std::vector<std::uint8_t> local_indices;
     std::vector<bool> ready_calls;
     int roster_syncs = 0;
+    int settings_syncs = 0;
 };
 
 og::sim::LobbyPlayer make_foreign_lobby_player(std::uint8_t player_index,
@@ -1337,6 +1357,366 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     spec.draw_content(&state);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 READY twin (stage ready-go-slot): a networked joiner gets READY in
+// GO's exact rect; the click drives the shared lobby flag through the
+// production ToggleLobbyReady handler with the client deploy gate
+// (cross-control OFF + brought-but-benched => popup; spectator machines
+// ready freely [NET-R9]; cross-control ON removes the minimum).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "JOINER BAND";
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "OWN FRONT";
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    lobby.local_indices = {7};
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 1, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(7, "net-me", "JOINER BAND", 1, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = 0;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // The dual-role slot: READY occupies GO's exact rect on a joiner.
+    EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden);
+    ASSERT_FALSE(buttons[kCreateMenuReadyIndex].hidden);
+    EXPECT_EQ(buttons[kCreateMenuGoIndex].x,
+              buttons[kCreateMenuReadyIndex].x);
+    EXPECT_EQ(buttons[kCreateMenuGoIndex].sizex,
+              buttons[kCreateMenuReadyIndex].sizex);
+    EXPECT_EQ("READY", buttons[kCreateMenuReadyIndex].label);
+    EXPECT_EQ(kCreateMenuReadyIndex,
+              buttons[kCreateMenuNetworkingIndex].nav.right)
+        << "the strip chains into the visible half of the pair";
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
+    }
+
+    // Deployed roster: the toggle acts directly (production dispatch arg =
+    // the twin's own index — the TEAMS mirror label is NOT index-stamped).
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(1u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[0]);
+    EXPECT_TRUE(lobby.ready_state);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientReady, p.state);
+        EXPECT_EQ("UNREADY", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+    }
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("UNREADY", buttons[kCreateMenuReadyIndex].label)
+        << "the rewire stamps the presentation label on the descriptor";
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(2u, lobby.ready_calls.size());
+    EXPECT_FALSE(lobby.ready_calls[1]);
+
+    // Brought-but-benched + cross-control OFF: the ready click popups and
+    // sends nothing (§2.6 client gate).
+    save.team_list[0]->deployed = false;
+    save.cross_control = 0;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_TRUE(trace_contains("basecamp", "ready_gated"));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
+    EXPECT_EQ(2u, lobby.ready_calls.size()) << "gated click sends nothing";
+
+    // Cross-control ON removes the per-machine minimum.
+    save.cross_control = 1;
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(3u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[2]);
+    lobby.ready_state = false;
+    save.cross_control = 0;
+
+    // Spectator machine (empty roster): readies freely [NET-R9]; the slot
+    // stays visible and reachable on an all-foreign display.
+    save.team_list[0].reset();
+    save.team_size = 0;
+    og::ui::base_camp_refresh_rows(state);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden)
+        << "[NET-R9]: the spectator machine keeps the READY button";
+    trace_clear();
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(4u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[3]);
+    EXPECT_FALSE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
+
+    // The engine's per-frame bindings (the runner's label/color pass)
+    // re-derive the twin from the same presentation — drive the spec-row
+    // formatters directly (both label states, both faces).
+    const og::ui::MenuButtonSpec& ready_row =
+        spec.rows[kCreateMenuReadyIndex];
+    ASSERT_NE(nullptr, ready_row.label_binding.formatter);
+    ASSERT_NE(nullptr, ready_row.color);
+    og::ui::MenuLabelContext binding_context;
+    lobby.ready_state = false;
+    EXPECT_EQ("READY", ready_row.label_binding.formatter(binding_context));
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, ready_row.color(binding_context));
+    lobby.ready_state = true;
+    EXPECT_EQ("UNREADY", ready_row.label_binding.formatter(binding_context));
+    EXPECT_EQ(og::ui::kReadyGoFaceGo, ready_row.color(binding_context));
+    const og::ui::MenuButtonSpec& go_row = spec.rows[kCreateMenuGoIndex];
+    ASSERT_NE(nullptr, go_row.color);
+    EXPECT_EQ(og::ui::kReadyGoFaceGrey, go_row.color(binding_context))
+        << "GO keeps the default face while hidden on a joiner";
+
+    // The TEAMS mirror (origin -1) index-refreshes its own label surfaces;
+    // the base-camp twin never touches them.
+    (void)picker_teamsmenu_buttons();
+    lobby.ready_state = false;
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(-1));
+    ASSERT_EQ(5u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_state);
+    EXPECT_EQ("UNREADY",
+              og::runtime::current_session->picker_
+                  ->teamsmenu_buttons[kTeamsMenuReadyIndex].label)
+        << "the TEAMS mirror refreshes its descriptor label";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 host GO gating (states 3-4): a networked host's GO pre-checks the
+// lobby BEFORE sending — machines-not-ready popups WAITING FOR: <companies>
+// (rule 3 outranks rule 4), an all-benched lobby popups NO ONE IS DEPLOYED,
+// and only a fully-gated GO sends the start request. A denial that arrives
+// asynchronously (the [NET-R4] echo) still renders its reason, and the solo
+// deploy popup carries the §2.6 state-2 wording.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_go_host_gate_popups_and_denial_display)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "HOST BAND";
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "HOST FRONT";
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = true;
+    lobby.local_indices = {0};
+    {
+        og::sim::LobbyPlayer self =
+            make_foreign_lobby_player(0, "net-host", "HOST BAND", 1, 0);
+        self.is_host = true;
+        lobby.players.push_back(std::move(self));
+    }
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-join", "IRON JOIN BAND", 1, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const og::ui::MenuScreenSpec& tb_spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    const og::ui::MenuButtonSpec& go_row = tb_spec.rows[kCreateMenuGoIndex];
+    ASSERT_NE(nullptr, go_row.color);
+    og::ui::MenuLabelContext binding_context;
+
+    // State 3, rule 3: the joiner machine is unready — popup names it, no
+    // request is sent. The GO color binding stamps the yellow face.
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceGated, p.face_color);
+        EXPECT_EQ(og::ui::kReadyGoFaceGated, go_row.color(binding_context));
+    }
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("basecamp", "go_gated ready=0/1"));
+    EXPECT_TRUE(trace_contains("popup", "WAITING FOR:"));
+    EXPECT_TRUE(trace_contains("popup", "IRON JOIN BAND"))
+        << "the blocker popup names the unready company";
+    EXPECT_FALSE(lobby.requested) << "state 3 sends NOTHING";
+
+    // Rule 4 after rule 3 clears: everyone ready but every slot benched.
+    lobby.players[1].ready = true;
+    lobby.players[0].character_slots[0].deployed = false;
+    lobby.players[1].character_slots[0].deployed = false;
+    save.team_list[0]->deployed = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "NO ONE IS DEPLOYED"));
+    EXPECT_FALSE(lobby.requested);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated, p.state);
+    }
+
+    // Gates met => the request goes out (state 4, green face).
+    lobby.players[0].character_slots[0].deployed = true;
+    lobby.players[1].character_slots[0].deployed = true;
+    save.team_list[0]->deployed = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGo, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, go_row.color(binding_context))
+            << "the color binding stamps the green face on the last ready";
+    }
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(lobby.requested);
+    EXPECT_FALSE(trace_contains("popup", "WAITING FOR:"));
+
+    // An async server denial that beat the pre-check still renders its
+    // reason from the cached echo (best-effort, [NET-R4] client mirror).
+    lobby.requested = false;
+    lobby.denial = og::sim::StartDenialReason::MachinesNotReady;
+    lobby.players[1].ready = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "WAITING FOR:"))
+        << "the pre-check catches it, or the denial display does — either "
+           "way the reason shows";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.7 cross-control (TEAMS subscreen): visible to ALL peers when networked
+// in the guy-row slot; host-only actionable (non-host click popups HOST
+// CONTROLS THIS SETTING); a host toggle sanitizes to {0,1}, TRACEs, and
+// syncs settings (the server clears every non-host machine's ready — §4.5).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, teams_cross_control_toggle_host_gates_and_syncs)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.cross_control = 0;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
+    ASSERT_NE(nullptr, spec.on_spec_row)
+        << "§2.7: cross-control is the TEAMS screen's one MenuSpecRow";
+
+    // Visible to every networked peer (the guy row is local-only, so the
+    // §2.7 slot is free), label from the shared formatter.
+    button* buttons = picker_teamsmenu_buttons();
+    const int count = picker_teamsmenu_button_count();
+    int highlighted = 0;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kTeamsMenuCrossControlIndex].hidden)
+        << "§2.7: joiners must SEE the mode that changes their rights";
+    EXPECT_TRUE(buttons[kTeamsMenuGuyTeamIndex].hidden)
+        << "the same-rect guy row is local-only";
+    EXPECT_EQ("CTRL: OWN", buttons[kTeamsMenuCrossControlIndex].label);
+
+    // Non-host click: popup, no change, no settings sync.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_TRUE(trace_contains("teams", "cross_control_denied"));
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
+    EXPECT_EQ(0, save.cross_control);
+    EXPECT_EQ(0, lobby.settings_syncs);
+
+    // Host click: toggles, TRACEs, and syncs settings (server-side that
+    // clears every non-host machine's ready — pinned e2e in
+    // test_picker_network_client).
+    lobby.host = true;
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
+    EXPECT_EQ(1, save.cross_control);
+    EXPECT_EQ(1, lobby.settings_syncs);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("CTRL: ALL", buttons[kTeamsMenuCrossControlIndex].label);
+
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_EQ(0, save.cross_control);
+
+    // Sanitization: junk counts as ON and lands on exactly 0.
+    save.cross_control = 7;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_EQ(0, save.cross_control);
+
+    // Other rows are not this screen's spec rows.
+    EXPECT_EQ(0, spec.on_spec_row(kTeamsMenuBackIndex, nullptr));
+
+    save.cross_control = 0;
+    save.reset();
+}
+
+// §2.6 state 2 wording (solo reword pin): a solo hired-but-benched roster
+// gets the DEPLOY AT LEAST ONE popup (was NO ONE DEPLOYED).
+TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "BENCHED";
+    own->deployed = false;
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY AT LEAST ONE"))
+        << "§2.6 state 2 wording";
     save.reset();
 }
 

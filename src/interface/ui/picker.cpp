@@ -3091,12 +3091,38 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
    return MENU_OK;
 }
 
-Sint32 teams_toggle_ready()
+// Shared by the TEAMS mirror (origin_button_index < 0) and the base-camp
+// READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the same
+// lobby flag. The TEAMS mirror refreshes its label by index for the
+// same-frame flip; the base-camp twin is re-derived by the engine
+// label/color pass the same frame (a cross-screen index write here would
+// stamp a roster row instead).
+Sint32 teams_toggle_ready(Sint32 origin_button_index)
 {
    const bool ready = !picker_lobby_local_ready();
+   if (ready)
+   {
+       // §2.6 client ready gate: cross-control OFF + brought characters +
+       // none deployed => popup instead of readying. Spectator/empty-roster
+       // machines ready freely [NET-R9]; the server GO gate is the
+       // authoritative backstop either way.
+       const og::ui::ReadyGoPresentation presentation =
+           picker_compute_ready_go_presentation();
+       if (presentation.state == og::ui::ReadyGoState::ClientUnready &&
+           !presentation.caption.empty())
+       {
+           TRACE("basecamp", "ready_gated");
+           popup_dialog(presentation.caption.c_str(),
+                        "Deploy at least\none character\nbefore readying");
+           return MENU_OK;
+       }
+   }
    (void)picker_lobby_set_ready(ready);
-   refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
-                                  ready ? "UNREADY" : "READY");
+   if (origin_button_index < 0)
+   {
+       refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
+                                      ready ? "UNREADY" : "READY");
+   }
    return MENU_OK;
 }
 

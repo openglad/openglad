@@ -175,6 +175,44 @@ void picker_base_camp_after_roster_mutation()
         picker_lobby_is_networked());
 }
 
+// §2.6: gather the lobby/save inputs for the pure GO/READY state table.
+// Global deployed: networked = every machine's replicated deploy flags (the
+// server's rule-4 count); solo = the private roster. Own deployed reads the
+// PRIVATE save (the wire mirrors it). Spectator = this machine contributes
+// no character slots (numplayers==0 spectator seat or an empty roster) —
+// such machines ready freely [NET-R9].
+og::ui::ReadyGoPresentation picker_compute_ready_go_presentation()
+{
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const bool networked = picker_lobby_is_networked();
+    const int own_deployed = og::ui::count_deployed_members(save);
+    int global_deployed = own_deployed;
+    bool all_ready = true;
+    if (networked)
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        global_deployed = 0;
+        for (const og::sim::LobbyPlayer& player : players)
+        {
+            for (const og::sim::LobbyCharacterSlot& slot :
+                 player.character_slots)
+            {
+                if (slot.deployed)
+                    ++global_deployed;
+            }
+        }
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(players);
+        all_ready = ready.ready == ready.machines;
+    }
+    const bool spectator = save.numplayers == 0 || save.team_size == 0;
+    return og::ui::format_ready_go_button(
+        networked, picker_lobby_host_controls_visible(),
+        picker_lobby_local_ready(), all_ready, global_deployed, own_deployed,
+        save.cross_control != 0, spectator);
+}
+
 void picker_prepare_async_team_build_start_request()
 {
     picker_lobby_sync_settings_from_save();
@@ -406,6 +444,10 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     const int last_mid = mids.empty() ? -1 : mids.back();
     const int bottom_mid = wiring.networked ? kTeamsMenuReadyIndex : -1;
     const int bottom_right = wiring.show_ctf ? kTeamsMenuCtfTroopsIndex : -1;
+    // §2.7: cross-control occupies the guy-row band when networked (the guy
+    // row itself is local-only — mutually exclusive by construction).
+    const int cross =
+        wiring.cross_control ? kTeamsMenuCrossControlIndex : -1;
 
     for (int index = 0; index < kTeamsMenuButtonCount; ++index)
         buttons[index].nav = MenuNav{};
@@ -427,9 +469,11 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     // Row-anchor chain (visible rows only, top to bottom).
     const int below_mids = wiring.guy_row
         ? kTeamsMenuGuyTeamIndex
-        : (bottom_right >= 0
-               ? bottom_right
-               : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex));
+        : (cross >= 0
+               ? cross
+               : (bottom_right >= 0
+                      ? bottom_right
+                      : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex)));
     for (std::size_t mid_order = 0; mid_order < mids.size(); ++mid_order)
     {
         buttons[mids[mid_order]].nav.up = mid_order == 0
@@ -488,6 +532,18 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
             bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex;
     }
 
+    // §2.7 cross-control row: chained between the team rows and the bottom
+    // row, exactly where the guy row sits locally.
+    if (cross >= 0)
+    {
+        buttons[cross].nav.up = last_mid >= 0
+            ? last_mid
+            : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
+        buttons[cross].nav.down = bottom_mid >= 0
+            ? bottom_mid
+            : (bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex);
+    }
+
     // Bottom-row up links.
     buttons[kTeamsMenuBackIndex].nav.up = wiring.guy_row
         ? kTeamsMenuGuyPrevIndex
@@ -496,15 +552,19 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
                : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
     if (bottom_mid >= 0)
     {
-        buttons[bottom_mid].nav.up = last_mid >= 0
-            ? last_mid
-            : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
+        buttons[bottom_mid].nav.up = cross >= 0
+            ? cross
+            : (last_mid >= 0
+                   ? last_mid
+                   : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
     }
     if (bottom_right >= 0)
     {
         buttons[bottom_right].nav.up = wiring.guy_row
             ? kTeamsMenuGuyTeamIndex
-            : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex);
+            : (cross >= 0
+                   ? cross
+                   : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex));
     }
 }
 
@@ -544,6 +604,9 @@ TeamsMenuFrameState compute_teams_menu_state()
         state.is_ctf && picker_lobby_host_controls_visible();
     state.wiring.networked = picker_lobby_is_networked();
     state.wiring.guy_row = !state.wiring.networked && save.team_size > 0;
+    // §2.7: shown to ALL peers when networked (host-only actionable — the
+    // dispatch popups for non-hosts); shares the local guy row's rect.
+    state.wiring.cross_control = state.wiring.networked;
 
     // Per-team detail items: lobby players (networked) or roster members.
     const std::vector<og::sim::LobbyPlayer> players =
@@ -665,6 +728,14 @@ void sync_teams_menu_visibility(button* buttons,
     {
         buttons[kTeamsMenuReadyIndex].label =
             picker_lobby_local_ready() ? "UNREADY" : "READY";
+    }
+
+    buttons[kTeamsMenuCrossControlIndex].hidden =
+        !state.wiring.cross_control;
+    if (state.wiring.cross_control)
+    {
+        buttons[kTeamsMenuCrossControlIndex].label =
+            og::ui::format_cross_control_label(save.cross_control != 0);
     }
 
     picker_wire_teams_menu_nav(buttons, num_buttons, state.wiring);
@@ -918,6 +989,45 @@ void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
 {
     draw_teams_menu_content(g_teams_engine_state,
                             og::runtime::current_session->myscreen_->text_normal);
+}
+
+// §2.7 cross-control dispatch (the TEAMS screen's one MenuSpecRow, G3).
+// Visible to every peer; host-only actionable. A host toggle is a SETTINGS
+// change: the sync propagates it over the wire and the server clears every
+// non-host machine's ready (§4.5 — the settings-clear-ready rule). The value
+// is sanitized on toggle ({0,1}; any junk counts as ON and lands on 0);
+// cross_control is SESSION-ONLY (never in the GTL file), so no company
+// autosave fires here. Both label surfaces update the same frame; the
+// per-frame sync re-derives them from the save thereafter.
+Sint32 picker_teams_menu_engine_on_spec_row(int row, void* /*screen_state*/)
+{
+    if (row != kTeamsMenuCrossControlIndex)
+        return 0;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    if (!picker_lobby_host_controls_visible())
+    {
+        TRACE("teams", "cross_control_denied");
+        popup_dialog("HOST CONTROLS THIS SETTING",
+                     "Only the host may\nchange cross-control");
+        return MENU_OK;
+    }
+    save.cross_control =
+        static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
+    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
+    picker_lobby_sync_settings_from_save();
+
+    const std::string label =
+        og::ui::format_cross_control_label(save.cross_control != 0);
+    if (static_cast<int>(pks().teamsmenu_buttons.size()) >
+        kTeamsMenuCrossControlIndex)
+    {
+        pks().teamsmenu_buttons[kTeamsMenuCrossControlIndex].label = label;
+    }
+    vbutton* const live = og::runtime::current_session
+                              ->allbuttons_[kTeamsMenuCrossControlIndex];
+    if (live != nullptr)
+        live->label = label;
+    return MENU_OK;
 }
 
 #ifdef TESTING
@@ -2288,12 +2398,33 @@ Sint32 go_menu(Sint32 arg1)
                     });
             });
     }
+    // §2.6 state 3 (networked host, machines not ready): popup the blocking
+    // companies and send NOTHING — the server gate stays the authoritative
+    // backstop. Rule 3 outranks rule 4 (the server's start_allowed order),
+    // so the unready popup fires before the global-deploy popup below.
+    if (picker_lobby_is_networked() && picker_lobby_host_controls_visible())
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(players);
+        if (ready.ready < ready.machines)
+        {
+            TRACE("basecamp", "go_gated ready=%d/%d", ready.ready,
+                  ready.machines);
+            popup_dialog("WAITING FOR:",
+                         og::ui::format_go_blockers(players).c_str());
+            return MENU_REDRAW;
+        }
+    }
     if (!has_gameplay_roster)
     {
-        if (has_any_member)
-            popup_dialog("NO ONE DEPLOYED", "Deploy at least\none character\nbefore starting");
-        else
+        if (!has_any_member)
             popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+        else if (picker_lobby_is_networked())
+            popup_dialog("NO ONE IS DEPLOYED", "Deploy at least\none character\nbefore starting");
+        else
+            popup_dialog("DEPLOY AT LEAST ONE", "Deploy at least\none character\nbefore starting");
 
         return MENU_REDRAW;
     }
@@ -2344,7 +2475,35 @@ Sint32 go_menu(Sint32 arg1)
     }
 
     if (!g_start_game_requested)
+    {
+        // §2.6: a server denial that beat the local pre-check (a joiner
+        // flipping unready mid-flight / the async echo race) still renders
+        // its reason — best-effort from the cached [NET-R4] echo (a repeated
+        // identical denial does not re-broadcast, and an accepted retry can
+        // blip a stale reason; both disclosed WP5 contracts).
+        if (picker_lobby_is_networked())
+        {
+            switch (picker_lobby_last_start_denial())
+            {
+            case og::sim::StartDenialReason::MachinesNotReady:
+            {
+                std::string blockers =
+                    og::ui::format_go_blockers(picker_lobby_players());
+                if (blockers.empty())
+                    blockers = "Waiting for other\nmachines to ready";
+                popup_dialog("WAITING FOR:", blockers.c_str());
+                break;
+            }
+            case og::sim::StartDenialReason::NoDeployedCharacters:
+                popup_dialog("NO ONE IS DEPLOYED",
+                             "Deploy at least\none character\nbefore starting");
+                break;
+            default:
+                break;
+            }
+        }
         return MENU_REDRAW;
+    }
 
     g_start_game_requested = false;
 
@@ -2705,7 +2864,22 @@ int picker_team_build_testing_exercise_internal_paths()
     client.requested = false;
     g_start_game_requested = false;
     check(go_menu(0) == MENU_REDRAW && !client.requested);
+    // ...and the §2.6 presentation resolves to state 2 (grey face — the
+    // solo byte-identity face) with the DEPLOY caption.
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::LocalGoNoDeploy &&
+              p.face_color == og::ui::kReadyGoFaceGrey &&
+              p.caption == "DEPLOY AT LEAST ONE");
+    }
     save.team_list[0]->deployed = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::LocalGo &&
+              p.face_color == og::ui::kReadyGoFaceGrey && p.label == "GO");
+    }
     // ...and the NETWORKED guard is GLOBAL any-deployed, not per-machine:
     // an all-benched lobby blocks, one deployed slot ANYWHERE (even on a
     // remote machine) launches.
@@ -2713,6 +2887,10 @@ int picker_team_build_testing_exercise_internal_paths()
     {
         og::sim::LobbyPlayer remote_machine;
         remote_machine.name = "Remote";
+        // [NET-R2]: the earlier difficulty arm left host_visible=true, so
+        // the §2.6 rule-3 pre-check runs here — the remote machine must be
+        // ready for these arms to isolate the rule-4 deploy gate.
+        remote_machine.ready = true;
         remote_machine.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = 0,
             .deployed = false,
@@ -2725,6 +2903,42 @@ int picker_team_build_testing_exercise_internal_paths()
     client.requested = false;
     g_start_game_requested = false;
     check(go_menu(0) == MENU_REDRAW && client.requested);
+
+    // §2.6 state 3: a networked HOST with an unready machine popups the
+    // blockers (rule 3 outranks rule 4) and sends NOTHING; readying that
+    // machine flips the presentation yellow -> green and unblocks the GO.
+    client.host_visible = true;
+    client.players[0].name = "Remote";
+    client.players[0].company = "REMOTE BAND";
+    client.players[0].ready = false;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::HostGated &&
+              p.face_color == og::ui::kReadyGoFaceGated &&
+              p.caption == "WAITING FOR OTHERS");
+    }
+    client.players[0].ready = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::HostGo &&
+              p.face_color == og::ui::kReadyGoFaceGo && p.label == "GO");
+    }
+    client.requested = false;
+    check(go_menu(0) == MENU_REDRAW && client.requested);
+    // Joiner shape (states 5-6): READY/UNREADY labels off the lobby flag.
+    client.host_visible = false;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::ClientUnready &&
+              p.face_color == og::ui::kReadyGoFaceUnready &&
+              p.label == "READY");
+    }
     client.networked = false;
     client.players.clear();
     client.requested = false;

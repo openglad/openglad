@@ -301,6 +301,84 @@ TEST(CursesNetwork, roster_reflects_two_players)
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
 }
 
+// §2.7 curses parity (stage ready-go-slot): the lobby is the curses MP
+// surface — every peer's status lines carry the shared cross-control label,
+// the host's 'c' key toggles it (a SETTINGS change the server answers by
+// clearing every non-host machine's ready, §4.5), and a joiner's 'c' only
+// surfaces the host-controls guard.
+TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.cross_control = 0;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"))
+        << "every peer sees the mode that changes its own rights (§2.7)";
+
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+    EXPECT_TRUE(status_contains(*host_lobby, "[ready]"));
+
+    // Non-host 'c': guard message only, nothing toggles, ready survives.
+    join_term.push_char(U'c');
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*join_lobby, "Host controls cross-control"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*host_lobby, "[ready]"))
+        << "a denied joiner toggle must not clear ready";
+
+    // Host 'c': both peers converge on CTRL: ALL and the settings change
+    // clears the joiner's ready (§4.5).
+    host_term.push_char(U'c');
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = status_contains(*host_lobby, "Control: CTRL: ALL") &&
+            status_contains(*join_lobby, "Control: CTRL: ALL") &&
+            !status_contains(*host_lobby, "[ready]");
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: ALL"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: ALL"))
+        << "the toggle must replicate to the joiner's status";
+    EXPECT_FALSE(status_contains(*host_lobby, "[ready]"))
+        << "a settings change clears every non-host machine's ready (§4.5)";
+
+    // Toggle back: sanitized {0,1} round trip.
+    host_term.push_char(U'C');
+    bool reverted = false;
+    for (int i = 0; i < 200 && !reverted; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        reverted = status_contains(*join_lobby, "Control: CTRL: OWN");
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(reverted);
+}
+
 TEST(CursesNetwork, cancel_tears_down_cleanly)
 {
     SaveData save;

@@ -81,6 +81,9 @@ void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
 bool picker_teams_menu_engine_frame_tick(void* screen_state, int frame);
 void picker_teams_menu_engine_draw_background(void* screen_state);
 void picker_teams_menu_engine_draw_content(void* screen_state);
+Sint32 picker_teams_menu_engine_on_spec_row(int row, void* screen_state);
+// picker_compute_ready_go_presentation (§2.6) is declared in
+// picker_sdl_defs.h and defined in picker_team_build.cpp.
 // HIRE / TRAIN engine hooks (§1.8 step 6; defined beside their file-local
 // helpers — sessions, show_guy, the stat-panel painters — in
 // picker_team_build.cpp).
@@ -1386,6 +1389,16 @@ constexpr MenuButtonSpec kTeamsMenuRows[] = {
      .x = 219, .y = 129, .w = 14, .h = 12,
      .action = ButtonAction::TeamsPageFlip, .arg = 3,
      .hidden = true},
+    // §2.7 cross-control toggle: reuses the guy-row slot that is vacant when
+    // networked (guy_prev/next/team are local-only — the same-rect
+    // mutually-exclusive-gate pattern as the base camp's GO/READY pair).
+    // Visible to ALL peers when networked (a mode that changes a client's
+    // own rights must be visible to that client, §8 resolution 6);
+    // host-only actionable — the MenuSpecRow dispatch popups for non-hosts.
+    {.id = "cross_control", .label = "CTRL: OWN",
+     .x = 150, .y = 146, .w = 70, .h = 12,
+     .action = ButtonAction::MenuSpecRow, .arg = kTeamsMenuCrossControlIndex,
+     .hidden = true},
 };
 
 const MenuScreenSpec& teams_menu_screen_spec()
@@ -1409,6 +1422,8 @@ const MenuScreenSpec& teams_menu_screen_spec()
         .draw_background = &picker_teams_menu_engine_draw_background,
         .draw_content = &picker_teams_menu_engine_draw_content,
         .frame_tick = &picker_teams_menu_engine_frame_tick,
+        // §2.7: the cross-control row is the screen's one MenuSpecRow (G3).
+        .on_spec_row = &picker_teams_menu_engine_on_spec_row,
         .exit_value = MENU_EXIT,
     };
     return spec;
@@ -1664,7 +1679,9 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // arg == spec ordinal); the strip keeps the legacy ButtonActions so do_call
 // routing, the GO -> StartGame interception, and interact("go") survive
 // unchanged. Per-frame full-graph rewire (pattern b) over the installed
-// screen state; GO stays the only host-gated button.
+// screen state. The §2.6 dual-role slot: GO (host) and its same-rect READY
+// twin (networked joiner) are the two host/joiner-gated buttons — exactly
+// one is visible per frame.
 
 // The company-list seam pattern: the per-frame rewire reads this file-static
 // pointer; run_menu_screen's screen_state points at the SAME object.
@@ -1672,6 +1689,50 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 
 constexpr int kBaseCampRowY0 = 32;
 constexpr int kBaseCampRowPitch = 12;
+
+// §2.6 per-frame face/label bindings for the GO/READY slot: the engine's
+// label-sync pass re-derives BOTH surfaces from the lobby state every frame
+// (a click's optimistic flip shows the same frame; the server echo wins on
+// the next poll — the ready-trap contract's re-derivation rule). Solo/local
+// resolves to state 1: label "GO", face 13 — byte-identical to the plain
+// bevel (pinned).
+unsigned char base_camp_go_face_color(const MenuLabelContext& /*context*/)
+{
+    const ReadyGoPresentation p = picker_compute_ready_go_presentation();
+    switch (p.state) {
+    case ReadyGoState::LocalGo:
+    case ReadyGoState::LocalGoNoDeploy:
+    case ReadyGoState::HostGated:
+    case ReadyGoState::HostGo:
+        return p.face_color;
+    case ReadyGoState::ClientUnready:
+    case ReadyGoState::ClientReady:
+        break;  // GO is hidden on joiners; keep the default face.
+    }
+    return kReadyGoFaceGrey;
+}
+
+std::string base_camp_ready_label(const MenuLabelContext& /*context*/)
+{
+    const ReadyGoPresentation p = picker_compute_ready_go_presentation();
+    if (p.state == ReadyGoState::ClientUnready ||
+        p.state == ReadyGoState::ClientReady)
+    {
+        return p.label;
+    }
+    return "READY";  // hidden on hosts/solo; the static default.
+}
+
+unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
+{
+    const ReadyGoPresentation p = picker_compute_ready_go_presentation();
+    if (p.state == ReadyGoState::ClientUnready ||
+        p.state == ReadyGoState::ClientReady)
+    {
+        return p.face_color;
+    }
+    return kReadyGoFaceUnready;
+}
 
 // Static nav encodes the full-page shape (12 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
@@ -1735,15 +1796,28 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .action = ButtonAction::Networking, .arg = -1,
      .nav = {.up = kBaseCampTrainBase + 11, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
-    // §2.6 state 1: solo/local GO keeps the plain grey bevel and the exact
-    // legacy behavior (GoMenu -> go_menu / the TeamBuild-scope StartGame
-    // interception). The READY twin (same rect, networked clients) lands
-    // with the WP4 MP stage.
+    // §2.6 GO half of the dual-role slot: solo/local keeps the plain grey
+    // bevel and the exact legacy behavior (GoMenu -> go_menu / the
+    // TeamBuild-scope StartGame interception — pinned byte-identical);
+    // networked hosts get the state-3/4 face via the color binding.
     {.id = "go", .label = "GO",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::GoMenu, .arg = -1,
      .nav = {.up = kBaseCampTrainBase + 11,
-             .left = kCreateMenuNetworkingIndex}},
+             .left = kCreateMenuNetworkingIndex},
+     .color = &base_camp_go_face_color},
+    // §2.6 READY twin: the SAME rect, visible exactly when GO is not
+    // (networked joiner). Keeps the existing ToggleLobbyReady action (§8
+    // resolution 1 — interact("go") and the StartGame interception survive
+    // untouched); label/face re-derive per frame from the lobby state.
+    {.id = "ready", .label = "READY",
+     .x = 244, .y = 178, .w = 68, .h = 18,
+     .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
+     .nav = {.up = kBaseCampTrainBase + 11,
+             .left = kCreateMenuNetworkingIndex},
+     .label_binding = {.formatter = &base_camp_ready_label},
+     .color = &base_camp_ready_face_color,
+     .hidden = true},
 };
 
 #undef OG_BASE_CAMP_DEP
@@ -1771,6 +1845,16 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const int visible = std::max(0, end - first);
     const bool pagers = st != nullptr && st->page.multi_page();
     const bool host_visible = picker_lobby_host_controls_visible();
+    // §2.6: the GO/READY pair shares one rect with mutually exclusive gates
+    // — the host keeps GO, a networked joiner gets READY, never both. A
+    // non-host peer implies a networked session, so READY keys on both
+    // (the gate-lattice sweep drives the (host=false, networked=true) shape).
+    const bool ready_visible =
+        picker_lobby_is_networked() && !host_visible;
+    // The strip's right end: whichever of the pair is visible this frame.
+    const int strip_end = host_visible
+        ? kCreateMenuGoIndex
+        : (ready_visible ? kCreateMenuReadyIndex : -1);
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // Ownership per visible row (own row => a real deploy toggle + TRAIN).
@@ -1846,8 +1930,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                 .up = up_owned >= 0 ? kBaseCampTrainBase + up_owned : -1,
                 .down = down_owned >= 0
                     ? kBaseCampTrainBase + down_owned
-                    : (host_visible ? kCreateMenuGoIndex
-                                    : kCreateMenuNetworkingIndex),
+                    : (strip_end >= 0 ? strip_end
+                                      : kCreateMenuNetworkingIndex),
                 .left = r,
                 .right = pagers ? kBaseCampPagePrevIndex : -1};
         }
@@ -1859,7 +1943,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     // stage-1 target) and fall back to the dep column on all-foreign pages.
     const int pager_down = first_owned >= 0
         ? kBaseCampTrainBase + first_owned
-        : (visible > 0 ? 0 : kCreateMenuGoIndex);
+        : (visible > 0
+               ? 0
+               : (strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex));
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
         .down = pager_down,
@@ -1871,8 +1957,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .left = kBaseCampPagePrevIndex,
         .right = -1};
 
-    // GO is the only host-gated button (the legacy sync, verbatim rule).
+    // §2.6: exactly one of the same-rect GO/READY pair shows — GO for the
+    // host (the legacy host-gate, verbatim rule), READY for a networked
+    // joiner (incl. the [NET-R9] spectator machine).
     buttons[kCreateMenuGoIndex].hidden = !host_visible;
+    buttons[kCreateMenuReadyIndex].hidden = !ready_visible;
 
     const int dep_last = visible > 0 ? visible - 1 : -1;
     // The strip's right-side up-links prefer the train column (stage-1
@@ -1891,10 +1980,36 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
         .up = train_last, .down = -1, .left = kCreateMenuScenarioIndex,
-        .right = host_visible ? kCreateMenuGoIndex : -1};
+        .right = strip_end};
     buttons[kCreateMenuGoIndex].nav = {
         .up = train_last, .down = -1,
         .left = kCreateMenuNetworkingIndex, .right = -1};
+    buttons[kCreateMenuReadyIndex].nav = {
+        .up = train_last, .down = -1,
+        .left = kCreateMenuNetworkingIndex, .right = -1};
+
+    // §2.6 per-frame presentation stamp on the visible half of the pair —
+    // BOTH surfaces, so the entry compose and the layout-test path (which
+    // drive the rewire without the runner's label pass) show the real
+    // state; the engine label/color bindings re-derive the same values
+    // after every dispatch. Solo stamps label "GO" / face 13: byte-identical
+    // to the untouched legacy button (pinned).
+    const ReadyGoPresentation ready_go =
+        picker_compute_ready_go_presentation();
+    if (host_visible) {
+        vbutton* go_live =
+            og::runtime::current_session->allbuttons_[kCreateMenuGoIndex];
+        if (go_live != nullptr)
+            go_live->color = ready_go.face_color;
+    } else if (ready_visible) {
+        buttons[kCreateMenuReadyIndex].label = ready_go.label;
+        vbutton* ready_live =
+            og::runtime::current_session->allbuttons_[kCreateMenuReadyIndex];
+        if (ready_live != nullptr) {
+            ready_live->label = ready_go.label;
+            ready_live->color = ready_go.face_color;
+        }
+    }
 
     // Empty roster: seed the highlight on HIRE (§2.5) instead of the first
     // visible button.

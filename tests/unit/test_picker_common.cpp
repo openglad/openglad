@@ -3359,3 +3359,198 @@ TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
         og::ui::PageModel::make(static_cast<int>(slots.size()), 12);
     EXPECT_EQ(4, page.page_count());
 }
+
+// ---------------------------------------------------------------------------
+// §2.6 GO/READY slot (stage ready-go-slot): the full pure state table (U10),
+// the blocked-GO popup body, and the §2.7 cross-control label.
+//
+// Face-color decision record (§2.0 U1, verified by the mandated one-frame
+// TESTING capture): 61 (green run) and 93 (yellow run) PASSED the DARK_BLUE
+// contrast check and ship as designed; 45 (the dark special red) FAILED
+// (1.23:1 vs DARK_BLUE) and its state takes the sanctioned fallback
+// grammar's shipped RED=40. These pins are the table's oracle.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+og::ui::ReadyGoPresentation ready_go(bool networked,
+                                     bool is_host,
+                                     bool my_ready,
+                                     bool all_other_machines_ready,
+                                     int global_deployed,
+                                     int own_deployed,
+                                     bool cross_control,
+                                     bool spectator)
+{
+    return og::ui::format_ready_go_button(networked, is_host, my_ready,
+                                          all_other_machines_ready,
+                                          global_deployed, own_deployed,
+                                          cross_control, spectator);
+}
+
+} // namespace
+
+TEST(ReadyGoSlot, state_1_solo_go_stays_grey_and_uncaptioned)
+{
+    // §2.6 state 1 (pinned byte-identical): solo/local multi never consults
+    // ready — my_ready/all_ready/cross/spectator are ignored.
+    for (const bool noise : {false, true}) {
+        const og::ui::ReadyGoPresentation p =
+            ready_go(false, noise, noise, noise, 3, 3, noise, noise);
+        EXPECT_EQ(og::ui::ReadyGoState::LocalGo, p.state);
+        EXPECT_EQ("GO", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGrey, p.face_color);
+        EXPECT_EQ(13, og::ui::kReadyGoFaceGrey) << "BUTTON_FACING";
+        EXPECT_TRUE(p.caption.empty());
+    }
+}
+
+TEST(ReadyGoSlot, state_2_solo_no_deploy_keeps_grey_and_captions)
+{
+    const og::ui::ReadyGoPresentation p =
+        ready_go(false, true, false, true, 0, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::LocalGoNoDeploy, p.state);
+    EXPECT_EQ("GO", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGrey, p.face_color)
+        << "state 2 keeps the grey face; only the click popups";
+    EXPECT_EQ("DEPLOY AT LEAST ONE", p.caption);
+}
+
+TEST(ReadyGoSlot, state_3_host_gated_yellow_rule3_outranks_rule4)
+{
+    // Machines not ready (even with deploys) => WAITING caption.
+    const og::ui::ReadyGoPresentation waiting =
+        ready_go(true, true, false, false, 5, 2, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGated, waiting.state);
+    EXPECT_EQ("GO", waiting.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGated, waiting.face_color);
+    EXPECT_EQ(93, og::ui::kReadyGoFaceGated) << "yellow run (passed U1)";
+    EXPECT_EQ("WAITING FOR OTHERS", waiting.caption);
+
+    // All ready but nobody deployed => the rule-4 caption.
+    const og::ui::ReadyGoPresentation undeployed =
+        ready_go(true, true, false, true, 0, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGated, undeployed.state);
+    EXPECT_EQ(og::ui::kReadyGoFaceGated, undeployed.face_color);
+    EXPECT_EQ("NO ONE IS DEPLOYED", undeployed.caption);
+
+    // Both unmet => rule 3 outranks rule 4 (the server's start_allowed
+    // order).
+    const og::ui::ReadyGoPresentation both =
+        ready_go(true, true, false, false, 0, 0, false, false);
+    EXPECT_EQ("WAITING FOR OTHERS", both.caption);
+}
+
+TEST(ReadyGoSlot, state_4_host_go_green)
+{
+    const og::ui::ReadyGoPresentation p =
+        ready_go(true, true, false, true, 1, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGo, p.state);
+    EXPECT_EQ("GO", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+    EXPECT_EQ(61, og::ui::kReadyGoFaceGo) << "green run (passed U1)";
+    EXPECT_TRUE(p.caption.empty());
+}
+
+TEST(ReadyGoSlot, state_5_client_unready_red_with_deploy_gate)
+{
+    // Deployed characters: the click acts directly (no caption).
+    const og::ui::ReadyGoPresentation free =
+        ready_go(true, false, false, false, 3, 1, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, free.state);
+    EXPECT_EQ("READY", free.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, free.face_color);
+    EXPECT_EQ(40, og::ui::kReadyGoFaceUnready)
+        << "the U1 fallback RED (45 failed the contrast capture)";
+    EXPECT_TRUE(free.caption.empty());
+
+    // Brought characters, none deployed, cross-control OFF => gated click.
+    const og::ui::ReadyGoPresentation gated =
+        ready_go(true, false, false, false, 3, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, gated.state);
+    EXPECT_EQ("DEPLOY AT LEAST ONE", gated.caption);
+
+    // Cross-control ON removes the per-machine minimum (§0.6).
+    const og::ui::ReadyGoPresentation cross =
+        ready_go(true, false, false, false, 3, 0, true, false);
+    EXPECT_TRUE(cross.caption.empty());
+}
+
+TEST(ReadyGoSlot, state_5_spectator_machines_ready_freely)
+{
+    // [NET-R9]: the spectator machine (zero contributed character slots)
+    // gets the READY button and may ready with nothing deployed.
+    const og::ui::ReadyGoPresentation p =
+        ready_go(true, false, false, false, 3, 0, false, true);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
+    EXPECT_EQ("READY", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
+    EXPECT_TRUE(p.caption.empty()) << "spectators ready freely";
+}
+
+TEST(ReadyGoSlot, state_6_client_ready_green_unready_action)
+{
+    // Label = the action, color = the state: a ready client shows the
+    // UNREADY action on the green face — including while everyone waits.
+    for (const bool all_ready : {false, true}) {
+        const og::ui::ReadyGoPresentation p =
+            ready_go(true, false, true, all_ready, 3, 0, false, false);
+        EXPECT_EQ(og::ui::ReadyGoState::ClientReady, p.state);
+        EXPECT_EQ("UNREADY", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+        EXPECT_TRUE(p.caption.empty());
+    }
+}
+
+TEST(ReadyGoSlot, labels_fit_the_68px_face_budget)
+{
+    // floor((68-8)/6) = 10 chars.
+    for (const char* label : {"GO", "READY", "UNREADY"})
+        EXPECT_LE(std::string_view(label).size(), 10u) << label;
+}
+
+TEST(ReadyGoSlot, go_blockers_lists_unready_machines_only)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "BRAVO BAND", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "BRAVO BAND", false, false, 0, 1),
+        make_lobby_seat(4, "net-c", "CHARLIE BAND", false, true, 1, 0),
+        make_lobby_seat(5, "net-d", "", false, false, 0, 0),
+    };
+    const std::string body = og::ui::format_go_blockers(players);
+    // Host machine excluded even with unready seats; BRAVO gates because
+    // seat #1 is unready (all-seats rule); CHARLIE is ready; net-d falls
+    // back to its machine key when the company is empty.
+    EXPECT_EQ("BRAVO BAND\nnet-d", body);
+}
+
+TEST(ReadyGoSlot, go_blockers_clips_and_caps_the_popup)
+{
+    std::vector<og::sim::LobbyPlayer> players;
+    players.push_back(make_lobby_seat(0, "net-host", "HOST CO", true, false,
+                                      1, 0));
+    for (int i = 0; i < 6; ++i) {
+        players.push_back(make_lobby_seat(
+            static_cast<std::uint8_t>(1 + i),
+            std::format("net-m{}", i).c_str(),
+            "A VERY LONG COMPANY NAME INDEED", false, false, 1, 0));
+    }
+    const std::string body = og::ui::format_go_blockers(players);
+    // Six blockers: 4 named lines (each clipped to 26 chars) + the tail.
+    std::size_t lines = 1;
+    for (const char c : body)
+        lines += (c == '\n') ? 1u : 0u;
+    EXPECT_EQ(5u, lines);
+    EXPECT_NE(std::string::npos, body.find("AND 2 MORE"));
+    EXPECT_NE(std::string::npos, body.find("A VERY LONG COMPANY NAME I"))
+        << "26-char clip";
+    EXPECT_EQ(std::string::npos, body.find("INDEED"));
+}
+
+TEST(ReadyGoSlot, cross_control_label_states)
+{
+    EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
+    EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
+}

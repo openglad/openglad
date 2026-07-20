@@ -6573,3 +6573,198 @@ TEST(PickerNetworkClient,
     cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
+
+// §2.6/§2.7 (stage ready-go-slot) over a REAL direct lobby: the host's GO
+// pre-check popups WAITING FOR: <the joiner's company> and sends NO start
+// request; the joiner readies through the PRODUCTION base-camp READY twin
+// (teams_toggle_ready with the twin's index) and sees the flip in the same
+// call (the §2.5 same-frame contract — set_ready blocks on the echo); the
+// host's presentation flips yellow -> green; a host cross-control toggle
+// through the PRODUCTION TEAMS dispatch propagates to the joiner's save AND
+// clears the joiner's ready (§4.5 settings-clear-ready).
+TEST(PickerNetworkClient,
+     base_camp_ready_go_slot_and_cross_control_clear_ready)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host Front");
+    const std::string old_host_company = host_save.save_name;
+    host_save.save_name = "IRON HOST BAND";
+    host_save.cross_control = 0;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Join Front");
+    join_session.myscreen_->save_data.save_name = "JOIN SIDE BAND";
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        ASSERT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    // §2.6 state 3 on the HOST: yellow face, WAITING FOR: names the
+    // joiner's company, and go_menu sends NOTHING.
+    {
+        ActivePickerLobbyClientGuard active_guard(host_client.get());
+        const og::ui::ReadyGoPresentation gated =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated, gated.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceGated, gated.face_color);
+        EXPECT_EQ("WAITING FOR OTHERS", gated.caption);
+        EXPECT_NE(std::string::npos,
+                  og::ui::format_go_blockers(host_client->lobby_players())
+                      .find("JOIN SIDE BAND"));
+
+        trace_clear();
+        EXPECT_EQ(MENU_REDRAW, go_menu(0));
+        EXPECT_TRUE(trace_contains("popup", "WAITING FOR:"));
+        EXPECT_TRUE(trace_contains("popup", "JOIN SIDE BAND"));
+        EXPECT_FALSE(g_start_game_requested)
+            << "state 3 must not launch anything";
+        EXPECT_FALSE(host_client->start_request_pending())
+            << "state 3 must not even send the request";
+    }
+
+    // The joiner readies through the PRODUCTION READY-twin dispatch. The
+    // join client's set_ready blocks up to ~500ms for the echo (the §2.5
+    // same-frame mechanism against a live remote host); in THIS in-process
+    // harness the server only runs inside host_client->poll_and_apply(), so
+    // the flip converges once both sides pump — the presentation then
+    // re-derives UNREADY/green from the echoed state (the §2.6 ready-trap
+    // rule (d): the UI re-derives every frame, never a cached flag).
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        const og::ui::ReadyGoPresentation before =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, before.state);
+        EXPECT_EQ("READY", before.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceUnready, before.face_color);
+        EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    }
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->local_ready();
+    })) << "the READY twin's set_ready must reach the server and echo back";
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        const og::ui::ReadyGoPresentation after =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientReady, after.state);
+        EXPECT_EQ("UNREADY", after.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, after.face_color);
+    }
+
+    // The host's slot flips yellow -> green on the last ready (§2.9 flow 6).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        ActivePickerLobbyClientGuard active_guard(host_client.get());
+        return picker_compute_ready_go_presentation().state ==
+            og::ui::ReadyGoState::HostGo;
+    })) << "all-ready + deployed must gate the host GO green";
+
+    // §2.7: the host toggles cross-control through the PRODUCTION TEAMS
+    // dispatch — the wire carries it to the joiner's session save AND the
+    // settings change clears the joiner's ready (§4.5), flipping the
+    // host's GO back to gated.
+    const og::ui::MenuScreenSpec* const teams_spec =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
+    ASSERT_NE(nullptr, teams_spec);
+    ASSERT_NE(nullptr, teams_spec->on_spec_row);
+    {
+        ActivePickerLobbyClientGuard active_guard(host_client.get());
+        trace_clear();
+        EXPECT_EQ(MENU_OK,
+                  teams_spec->on_spec_row(kTeamsMenuCrossControlIndex,
+                                          nullptr));
+        EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
+        EXPECT_EQ(1, host_save.cross_control);
+    }
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_converged = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_converged =
+                join_session.myscreen_->save_data.cross_control == 1 &&
+                !join_client->local_ready();
+        }
+        return join_converged;
+    })) << "the settings change must reach the joiner and clear its ready";
+    {
+        ActivePickerLobbyClientGuard active_guard(host_client.get());
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated,
+                  picker_compute_ready_go_presentation().state)
+            << "the ready-clear re-gates the host GO";
+    }
+
+    host_save.save_name = old_host_company;
+    host_save.cross_control = 0;
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}

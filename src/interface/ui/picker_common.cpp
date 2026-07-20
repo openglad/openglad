@@ -1102,6 +1102,111 @@ std::string format_base_camp_net_line(BaseCampReadyCounts ready,
                       34);
 }
 
+ReadyGoPresentation format_ready_go_button(bool networked,
+                                           bool is_host,
+                                           bool my_ready,
+                                           bool all_other_machines_ready,
+                                           int global_deployed,
+                                           int own_deployed,
+                                           bool cross_control,
+                                           bool spectator)
+{
+    ReadyGoPresentation p;
+    if (!networked) {
+        // States 1-2: solo/local multi never consults ready (the local
+        // LobbyServer is exempt) and keeps the plain grey face byte-identical.
+        p.state = global_deployed > 0 ? ReadyGoState::LocalGo
+                                      : ReadyGoState::LocalGoNoDeploy;
+        p.label = "GO";
+        p.face_color = kReadyGoFaceGrey;
+        if (p.state == ReadyGoState::LocalGoNoDeploy)
+            p.caption = "DEPLOY AT LEAST ONE";
+        return p;
+    }
+    if (is_host) {
+        // States 3-4. Rule 3 outranks rule 4 (the server's start_allowed
+        // order): report unready machines before the global-deploy gate.
+        p.label = "GO";
+        if (!all_other_machines_ready) {
+            p.state = ReadyGoState::HostGated;
+            p.face_color = kReadyGoFaceGated;
+            p.caption = "WAITING FOR OTHERS";
+        } else if (global_deployed <= 0) {
+            p.state = ReadyGoState::HostGated;
+            p.face_color = kReadyGoFaceGated;
+            p.caption = "NO ONE IS DEPLOYED";
+        } else {
+            p.state = ReadyGoState::HostGo;
+            p.face_color = kReadyGoFaceGo;
+        }
+        return p;
+    }
+    // States 5-6 (joiner). Label = the action, color = the state.
+    if (my_ready) {
+        p.state = ReadyGoState::ClientReady;
+        p.label = "UNREADY";
+        p.face_color = kReadyGoFaceGo;
+        return p;
+    }
+    p.state = ReadyGoState::ClientUnready;
+    p.label = "READY";
+    p.face_color = kReadyGoFaceUnready;
+    // Client ready gate: cross-control OFF + own roster brought characters
+    // + none deployed => the click popups instead of readying. Spectator /
+    // empty-roster machines ready freely [NET-R9]; cross-control ON removes
+    // the per-machine minimum (bring 0, play a friend's characters).
+    if (!cross_control && !spectator && own_deployed <= 0)
+        p.caption = "DEPLOY AT LEAST ONE";
+    return p;
+}
+
+std::string format_go_blockers(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    struct MachineState {
+        bool is_host = false;
+        bool all_ready = true;
+        std::string company;
+    };
+    // Insertion order keeps the popup stable across identical lobby states.
+    std::vector<std::pair<std::string, MachineState>> machines;
+    for (const og::sim::LobbyPlayer& player : players) {
+        const std::string key(lobby_player_machine_key(player.name));
+        auto it = std::find_if(machines.begin(), machines.end(),
+                               [&key](const auto& entry) {
+                                   return entry.first == key;
+                               });
+        if (it == machines.end())
+            it = machines.insert(machines.end(), {key, MachineState{}});
+        it->second.is_host = it->second.is_host || player.is_host;
+        it->second.all_ready = it->second.all_ready && player.ready;
+        if (it->second.company.empty())
+            it->second.company = player.company;
+    }
+    std::vector<std::string> blockers;
+    for (const auto& [key, machine] : machines) {
+        if (machine.is_host || machine.all_ready)
+            continue;
+        blockers.push_back(clip_chars(
+            machine.company.empty() ? key : machine.company, 26));
+    }
+    std::string body;
+    constexpr std::size_t kMaxLines = 4;
+    for (std::size_t i = 0; i < blockers.size() && i < kMaxLines; ++i) {
+        if (!body.empty())
+            body += '\n';
+        body += blockers[i];
+    }
+    if (blockers.size() > kMaxLines)
+        body += std::format("\nAND {} MORE", blockers.size() - kMaxLines);
+    return body;
+}
+
+std::string format_cross_control_label(bool cross_control_enabled)
+{
+    return cross_control_enabled ? "CTRL: ALL" : "CTRL: OWN";
+}
+
 BaseCampNetRowText format_base_camp_net_row(std::string_view name,
                                             std::string_view company,
                                             int level,

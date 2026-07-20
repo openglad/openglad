@@ -327,6 +327,74 @@ std::string format_base_camp_net_line(BaseCampReadyCounts ready,
                                       BaseCampDeployCounts deploys,
                                       int scen_num);
 
+// --- §2.6 GO / READY slot (the base-camp dual-role button) ---
+
+// The six presentation states of the shared (244,178,68,18) slot: the host
+// keeps GO (grey solo, colored networked), clients get the READY toggle in
+// the SAME rect (exactly one of the two same-rect buttons is visible).
+enum class ReadyGoState : std::uint8_t {
+    LocalGo,         // state 1: solo/local multi — plain grey GO (pinned)
+    LocalGoNoDeploy, // state 2: solo, 0 deployed — grey GO, click popups
+    HostGated,       // state 3: networked host, gates unmet — yellow GO
+    HostGo,          // state 4: networked host, all ready + deploy — green GO
+    ClientUnready,   // state 5: joiner, not ready — red READY
+    ClientReady,     // state 6: joiner, ready — green UNREADY
+};
+
+// §2.6 face colors (label text stays DARK_BLUE in every state; the bevel
+// edges stay grey — only vbutton::color's front face is stamped).
+// CONTRAST DECISION (§2.0 U1, recorded 2026-07-20): the mandated one-frame
+// TESTING capture measured DARK_BLUE(0,0,168) against the candidate faces:
+// 61 green (2.61:1, readable) PASS, 93 yellow (3.20:1) PASS, 45 dark red
+// (1.23:1, illegible) FAIL — so the unready face takes the sanctioned
+// fallback grammar's shipped RED=40 (2.75:1, strong hue contrast; the
+// draw_button_colored FX-toggle red) while 61/93 ship as designed.
+inline constexpr std::uint8_t kReadyGoFaceGrey = 13;    // BUTTON_FACING
+inline constexpr std::uint8_t kReadyGoFaceGo = 61;      // green run
+inline constexpr std::uint8_t kReadyGoFaceGated = 93;   // yellow run
+inline constexpr std::uint8_t kReadyGoFaceUnready = 40; // RED (U1 fallback)
+
+// One frame's presentation of the slot. `label` is the ACTION ("GO",
+// "READY", "UNREADY" — label = the action, color = the state); `caption`
+// is the §2.6 blocker/denial headline a click on the gated state surfaces
+// ("WAITING FOR OTHERS" / "NO ONE IS DEPLOYED" / "DEPLOY AT LEAST ONE"),
+// empty when the click acts directly.
+struct ReadyGoPresentation {
+    ReadyGoState state = ReadyGoState::LocalGo;
+    std::string label;
+    std::uint8_t face_color = kReadyGoFaceGrey;
+    std::string caption;
+};
+
+// The §2.6 state table, pure (headlessly unit-tested — U10). `spectator`
+// means this machine contributes ZERO character slots to the lobby
+// (numplayers==0 spectator seat or an empty roster): such machines ready
+// freely [NET-R9]. `cross_control` ON removes the per-machine deploy
+// minimum for the client ready gate; the global >= 1 rule (host states)
+// always applies. Solo/local (`networked` false) never consults ready and
+// keeps the plain grey GO byte-identical (states 1-2).
+ReadyGoPresentation format_ready_go_button(bool networked,
+                                           bool is_host,
+                                           bool my_ready,
+                                           bool all_other_machines_ready,
+                                           int global_deployed,
+                                           int own_deployed,
+                                           bool cross_control,
+                                           bool spectator);
+
+// §2.6 state-3 popup body: the not-ready machines' company names (machine
+// key = seat-name convention; a machine's company = its first seat's
+// non-empty company, falling back to the machine key), one per line,
+// clipped to 26 chars, at most 4 lines with an "AND n MORE" tail.
+std::string format_go_blockers(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
+// controls its characters) / "CTRL: ALL" (players may control others'
+// characters in-level). Shared by the SDL TEAMS row and the curses lobby
+// status line.
+std::string format_cross_control_label(bool cross_control_enabled);
+
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
 // carried by the family chip + family-colored name; 16-char COMPANY).
 struct BaseCampNetRowText {

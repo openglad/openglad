@@ -19,6 +19,7 @@
 // the spec transcription (G11).
 
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
@@ -35,8 +36,11 @@
 #include <SDL3/SDL.h>
 
 #include <atomic>
+#include <map>
+#include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 extern bool g_start_game_requested;
@@ -57,6 +61,7 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
 {
     bool host = true;
     bool has_config = true;
+    bool networked = false;
 
     void initialize_from_save() override {}
     void shutdown() override {}
@@ -90,6 +95,10 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     [[nodiscard]] bool host_controls_visible() const noexcept override
     {
         return host;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return networked;
     }
 };
 
@@ -530,6 +539,42 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // hooks write hidden state through allbuttons_ when entries are non-null.
     clear_allbuttons();
 
+    // The same-geometry allowance must be EXERCISED, not vacuous: give the
+    // session a one-member roster so the TEAMS guy row (the local half of
+    // the guy_team/cross_control pair) can show in the local variants.
+    SaveData& sweep_save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> sweep_saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        sweep_saved_team[i] = std::move(sweep_save.team_list[i]);
+    const unsigned char sweep_old_team_size = sweep_save.team_size;
+    sweep_save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    sweep_save.team_list[0]->name = "SWEEP";
+    sweep_save.team_size = 1;
+
+    // G13 lattice axes: {host} x {networked}. host=false without a network
+    // session is the degenerate legacy shape; production non-hosts are
+    // always networked — that variant is what drives the READY/cross-control
+    // halves of the same-geometry pairs.
+    struct SweepVariant {
+        bool host;
+        bool networked;
+        const char* name;
+    };
+    constexpr SweepVariant kVariants[] = {
+        {true, false, "host-local"},
+        {false, false, "nonhost-degenerate"},
+        {true, true, "host-networked"},
+        {false, true, "joiner-networked"},
+    };
+
+    // §1.2 G13 / design §2.6: two rows may share geometry ONLY with
+    // mutually exclusive gates. Any statically-overlapping pair must be
+    // declared here, must never be simultaneously visible in any variant
+    // (the per-variant overlap check enforces that), and BOTH halves must
+    // be visible in at least one variant each (the allowance is exercised).
+    const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
+        {{"go", "ready"}, {"cross_control", "guy_team"}};
+
     int engine_screens = 0;
     for (int s = 0; s < static_cast<int>(og::ui::MenuScreenId::Count); ++s) {
         const og::ui::MenuScreenHost& host =
@@ -539,8 +584,39 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
         ++engine_screens;
         const og::ui::MenuScreenSpec& spec = *host.spec;
 
-        for (const bool host_visible : {true, false}) {
-            lobby.host = host_visible;
+        // Statically-overlapping row pairs (from the materialized spec
+        // geometry, before any rewire mutates it) — the same-geometry set
+        // this screen must justify against the allowlist.
+        std::set<std::pair<std::string, std::string>> geometry_pairs;
+        {
+            button* fresh = spec.buttons_accessor();
+            const int fresh_count = spec.count_accessor();
+            for (int i = 0; i < fresh_count; ++i) {
+                for (int j = i + 1; j < fresh_count; ++j) {
+                    const button& a = fresh[i];
+                    const button& b = fresh[j];
+                    const bool overlap = a.x < b.x + b.sizex &&
+                        b.x < a.x + a.sizex && a.y < b.y + b.sizey &&
+                        b.y < a.y + a.sizey;
+                    if (!overlap)
+                        continue;
+                    auto pair = a.id < b.id
+                        ? std::make_pair(a.id, b.id)
+                        : std::make_pair(b.id, a.id);
+                    EXPECT_TRUE(kSameGeometryAllowed.contains(pair))
+                        << spec.name << ": rows '" << pair.first << "' and '"
+                        << pair.second
+                        << "' share geometry without a declared "
+                           "mutually-exclusive-gate allowance";
+                    geometry_pairs.insert(std::move(pair));
+                }
+            }
+        }
+        std::map<std::string, bool> seen_visible;
+
+        for (const SweepVariant& sweep_variant : kVariants) {
+            lobby.host = sweep_variant.host;
+            lobby.networked = sweep_variant.networked;
             // Fresh materialization per variant (buttons() fills what
             // count() reads — the D3 sequencing contract).
             button* buttons = spec.buttons_accessor();
@@ -579,7 +655,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             context.save = &og::runtime::current_session->myscreen_->save_data;
             context.session_difficulty =
                 og::runtime::current_session->current_difficulty_;
-            context.is_host = host_visible;
+            context.is_host = sweep_variant.host;
+            context.is_networked = sweep_variant.networked;
             for (int i = 0; i < count; ++i) {
                 const og::ui::MenuButtonSpec& row =
                     *spec_rows[static_cast<std::size_t>(i)];
@@ -603,7 +680,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                     if (buttons[j].hidden)
                         continue;
                     EXPECT_FALSE(sweep_rows_overlap(buttons[i], buttons[j]))
-                        << spec.name << " host=" << host_visible << ": "
+                        << spec.name << " " << sweep_variant.name << ": "
                         << buttons[i].id << " overlaps " << buttons[j].id;
                 }
             }
@@ -614,7 +691,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             ASSERT_GE(highlighted, 0) << spec.name;
             ASSERT_LT(highlighted, count) << spec.name;
             EXPECT_FALSE(buttons[highlighted].hidden)
-                << spec.name << " host=" << host_visible
+                << spec.name << " " << sweep_variant.name
                 << ": highlight stuck on a hidden row";
             reached[static_cast<std::size_t>(highlighted)] = true;
             frontier.push_back(highlighted);
@@ -626,12 +703,12 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                     buttons[at].nav.left, buttons[at].nav.right};
                 for (const int link : links) {
                     EXPECT_LT(link, count)
-                        << spec.name << " host=" << host_visible << ": "
+                        << spec.name << " " << sweep_variant.name << ": "
                         << buttons[at].id << " nav link out of range";
                     if (link < 0 || link >= count)
                         continue;
                     EXPECT_FALSE(buttons[link].hidden)
-                        << spec.name << " host=" << host_visible << ": "
+                        << spec.name << " " << sweep_variant.name << ": "
                         << buttons[at].id << " nav-links to hidden "
                         << buttons[link].id;
                     if (!buttons[link].hidden &&
@@ -644,12 +721,35 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             for (int i = 0; i < count; ++i) {
                 if (!buttons[i].hidden) {
                     EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
-                        << spec.name << " host=" << host_visible << ": "
+                        << spec.name << " " << sweep_variant.name << ": "
                         << buttons[i].id << " unreachable by keyboard";
                 }
             }
+
+            // Same-geometry bookkeeping: which halves of the declared
+            // pairs actually showed in this variant.
+            for (int i = 0; i < count; ++i) {
+                if (!buttons[i].hidden)
+                    seen_visible[buttons[i].id] = true;
+            }
+        }
+
+        // The allowance case must be EXERCISED: for every declared
+        // same-geometry pair present on this screen, each half was visible
+        // in at least one lattice variant (the per-variant overlap check
+        // above already proved they were never visible TOGETHER).
+        for (const auto& [first_id, second_id] : geometry_pairs) {
+            EXPECT_TRUE(seen_visible[first_id])
+                << spec.name << ": same-geometry row '" << first_id
+                << "' never became visible across the lattice";
+            EXPECT_TRUE(seen_visible[second_id])
+                << spec.name << ": same-geometry row '" << second_id
+                << "' never became visible across the lattice";
         }
     }
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        sweep_save.team_list[i] = std::move(sweep_saved_team[i]);
+    sweep_save.team_size = sweep_old_team_size;
     EXPECT_GE(engine_screens, 14)
         << "difficulty + the FX trio + display + controls + main options + "
            "main menu + the team-build cluster (base camp, SCENARIO, TEAMS) "

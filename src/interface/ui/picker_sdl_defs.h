@@ -1,4 +1,6 @@
 #pragma once
+#include <openglad/interface/ui/picker_common.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -173,7 +175,10 @@ inline constexpr int kCreateMenuHireIndex = 27;
 inline constexpr int kCreateMenuScenarioIndex = 28;
 inline constexpr int kCreateMenuNetworkingIndex = 29;
 inline constexpr int kCreateMenuGoIndex = 30;
-inline constexpr int kCreateMenuButtonCount = 31;
+// §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
+// of the pair is visible per frame (host => GO, networked joiner => READY).
+inline constexpr int kCreateMenuReadyIndex = 31;
+inline constexpr int kCreateMenuButtonCount = 32;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
@@ -199,7 +204,12 @@ inline constexpr int kTeamsMenuGuyTeamIndex = 9;
 inline constexpr int kTeamsMenuReadyIndex = 10;
 inline constexpr int kTeamsMenuCtfTroopsIndex = 11;
 inline constexpr int kTeamsMenuPageFirstIndex = 12; // team_page_0..3 = 12..15
-inline constexpr int kTeamsMenuButtonCount = 16;
+// §2.7: cross-control reuses the guy-row slot (150,146,70,12) that is
+// vacant when networked — the same-rect mutually-exclusive-gate pattern as
+// the base camp's GO/READY pair. Visible to ALL peers when networked;
+// host-only actionable.
+inline constexpr int kTeamsMenuCrossControlIndex = 16;
+inline constexpr int kTeamsMenuButtonCount = 17;
 
 // One frame's visibility state for the TEAMS subscreen. Keyboard nav does not
 // skip hidden buttons, so the nav graph is rewired from this state every
@@ -209,6 +219,9 @@ struct TeamsMenuWiring
     bool show_ctf = false;        // CTF campaign + lobby host
     bool networked = false;       // genuine networked session (READY shown)
     bool guy_row = false;         // local session with a non-empty roster
+    // §2.7: shown to ALL peers when networked (mutually exclusive with the
+    // guy row — same rect); host-only actionable.
+    bool cross_control = false;
     std::array<bool, 4> join_visible = {false, false, false, false};
     // Per-team member pager ('>' at the row's right edge): shown only when
     // the team's detail line does not fit one slice.
@@ -295,3 +308,10 @@ bool picker_main_scope_remote_start_requested(int32_t& retvalue);
 // start must preempt the current loop. Used by the team-build family loops
 // and the menu engine's RemoteStartScope::TeamBuildScope obligation.
 bool team_build_remote_start_requested(int32_t& retvalue);
+
+// §2.6 GO/READY slot presentation (defined in picker_team_build.cpp): the
+// SDL-side gather over the lobby client + save feeding the pure
+// format_ready_go_button state table. Consumed by the base-camp spec's
+// label/color bindings and rewire, teams_toggle_ready's client gate, and
+// go_menu's host pre-check.
+og::ui::ReadyGoPresentation picker_compute_ready_go_presentation();

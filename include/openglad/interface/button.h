@@ -175,7 +175,10 @@ Sint32 teams_page_flip(Sint32 team);      // TEAMS per-team member pager
 Sint32 teams_join_team(Sint32 team);
 Sint32 teams_cycle_guy(Sint32 whichway);
 Sint32 teams_cycle_guy_team(Sint32 whichway);
-Sint32 teams_toggle_ready();
+// origin_button_index < 0: the TEAMS READY mirror (index-refreshes its own
+// label); >= 0: the base-camp READY twin (§2.6 — the engine label/color
+// pass re-derives its surfaces, so no index write happens here).
+Sint32 teams_toggle_ready(Sint32 origin_button_index);
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();

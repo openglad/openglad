@@ -42,6 +42,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
@@ -1034,6 +1035,25 @@ public:
             }
             if (key.is_char(U'r') || key.is_char(U'R'))
                 (void)set_ready(!local_ready());
+            if (key.is_char(U'c') || key.is_char(U'C')) {
+                // §2.7 cross-control (curses parity surface = the lobby):
+                // host-only actionable; a toggle is a SETTINGS change, so
+                // the server clears every non-host machine's ready (§4.5)
+                // and the echoed settings drive the status line below.
+                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0).
+                if (role_ == LobbyRole::Host &&
+                    host_client_transport_ != nullptr) {
+                    save_.cross_control = static_cast<std::int16_t>(
+                        save_.cross_control != 0 ? 0 : 1);
+                    send_lobby_message(
+                        *host_client_transport_,
+                        host_client_transport_->local_peer_id(),
+                        make_settings_message(save_, difficulty_));
+                    pump_once();
+                } else {
+                    team_status_ = "Host controls cross-control";
+                }
+            }
             if (key.is_char(U't') || key.is_char(U'T')) {
                 // Cycle from the last REQUESTED target (wrapping), not the
                 // replicated team: a denied target is skipped on the next
@@ -1151,6 +1171,11 @@ public:
             lines.push_back("Players: " + std::to_string(state_->players.size()));
             lines.push_back("Deployed: " + std::to_string(lobby_deployed) +
                             "/" + std::to_string(lobby_slots));
+            // §2.7: every peer sees the mode that changes its own rights
+            // (the SDL TEAMS row's shared label formatter).
+            lines.push_back(
+                "Control: " + og::ui::format_cross_control_label(
+                                  state_->settings.cross_control != 0));
         } else {
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");
@@ -1251,7 +1276,7 @@ private:
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
         const char* hint = role_ == LobbyRole::Host
-            ? "[s] start (host)  [t] team  [r] ready  [q] cancel"
+            ? "[s] start (host)  [t] team  [r] ready  [c] control  [q] cancel"
             : "[t] team  [r] ready  [q] cancel";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);

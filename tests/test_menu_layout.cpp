@@ -305,6 +305,11 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 23, .left = 27, .right = 29}, false},
         {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 23, .left = 28, .right = 30}, false},
         {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 23, .left = 29}, false},
+        // §2.6: the READY twin shares GO's exact rect; statically hidden
+        // (the rewire shows exactly one of the pair — GO for hosts, READY
+        // for networked joiners).
+        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 23, .left = 29},
+         true},
     };
 
     for (const char* campaign :
@@ -314,8 +319,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
-            << "base camp: 24 roster cells + 2 pagers + 5 strip buttons";
-        ASSERT_EQ(31, count);
+            << "base camp: 24 roster cells + 2 pagers + 5 strip buttons + "
+               "the hidden READY twin";
+        ASSERT_EQ(32, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -347,6 +353,18 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kCreateMenuScenarioIndex, 28);
         EXPECT_EQ(kCreateMenuNetworkingIndex, 29);
         EXPECT_EQ(kCreateMenuGoIndex, 30);
+        EXPECT_EQ(kCreateMenuReadyIndex, 31);
+        // §2.6 same-geometry pair: the two rects are IDENTICAL by design
+        // (the mutually-exclusive-gate allowance the gate-lattice sweep
+        // validates structurally).
+        EXPECT_EQ(buttons[kCreateMenuGoIndex].x,
+                  buttons[kCreateMenuReadyIndex].x);
+        EXPECT_EQ(buttons[kCreateMenuGoIndex].y,
+                  buttons[kCreateMenuReadyIndex].y);
+        EXPECT_EQ(buttons[kCreateMenuGoIndex].sizex,
+                  buttons[kCreateMenuReadyIndex].sizex);
+        EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
+                  buttons[kCreateMenuReadyIndex].sizey);
 
         check_no_overlaps(buttons, count, "createmenu_basecamp");
         check_bounds(buttons, count, "createmenu_basecamp");
@@ -614,6 +632,18 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                 EXPECT_EQ(!host_visible,
                           buttons[kCreateMenuGoIndex].hidden)
                     << variant << ": the rewire host-gates GO itself";
+                // §2.6: the same-rect READY twin shows exactly when GO
+                // hides — a networked joiner (incl. the [NET-R9] spectator
+                // machine) always has the slot occupied by ONE of the pair.
+                EXPECT_EQ(host_visible,
+                          buttons[kCreateMenuReadyIndex].hidden)
+                    << variant << ": READY is GO's mutually exclusive twin";
+                if (!host_visible)
+                {
+                    EXPECT_EQ("READY",
+                              buttons[kCreateMenuReadyIndex].label)
+                        << variant << ": unready joiner label";
+                }
                 check_no_overlaps(buttons, count, variant.c_str());
                 check_bounds(buttons, count, variant.c_str());
                 check_nav_closed_and_reachable(buttons, count,
@@ -777,13 +807,32 @@ TEST(MenuLayout, teamsmenu_static_layout)
     ASSERT_EQ("team_page_1", buttons[kTeamsMenuPageFirstIndex + 1].id);
     ASSERT_EQ("team_page_2", buttons[kTeamsMenuPageFirstIndex + 2].id);
     ASSERT_EQ("team_page_3", buttons[kTeamsMenuPageFirstIndex + 3].id);
+    ASSERT_EQ("cross_control", buttons[kTeamsMenuCrossControlIndex].id);
 
-    // All three CTF match settings (host-gated) plus READY (networked-only)
-    // start hidden; the local-classic surface is the static default.
+    // All three CTF match settings (host-gated) plus READY and
+    // CROSS-CONTROL (networked-only) start hidden; the local-classic
+    // surface is the static default.
     EXPECT_TRUE(buttons[kTeamsMenuCtfTeamsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuCtfTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuReadyIndex].hidden);
+    EXPECT_TRUE(buttons[kTeamsMenuCrossControlIndex].hidden);
+
+    // §2.7: cross-control reuses the guy-team slot (150,146,70,12) — the
+    // same-rect mutually-exclusive-gate pattern (guy row is local-only,
+    // cross-control networked-only). Label budget: floor((70-8)/6) = 10.
+    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].x,
+              buttons[kTeamsMenuCrossControlIndex].x);
+    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].y,
+              buttons[kTeamsMenuCrossControlIndex].y);
+    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].sizex,
+              buttons[kTeamsMenuCrossControlIndex].sizex);
+    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].sizey,
+              buttons[kTeamsMenuCrossControlIndex].sizey);
+    EXPECT_EQ("CTRL: OWN", buttons[kTeamsMenuCrossControlIndex].label);
+    EXPECT_LE(buttons[kTeamsMenuCrossControlIndex].label.size(), 10u);
+    EXPECT_LE(og::ui::format_cross_control_label(true).size(), 10u);
+    EXPECT_LE(og::ui::format_cross_control_label(false).size(), 10u);
 
     // CTF settings row at the top; troops completes the trio bottom-right.
     EXPECT_EQ(120, buttons[kTeamsMenuCtfTeamsIndex].x);
@@ -854,6 +903,7 @@ void apply_teams_menu_hidden_flags(button* buttons, const TeamsMenuWiring& w)
     buttons[kTeamsMenuGuyNextIndex].hidden = !w.guy_row;
     buttons[kTeamsMenuGuyTeamIndex].hidden = !w.guy_row;
     buttons[kTeamsMenuReadyIndex].hidden = !w.networked;
+    buttons[kTeamsMenuCrossControlIndex].hidden = !w.cross_control;
     for (int t = 0; t < 4; ++t)
         buttons[kTeamsMenuPageFirstIndex + t].hidden = !w.pager_visible[t];
 }
@@ -943,17 +993,20 @@ TEST(MenuLayout, teamsmenu_nav_variants_keyboard_reachable)
                         .join_visible = {true, true, false, false},
                         .pager_visible = {false, false, true, false}},
         "local_ctf_two_teams");
-    // Networked joiner, classic: READY shown, guy row hidden, every lobby
-    // row paged.
+    // Networked joiner, classic: READY + CROSS-CONTROL shown (§2.7:
+    // visible to ALL peers), guy row hidden, every lobby row paged.
     check_teams_menu_wiring(
         TeamsMenuWiring{.networked = true,
+                        .cross_control = true,
                         .join_visible = {true, true, true, true},
                         .pager_visible = {true, true, true, true}},
         "networked_joiner_classic");
-    // Networked CTF host: settings + READY; pager anchors the join-less row.
+    // Networked CTF host: settings + READY + CROSS-CONTROL; pager anchors
+    // the join-less row.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
                         .networked = true,
+                        .cross_control = true,
                         .join_visible = {true, true, true, false},
                         .pager_visible = {false, false, false, true}},
         "networked_ctf_host");
@@ -963,11 +1016,19 @@ TEST(MenuLayout, teamsmenu_nav_variants_keyboard_reachable)
         TeamsMenuWiring{.show_ctf = true, .guy_row = true,
                         .pager_visible = {true, true, false, false}},
         "allied_local_ctf");
-    // Allied networked classic: BACK, READY, and one lone pager.
+    // Allied networked classic: BACK, READY, CROSS-CONTROL, and one lone
+    // pager (no join anchors — cross-control chains off the pager row and
+    // down into READY).
     check_teams_menu_wiring(
         TeamsMenuWiring{.networked = true,
+                        .cross_control = true,
                         .pager_visible = {true, false, false, false}},
         "allied_networked_classic");
+    // Allied networked spectator with NO paged rows: the §2.7 row is
+    // reachable purely through the bottom row (READY.up).
+    check_teams_menu_wiring(
+        TeamsMenuWiring{.networked = true, .cross_control = true},
+        "allied_networked_bare");
     // Empty local roster, classic: joins but no guy row (and no pagers —
     // an empty roster can never overflow a detail line).
     check_teams_menu_wiring(
