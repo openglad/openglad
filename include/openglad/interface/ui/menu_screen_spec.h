@@ -23,8 +23,10 @@
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/menu_binding.h>
+#include <openglad/resources/company.h>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace og::ui {
@@ -303,5 +305,38 @@ const MenuScreenSpec& name_entry_menu_screen_spec();
 // chosen display name (<= kCompanyNameMaxLen) and returns true; on BACK/cancel
 // returns false and leaves `out_name` untouched (nothing is created).
 bool run_new_company_name_entry(std::string& out_name);
+
+// §2.3 Company List (Load) screen state: the header-scanned company set
+// (WP2's list_companies — most-recent-first, NEVER a full SaveData::load per
+// row), the PageModel window over it, and the verdicts the wrapper reads.
+// Public so tests can drive the per-frame rewire's visibility variants
+// ({0 rows, partial page, multi page, corrupt rows}); production state is
+// owned by run_company_list_screen.
+struct CompanyListScreenState {
+    std::vector<og::data::CompanyInfo> companies;
+    PageModel page{};
+    // OPEN clicked and the company loaded: the caller proceeds to base camp.
+    bool opened = false;
+    // §2.4 door: the slot stashed by the BK dispatch. The Backups sub-view
+    // (the next WP3 stage) opens on it; until then the door is layout/nav
+    // final but dispatches to nothing.
+    std::string backups_slot;
+};
+
+// §2.3 Company List (Layer F engine screen): 10 pageable rows with per-row
+// BK (Backups door) and X (delete, NO-first confirm) buttons, BACK, and
+// PageModel PREV/NEXT pagers (hidden when one page fits everything).
+const MenuScreenSpec& company_list_menu_screen_spec();
+
+// Installs the state the per-frame rewire reads (the wrapper's production
+// path; tests install their own around direct rewire/run calls, then
+// install nullptr — the null state renders the empty-list shape).
+void install_company_list_state_for_screen(CompanyListScreenState* state);
+
+// Runs the Company List screen (blocking). Returns true when a company was
+// opened (active slot repointed + save loaded + campaign mounted); false on
+// BACK — including the exit after deleting the last company, which returns
+// to a main menu whose gate then hides CONTINUE/LOAD.
+bool run_company_list_screen();
 
 } // namespace og::ui

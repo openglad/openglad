@@ -36,6 +36,7 @@
 #include <format>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
@@ -743,6 +744,107 @@ TEST(CursesPickerClient, load_missing_slot_fails_gracefully)
 
     term.push_special(KeyCode::Enter); // dismiss "Load failed" notice
     EXPECT_FALSE(client.load_game());
+}
+
+// --- §2.3 company list ----------------------------------------------------
+
+namespace {
+
+// Seeds a loadable company with a pinned last-played timestamp. High
+// timestamps keep the seeded rows at the top of the most-recent-first list
+// even when other tests' quicksave slots (last_played 0) share the binary's
+// config dir under --gtest_shuffle.
+bool seed_curses_company(const std::string& slot, const std::string& name,
+                         std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.last_played_unix_s = last_played;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+struct CursesSlotCleanup {
+    std::vector<std::string> slots;
+    ~CursesSlotCleanup()
+    {
+        for (const std::string& slot : slots)
+            (void)remove_user_file("save/" + slot + ".gtl");
+    }
+};
+
+} // namespace
+
+// Opening row 1 (the most recent company) repoints the terminal slot
+// ([SAVE-R2]) and loads that company's save; show_company_list reports true
+// so the state machine proceeds to team build.
+TEST(CursesPickerClient, company_list_open_repoints_slot)
+{
+    CursesSlotCleanup cleanup{{"wp3curb", "wp3cura"}};
+    ASSERT_TRUE(seed_curses_company("wp3curb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_curses_company("wp3cura", "ALPHA BAND", 5000));
+
+    PickerFixture f;
+    pick(f.t(), 0);                       // chrome: Open Company
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled "1"
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Loaded" notice
+
+    EXPECT_TRUE(f.client.show_company_list())
+        << "an opened company reports true (-> team build)";
+    EXPECT_EQ("wp3curb", f.config.save_name)
+        << "[SAVE-R2] opening repoints the terminal slot";
+    EXPECT_EQ("BRAVO BAND", f.save().save_name);
+}
+
+// Esc backs out (nothing opened, slot untouched), and the §2.4 backups
+// chrome answers with its stub until the next WP3 stage builds the view.
+TEST(CursesPickerClient, company_list_backups_stub_and_escape_back)
+{
+    CursesSlotCleanup cleanup{{"wp3cures"}};
+    ASSERT_TRUE(seed_curses_company("wp3cures", "SOLO BAND", 6000));
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    pick(f.t(), 1);                       // chrome: Backups (stub notice)
+    f.t().push_special(KeyCode::Enter);   // dismiss the stub notice
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(slot_before, f.config.save_name)
+        << "backing out must not repoint the slot";
+}
+
+// Delete is NO-first: the default confirm keeps the company; an explicit
+// Yes deletes it (file gone), and the list re-scans.
+TEST(CursesPickerClient, company_list_delete_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curdb", "wp3curda"}};
+    ASSERT_TRUE(seed_curses_company("wp3curdb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_curses_company("wp3curda", "ALPHA BAND", 5000));
+
+    PickerFixture f;
+    // Delete row 2 (ALPHA), answer the NO-first confirm with the default No.
+    pick(f.t(), 2);                          // chrome: Delete Company
+    f.t().push_special(KeyCode::Backspace);  // clear the pre-filled "1"
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);      // row 2
+    f.t().push_special(KeyCode::Enter);      // confirm: highlight starts on No
+    // Delete row 2 again, this time selecting Yes.
+    pick(f.t(), 2);
+    f.t().push_special(KeyCode::Backspace);
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'2');                   // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);      // dismiss the "Deleted" notice
+    f.t().push_special(KeyCode::Escape);     // leave the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_FALSE(user_file_exists("save/wp3curda.gtl"))
+        << "the explicit Yes must delete the company";
+    EXPECT_TRUE(user_file_exists("save/wp3curdb.gtl"))
+        << "the NO-first default must keep the company";
 }
 
 // --- options -------------------------------------------------------------

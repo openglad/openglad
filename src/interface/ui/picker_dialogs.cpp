@@ -154,7 +154,13 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
 #ifdef TESTING
     if (!s_force_real_dialogs)
     {
-        if (yes_first && !s_yes_or_no_overrides.empty())
+        // Both prompt shapes consume the override queue: the NO-first
+        // no_or_yes confirms (§2.0 U3 — company delete/restore) are driven
+        // by tests exactly like the legacy YES-first prompts. The queue is
+        // never shared across shapes in any flow (a queued value always
+        // targets the next prompt on its path).
+        TRACE("confirm", "%s: %s", title, message);
+        if (!s_yes_or_no_overrides.empty())
         {
             bool v = s_yes_or_no_overrides.front();
             s_yes_or_no_overrides.erase(s_yes_or_no_overrides.begin());

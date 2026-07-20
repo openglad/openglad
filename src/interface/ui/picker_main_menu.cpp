@@ -57,7 +57,7 @@ bool picker_prepare_new_game_setup()
     if (!og::ui::run_new_company_name_entry(company_name))
         return false;
 
-	game->clear();
+    game->clear();
 
     // Reset the save data so we have a fresh, new team. This happens BEFORE
     // the intro: a new game always starts on the default campaign, so both

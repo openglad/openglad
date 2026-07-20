@@ -1204,26 +1204,54 @@ CompanyRowText format_company_row(const og::data::CompanyInfo& info)
     return row;
 }
 
+std::string format_company_row_line(const og::data::CompanyInfo& info,
+                                    bool active)
+{
+    const CompanyRowText row = format_company_row(info);
+    std::string line = std::format("{} {:<18} {:>2}", active ? '*' : ' ',
+                                   row.name, row.roster);
+    if (!row.played.empty()) {
+        line += ' ';
+        line += row.played;
+    }
+    return line;
+}
+
+ContinueResult open_company_slot(SaveData& save, const std::string& slot,
+                                 SaveDataIoError* io_error)
+{
+    // Never SILENTLY switch to a corrupt company (§2.1/§2.3): validate the
+    // header first and keep the currently loaded save on damage — only an
+    // explicit restore-from-backup or delete acts on a corrupt file.
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header(slot);
+    if (!header || !header->valid)
+        return ContinueResult::Corrupt;
+
+    const std::string previous = og::data::active_company_slot();
+    (void)og::data::set_active_company_slot(slot);
+    const SaveDataIoError io = save.load_with_error(slot);
+    if (io != SaveDataIoError::None) {
+        if (io_error != nullptr)
+            *io_error = io;
+        // The header validated but the body failed (torn file, missing
+        // campaign package). Restore the previous slot and best-effort
+        // reload it so autosaves keep targeting the company that is really
+        // open instead of writing the old save into the broken slot.
+        (void)og::data::set_active_company_slot(previous);
+        (void)save.load_with_error(previous);
+        return ContinueResult::LoadFailed;
+    }
+    return ContinueResult::Opened;
+}
+
 ContinueResult open_most_recent_company(SaveData& save)
 {
     // §2.1: CONTINUE opens the most-recent company (WP2 startup selection).
     const std::string slot = og::data::select_startup_company();
     if (slot.empty())
         return ContinueResult::NoCompany;  // CONTINUE is gated hidden anyway.
-
-    // Never SILENTLY switch to a corrupt most-recent company (§2.1): validate
-    // the header first and keep the currently loaded save on damage. The
-    // corrupt-row Company List surfacing is WP3's later Load screen; here we
-    // simply refuse to swap in a broken file.
-    const std::optional<og::data::CompanyInfo> header =
-        og::data::read_company_header(slot);
-    if (!header || !header->valid)
-        return ContinueResult::Corrupt;
-
-    (void)og::data::set_active_company_slot(slot);
-    if (save.load_with_error(slot) != SaveDataIoError::None)
-        return ContinueResult::LoadFailed;
-    return ContinueResult::Opened;
+    return open_company_slot(save, slot);
 }
 
 // --- Team family extraction ---

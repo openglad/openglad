@@ -12,8 +12,11 @@
 #include <openglad/interface/walker_render.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/pixie_data.h>
@@ -678,6 +681,122 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// --- §2.3 Company List: text-client flow ----------------------------------
+
+namespace {
+
+// Sandboxes <user>/save so the company list is fully deterministic (renames
+// it aside, restores in the dtor). Also re-asserts the canonical unit
+// filesystem: the binary-shared PhysFS state can be redirected by earlier
+// tests under --gtest_shuffle.
+class HeadlessSaveDirSandbox
+{
+public:
+    HeadlessSaveDirSandbox()
+        : save_dir_(std::filesystem::path(get_user_path()) / "save")
+        , stash_dir_(std::filesystem::path(get_user_path()) /
+                     "save_sandbox_stash_hl")
+    {
+        if (og::resources::is_initialized()) {
+            const std::string user_path = get_user_path();
+            (void)og::resources::set_write_dir(user_path);
+            (void)og::resources::mount(user_path.c_str(), nullptr, 1);
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(stash_dir_, ec);
+        if (std::filesystem::exists(save_dir_, ec))
+            std::filesystem::rename(save_dir_, stash_dir_, ec);
+        std::filesystem::create_directories(save_dir_, ec);
+    }
+
+    ~HeadlessSaveDirSandbox()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(save_dir_, ec);
+        if (std::filesystem::exists(stash_dir_, ec))
+            std::filesystem::rename(stash_dir_, save_dir_, ec);
+        else
+            std::filesystem::create_directories(save_dir_, ec);
+    }
+
+private:
+    std::filesystem::path save_dir_;
+    std::filesystem::path stash_dir_;
+};
+
+bool seed_headless_company(const std::string& slot, const std::string& name,
+                           std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.last_played_unix_s = last_played;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+} // namespace
+
+// The main-menu LOAD door (position 12) presents the company list: open by
+// row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
+// row refuses to switch, deleting the ACTIVE company refuses with
+// switch-first, deleting another company needs the explicit "y" (NO-first),
+// and the §2.4 backups chrome answers with its stub until the next stage.
+TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_headless_company("wp3hlb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_headless_company("wp3hla", "ALPHA BAND", 5000));
+    {
+        // Bad magic: lists as a CORRUPT row (sorts last, ts reads 0).
+        std::ofstream corrupt(std::filesystem::path(get_user_path()) /
+                              "save" / "wp3hlc.gtl");
+        corrupt << "not a save file";
+        ASSERT_TRUE(corrupt.good());
+    }
+
+    // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
+    const std::string input =
+        "12\n"      // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "3\n"       //     #3 = corrupt -> damaged message, never switches
+        "1\n"       //   list: open company...
+        "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
+        "7\n"       // team build: back -> main
+        "12\n"      // main: load company again (active is now wp3hlb)
+        "3\n"       //   list: delete company...
+        "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
+        "3\n"       //   list: delete company...
+        "2\n"       //     #2 = wp3hla...
+        "\n"        //     blank confirm = NO (NO-first) -> kept
+        "3\n"       //   list: delete company...
+        "2\n"       //     #2 = wp3hla...
+        "y\n"       //     explicit yes -> deleted
+        "2\n"       //   list: backups (stub until the next WP3 stage)
+        "4\n"       //   list: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("wp3hlb", config.save_name)
+        << "[SAVE-R2] opening a company repoints the terminal slot";
+    EXPECT_TRUE(user_file_exists("save/wp3hlb.gtl"))
+        << "the active company must survive its refused delete";
+    EXPECT_FALSE(user_file_exists("save/wp3hla.gtl"))
+        << "the explicit yes must delete the other company";
+    EXPECT_TRUE(user_file_exists("save/wp3hlc.gtl"))
+        << "the corrupt company is never opened OR deleted here";
 }
 
 // Packs a one-file .glad (campaign.yaml with the given title) into the user

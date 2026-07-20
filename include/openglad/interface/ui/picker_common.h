@@ -386,6 +386,14 @@ struct CompanyRowText {
 };
 CompanyRowText format_company_row(const og::data::CompanyInfo& info);
 
+// One §2.3 row joined into a single line for the terminal clients (both must
+// stay byte-identical): "<marker> <name padded to 18> <roster 2> <played>".
+// `active` marks the machine's active company with '*' (the terminal
+// projection of the SDL red do_outline, U4). The played column is omitted
+// entirely when empty, so never-played rows carry no trailing spaces.
+std::string format_company_row_line(const og::data::CompanyInfo& info,
+                                    bool active);
+
 // Outcome of CONTINUE (§2.1): the caller acts on failures (the SDL surface
 // keeps whatever is loaded rather than silently swapping in a broken file).
 enum class ContinueResult {
@@ -395,10 +403,19 @@ enum class ContinueResult {
     LoadFailed, // header validated but the full load failed
 };
 
-// §2.1 CONTINUE: select the most-recent company (WP2 startup selection),
-// point the active-company slot at it, and load it into `save`. Never
-// silently switches to a corrupt most-recent company (validates the header
-// first). Returns why it stopped so the surface can react.
+// §2.3 open-one-company core shared by CONTINUE and the Company List row
+// click: validate the slot's header first (never silently switch to a
+// corrupt company), point the active-company slot at it, and load it into
+// `save` (load mounts the company's campaign). On a load failure the
+// previous active slot is restored — and its save best-effort reloaded — so
+// the slot and the in-memory save never disagree about which company is
+// open. `io_error`, when non-null, receives the load error for surfacing.
+ContinueResult open_company_slot(SaveData& save, const std::string& slot,
+                                 SaveDataIoError* io_error = nullptr);
+
+// §2.1 CONTINUE: select the most-recent company (WP2 startup selection) and
+// open it via open_company_slot. Returns why it stopped so the surface can
+// react.
 ContinueResult open_most_recent_company(SaveData& save);
 
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---

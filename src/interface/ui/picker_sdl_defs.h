@@ -157,6 +157,9 @@ int picker_difficulty_menu_button_count();
 // §2.2 new-company name entry (Layer F engine screen).
 button* picker_name_entry_buttons();
 int picker_name_entry_button_count();
+// §2.3 Company List (Load) — Layer F engine screen.
+button* picker_company_list_buttons();
+int picker_company_list_button_count();
 
 // --- Team-build layout contract -------------------------------------------
 // 3x3 grid: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),

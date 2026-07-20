@@ -298,6 +298,74 @@ TEST(MenuEnginePins, name_entry_exact_table)
 }
 
 // ---------------------------------------------------------------------------
+// §2.3 Company List (Load): a Layer-F engine screen. 10 visual rows, each a
+// (row, BK, X) triple at the save-slot pitch — rects transcribed from the
+// design table INDEPENDENTLY of the spec's macro (row (25,25+15i,190,10),
+// BK (219,25+15i,20,10), X (243,25+15i,20,10)) — then BACK and the PageModel
+// pagers (statically hidden; the per-frame rewire shows them only when the
+// list spans pages). Every row dispatches through MenuSpecRow with arg ==
+// spec ordinal (rows 0-9, BK 10-19, X 20-29, back 30, prev 31, next 32).
+// Static nav is the full-page multi-page shape.
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, company_list_exact_table)
+{
+    button* buttons = picker_company_list_buttons();
+    const int count = picker_company_list_button_count();
+    ASSERT_EQ(33, count) << "10 row triples + back + prev + next";
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+
+    const auto check_row = [&](int index, const std::string& id,
+                               const char* label, int x, int y, int w, int h,
+                               MenuNav nav, bool hidden) {
+        const button& got = buttons[index];
+        EXPECT_EQ(id, got.id) << "company_list index " << index;
+        EXPECT_EQ(label, got.label) << "company_list " << id;
+        EXPECT_EQ(x, got.x) << "company_list " << id;
+        EXPECT_EQ(y, got.y) << "company_list " << id;
+        EXPECT_EQ(w, got.sizex) << "company_list " << id;
+        EXPECT_EQ(h, got.sizey) << "company_list " << id;
+        EXPECT_EQ(spec_row, got.myfun) << "company_list " << id;
+        EXPECT_EQ(index, got.arg1)
+            << "company_list " << id << " (MenuSpecRow arg == ordinal)";
+        EXPECT_EQ(nav.up, got.nav.up) << "company_list " << id;
+        EXPECT_EQ(nav.down, got.nav.down) << "company_list " << id;
+        EXPECT_EQ(nav.left, got.nav.left) << "company_list " << id;
+        EXPECT_EQ(nav.right, got.nav.right) << "company_list " << id;
+        EXPECT_EQ(hidden, got.hidden) << "company_list " << id;
+        EXPECT_FALSE(got.no_draw) << "company_list " << id;
+    };
+
+    for (int i = 0; i < 10; ++i) {
+        const int y = 25 + 15 * i;
+        check_row(i, "company_row_" + std::to_string(i), "", 25, y, 190, 10,
+                  MenuNav{.up = i > 0 ? i - 1 : -1,
+                          .down = i < 9 ? i + 1 : 30,
+                          .left = -1, .right = 10 + i},
+                  false);
+        check_row(10 + i, "company_bak_" + std::to_string(i), "BK", 219, y,
+                  20, 10,
+                  MenuNav{.up = i > 0 ? 10 + i - 1 : -1,
+                          .down = i < 9 ? 10 + i + 1 : 30,
+                          .left = i, .right = 20 + i},
+                  false);
+        check_row(20 + i, "company_del_" + std::to_string(i), "X", 243, y,
+                  20, 10,
+                  MenuNav{.up = i > 0 ? 20 + i - 1 : -1,
+                          .down = i < 9 ? 20 + i + 1 : 31,
+                          .left = 10 + i, .right = -1},
+                  false);
+    }
+    check_row(30, "back", "BACK", 10, 170, 44, 20,
+              MenuNav{.up = 9, .down = -1, .left = -1, .right = 31}, false);
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[30].hotkey) << "company_list back";
+    check_row(31, "company_page_prev", "PREV", 220, 170, 40, 20,
+              MenuNav{.up = 29, .down = -1, .left = 30, .right = 32}, true);
+    check_row(32, "company_page_next", "NEXT", 270, 170, 40, 20,
+              MenuNav{.up = 29, .down = -1, .left = 31, .right = -1}, true);
+}
+
+// ---------------------------------------------------------------------------
 // Train (k_trainmenu_buttons): the six +/- stat pairs beside the portrait,
 // PREV/NEXT cyclers, RENAME/DETAILS.. header row, team cycler, ACCEPT /
 // VIEW TEAM / BACK bottom row.

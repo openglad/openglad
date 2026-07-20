@@ -317,6 +317,22 @@ std::string level_display(const TextPickerConfig& config)
     return og::ui::level_display_guarded(config.campaign, config.level);
 }
 
+// §2.3: prompt for a 1-based company row number; -1 on cancel/invalid.
+int prompt_company_index(Menu& menu, int count, std::string_view title)
+{
+    bool accepted = false;
+    const std::string entered = menu.prompt(title,
+        std::format("Company # [1-{}]: ", count), "1", accepted);
+    if (!accepted)
+        return -1;
+    const auto choice = parse_int_strict(entered);
+    if (!choice || *choice < 1 || *choice > count) {
+        menu.show_text(title, {"Invalid company selection."});
+        return -1;
+    }
+    return *choice - 1;
+}
+
 // --- team views: roster / hire / train -----------------------------------
 
 void view_team_roster(Menu& menu, const SaveData& save)
@@ -1033,6 +1049,121 @@ bool CursesPickerClient::save_game()
 
     menu.show_text("Saved", {std::format("Saved '{}'.", config_.save_name)});
     return true;
+}
+
+// §2.3 Company List, curses projection: the joined company rows (shared row
+// formatter — byte-identical with the text client) sit as non-selectable
+// context lines above the LoadCompany chrome (open / backups / delete /
+// back); open and delete prompt for a row number. Opening repoints this
+// client's slot ([SAVE-R2]) via load_game and returns true so the state
+// machine proceeds to team build.
+bool CursesPickerClient::show_company_list()
+{
+    Menu menu(term_, clock_);
+    for (;;) {
+        const std::vector<og::data::CompanyInfo> companies =
+            og::data::list_companies();
+        if (companies.empty()) {
+            menu.show_text("Companies", {"No companies yet."});
+            return false;
+        }
+
+        const og::ui::TerminalMenuModel model =
+            og::ui::build_terminal_menu_model(
+                PickerMenuId::LoadCompany,
+                label_context(config_, options_, save_data_));
+        std::vector<ListEntry> entries;
+        entries.push_back(ListEntry{
+            og::ui::format_company_list_title(
+                static_cast<int>(companies.size())), false});
+        for (const og::data::CompanyInfo& info : companies) {
+            entries.push_back(ListEntry{
+                og::ui::format_company_row_line(info,
+                    info.slot == og::data::active_company_slot()), false});
+        }
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalMenuEntry& entry : model.entries)
+            entries.push_back(ListEntry{entry.label, true});
+
+        const int choice = menu.choose(model.title, entries,
+            "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
+            first_item);
+        if (choice < 0)
+            return false;
+        const PickerMenuItem* item =
+            model.entries[static_cast<size_t>(choice - first_item)].item;
+
+        switch (item->command) {
+        case PickerMenuCommand::Back:
+            return false;
+        case PickerMenuCommand::OpenCompany: {
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Open Company");
+            if (idx < 0)
+                break;
+            const og::data::CompanyInfo& info =
+                companies[static_cast<size_t>(idx)];
+            if (!info.valid) {
+                // Never silently switch to a corrupt company ([SAVE-R6]).
+                menu.show_text("Open Company",
+                    {std::format("Company file '{}' is damaged.", info.slot),
+                     "Restore a backup or delete it."});
+                break;
+            }
+            const std::string previous_slot = config_.save_name;
+            config_.save_name = info.slot;
+            if (load_game())
+                return true; // -> team build (base camp)
+            // load_game showed the error; restore the slot authority.
+            config_.save_name = previous_slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            break;
+        }
+        case PickerMenuCommand::OpenCompanyBackups:
+            // §2.4 lands in the next WP3 stage; the chrome command is
+            // already shared so the flow re-pins once, not twice.
+            menu.show_text("Backups",
+                {"The backups view is not available yet."});
+            break;
+        case PickerMenuCommand::DeleteCompany: {
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Delete Company");
+            if (idx < 0)
+                break;
+            const og::data::CompanyInfo& info =
+                companies[static_cast<size_t>(idx)];
+            if (info.slot == og::data::active_company_slot()) {
+                // §3.7: delete_company refuses the active slot.
+                menu.show_text("Delete Company",
+                    {"Cannot delete the open company; switch first."});
+                break;
+            }
+            const og::ui::CompanyRowText row =
+                og::ui::format_company_row(info);
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"Backups are deleted too.", false},
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose(
+                std::format("Delete company '{}'?", row.name), confirm,
+                "Enter select | Esc back", 1);
+            if (verdict != 2)
+                break;
+            if (og::data::delete_company(info.slot)) {
+                menu.show_text("Delete Company",
+                    {std::format("Deleted '{}'.", info.slot)});
+            } else {
+                menu.show_text("Delete Company",
+                    {std::format("Delete failed for '{}'.", info.slot)});
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
 }
 
 // --- IPickerClient: networking -------------------------------------------

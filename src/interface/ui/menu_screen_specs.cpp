@@ -34,6 +34,7 @@
 
 #include "picker_sdl_defs.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -67,6 +68,9 @@ void sync_team_build_host_control_visibility(button* buttons, int num_buttons,
 void view_team(short left, short top, short right, short bottom);
 std::string get_saved_name(const char* filename);
 bool team_build_start_selected();
+void popup_dialog(const char* title, const char* message);
+bool no_or_yes_prompt(const char* title, const char* message,
+                      bool default_value);
 // TEAMS engine hooks (defined beside their file-local helpers in
 // picker_team_build.cpp).
 void picker_teams_menu_engine_reset_open_state();
@@ -2146,6 +2150,315 @@ Sint32 name_entry_on_spec_row(int row, void* screen_state)
     }
 }
 
+// ---------------------------------------------------------------------------
+// §2.3 Company List (Load) — Layer F engine screen
+// ---------------------------------------------------------------------------
+
+// The state the per-frame rewire reads (the rewire signature carries no
+// screen_state, the view-scenario file-static precedent). run_menu_screen's
+// screen_state points at the SAME object, installed by the wrapper (or by a
+// test) around the run. Null state renders the empty-list shape: every row
+// and pager hidden, BACK alone — what a bare engine sweep sees.
+CompanyListScreenState* g_company_list_state = nullptr;
+
+// §2.3 geometry: 10 rows at the save-slot pitch, each a (row, BK, X) triple.
+// Table order groups by kind — rows 0-9, BK 10-19, X 20-29, then the chrome —
+// so the MenuSpecRow arg (== the spec ordinal, G3) decodes as arg/10 = kind,
+// arg%10 = visual row.
+constexpr int kCompanyListRowsPerPage = 10;
+constexpr int kCompanyListBakBase = 10;
+constexpr int kCompanyListDelBase = 20;
+constexpr int kCompanyListBackIndex = 30;
+constexpr int kCompanyListPrevIndex = 31;
+constexpr int kCompanyListNextIndex = 32;
+
+// One visual row's (row, BK, X) triple: rects straight from the §2.3 table —
+// company_row (25,25+15i,190,10), BK (219,25+15i,20,10), X (243,25+15i,20,10).
+// Static nav is the full-page multi-page shape (rows chain vertically,
+// row.right -> BK -> X, row9.down -> BACK, X column bottoms out on PREV); the
+// per-frame rewire recomputes every link from the live state anyway.
+#define OG_COMPANY_LIST_ROW(i)                                               \
+    {.id = "company_row_" #i, .label = "",                                   \
+     .x = 25, .y = 25 + 15 * (i), .w = 190, .h = 10,                          \
+     .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
+     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+             .down = (i) < 9 ? (i) + 1 : kCompanyListBackIndex,               \
+             .right = kCompanyListBakBase + (i)}}
+#define OG_COMPANY_LIST_BAK(i)                                               \
+    {.id = "company_bak_" #i, .label = "BK",                                 \
+     .x = 219, .y = 25 + 15 * (i), .w = 20, .h = 10,                          \
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyListBakBase + (i),  \
+     .nav = {.up = (i) > 0 ? kCompanyListBakBase + (i) - 1 : -1,              \
+             .down = (i) < 9 ? kCompanyListBakBase + (i) + 1                  \
+                             : kCompanyListBackIndex,                         \
+             .left = (i), .right = kCompanyListDelBase + (i)}}
+#define OG_COMPANY_LIST_DEL(i)                                               \
+    {.id = "company_del_" #i, .label = "X",                                  \
+     .x = 243, .y = 25 + 15 * (i), .w = 20, .h = 10,                          \
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyListDelBase + (i),  \
+     .nav = {.up = (i) > 0 ? kCompanyListDelBase + (i) - 1 : -1,              \
+             .down = (i) < 9 ? kCompanyListDelBase + (i) + 1                  \
+                             : kCompanyListPrevIndex,                         \
+             .left = kCompanyListBakBase + (i)}}
+
+constexpr MenuButtonSpec kCompanyListRows[] = {
+    OG_COMPANY_LIST_ROW(0), OG_COMPANY_LIST_ROW(1), OG_COMPANY_LIST_ROW(2),
+    OG_COMPANY_LIST_ROW(3), OG_COMPANY_LIST_ROW(4), OG_COMPANY_LIST_ROW(5),
+    OG_COMPANY_LIST_ROW(6), OG_COMPANY_LIST_ROW(7), OG_COMPANY_LIST_ROW(8),
+    OG_COMPANY_LIST_ROW(9),
+    OG_COMPANY_LIST_BAK(0), OG_COMPANY_LIST_BAK(1), OG_COMPANY_LIST_BAK(2),
+    OG_COMPANY_LIST_BAK(3), OG_COMPANY_LIST_BAK(4), OG_COMPANY_LIST_BAK(5),
+    OG_COMPANY_LIST_BAK(6), OG_COMPANY_LIST_BAK(7), OG_COMPANY_LIST_BAK(8),
+    OG_COMPANY_LIST_BAK(9),
+    OG_COMPANY_LIST_DEL(0), OG_COMPANY_LIST_DEL(1), OG_COMPANY_LIST_DEL(2),
+    OG_COMPANY_LIST_DEL(3), OG_COMPANY_LIST_DEL(4), OG_COMPANY_LIST_DEL(5),
+    OG_COMPANY_LIST_DEL(6), OG_COMPANY_LIST_DEL(7), OG_COMPANY_LIST_DEL(8),
+    OG_COMPANY_LIST_DEL(9),
+    // BACK to the main menu; Escape hotkey (the shared cancel grammar).
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 44, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyListBackIndex,
+     .nav = {.up = 9, .right = kCompanyListPrevIndex}},
+    // Real MenuSpecRow pager actions (keyboard-live, §2.3); statically
+    // hidden — the rewire shows them only when the list spans pages.
+    {.id = "company_page_prev", .label = "PREV",
+     .x = 220, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyListPrevIndex,
+     .nav = {.up = 29, .left = kCompanyListBackIndex,
+             .right = kCompanyListNextIndex},
+     .hidden = true},
+    {.id = "company_page_next", .label = "NEXT",
+     .x = 270, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyListNextIndex,
+     .nav = {.up = 29, .left = kCompanyListPrevIndex},
+     .hidden = true},
+};
+
+#undef OG_COMPANY_LIST_ROW
+#undef OG_COMPANY_LIST_BAK
+#undef OG_COMPANY_LIST_DEL
+
+// Per-frame visibility + nav over the live list state (pattern b: full-graph
+// rewire recomputed every frame; BFS-pinned per visibility variant). Also
+// stamps the §2.3 active-company marker — red do_outline (U4) — on the live
+// row vbuttons, and re-asserts the pagers on both surfaces.
+void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
+{
+    if (count < kCompanyListNextIndex + 1)
+        return;
+    const CompanyListScreenState* st = g_company_list_state;
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = std::max(0, end - first);
+    const bool pagers = st != nullptr && st->page.multi_page();
+    const std::string& active_slot = og::data::active_company_slot();
+
+    for (int r = 0; r < kCompanyListRowsPerPage; ++r) {
+        const bool on = r < visible;
+        buttons[r].hidden = !on;
+        buttons[kCompanyListBakBase + r].hidden = !on;
+        buttons[kCompanyListDelBase + r].hidden = !on;
+        if (on) {
+            buttons[r].nav = {
+                .up = r > 0 ? r - 1 : -1,
+                .down = r + 1 < visible ? r + 1 : kCompanyListBackIndex,
+                .left = -1,
+                .right = kCompanyListBakBase + r};
+            buttons[kCompanyListBakBase + r].nav = {
+                .up = r > 0 ? kCompanyListBakBase + r - 1 : -1,
+                .down = r + 1 < visible ? kCompanyListBakBase + r + 1
+                                        : kCompanyListBackIndex,
+                .left = r,
+                .right = kCompanyListDelBase + r};
+            buttons[kCompanyListDelBase + r].nav = {
+                .up = r > 0 ? kCompanyListDelBase + r - 1 : -1,
+                .down = r + 1 < visible
+                    ? kCompanyListDelBase + r + 1
+                    : (pagers ? kCompanyListPrevIndex : kCompanyListBackIndex),
+                .left = kCompanyListBakBase + r,
+                .right = -1};
+        }
+        // §2.3 U4: the active company's row wears the red outline (the
+        // player-count grammar). Live surface only — do_outline is a vbutton
+        // field; null-guarded for accessor-only test paths.
+        vbutton* live = og::runtime::current_session->allbuttons_[r];
+        if (live != nullptr) {
+            live->do_outline =
+                (on && st != nullptr
+                 && st->companies[static_cast<std::size_t>(first + r)].slot
+                        == active_slot)
+                    ? 1
+                    : 0;
+        }
+    }
+    buttons[kCompanyListPrevIndex].hidden = !pagers;
+    buttons[kCompanyListNextIndex].hidden = !pagers;
+    buttons[kCompanyListBackIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = -1,
+        .right = pagers ? kCompanyListPrevIndex : -1};
+    buttons[kCompanyListPrevIndex].nav = {
+        .up = visible > 0 ? kCompanyListDelBase + visible - 1 : -1,
+        .down = -1,
+        .left = kCompanyListBackIndex,
+        .right = kCompanyListNextIndex};
+    buttons[kCompanyListNextIndex].nav = {
+        .up = visible > 0 ? kCompanyListDelBase + visible - 1 : -1,
+        .down = -1,
+        .left = kCompanyListPrevIndex,
+        .right = -1};
+    for (int i = 0; i < count; ++i)
+        sync_button_hidden_state(buttons, i);
+}
+
+// The §2.3 content pass: title + column headers over the backdrop (the
+// black-strip idiom, U2), the three row columns at x=27/141/155, the "p/N"
+// indicator, and the empty state.
+void company_list_draw_content(void* screen_state)
+{
+    const CompanyListScreenState* st =
+        static_cast<const CompanyListScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+
+    const auto strip_text = [game](int x, int y, const std::string& text) {
+        const int width = static_cast<int>(text.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, width + 4, 8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, WHITE, "%s", text.c_str());
+    };
+
+    const int total =
+        st != nullptr ? static_cast<int>(st->companies.size()) : 0;
+    strip_text(25, 8, format_company_list_title(total));
+    strip_text(27, 16, "NAME");
+    strip_text(135, 16, "GUYS");
+    strip_text(155, 16, "PLAYED");
+    strip_text(219, 16, "BKUP");
+    strip_text(243, 16, "DEL");
+
+    if (st == nullptr || total == 0) {
+        // Transient shape: deleting the last company exits the screen, but
+        // the frame that consumed the delete still draws once.
+        game->text_normal.write_xy_center(160, 90, ORANGE_START, "%s",
+                                          "NO COMPANIES");
+        return;
+    }
+
+    const int first = st->page.first_index();
+    const int end = st->page.end_index();
+    for (int r = 0; r < end - first; ++r) {
+        const CompanyRowText row = format_company_row(
+            st->companies[static_cast<std::size_t>(first + r)]);
+        const int y = 27 + 15 * r;
+        game->text_normal.write_xy(27, y, DARK_BLUE, "%s", row.name.c_str());
+        game->text_normal.write_xy(141, y, DARK_BLUE, "%s",
+                                   row.roster.c_str());
+        game->text_normal.write_xy(155, y, DARK_BLUE, "%s",
+                                   row.played.c_str());
+    }
+
+    if (st->page.multi_page())
+        strip_text(140, 176, st->page.indicator());
+}
+
+// G3 row dispatch: OPEN / BK / X per visual row, BACK, and the pagers.
+Sint32 company_list_on_spec_row(int row, void* screen_state)
+{
+    CompanyListScreenState* st =
+        static_cast<CompanyListScreenState*>(screen_state);
+    if (st == nullptr)
+        return 0;
+
+    if (row == kCompanyListBackIndex) {
+        TRACE("company_list", "back");
+        return MENU_EXIT;
+    }
+    if (row == kCompanyListPrevIndex || row == kCompanyListNextIndex) {
+        if (st->page.step(row == kCompanyListPrevIndex ? -1 : 1))
+            TRACE("company_list", "page %s", st->page.indicator().c_str());
+        return MENU_OK;
+    }
+
+    const int r = row % kCompanyListRowsPerPage;
+    const int idx = st->page.first_index() + r;
+    if (idx < 0 || idx >= static_cast<int>(st->companies.size()))
+        return 0;  // stale click on a row hidden this frame
+    const og::data::CompanyInfo info =
+        st->companies[static_cast<std::size_t>(idx)];
+
+    if (row < kCompanyListBakBase) {
+        // OPEN (1-click primary): set active slot + load + mount (§2.3).
+        if (!info.valid) {
+            // Never silently switch to a corrupt company ([SAVE-R6]): the
+            // row stays listed with BK (restore) and X (delete) available.
+            popup_dialog("LOAD COMPANY", "COMPANY FILE DAMAGED");
+            return MENU_REDRAW;
+        }
+        SaveDataIoError io = SaveDataIoError::None;
+        const ContinueResult result = open_company_slot(
+            og::runtime::current_session->myscreen_->save_data, info.slot,
+            &io);
+        switch (result) {
+        case ContinueResult::Opened:
+            st->opened = true;
+            TRACE("company_list", "open %s", info.slot.c_str());
+            return MENU_EXIT;
+        case ContinueResult::LoadFailed:
+            // Header valid but the body failed; open_company_slot restored
+            // the previously open company. Surface the error, stay listed.
+            popup_dialog("LOAD COMPANY", save_error_string(io));
+            return MENU_REDRAW;
+        case ContinueResult::Corrupt:
+        case ContinueResult::NoCompany:
+            popup_dialog("LOAD COMPANY", "COMPANY FILE DAMAGED");
+            return MENU_REDRAW;
+        }
+        return MENU_REDRAW;
+    }
+
+    if (row < kCompanyListDelBase) {
+        // §2.4 door: the Backups sub-view lands in the next WP3 stage. The
+        // BK row/nav/pins are final; the dispatch stashes the slot and
+        // traces so the flow is already pinned end-to-end.
+        st->backups_slot = info.slot;
+        TRACE("company_list", "backups_door %s", info.slot.c_str());
+        return MENU_OK;
+    }
+
+    // X — delete company (+ ALL its backups), NO-first confirm (U3).
+    if (info.slot == og::data::active_company_slot()) {
+        // §3.7: delete_company refuses the active slot; the UI enforces
+        // "switch first" up front so the confirm never lies.
+        popup_dialog("DELETE COMPANY", "THIS COMPANY IS OPEN - SWITCH FIRST");
+        return MENU_REDRAW;
+    }
+    const CompanyRowText row_text = format_company_row(info);
+    // The name rides the message lines (a 34-char title escapes the 320px
+    // dialog frame; message lines draw at 6px/char).
+    const std::string message = row_text.name + "\nBACKUPS ARE DELETED TOO.";
+    if (!no_or_yes_prompt("DELETE COMPANY?", message.c_str(), false))
+        return MENU_REDRAW;
+    if (!og::data::delete_company(info.slot)) {
+        // The API refusal is popup-surfaced so a UI slip stays visible
+        // (§3.7).
+        popup_dialog("DELETE COMPANY", "DELETE FAILED");
+        return MENU_REDRAW;
+    }
+    TRACE("company_list", "deleted %s", info.slot.c_str());
+    // Re-scan (header-only) and clamp the page window. Deleting the
+    // most-recent company retargets CONTINUE by construction (row 0 of the
+    // re-scan IS what CONTINUE opens); deleting the last one exits to a
+    // main menu whose gate hides CONTINUE/LOAD (§2.3).
+    const int page_before = st->page.page;
+    st->companies = og::data::list_companies();
+    st->page = PageModel::make(static_cast<int>(st->companies.size()),
+                               kCompanyListRowsPerPage);
+    st->page.page = std::min(page_before, st->page.page_count() - 1);
+    if (st->companies.empty())
+        return MENU_EXIT;
+    return MENU_REDRAW;
+}
+
 } // namespace
 
 // §2.1: refresh the cached company view once per mainmenu() entry (the
@@ -2379,6 +2692,57 @@ bool run_new_company_name_entry(std::string& out_name)
         return false;
     out_name = state.name;
     return true;
+}
+
+const MenuScreenSpec& company_list_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "company_list",
+        .rows = kCompanyListRows,
+        .row_count = static_cast<int>(std::size(kCompanyListRows)),
+        .buttons_accessor = &picker_company_list_buttons,
+        .count_accessor = &picker_company_list_button_count,
+        // Pattern-b full-graph rewire, recomputed every frame from the list
+        // state (page window, pager visibility, active-row outline).
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &company_list_rewire},
+        // A host GO must launch a peer parked in the list (the difficulty
+        // subscreen precedent): propagate the remote MENU_EXIT — the wrapper
+        // reports "not opened" and the re-entered main menu launches.
+        .remote_start = RemoteStartScope::MainScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        // Fade the main menu out, draw the list cold, fade in (the name-entry
+        // entry idiom).
+        .enter = EnterTransition::FadeAroundEntry,
+        // Initial highlight: row 0 — what CONTINUE opens (§2.3).
+        .default_highlight = 0,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &company_list_draw_content,
+        .on_spec_row = &company_list_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+void install_company_list_state_for_screen(CompanyListScreenState* state)
+{
+    g_company_list_state = state;
+}
+
+// §2.3: run the Company List (blocking) over a fresh header-only scan.
+bool run_company_list_screen()
+{
+    if (og::runtime::current_session->myscreen_ == nullptr)
+        return false;
+    CompanyListScreenState state;
+    state.companies = og::data::list_companies();
+    state.page = PageModel::make(static_cast<int>(state.companies.size()),
+                                 kCompanyListRowsPerPage);
+    install_company_list_state_for_screen(&state);
+    (void)run_menu_screen(company_list_menu_screen_spec(), &state);
+    install_company_list_state_for_screen(nullptr);
+    return state.opened;
 }
 
 // G4 registry: the one-lookup answer to "which system owns this screen"
@@ -2642,6 +3006,18 @@ button* picker_name_entry_buttons()
 int picker_name_entry_button_count()
 {
     return static_cast<int>(pks().name_entry_buttons.size());
+}
+
+button* picker_company_list_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::company_list_menu_screen_spec(),
+                                     pks().company_list_buttons);
+    return pks().company_list_buttons.data();
+}
+
+int picker_company_list_button_count()
+{
+    return static_cast<int>(pks().company_list_buttons.size());
 }
 
 // The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit

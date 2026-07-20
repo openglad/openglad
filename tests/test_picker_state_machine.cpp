@@ -278,6 +278,17 @@ public:
     void run_game() override {}
     bool load_game() override { return false; }
     bool save_game() override { return false; }
+
+    // §2.3: the LOAD door (scripted verdicts, consumed in order).
+    std::vector<bool> company_list_results;
+    int company_list_calls = 0;
+    bool show_company_list() override
+    {
+        const int call = company_list_calls++;
+        if (call < static_cast<int>(company_list_results.size()))
+            return company_list_results[static_cast<size_t>(call)];
+        return false;
+    }
 };
 
 TEST(PickerStateMachine, picker_state_show_main_menu_handles_unknown_then_quit)
@@ -291,6 +302,73 @@ TEST(PickerStateMachine, picker_state_show_main_menu_handles_unknown_then_quit)
     const og::ui::MainMenuAction action = client.show_main_menu();
     ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit), static_cast<int>(action)) << "null menu selection should map to Quit";
     ASSERT_EQ(1, client.handle_calls) << "unknown command should be handled and looped";
+}
+
+// §2.3: the main-menu LoadGame command presents the Company List. An opened
+// company routes to team build (base camp — the same destination CONTINUE
+// reaches); BACK re-presents the main menu instead of leaving it.
+TEST(PickerStateMachine, picker_state_load_door_presents_company_list)
+{
+    static const og::ui::PickerMenuItem load_door{
+        "load_company", "Load Company", og::ui::PickerMenuCommand::LoadGame, 0
+    };
+
+    // BACK from the list: loop back into present_menu (then quit on null).
+    MenuOnlyPickerClient backed;
+    backed.scripted_results = {&load_door, nullptr};
+    backed.company_list_results = {false};
+    const og::ui::MainMenuAction back_action = backed.show_main_menu();
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit),
+              static_cast<int>(back_action))
+        << "BACK from the company list should re-present the main menu";
+    ASSERT_EQ(1, backed.company_list_calls);
+    ASSERT_EQ(2, backed.present_calls)
+        << "the main menu must be presented again after BACK";
+    ASSERT_EQ(0, backed.handle_calls)
+        << "LoadGame must not fall through to handle_menu_item";
+
+    // Opened: proceed to team build.
+    MenuOnlyPickerClient opened;
+    opened.scripted_results = {&load_door};
+    opened.company_list_results = {true};
+    const og::ui::MainMenuAction open_action = opened.show_main_menu();
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::ViewTeam),
+              static_cast<int>(open_action))
+        << "an opened company routes to team build (base camp)";
+    ASSERT_EQ(1, opened.company_list_calls);
+}
+
+// The default IPickerClient::show_company_list (headless fakes) opens
+// nothing: a LoadGame selection simply re-presents the main menu.
+TEST(PickerStateMachine, picker_state_company_list_default_opens_nothing)
+{
+    class DefaultListClient final : public og::ui::IPickerClient
+    {
+    public:
+        std::vector<const og::ui::PickerMenuItem*> scripted_results;
+        int present_calls = 0;
+        const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId) override
+        {
+            if (present_calls >= static_cast<int>(scripted_results.size()))
+                return nullptr;
+            return scripted_results[static_cast<size_t>(present_calls++)];
+        }
+        std::string show_campaign_select() override { return {}; }
+        void show_options() override {}
+        void show_help() override {}
+        void run_game() override {}
+        bool load_game() override { return false; }
+        bool save_game() override { return false; }
+    };
+
+    static const og::ui::PickerMenuItem load_door{
+        "load_company", "Load Company", og::ui::PickerMenuCommand::LoadGame, 0
+    };
+    DefaultListClient client;
+    client.scripted_results = {&load_door, nullptr};
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit),
+              static_cast<int>(client.show_main_menu()));
+    ASSERT_EQ(2, client.present_calls);
 }
 
 

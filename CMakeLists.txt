@@ -2076,6 +2076,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_company_list.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2347,6 +2348,13 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         og_add_test_group(og_test_menu_engine FILES
             test_menu_pins.cpp
             test_menu_engine.cpp
+        )
+
+        # Layer-F Company & Base Camp flow group (design G10): heavyweight
+        # picker_main injector flows for the §2.2-§2.5 feature screens live
+        # here, never in og_test_menu_ui (~130s vs the 180s timeout).
+        og_add_test_group(og_test_basecamp FILES
+            test_company_list.cpp
         )
 
         og_add_test_group(og_test_input FILES

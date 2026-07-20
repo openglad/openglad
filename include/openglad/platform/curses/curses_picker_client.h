@@ -53,6 +53,7 @@ public:
     void run_game() override;
     bool load_game() override;
     bool save_game() override;
+    bool show_company_list() override;
     og::ui::PickerScreen screen_after_game() const override;
 
     // Accessors for tests.

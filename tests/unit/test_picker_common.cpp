@@ -2839,3 +2839,32 @@ TEST(CompanyFormat, row_edges_clip_pad_and_mark_corruption)
     EXPECT_FALSE(row.corrupt);
     EXPECT_EQ("save0", row.name);
 }
+
+// §2.3 terminal projection: both terminal clients print the SAME joined row
+// line (name padded to the 18-char column, 2-char roster, date; '*' marks
+// the active company — the terminal projection of the SDL red outline, U4).
+TEST(CompanyFormat, row_line_joins_columns_for_terminals)
+{
+    og::data::CompanyInfo info;
+    info.slot = "iron-kettle-band";
+    info.display_name = "IRON KETTLE BAND";
+    info.roster_size = 12;
+    info.last_played_unix_s = 1000000000; // 2001-09-09 UTC
+    info.valid = true;
+
+    EXPECT_EQ("* IRON KETTLE BAND   12 2001-09-09",
+              og::ui::format_company_row_line(info, true));
+    EXPECT_EQ("  IRON KETTLE BAND   12 2001-09-09",
+              og::ui::format_company_row_line(info, false));
+
+    // Never played: the date column is omitted entirely (no trailing pad).
+    info.last_played_unix_s = 0;
+    info.roster_size = 3;
+    EXPECT_EQ("  IRON KETTLE BAND    3",
+              og::ui::format_company_row_line(info, false));
+
+    // Corrupt rows join the "--"/"CORRUPT" markers.
+    info.valid = false;
+    EXPECT_EQ("  IRON KETTLE BAND   -- CORRUPT",
+              og::ui::format_company_row_line(info, false));
+}

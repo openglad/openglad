@@ -732,6 +732,248 @@ TEST(MenuEngine, name_entry_spec_shape_and_nav)
             << buttons[i].id << " unreachable by keyboard";
 }
 
+// §2.3 Company List: like name entry, entered from the main-menu LOAD door
+// rather than the registry, so the gate-lattice sweep cannot reach it. The
+// per-frame rewire owns ALL visibility (page window, pagers) and nav; pin the
+// spec obligations plus BFS reachability / nav closure / no-overlap over the
+// §2.3 visibility variants: null state (bare sweep shape), empty list, one
+// partial page, two pages (both), and corrupt rows (BK/X stay available).
+namespace {
+
+og::data::CompanyInfo make_company_info(const std::string& slot,
+                                        std::int64_t ts, bool valid)
+{
+    og::data::CompanyInfo info;
+    info.slot = slot;
+    info.display_name = "COMPANY " + slot;
+    info.last_played_unix_s = ts;
+    info.roster_size = 3;
+    info.valid = valid;
+    return info;
+}
+
+// RAII: the file-static state pointer the rewire reads must never leak into
+// later tests (shuffle safety).
+struct ScopedCompanyListState
+{
+    explicit ScopedCompanyListState(og::ui::CompanyListScreenState* state)
+    {
+        og::ui::install_company_list_state_for_screen(state);
+    }
+    ~ScopedCompanyListState()
+    {
+        og::ui::install_company_list_state_for_screen(nullptr);
+    }
+};
+
+} // namespace
+
+TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
+{
+    EngineTestGuard guard;
+    clear_allbuttons();
+    const og::ui::MenuScreenSpec& spec = og::ui::company_list_menu_screen_spec();
+
+    // Spec obligations (§2.3): main-scope remote start (a host GO launches a
+    // peer parked in the list), lobby poll, fade entry, row-0 highlight
+    // (row 0 IS what CONTINUE opens), generic MenuSpecRow dispatch.
+    EXPECT_EQ(std::string("company_list"), spec.name);
+    EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
+    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_EQ(0, spec.default_highlight);
+    EXPECT_TRUE(spec.on_spec_row != nullptr);
+    EXPECT_TRUE(spec.nav.kind == og::ui::NavProgramKind::Rewire
+                && spec.nav.rewire != nullptr);
+    EXPECT_EQ(MENU_REDRAW, spec.exit_value);
+
+    struct Variant {
+        const char* label;
+        int companies;
+        int corrupt_from;  // companies at index >= this are corrupt (-1: none)
+        int page;
+        int want_visible_rows;
+        bool want_pagers;
+    };
+    const Variant variants[] = {
+        {"empty", 0, -1, 0, 0, false},
+        {"partial_page", 3, -1, 0, 3, false},
+        {"two_pages_first", 15, -1, 0, 10, true},
+        {"two_pages_second", 15, -1, 1, 5, true},
+        {"corrupt_rows_second_page", 15, 12, 1, 5, true},
+    };
+
+    for (const Variant& variant : variants) {
+        og::ui::CompanyListScreenState state;
+        for (int i = 0; i < variant.companies; ++i) {
+            state.companies.push_back(make_company_info(
+                "wp3var" + std::to_string(i), 1000 - i,
+                variant.corrupt_from < 0 || i < variant.corrupt_from));
+        }
+        state.page = og::ui::PageModel::make(variant.companies, 10);
+        state.page.page = variant.page;
+        ScopedCompanyListState installed(&state);
+
+        button* buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        ASSERT_EQ(33, count) << variant.label;
+
+        int highlighted = spec.default_highlight;
+        spec.nav.rewire(buttons, count, highlighted);
+        ensure_highlighted_button_visible(buttons, count, highlighted);
+
+        // Visibility: the page window's row triples, BACK always, pagers
+        // only when the list spans pages (corrupt rows keep BK/X — the
+        // restore/delete doors stay available, §2.3).
+        for (int r = 0; r < 10; ++r) {
+            const bool want = r < variant.want_visible_rows;
+            EXPECT_EQ(!want, buttons[r].hidden)
+                << variant.label << " company_row_" << r;
+            EXPECT_EQ(!want, buttons[10 + r].hidden)
+                << variant.label << " company_bak_" << r;
+            EXPECT_EQ(!want, buttons[20 + r].hidden)
+                << variant.label << " company_del_" << r;
+        }
+        EXPECT_FALSE(buttons[30].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[31].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[32].hidden) << variant.label;
+
+        // No overlap among the visible rows.
+        for (int i = 0; i < count; ++i) {
+            if (buttons[i].hidden)
+                continue;
+            for (int j = i + 1; j < count; ++j) {
+                if (buttons[j].hidden)
+                    continue;
+                EXPECT_FALSE(sweep_rows_overlap(buttons[i], buttons[j]))
+                    << variant.label << ": " << buttons[i].id << " overlaps "
+                    << buttons[j].id;
+            }
+        }
+
+        // Nav closure + BFS reachability over the visible subgraph.
+        ASSERT_GE(highlighted, 0) << variant.label;
+        ASSERT_LT(highlighted, count) << variant.label;
+        EXPECT_FALSE(buttons[highlighted].hidden)
+            << variant.label << ": highlight stuck on a hidden row";
+        std::vector<bool> reached(static_cast<std::size_t>(count), false);
+        std::vector<int> frontier{highlighted};
+        reached[static_cast<std::size_t>(highlighted)] = true;
+        while (!frontier.empty()) {
+            const int at = frontier.back();
+            frontier.pop_back();
+            const int links[4] = {buttons[at].nav.up, buttons[at].nav.down,
+                                  buttons[at].nav.left, buttons[at].nav.right};
+            for (const int link : links) {
+                EXPECT_LT(link, count)
+                    << variant.label << ": " << buttons[at].id
+                    << " nav link out of range";
+                if (link < 0 || link >= count)
+                    continue;
+                EXPECT_FALSE(buttons[link].hidden)
+                    << variant.label << ": " << buttons[at].id
+                    << " nav-links to hidden " << buttons[link].id;
+                if (!buttons[link].hidden
+                    && !reached[static_cast<std::size_t>(link)]) {
+                    reached[static_cast<std::size_t>(link)] = true;
+                    frontier.push_back(link);
+                }
+            }
+        }
+        for (int i = 0; i < count; ++i) {
+            if (!buttons[i].hidden) {
+                EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
+                    << variant.label << ": " << buttons[i].id
+                    << " unreachable by keyboard";
+            }
+        }
+    }
+
+    // Null state (no install): the bare-sweep shape — every row and pager
+    // hidden, BACK alone, its side links written as explicit no-ops.
+    {
+        button* buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        int highlighted = spec.default_highlight;
+        spec.nav.rewire(buttons, count, highlighted);
+        ensure_highlighted_button_visible(buttons, count, highlighted);
+        for (int i = 0; i < count; ++i) {
+            if (buttons[i].id == "back") {
+                EXPECT_FALSE(buttons[i].hidden);
+                EXPECT_EQ(-1, buttons[i].nav.up);
+                EXPECT_EQ(-1, buttons[i].nav.right);
+            } else {
+                EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+            }
+        }
+        EXPECT_EQ("back", buttons[highlighted].id)
+            << "empty shape highlight must settle on BACK";
+    }
+
+    // Draw smoke over the headless screen buffer: the empty state (both the
+    // null-state and zero-company shapes draw NO COMPANIES) and a populated
+    // two-page state with a corrupt row + the "p/N" indicator. The flows pin
+    // behavior; this pins that every content branch draws without a session
+    // beyond the shared test screen.
+    ASSERT_TRUE(spec.draw_content != nullptr);
+    spec.draw_content(nullptr);
+    {
+        og::ui::CompanyListScreenState state;
+        state.page = og::ui::PageModel::make(0, 10);
+        spec.draw_content(&state);
+        for (int i = 0; i < 15; ++i) {
+            state.companies.push_back(make_company_info(
+                "wp3draw" + std::to_string(i), 1000 - i, i < 12));
+        }
+        state.page = og::ui::PageModel::make(15, 10);
+        state.page.page = 1;
+        spec.draw_content(&state);
+    }
+}
+
+// §2.3 U4: the ACTIVE company's row wears the red do_outline on the live
+// vbutton surface — stamped by the rewire every frame, so a reset or page
+// flip re-derives it. Driven against real init_buttons vbuttons.
+TEST(MenuEngine, company_list_active_row_outline)
+{
+    EngineTestGuard guard;
+    clear_allbuttons();
+    const og::ui::MenuScreenSpec& spec = og::ui::company_list_menu_screen_spec();
+
+    og::ui::CompanyListScreenState state;
+    state.companies.push_back(make_company_info("wp3outlineb", 2000, true));
+    state.companies.push_back(make_company_info("wp3outlinea", 1000, true));
+    state.page = og::ui::PageModel::make(2, 10);
+    ScopedCompanyListState installed(&state);
+    og::data::ScopedActiveCompany active("wp3outlineb");
+    ASSERT_TRUE(active.applied());
+
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    int highlighted = spec.default_highlight;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    ASSERT_TRUE(og::runtime::current_session->allbuttons_[0] != nullptr);
+    ASSERT_TRUE(og::runtime::current_session->allbuttons_[1] != nullptr);
+    EXPECT_EQ(1, og::runtime::current_session->allbuttons_[0]->do_outline)
+        << "row 0 (the active company) wears the marker";
+    EXPECT_EQ(0, og::runtime::current_session->allbuttons_[1]->do_outline)
+        << "row 1 (not active) must not";
+
+    // Repoint the active slot: the next rewire pass moves the marker.
+    {
+        og::data::ScopedActiveCompany repointed("wp3outlinea");
+        ASSERT_TRUE(repointed.applied());
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ(0, og::runtime::current_session->allbuttons_[0]->do_outline);
+        EXPECT_EQ(1, og::runtime::current_session->allbuttons_[1]->do_outline);
+    }
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // §1.8 step 3 registry state: the options family migrates in order (FX trio,
 // then display + controls, then main options). Updated in the SAME commit as

@@ -44,6 +44,7 @@
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -269,8 +270,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
             break;
         case ButtonAction::CreateLoadMenu:
-            // §2.1 LOAD door: routes through the shared LoadGame action (the
-            // legacy load-slots flow until WP3's Company List screen lands).
+            // §2.1 LOAD door: routes through the shared LoadGame command —
+            // show_main_menu presents the §2.3 Company List engine screen
+            // via show_company_list().
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::LoadGame);
             break;
@@ -1059,6 +1061,15 @@ public:
         return true;
     }
 
+    bool show_company_list() override
+    {
+        // §2.3: the LOAD door opens the Company List engine screen. True
+        // (a company opened: active slot + save + mount switched) proceeds
+        // to team build; false (BACK / list emptied) re-presents the main
+        // menu, whose entry refresh re-derives the CONTINUE/LOAD gate.
+        return og::ui::run_company_list_screen();
+    }
+
     og::ui::PickerScreen screen_after_game() const override
     {
 #ifdef __EMSCRIPTEN__
@@ -1498,6 +1509,7 @@ void picker_cleanup_resources()
     pks().scenariomenu_buttons.clear();
     pks().difficulty_menu_buttons.clear();
     pks().name_entry_buttons.clear();
+    pks().company_list_buttons.clear();
 }
 
 void picker_quit()

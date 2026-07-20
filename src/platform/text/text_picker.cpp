@@ -333,6 +333,99 @@ public:
         return true;
     }
 
+    // §2.3 Company List, terminal projection: the numbered company rows
+    // (shared row formatter — byte-identical with curses) print above the
+    // LoadCompany chrome menu (open / backups / delete / back); open and
+    // delete then prompt for a row number. Opening repoints this client's
+    // slot ([SAVE-R2]: config_.save_name IS the terminal's file authority)
+    // and returns true so the state machine proceeds to team build.
+    bool show_company_list() override
+    {
+        for (;;) {
+            const std::vector<og::data::CompanyInfo> companies =
+                og::data::list_companies();
+            if (companies.empty()) {
+                std::printf("No companies yet.\n");
+                return false;
+            }
+            std::printf("\n--- %s ---\n",
+                format_company_list_title(
+                    static_cast<int>(companies.size())).c_str());
+            for (std::size_t i = 0; i < companies.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1,
+                    format_company_row_line(companies[i],
+                        companies[i].slot ==
+                            og::data::active_company_slot()).c_str());
+            }
+
+            const PickerMenuItem* item =
+                present_menu(PickerMenuId::LoadCompany);
+            if (!item || item->command == PickerMenuCommand::Back)
+                return false;
+
+            switch (item->command) {
+            case PickerMenuCommand::OpenCompany: {
+                const int idx = prompt_company_index(companies.size(), "Open");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyInfo& info =
+                    companies[static_cast<std::size_t>(idx)];
+                if (!info.valid) {
+                    // Never silently switch to a corrupt company ([SAVE-R6]).
+                    std::printf("Company file '%s' is damaged; restore a "
+                                "backup or delete it.\n", info.slot.c_str());
+                    break;
+                }
+                const std::string previous_slot = config_.save_name;
+                config_.save_name = info.slot;
+                if (load_game())
+                    return true; // -> team build (base camp)
+                // load_game printed the error; restore the slot authority.
+                config_.save_name = previous_slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                break;
+            }
+            case PickerMenuCommand::OpenCompanyBackups:
+                // §2.4 lands in the next WP3 stage; the chrome command is
+                // already shared so the flow re-pins once, not twice.
+                std::printf("The backups view is not available yet.\n");
+                break;
+            case PickerMenuCommand::DeleteCompany: {
+                const int idx =
+                    prompt_company_index(companies.size(), "Delete");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyInfo& info =
+                    companies[static_cast<std::size_t>(idx)];
+                if (info.slot == og::data::active_company_slot()) {
+                    // §3.7: delete_company refuses the active slot.
+                    std::printf("Cannot delete the open company; "
+                                "switch first.\n");
+                    break;
+                }
+                const CompanyRowText row = format_company_row(info);
+                // NO-first confirm (U3): only an explicit yes deletes.
+                std::printf("Delete company '%s'? Backups are deleted too. "
+                            "[y/N]: ", row.name.c_str());
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not deleted.\n");
+                    break;
+                }
+                if (og::data::delete_company(info.slot))
+                    std::printf("Deleted '%s'.\n", info.slot.c_str());
+                else
+                    std::printf("Delete failed for '%s'.\n",
+                                info.slot.c_str());
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+
     bool save_game() override
     {
         assert_company_slot_authority(); // [SAVE-R2]
@@ -362,6 +455,23 @@ private:
     void assert_company_slot_authority() const
     {
         (void)og::data::set_active_company_slot(config_.save_name);
+    }
+
+    // §2.3: prompt for a 1-based company row number; -1 on cancel/invalid.
+    int prompt_company_index(std::size_t count, const char* verb)
+    {
+        std::printf("%s which company [1-%zu]: ", verb, count);
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line))
+            return -1;
+        const auto choice = parse_int_strict(line);
+        if (!choice || *choice < 1
+            || static_cast<std::size_t>(*choice) > count) {
+            std::printf("Invalid company selection.\n");
+            return -1;
+        }
+        return *choice - 1;
     }
 
     // Borrow bundle for the shared label/gate layer (menu_binding.h).

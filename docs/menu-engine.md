@@ -261,9 +261,14 @@ runtime route-around resolver for NEW screens' gating.
   both label surfaces every frame, so the write was redundant.
 - `PageModel` is implemented (menu_binding.{h,cpp}) and PROVEN against the
   pinned VIEW LEVEL pager (the G6 differential oracle in
-  tests/unit/test_menu_spec.cpp); the VIEW LEVEL screen runs on it. The
-  company list may now depend on it. `RowTemplateSpec` (§1.7) remains a
-  forward declaration until a Layer-F screen needs it.
+  tests/unit/test_menu_spec.cpp); the VIEW LEVEL screen runs on it, and the
+  Layer-F Company List (§2.3, `company_list_menu_screen_spec()` — entered
+  from the main-menu LOAD door via `IPickerClient::show_company_list`, not
+  the registry) pages on it. `RowTemplateSpec` (§1.7) remains a forward
+  declaration until a Layer-F screen needs it — the Company List's dynamic
+  rows are a FIXED 33-row table (10 row/BK/X triples + chrome) whose
+  per-frame rewire windows them over the PageModel, so stable ids
+  (`company_row_0`..) come free and no template machinery was required.
 - Engine tests live in `og_test_menu_engine` (fast group) and
   `tests/unit/test_menu_spec.cpp`; never add engine tests to
   og_test_menu_ui (G10).

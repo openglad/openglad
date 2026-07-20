@@ -112,6 +112,14 @@ public:
     // the shared state machine is between blocking menu screens.
     virtual void poll_updates() {}
 
+    // §2.3 Company List: the main-menu LOAD door. Present the company list
+    // (open / backups / delete / back) and return true when a company was
+    // OPENED — show_main_menu then proceeds to team build (base camp), the
+    // same destination CONTINUE reaches (row 0 IS what CONTINUE opens).
+    // Returning false (BACK) re-presents the main menu. The default keeps
+    // headless fakes trivially constructible: no list UI, nothing opened.
+    virtual bool show_company_list() { return false; }
+
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;
 

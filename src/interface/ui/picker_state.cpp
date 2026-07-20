@@ -23,7 +23,14 @@ MainMenuAction IPickerClient::show_main_menu()
         case PickerMenuCommand::ContinueGame:
             return MainMenuAction::ViewTeam;
         case PickerMenuCommand::LoadGame:
-            return MainMenuAction::LoadGame;
+            // §2.3: the LOAD door presents the Company List. An OPENED
+            // company proceeds to team build (base camp) exactly like
+            // CONTINUE; BACK re-presents the main menu. (The scripted test
+            // clients that return MainMenuAction::LoadGame directly still
+            // exercise run_picker's legacy LoadGame transition.)
+            if (show_company_list())
+                return MainMenuAction::ViewTeam;
+            break;
         case PickerMenuCommand::Networking:
             return MainMenuAction::Networking;
         case PickerMenuCommand::HostGame:
