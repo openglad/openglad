@@ -31,6 +31,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -238,9 +239,13 @@ static void picker_initialize_shared_menu_state()
 
 static void picker_load_default_save_if_present()
 {
-    auto loadgame = og::io::og_open_read("save/", "save0.gtl");
+    // The active-company slot defaults to "save0" (§3.4), so legacy flows are
+    // byte-identical; only an explicit company selection repoints this.
+    const std::string slot_file = og::data::active_company_slot() + ".gtl";
+    auto loadgame = og::io::og_open_read("save/", slot_file.c_str());
     if (loadgame)
-        og::runtime::current_session->myscreen_->save_data.load("save0");
+        og::runtime::current_session->myscreen_->save_data.load(
+            og::data::active_company_slot());
 }
 
 bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue)
@@ -477,7 +482,8 @@ bool picker_replace_lobby_client(
         if (og::runtime::current_session == nullptr ||
             og::runtime::current_session->myscreen_ == nullptr ||
             og::runtime::current_session->myscreen_->save_data
-                    .save_with_error("save0") != SaveDataIoError::None)
+                    .save_with_error(og::data::active_company_slot()) !=
+                SaveDataIoError::None)
         {
             popup_dialog(popup_title,
                          "Could not preserve your local team save.");
@@ -4021,7 +4027,8 @@ bool picker_check_start_requested()
     picker_lobby_poll();
     Log("picker_check_start_requested: g_start_game_requested={}\n", g_start_game_requested);
     if (g_start_game_requested && og::runtime::current_session->myscreen_)
-        og::runtime::current_session->myscreen_->save_data.save("save0");
+        og::runtime::current_session->myscreen_->save_data.save(
+            og::data::active_company_slot());
     return g_start_game_requested;
 }
 
@@ -4050,7 +4057,8 @@ bool picker_frame()
     if (g_start_game_requested) {
         Log("picker_frame: Game start requested\n");
         if (og::runtime::current_session->myscreen_)
-            og::runtime::current_session->myscreen_->save_data.save("save0");
+            og::runtime::current_session->myscreen_->save_data.save(
+                og::data::active_company_slot());
         g_start_game_requested = false;
         return true;  // Signal to transition to PLAYING state
     }

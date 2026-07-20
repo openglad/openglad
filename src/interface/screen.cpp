@@ -30,6 +30,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -332,7 +333,8 @@ bool dispatch_game_flow_screen_events(screen& self,
                         static_cast<std::int32_t>(first_withdraw_request->a));
                 }
 
-                const SaveDataIoError load_error = self.save_data.load_with_error("save0");
+                const SaveDataIoError load_error = self.save_data.load_with_error(
+                    og::data::active_company_slot());
                 if (load_error != SaveDataIoError::None)
                 {
                     LogError("withdraw_load_failed target_level={} error={}\n",
@@ -346,7 +348,8 @@ bool dispatch_game_flow_screen_events(screen& self,
 
                 self.save_data.scen_num = withdraw_level;
                 const SaveDataIoError save_error =
-                    self.save_data.save_with_error("save0");
+                    self.save_data.save_with_error(
+                        og::data::active_company_slot());
                 if (save_error != SaveDataIoError::None)
                 {
                     LogError("withdraw_save_failed target_level={} error={}\n",
@@ -1511,7 +1514,7 @@ short screen::endgame(short ending, short nextlevel)
 		    og::mode::current_progression().persist_after_win())
 		{
 			// Autosave because we won
-			save_data.save("save0");
+			save_data.save(og::data::active_company_slot());
 		}
 
 		// Every win ends this display session. Single-player and local play

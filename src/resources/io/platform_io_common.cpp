@@ -23,9 +23,12 @@
 #include <cctype>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 // Path helpers (defined per-platform in platform_io.cpp or platform_headless.cpp)
 std::string get_user_path();
@@ -41,6 +44,79 @@ std::string& mounted_campaign_state();
 std::list<std::string> list_files(const std::string& dirname)
 {
     return og::resources::list_files(dirname.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// User-directory file primitives (§3.6)
+// ---------------------------------------------------------------------------
+
+bool user_file_exists(const std::string& relative_path)
+{
+    std::error_code ec;
+    return std::filesystem::exists(
+        std::filesystem::path(get_user_path()) / relative_path, ec);
+}
+
+bool copy_user_file(const std::string& src_relative_path,
+                    const std::string& dst_relative_path)
+{
+    namespace fs = std::filesystem;
+    const fs::path src = fs::path(get_user_path()) / src_relative_path;
+    const fs::path dst = fs::path(get_user_path()) / dst_relative_path;
+
+    // Read-all first: the source stays untouched and a short read aborts
+    // before anything is created at the destination.
+    std::ifstream in(src, std::ios::binary);
+    if (!in.good())
+        return false;
+    std::string bytes((std::istreambuf_iterator<char>(in)),
+                      std::istreambuf_iterator<char>());
+    if (in.bad())
+        return false;
+    in.close();
+
+    std::error_code ec;
+    if (dst.has_parent_path())
+        fs::create_directories(dst.parent_path(), ec);
+
+    const fs::path tmp = fs::path(dst.string() + ".tmp");
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out.good())
+            return false;
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        out.flush();
+        if (!out.good())
+        {
+            out.close();
+            std::error_code cleanup_ec;
+            fs::remove(tmp, cleanup_ec);
+            return false;
+        }
+    }
+
+    fs::rename(tmp, dst, ec);
+    if (ec)
+    {
+        LogError("copy_user_file_rename_failed src={} dst={} error={}\n",
+                 src_relative_path, dst_relative_path, ec.message());
+        std::error_code cleanup_ec;
+        fs::remove(tmp, cleanup_ec);
+        return false;
+    }
+    return true;
+}
+
+bool remove_user_file(const std::string& relative_path)
+{
+    std::error_code ec;
+    const bool removed = std::filesystem::remove(
+        std::filesystem::path(get_user_path()) / relative_path, ec);
+    if (ec || !removed)
+        return false;
+    // Emscripten: persist the deletion to IndexedDB (no-op elsewhere).
+    sync_filesystem();
+    return true;
 }
 
 // ---------------------------------------------------------------------------

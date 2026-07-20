@@ -11,6 +11,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -74,6 +75,12 @@ public:
         : config_(config), error_(error)
     {
         ensure_team_initialized();
+        // Terminal slot authority ([SAVE-R2]): company-level writes must
+        // target this client's chosen slot (default "text_quicksave"), never
+        // save0. An unsafe name is rejected by the setter and simply leaves
+        // the previous active slot in place (the save itself would fail the
+        // same validation).
+        assert_company_slot_authority();
     }
 
     const PickerMenuItem* present_menu(PickerMenuId menu_id) override
@@ -124,6 +131,7 @@ public:
     {
         reset_for_new_game(save_data_);
         ensure_team_populated(save_data_);
+        assert_company_slot_authority(); // [SAVE-R2]
 
         // A new game always starts on the default campaign: pull the session
         // config and the mounted package back from whatever campaign a
@@ -203,7 +211,10 @@ public:
         if (!read_line(line))
             return;
         if (!line.empty())
+        {
             config_.save_name = line;
+            assert_company_slot_authority(); // [SAVE-R2] slot command
+        }
 
         std::printf("Current seed: %u. New seed (blank keeps current): ",
             static_cast<unsigned>(config_.seed));
@@ -256,6 +267,7 @@ public:
 
     bool load_game() override
     {
+        assert_company_slot_authority(); // [SAVE-R2]
         const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
         if (io != SaveDataIoError::None) {
             set_error(TextPickerErrorCode::LoadIoError,
@@ -284,6 +296,7 @@ public:
 
     bool save_game() override
     {
+        assert_company_slot_authority(); // [SAVE-R2]
         ensure_team_initialized();
         save_data_.current_campaign = config_.campaign;
         save_data_.scen_num = static_cast<short>(config_.level);
@@ -304,6 +317,14 @@ public:
     }
 
 private:
+    // [SAVE-R2] Re-points the process-wide active-company slot at this
+    // client's configured slot so shared company-level code (autosave and the
+    // slot-authoritative save paths) always writes the user's chosen file.
+    void assert_company_slot_authority() const
+    {
+        (void)og::data::set_active_company_slot(config_.save_name);
+    }
+
     void print_menu_context(PickerMenuId menu_id)
     {
         if (menu_id != PickerMenuId::TeamBuild)
@@ -862,6 +883,10 @@ int text_picker_testing_exercise_internal_paths()
         }
     };
 
+    // [SAVE-R2] Client construction asserts terminal slot authority: the
+    // process-wide active company must already be this client's slot.
+    check(og::data::active_company_slot() == "missing-text-picker-save");
+
     client.show_help();
     const bool networking = client.configure_networking();
     const bool loaded = client.load_game();
@@ -1048,9 +1073,13 @@ int text_picker_testing_exercise_internal_paths()
         return save.team_size == previous_team_size &&
                save.numplayers == 0;
     });
+    // [SAVE-R2] A stale process-wide slot must not survive a new game: the
+    // client re-asserts its own slot in prepare_new_game.
+    (void)og::data::set_active_company_slot("save0");
     check(client.prepare_new_game() &&
           save.team_size >= 1 &&
           !config.team_families.empty());
+    check(og::data::active_company_slot() == "missing-text-picker-save");
 
     {
         const std::uint32_t previous_seed = config.seed;
@@ -1058,6 +1087,8 @@ int text_picker_testing_exercise_internal_paths()
         client.show_options();
         check(config.save_name == "helper-slot" &&
               config.seed == previous_seed);
+        // [SAVE-R2] The slot command repoints the active company too.
+        check(og::data::active_company_slot() == "helper-slot");
     }
     {
         ScopedCinRedirect input("\n123\n");
@@ -1065,6 +1096,7 @@ int text_picker_testing_exercise_internal_paths()
         check(config.save_name == "helper-slot" && config.seed == 123u);
     }
     check(client.save_game() && error.code == TextPickerErrorCode::None);
+    check(og::data::active_company_slot() == "helper-slot");
     check(client.load_game() &&
           error.code == TextPickerErrorCode::None &&
           !config.team_families.empty());

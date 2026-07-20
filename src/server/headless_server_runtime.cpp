@@ -317,6 +317,11 @@ void copy_headless_server_save_data(SaveData& destination,
     // best-floor merge on the curses/headless paths.
     destination.tower_best_floor = source.tower_best_floor;
     destination.tower_run_seed = source.tower_run_seed;
+    // Company bookkeeping (GTL v14): the timestamp must survive the
+    // server/checkpoint copies or a copied-then-persisted save would reset
+    // the company's recency to 0 (the documented dropped-field bug class,
+    // design §3.4). The per-guy deploy flag rides the guy copies below.
+    destination.last_played_unix_s = source.last_played_unix_s;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {

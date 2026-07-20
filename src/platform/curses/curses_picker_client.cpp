@@ -34,6 +34,7 @@
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -625,6 +626,15 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
+    // Terminal slot authority ([SAVE-R2]): company-level writes must target
+    // this client's chosen slot, never save0. An unsafe name is rejected by
+    // the setter and leaves the previous active slot in place.
+    assert_company_slot_authority();
+}
+
+void CursesPickerClient::assert_company_slot_authority() const
+{
+    (void)og::data::set_active_company_slot(config_.save_name);
 }
 
 // --- IPickerClient: menu presentation ------------------------------------
@@ -835,6 +845,7 @@ bool CursesPickerClient::prepare_new_game()
 {
     og::ui::reset_for_new_game(save_data_);
     og::ui::ensure_team_populated(save_data_);
+    assert_company_slot_authority(); // [SAVE-R2]
     // A new game always starts on the default campaign: drop any campaign a
     // previously loaded save left in the session config (run_game copies
     // config_.campaign back over the freshly reset save) and re-point the
@@ -903,7 +914,10 @@ void CursesPickerClient::show_options()
     const std::string slot = menu.prompt("Options", "Save slot: ",
         config_.save_name, accepted);
     if (accepted && !slot.empty())
+    {
         config_.save_name = slot;
+        assert_company_slot_authority(); // [SAVE-R2] slot command
+    }
 
     accepted = false;
     const std::string seed = menu.prompt("Options", "Seed: ",
@@ -985,6 +999,7 @@ og::ui::PickerScreen CursesPickerClient::screen_after_game() const
 bool CursesPickerClient::load_game()
 {
     Menu menu(term_, clock_);
+    assert_company_slot_authority(); // [SAVE-R2]
     const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
     if (io != SaveDataIoError::None) {
         menu.show_text("Load failed",
@@ -1015,6 +1030,7 @@ bool CursesPickerClient::load_game()
 bool CursesPickerClient::save_game()
 {
     Menu menu(term_, clock_);
+    assert_company_slot_authority(); // [SAVE-R2]
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);

@@ -20,6 +20,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/progression.h>
 
 #include <algorithm>
@@ -280,10 +281,11 @@ bool persist_network_win_to_save0(
             primary_team = team;
     }
     SaveData merged;
-    if (merged.load_with_error("save0") != SaveDataIoError::None)
+    if (merged.load_with_error(og::data::active_company_slot()) !=
+        SaveDataIoError::None)
     {
         // No untouched pre-level roster to merge into; skip rather than
-        // clobber save0 with a partial team.
+        // clobber the company save with a partial team.
         LogError("net_persist_skipped reason=no_prelevel_save0 player={}\n",
                  owners.empty() ? -1 : static_cast<int>(owners.front()));
         return false;
@@ -344,7 +346,8 @@ bool persist_network_win_to_save0(
     merged.current_campaign = world_screen.save_data.current_campaign;
     merged.scen_num = world_screen.save_data.scen_num;
 
-    if (merged.save_with_error("save0") != SaveDataIoError::None)
+    if (merged.save_with_error(og::data::active_company_slot()) !=
+        SaveDataIoError::None)
     {
         LogError("net_persist_save_failed player={}\n",
                  owners.empty() ? -1 : static_cast<int>(owners.front()));
@@ -365,7 +368,8 @@ bool persist_private_campaign_cursor_to_save0(
     }
 
     SaveData private_save;
-    const SaveDataIoError load_error = private_save.load_with_error("save0");
+    const SaveDataIoError load_error =
+        private_save.load_with_error(og::data::active_company_slot());
     if (load_error != SaveDataIoError::None)
     {
         LogError("net_cursor_persist_load_failed level={} error={}\n",
@@ -379,7 +383,8 @@ bool persist_private_campaign_cursor_to_save0(
     // current_campaign/scen_num pair.
     private_save.current_campaign = session_screen.save_data.current_campaign;
     private_save.scen_num = static_cast<short>(destination_level);
-    const SaveDataIoError save_error = private_save.save_with_error("save0");
+    const SaveDataIoError save_error =
+        private_save.save_with_error(og::data::active_company_slot());
     if (save_error != SaveDataIoError::None)
     {
         LogError("net_cursor_persist_save_failed level={} error={}\n",
@@ -494,9 +499,11 @@ void release_world_control_claims(GameWorld& world)
     world.control_hp = 0.0f;
 }
 
+// No default slot on purpose (§3.4): both callers pass explicitly — the
+// transient "netsession" scratch for networked play, else the active company.
 bool save_shadow_save_data(screen& gameplay_screen,
                            const char* action,
-                           const char* slot = "save0")
+                           const std::string& slot)
 {
     const SaveDataIoError save_error =
         gameplay_screen.save_data.save_with_error(slot);
@@ -564,7 +571,8 @@ bool finalize_level_and_advance_cursor(
             gameplay_screen, own_seats, fold_ctx.finished_level);
     }
 
-    return save_shadow_save_data(gameplay_screen, "complete_level");
+    return save_shadow_save_data(gameplay_screen, "complete_level",
+                                 og::data::active_company_slot());
 }
 
 // Withdraw (retreat) discards the current level's gains: reload the roster from
@@ -590,7 +598,9 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
             gameplay_screen.save_data, gameplay_screen.world(), run_outcome);
     }
 
-    const char* const slot = networked ? "netsession" : "save0";
+    const std::string slot = networked
+        ? std::string("netsession")
+        : og::data::active_company_slot();
     const SaveDataIoError load_error =
         gameplay_screen.save_data.load_with_error(slot);
     if (load_error != SaveDataIoError::None)
@@ -1427,7 +1437,9 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
-            load_saved_game(runtime->networked ? "netsession" : "save0",
+            load_saved_game(runtime->networked
+                                ? "netsession"
+                                : og::data::active_company_slot().c_str(),
                             server_screen) == 0)
         {
             return;
@@ -1665,7 +1677,9 @@ void reset_network_host_transport_shadow(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
-            load_saved_game(runtime->networked ? "netsession" : "save0",
+            load_saved_game(runtime->networked
+                                ? "netsession"
+                                : og::data::active_company_slot().c_str(),
                             server_screen) == 0)
         {
             return;

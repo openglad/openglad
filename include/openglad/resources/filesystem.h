@@ -10,6 +10,9 @@ namespace og::resources {
 
 bool init(const char* argv0);
 bool deinit();
+// True between a successful init() and deinit(); callers that can run before
+// io_init (e.g. company listings) use this to pick a std::filesystem fallback.
+bool is_initialized();
 bool set_write_dir(const std::string& path);
 
 // Mirrors PhysFS semantics:

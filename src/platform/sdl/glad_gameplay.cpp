@@ -14,6 +14,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
@@ -154,8 +155,9 @@ void apply_lobby_game_start_config(
     // player's characters) off this player's real save0. It is seeded into a
     // transient slot the server loads from; each player later merges only its
     // own characters' progress back into save0. Local games still seed save0.
-    const char* const seed_slot =
-        lobby_config.is_networked ? "netsession" : "save0";
+    const std::string seed_slot = lobby_config.is_networked
+        ? std::string("netsession")
+        : og::data::active_company_slot();
     if (!save.save(seed_slot))
         LogError("glad_init_lobby_save_failed slot={} reason=write_failed\n",
                  seed_slot);
@@ -197,7 +199,10 @@ void glad_init(bool preserve_frame_timing,
         apply_lobby_game_start_config(*current_screen, *lobby_config);
 
     // Load the default saved-game, or the lobby-supplied in-memory config.
-    load_saved_game(lobby_config != nullptr ? "" : "save0", current_screen);
+    const std::string default_slot = lobby_config != nullptr
+        ? std::string()
+        : og::data::active_company_slot();
+    load_saved_game(default_slot.c_str(), current_screen);
 #ifdef __EMSCRIPTEN__
     og::platform::web::finalize_jitter_capture_profile_after_load(
         *current_screen);

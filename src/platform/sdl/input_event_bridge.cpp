@@ -9,6 +9,7 @@
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/legacy/base.h>
@@ -34,7 +35,8 @@ void autosave_active_screen(screen& s, const char* event_name)
     {
         s.sync_save_data_from_world();
     }
-    const SaveDataIoError err = s.save_data.save_with_error("save0");
+    const SaveDataIoError err =
+        s.save_data.save_with_error(og::data::active_company_slot());
     if (err != SaveDataIoError::None)
     {
         LogError("window_autosave_failed event={} error={}\n",

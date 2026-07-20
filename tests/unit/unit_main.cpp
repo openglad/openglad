@@ -10,7 +10,9 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #ifdef ENABLE_COVERAGE
@@ -88,6 +90,18 @@ public:
 
         fallback_world_.delete_objects();
         restore_context();
+        // [SAVE-R8] Structural active-company reset (see company.h): keeps
+        // slot changes from leaking across tests under --gtest_shuffle.
+        (void)og::data::set_active_company_slot("save0");
+        // Structural filesystem reset, same rationale: tests that tear down
+        // PhysFS, redirect the write dir, or drop the user-dir mount (e.g.
+        // the deliberate PhysfsWrappers simulated-fatal-assert landmine)
+        // must not leak that state into later tests under --gtest_shuffle.
+        if (!og::resources::is_initialized())
+            (void)og::resources::init("og_unit_tests");
+        const std::string user_path = get_user_path();
+        (void)og::resources::set_write_dir(user_path);
+        (void)og::resources::mount(user_path.c_str(), nullptr, 1);
     }
 
 private:

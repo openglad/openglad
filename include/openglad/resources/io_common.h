@@ -28,6 +28,20 @@ bool apply_sprite_sheet_setting();
 std::string get_user_path();
 bool create_dir(const std::string& dirname);
 
+// User-directory file primitives (docs/company-basecamp-design.md §3.6).
+// All three take paths RELATIVE to get_user_path() (e.g. "save/save0.gtl")
+// and use std::filesystem with error_codes — no exceptions, no vendor types.
+// Callers are trusted internal code; slot-level name validation happens via
+// is_safe_virtual_basename before paths are composed.
+bool user_file_exists(const std::string& relative_path);
+// Byte-copy via read-all -> write "<dst>.tmp" -> rename, so an interrupted
+// copy can never leave a torn destination file.
+bool copy_user_file(const std::string& src_relative_path,
+                    const std::string& dst_relative_path);
+// Deletes the file and (on Emscripten) syncs the filesystem so the deletion
+// persists to IndexedDB. Returns false when nothing was removed.
+bool remove_user_file(const std::string& relative_path);
+
 std::list<std::string> list_files(const std::string& dirname);
 
 std::list<std::string> explode(const std::string& str, char delimiter = '\n');

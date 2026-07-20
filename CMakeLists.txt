@@ -1983,6 +1983,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_zip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_company_io.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_libzip.cpp
@@ -2356,6 +2357,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_gparser_funcs.cpp
             test_util.cpp
             test_save_data_versions.cpp
+            test_company_io.cpp
             test_save_load.cpp
             test_load_levels.cpp
             test_io_coverage.cpp
