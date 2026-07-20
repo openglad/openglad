@@ -1098,18 +1098,246 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     ASSERT_EQ(2u, state.slots.size());
     EXPECT_EQ(1, state.page.page_count());
     EXPECT_EQ(0, state.page.page);
-    EXPECT_EQ("SURVIVOR", save.team_list[state.slots[0]]->name)
+    EXPECT_TRUE(state.slots[0].owned && state.slots[1].owned)
+        << "solo display rows are all owned";
+    EXPECT_EQ("SURVIVOR", save.team_list[state.slots[0].save_slot]->name)
         << "pass 1 seats the survivor first";
-    EXPECT_EQ("M03", save.team_list[state.slots[1]]->name)
+    EXPECT_EQ("M03", save.team_list[state.slots[1].save_slot]->name)
         << "pass 2 appends the held-back member";
-    EXPECT_FALSE(save.team_list[state.slots[1]]->deployed)
+    EXPECT_FALSE(save.team_list[state.slots[1].save_slot]->deployed)
         << "the held-back flag survives the fold";
 
     // A fresh click maps to the CURRENT occupant: row 1 toggles M03 back on.
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
-    EXPECT_TRUE(save.team_list[state.slots[1]]->deployed);
+    EXPECT_TRUE(save.team_list[state.slots[1].save_slot]->deployed);
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"))
         << "the post-refresh toggle should hit the re-derived slot";
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 MP presentation (stage mp-columns): the merged display list splits
+// into own rows (private-save authority, editable) and foreign rows
+// (read-only hit zones). Foreign clicks pop OWNED BY <full company name>
+// (U9), the client-side 24-cap guard denies a toggle-ON at 24 deployed
+// (§4.2 pre-empt), and an accepted own-row toggle runs the §4.3 ready-clear
+// + roster-sync mutation tail. Also drives the networked draw pass (READY
+// n/m + DEP n/m header, COMPANY column, foreign X/- glyphs).
+// ---------------------------------------------------------------------------
+namespace {
+
+class NetworkedRosterLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override { ++roster_syncs; }
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host;
+    }
+    bool set_ready(bool ready) override
+    {
+        ready_calls.push_back(ready);
+        return true;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+        const override
+    {
+        return players;
+    }
+    [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+        const override
+    {
+        return local_indices;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+
+    bool host = false;
+    std::vector<og::sim::LobbyPlayer> players;
+    std::vector<std::uint8_t> local_indices;
+    std::vector<bool> ready_calls;
+    int roster_syncs = 0;
+};
+
+og::sim::LobbyPlayer make_foreign_lobby_player(std::uint8_t player_index,
+                                               const char* name,
+                                               const char* company,
+                                               int deployed_slots,
+                                               int benched_slots)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = player_index;
+    player.name = name;
+    player.company = company;
+    int slot_index = 0;
+    for (int i = 0; i < deployed_slots + benched_slots; ++i) {
+        og::sim::LobbyCharacterSlot slot;
+        slot.slot_index = static_cast<std::uint8_t>(slot_index++);
+        slot.deployed = i < deployed_slots;
+        slot.character.name = std::format("{}-{}", company, i);
+        slot.character.family = FAMILY_ELF;
+        slot.character.level = 5;
+        slot.character.strength = 10;
+        slot.character.dexterity = 10;
+        slot.character.constitution = 10;
+        slot.character.intelligence = 10;
+        player.character_slots.push_back(std::move(slot));
+    }
+    return player;
+}
+
+} // namespace
+
+TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "MY OWN BAND";
+
+    auto own_deployed = std::make_unique<guy>(FAMILY_SOLDIER);
+    own_deployed->name = "OWN FRONT";
+    auto own_benched = std::make_unique<guy>(FAMILY_ARCHER);
+    own_benched->name = "OWN RESERVE";
+    own_benched->deployed = false;
+    save.team_list[0] = std::move(own_deployed);
+    save.team_list[1] = std::move(own_benched);
+    save.team_size = 2;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;  // joiner machine: GO hidden by the production rewire
+    lobby.local_indices = {7};
+    // The local machine's own replicated seat must be SKIPPED (the private
+    // save is the authority for own rows); the host machine's slots are the
+    // foreign read-only rows.
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 1, 1));
+    {
+        og::sim::LobbyPlayer self =
+            make_foreign_lobby_player(7, "net-me", "MY OWN BAND", 2, 0);
+        lobby.players.push_back(std::move(self));
+    }
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(4u, state.slots.size())
+        << "2 own rows + the host machine's 2 replicated rows";
+    EXPECT_TRUE(state.slots[0].owned);
+    EXPECT_EQ(0, state.slots[0].save_slot);
+    EXPECT_TRUE(state.slots[1].owned);
+    EXPECT_EQ(1, state.slots[1].save_slot);
+    EXPECT_FALSE(state.slots[2].owned);
+    EXPECT_EQ(3, state.slots[2].owner_player_index);
+    EXPECT_EQ("IRON HOST BAND", state.slots[2].company)
+        << "the COMPANY column reads LobbyPlayer::company off the wire";
+    EXPECT_TRUE(state.slots[2].deployed);
+    EXPECT_FALSE(state.slots[3].deployed);
+
+    const og::ui::BaseCampDeployCounts counts =
+        og::ui::count_base_camp_display_deploys(state.slots, save);
+    EXPECT_EQ(2, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+
+    // The production rewire shapes the ownership row: foreign dep buttons
+    // widen into no_draw hit zones and their TRAIN buttons hide.
+    og::ui::install_base_camp_state_for_screen(&state);
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = 0;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[0].no_draw);
+    EXPECT_EQ(14, buttons[0].sizex);
+    EXPECT_FALSE(buttons[kBaseCampTrainBase + 0].hidden);
+    EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
+    EXPECT_EQ(212, buttons[2].sizex) << "the §2.5 (8,y,212,10) hit zone";
+    EXPECT_TRUE(buttons[kBaseCampTrainBase + 2].hidden)
+        << "foreign rows have no TRAIN button";
+    EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
+        << "joiner machine: GO hidden by the production rewire";
+
+    // Foreign clicks are read-only: OWNED BY <full company name> (U9).
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(2, &state));
+    EXPECT_TRUE(trace_contains("popup", "OWNED BY: IRON HOST BAND"))
+        << "foreign deploy hit zone names the owning company";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTrainBase + 3, &state));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="))
+        << "foreign TRAIN must not seed a session";
+    EXPECT_TRUE(save.team_list[0]->deployed);
+    EXPECT_FALSE(save.team_list[1]->deployed);
+    EXPECT_TRUE(lobby.ready_calls.empty())
+        << "a denied foreign click must not touch ready";
+    EXPECT_EQ(0, lobby.roster_syncs);
+
+    // Client-side 24-cap guard: 23 foreign deploys + 1 own deployed = 24 —
+    // toggling the own benched row ON is denied with the popup.
+    lobby.players[0] =
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 23, 0);
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(25u, state.slots.size())
+        << ">24 display slots replicate (the §4.2 full-roster rule)";
+    EXPECT_EQ(3, state.page.page_count())
+        << "the page window grows defensively past 2 pages";
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy_cap_denied deployed=24"));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY LIMIT 24"));
+    EXPECT_FALSE(save.team_list[1]->deployed)
+        << "a denied toggle must not flip the flag";
+    EXPECT_TRUE(lobby.ready_calls.empty());
+
+    // Under the cap the toggle lands and runs the §4.3 mutation tail:
+    // roster re-sync (server clears ready on the content change) + the
+    // optimistic local ready drop.
+    lobby.players[0] =
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 22, 1);
+    og::ui::base_camp_refresh_rows(state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"));
+    EXPECT_TRUE(save.team_list[1]->deployed);
+    ASSERT_EQ(1u, lobby.ready_calls.size())
+        << "an own-row mutation clears this machine's ready";
+    EXPECT_FALSE(lobby.ready_calls[0]);
+    EXPECT_EQ(1, lobby.roster_syncs);
+
+    // Networked draw pass: READY/DEP header, COMPANY column, foreign X/-
+    // glyphs (smoke + coverage; the strings are unit-pinned in
+    // test_picker_common).
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
 }
 
 // ---------------------------------------------------------------------------

@@ -10,9 +10,11 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/legacy/base.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
@@ -6375,6 +6377,194 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(0, session.current_slot());
     }
 
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}
+
+// §2.5 MP presentation (stage mp-columns) over a REAL direct lobby: the
+// joiner's base-camp display merges its own private rows with the host's
+// replicated slots (COMPANY column = LobbyPlayer::company off the wire),
+// local_player_indices identifies the own seat, a foreign click pops
+// OWNED BY <company>, and an own-row deploy toggle through the production
+// spec dispatch clears this machine's ready (§4.3: optimistic local drop +
+// the server-side content-change clear, observed from the HOST's state).
+TEST(PickerNetworkClient,
+     base_camp_mp_display_merges_wire_rows_and_deploy_toggle_clears_ready)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host Front");
+    const std::string old_host_company = host_save.save_name;
+    host_save.save_name = "IRON HOST BAND";
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Join Front");
+    join_session.myscreen_->save_data.save_name = "JOIN SIDE BAND";
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        ASSERT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    std::uint8_t host_index = 0xff;
+    std::uint8_t join_index = 0xff;
+    for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+    {
+        if (player.is_host)
+            host_index = player.player_index;
+        else
+            join_index = player.player_index;
+    }
+    ASSERT_NE(0xff, host_index);
+    ASSERT_NE(0xff, join_index);
+
+    // The joiner readies up first so the toggle's ready-clear is visible.
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+
+    const og::ui::MenuScreenSpec* const spec =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec);
+    ASSERT_NE(nullptr, spec->on_spec_row);
+
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        SaveData& join_save = join_session.myscreen_->save_data;
+
+        // The wire identifies this machine's own seat.
+        const std::vector<std::uint8_t> local_indices =
+            join_client->local_player_indices();
+        ASSERT_EQ(1u, local_indices.size());
+        EXPECT_EQ(join_index, local_indices[0]);
+
+        // The merged display: own private row first, then the host's
+        // replicated slot carrying the wire company string.
+        og::ui::BaseCampScreenState state;
+        og::ui::base_camp_refresh_rows(state);
+        ASSERT_EQ(2u, state.slots.size());
+        EXPECT_TRUE(state.slots[0].owned);
+        EXPECT_EQ(0, state.slots[0].save_slot);
+        EXPECT_EQ("JOIN SIDE BAND", state.slots[0].company);
+        EXPECT_FALSE(state.slots[1].owned);
+        EXPECT_EQ(host_index, state.slots[1].owner_player_index);
+        EXPECT_EQ("IRON HOST BAND", state.slots[1].company)
+            << "the COMPANY column reads LobbyPlayer::company off the wire";
+        EXPECT_EQ("Host Front", state.slots[1].character.name);
+
+        // Foreign row clicks are read-only popups (deploy hit zone + the
+        // guarded TRAIN ordinal).
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec->on_spec_row(1, &state));
+        EXPECT_TRUE(trace_contains("popup", "OWNED BY: IRON HOST BAND"));
+        EXPECT_EQ(MENU_OK,
+                  spec->on_spec_row(kBaseCampTrainBase + 1, &state));
+        EXPECT_FALSE(trace_contains("basecamp", "train slot="));
+        EXPECT_TRUE(join_client->local_ready())
+            << "foreign clicks must not clear ready";
+
+        // Own-row deploy toggle through the production dispatch: the flag
+        // flips in the private save the same call (the trace pins it); the
+        // §4.3 mutation tail re-syncs the roster (a content change the
+        // server answers with a ready-clear) and sends the local ready
+        // drop. NOTE: the [NET-F2] adoption is "server echo wins", so a
+        // stale in-flight echo may transiently revert the local flag — the
+        // convergence loop below pins the settled state, not this instant.
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec->on_spec_row(0, &state));
+        EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    }
+
+    // Server side: the joiner's re-sent roster is a content CHANGE, so the
+    // authoritative state clears that machine's ready and echoes the
+    // benched flag to every peer (the host display would dim the row; the
+    // joiner's READY face reverts). Both views converge on unready.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_converged = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_converged = !join_client->local_ready() &&
+                join_session.myscreen_->save_data.team_list[0] != nullptr &&
+                !join_session.myscreen_->save_data.team_list[0]->deployed;
+        }
+        for (const og::sim::LobbyPlayer& player :
+             host_client->lobby_players())
+        {
+            if (player.player_index != join_index)
+                continue;
+            return join_converged && !player.ready &&
+                !player.character_slots.empty() &&
+                !player.character_slots.front().deployed;
+        }
+        return false;
+    })) << "the server must clear the toggling machine's ready and "
+           "replicate the benched flag";
+
+    host_save.save_name = old_host_company;
     {
         auto join_scope = join_session.activate();
         join_client->shutdown();

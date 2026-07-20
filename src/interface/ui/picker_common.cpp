@@ -984,6 +984,153 @@ std::string format_base_camp_scen_line(const SaveData& save,
     return scen_part + dep_part;
 }
 
+std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
+    const SaveData& save,
+    const std::vector<og::sim::LobbyPlayer>& players,
+    const std::vector<std::uint8_t>& local_player_indices,
+    bool networked)
+{
+    std::vector<BaseCampDisplaySlot> slots;
+
+    // Own rows first (§2.5 MP roster rule), read from the PRIVATE save so
+    // toggles/train edits show the same frame. Solo: this is the whole list.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (!save.team_list[i])
+            continue;
+        BaseCampDisplaySlot slot;
+        slot.owned = true;
+        slot.save_slot = i;
+        slot.deployed = save.team_list[i]->deployed;
+        if (networked)
+            slot.company = save.save_name;
+        slots.push_back(std::move(slot));
+    }
+    if (!networked)
+        return slots;
+
+    // Foreign rows: every other machine's replicated slots, ordered by
+    // owner player index then declared slot order (stable across polls).
+    std::vector<const og::sim::LobbyPlayer*> foreign;
+    for (const og::sim::LobbyPlayer& player : players) {
+        if (std::find(local_player_indices.begin(), local_player_indices.end(),
+                      player.player_index) != local_player_indices.end())
+        {
+            continue;
+        }
+        foreign.push_back(&player);
+    }
+    std::stable_sort(foreign.begin(), foreign.end(),
+                     [](const og::sim::LobbyPlayer* a,
+                        const og::sim::LobbyPlayer* b) {
+                         return a->player_index < b->player_index;
+                     });
+    for (const og::sim::LobbyPlayer* player : foreign) {
+        for (const og::sim::LobbyCharacterSlot& wire_slot :
+             player->character_slots)
+        {
+            BaseCampDisplaySlot slot;
+            slot.owned = false;
+            slot.owner_player_index = player->player_index;
+            slot.deployed = wire_slot.deployed;
+            slot.company = player->company;
+            slot.character = wire_slot.character;
+            slots.push_back(std::move(slot));
+        }
+    }
+    return slots;
+}
+
+BaseCampDeployCounts count_base_camp_display_deploys(
+    const std::vector<BaseCampDisplaySlot>& slots, const SaveData& save)
+{
+    BaseCampDeployCounts counts;
+    for (const BaseCampDisplaySlot& slot : slots) {
+        ++counts.total;
+        bool deployed = slot.deployed;
+        if (slot.owned && slot.save_slot >= 0 &&
+            slot.save_slot < MAX_TEAM_SIZE &&
+            save.team_list[slot.save_slot])
+        {
+            deployed = save.team_list[slot.save_slot]->deployed;
+        }
+        if (deployed)
+            ++counts.deployed;
+    }
+    return counts;
+}
+
+std::string_view lobby_player_machine_key(std::string_view player_name)
+{
+    const std::size_t hash = player_name.find('#');
+    return hash == std::string_view::npos ? player_name
+                                          : player_name.substr(0, hash);
+}
+
+BaseCampReadyCounts count_base_camp_ready_machines(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    struct MachineState {
+        bool is_host = false;
+        bool all_ready = true;
+    };
+    std::map<std::string, MachineState, std::less<>> machines;
+    for (const og::sim::LobbyPlayer& player : players) {
+        MachineState& machine =
+            machines[std::string(lobby_player_machine_key(player.name))];
+        machine.is_host = machine.is_host || player.is_host;
+        machine.all_ready = machine.all_ready && player.ready;
+    }
+    BaseCampReadyCounts counts;
+    for (const auto& [key, machine] : machines) {
+        (void)key;
+        if (machine.is_host)
+            continue;
+        ++counts.machines;
+        if (machine.all_ready)
+            ++counts.ready;
+    }
+    return counts;
+}
+
+std::string format_base_camp_net_line(BaseCampReadyCounts ready,
+                                      BaseCampDeployCounts deploys,
+                                      int scen_num)
+{
+    return clip_chars(std::format("READY {}/{}  DEP {}/{}  SCEN {}",
+                                  ready.ready, ready.machines,
+                                  deploys.deployed, deploys.total, scen_num),
+                      34);
+}
+
+BaseCampNetRowText format_base_camp_net_row(std::string_view name,
+                                            std::string_view company,
+                                            int level,
+                                            int derived_hp)
+{
+    BaseCampNetRowText row;
+    row.name = clip_chars(std::string(name), 10);
+    row.company = clip_chars(std::string(company), 16);
+    row.level = clip_chars(std::format("{}", level), 3);
+    row.hp = clip_chars(std::format("{}", derived_hp), 4);
+    return row;
+}
+
+std::unique_ptr<guy> make_base_camp_display_guy(
+    const og::sim::LobbyCharacterData& character)
+{
+    auto result = std::make_unique<guy>(character.family);
+    result->name = character.name;
+    result->family = static_cast<char>(character.family);
+    result->strength = character.strength;
+    result->dexterity = character.dexterity;
+    result->constitution = character.constitution;
+    result->intelligence = character.intelligence;
+    result->armor = character.armor;
+    result->exp = character.exp;
+    result->level = character.level;
+    return result;
+}
+
 std::string format_team_row_label(short team,
                                   int hero_count,
                                   bool is_ctf,

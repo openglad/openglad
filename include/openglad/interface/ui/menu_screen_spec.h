@@ -23,6 +23,7 @@
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/menu_binding.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
 
 #include <cstdint>
@@ -293,19 +294,25 @@ void refresh_main_menu_company_view();
 void set_main_menu_company_view_for_tests(bool present, std::string display_name);
 
 // §2.5 base camp (the reimagined Team Build) screen state: the display-slot
-// list (occupied team_list slots, re-collected every frame so positional
-// indices are never held across a roster change or a win fold — §3.3), the
-// PageModel window over it, and the reload-guard cursor the frame tick
-// shares with the SCENARIO family. Public so tests can drive the per-frame
-// rewire's visibility variants ({empty, partial, full, 2 pages} × {host});
-// production state is owned by create_team_menu.
+// list (re-collected every frame so positional indices are never held
+// across a roster change or a win fold — §3.3), the PageModel window over
+// it, and the reload-guard cursor the frame tick shares with the SCENARIO
+// family. Solo: one owned slot per occupied team_list entry. Networked: the
+// merged lobby roster (own rows first, then foreign machines' replicated
+// slots — collect_base_camp_display_slots); two well-stocked machines can
+// replicate more than 24 display slots, so the page window derives from
+// slots.size(), never from a 24-row assumption. Public so tests can drive
+// the per-frame rewire's visibility variants ({empty, partial, full,
+// multi-page} × {host} × {ownership mix} × {networked}); production state
+// is owned by create_team_menu.
 struct BaseCampScreenState {
     // The team-build family's level-reload obligation (§1.4 frame_tick).
     short last_level_id = -1;
     bool was_reset = false;
     // Display row i (page-relative windowing via `page`) shows
-    // save.team_list[slots[page.first_index() + i]].
-    std::vector<int> slots;
+    // slots[page.first_index() + i]: the private save row it names when
+    // owned, the replicated wire copy when foreign.
+    std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
 };
 

@@ -58,6 +58,9 @@
 
 extern bool g_start_game_requested;
 
+// picker_dialogs.cpp (trace-only under TESTING): the §4.2 reconcile popup.
+void popup_dialog(const char* title, const char* message);
+
 namespace {
 
 constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
@@ -1558,7 +1561,18 @@ void persist_deploy_reconciliation(SaveData& save,
     TRACE("lobby", "deploy_reconcile adopted=%d benched=%d",
           applied.deploy_flags_adopted, applied.deploy_benched);
     if (applied.deploy_benched > 0)
+    {
         TRACE("lobby", "deploy_limit_benched n=%d", applied.deploy_benched);
+        // §4.2 UI popup for a server force-bench (rare: the §2.5 client-side
+        // toggle guard pre-empts this path). Trace-only under TESTING.
+        if (og::runtime::current_session != nullptr &&
+            og::runtime::current_session->myscreen_ != nullptr)
+        {
+            popup_dialog(
+                "DEPLOY LIMIT 24",
+                std::format("{} BENCHED", applied.deploy_benched).c_str());
+        }
+    }
     (void)og::ui::company_autosave_after_mutation(
         save, /*networked_lobby_active=*/true);
 }
@@ -2888,6 +2902,22 @@ public:
         return state_->players;
     }
 
+    // §2.5 base-camp ownership split: this machine's seats in the
+    // replicated state, by the derived seat-name convention.
+    [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+        const override
+    {
+        if (!state_.has_value())
+            return {};
+        std::vector<std::uint8_t> indices;
+        for (const og::sim::LobbyPlayer* const seat :
+             og::ui::detail::find_local_seats(*state_, player_name_))
+        {
+            indices.push_back(seat->player_index);
+        }
+        return indices;
+    }
+
     [[nodiscard]] og::sim::StartDenialReason last_start_denial()
         const noexcept override
     {
@@ -3492,6 +3522,22 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    // §2.5 base-camp ownership split: this machine's seats in the
+    // replicated state, by the derived seat-name convention.
+    [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+        const override
+    {
+        if (!state_.has_value())
+            return {};
+        std::vector<std::uint8_t> indices;
+        for (const og::sim::LobbyPlayer* const seat :
+             og::ui::detail::find_local_seats(*state_, player_name_))
+        {
+            indices.push_back(seat->player_index);
+        }
+        return indices;
     }
 
     [[nodiscard]] og::sim::StartDenialReason last_start_denial()

@@ -41,6 +41,7 @@
 #include <cstring>
 #include <ctime>
 #include <format>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -1755,7 +1756,11 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
 // Per-frame visibility + labels + nav over the live roster state (pattern
 // b): page-window the rows, stamp the deploy glyphs on BOTH label surfaces,
 // host-gate GO, close the strip/pager links, and seed the empty-roster
-// highlight on HIRE (§2.5).
+// highlight on HIRE (§2.5). Networked ownership shape: a foreign row's
+// deploy button widens into the §2.5 no_draw hit zone (8,y,212,10) — click
+// anywhere on the row pops OWNED BY — and its TRAIN button hides; the nav
+// graph chains the train column over the OWNED rows only. Solo/local (all
+// rows owned) reproduces the stage-1 graph byte-for-byte.
 void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 {
     if (buttons == nullptr || count < kCreateMenuButtonCount)
@@ -1768,50 +1773,101 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const bool host_visible = picker_lobby_host_controls_visible();
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
+    // Ownership per visible row (own row => a real deploy toggle + TRAIN).
+    std::array<bool, kBaseCampRosterRowsPerPage> owned_row{};
+    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
+        if (r >= visible)
+            continue;
+        const BaseCampDisplaySlot& slot =
+            st->slots[static_cast<std::size_t>(first + r)];
+        owned_row[static_cast<std::size_t>(r)] = slot.owned;
+    }
+    const auto next_owned = [&](int from) {
+        for (int r = from; r < visible; ++r)
+            if (owned_row[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
+    const auto prev_owned = [&](int from) {
+        for (int r = from; r >= 0; --r)
+            if (owned_row[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
+    const int first_owned = next_owned(0);
+    const int last_owned = prev_owned(visible - 1);
+
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         const bool on = r < visible;
+        const bool own = on && owned_row[static_cast<std::size_t>(r)];
         button& dep = buttons[r];
         button& train = buttons[kBaseCampTrainBase + r];
         dep.hidden = !on;
-        train.hidden = !on;
+        train.hidden = !own;
         if (!on)
             continue;
 
-        const int slot = st->slots[static_cast<std::size_t>(first + r)];
-        const guy* member =
-            (slot >= 0 && slot < MAX_TEAM_SIZE) ? save.team_list[slot].get()
-                                                : nullptr;
-        // §2.5 deploy glyph: "X" deployed / "" benched — both surfaces (the
-        // descriptor row AND the live vbutton), so a toggle shows this frame.
+        const BaseCampDisplaySlot& display =
+            st->slots[static_cast<std::size_t>(first + r)];
+        const guy* member = (own && display.save_slot >= 0 &&
+                             display.save_slot < MAX_TEAM_SIZE)
+            ? save.team_list[display.save_slot].get()
+            : nullptr;
+        // §2.5 deploy glyph: "X" deployed / "" benched on OWN rows; foreign
+        // rows draw their X/- glyph in the content pass (the button is a
+        // no_draw hit zone). Both surfaces (the descriptor row AND the live
+        // vbutton), so a toggle shows this frame.
         dep.label = (member != nullptr && member->deployed) ? "X" : "";
+        dep.no_draw = !own;
+        dep.x = 8;
+        dep.sizex = own ? 14 : 212;
         vbutton* live = og::runtime::current_session->allbuttons_[r];
-        if (live != nullptr)
+        if (live != nullptr) {
             live->label = dep.label;
+            live->no_draw = dep.no_draw;
+            live->xloc = dep.x;
+            live->width = dep.sizex;
+            live->xend = live->xloc + live->width;
+        }
 
+        // Own rows step right into their TRAIN button (stage-1 shape); a
+        // foreign hit zone spans the whole row, so its right-link carries
+        // the train column's pager duty — without it an all-foreign page
+        // (spectator machine, [NET-R9]) strands the pagers.
         dep.nav = {.up = r > 0 ? r - 1 : -1,
                    .down = r + 1 < visible ? r + 1 : kCreateMenuBackIndex,
                    .left = -1,
-                   .right = kBaseCampTrainBase + r};
-        train.nav = {
-            .up = r > 0 ? kBaseCampTrainBase + r - 1 : -1,
-            .down = r + 1 < visible
-                ? kBaseCampTrainBase + r + 1
-                : (host_visible ? kCreateMenuGoIndex
-                                : kCreateMenuNetworkingIndex),
-            .left = r,
-            .right = pagers ? kBaseCampPagePrevIndex : -1};
+                   .right = own ? kBaseCampTrainBase + r
+                                : (pagers ? kBaseCampPagePrevIndex : -1)};
+        if (own) {
+            const int up_owned = prev_owned(r - 1);
+            const int down_owned = next_owned(r + 1);
+            train.nav = {
+                .up = up_owned >= 0 ? kBaseCampTrainBase + up_owned : -1,
+                .down = down_owned >= 0
+                    ? kBaseCampTrainBase + down_owned
+                    : (host_visible ? kCreateMenuGoIndex
+                                    : kCreateMenuNetworkingIndex),
+                .left = r,
+                .right = pagers ? kBaseCampPagePrevIndex : -1};
+        }
     }
 
     buttons[kBaseCampPagePrevIndex].hidden = !pagers;
     buttons[kBaseCampPageNextIndex].hidden = !pagers;
+    // Pager down-links land on the train column's first OWNED row (the
+    // stage-1 target) and fall back to the dep column on all-foreign pages.
+    const int pager_down = first_owned >= 0
+        ? kBaseCampTrainBase + first_owned
+        : (visible > 0 ? 0 : kCreateMenuGoIndex);
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
-        .down = visible > 0 ? kBaseCampTrainBase : kCreateMenuGoIndex,
+        .down = pager_down,
         .left = -1,
         .right = kBaseCampPageNextIndex};
     buttons[kBaseCampPageNextIndex].nav = {
         .up = -1,
-        .down = visible > 0 ? kBaseCampTrainBase : kCreateMenuGoIndex,
+        .down = pager_down,
         .left = kBaseCampPagePrevIndex,
         .right = -1};
 
@@ -1819,8 +1875,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kCreateMenuGoIndex].hidden = !host_visible;
 
     const int dep_last = visible > 0 ? visible - 1 : -1;
+    // The strip's right-side up-links prefer the train column (stage-1
+    // shape) and fall back to the dep column when this page has no owned
+    // row (all-foreign page / spectator machine, [NET-R9]).
     const int train_last =
-        visible > 0 ? kBaseCampTrainBase + visible - 1 : -1;
+        last_owned >= 0 ? kBaseCampTrainBase + last_owned : dep_last;
     buttons[kCreateMenuBackIndex].nav = {
         .up = dep_last, .down = -1, .left = -1,
         .right = kCreateMenuHireIndex};
@@ -1896,20 +1955,18 @@ void base_camp_draw_content(void* screen_state)
     strip_text(8, 3, company, WHITE);
     strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
 
-    // Line B: solo scenario/deploy header. Networked lobbies keep the legacy
-    // status line here (joined + clipped) until the WP4 MP stage lands the
-    // READY n/m header shape.
+    // Line B: solo scenario/deploy header, or the §2.5 networked
+    // READY n/m + DEP n/m + SCEN header (34-char budget). READY counts
+    // non-host MACHINES; DEP counts the merged display list.
+    const bool networked = picker_lobby_is_networked();
     std::string line_b;
-    if (picker_lobby_is_networked()) {
-        for (const std::string& line : picker_lobby_status_lines()) {
-            if (line.empty())
-                continue;
-            if (!line_b.empty())
-                line_b += " | ";
-            line_b += line;
-        }
-        if (line_b.size() > 40)
-            line_b.resize(40);
+    if (networked) {
+        line_b = format_base_camp_net_line(
+            count_base_camp_ready_machines(picker_lobby_players()),
+            st != nullptr
+                ? count_base_camp_display_deploys(st->slots, save)
+                : BaseCampDeployCounts{},
+            save.scen_num);
     } else {
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
@@ -1918,14 +1975,24 @@ void base_camp_draw_content(void* screen_state)
     if (st != nullptr && st->page.multi_page())
         strip_text(283, 13, st->page.indicator(), WHITE);
 
-    // Column headers (solo shape) over the pre-pass bar.
-    mytext.write_xy(2, 24, "DEPLOY", WHITE, 1);
-    mytext.write_xy(40, 24, "NAME", WHITE, 1);
-    mytext.write_xy(118, 24, "CLASS", WHITE, 1);
-    mytext.write_xy(172, 24, "LV", WHITE, 1);
-    mytext.write_xy(196, 24, "HP", WHITE, 1);
-    mytext.write_xy(226, 24, "EXP", WHITE, 1);
-    mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+    // Column headers over the pre-pass bar: solo keeps CLASS/EXP; networked
+    // swaps in the 16-char COMPANY column (§2.5 U7 — CLASS is carried by
+    // the family chip + family-colored name).
+    if (networked) {
+        mytext.write_xy(40, 24, "NAME", WHITE, 1);
+        mytext.write_xy(106, 24, "COMPANY", WHITE, 1);
+        mytext.write_xy(208, 24, "LV", WHITE, 1);
+        mytext.write_xy(226, 24, "HP", WHITE, 1);
+        mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+    } else {
+        mytext.write_xy(2, 24, "DEPLOY", WHITE, 1);
+        mytext.write_xy(40, 24, "NAME", WHITE, 1);
+        mytext.write_xy(118, 24, "CLASS", WHITE, 1);
+        mytext.write_xy(172, 24, "LV", WHITE, 1);
+        mytext.write_xy(196, 24, "HP", WHITE, 1);
+        mytext.write_xy(226, 24, "EXP", WHITE, 1);
+        mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+    }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
@@ -1936,32 +2003,63 @@ void base_camp_draw_content(void* screen_state)
     }
 
     for (int r = 0; r < end - first; ++r) {
-        const int slot = st->slots[static_cast<std::size_t>(first + r)];
-        if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
-            continue;
-        const guy& member = *save.team_list[slot];
+        const BaseCampDisplaySlot& display =
+            st->slots[static_cast<std::size_t>(first + r)];
         const int y = kBaseCampRowY0 + kBaseCampRowPitch * r;
+
+        // Row source: own rows read the LIVE private save member; foreign
+        // rows render their replicated wire copy.
+        const guy* member = nullptr;
+        std::unique_ptr<guy> foreign_guy;
+        bool deployed = display.deployed;
+        if (display.owned) {
+            if (display.save_slot < 0 || display.save_slot >= MAX_TEAM_SIZE ||
+                !save.team_list[display.save_slot])
+            {
+                continue;
+            }
+            member = save.team_list[display.save_slot].get();
+            deployed = member->deployed;
+        } else {
+            foreign_guy = make_base_camp_display_guy(display.character);
+            member = foreign_guy.get();
+        }
 
         // Family chip: the view_team color convention ((family+1)<<4).
         const unsigned char family_color =
-            static_cast<unsigned char>(((member.family + 1) << 4) & 255);
+            static_cast<unsigned char>(((member->family + 1) << 4) & 255);
         game->fastbox(26, y, 10, 10, family_color);
 
         // Benched rows dim to GREY — the second deploy cue (§2.5).
         const unsigned char name_color =
-            member.deployed ? family_color : static_cast<unsigned char>(GREY);
+            deployed ? family_color : static_cast<unsigned char>(GREY);
         const unsigned char stat_color =
-            member.deployed ? static_cast<unsigned char>(WHITE)
-                            : static_cast<unsigned char>(GREY);
+            deployed ? static_cast<unsigned char>(WHITE)
+                     : static_cast<unsigned char>(GREY);
 
-        const BaseCampRowText row = format_base_camp_row(
-            member,
-            static_cast<int>(picker_compute_guy_derived_stats(member).hp));
-        mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
-        mytext.write_xy(118, y + 1, row.cls.c_str(), name_color, 1);
-        mytext.write_xy(172, y + 1, row.level.c_str(), stat_color, 1);
-        mytext.write_xy(196, y + 1, row.hp.c_str(), stat_color, 1);
-        mytext.write_xy(226, y + 1, row.exp.c_str(), stat_color, 1);
+        const int derived_hp =
+            static_cast<int>(picker_compute_guy_derived_stats(*member).hp);
+        if (networked) {
+            // Foreign rows have no deploy BUTTON (no_draw hit zone): their
+            // deploy state draws as the §2.5 X/- glyph at x=11.
+            if (!display.owned)
+                mytext.write_xy(11, y + 1, deployed ? "X" : "-", stat_color,
+                                1);
+            const BaseCampNetRowText row = format_base_camp_net_row(
+                member->name, display.company, member->level, derived_hp);
+            mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
+            mytext.write_xy(106, y + 1, row.company.c_str(), stat_color, 1);
+            mytext.write_xy(208, y + 1, row.level.c_str(), stat_color, 1);
+            mytext.write_xy(226, y + 1, row.hp.c_str(), stat_color, 1);
+        } else {
+            const BaseCampRowText row =
+                format_base_camp_row(*member, derived_hp);
+            mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
+            mytext.write_xy(118, y + 1, row.cls.c_str(), name_color, 1);
+            mytext.write_xy(172, y + 1, row.level.c_str(), stat_color, 1);
+            mytext.write_xy(196, y + 1, row.hp.c_str(), stat_color, 1);
+            mytext.write_xy(226, y + 1, row.exp.c_str(), stat_color, 1);
+        }
     }
 }
 
@@ -2016,11 +2114,40 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     const int idx = st->page.first_index() + visual_row;
     if (idx < 0 || idx >= static_cast<int>(st->slots.size()))
         return 0;  // stale click on a row hidden this frame
-    const int slot = st->slots[static_cast<std::size_t>(idx)];
+    const BaseCampDisplaySlot& display =
+        st->slots[static_cast<std::size_t>(idx)];
+
+    if (!display.owned) {
+        // §2.5 ownership rule (U9): a foreign row is read-only — any click
+        // on its hit zone names the owning machine's FULL company (the
+        // escape hatch for origin-column prefix collisions).
+        TRACE("basecamp", "owned_by row=%d company=%s", idx,
+              display.company.c_str());
+        popup_dialog("OWNED BY",
+                     display.company.empty() ? "ANOTHER COMPANY"
+                                             : display.company.c_str());
+        return MENU_OK;
+    }
+
+    const int slot = display.save_slot;
     if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
         return 0;
 
     if (!is_train) {
+        // §2.5 client-side 24-cap guard: a toggle-ON that would exceed 24
+        // deployed across the merged lobby roster is denied with a popup,
+        // pre-empting the server's §4.2 force-bench path.
+        if (picker_lobby_is_networked() && !save.team_list[slot]->deployed) {
+            const BaseCampDeployCounts counts =
+                count_base_camp_display_deploys(st->slots, save);
+            if (counts.deployed >= MAX_TEAM_SIZE) {
+                TRACE("basecamp", "deploy_cap_denied deployed=%d",
+                      counts.deployed);
+                popup_dialog("DEPLOY LIMIT 24",
+                             "24 characters are\nalready deployed");
+                return MENU_OK;
+            }
+        }
         // §2.5 deploy toggle (flow 5): flip + dim + DEP count same frame;
         // §3.8 autosave + §4.3 ready-clear ride the shared mutation tail.
         [[maybe_unused]] const bool deployed = toggle_deploy_slot(save, slot);
@@ -3048,9 +3175,19 @@ void install_base_camp_state_for_screen(BaseCampScreenState* state)
 void base_camp_refresh_rows(BaseCampScreenState& state)
 {
     // §3.3: positional display indices are never held across a roster
-    // change or a win fold — re-collect from the save every time.
+    // change or a win fold — re-collect every time. Networked lobbies merge
+    // the replicated foreign rosters behind the own rows (§2.5); the page
+    // window derives from slots.size(), so >24 display slots (two
+    // well-stocked machines) just grow the page count defensively.
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    state.slots = collect_base_camp_slots(save);
+    const bool networked = picker_lobby_is_networked();
+    state.slots = collect_base_camp_display_slots(
+        save,
+        networked ? picker_lobby_players()
+                  : std::vector<og::sim::LobbyPlayer>{},
+        networked ? picker_lobby_local_player_indices()
+                  : std::vector<std::uint8_t>{},
+        networked);
     const int page_before = state.page.page;
     state.page = PageModel::make(static_cast<int>(state.slots.size()),
                                  kBaseCampRosterRowsPerPage);

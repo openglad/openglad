@@ -243,6 +243,10 @@ TEST(CursesNetwork, roster_reflects_two_players)
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
     init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    // §2.5 curses parity: company + deploy counts ride the status lines.
+    host_save.save_name = "HOST CURSES CO";
+    join_save.save_name = "JOIN CURSES CO";
+    join_save.team_list[0]->deployed = false;
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -262,12 +266,31 @@ TEST(CursesNetwork, roster_reflects_two_players)
     for (int i = 0; i < 200 && !two_players; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
+        bool host_sees_two = false;
         for (const std::string& s : host_lobby->status_lines()) {
             if (s == "Players: 2")
-                two_players = true;
+                host_sees_two = true;
         }
+        // Both views must converge before the company/deploy pins below.
+        two_players = host_sees_two &&
+            status_contains(*join_lobby, "Players: 2");
     }
     EXPECT_TRUE(two_players) << "the host roster should list both players";
+
+    // §2.5 curses parity (stage mp-columns): each player line names its
+    // machine's company (the wire's LobbyPlayer::company) and per-seat
+    // deploy counts; the lobby-wide Deployed line sums the wire flags —
+    // the joiner's benched member drops it to 1/2.
+    EXPECT_TRUE(status_contains(*host_lobby, "<HOST CURSES CO>"));
+    EXPECT_TRUE(status_contains(*host_lobby, "<JOIN CURSES CO>"))
+        << "the host sees the joiner's company off the wire";
+    EXPECT_TRUE(status_contains(*host_lobby, "DEP 1/1"));
+    EXPECT_TRUE(status_contains(*host_lobby, "DEP 0/1"))
+        << "the joiner's benched seat shows an empty deploy count";
+    EXPECT_TRUE(status_contains(*host_lobby, "Deployed: 1/2"));
+    EXPECT_TRUE(status_contains(*join_lobby, "<HOST CURSES CO>"))
+        << "the joiner sees the host's company off the wire";
+    EXPECT_TRUE(status_contains(*join_lobby, "Deployed: 1/2"));
 
     // The joiner should also observe the shared lobby (>=1 player visible).
     bool join_sees_lobby = false;

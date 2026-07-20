@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
@@ -3138,4 +3139,223 @@ TEST(BaseCampRoster, positional_rows_refresh_after_update_guys_reorder)
     EXPECT_EQ("BENCHED", save.team_list[after[1]]->name);
     EXPECT_FALSE(save.team_list[after[1]]->deployed)
         << "the held-back flag survives the fold (§3.3 [SAVE-R4])";
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 MP display model (stage mp-columns): the merged lobby roster, the
+// machine-grouped READY counts, the networked header line, and the U7
+// COMPANY-column row shape.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+og::sim::LobbyPlayer make_lobby_seat(std::uint8_t player_index,
+                                     const char* name,
+                                     const char* company,
+                                     bool is_host,
+                                     bool ready,
+                                     int deployed_slots,
+                                     int benched_slots)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = player_index;
+    player.name = name;
+    player.company = company;
+    player.is_host = is_host;
+    player.ready = ready;
+    for (int i = 0; i < deployed_slots + benched_slots; ++i) {
+        og::sim::LobbyCharacterSlot slot;
+        slot.slot_index = static_cast<std::uint8_t>(i);
+        slot.deployed = i < deployed_slots;
+        slot.character.name = std::format("{}-{}", name, i);
+        slot.character.family = FAMILY_ELF;
+        slot.character.level = 3;
+        player.character_slots.push_back(std::move(slot));
+    }
+    return player;
+}
+
+} // namespace
+
+TEST(BaseCampMpDisplay, solo_collect_is_an_owned_passthrough)
+{
+    SaveData save;
+    save.team_list[2] = make_base_camp_member("TWO", FAMILY_SOLDIER);
+    save.team_list[5] = make_base_camp_member("FIVE", FAMILY_MAGE);
+    save.team_list[5]->deployed = false;
+    save.team_size = 2;
+
+    // players would be a foreign roster — ignored when not networked.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(9, "other", "OTHER CO", false, false, 2, 0)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/false);
+    ASSERT_EQ(2u, slots.size());
+    EXPECT_TRUE(slots[0].owned);
+    EXPECT_EQ(2, slots[0].save_slot);
+    EXPECT_TRUE(slots[0].deployed);
+    EXPECT_TRUE(slots[1].owned);
+    EXPECT_EQ(5, slots[1].save_slot);
+    EXPECT_FALSE(slots[1].deployed);
+    EXPECT_TRUE(slots[0].company.empty()) << "solo rows carry no company";
+}
+
+TEST(BaseCampMpDisplay, networked_collect_merges_own_first_then_owner_index)
+{
+    SaveData save;
+    save.save_name = "MY BAND";
+    save.team_list[0] = make_base_camp_member("MINE", FAMILY_SOLDIER);
+    save.team_size = 1;
+
+    // Foreign machines arrive out of order; the local seat (index 4) must
+    // be skipped — the private save is the authority for own rows.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(9, "net-b", "BRAVO BAND", false, false, 1, 1),
+        make_lobby_seat(4, "net-me", "MY BAND", false, false, 1, 0),
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 1, 0),
+    };
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {4}, /*networked=*/true);
+    ASSERT_EQ(4u, slots.size());
+    EXPECT_TRUE(slots[0].owned);
+    EXPECT_EQ(0, slots[0].save_slot);
+    EXPECT_EQ("MY BAND", slots[0].company)
+        << "networked own rows carry the own company for the column";
+    EXPECT_FALSE(slots[1].owned);
+    EXPECT_EQ(2, slots[1].owner_player_index)
+        << "foreign rows sort by owner player index";
+    EXPECT_EQ("ALPHA BAND", slots[1].company);
+    EXPECT_EQ("net-a-0", slots[1].character.name)
+        << "foreign display data rides the wire copy";
+    EXPECT_EQ(9, slots[2].owner_player_index);
+    EXPECT_TRUE(slots[2].deployed);
+    EXPECT_EQ(9, slots[3].owner_player_index);
+    EXPECT_FALSE(slots[3].deployed)
+        << "the wire deploy flag reaches the display slot";
+}
+
+TEST(BaseCampMpDisplay, deploy_counts_read_the_live_save_flag_for_own_rows)
+{
+    SaveData save;
+    save.save_name = "MY BAND";
+    save.team_list[0] = make_base_camp_member("MINE", FAMILY_SOLDIER);
+    save.team_size = 1;
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 2, 1)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/true);
+    ASSERT_EQ(4u, slots.size());
+
+    og::ui::BaseCampDeployCounts counts =
+        og::ui::count_base_camp_display_deploys(slots, save);
+    EXPECT_EQ(3, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+
+    // A toggle (or a §4.2 deploy_reconcile adoption) flips the SAVE flag;
+    // the count follows it without re-collecting — own rows are live.
+    save.team_list[0]->deployed = false;
+    counts = og::ui::count_base_camp_display_deploys(slots, save);
+    EXPECT_EQ(2, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+}
+
+TEST(BaseCampMpDisplay, ready_counts_group_seats_into_machines)
+{
+    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a"));
+    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a#3"));
+    EXPECT_EQ("x", og::ui::lobby_player_machine_key("x#1#2"));
+
+    // Host machine has 2 seats (seat 1 is is_host=false but must NOT count
+    // as a gating machine — the §4.3 multi-seat-host rule). Machine "net-b"
+    // has 2 seats and counts ready only when BOTH are. Machine "net-c" is a
+    // single ready seat; "net-d" is an unready spectator (0 slots).
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
+        make_lobby_seat(5, "net-d", "D CO", false, false, 0, 0),
+    };
+    og::ui::BaseCampReadyCounts counts =
+        og::ui::count_base_camp_ready_machines(players);
+    EXPECT_EQ(3, counts.machines) << "net-b, net-c, net-d (host excluded)";
+    EXPECT_EQ(1, counts.ready) << "only net-c has every seat ready";
+
+    // Both net-b seats ready => the machine counts.
+    std::vector<og::sim::LobbyPlayer> all = players;
+    all[3].ready = true;
+    counts = og::ui::count_base_camp_ready_machines(all);
+    EXPECT_EQ(2, counts.ready);
+    EXPECT_EQ(3, counts.machines);
+}
+
+TEST(BaseCampMpDisplay, net_line_and_net_row_formats_hold_their_budgets)
+{
+    const std::string line = og::ui::format_base_camp_net_line(
+        {.ready = 2, .machines = 3}, {.deployed = 9, .total = 16}, 7);
+    EXPECT_EQ("READY 2/3  DEP 9/16  SCEN 7", line)
+        << "the §2.5 networked line B shape";
+    EXPECT_LE(line.size(), 34u);
+
+    // Worst realistic case still clips inside the 34-char strip budget.
+    const std::string wide = og::ui::format_base_camp_net_line(
+        {.ready = 15, .machines = 15}, {.deployed = 48, .total = 48}, 9999);
+    EXPECT_LE(wide.size(), 34u);
+
+    const og::ui::BaseCampNetRowText row = og::ui::format_base_camp_net_row(
+        "TWELVECHARSNAME", "A COMPANY NAME PAST SIXTEEN", 123, 14842);
+    EXPECT_EQ("TWELVECHAR", row.name) << "MP name budget is 10 chars (U7)";
+    EXPECT_EQ("A COMPANY NAME P", row.company) << "COMPANY column is 16 chars";
+    EXPECT_EQ("123", row.level);
+    EXPECT_EQ("1484", row.hp);
+}
+
+TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)
+{
+    og::sim::LobbyCharacterData character;
+    character.name = "Wire Elf";
+    character.family = FAMILY_ELF;
+    character.strength = 11;
+    character.dexterity = 12;
+    character.constitution = 13;
+    character.intelligence = 14;
+    character.armor = 15;
+    character.exp = 777;
+    character.level = 6;
+
+    const std::unique_ptr<guy> display =
+        og::ui::make_base_camp_display_guy(character);
+    ASSERT_NE(nullptr, display);
+    EXPECT_EQ("Wire Elf", display->name);
+    EXPECT_EQ(FAMILY_ELF, static_cast<int>(display->family));
+    EXPECT_EQ(11, display->strength);
+    EXPECT_EQ(12, display->dexterity);
+    EXPECT_EQ(13, display->constitution);
+    EXPECT_EQ(14, display->intelligence);
+    EXPECT_EQ(15, display->armor);
+    EXPECT_EQ(777u, display->exp);
+    EXPECT_EQ(6, display->level);
+}
+
+TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
+{
+    // Two well-stocked machines: 20 own + 20 replicated = 40 display slots
+    // (§4.2: full rosters always replicate for display). The page window
+    // derives from the display size — 4 pages, never a 24-row clamp.
+    SaveData save;
+    save.save_name = "MY BAND";
+    for (int i = 0; i < 20; ++i) {
+        save.team_list[i] = make_base_camp_member("M", FAMILY_SOLDIER);
+    }
+    save.team_size = 20;
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 20, 0)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/true);
+    ASSERT_EQ(40u, slots.size());
+
+    const og::ui::PageModel page =
+        og::ui::PageModel::make(static_cast<int>(slots.size()), 12);
+    EXPECT_EQ(4, page.page_count());
 }

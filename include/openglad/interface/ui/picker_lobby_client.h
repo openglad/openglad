@@ -112,6 +112,15 @@ public:
     {
         return {};
     }
+    // THIS machine's seats' global player indexes in the replicated lobby
+    // state, in local seat order. Empty for local sessions and before the
+    // first state broadcast. The base-camp MP roster (§2.5) uses it to
+    // split lobby_players() into own rows (private-save authority) and
+    // foreign read-only rows.
+    [[nodiscard]] virtual std::vector<std::uint8_t> local_player_indices() const
+    {
+        return {};
+    }
     // True only for genuine networked sessions (network host or join client).
     [[nodiscard]] virtual bool is_networked_session() const noexcept
     {
@@ -148,6 +157,7 @@ bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();
 std::vector<og::sim::LobbyPlayer> picker_lobby_players();
+std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {

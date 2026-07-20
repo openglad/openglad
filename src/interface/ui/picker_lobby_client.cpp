@@ -871,6 +871,13 @@ std::vector<og::sim::LobbyPlayer> picker_lobby_players()
     return {};
 }
 
+std::vector<std::uint8_t> picker_lobby_local_player_indices()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->local_player_indices();
+    return {};
+}
+
 bool picker_lobby_is_networked()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())

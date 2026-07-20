@@ -11,11 +11,13 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Screen dimensions for the game
@@ -474,6 +476,200 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         save.team_list[i] = std::move(saved_team[i]);
     save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
+}
+
+// §2.5 keyboard-nav BFS matrix, networked ownership axes (stage mp-columns):
+// the production rewire over {own rows} x {foreign rows} x {host, joiner}
+// x every page, driven through an installed networked lobby client (the
+// rewire itself hides GO for joiners and shapes foreign rows into no_draw
+// hit zones with hidden TRAIN buttons). Includes the [NET-R9] spectator
+// machine shape (0 own rows, all-foreign roster) and the >24 display-slot
+// defensive paging pin (two 20-slot machines => 4 pages).
+TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[i] = std::move(save.team_list[i]);
+    const unsigned char old_team_size = save.team_size;
+    const std::string old_save_name = save.save_name;
+    save.save_name = "LAYOUT OWN BAND";
+
+    struct NetworkedLayoutLobbyClient final : og::ui::IPickerLobbyClient
+    {
+        void initialize_from_save() override {}
+        void shutdown() override {}
+        void sync_from_save() override {}
+        void sync_roster_from_save() override {}
+        void sync_settings_from_save() override {}
+        void poll_and_apply() override {}
+        void set_player_mode(int) override {}
+        bool request_start_game() override { return false; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        build_game_start_config() const override { return std::nullopt; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        consume_game_start_config() override { return std::nullopt; }
+        [[nodiscard]] bool start_request_pending() const noexcept override
+        {
+            return false;
+        }
+        [[nodiscard]] bool host_controls_visible() const noexcept override
+        {
+            return host;
+        }
+        [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+            const override
+        {
+            return players;
+        }
+        [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+            const override
+        {
+            return {7};
+        }
+        [[nodiscard]] bool is_networked_session() const noexcept override
+        {
+            return true;
+        }
+
+        bool host = false;
+        std::vector<og::sim::LobbyPlayer> players;
+    };
+    NetworkedLayoutLobbyClient lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec* spec_ptr =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec_ptr);
+    const og::ui::MenuScreenSpec& spec = *spec_ptr;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    // (own, foreign): mixed single page, spectator machine [NET-R9],
+    // mixed multi-page, and the >24 display-slot defensive-paging shape.
+    const std::pair<int, int> shapes[] = {{3, 4}, {0, 5}, {12, 20}, {20, 20}};
+    for (const auto& [own_size, foreign_size] : shapes)
+    {
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+            save.team_list[i].reset();
+        for (int i = 0; i < own_size; ++i)
+        {
+            save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[i]->name = std::format("OWN{}", i);
+        }
+        save.team_size = static_cast<unsigned char>(own_size);
+
+        lobby.players.clear();
+        og::sim::LobbyPlayer foreign;
+        foreign.player_index = 3;
+        foreign.name = "net-far";
+        foreign.company = "FOREIGN LAYOUT BAND";
+        if (foreign_size > 0)
+        {
+            for (int i = 0; i < foreign_size; ++i)
+            {
+                og::sim::LobbyCharacterSlot slot;
+                slot.slot_index = static_cast<std::uint8_t>(i);
+                slot.deployed = (i % 2) == 0;
+                slot.character.name = std::format("FAR{}", i);
+                slot.character.family = FAMILY_ELF;
+                foreign.character_slots.push_back(std::move(slot));
+            }
+            lobby.players.push_back(foreign);
+        }
+        // The local machine's own replicated seat must be SKIPPED.
+        og::sim::LobbyPlayer self;
+        self.player_index = 7;
+        self.name = "net-self";
+        self.company = "LAYOUT OWN BAND";
+        lobby.players.push_back(self);
+
+        og::ui::BaseCampScreenState state;
+        og::ui::base_camp_refresh_rows(state);
+        const int total = own_size + foreign_size;
+        ASSERT_EQ(total, static_cast<int>(state.slots.size()));
+        const int expected_pages = std::max(1, (total + 11) / 12);
+        ASSERT_EQ(expected_pages, state.page.page_count())
+            << "page window derives from the display size (>24 safe)";
+        og::ui::install_base_camp_state_for_screen(&state);
+
+        for (int page = 0; page < state.page.page_count(); ++page)
+        {
+            state.page.page = page;
+            for (const bool host_visible : {true, false})
+            {
+                lobby.host = host_visible;
+                button* buttons = picker_createmenu_buttons();
+                const int count = picker_createmenu_button_count();
+                int highlighted = 0;
+                spec.nav.rewire(buttons, count, highlighted);
+
+                const std::string variant = std::format(
+                    "basecamp-mp own={} foreign={} page={} {}", own_size,
+                    foreign_size, page,
+                    host_visible ? "host" : "joiner");
+                EXPECT_EQ(!host_visible,
+                          buttons[kCreateMenuGoIndex].hidden)
+                    << variant << ": the rewire host-gates GO itself";
+                check_no_overlaps(buttons, count, variant.c_str());
+                check_bounds(buttons, count, variant.c_str());
+                check_nav_closed_and_reachable(buttons, count,
+                                               kCreateMenuBackIndex,
+                                               variant.c_str());
+
+                const int first = state.page.first_index();
+                const int visible =
+                    state.page.end_index() - state.page.first_index();
+                for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
+                {
+                    if (r >= visible)
+                    {
+                        EXPECT_TRUE(buttons[r].hidden) << variant;
+                        EXPECT_TRUE(buttons[kBaseCampTrainBase + r].hidden)
+                            << variant;
+                        continue;
+                    }
+                    const bool owned = (first + r) < own_size;
+                    EXPECT_FALSE(buttons[r].hidden) << variant;
+                    EXPECT_EQ(!owned, buttons[r].no_draw)
+                        << variant << " row " << r
+                        << ": foreign rows are no_draw hit zones";
+                    EXPECT_EQ(owned ? 14 : 212, buttons[r].sizex)
+                        << variant << " row " << r;
+                    EXPECT_EQ(owned,
+                              !buttons[kBaseCampTrainBase + r].hidden)
+                        << variant << " row " << r
+                        << ": TRAIN shows on own rows only";
+                }
+            }
+        }
+
+        // Spectator machine shape [NET-R9]: no own rows, but the foreign
+        // roster is visible — the highlight keeps the first visible row
+        // (HIRE seeding applies only to a fully empty display).
+        if (own_size == 0 && foreign_size > 0)
+        {
+            state.page.page = 0;
+            lobby.host = false;
+            button* buttons = picker_createmenu_buttons();
+            const int count = picker_createmenu_button_count();
+            int highlighted = 0;
+            spec.nav.rewire(buttons, count, highlighted);
+            EXPECT_EQ(0, highlighted)
+                << "spectator machines keep the roster-first highlight";
+        }
+
+        og::ui::install_base_camp_state_for_screen(nullptr);
+    }
+
+    og::ui::install_active_picker_lobby_client(saved_client);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(saved_team[i]);
+    save.team_size = old_team_size;
+    save.save_name = old_save_name;
     (void)picker_createmenu_buttons();
 }
 

@@ -1114,15 +1114,43 @@ public:
                                  ? og::data::scenario_display_name(
                                        state_->settings.scenario_id)
                                  : std::to_string(state_->settings.scenario_id)));
+            int lobby_deployed = 0;
+            int lobby_slots = 0;
             for (const og::sim::LobbyPlayer& player : state_->players) {
                 const bool is_me = player.name == player_name_;
-                lines.push_back("  Player " + std::to_string(player.player_index + 1) +
-                                " (team " + std::to_string(player.team) + ")" +
-                                (player.is_host ? " [host]" : "") +
-                                (player.ready ? " [ready]" : "") +
-                                (is_me ? " [you]" : ""));
+                std::string line =
+                    "  Player " + std::to_string(player.player_index + 1) +
+                    " (team " + std::to_string(player.team) + ")" +
+                    (player.is_host ? " [host]" : "") +
+                    (player.ready ? " [ready]" : "") +
+                    (is_me ? " [you]" : "");
+                // §2.5 curses parity: the origin/company column + per-seat
+                // deploy counts (clipped to the SDL COMPANY budget).
+                if (!player.company.empty()) {
+                    std::string company = player.company;
+                    if (company.size() > 16)
+                        company.resize(16);
+                    line += " <" + company + ">";
+                }
+                int seat_deployed = 0;
+                for (const og::sim::LobbyCharacterSlot& slot :
+                     player.character_slots)
+                {
+                    ++lobby_slots;
+                    if (slot.deployed) {
+                        ++seat_deployed;
+                        ++lobby_deployed;
+                    }
+                }
+                if (!player.character_slots.empty()) {
+                    line += " DEP " + std::to_string(seat_deployed) + "/" +
+                        std::to_string(player.character_slots.size());
+                }
+                lines.push_back(std::move(line));
             }
             lines.push_back("Players: " + std::to_string(state_->players.size()));
+            lines.push_back("Deployed: " + std::to_string(lobby_deployed) +
+                            "/" + std::to_string(lobby_slots));
         } else {
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");

@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <array>
@@ -261,6 +262,89 @@ std::string format_base_camp_gold_label(const SaveData& save);
 // title clipped so the whole line fits the 34-char budget.
 std::string format_base_camp_scen_line(const SaveData& save,
                                        std::string_view level_title);
+
+// --- Base camp MP display model (design §2.5 networked shape) ---
+
+// One display row of the base-camp roster. Solo/local sessions: every row
+// is owned and `save_slot` indexes the private team_list. Networked: the
+// MERGED lobby roster — this machine's characters first (still read from
+// the PRIVATE save via save_slot, so deploy toggles and train edits show
+// the same frame), then every other machine's replicated slots ordered by
+// owner player index (read-only per the §2.5 ownership rules; their display
+// data rides in `character`/`deployed`/`company`).
+struct BaseCampDisplaySlot {
+    bool owned = true;
+    int save_slot = -1;                     // own rows: team_list index
+    std::uint8_t owner_player_index = 0xff; // foreign rows: owning seat
+    bool deployed = true;                   // foreign rows (own rows read the save)
+    std::string company;                    // owning machine's company name
+    og::sim::LobbyCharacterData character;  // foreign row display data
+};
+
+// Build the display list. `players` is the replicated lobby roster
+// (ignored unless `networked`); `local_player_indices` marks which lobby
+// seats are THIS machine's (their slots are skipped — the private save is
+// the authority for own rows). Two well-stocked machines can replicate
+// more than 24 display slots (full rosters always replicate for display,
+// §4.2) — callers page over the returned size defensively, never over a
+// 24-row assumption.
+std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
+    const SaveData& save,
+    const std::vector<og::sim::LobbyPlayer>& players,
+    const std::vector<std::uint8_t>& local_player_indices,
+    bool networked);
+
+// Deployed/total over the display list; owned rows read the save's LIVE
+// deploy flag (an optimistic toggle or a server reconcile shows the same
+// frame — the §4.2 deploy_reconcile adoption writes that flag).
+struct BaseCampDeployCounts {
+    int deployed = 0;
+    int total = 0;
+};
+BaseCampDeployCounts count_base_camp_display_deploys(
+    const std::vector<BaseCampDisplaySlot>& slots, const SaveData& save);
+
+// Client-side machine grouping of the replicated lobby players. Seat
+// naming convention (the wire's find_local_seats contract): seat 0 keeps
+// the machine's base name, seat k is "base#k" — so the machine key is the
+// name up to the first '#'.
+std::string_view lobby_player_machine_key(std::string_view player_name);
+
+// READY n/m over NON-HOST machines only (a multi-seat host's extra seats
+// are is_host=false but never gate the start — §4.3; the server excludes
+// them by peer, this mirrors it by machine key). A machine counts ready
+// when ALL of its seats are ready.
+struct BaseCampReadyCounts {
+    int ready = 0;
+    int machines = 0;
+};
+BaseCampReadyCounts count_base_camp_ready_machines(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §2.5 header line B, networked shape: "READY r/m  DEP d/t  SCEN n",
+// clipped to the 34-char budget.
+std::string format_base_camp_net_line(BaseCampReadyCounts ready,
+                                      BaseCampDeployCounts deploys,
+                                      int scen_num);
+
+// One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
+// carried by the family chip + family-colored name; 16-char COMPANY).
+struct BaseCampNetRowText {
+    std::string name;    // <= 10 chars
+    std::string company; // <= 16 chars
+    std::string level;   // <= 3 chars
+    std::string hp;      // <= 4 chars
+};
+BaseCampNetRowText format_base_camp_net_row(std::string_view name,
+                                            std::string_view company,
+                                            int level,
+                                            int derived_hp);
+
+// Display-only guy copy of a replicated foreign character (derived-stat
+// input + family chip). NOT the roster-assembly builder — no id/teamnum
+// semantics, never enters a save or a level.
+std::unique_ptr<guy> make_base_camp_display_guy(
+    const og::sim::LobbyCharacterData& character);
 
 // One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
