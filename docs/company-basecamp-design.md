@@ -85,7 +85,8 @@ All judge grafts are folded in; conflicts between grafts/sections are resolved i
 13. **Everything green**: ci-test, og_test_parity (zero sim-file line inserts above
     canary pins), menu layout pins, text 1-based index consumers
     (scripts/test_text_picker_interactive.sh, tests/unit/test_platform_headless.cpp:553-612),
-    wasm raw-coordinate helpers (tests/e2e/wasm_helpers.js:212-254) + dist rebuild,
+    wasm raw-coordinate consumers (tests/e2e/wasm_helpers.js:212-254 and the raw taps
+    in tests/e2e/wasm-touch.spec.js) + dist rebuild,
     coverage ≥ 90/95 with tests written alongside.
 
 ---
@@ -778,6 +779,13 @@ byte-identical (no new line).
 
 Plus: the relay-networking spec must click READY on the joiner before host GO. dist/
 rebuild in the same change.
+
+The ledger covers raw main-menu/team-build coordinates in BOTH
+tests/e2e/wasm_helpers.js (:212-254) AND tests/e2e/wasm-touch.spec.js —
+the touch spec does not route every tap through the helpers: it carries its
+own `CONTINUE_BUTTON`/`NETWORKING_BUTTON` consts plus bare
+`tapCanvasGameCoord` continue/GO taps, and each must be re-pinned to the
+same values whenever a rect in this table moves.
 
 ---
 
@@ -1642,7 +1650,9 @@ red commits.
 4. **Curses suite**: tests/curses/test_curses_picker_client.cpp flows over the reshaped
    Main/TeamBuild; curses network 'r'-key + share-persist tests.
 5. **wasm coordinate helpers**: tests/e2e/wasm_helpers.js:212-254 — continue (114,85),
-   GO (278,187), networking (210,187); relay spec gains the joiner READY click;
+   GO (278,187), networking (210,187); tests/e2e/wasm-touch.spec.js carries its own raw
+   copies (CONTINUE_BUTTON/NETWORKING_BUTTON consts + bare tapCanvasGameCoord taps) and
+   re-pins to the same values; relay spec gains the joiner READY click;
    **dist/ rebuilt in the same change**.
 6. **Wire-byte tests**: test_net_transport.cpp:240, :829-830;
    test_input_state_net.cpp:133, :149; min-size constants 61/17; snapshot v9 / replay

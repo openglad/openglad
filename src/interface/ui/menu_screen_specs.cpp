@@ -1024,8 +1024,8 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .nav = {.up = 8, .right = 9},
      .art_family = FAMILY_WRENCH},
     // §2.1 index 11 (appended at the table END): the LOAD half of the split.
-    // Opens the load flow (Company List — the legacy load-slots screen until
-    // WP3's Company List screen lands). Gated on company existence with
+    // Opens the §2.3 Company List engine screen (CreateLoadMenu intercept ->
+    // LoadGame -> show_company_list). Gated on company existence with
     // CONTINUE.
     {.id = "load_company", .label = "LOAD",
      .x = 152, .y = 75, .w = 68, .h = 20,

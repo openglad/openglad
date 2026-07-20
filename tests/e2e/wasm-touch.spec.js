@@ -25,9 +25,10 @@ const {
 const YES_BUTTON = { x: 95, y: 140 };
 const OK_BUTTON = { x: 160, y: 140 };
 
-// Main-menu CONTINUE and the team-build NETWORKING button (both on the
-// 320x200 grid; same coords the wasm-networking spec navigates with).
-const CONTINUE_BUTTON = { x: 150, y: 85 };
+// Main-menu CONTINUE — center of the (80,75,68,20) CONTINUE half after the
+// CONTINUE | LOAD split — and the team-build NETWORKING button (both on the
+// 320x200 grid; same coords the wasm helpers navigate with; §2.10 ledger).
+const CONTINUE_BUTTON = { x: 114, y: 85 };
 const NETWORKING_BUTTON = { x: 250, y: 150 };
 const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
 const TEAM_BUILD_NETWORKING_REGION = { x: 210, y: 140, w: 80, h: 20 };
@@ -634,7 +635,7 @@ test.describe('Touch gameplay controls', () => {
       .toBe(false);
 
     // CONTINUE on the main menu, then GO on the team-build menu — all taps.
-    await tapCanvasGameCoord(page, 150, 85);
+    await tapCanvasGameCoord(page, CONTINUE_BUTTON.x, CONTINUE_BUTTON.y);
     await page.waitForTimeout(1_500);
     await tapCanvasGameCoord(page, 250, 107);
     // Level load ends on the blocking SCENARIO INFORMATION dialog
