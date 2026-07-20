@@ -2128,8 +2128,13 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::Teams,
                 {.kind = Kind::Engine, .spec = &teams_menu_screen_spec()});
             // NETWORKING is owned by the SdlPickerClient state machine
-            // (configure_networking is a client method); it migrates last,
-            // under valve V2.
+            // (configure_networking is a client method) and stays LEGACY:
+            // valve V2 was exercised at Layer E closeout — the
+            // retvalue-as-action-id dispatch, the staged-commit room-list
+            // frame phases, and the web/native positional index fork all
+            // resist the skeleton (docs/menu-engine.md "V2 decision
+            // record"; pinned by
+            // MenuEngine.networking_stays_legacy_v2_decision).
             set(MenuScreenId::Networking, {.kind = Kind::Legacy});
             return table;
         }();

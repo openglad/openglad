@@ -1,7 +1,9 @@
 # Menu engine (MenuScreen Runtime)
 
-Status: Layer E in progress (invisible re-host of the legacy picker screens;
-design: `docs/company-basecamp-design.md` §1). This document is the G4
+Status: Layer E COMPLETE (invisible re-host of the legacy picker screens;
+design: `docs/company-basecamp-design.md` §1). Every registry screen is
+engine-hosted except NETWORKING, which stays legacy under scope-down valve
+V2 — see the "V2 decision record" section. This document is the G4
 contract: the calling conventions every menu loop obeys, the migration
 recipe, the loop-obligations checklist, and the permanent record of why
 auto-derived nav is proof-gated.
@@ -29,7 +31,7 @@ window. Keep this table in sync with the registry:
 | View level | **Engine** | `view_scenario_menu_screen_spec()` via `create_view_scenario_menu()` (`exit_on_redraw`; pager visibility = state override over the wrapper's PageModel, nav closure = rewire; the page-step stash is consumed by `consume_click` at the legacy frame point; pre-loop mount/load popup guards stay in the wrapper) |
 | Scenario | **Engine** | `scenario_menu_screen_spec()` via `create_scenario_menu()` (host gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard; the wrapper folds BACK's MENU_EXIT unless a start was selected) |
 | TEAMS | **Engine** | `teams_menu_screen_spec()` via `create_teams_menu()` (`exit_on_redraw`; the Rewire program replays the legacy compute+sync+trace verbatim from picker_team_build.cpp; row bars draw beneath the buttons in `draw_background`; the reload guard sits in `frame_tick` — one frame later than the legacy loop-top reload, the flows poll with timeouts) |
-| NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
+| NETWORKING | **Legacy (final for Layer E)** | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2 EXERCISED — see the "V2 decision record" section; pinned by `MenuEngine.networking_stays_legacy_v2_decision`) |
 
 ## Calling conventions (unchanged by the engine)
 
@@ -105,8 +107,9 @@ Per §1.4, transcribed from the canonical legacy loops:
 ## Loop-obligations checklist
 
 Any NEW cross-cutting obligation added to the engine must also be swept
-manually across every screen still in the Legacy column above (that is the
-cost of the migration window — this list is the reminder):
+manually across every screen still in the Legacy column above — after the
+Layer E closeout that column is exactly NETWORKING (that is the cost of the
+V2 valve — this list is the reminder):
 
 - [x] lobby poll (`polls_lobby` / per-loop `picker_lobby_poll()`)
 - [x] remote-start preemption (scope checkers
@@ -120,17 +123,81 @@ cost of the migration window — this list is the reminder):
 - [x] dual-label-surface writes (engine label pass / legacy per-callback +
       per-frame writes)
 - [x] visibility + nav rewire + `ensure_highlighted_button_visible`
-- [ ] level-reload guard (`last_level_id` vs `save.scen_num`) — legacy
-      screens that read the loaded world carry their own; engine screens
-      will use `frame_tick`
+- [x] level-reload guard (`last_level_id` vs `save.scen_num`) — engine
+      screens that read the loaded world carry it in `frame_tick`
+      (team build, SCENARIO, TEAMS); NETWORKING does not read the loaded
+      world
 - [ ] G12 `autosave_on_mutation` / `ready_reset_on_mutation` — Layer F
       flags, dormant until the company/ready features land
 
 Scope-down valves: **V1** — a screen whose injector tests disagree with the
 normalized frame ordering keeps a per-screen FramePlan replaying its legacy
-order (budget: ~3 screens, else re-derive the skeleton). **V2** —
-networking's outer retvalue-as-action-id state machine stays in
-SdlPickerClient; only its inner loop migrates, and only if identity holds.
+order (budget: ~3 screens, else re-derive the skeleton; final tally: ZERO
+FramePlans — no injector disagreed). **V2** — networking's outer
+retvalue-as-action-id state machine stays in SdlPickerClient; only its inner
+loop migrates, and only if identity holds. V2 was EXERCISED at Layer E
+closeout: identity could not be met, networking stays legacy this pass (the
+decision record below).
+
+## V2 decision record: NETWORKING stays legacy (2026-07-20, Layer E final)
+
+`SdlPickerClient::configure_networking` (picker.cpp) was evaluated against
+the frame skeleton at the step-7 migration slot. Decision: **stay legacy**,
+the design-sanctioned V2 outcome. All three resistance factors §1.4 names
+are structurally present:
+
+1. **The retvalue-as-action-id dispatch IS the inner loop.** The loop's
+   retvalue carries `ButtonAction` values (EditNetworkAddress / EditNetworkPort
+   / ToggleNetworkRoomCode / EditNetworkRoomCode / SubmitNetworkHost /
+   SubmitNetworkJoin / JoinRelayRoomListEntry) consumed by a switch that
+   calls ~10 private `SdlPickerClient` members (`networking_settings_`,
+   `relay_rooms_`, `prompt_for_string`, `submit_network_host/join`, the
+   begin/cancel/refresh/poll/commit relay room-list machinery) and RETURNS
+   `true` out of the member function mid-loop on successful submits. There
+   is no separable "outer" machine to leave behind: hosting the screen means
+   a `consume_click` hook that is the entire legacy switch plus an exported
+   bridge to the private state — a relabel, not a unification. The MENU_*
+   retvalue contract (`reset_buttons` consumption) never held on this
+   screen.
+2. **The staged-commit room-list contract needs frame phases the runner
+   does not have.** (a) A pre-input phase:
+   `ensure_relay_room_list_view_is_current()`, sampling
+   `room_update_was_pending`, and `poll_relay_room_list_request()` all run
+   BEFORE input sampling, so a completion observed in the current frame
+   stays staged until the next (clicks dispatch against the labels they
+   were aimed at). The runner's first phase is the lobby poll; there is no
+   pre-input hook. (b) The refresh-on-idle gate reads the raw
+   `leftmouse() != 0` pointer-sample flag — a click that lands on NO button
+   must still suppress that frame's refresh — and the runner exposes
+   pointer-sample state to no hook. Both would be engine distortions
+   serving exactly one screen, against behavior pinned as race-correctness
+   (NetworkingMenu.room_click_during_refresh_joins_the_visible_snapshot: a
+   queued click must join the row that was VISIBLE when clicked, not the
+   just-fetched reorder). A split where the runner exits per action and the
+   client re-enters also fails identity: re-entry re-inits buttons and
+   resets the persistent keyboard highlight the legacy loop keeps across
+   actions.
+3. **The web/native fork is positional, not just row-gated.** The two
+   `k_networking_menu_buttons` tables have different row SETS and different
+   indices for the same ids (native: back 0, ip 1, port 2, toggle 3,
+   room_value 4, host 5, join 6, rooms 7-11; web: back 0, room_value 1,
+   host 2, join 3, rooms 4-8) with per-build `kNetworkingMenu*Index`
+   constants. `MenuBuildGate` filtering is index-safe only when surviving
+   indices agree across variants (the main-menu quit/help precedent); G9
+   id-keyed nav is not implemented. A single spec is impossible without G9;
+   two spec tables would deduplicate nothing.
+
+Consequences while it stays legacy: the loop-obligations checklist applies
+to exactly this one loop — any NEW cross-cutting obligation must be added
+to `configure_networking` by hand. It polls the lobby every frame; it has
+NO remote-start check (same 10a-fidelity class as the options family's
+deleted legacy loops — a joiner parked here launches when the screen exits
+into a checking loop); the Layer-F G12 obligations do not touch this
+screen. Revisit trigger: if G9 id-keyed nav plus a runner pre-input phase
+ever land for another consumer, re-evaluate — and migrate only with the
+NetworkingMenu race suite unchanged as the identity oracle. The registry
+pin `MenuEngine.networking_stays_legacy_v2_decision` must be flipped in the
+same commit as any future migration.
 
 ## Migration recipe (per screen, one commit each)
 
@@ -193,9 +260,11 @@ runtime route-around resolver for NEW screens' gating.
   surfaces every frame) but stays: test_picker_funcs pins it directly, and
   WP1 may not re-pin. Its G8 deletion belongs to the Layer-F main-menu
   reshape commit, atomically with that re-pin.
-- `RowTemplateSpec`/PageModel (§1.7) are declared but undefined; G6 requires
-  proving PageModel against the VIEW LEVEL pager before the company list
-  may depend on it.
+- `PageModel` is implemented (menu_binding.{h,cpp}) and PROVEN against the
+  pinned VIEW LEVEL pager (the G6 differential oracle in
+  tests/unit/test_menu_spec.cpp); the VIEW LEVEL screen runs on it. The
+  company list may now depend on it. `RowTemplateSpec` (§1.7) remains a
+  forward declaration until a Layer-F screen needs it.
 - Engine tests live in `og_test_menu_engine` (fast group) and
   `tests/unit/test_menu_spec.cpp`; never add engine tests to
   og_test_menu_ui (G10).

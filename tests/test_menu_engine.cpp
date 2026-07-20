@@ -1301,3 +1301,39 @@ TEST(MenuEngine, graphics_fx_depth_row_drift_pin_and_label_binding)
     }
     cfg.apply_setting("effects", "depth_fx", start);
 }
+
+// ---------------------------------------------------------------------------
+// Valve V2 decision record (Layer E closeout): NETWORKING stays LEGACY.
+// configure_networking's loop is a retvalue-as-action-id dispatch over
+// private SdlPickerClient state, its staged-commit room-list contract needs
+// frame phases the runner deliberately does not have (a pre-input poll and
+// the raw pointer-sample idle gate — both pinned by the NetworkingMenu race
+// flows), and the web/native tables fork positional indices, which
+// MenuBuildGate cannot express until G9 id-keyed nav exists. Full rationale:
+// docs/menu-engine.md "V2 decision record". This pin makes the decision
+// explicit: the screen is state-machine-owned (no spec, no legacy_entry).
+// Whoever migrates it later must flip this pin in the same commit, with the
+// NetworkingMenu suite unchanged as the identity oracle.
+TEST(MenuEngine, networking_stays_legacy_v2_decision)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Networking);
+    EXPECT_EQ(og::ui::MenuScreenHost::Kind::Legacy, host.kind)
+        << "NETWORKING migrates only with G9 id-keyed nav + runner pre-input "
+           "phases; see docs/menu-engine.md V2 decision record";
+    EXPECT_EQ(nullptr, host.spec);
+    EXPECT_EQ(nullptr, host.legacy_entry)
+        << "owned by the SdlPickerClient state machine, not a free entry fn";
+
+    // Every OTHER registry row is engine-hosted: Layer E is complete, and a
+    // new MenuScreenId added without a host assignment fails here.
+    for (int i = 0; i < static_cast<int>(og::ui::MenuScreenId::Count); ++i) {
+        const auto id = static_cast<og::ui::MenuScreenId>(i);
+        if (id == og::ui::MenuScreenId::Networking)
+            continue;
+        const og::ui::MenuScreenHost& other = og::ui::menu_screen_host(id);
+        EXPECT_EQ(og::ui::MenuScreenHost::Kind::Engine, other.kind)
+            << "screen ordinal " << i;
+        EXPECT_NE(nullptr, other.spec) << "screen ordinal " << i;
+    }
+}

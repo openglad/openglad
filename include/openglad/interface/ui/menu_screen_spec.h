@@ -232,7 +232,8 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // G4 registry: which system owns each picker screen during the migration
 // window. Engine screens carry their spec; legacy screens carry their
 // blocking entry point (nullptr when the screen is owned by the
-// SdlPickerClient state machine, e.g. NETWORKING before valve V2).
+// SdlPickerClient state machine — NETWORKING, legacy by the exercised V2
+// valve; docs/menu-engine.md "V2 decision record").
 enum class MenuScreenId : std::uint8_t {
     MainMenu,
     TeamBuild,
