@@ -164,7 +164,9 @@ void picker_prepare_async_team_build_start_request()
 #endif
 }
 
-static bool team_build_remote_start_requested(Sint32& retvalue)
+// Non-static: the menu engine's RemoteStartScope::TeamBuildScope check
+// (run_menu_screen) calls this too; declared in picker_sdl_defs.h.
+bool team_build_remote_start_requested(Sint32& retvalue)
 {
     if (!g_start_game_requested || !picker_lobby_has_game_start_config())
         return false;

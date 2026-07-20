@@ -231,6 +231,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
@@ -489,6 +491,8 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
@@ -2068,6 +2072,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2338,6 +2343,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # as the engine lands, tests/test_menu_engine.cpp.
         og_add_test_group(og_test_menu_engine FILES
             test_menu_pins.cpp
+            test_menu_engine.cpp
         )
 
         og_add_test_group(og_test_input FILES

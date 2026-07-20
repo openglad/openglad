@@ -1898,25 +1898,8 @@ static const button k_scenariomenu_buttons[] =
         button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 210, 100, 80, 15, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=2, .down=0, .left=4}),
     };
 
-// DIFFICULTY subscreen (run_difficulty_menu): the main-menu DIFFICULTY door
-// opens this blocking screen. One centered 140px column (23-char label budget
-// at 6px/char; the widest label, "Difficulty: Slaughter", is 21) on the FX
-// subscreen row pitch; nav is a vertical cycle through BACK. Static labels are
-// the default-state formatter outputs; run_difficulty_menu() re-derives every
-// row from session/save each frame (a lobby can rewrite the save under the
-// open menu). BACK id is unique ("difficulty_back") because injector flows
-// disambiguate screens by button id; the cycling rows keep their menu-model
-// ids ("difficulty" is shared with the main-menu door, which is never live at
-// the same time).
-static const button k_difficulty_menu_buttons[] =
-    {
-        button("difficulty_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=5, .down=1}),
-        button("difficulty", "Difficulty: Battle", KEYSTATE_UNKNOWN, 90, 35, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=0, .down=2}),
-        button("respawn_mode", "Respawns: Off", KEYSTATE_UNKNOWN, 90, 58, 140, 15, button_action_id(ButtonAction::CycleRespawnMode), -1, MenuNav{.up=1, .down=3}),
-        button("respawn_delay", "Spawn Delay: Normal", KEYSTATE_UNKNOWN, 90, 81, 140, 15, button_action_id(ButtonAction::CycleRespawnDelay), -1, MenuNav{.up=2, .down=4}),
-        button("permadeath", "Permadeath: On", KEYSTATE_UNKNOWN, 90, 104, 140, 15, button_action_id(ButtonAction::TogglePermadeath), -1, MenuNav{.up=3, .down=5}),
-        button("generator_rate", "Generators: Normal", KEYSTATE_UNKNOWN, 90, 127, 140, 15, button_action_id(ButtonAction::CycleGeneratorRate), -1, MenuNav{.up=4, .down=0}),
-    };
+// DIFFICULTY subscreen: engine-hosted — spec, accessor shim, and
+// run_difficulty_menu live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 namespace
 {
@@ -2204,17 +2187,9 @@ int picker_scenariomenu_button_count()
     return static_cast<int>(pks().scenariomenu_buttons.size());
 }
 
-button* picker_difficulty_menu_buttons()
-{
-    reset_mutable_button_layout(pks().difficulty_menu_buttons, k_difficulty_menu_buttons);
-    return pks().difficulty_menu_buttons.data();
-}
-
-int picker_difficulty_menu_button_count()
-{
-    return static_cast<int>(pks().difficulty_menu_buttons.size());
-}
-
+// picker_difficulty_menu_buttons()/picker_difficulty_menu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 void view_team(short left, short top, short right, short bottom)
 {
@@ -2736,82 +2711,8 @@ bool picker_main_scope_remote_start_requested(int32_t& retvalue)
     return true;
 }
 
-// Blocking DIFFICULTY subscreen (the main-menu DIFFICULTY door): session
-// difficulty plus the SaveData match rules (respawns, respawn delay,
-// permadeath, generator rate). Same loop shape as run_fx_options_screen, but
-// every row's label is re-derived from session/save each frame instead of a
-// cfg toggle draw — an open lobby can rewrite the save under this menu.
-Sint32 run_difficulty_menu()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    // Sequence the accessors: the count reads the vector the buttons
-    // accessor populates.
-    button* buttons = picker_difficulty_menu_buttons();
-    const int num_buttons = picker_difficulty_menu_button_count();
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-    sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
-
-    Sint32 retvalue = 0;
-    while(!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        // A host GO must launch a joiner parked in this subscreen: propagate
-        // MENU_EXIT (with CONTINUE selected) instead of a local BACK's
-        // MENU_REDRAW so mainmenu() unwinds too.
-        Sint32 remote_start = 0;
-        if (picker_main_scope_remote_start_requested(remote_start))
-            return remote_start;
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        // Host gating can flip mid-screen (connection loss, lobby changes):
-        // re-sync visibility and the BACK nav cycle every frame, like the
-        // teams menu does.
-        sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
-
-        // Per-frame label re-derive from session/save for every settings row
-        // (both surfaces: the mutable descriptor row and the live vbutton).
-        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        buttons[kDifficultyMenuDifficultyIndex].label =
-            og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
-        buttons[kDifficultyMenuRespawnModeIndex].label = og::ui::format_respawn_mode_label(save);
-        buttons[kDifficultyMenuRespawnDelayIndex].label = og::ui::format_respawn_delay_label(save);
-        buttons[kDifficultyMenuPermadeathIndex].label = og::ui::format_permadeath_label(save);
-        buttons[kDifficultyMenuGeneratorRateIndex].label = og::ui::format_generator_rate_label(save);
-        for (int i = kDifficultyMenuDifficultyIndex; i < num_buttons; ++i)
-        {
-            if (og::runtime::current_session->allbuttons_[i] != nullptr)
-                og::runtime::current_session->allbuttons_[i]->label = buttons[i].label;
-        }
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", "DIFFICULTY");
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
+// run_difficulty_menu(): engine-hosted (menu_screen_specs.cpp drives it
+// through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
 
 Sint32 main_options()
 {

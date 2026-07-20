@@ -243,7 +243,7 @@ inline constexpr int kDisplayMenuZoomIndex = 5;
 inline constexpr int kDisplayMenuSmoothingIndex = 6;
 
 // --- DIFFICULTY subscreen layout contract -----------------------------------
-// Positional indices into k_difficulty_menu_buttons /
+// Positional indices into the engine spec rows (menu_screen_specs.cpp) /
 // picker_difficulty_menu_buttons(). Single 140px column (23-char label budget
 // at 6px/char); every row's label is re-derived per frame from session/save.
 inline constexpr int kDifficultyMenuBackIndex = 0;
@@ -267,3 +267,9 @@ void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
 // main-menu-scope sibling). Returns true and sets retvalue to MENU_EXIT when
 // the start should preempt the current loop.
 bool picker_main_scope_remote_start_requested(int32_t& retvalue);
+
+// The team-build-scope sibling (defined in picker_team_build.cpp): selects
+// TeamBuild START GAME and sets retvalue to MENU_EXIT when a remote (host)
+// start must preempt the current loop. Used by the team-build family loops
+// and the menu engine's RemoteStartScope::TeamBuildScope obligation.
+bool team_build_remote_start_requested(int32_t& retvalue);

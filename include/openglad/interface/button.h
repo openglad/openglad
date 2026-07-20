@@ -336,6 +336,14 @@ enum class ButtonAction : Sint32
     // NETWORKING subscreen ACTIVE GAMES list: one row per live relay room
     // (arg = list slot 0..4); clicking a row joins that room immediately.
     JoinRelayRoomListEntry = 100,
+    // Generic engine-row dispatch (menu engine, docs/menu-engine.md): arg =
+    // materialized row ordinal. The ONE ButtonAction the engine adds — every
+    // new-screen spec row routes through it (zero further enum burn), and a
+    // nonzero myfun keeps every engine row keyboard-live. do_call mirrors the
+    // stash-and-return pattern of 100. NOTE: 101 & MENU_EXIT != 0, so
+    // run_menu_screen MUST consume the stash and rewrite retvalue before its
+    // loop-condition test (the retvalue-collision discipline).
+    MenuSpecRow = 101,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

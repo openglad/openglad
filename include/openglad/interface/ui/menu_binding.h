@@ -44,7 +44,7 @@ struct MenuLabelContext {
 using LabelFormatter = std::string (*)(const MenuLabelContext&);
 
 struct LabelBinding {
-    std::string_view fixed;
+    std::string_view fixed{};
     LabelFormatter formatter = nullptr;
 };
 
@@ -60,7 +60,7 @@ enum class MenuGate : std::uint8_t {
 struct GateBinding {
     MenuGate gate = MenuGate::Always;
     bool (*custom)(const MenuLabelContext&) = nullptr;
-    std::string_view guard_message;  // terminals: shown on activate when gated
+    std::string_view guard_message{};  // terminals: shown on activate when gated
 };
 
 // Row visibility produced by a gate: Hidden rows leave the surface entirely;

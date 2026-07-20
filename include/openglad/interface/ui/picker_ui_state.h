@@ -125,4 +125,9 @@ struct PickerState {
     // JoinRelayRoomListEntry dispatch (-1 = none). Set in vbutton::do_call,
     // consumed by configure_networking's menu loop.
     int networking_clicked_room_slot = -1;
+
+    // Engine screens: spec row activated by the last ButtonAction::MenuSpecRow
+    // dispatch (-1 = none). Set in vbutton::do_call; run_menu_screen MUST
+    // consume it every frame (TESTING-enforced retvalue-zero discipline).
+    int menu_spec_clicked_row = -1;
 };
