@@ -538,6 +538,10 @@ TEST(SaveLoadTeam, merge_owned_guys_keep_fallen_preserves_died_slot) {
     EXPECT_EQ(8000u, merged.team_list[2]->exp);
 
     scr->save_data.reset();
+    // reset() deliberately preserves the negotiated match settings (the v10+
+    // precedent), so restore the flag this test set or it leaks into any
+    // later test that writes save0 under --gtest_shuffle.
+    scr->save_data.keep_fallen_heroes = 0;
 }
 
 // The real networked flow keeps each peer's private roster in save0 before the
@@ -597,6 +601,10 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
 
     scr->world().delete_objects();
     scr->save_data.reset();
+    // reset() deliberately preserves the negotiated match settings (the v10+
+    // precedent), so restore the flag this test set or it leaks into any
+    // later test that writes save0 under --gtest_shuffle.
+    scr->save_data.keep_fallen_heroes = 0;
 }
 
 TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
