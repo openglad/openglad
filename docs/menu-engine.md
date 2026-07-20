@@ -264,11 +264,15 @@ runtime route-around resolver for NEW screens' gating.
   tests/unit/test_menu_spec.cpp); the VIEW LEVEL screen runs on it, and the
   Layer-F Company List (§2.3, `company_list_menu_screen_spec()` — entered
   from the main-menu LOAD door via `IPickerClient::show_company_list`, not
-  the registry) pages on it. `RowTemplateSpec` (§1.7) remains a forward
-  declaration until a Layer-F screen needs it — the Company List's dynamic
-  rows are a FIXED 33-row table (10 row/BK/X triples + chrome) whose
-  per-frame rewire windows them over the PageModel, so stable ids
-  (`company_row_0`..) come free and no template machinery was required.
+  the registry) pages on it, as does its nested Backups sub-view (§2.4,
+  `company_backups_menu_screen_spec()` — entered from the list's BK door via
+  `run_company_backups_screen`, the difficulty-from-main-menu
+  nested-engine-screen precedent). `RowTemplateSpec` (§1.7) remains a
+  forward declaration until a Layer-F screen needs it — the Company List's
+  dynamic rows are a FIXED 33-row table (10 row/BK/X triples + chrome), the
+  Backups sub-view's a fixed 13-row table, and each screen's per-frame
+  rewire windows them over the PageModel, so stable ids (`company_row_0`..,
+  `backup_row_0`..) come free and no template machinery was required.
 - Engine tests live in `og_test_menu_engine` (fast group) and
   `tests/unit/test_menu_spec.cpp`; never add engine tests to
   og_test_menu_ui (G10).

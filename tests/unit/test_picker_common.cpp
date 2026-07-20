@@ -2868,3 +2868,101 @@ TEST(CompanyFormat, row_line_joins_columns_for_terminals)
     EXPECT_EQ("  IRON KETTLE BAND   -- CORRUPT",
               og::ui::format_company_row_line(info, false));
 }
+
+// --- §2.4 Backups sub-view formatters --------------------------------------
+
+TEST(BackupFormat, list_title_carries_the_retention_display)
+{
+    // The "/20" IS the §2.4 retention display.
+    static_assert(og::data::kCompanyBackupRetention == 20);
+    EXPECT_EQ("BACKUPS: IRON KETTLE BAND (3/20)",
+              og::ui::format_backup_list_title("IRON KETTLE BAND", 3));
+    EXPECT_EQ("BACKUPS:  (0/20)", og::ui::format_backup_list_title("", 0));
+    // Over-long names clip to the 18-char cap like every other surface.
+    EXPECT_EQ("BACKUPS: ABCDEFGHIJKLMNOPQR (20/20)",
+              og::ui::format_backup_list_title("ABCDEFGHIJKLMNOPQRSTU", 20));
+}
+
+TEST(BackupFormat, row_columns_level_tag_and_utc_datetime)
+{
+    og::data::CompanyBackupInfo info;
+    info.slot = "iron-kettle-band";
+    info.seq = 7;
+    info.filename = "iron-kettle-band.007.gtl";
+    info.header.slot = "iron-kettle-band";
+    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.scen_num = 7;
+    info.header.valid = true;
+    // 1970-01-01T23:59:59Z: pins BOTH that the format is "MM-DD HH:MM" and
+    // that it is UTC (any timezone offset would move the day or the hour).
+    info.header.last_played_unix_s = 86399;
+
+    og::ui::BackupRowText row = og::ui::format_backup_row(info);
+    EXPECT_FALSE(row.corrupt);
+    // No mounted-campaign match (the level_display_guarded rule): bare tag.
+    // (The mounted-title branch is pinned in og_test_basecamp where a real
+    // mount exists.)
+    EXPECT_EQ("L7", row.level);
+    EXPECT_EQ("01-01 23:59", row.saved);
+
+    // Unstamped snapshots (a pre-v14 company backed up before any stamp)
+    // carry no saved column at all.
+    info.header.last_played_unix_s = 0;
+    EXPECT_EQ("", og::ui::format_backup_row(info).saved);
+    // Out-of-calendar values never wrap into a bogus in-range datetime.
+    info.header.last_played_unix_s = 999999999999999;
+    EXPECT_EQ("", og::ui::format_backup_row(info).saved);
+
+    // Corrupt snapshots mark themselves instead of level context they never
+    // parsed (§2.4 corrupt-backup rows).
+    info.header.valid = false;
+    row = og::ui::format_backup_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ("CORRUPT", row.level);
+    EXPECT_EQ("--", row.saved);
+}
+
+// §2.4 terminal projection: both terminal clients print the SAME joined
+// backup line (level tag padded to a 20-char column, then the saved
+// datetime).
+TEST(BackupFormat, row_line_joins_columns_for_terminals)
+{
+    og::data::CompanyBackupInfo info;
+    info.slot = "iron-kettle-band";
+    info.seq = 3;
+    info.filename = "iron-kettle-band.003.gtl";
+    info.header.slot = "iron-kettle-band";
+    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.scen_num = 12;
+    info.header.valid = true;
+    info.header.last_played_unix_s = 86399;
+
+    EXPECT_EQ("L12                  01-01 23:59",
+              og::ui::format_backup_row_line(info));
+
+    // Unstamped: the saved column is omitted entirely (no trailing pad).
+    info.header.last_played_unix_s = 0;
+    EXPECT_EQ("L12", og::ui::format_backup_row_line(info));
+
+    // Corrupt rows join the "CORRUPT"/"--" markers.
+    info.header.valid = false;
+    EXPECT_EQ("CORRUPT              --",
+              og::ui::format_backup_row_line(info));
+}
+
+TEST(BackupFormat, restore_error_strings)
+{
+    using E = og::data::CompanyRestoreError;
+    EXPECT_STREQ("", og::ui::company_restore_error_string(E::None));
+    EXPECT_STREQ("BACKUP FILE DAMAGED",
+                 og::ui::company_restore_error_string(E::InvalidBackup));
+    EXPECT_STREQ("COULD NOT BACK UP CURRENT STATE",
+                 og::ui::company_restore_error_string(
+                     E::PreRestoreBackupFailed));
+    EXPECT_STREQ("COPY FAILED - COMPANY UNCHANGED",
+                 og::ui::company_restore_error_string(E::CopyFailed));
+    EXPECT_STREQ("RELOAD FAILED - REWIND UNDONE",
+                 og::ui::company_restore_error_string(E::ReloadFailed));
+    EXPECT_STREQ("REWOUND, BUT THE TIMESTAMP WRITE FAILED",
+                 og::ui::company_restore_error_string(E::RestampFailed));
+}

@@ -114,6 +114,8 @@ struct PickerState {
     std::vector<button> name_entry_buttons;
     // §2.3 Company List (Load) — Layer F engine screen.
     std::vector<button> company_list_buttons;
+    // §2.4 Backups sub-view (per company) — Layer F engine screen.
+    std::vector<button> company_backups_buttons;
 
     // TEAMS subscreen: roster slot selected by the local guy-cycling row.
     int teams_menu_guy_slot = 0;

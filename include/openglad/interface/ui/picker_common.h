@@ -394,6 +394,41 @@ CompanyRowText format_company_row(const og::data::CompanyInfo& info);
 std::string format_company_row_line(const og::data::CompanyInfo& info,
                                     bool active);
 
+// --- Backups sub-view: label formatters (design §2.4) ---
+
+// "BACKUPS: <name <= 18ch> (N/20)" — the §2.4 title line. The "/20"
+// (kCompanyBackupRetention) IS the retention display: the user sees how full
+// the ring is. `company_name` is clipped to kCompanyNameMaxLen.
+std::string format_backup_list_title(const std::string& company_name,
+                                     int count);
+
+// One §2.4 backup row, pre-split into the two drawn columns (the SDL content
+// pass draws them at x=27/151; terminals join them).
+struct BackupRowText {
+    // "L<nn>" plus the level title (<= 14 chars) when it is resolvable: the
+    // title comes off the MOUNTED package (the level_display_guarded rule),
+    // so a backup pointing at an unmounted campaign shows the bare "L<nn>".
+    // The "Level N" fallback title is dropped (redundant with L<nn>).
+    // "CORRUPT" on corrupt snapshots — the §2.4 corrupt-backup marking.
+    std::string level;
+    // "MM-DD HH:MM" (UTC — deterministic like the §2.3 date column) from the
+    // snapshot header's last_played; "" when the snapshot predates any stamp;
+    // "--" on corrupt snapshots.
+    std::string saved;
+    bool corrupt = false;
+};
+BackupRowText format_backup_row(const og::data::CompanyBackupInfo& info);
+
+// One §2.4 row joined into a single line for the terminal clients (both must
+// stay byte-identical): "<level padded to 20> <saved>"; the saved column is
+// omitted entirely when empty, so unstamped rows carry no trailing spaces.
+std::string format_backup_row_line(const og::data::CompanyBackupInfo& info);
+
+// Human-readable string for CompanyRestoreError values (§3.7 [SAVE-R3]).
+// RestampFailed is worded as the partial success it is: the rewind itself
+// finished, only the timestamp write failed.
+const char* company_restore_error_string(og::data::CompanyRestoreError error);
+
 // Outcome of CONTINUE (§2.1): the caller acts on failures (the SDL surface
 // keeps whatever is loaded rather than silently swapping in a broken file).
 enum class ContinueResult {

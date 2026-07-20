@@ -743,7 +743,7 @@ bool seed_headless_company(const std::string& slot, const std::string& name,
 // row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
 // row refuses to switch, deleting the ACTIVE company refuses with
 // switch-first, deleting another company needs the explicit "y" (NO-first),
-// and the §2.4 backups chrome answers with its stub until the next stage.
+// and the §2.4 backups chrome backs out of a company with no snapshots yet.
 TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 {
     restore_default_campaigns(); // order-independent: install the packages
@@ -775,7 +775,8 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "3\n"       //   list: delete company...
         "2\n"       //     #2 = wp3hla...
         "y\n"       //     explicit yes -> deleted
-        "2\n"       //   list: backups (stub until the next WP3 stage)
+        "2\n"       //   list: backups...
+        "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
         "11\n";     // main: quit
 
@@ -797,6 +798,93 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         << "the explicit yes must delete the other company";
     EXPECT_TRUE(user_file_exists("save/wp3hlc.gtl"))
         << "the corrupt company is never opened OR deleted here";
+}
+
+// The §2.4 Backups sub-view (text projection): snapshots list newest-first,
+// a corrupt snapshot refuses restore up front, delete and restore are both
+// NO-first ("y" only), and a successful restore rewinds the company,
+// repoints the terminal slot ([SAVE-R2]), re-stamps last-played, and
+// proceeds to team build (base camp).
+TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    HeadlessSaveDirSandbox sandbox;
+    // OLD (seq 1) and MID (seq 2) snapshots under a NEW current state, plus
+    // a corrupt snapshot at seq 9 (bad magic, sorts first: seq desc).
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "OLD BAND", 5000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3hlr"));
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "MID BAND", 5500));
+    ASSERT_TRUE(og::data::backup_company_now("wp3hlr"));
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "NEW BAND", 6000));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream corrupt(backups_dir / "wp3hlr.009.gtl",
+                              std::ios::binary | std::ios::trunc);
+        corrupt << "not a backup";
+        ASSERT_TRUE(corrupt.good());
+    }
+    og::data::set_company_clock_for_tests(444444);
+
+    // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
+    // 3 = seq 1 (OLD).
+    const std::string input =
+        "12\n"      // main: load company -> the company list
+        "2\n"       //   list: backups...
+        "1\n"       //     #1 = wp3hlr (the only company)
+        "1\n"       //     backups: restore...
+        "1\n"       //       #1 = seq 9 corrupt -> damaged, no confirm
+        "2\n"       //     backups: delete...
+        "2\n"       //       #2 = seq 2 (MID)...
+        "\n"        //       blank confirm = NO (NO-first) -> kept
+        "2\n"       //     backups: delete...
+        "2\n"       //       #2 = seq 2 again...
+        "y\n"       //       explicit yes -> deleted
+        "1\n"       //     backups: restore... (rows now: seq 9, seq 1)
+        "2\n"       //       #2 = seq 1 (OLD)...
+        "\n"        //       blank confirm = NO -> not restored
+        "1\n"       //     backups: restore...
+        "2\n"       //       #2 = seq 1 (OLD)...
+        "y\n"       //       explicit yes -> rewound -> team build
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    og::data::set_company_clock_for_tests(std::nullopt);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("wp3hlr", config.save_name)
+        << "[SAVE-R2] a restore repoints the terminal slot";
+
+    // The slot file holds the rewound OLD state, re-stamped by the pinned
+    // clock (§3.7 step 4).
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("wp3hlr");
+    ASSERT_TRUE(header && header->valid);
+    EXPECT_EQ("OLD BAND", header->display_name);
+    EXPECT_EQ(444444, header->last_played_unix_s);
+
+    // Snapshots after the round trip: the pre-restore NEW state became the
+    // newest (seq max+1 = 10), the corrupt seq 9 survives untouched, MID
+    // (seq 2) was explicitly deleted, OLD (seq 1) survives its own restore.
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3hlr");
+    ASSERT_EQ(3u, backups.size());
+    EXPECT_EQ(10, backups[0].seq);
+    EXPECT_EQ("NEW BAND", backups[0].header.display_name)
+        << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+    EXPECT_EQ(9, backups[1].seq);
+    EXPECT_FALSE(backups[1].header.valid);
+    EXPECT_EQ(1, backups[2].seq);
 }
 
 // Packs a one-file .glad (campaign.yaml with the given title) into the user

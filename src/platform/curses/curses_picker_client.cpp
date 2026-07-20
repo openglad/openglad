@@ -333,6 +333,22 @@ int prompt_company_index(Menu& menu, int count, std::string_view title)
     return *choice - 1;
 }
 
+// §2.4: prompt for a 1-based backup row number; -1 on cancel/invalid.
+int prompt_backup_index(Menu& menu, int count, std::string_view title)
+{
+    bool accepted = false;
+    const std::string entered = menu.prompt(title,
+        std::format("Backup # [1-{}]: ", count), "1", accepted);
+    if (!accepted)
+        return -1;
+    const auto choice = parse_int_strict(entered);
+    if (!choice || *choice < 1 || *choice > count) {
+        menu.show_text(title, {"Invalid backup selection."});
+        return -1;
+    }
+    return *choice - 1;
+}
+
 // --- team views: roster / hire / train -----------------------------------
 
 void view_team_roster(Menu& menu, const SaveData& save)
@@ -1119,12 +1135,17 @@ bool CursesPickerClient::show_company_list()
             assert_company_slot_authority(); // [SAVE-R2]
             break;
         }
-        case PickerMenuCommand::OpenCompanyBackups:
-            // §2.4 lands in the next WP3 stage; the chrome command is
-            // already shared so the flow re-pins once, not twice.
-            menu.show_text("Backups",
-                {"The backups view is not available yet."});
+        case PickerMenuCommand::OpenCompanyBackups: {
+            // §2.4 Backups sub-view for one company (corrupt rows keep the
+            // door — restore-from-backup IS their recovery path).
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Backups");
+            if (idx < 0)
+                break;
+            if (show_company_backups(companies[static_cast<size_t>(idx)]))
+                return true; // restored -> team build (base camp)
             break;
+        }
         case PickerMenuCommand::DeleteCompany: {
             const int idx = prompt_company_index(
                 menu, static_cast<int>(companies.size()), "Delete Company");
@@ -1157,6 +1178,137 @@ bool CursesPickerClient::show_company_list()
             } else {
                 menu.show_text("Delete Company",
                     {std::format("Delete failed for '{}'.", info.slot)});
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+// §2.4 Backups sub-view, curses projection: the joined snapshot rows (shared
+// row formatter — byte-identical with the text client) sit as non-selectable
+// context lines above the Backups chrome (restore / delete / back); restore
+// and delete prompt for a row number behind NO-first confirms. A successful
+// restore repoints this client's slot ([SAVE-R2]) and reloads the rewound
+// company, so the caller proceeds to team build. An empty snapshot list
+// backs out (backups are level-win products, §3.7).
+bool CursesPickerClient::show_company_backups(
+    const og::data::CompanyInfo& company)
+{
+    Menu menu(term_, clock_);
+    const og::ui::CompanyRowText company_row =
+        og::ui::format_company_row(company);
+    for (;;) {
+        const std::vector<og::data::CompanyBackupInfo> backups =
+            og::data::list_company_backups(company.slot);
+        if (backups.empty()) {
+            menu.show_text("Backups",
+                {"No backups yet - backups snapshot on level wins."});
+            return false;
+        }
+
+        const og::ui::TerminalMenuModel model =
+            og::ui::build_terminal_menu_model(
+                PickerMenuId::Backups,
+                label_context(config_, options_, save_data_));
+        std::vector<ListEntry> entries;
+        entries.push_back(ListEntry{
+            og::ui::format_backup_list_title(
+                company_row.name, static_cast<int>(backups.size())), false});
+        for (const og::data::CompanyBackupInfo& backup : backups) {
+            entries.push_back(
+                ListEntry{og::ui::format_backup_row_line(backup), false});
+        }
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalMenuEntry& entry : model.entries)
+            entries.push_back(ListEntry{entry.label, true});
+
+        const int choice = menu.choose(model.title, entries,
+            "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
+            first_item);
+        if (choice < 0)
+            return false;
+        const PickerMenuItem* item =
+            model.entries[static_cast<size_t>(choice - first_item)].item;
+
+        switch (item->command) {
+        case PickerMenuCommand::Back:
+            return false;
+        case PickerMenuCommand::RestoreBackup: {
+            const int idx = prompt_backup_index(
+                menu, static_cast<int>(backups.size()), "Restore Backup");
+            if (idx < 0)
+                break;
+            const og::data::CompanyBackupInfo& backup =
+                backups[static_cast<size_t>(idx)];
+            if (!backup.header.valid) {
+                // The §3.7 step-0 validation is the real guard; refuse up
+                // front to spare a confirm that can only fail.
+                menu.show_text("Restore Backup",
+                    {std::format("Backup file '{}' is damaged.",
+                                 backup.filename)});
+                break;
+            }
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"The current state is backed up first.", false},
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose("Rewind to this backup?",
+                confirm, "Enter select | Esc back", 1);
+            if (verdict != 2)
+                break;
+            const std::string previous_slot = config_.save_name;
+            config_.save_name = company.slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            const og::data::CompanyRestoreError error =
+                og::data::restore_company_backup(save_data_, company.slot,
+                                                 backup.seq);
+            // RestampFailed included: the rewind itself finished (the next
+            // autosave re-stamps).
+            if (error == og::data::CompanyRestoreError::None
+                || error == og::data::CompanyRestoreError::RestampFailed) {
+                if (load_game())
+                    return true; // -> team build (base camp)
+            } else {
+                menu.show_text("Restore Backup",
+                    {std::format("Restore failed ({}).",
+                        og::ui::company_restore_error_string(error))});
+            }
+            // Not rewound: restore the slot authority (the open-flow
+            // discipline).
+            config_.save_name = previous_slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            break;
+        }
+        case PickerMenuCommand::DeleteBackup: {
+            const int idx = prompt_backup_index(
+                menu, static_cast<int>(backups.size()), "Delete Backup");
+            if (idx < 0)
+                break;
+            const og::data::CompanyBackupInfo& backup =
+                backups[static_cast<size_t>(idx)];
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose(
+                std::format("Delete backup {} of '{}'?", backup.seq,
+                            company.slot),
+                confirm, "Enter select | Esc back", 0);
+            if (verdict != 1)
+                break;
+            if (og::data::delete_company_backup(company.slot, backup.seq)) {
+                menu.show_text("Delete Backup",
+                    {std::format("Deleted backup {}.", backup.seq)});
+            } else {
+                menu.show_text("Delete Backup",
+                    {std::format("Delete failed for backup {}.",
+                                 backup.seq)});
             }
             break;
         }

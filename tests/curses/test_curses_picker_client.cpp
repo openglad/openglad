@@ -33,7 +33,9 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -798,21 +800,132 @@ TEST(CursesPickerClient, company_list_open_repoints_slot)
 }
 
 // Esc backs out (nothing opened, slot untouched), and the §2.4 backups
-// chrome answers with its stub until the next WP3 stage builds the view.
-TEST(CursesPickerClient, company_list_backups_stub_and_escape_back)
+// chrome backs out of a company with no snapshots yet (backups are
+// level-win products).
+TEST(CursesPickerClient, company_list_backups_empty_and_escape_back)
 {
     CursesSlotCleanup cleanup{{"wp3cures"}};
     ASSERT_TRUE(seed_curses_company("wp3cures", "SOLO BAND", 6000));
 
     PickerFixture f;
     const std::string slot_before = f.config.save_name;
-    pick(f.t(), 1);                       // chrome: Backups (stub notice)
-    f.t().push_special(KeyCode::Enter);   // dismiss the stub notice
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled company "1"
+    f.t().push_special(KeyCode::Enter);   // dismiss the "No backups yet" notice
     f.t().push_special(KeyCode::Escape);  // back out of the list
 
     EXPECT_FALSE(f.client.show_company_list());
     EXPECT_EQ(slot_before, f.config.save_name)
         << "backing out must not repoint the slot";
+}
+
+// §2.4 restore round trip (curses projection): the NO-first confirm keeps
+// the current state; the explicit Yes rewinds the company, repoints the
+// terminal slot ([SAVE-R2]), snapshots the pre-restore state first, and
+// reports true so the state machine proceeds to team build.
+TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curr"}};
+    ASSERT_TRUE(seed_curses_company("wp3curr", "OLD BAND", 7000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3curr"));
+    ASSERT_TRUE(seed_curses_company("wp3curr", "NEW BAND", 8000));
+
+    PickerFixture f;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled company "1"
+    // Restore, answering the NO-first confirm with the default No.
+    pick(f.t(), 0);                       // backups chrome: Restore Backup
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled backup "1"
+    f.t().push_special(KeyCode::Enter);   // confirm: highlight starts on No
+    // Restore again, this time selecting Yes.
+    pick(f.t(), 0);
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_char(U'2');                // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Loaded" notice
+
+    EXPECT_TRUE(f.client.show_company_list())
+        << "a rewound company reports true (-> team build / base camp)";
+    EXPECT_EQ("wp3curr", f.config.save_name)
+        << "[SAVE-R2] a restore repoints the terminal slot";
+    EXPECT_EQ("OLD BAND", f.save().save_name)
+        << "the in-memory save must hold the rewound state";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3curr");
+    ASSERT_EQ(2u, backups.size());
+    EXPECT_EQ("NEW BAND", backups.front().header.display_name)
+        << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+    for (const og::data::CompanyBackupInfo& backup : backups)
+        (void)og::data::delete_company_backup("wp3curr", backup.seq);
+}
+
+// §2.4 delete-backup round trip (curses projection): NO-first keeps the
+// snapshot, the explicit Yes deletes it, and the emptied list backs out.
+TEST(CursesPickerClient, company_backups_delete_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curd"}};
+    ASSERT_TRUE(seed_curses_company("wp3curd", "KEEP BAND", 7000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3curd"));
+
+    PickerFixture f;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // company "1"
+    // Delete, answering the NO-first confirm with the default No.
+    pick(f.t(), 1);                       // backups chrome: Delete Backup
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_special(KeyCode::Enter);   // confirm: highlight starts on No
+    // Delete again, this time selecting Yes.
+    pick(f.t(), 1);
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_char(U'2');                // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Deleted" notice
+    // The emptied snapshot list backs out with a notice; leave the list.
+    f.t().push_special(KeyCode::Enter);   // dismiss "No backups yet"
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_TRUE(og::data::list_company_backups("wp3curd").empty())
+        << "the explicit Yes must delete the snapshot";
+    EXPECT_TRUE(user_file_exists("save/wp3curd.gtl"))
+        << "deleting a snapshot never touches the company file";
+}
+
+// §2.4 corrupt snapshots refuse restore up front (the §3.7 step-0 API
+// validation stays the real guard; no confirm is ever reached).
+TEST(CursesPickerClient, company_backups_corrupt_snapshot_refuses)
+{
+    CursesSlotCleanup cleanup{{"wp3curc"}};
+    ASSERT_TRUE(seed_curses_company("wp3curc", "INTACT BAND", 7000));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream corrupt(backups_dir / "wp3curc.001.gtl",
+                              std::ios::binary | std::ios::trunc);
+        corrupt << "not a backup";
+        ASSERT_TRUE(corrupt.good());
+    }
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // company "1"
+    pick(f.t(), 0);                       // backups chrome: Restore Backup
+    f.t().push_special(KeyCode::Enter);   // backup "1" (the corrupt one)
+    f.t().push_special(KeyCode::Enter);   // dismiss the "damaged" notice
+    f.t().push_special(KeyCode::Escape);  // back out of the backups view
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(slot_before, f.config.save_name)
+        << "a refused restore must not repoint the slot";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3curc");
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_FALSE(backups.front().header.valid);
+    (void)og::data::delete_company_backup("wp3curc", 1);
 }
 
 // Delete is NO-first: the default confirm keeps the company; an explicit

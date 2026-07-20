@@ -974,6 +974,210 @@ TEST(MenuEngine, company_list_active_row_outline)
     og::runtime::current_session->localbuttons_ = nullptr;
 }
 
+// §2.4 Backups sub-view: entered from the Company List's BK door, not the
+// registry. Pin the spec obligations plus BFS reachability / nav closure /
+// no-overlap over the visibility variants: null state (bare sweep shape),
+// empty list (a REAL shape — a company with no level wins has no
+// snapshots), one partial page, two pages (both sides), and corrupt rows
+// (they stay listed and clickable; the restore API's step-0 validation is
+// the guard).
+namespace {
+
+og::data::CompanyBackupInfo make_backup_info(const std::string& slot, int seq,
+                                             std::int64_t ts, bool valid)
+{
+    og::data::CompanyBackupInfo info;
+    info.slot = slot;
+    info.seq = seq;
+    info.filename = std::format("{}.{:03}.gtl", slot, seq);
+    info.header.slot = slot;
+    info.header.display_name = "COMPANY " + slot;
+    info.header.campaign_id = "org.openglad.gladiator";
+    info.header.scen_num = static_cast<short>(seq);
+    info.header.last_played_unix_s = ts;
+    info.header.valid = valid;
+    return info;
+}
+
+// RAII: the file-static state pointer the rewire reads must never leak into
+// later tests (shuffle safety).
+struct ScopedCompanyBackupsState
+{
+    explicit ScopedCompanyBackupsState(og::ui::CompanyBackupsScreenState* state)
+    {
+        og::ui::install_company_backups_state_for_screen(state);
+    }
+    ~ScopedCompanyBackupsState()
+    {
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+};
+
+} // namespace
+
+TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
+{
+    EngineTestGuard guard;
+    clear_allbuttons();
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::company_backups_menu_screen_spec();
+
+    // Spec obligations (§2.4): main-scope remote start (a host GO launches a
+    // peer parked in the sub-view), lobby poll, fade entry, row-0 highlight
+    // (the newest snapshot), generic MenuSpecRow dispatch.
+    EXPECT_EQ(std::string("company_backups"), spec.name);
+    EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
+    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_EQ(0, spec.default_highlight);
+    EXPECT_TRUE(spec.on_spec_row != nullptr);
+    EXPECT_TRUE(spec.nav.kind == og::ui::NavProgramKind::Rewire
+                && spec.nav.rewire != nullptr);
+    EXPECT_EQ(MENU_REDRAW, spec.exit_value);
+
+    struct Variant {
+        const char* label;
+        int backups;
+        int corrupt_from;  // backups at index >= this are corrupt (-1: none)
+        int page;
+        int want_visible_rows;
+        bool want_pagers;
+    };
+    const Variant variants[] = {
+        {"empty", 0, -1, 0, 0, false},
+        {"partial_page", 3, -1, 0, 3, false},
+        {"two_pages_first", 15, -1, 0, 10, true},
+        {"two_pages_second", 15, -1, 1, 5, true},
+        {"corrupt_rows_first_page", 15, 2, 0, 10, true},
+    };
+
+    for (const Variant& variant : variants) {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wp3bkvar";
+        state.company_name = "BACKUP VARIANT BAND";
+        for (int i = 0; i < variant.backups; ++i) {
+            state.backups.push_back(make_backup_info(
+                "wp3bkvar", variant.backups - i, 1000 - i,
+                variant.corrupt_from < 0 || i < variant.corrupt_from));
+        }
+        state.page = og::ui::PageModel::make(variant.backups, 10);
+        state.page.page = variant.page;
+        ScopedCompanyBackupsState installed(&state);
+
+        button* buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        ASSERT_EQ(13, count) << variant.label;
+
+        int highlighted = spec.default_highlight;
+        spec.nav.rewire(buttons, count, highlighted);
+        ensure_highlighted_button_visible(buttons, count, highlighted);
+
+        // Visibility: the page window's rows, BACK always, pagers only when
+        // the snapshots span pages.
+        for (int r = 0; r < 10; ++r) {
+            EXPECT_EQ(!(r < variant.want_visible_rows), buttons[r].hidden)
+                << variant.label << " backup_row_" << r;
+        }
+        EXPECT_FALSE(buttons[10].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[11].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[12].hidden) << variant.label;
+
+        // No overlap among the visible rows.
+        for (int i = 0; i < count; ++i) {
+            if (buttons[i].hidden)
+                continue;
+            for (int j = i + 1; j < count; ++j) {
+                if (buttons[j].hidden)
+                    continue;
+                EXPECT_FALSE(sweep_rows_overlap(buttons[i], buttons[j]))
+                    << variant.label << ": " << buttons[i].id << " overlaps "
+                    << buttons[j].id;
+            }
+        }
+
+        // Nav closure + BFS reachability over the visible subgraph.
+        ASSERT_GE(highlighted, 0) << variant.label;
+        ASSERT_LT(highlighted, count) << variant.label;
+        EXPECT_FALSE(buttons[highlighted].hidden)
+            << variant.label << ": highlight stuck on a hidden row";
+        std::vector<bool> reached(static_cast<std::size_t>(count), false);
+        std::vector<int> frontier{highlighted};
+        reached[static_cast<std::size_t>(highlighted)] = true;
+        while (!frontier.empty()) {
+            const int at = frontier.back();
+            frontier.pop_back();
+            const int links[4] = {buttons[at].nav.up, buttons[at].nav.down,
+                                  buttons[at].nav.left, buttons[at].nav.right};
+            for (const int link : links) {
+                EXPECT_LT(link, count)
+                    << variant.label << ": " << buttons[at].id
+                    << " nav link out of range";
+                if (link < 0 || link >= count)
+                    continue;
+                EXPECT_FALSE(buttons[link].hidden)
+                    << variant.label << ": " << buttons[at].id
+                    << " nav-links to hidden " << buttons[link].id;
+                if (!buttons[link].hidden
+                    && !reached[static_cast<std::size_t>(link)]) {
+                    reached[static_cast<std::size_t>(link)] = true;
+                    frontier.push_back(link);
+                }
+            }
+        }
+        for (int i = 0; i < count; ++i) {
+            if (!buttons[i].hidden) {
+                EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
+                    << variant.label << ": " << buttons[i].id
+                    << " unreachable by keyboard";
+            }
+        }
+    }
+
+    // Null state (no install): the bare-sweep shape — every row and pager
+    // hidden, BACK alone, its side links written as explicit no-ops.
+    {
+        button* buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        int highlighted = spec.default_highlight;
+        spec.nav.rewire(buttons, count, highlighted);
+        ensure_highlighted_button_visible(buttons, count, highlighted);
+        for (int i = 0; i < count; ++i) {
+            if (buttons[i].id == "back") {
+                EXPECT_FALSE(buttons[i].hidden);
+                EXPECT_EQ(-1, buttons[i].nav.up);
+                EXPECT_EQ(-1, buttons[i].nav.right);
+            } else {
+                EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+            }
+        }
+        EXPECT_EQ("back", buttons[highlighted].id)
+            << "empty shape highlight must settle on BACK";
+    }
+
+    // Draw smoke over the headless screen buffer: the null-state and
+    // zero-snapshot shapes (both draw NO BACKUPS YET + the retention title)
+    // and a populated two-page state with a corrupt row + the "p/N"
+    // indicator. The flows pin behavior; this pins that every content branch
+    // draws.
+    ASSERT_TRUE(spec.draw_content != nullptr);
+    spec.draw_content(nullptr);
+    {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wp3bkdraw";
+        state.company_name = "BACKUP DRAW BAND";
+        state.page = og::ui::PageModel::make(0, 10);
+        spec.draw_content(&state);
+        for (int i = 0; i < 15; ++i) {
+            state.backups.push_back(make_backup_info(
+                "wp3bkdraw", 15 - i, 1000 - i, i < 12));
+        }
+        state.page = og::ui::PageModel::make(15, 10);
+        state.page.page = 1;
+        spec.draw_content(&state);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // §1.8 step 3 registry state: the options family migrates in order (FX trio,
 // then display + controls, then main options). Updated in the SAME commit as

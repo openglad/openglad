@@ -366,6 +366,61 @@ TEST(MenuEnginePins, company_list_exact_table)
 }
 
 // ---------------------------------------------------------------------------
+// §2.4 Backups sub-view (per company): the Company List chassis minus the
+// BK/X columns — 10 full-width snapshot rows transcribed from the design
+// table INDEPENDENTLY of the spec's macro (backup_row (25,25+15i,220,10);
+// click = restore behind the NO-first confirm), then BACK and the PageModel
+// pagers (statically hidden; retention 20 => at most 2 pages). Every row
+// dispatches through MenuSpecRow with arg == spec ordinal (rows 0-9,
+// back 10, prev 11, next 12).
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, company_backups_exact_table)
+{
+    button* buttons = picker_company_backups_buttons();
+    const int count = picker_company_backups_button_count();
+    ASSERT_EQ(13, count) << "10 snapshot rows + back + prev + next";
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+
+    const auto check_row = [&](int index, const std::string& id,
+                               const char* label, int x, int y, int w, int h,
+                               MenuNav nav, bool hidden) {
+        const button& got = buttons[index];
+        EXPECT_EQ(id, got.id) << "company_backups index " << index;
+        EXPECT_EQ(label, got.label) << "company_backups " << id;
+        EXPECT_EQ(x, got.x) << "company_backups " << id;
+        EXPECT_EQ(y, got.y) << "company_backups " << id;
+        EXPECT_EQ(w, got.sizex) << "company_backups " << id;
+        EXPECT_EQ(h, got.sizey) << "company_backups " << id;
+        EXPECT_EQ(spec_row, got.myfun) << "company_backups " << id;
+        EXPECT_EQ(index, got.arg1)
+            << "company_backups " << id << " (MenuSpecRow arg == ordinal)";
+        EXPECT_EQ(nav.up, got.nav.up) << "company_backups " << id;
+        EXPECT_EQ(nav.down, got.nav.down) << "company_backups " << id;
+        EXPECT_EQ(nav.left, got.nav.left) << "company_backups " << id;
+        EXPECT_EQ(nav.right, got.nav.right) << "company_backups " << id;
+        EXPECT_EQ(hidden, got.hidden) << "company_backups " << id;
+        EXPECT_FALSE(got.no_draw) << "company_backups " << id;
+    };
+
+    for (int i = 0; i < 10; ++i) {
+        check_row(i, "backup_row_" + std::to_string(i), "", 25, 25 + 15 * i,
+                  220, 10,
+                  MenuNav{.up = i > 0 ? i - 1 : -1,
+                          .down = i < 9 ? i + 1 : 10,
+                          .left = -1, .right = -1},
+                  false);
+    }
+    check_row(10, "back", "BACK", 10, 170, 44, 20,
+              MenuNav{.up = 9, .down = -1, .left = -1, .right = 11}, false);
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[10].hotkey) << "company_backups back";
+    check_row(11, "backup_page_prev", "PREV", 220, 170, 40, 20,
+              MenuNav{.up = 9, .down = -1, .left = 10, .right = 12}, true);
+    check_row(12, "backup_page_next", "NEXT", 270, 170, 40, 20,
+              MenuNav{.up = 9, .down = -1, .left = 11, .right = -1}, true);
+}
+
+// ---------------------------------------------------------------------------
 // Train (k_trainmenu_buttons): the six +/- stat pairs beside the portrait,
 // PREV/NEXT cyclers, RENAME/DETAILS.. header row, team cycler, ACCEPT /
 // VIEW TEAM / BACK bottom row.

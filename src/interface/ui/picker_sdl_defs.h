@@ -160,6 +160,9 @@ int picker_name_entry_button_count();
 // §2.3 Company List (Load) — Layer F engine screen.
 button* picker_company_list_buttons();
 int picker_company_list_button_count();
+// §2.4 Backups sub-view (per company) — Layer F engine screen.
+button* picker_company_backups_buttons();
+int picker_company_backups_button_count();
 
 // --- Team-build layout contract -------------------------------------------
 // 3x3 grid: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),

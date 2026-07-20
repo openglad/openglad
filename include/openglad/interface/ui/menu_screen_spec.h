@@ -315,11 +315,12 @@ bool run_new_company_name_entry(std::string& out_name);
 struct CompanyListScreenState {
     std::vector<og::data::CompanyInfo> companies;
     PageModel page{};
-    // OPEN clicked and the company loaded: the caller proceeds to base camp.
+    // OPEN clicked and the company loaded: the caller proceeds to base camp
+    // — set by a row OPEN, or by a successful restore inside the Backups
+    // sub-view (§2.4: a rewound company opens straight into base camp).
     bool opened = false;
-    // §2.4 door: the slot stashed by the BK dispatch. The Backups sub-view
-    // (the next WP3 stage) opens on it; until then the door is layout/nav
-    // final but dispatches to nothing.
+    // §2.4 door: the slot the BK dispatch stashed before opening the Backups
+    // sub-view on it (kept observable for tests).
     std::string backups_slot;
 };
 
@@ -338,5 +339,40 @@ void install_company_list_state_for_screen(CompanyListScreenState* state);
 // BACK — including the exit after deleting the last company, which returns
 // to a main menu whose gate then hides CONTINUE/LOAD.
 bool run_company_list_screen();
+
+// §2.4 Backups sub-view state: one company's header-scanned snapshots (WP2's
+// list_company_backups — newest seq first, never mounted), the PageModel
+// window over them, and the restore verdict the wrapper reads. Public so
+// tests can drive the per-frame rewire's visibility variants; production
+// state is owned by run_company_backups_screen.
+struct CompanyBackupsScreenState {
+    // The company whose snapshots are listed (the BK row's slot).
+    std::string slot;
+    // Display label for the title strip (the company row's name column).
+    std::string company_name;
+    std::vector<og::data::CompanyBackupInfo> backups;
+    PageModel page{};
+    // A row's NO-first confirm was accepted and the validated restore
+    // rewound the company: the active slot now points at it and the caller
+    // proceeds straight into base camp (§2.4).
+    bool opened = false;
+};
+
+// §2.4 Backups sub-view (Layer F engine screen): 10 pageable snapshot rows
+// (click = restore behind the NO-first confirm; corrupt rows refuse), BACK
+// to the Company List, and PageModel PREV/NEXT pagers (retention 20 => at
+// most 2 pages).
+const MenuScreenSpec& company_backups_menu_screen_spec();
+
+// Installs the state the per-frame rewire reads (the company-list seam
+// pattern; the null state renders the empty-list shape).
+void install_company_backups_state_for_screen(CompanyBackupsScreenState* state);
+
+// Runs the Backups sub-view (blocking) over a fresh header-only snapshot
+// scan of `slot`. Returns true when a restore rewound the company (active
+// slot repointed + save reloaded + last-played re-stamped): the caller exits
+// to base camp. False on BACK, with the company untouched.
+bool run_company_backups_screen(const std::string& slot,
+                                const std::string& company_name);
 
 } // namespace og::ui

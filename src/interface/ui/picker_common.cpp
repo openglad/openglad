@@ -1217,6 +1217,106 @@ std::string format_company_row_line(const og::data::CompanyInfo& info,
     return line;
 }
 
+// --- Backups sub-view: label formatters (design §2.4) ---
+
+namespace {
+
+// "MM-DD HH:MM" in UTC (deterministic — never the machine's timezone; the
+// §2.3 date-column precedent), or "" for unstamped (<= 0) and
+// out-of-calendar values.
+std::string format_saved_datetime_utc(std::int64_t unix_s)
+{
+    // 9999-12-31T23:59:59Z, the same bound the §2.3 date formatter applies
+    // BEFORE converting (larger values overflow year_month_day's day count).
+    constexpr std::int64_t kMaxFourDigitYearUnixS = 253402300799;
+    if (unix_s <= 0 || unix_s > kMaxFourDigitYearUnixS)
+        return {};
+    const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
+    const auto day = std::chrono::floor<std::chrono::days>(when);
+    const std::chrono::year_month_day ymd{day};
+    if (!ymd.ok())
+        return {};
+    const std::chrono::hh_mm_ss<std::chrono::seconds> tod{when - day};
+    return std::format("{:02}-{:02} {:02}:{:02}",
+                       static_cast<unsigned>(ymd.month()),
+                       static_cast<unsigned>(ymd.day()),
+                       tod.hours().count(), tod.minutes().count());
+}
+
+} // namespace
+
+std::string format_backup_list_title(const std::string& company_name,
+                                     int count)
+{
+    return std::format("BACKUPS: {} ({}/{})",
+                       clip_to(company_name, kCompanyNameMaxLen), count,
+                       og::data::kCompanyBackupRetention);
+}
+
+BackupRowText format_backup_row(const og::data::CompanyBackupInfo& info)
+{
+    BackupRowText row;
+    row.corrupt = !info.header.valid;
+    if (row.corrupt)
+    {
+        // §2.4 corrupt-backup marking: the row stays listed (and clickable —
+        // the restore API's step-0 validation is the guard), but identifies
+        // itself as damage instead of level context it never parsed.
+        row.level = "CORRUPT";
+        row.saved = "--";
+        return row;
+    }
+    const int scen = info.header.scen_num;
+    row.level = std::format("L{}", scen);
+    // Level title off the MOUNTED package only (the level_display_guarded
+    // mount-match rule): a mismatched mount would caption the row with
+    // another campaign's title.
+    if (get_mounted_campaign() == info.header.campaign_id)
+    {
+        std::string title = og::data::scenario_display_name(scen);
+        const std::string prefix = std::format("{}. ", scen);
+        if (title.starts_with(prefix))
+            title.erase(0, prefix.size());
+        // The missing-scenario fallback title is "Level N" — pure noise
+        // next to "L<nn>", so the bare tag stands alone instead.
+        if (title != std::format("Level {}", scen))
+        {
+            row.level += ' ';
+            row.level += clip_to(std::move(title), 14);
+        }
+    }
+    row.saved = format_saved_datetime_utc(info.header.last_played_unix_s);
+    return row;
+}
+
+std::string format_backup_row_line(const og::data::CompanyBackupInfo& info)
+{
+    const BackupRowText row = format_backup_row(info);
+    if (row.saved.empty())
+        return row.level;
+    return std::format("{:<20} {}", row.level, row.saved);
+}
+
+const char* company_restore_error_string(og::data::CompanyRestoreError error)
+{
+    switch (error)
+    {
+    case og::data::CompanyRestoreError::None:
+        return "";
+    case og::data::CompanyRestoreError::InvalidBackup:
+        return "BACKUP FILE DAMAGED";
+    case og::data::CompanyRestoreError::PreRestoreBackupFailed:
+        return "COULD NOT BACK UP CURRENT STATE";
+    case og::data::CompanyRestoreError::CopyFailed:
+        return "COPY FAILED - COMPANY UNCHANGED";
+    case og::data::CompanyRestoreError::ReloadFailed:
+        return "RELOAD FAILED - REWIND UNDONE";
+    case og::data::CompanyRestoreError::RestampFailed:
+        return "REWOUND, BUT THE TIMESTAMP WRITE FAILED";
+    }
+    return "";
+}
+
 ContinueResult open_company_slot(SaveData& save, const std::string& slot,
                                  SaveDataIoError* io_error)
 {

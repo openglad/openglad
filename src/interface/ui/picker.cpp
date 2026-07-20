@@ -1510,6 +1510,7 @@ void picker_cleanup_resources()
     pks().difficulty_menu_buttons.clear();
     pks().name_entry_buttons.clear();
     pks().company_list_buttons.clear();
+    pks().company_backups_buttons.clear();
 }
 
 void picker_quit()

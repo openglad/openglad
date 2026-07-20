@@ -2417,12 +2417,23 @@ Sint32 company_list_on_spec_row(int row, void* screen_state)
     }
 
     if (row < kCompanyListDelBase) {
-        // §2.4 door: the Backups sub-view lands in the next WP3 stage. The
-        // BK row/nav/pins are final; the dispatch stashes the slot and
-        // traces so the flow is already pinned end-to-end.
+        // §2.4 door: open the Backups sub-view on this row's company (the
+        // nested-engine-screen pattern — difficulty-from-main-menu). A
+        // successful restore rewinds the company AND opens it (straight into
+        // base camp); BACK returns here with the list intact. Corrupt rows
+        // keep the door — restore-from-backup IS their recovery path.
         st->backups_slot = info.slot;
         TRACE("company_list", "backups_door %s", info.slot.c_str());
-        return MENU_OK;
+        if (run_company_backups_screen(info.slot,
+                                       format_company_row(info).name)) {
+            st->opened = true;
+            return MENU_EXIT;
+        }
+        // Not opened: the company set is unchanged (failed restores leave
+        // the slot file pre-restore per §3.7 [SAVE-R3]); a remote start
+        // that unparked the sub-view re-fires from this screen's own
+        // loop-top check next frame. MENU_REDRAW re-inits our buttons.
+        return MENU_REDRAW;
     }
 
     // X — delete company (+ ALL its backups), NO-first confirm (U3).
@@ -2456,6 +2467,238 @@ Sint32 company_list_on_spec_row(int row, void* screen_state)
     st->page.page = std::min(page_before, st->page.page_count() - 1);
     if (st->companies.empty())
         return MENU_EXIT;
+    return MENU_REDRAW;
+}
+
+// ---------------------------------------------------------------------------
+// §2.4 Backups sub-view (per company): the same chassis as the Company List
+// minus the BK/X columns — 10 full-width snapshot rows (click = restore
+// behind the NO-first confirm), BACK to the list, PageModel pagers
+// (retention 20 => at most 2 pages).
+// ---------------------------------------------------------------------------
+
+// The company-list seam pattern: the per-frame rewire reads this file-static
+// pointer; run_menu_screen's screen_state points at the SAME object.
+CompanyBackupsScreenState* g_company_backups_state = nullptr;
+
+constexpr int kCompanyBackupsRowsPerPage = 10;
+constexpr int kCompanyBackupsBackIndex = 10;
+constexpr int kCompanyBackupsPrevIndex = 11;
+constexpr int kCompanyBackupsNextIndex = 12;
+
+// §2.4 geometry: backup_row_0..9 (25,25+15i,220,10) — the rows span the
+// column area the list's BK/X buttons occupy (no per-row delete on the SDL
+// surface; the rect table is normative). Static nav is the full-page
+// multi-page shape; the per-frame rewire recomputes every link anyway.
+#define OG_COMPANY_BACKUP_ROW(i)                                             \
+    {.id = "backup_row_" #i, .label = "",                                    \
+     .x = 25, .y = 25 + 15 * (i), .w = 220, .h = 10,                          \
+     .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
+     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+             .down = (i) < 9 ? (i) + 1 : kCompanyBackupsBackIndex}}
+
+constexpr MenuButtonSpec kCompanyBackupsRows[] = {
+    OG_COMPANY_BACKUP_ROW(0), OG_COMPANY_BACKUP_ROW(1),
+    OG_COMPANY_BACKUP_ROW(2), OG_COMPANY_BACKUP_ROW(3),
+    OG_COMPANY_BACKUP_ROW(4), OG_COMPANY_BACKUP_ROW(5),
+    OG_COMPANY_BACKUP_ROW(6), OG_COMPANY_BACKUP_ROW(7),
+    OG_COMPANY_BACKUP_ROW(8), OG_COMPANY_BACKUP_ROW(9),
+    // BACK to the Company List; Escape hotkey (the shared cancel grammar).
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 44, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyBackupsBackIndex,
+     .nav = {.up = 9, .right = kCompanyBackupsPrevIndex}},
+    // Real MenuSpecRow pager actions (keyboard-live); statically hidden —
+    // the rewire shows them only when the snapshots span pages.
+    {.id = "backup_page_prev", .label = "PREV",
+     .x = 220, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyBackupsPrevIndex,
+     .nav = {.up = 9, .left = kCompanyBackupsBackIndex,
+             .right = kCompanyBackupsNextIndex},
+     .hidden = true},
+    {.id = "backup_page_next", .label = "NEXT",
+     .x = 270, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCompanyBackupsNextIndex,
+     .nav = {.up = 9, .left = kCompanyBackupsPrevIndex},
+     .hidden = true},
+};
+
+#undef OG_COMPANY_BACKUP_ROW
+
+// Per-frame visibility + nav over the live snapshot state (pattern b, like
+// the Company List): page-window the rows, chain them vertically into BACK,
+// close BACK/pager side links over pager visibility.
+void company_backups_rewire(button* buttons, int count, int& /*highlighted*/)
+{
+    if (count < kCompanyBackupsNextIndex + 1)
+        return;
+    const CompanyBackupsScreenState* st = g_company_backups_state;
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = std::max(0, end - first);
+    const bool pagers = st != nullptr && st->page.multi_page();
+
+    for (int r = 0; r < kCompanyBackupsRowsPerPage; ++r) {
+        const bool on = r < visible;
+        buttons[r].hidden = !on;
+        if (on) {
+            buttons[r].nav = {
+                .up = r > 0 ? r - 1 : -1,
+                .down = r + 1 < visible ? r + 1 : kCompanyBackupsBackIndex,
+                .left = -1,
+                .right = -1};
+        }
+    }
+    buttons[kCompanyBackupsPrevIndex].hidden = !pagers;
+    buttons[kCompanyBackupsNextIndex].hidden = !pagers;
+    buttons[kCompanyBackupsBackIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = -1,
+        .right = pagers ? kCompanyBackupsPrevIndex : -1};
+    buttons[kCompanyBackupsPrevIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = kCompanyBackupsBackIndex,
+        .right = kCompanyBackupsNextIndex};
+    buttons[kCompanyBackupsNextIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = kCompanyBackupsPrevIndex,
+        .right = -1};
+    for (int i = 0; i < count; ++i)
+        sync_button_hidden_state(buttons, i);
+}
+
+// The §2.4 content pass: retention-bearing title + column headers (the
+// black-strip idiom, U2), the two row columns at x=27/151, the "p/N"
+// indicator, and the empty state.
+void company_backups_draw_content(void* screen_state)
+{
+    const CompanyBackupsScreenState* st =
+        static_cast<const CompanyBackupsScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+
+    const auto strip_text = [game](int x, int y, const std::string& text) {
+        const int width = static_cast<int>(text.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, width + 4, 8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, WHITE, "%s", text.c_str());
+    };
+
+    const int total = st != nullptr ? static_cast<int>(st->backups.size()) : 0;
+    strip_text(25, 8,
+               format_backup_list_title(
+                   st != nullptr ? st->company_name : std::string(), total));
+    strip_text(27, 16, "LEVEL");
+    strip_text(151, 16, "SAVED");
+
+    if (st == nullptr || total == 0) {
+        // A company with no level wins yet has no snapshots: the empty view
+        // is a REAL shape here, not just a transient (§3.7 — backups are
+        // level-win products).
+        game->text_normal.write_xy_center(160, 90, ORANGE_START, "%s",
+                                          "NO BACKUPS YET");
+        return;
+    }
+
+    const int first = st->page.first_index();
+    const int end = st->page.end_index();
+    for (int r = 0; r < end - first; ++r) {
+        const BackupRowText row = format_backup_row(
+            st->backups[static_cast<std::size_t>(first + r)]);
+        const int y = 27 + 15 * r;
+        game->text_normal.write_xy(27, y, DARK_BLUE, "%s", row.level.c_str());
+        game->text_normal.write_xy(151, y, DARK_BLUE, "%s",
+                                   row.saved.c_str());
+    }
+
+    if (st->page.multi_page())
+        strip_text(140, 176, st->page.indicator());
+}
+
+// G3 row dispatch: restore per visual row (NO-first confirm + the §3.7
+// validated rewind), BACK, and the pagers.
+Sint32 company_backups_on_spec_row(int row, void* screen_state)
+{
+    CompanyBackupsScreenState* st =
+        static_cast<CompanyBackupsScreenState*>(screen_state);
+    if (st == nullptr)
+        return 0;
+
+    if (row == kCompanyBackupsBackIndex) {
+        TRACE("company_backups", "back");
+        return MENU_EXIT;
+    }
+    if (row == kCompanyBackupsPrevIndex || row == kCompanyBackupsNextIndex) {
+        if (st->page.step(row == kCompanyBackupsPrevIndex ? -1 : 1))
+            TRACE("company_backups", "page %s", st->page.indicator().c_str());
+        return MENU_OK;
+    }
+
+    const int idx = st->page.first_index() + row;
+    if (idx < 0 || idx >= static_cast<int>(st->backups.size()))
+        return 0;  // stale click on a row hidden this frame
+    const og::data::CompanyBackupInfo info =
+        st->backups[static_cast<std::size_t>(idx)];
+
+    if (!info.header.valid) {
+        // The §3.7 step-0 validation is the real guard; refusing up front
+        // (the corrupt-company-row precedent) just spares a confirm that
+        // could only end in the same popup.
+        popup_dialog("RESTORE BACKUP", "BACKUP FILE DAMAGED");
+        return MENU_REDRAW;
+    }
+
+    // §2.4 restore confirm — NO-first (U3), the row's level context riding
+    // the message lines (the delete-company grammar).
+    const BackupRowText row_text = format_backup_row(info);
+    std::string context_line = row_text.level;
+    if (!row_text.saved.empty()) {
+        context_line += ' ';
+        context_line += row_text.saved;
+    }
+    const std::string message =
+        context_line + "\nCURRENT STATE IS BACKED UP FIRST.";
+    if (!no_or_yes_prompt("REWIND TO THIS BACKUP?", message.c_str(), false))
+        return MENU_REDRAW;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const og::data::CompanyRestoreError error =
+        og::data::restore_company_backup(save, st->slot, info.seq);
+    const bool rewound =
+        error == og::data::CompanyRestoreError::None
+        || error == og::data::CompanyRestoreError::RestampFailed;
+    if (rewound) {
+        // RestampFailed included: the rewind itself finished (disk and
+        // memory hold the restored company; the next autosave re-stamps).
+        // §2.4: a restored company opens straight into base camp — repoint
+        // the active slot at it (restore itself never touches the slot; it
+        // may target a non-active company, e.g. a corrupt one being
+        // recovered).
+        (void)og::data::set_active_company_slot(st->slot);
+        st->opened = true;
+        TRACE("company_backups", "restored %s seq %d", st->slot.c_str(),
+              info.seq);
+        return MENU_EXIT;
+    }
+
+    // Failure: popup, stay listed, state rolled back (§3.7 [SAVE-R3]).
+    popup_dialog("RESTORE BACKUP", company_restore_error_string(error));
+    if (error == og::data::CompanyRestoreError::ReloadFailed
+        && st->slot != og::data::active_company_slot()) {
+        // The step-3 rollback reloaded the TARGET company's pre-restore
+        // state into memory; put the ambient company back so the slot and
+        // the in-memory save never disagree (the open_company_slot
+        // discipline).
+        (void)save.load_with_error(og::data::active_company_slot());
+    }
+    // Steps >= 1 may have produced the pre-restore snapshot even on a later
+    // failure: re-scan so the list tells the truth, and clamp the window.
+    const int page_before = st->page.page;
+    st->backups = og::data::list_company_backups(st->slot);
+    st->page = PageModel::make(static_cast<int>(st->backups.size()),
+                               kCompanyBackupsRowsPerPage);
+    st->page.page = std::min(page_before, st->page.page_count() - 1);
     return MENU_REDRAW;
 }
 
@@ -2745,6 +2988,60 @@ bool run_company_list_screen()
     return state.opened;
 }
 
+const MenuScreenSpec& company_backups_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "company_backups",
+        .rows = kCompanyBackupsRows,
+        .row_count = static_cast<int>(std::size(kCompanyBackupsRows)),
+        .buttons_accessor = &picker_company_backups_buttons,
+        .count_accessor = &picker_company_backups_button_count,
+        // Pattern-b full-graph rewire, recomputed every frame from the
+        // snapshot state (page window, pager visibility).
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &company_backups_rewire},
+        // A host GO must launch a peer parked here too (the nested-subscreen
+        // precedent): propagate the remote MENU_EXIT — the wrappers report
+        // "not opened" and the re-entered outer screens unwind in turn.
+        .remote_start = RemoteStartScope::MainScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        // Fade the Company List out, draw the sub-view cold, fade in.
+        .enter = EnterTransition::FadeAroundEntry,
+        // Initial highlight: row 0 — the newest snapshot.
+        .default_highlight = 0,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &company_backups_draw_content,
+        .on_spec_row = &company_backups_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+void install_company_backups_state_for_screen(CompanyBackupsScreenState* state)
+{
+    g_company_backups_state = state;
+}
+
+// §2.4: run the Backups sub-view (blocking) over a fresh header-only
+// snapshot scan.
+bool run_company_backups_screen(const std::string& slot,
+                                const std::string& company_name)
+{
+    if (og::runtime::current_session->myscreen_ == nullptr)
+        return false;
+    CompanyBackupsScreenState state;
+    state.slot = slot;
+    state.company_name = company_name;
+    state.backups = og::data::list_company_backups(slot);
+    state.page = PageModel::make(static_cast<int>(state.backups.size()),
+                                 kCompanyBackupsRowsPerPage);
+    install_company_backups_state_for_screen(&state);
+    (void)run_menu_screen(company_backups_menu_screen_spec(), &state);
+    install_company_backups_state_for_screen(nullptr);
+    return state.opened;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -3018,6 +3315,19 @@ button* picker_company_list_buttons()
 int picker_company_list_button_count()
 {
     return static_cast<int>(pks().company_list_buttons.size());
+}
+
+button* picker_company_backups_buttons()
+{
+    og::ui::materialize_menu_buttons(
+        og::ui::company_backups_menu_screen_spec(),
+        pks().company_backups_buttons);
+    return pks().company_backups_buttons.data();
+}
+
+int picker_company_backups_button_count()
+{
+    return static_cast<int>(pks().company_backups_buttons.size());
 }
 
 // The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit

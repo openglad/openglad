@@ -385,11 +385,18 @@ public:
                 assert_company_slot_authority(); // [SAVE-R2]
                 break;
             }
-            case PickerMenuCommand::OpenCompanyBackups:
-                // §2.4 lands in the next WP3 stage; the chrome command is
-                // already shared so the flow re-pins once, not twice.
-                std::printf("The backups view is not available yet.\n");
+            case PickerMenuCommand::OpenCompanyBackups: {
+                // §2.4 Backups sub-view for one company (corrupt rows keep
+                // the door — restore-from-backup IS their recovery path).
+                const int idx =
+                    prompt_company_index(companies.size(), "Backups for");
+                if (idx < 0)
+                    break;
+                if (show_company_backups(
+                        companies[static_cast<std::size_t>(idx)]))
+                    return true; // restored -> team build (base camp)
                 break;
+            }
             case PickerMenuCommand::DeleteCompany: {
                 const int idx =
                     prompt_company_index(companies.size(), "Delete");
@@ -472,6 +479,129 @@ private:
             return -1;
         }
         return *choice - 1;
+    }
+
+    // §2.4: prompt for a 1-based backup row number; -1 on cancel/invalid.
+    int prompt_backup_index(std::size_t count, const char* verb)
+    {
+        std::printf("%s which backup [1-%zu]: ", verb, count);
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line))
+            return -1;
+        const auto choice = parse_int_strict(line);
+        if (!choice || *choice < 1
+            || static_cast<std::size_t>(*choice) > count) {
+            std::printf("Invalid backup selection.\n");
+            return -1;
+        }
+        return *choice - 1;
+    }
+
+    // §2.4 Backups sub-view, terminal projection: the numbered snapshot rows
+    // (shared row formatter — byte-identical with curses) print above the
+    // Backups chrome menu (restore / delete / back); restore and delete then
+    // prompt for a row number. A successful restore repoints this client's
+    // slot ([SAVE-R2]) and reloads the rewound company, so the caller
+    // proceeds to team build (base camp). An empty snapshot list backs out
+    // (backups are level-win products, §3.7).
+    bool show_company_backups(const og::data::CompanyInfo& company)
+    {
+        const CompanyRowText company_row = format_company_row(company);
+        for (;;) {
+            const std::vector<og::data::CompanyBackupInfo> backups =
+                og::data::list_company_backups(company.slot);
+            std::printf("\n--- %s ---\n",
+                format_backup_list_title(company_row.name,
+                    static_cast<int>(backups.size())).c_str());
+            if (backups.empty()) {
+                std::printf("No backups yet - backups snapshot on "
+                            "level wins.\n");
+                return false;
+            }
+            for (std::size_t i = 0; i < backups.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1,
+                    format_backup_row_line(backups[i]).c_str());
+            }
+
+            const PickerMenuItem* item = present_menu(PickerMenuId::Backups);
+            if (!item || item->command == PickerMenuCommand::Back)
+                return false;
+
+            switch (item->command) {
+            case PickerMenuCommand::RestoreBackup: {
+                const int idx =
+                    prompt_backup_index(backups.size(), "Restore");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyBackupInfo& backup =
+                    backups[static_cast<std::size_t>(idx)];
+                if (!backup.header.valid) {
+                    // The §3.7 step-0 validation is the real guard; refuse
+                    // up front to spare a confirm that can only fail.
+                    std::printf("Backup file '%s' is damaged.\n",
+                                backup.filename.c_str());
+                    break;
+                }
+                // NO-first confirm (U3): only an explicit yes rewinds.
+                std::printf("Rewind to this backup? The current state is "
+                            "backed up first. [y/N]: ");
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not restored.\n");
+                    break;
+                }
+                const std::string previous_slot = config_.save_name;
+                config_.save_name = company.slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                const og::data::CompanyRestoreError error =
+                    og::data::restore_company_backup(save_data_,
+                                                     company.slot,
+                                                     backup.seq);
+                // RestampFailed included: the rewind itself finished (the
+                // next autosave re-stamps).
+                if (error == og::data::CompanyRestoreError::None
+                    || error == og::data::CompanyRestoreError::RestampFailed) {
+                    std::printf("Restored backup %d of '%s'.\n", backup.seq,
+                                company.slot.c_str());
+                    if (load_game())
+                        return true; // -> team build (base camp)
+                } else {
+                    std::printf("Restore failed (%s).\n",
+                                company_restore_error_string(error));
+                }
+                // Not rewound: restore the slot authority (the open-flow
+                // discipline).
+                config_.save_name = previous_slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                break;
+            }
+            case PickerMenuCommand::DeleteBackup: {
+                const int idx = prompt_backup_index(backups.size(), "Delete");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyBackupInfo& backup =
+                    backups[static_cast<std::size_t>(idx)];
+                // NO-first confirm (U3): only an explicit yes deletes.
+                std::printf("Delete backup %d of '%s'? [y/N]: ", backup.seq,
+                            company.slot.c_str());
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not deleted.\n");
+                    break;
+                }
+                if (og::data::delete_company_backup(company.slot, backup.seq))
+                    std::printf("Deleted backup %d.\n", backup.seq);
+                else
+                    std::printf("Delete failed for backup %d.\n", backup.seq);
+                break;
+            }
+            default:
+                break;
+            }
+        }
     }
 
     // Borrow bundle for the shared label/gate layer (menu_binding.h).
