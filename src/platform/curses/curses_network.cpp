@@ -518,6 +518,39 @@ public:
         current_game = saved;
         return ok;
     }
+
+    // Force the deterministic WIN shape on the AUTHORITATIVE world, mirroring
+    // the SDL e2e recipe (g_test_remove_exits + clear-all-foes): pin a nonzero
+    // team-0 payout, kill the level exits, and slay every living hostile to
+    // the host team. The next server steps then declare the win
+    // (level_done == 2) and forward the terminal EndGame to every peer.
+    // Returns the number of foes slain.
+    int force_server_win_for_testing(std::uint32_t pinned_team0_score)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        world.m_score[0] = pinned_team0_score;
+        for (auto& uptr : world.fxlist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_EXIT)
+                w->set_dead(1);
+        }
+        const unsigned char host_team =
+            static_cast<unsigned char>(world.my_team);
+        int slain = 0;
+        for (auto& uptr : world.oblist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->is_friendly_to_team(host_team) == 0) {
+                w->set_dead(1);
+                ++slain;
+            }
+        }
+        current_game = saved;
+        return slain;
+    }
 #endif
 
 private:
@@ -1761,6 +1794,15 @@ bool curses_network_testing_inject_ctf(CursesGameSession& session,
     if (host == nullptr)
         return false;
     return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+}
+
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                            std::uint32_t pinned_team0_score)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return -1;
+    return host->force_server_win_for_testing(pinned_team0_score);
 }
 #endif
 

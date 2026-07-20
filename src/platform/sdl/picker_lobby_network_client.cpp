@@ -3178,6 +3178,11 @@ public:
         if (transport_->connected_peers().empty())
         {
             join_message_sent_ = false;
+            // A pending start request can never resolve on a dead connection
+            // (neither the StartGame handoff nor the denial echo will arrive);
+            // release it so go_menu's wait loop gives up instead of spinning
+            // forever, and the user can retry after the reconnect.
+            start_request_pending_ = false;
             rebuild_status_lines();
             return;
         }
@@ -3224,6 +3229,11 @@ public:
 
         pending_game_start_config_.reset();
         start_request_pending_ = true;
+        // Mirror the server's [NET-R4] clear-on-next-StartGame in the CACHED
+        // state: a denial left over from a PREVIOUS attempt must not be read
+        // as this request's verdict (a fresh echo re-sets it if denied again).
+        state_->last_start_denial = og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::None);
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyStartGameMessage{
@@ -3234,18 +3244,16 @@ public:
             server_peer_id_,
             std::move(message));
 
+        // Over real sockets the verdict is usually ASYNC: the accept arrives
+        // as a StartGame message, a denial as a later denial-bearing
+        // LobbyState echo — BOTH are resolved inside handle_typed_message
+        // (which drops start_request_pending_ on a denial so go_menu's
+        // timeout-less wait loop can exit and surface last_start_denial()).
+        // This poll only catches a same-call reply when the echo is already
+        // queued (e.g. localhost loopback).
         poll_and_apply();
         if (g_start_game_requested)
             pending_game_start_config_ = build_game_start_config();
-        else if (state_.has_value() &&
-                 state_->last_start_denial !=
-                     og::sim::start_denial_reason_value(
-                         og::sim::StartDenialReason::None))
-        {
-            // §4.3 denial echoed without locking the lobby: stop the pending
-            // spin so go_menu can surface the reason (last_start_denial()).
-            start_request_pending_ = false;
-        }
         return g_start_game_requested;
     }
 
@@ -3563,6 +3571,25 @@ private:
             {
                 ++lobby_states_received_;
                 state_ = *message.lobby_state;
+                // §4.3 [NET-R3] ASYNC denial resolution: a denied StartGame is
+                // answered by a denial-bearing LobbyState echo and NO StartGame
+                // message will ever follow it, so an outstanding request must
+                // be released HERE — otherwise go_menu's timeout-less
+                // `while (pending) poll` wait blocks forever on the
+                // dedicated-server ELECTED host and the relay host (the
+                // in-process direct host resolves synchronously and never
+                // needs this). The cached denial was cleared when the request
+                // was sent, so a non-None value here is this request's fresh
+                // verdict (modulo a still-in-flight pre-request echo — a
+                // transient wrong reason at worst; an accepted start still
+                // lands via the StartGame handoff below).
+                if (start_request_pending_ &&
+                    state_->last_start_denial !=
+                        og::sim::start_denial_reason_value(
+                            og::sim::StartDenialReason::None))
+                {
+                    start_request_pending_ = false;
+                }
                 const std::vector<const og::sim::LobbyPlayer*> local_seats =
                     og::ui::detail::find_local_seats(*state_, player_name_);
                 if (!local_seats.empty())

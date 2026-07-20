@@ -5484,14 +5484,21 @@ TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then
     elected_host->sync_roster_from_save();
 
     // (1) The elected host's GO is DENIED while the guest is unready. The
-    // reason arrives via the state echo — the electing joiner's only source.
+    // reason arrives via the ASYNC state echo — the electing joiner's only
+    // source. Production (go_menu) sends the request ONCE and then only
+    // polls (`while (!started && pending) poll`), so this deliberately does
+    // NOT retry request_start_game: the drain itself must release the
+    // pending flag when the denial echo lands, or go_menu's timeout-less
+    // wait loop would block forever on this exact dedicated-server shape.
+    EXPECT_FALSE(elected_host->request_start_game());
     ASSERT_TRUE(wait_until([&] {
-        (void)elected_host->request_start_game();
         pump();
-        return elected_host->last_start_denial() ==
-                og::sim::StartDenialReason::MachinesNotReady &&
-            !elected_host->start_request_pending();
-    })) << "the denial echo must reach the elected host with the precise reason";
+        return !elected_host->start_request_pending();
+    })) << "the async denial echo must clear the pending start request "
+           "without a request retry (the go_menu hang regression)";
+    EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
+              elected_host->last_start_denial())
+        << "the denial echo must reach the elected host with the precise reason";
     EXPECT_FALSE(g_start_game_requested);
     EXPECT_FALSE(elected_host->has_game_start_config());
     EXPECT_FALSE(lobby_server.consume_start_game_requested())
