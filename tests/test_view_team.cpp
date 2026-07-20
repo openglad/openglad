@@ -7,18 +7,23 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
 #include <atomic>
 #include <cstdint>
+#include <format>
 #include <functional>
+#include <list>
 
 namespace {
 constexpr int kViewMenuTransitionTimeoutMs = 15000;
@@ -1012,4 +1017,222 @@ TEST(ViewTeam, go_level17_no_hang)
     ASSERT_TRUE(state.game_started) << "GO should start level 17";
     ASSERT_TRUE(state.frame_progressed) << "level 17 should advance frames";
     ASSERT_TRUE(state.game_finished) << "level 17 should return to picker (no hang)";
+}
+
+// ---------------------------------------------------------------------------
+// §3.3 positional-index refresh after a WIN: update_guys' fold drops the
+// dead and REORDERS the roster (survivors first, held-back appended), so the
+// base-camp screen state must re-derive its display rows and a click
+// captured against the pre-fold layout must be guarded, never dereference a
+// vacated slot. This drives the SCREEN-level state (BaseCampScreenState +
+// the spec's on_spec_row dispatch) directly; the pure reorder itself is
+// pinned in test_picker_common.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
+{
+    trace_clear();
+
+    // The deploy dispatch below runs the base-camp mutation tail, which
+    // lazily creates the local lobby client outside picker_main — pair it
+    // with a shutdown or later picker loops read a stale roster cache (the
+    // documented promote-wedge class).
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    // 13 members so a second page exists (12 rows/page); M03 is held back.
+    for (int i = 0; i < 13; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("M{:02}", i);
+        save.team_list[i] = std::move(member);
+    }
+    save.team_list[3]->deployed = false;
+    save.team_size = 13;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(13u, state.slots.size());
+    ASSERT_EQ(2, state.page.page_count());
+    ASSERT_TRUE(state.page.step(1)) << "page 2 should be reachable";
+    ASSERT_EQ(12, state.page.first_index());
+
+    // The win fold: only one deployed member survived; every other deployed
+    // member died. Pass 2 appends the held-back M03 behind the survivor.
+    {
+        std::list<std::unique_ptr<walker>> oblist;
+        auto survivor = std::make_unique<walker>();
+        auto survivor_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+        survivor_guy->name = "SURVIVOR";
+        survivor->set_dead(0);
+        survivor->set_owned_myguy(std::move(survivor_guy));
+        oblist.push_back(std::move(survivor));
+        save.update_guys(oblist);
+    }
+    ASSERT_EQ(2, static_cast<int>(save.team_size));
+
+    // Stale window: the fold landed this frame; a click captured against
+    // the OLD page-2 layout dispatches before the frame tick refreshes.
+    // Both the deploy toggle and the per-row TRAIN must no-op (the vacated
+    // slot guard), never crash or open a session on a dangling slot.
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    ASSERT_NE(nullptr, host.spec);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(0, spec.on_spec_row(0, &state))
+        << "stale deploy click on a vacated slot must be guarded";
+    EXPECT_EQ(0, spec.on_spec_row(kBaseCampTrainBase + 0, &state))
+        << "stale TRAIN click on a vacated slot must be guarded";
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="))
+        << "a stale TRAIN click must not seed a session";
+
+    // §3.3: the refresh re-derives the rows and clamps the page window.
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+    EXPECT_EQ(1, state.page.page_count());
+    EXPECT_EQ(0, state.page.page);
+    EXPECT_EQ("SURVIVOR", save.team_list[state.slots[0]]->name)
+        << "pass 1 seats the survivor first";
+    EXPECT_EQ("M03", save.team_list[state.slots[1]]->name)
+        << "pass 2 appends the held-back member";
+    EXPECT_FALSE(save.team_list[state.slots[1]]->deployed)
+        << "the held-back flag survives the fold";
+
+    // A fresh click maps to the CURRENT occupant: row 1 toggles M03 back on.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(save.team_list[state.slots[1]]->deployed);
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"))
+        << "the post-refresh toggle should hit the re-derived slot";
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 flow 4 + rename: the train screen's RENAME button, reached through a
+// per-row TRAIN seed, renames THAT character (editguy_ follows the seeded
+// slot) and the rename accept autosaves the company (§3.8).
+// ---------------------------------------------------------------------------
+struct BaseCampRenameState {
+    bool finished;
+    bool saw_train_menu;
+    bool saw_rename_button;
+};
+
+static int base_camp_train_rename_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampRenameState*>(data);
+
+    if (!wait_for_interactable("roster_train_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    interact("roster_train_1");
+
+    if (!wait_for_interactable("rename", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_train_menu = true;
+    state->saw_rename_button = true;
+    SDL_Delay(300);
+    interact("rename");
+
+    // name_guy(1)'s modal is live now: the first text event replaces the
+    // prefilled name, RETURN accepts it.
+    SDL_Delay(400);
+    inject_text_input("ZEDNAME");
+    SDL_Delay(150);
+    inject_key_press(SDLK_RETURN, 10);
+
+    if (!wait_for_interactable("inc_str", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // exit the train screen back to the base camp
+
+    if (!wait_for_interactable("roster_dep_0", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // exit the base camp
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_row_train_rename_renames_seeded_character)
+{
+    trace_clear();
+
+    // The rename accept runs the base-camp mutation tail (lazy local lobby
+    // client) — shut it down on every exit path.
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->name = "FRONT";
+    archer->name = "SECOND";
+    og::runtime::current_session->myscreen_->save_data.team_list[0] =
+        std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] =
+        std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    BaseCampRenameState state = { false, false, false };
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_train_rename_injector, "base_camp_rename", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu)
+        << "roster TRAIN should open the train screen";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+
+    // The SEEDED character was renamed; its neighbor was not.
+    EXPECT_EQ("ZEDNAME",
+              og::runtime::current_session->myscreen_->save_data
+                  .team_list[1]->name)
+        << "RENAME from a seeded train screen must target the seeded slot";
+    EXPECT_EQ("FRONT",
+              og::runtime::current_session->myscreen_->save_data
+                  .team_list[0]->name)
+        << "slot 0 must be untouched by the seeded rename";
+
+    // §3.8: the rename accept AUTOSAVED — the new name is on disk without
+    // any manual save.
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_EQ(2, static_cast<int>(reloaded.team_size));
+    ASSERT_TRUE(reloaded.team_list[1] != nullptr);
+    EXPECT_EQ("ZEDNAME", reloaded.team_list[1]->name)
+        << "the rename mutation must persist via the company autosave";
 }

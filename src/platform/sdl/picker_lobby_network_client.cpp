@@ -1618,6 +1618,47 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
     return message;
 }
 
+// [NET-R5] §4.2: networked clients answer is_save_slot_editable with OWN
+// SLOTS ONLY (the v7 "all 24 true" shape is gone). The picker save is
+// PRIVATE to this machine (apply_lobby_state_to_save never copies remote
+// rosters), so an occupied slot normally carries no owner tag
+// (guy::kNoOwner => editable) — or, transiently after a networked win
+// merge, the tag of one of THIS machine's own seats (editable: the merged
+// survivors are copies of tagged session guys). A FOREIGN owner tag means
+// the in-memory save is netsession-shaped (a combined session roster);
+// those rows are never editable — TrainSession's constructor / PREV/NEXT /
+// seek_slot skip them (the §2.5 U8 ownership clamp) and the legacy
+// train/rename/team-cycle consumers all gate through
+// picker_lobby_save_slot_editable. Empty slots stay "editable" (hire may
+// fill them; occupancy is a separate check in every consumer), matching
+// the legacy bound-only shape. Server-side seat ownership remains the
+// authoritative wire backstop — this is the client-side half.
+bool networked_save_slot_editable(
+    std::size_t slot_index,
+    const SaveData* save,
+    const og::sim::LobbyState* state,
+    std::string_view local_player_name) noexcept
+{
+    if (slot_index >= static_cast<std::size_t>(MAX_TEAM_SIZE))
+        return false;
+    if (save == nullptr)
+        return true;  // no picker session yet: keep the permissive shape
+    const guy* const member = save->team_list[slot_index].get();
+    if (member == nullptr)
+        return true;
+    if (member->owner_player_index == guy::kNoOwner)
+        return true;  // private untagged roster: this machine's character
+    if (state == nullptr)
+        return false;  // tagged row with no lobby view: never assume own
+    for (const og::sim::LobbyPlayer* const seat :
+         find_local_seats(*state, local_player_name))
+    {
+        if (seat->player_index == member->owner_player_index)
+            return true;
+    }
+    return false;
+}
+
 og::sim::LobbyMessage make_settings_message(const SaveData& save)
 {
     og::sim::LobbySettings settings;
@@ -2061,6 +2102,43 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           wrapped_relay_rooms[0].campaign_hash.empty() &&
           wrapped_relay_rooms[0].player_count == 0 &&
           wrapped_relay_rooms[0].created_at_ms == 0);
+
+    // [NET-R5] networked_save_slot_editable branch matrix: own untagged /
+    // own-tagged / foreign-tagged / empty / out-of-range / no-save /
+    // no-state shapes.
+    {
+        SaveData editability_save;
+        editability_save.team_list[0] = std::make_unique<guy>(0);
+        editability_save.team_list[1] = std::make_unique<guy>(0);
+        editability_save.team_list[1]->owner_player_index = 3;  // foreign
+        editability_save.team_list[2] = std::make_unique<guy>(0);
+        editability_save.team_list[2]->owner_player_index = 0;  // own seat
+        editability_save.team_size = 3;
+
+        og::sim::LobbyState editability_state;
+        og::sim::LobbyPlayer own_seat;
+        own_seat.player_index = 0;
+        own_seat.name = "editability-check";
+        editability_state.players.push_back(own_seat);
+
+        check(!networked_save_slot_editable(
+            static_cast<std::size_t>(MAX_TEAM_SIZE),
+            &editability_save, &editability_state, "editability-check"));
+        check(networked_save_slot_editable(  // untagged private row
+            0u, &editability_save, &editability_state, "editability-check"));
+        check(networked_save_slot_editable(  // empty slot (hire may fill)
+            5u, &editability_save, &editability_state, "editability-check"));
+        check(!networked_save_slot_editable(  // foreign-tagged row locks
+            1u, &editability_save, &editability_state, "editability-check"));
+        check(networked_save_slot_editable(  // own-tagged (post-merge) row
+            2u, &editability_save, &editability_state, "editability-check"));
+        check(!networked_save_slot_editable(  // tagged + no lobby view
+            2u, &editability_save, nullptr, "editability-check"));
+        check(networked_save_slot_editable(  // no picker session yet
+            1u, nullptr, &editability_state, "editability-check"));
+        check(!networked_save_slot_editable(  // tagged + name not in state
+            2u, &editability_save, &editability_state, "someone-else"));
+    }
 
     SaveData save;
     save.current_campaign = "campaign-one";
@@ -2757,10 +2835,15 @@ public:
         return og::ui::detail::local_player_is_host(*state_, player_name_);
     }
 
+    // [NET-R5]: own slots only (see networked_save_slot_editable).
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
-        return slot_index < MAX_TEAM_SIZE;
+        return og::ui::detail::networked_save_slot_editable(
+            slot_index,
+            current_picker_save(),
+            state_.has_value() ? &*state_ : nullptr,
+            player_name_);
     }
 
     bool request_team_change(short team) override
@@ -3324,10 +3407,15 @@ public:
         return local_player_is_host();
     }
 
+    // [NET-R5]: own slots only (see networked_save_slot_editable).
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
-        return slot_index < MAX_TEAM_SIZE;
+        return og::ui::detail::networked_save_slot_editable(
+            slot_index,
+            current_picker_save(),
+            state_.has_value() ? &*state_ : nullptr,
+            player_name_);
     }
 
     bool request_team_change(short team) override

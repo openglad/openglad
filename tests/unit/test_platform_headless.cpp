@@ -1077,3 +1077,45 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
 }
+
+// §2.5 per-row TRAIN (text shape): 'train 2' opens the train flow SEEDED on
+// roster row 2 — the banner names the second member's family and the first
+// member's train screen never appears.
+TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+
+    const std::string input =
+        "2\n"        // main: continue -> team build (base camp)
+        "1\n"        // base camp: roster
+        "train 2\n"  //   roster: train row 2 directly (the mage)
+        "1\n"        //   train: +1 STR on the SEEDED member
+        "a\n"        //   train: accept (autosaves the active slot)
+        "b\n"        //   train: back to the roster
+        "\n"         //   roster: blank exits
+        "7\n"        // base camp: back -> main
+        "11\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("(MAGE) ---"))
+        << "'train 2' must seed the session on roster row 2 (the mage)";
+    EXPECT_EQ(std::string::npos, out.find("(SOLDIER) ---"))
+        << "the train screen must never open on the first member";
+    EXPECT_NE(std::string::npos, out.find("Training accepted."))
+        << "the seeded member's +1 STR should be affordable and accepted";
+
+    // Hygiene: the train accept autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}

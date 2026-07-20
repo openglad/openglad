@@ -565,6 +565,46 @@ TEST(CursesPickerClient, train_empty_team_reports_and_returns)
     EXPECT_NE(f.t().dump().find("No team members"), std::string::npos);
 }
 
+// §2.5 per-row TRAIN (curses shape): Enter on a roster row opens the train
+// flow SEEDED on that member — the +1/accept lands on the second member,
+// never the first (the old enter-then-cycle default).
+TEST(CursesPickerClient, roster_enter_opens_train_seeded_on_that_row)
+{
+    PickerFixture f;
+    {
+        og::ui::HireSession session(f.save(), 0);
+        ASSERT_GE(session.hire(), 0);  // second member at slot 1
+    }
+    const short member0_before = f.save().team_list[0]->strength;
+    const short member1_before = f.save().team_list[1]->strength;
+    const std::uint32_t before_gold = f.save().m_totalcash[0];
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    // Roster list: Down to row 1, Enter trains it (seeded). Train list:
+    // Enter raises STR of the SEEDED member, digit '7' jumps to Accept,
+    // Enter accepts, dismiss the notice, 'q' backs out of the train loop,
+    // Escape exits the roster.
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Enter);  // train roster row 1
+    f.t().push_special(KeyCode::Enter);  // +1 STR (highlight starts on STR)
+    f.t().push_char(U'7');               // jump to "Accept training"
+    f.t().push_special(KeyCode::Enter);  // accept
+    dismiss(f.t());                      // "Training accepted." notice
+    f.t().push_char(U'q');               // back out of the train loop
+    f.t().push_special(KeyCode::Escape); // exit the roster list
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.save().team_list[1]->strength, member1_before + 1)
+        << "Enter on roster row 1 must seed the train session on member 1";
+    EXPECT_EQ(f.save().team_list[0]->strength, member0_before)
+        << "the first member must be untouched by the seeded train";
+    EXPECT_LT(f.save().m_totalcash[0], before_gold)
+        << "the seeded accept still charges gold";
+}
+
 TEST(CursesPickerClient, train_navigation_next_prev_and_back)
 {
     PickerFixture f;

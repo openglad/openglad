@@ -6220,3 +6220,166 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
 }
+
+// ---------------------------------------------------------------------------
+// [NET-R5] §4.2 + §2.5 U8: networked clients answer is_save_slot_editable
+// with OWN slots only. The private picker save's occupied rows are untagged
+// (editable, the every-existing-flow shape); a row tagged with one of this
+// machine's own player indices (the post-win merged shape) stays editable;
+// a FOREIGN owner tag (a netsession-shaped combined roster) locks the row —
+// and TrainSession's constructor/PREV/NEXT/seek_slot clamp around it, which
+// is the base-camp per-row TRAIN ownership clamp made real at the
+// production-client level.
+// ---------------------------------------------------------------------------
+TEST(PickerNetworkClient,
+     networked_editability_locks_foreign_rows_and_clamps_train_cycle)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host Own");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    ASSERT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Join Own");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        ASSERT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    // Machine identities from the replicated state (names are generated).
+    std::uint8_t host_index = 0xff;
+    std::uint8_t join_index = 0xff;
+    for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+    {
+        if (player.is_host)
+            host_index = player.player_index;
+        else
+            join_index = player.player_index;
+    }
+    ASSERT_NE(0xff, host_index);
+    ASSERT_NE(0xff, join_index);
+    ASSERT_NE(host_index, join_index);
+
+    // The host's private untagged roster stays fully editable (the flip
+    // never locks a machine's own rows — every legacy flow's shape).
+    EXPECT_TRUE(host_client->is_save_slot_editable(0));
+
+    {
+        auto join_scope = join_session.activate();
+        SaveData& join_save = join_session.myscreen_->save_data;
+
+        // Shape the joiner's in-memory save like the transient post-level
+        // window: slot 0 untagged (private roster), slot 1 tagged with the
+        // joiner's OWN player index (a merged-back survivor is a copy of a
+        // tagged session guy), slot 2 tagged with the HOST's index (a
+        // netsession-shaped foreign row).
+        auto own_tagged = std::make_unique<guy>(FAMILY_ARCHER);
+        own_tagged->name = "Merged Own";
+        own_tagged->teamnum = 1;
+        own_tagged->owner_player_index = join_index;
+        auto foreign = std::make_unique<guy>(FAMILY_MAGE);
+        foreign->name = "Foreign Row";
+        foreign->teamnum = 0;
+        foreign->owner_player_index = host_index;
+        join_save.team_list[1] = std::move(own_tagged);
+        join_save.team_list[2] = std::move(foreign);
+        join_save.team_size = 3;
+
+        EXPECT_TRUE(join_client->is_save_slot_editable(0))
+            << "untagged private rows stay editable";
+        EXPECT_TRUE(join_client->is_save_slot_editable(1))
+            << "own-tagged (merged) rows stay editable";
+        EXPECT_FALSE(join_client->is_save_slot_editable(2))
+            << "[NET-R5] foreign-tagged rows are never editable";
+        EXPECT_TRUE(join_client->is_save_slot_editable(5))
+            << "empty slots keep the hire-fillable shape";
+        EXPECT_FALSE(join_client->is_save_slot_editable(MAX_TEAM_SIZE));
+
+        // §2.5 U8: TrainSession's cycle clamps to own characters through
+        // the production client (the free-fn route the SDL/text/curses
+        // sessions all take).
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        og::ui::TrainSession session(join_save);
+        ASSERT_FALSE(session.empty());
+        EXPECT_EQ(0, session.current_slot());
+        session.next_member();
+        EXPECT_EQ(1, session.current_slot());
+        session.next_member();
+        EXPECT_EQ(0, session.current_slot())
+            << "NEXT must wrap past the foreign row";
+        session.prev_member();
+        EXPECT_EQ(1, session.current_slot())
+            << "PREV must skip the foreign row";
+        EXPECT_FALSE(session.seek_slot(2))
+            << "per-row TRAIN seeding on a foreign row is refused";
+        EXPECT_EQ(1, session.current_slot())
+            << "a refused seek leaves the session where it was";
+        EXPECT_TRUE(session.seek_slot(0));
+        EXPECT_EQ(0, session.current_slot());
+    }
+
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}
