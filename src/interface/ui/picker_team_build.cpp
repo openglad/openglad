@@ -503,63 +503,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	return MENU_REDRAW;
 }
 
-Sint32 create_view_menu(Sint32 arg1)
-{
-	Sint32 retvalue = 0;
-
-	if (arg1)
-		arg1 = 1;
-
-	og::runtime::current_session->myscreen_->clearbuffer();
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-	button* buttons = picker_viewteam_buttons();
-	int num_buttons = picker_viewteam_button_count();
-	int highlighted_button = 1;
-    sync_view_team_host_control_visibility(
-        buttons, num_buttons, highlighted_button);
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        sync_view_team_host_control_visibility(
-            buttons, num_buttons, highlighted_button);
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		if(leftmouse(buttons))
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        // Check before reset_buttons can clear it.
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        // Reset buttons (relevant after go_menu returns from game)
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        view_team(5,5,314, 160);
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-	og::runtime::current_session->myscreen_->clearbuffer();
-
-	// Propagate MENU_EXIT so TeamBuild interception can map GO -> StartGame.
-	// BACK returns MENU_REDRAW to keep parent create_team_menu running.
-	if (retvalue & MENU_EXIT)
-		return retvalue;
-
-	return MENU_REDRAW;
-}
+// create_view_menu (VIEW TEAM): engine-hosted — the spec and the entry
+// wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // ---------------------------------------------------------------------------
 // TEAMS subscreen: per-team JOIN (local my_team / networked TeamChange), the
@@ -2161,89 +2106,9 @@ Sint32 create_train_menu(Sint32 arg1)
 	return MENU_REDRAW;
 }
 
-static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* title)
-{
-	Sint32 retvalue=0;
-	text& menutext = og::runtime::current_session->myscreen_->text_normal;
-    auto return_to_parent = []() {
-        clear_allbuttons();
-        return MENU_REDRAW;
-    };
-
-	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	int highlighted_button = 10;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		if(leftmouse(buttons))
-        {
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-			if(retvalue == MENU_REDRAW)
-            {
-                return return_to_parent();
-            }
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_REDRAW)
-        {
-            return return_to_parent();
-        }
-
-        // Reset buttons
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-
-        og::runtime::current_session->myscreen_->draw_button(15,  9, 255, 199, 1, 1);
-        og::runtime::current_session->myscreen_->draw_text_bar(19, 13, 251, 21);
-        int title_len = static_cast<int>(std::strlen(title));
-        menutext.write_xy(135-(title_len*3), 15, title, RED, 1);
-        for (Sint32 i=0; i < 10; i++)
-        {
-            std::string temp_filename = std::format("save{}", i+1);
-            og::runtime::current_session->allbuttons_[i]->label = get_saved_name(temp_filename.c_str());
-            og::runtime::current_session->myscreen_->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-            og::runtime::current_session->allbuttons_[i]->vdisplay();
-            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[i]->xloc-1,
-                               og::runtime::current_session->allbuttons_[i]->yloc-1,
-                               og::runtime::current_session->allbuttons_[i]->xend,
-                               og::runtime::current_session->allbuttons_[i]->yend, 0, 0, 1);
-        }
-        og::runtime::current_session->myscreen_->draw_text_bar(23, og::runtime::current_session->allbuttons_[10]->yloc-2, 66, og::runtime::current_session->allbuttons_[10]->yend+1);
-        og::runtime::current_session->allbuttons_[10]->vdisplay();
-        og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[10]->xloc-1,
-                           og::runtime::current_session->allbuttons_[10]->yloc-1,
-                           og::runtime::current_session->allbuttons_[10]->xend,
-                           og::runtime::current_session->allbuttons_[10]->yend, 0, 0, 1);
-
-        draw_highlight(buttons[highlighted_button]);
-		og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-
-	return return_to_parent();
-}
-
-Sint32 create_load_menu(Sint32 /*arg1*/)
-{
-	button* buttons = picker_loadteam_buttons();
-	return create_slot_menu(buttons, picker_loadteam_button_count(), "Gladiator: Load Game");
-}
-
-Sint32 create_save_menu(Sint32 /*arg1*/)
-{
-	button* buttons = picker_saveteam_buttons();
-	return create_slot_menu(buttons, picker_saveteam_button_count(), "Gladiator: Save Game");
-}
+// create_save_menu / create_load_menu (the slot menus): engine-hosted — the
+// specs, the shared slot-panel content pass, and the entry wrappers live in
+// menu_screen_specs.cpp (docs/menu-engine.md).
 
 // --- Session-based thin wrappers for button callbacks ---
 

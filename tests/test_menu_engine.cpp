@@ -637,9 +637,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 7)
-        << "difficulty + the FX trio + display + controls + main options "
-           "must be engine-hosted by this stage";
+    EXPECT_GE(engine_screens, 10)
+        << "difficulty + the FX trio + display + controls + main options + "
+           "main menu + view team + the slot menus must be engine-hosted by "
+           "this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -661,6 +662,48 @@ TEST(MenuEngine, options_family_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions).kind);
+}
+
+// ---------------------------------------------------------------------------
+// §1.8 step 5 registry state: the team-build cluster migrates in order
+// (view team + slot menus, then SCENARIO + TEAMS, then team build itself).
+// Updated in the SAME commit as each registry flip.
+TEST(MenuEngine, team_build_cluster_registry_hosts)
+{
+    using Kind = og::ui::MenuScreenHost::Kind;
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::ViewTeam).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::SaveSlots).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::LoadSlots).kind);
+}
+
+// The exit_on_redraw contract on the migrated cluster: BACK on these
+// subscreens carries MENU_REDRAW and must END the screen (the parent loop
+// keeps running), while MENU_EXIT-bearing exits still propagate. Pinned on
+// the spec flags — the direct-call behavior is covered by the unchanged
+// legacy tests (test_view_team / test_save_menu).
+TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
+{
+    const og::ui::MenuScreenSpec* view_team =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::ViewTeam).spec;
+    ASSERT_NE(nullptr, view_team);
+    EXPECT_TRUE(view_team->exit_on_redraw);
+    EXPECT_EQ(MENU_EXIT, view_team->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              view_team->remote_start);
+
+    for (const og::ui::MenuScreenId id : {og::ui::MenuScreenId::SaveSlots,
+                                          og::ui::MenuScreenId::LoadSlots}) {
+        const og::ui::MenuScreenSpec* slots = og::ui::menu_screen_host(id).spec;
+        ASSERT_NE(nullptr, slots);
+        EXPECT_TRUE(slots->exit_on_redraw);
+        EXPECT_EQ(MENU_REDRAW, slots->exit_value);
+        EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+                  slots->remote_start);
+        EXPECT_EQ(10, slots->default_highlight);
+    }
 }
 
 // ---------------------------------------------------------------------------

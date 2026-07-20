@@ -21,8 +21,8 @@ window. Keep this table in sync with the registry:
 | MAIN OPTIONS | **Engine** | `main_options_menu_screen_spec()` via `main_options()` (which keeps the family-wide cfg-persist exit epilogue) |
 | Main menu | **Engine** | `main_menu_screen_spec()` via `mainmenu()` — the §1.6 MP/no-MP spec pair (build-gated quit/help fork), `FadeWithInitialDraw` entry, MainScope remote-start with `BreakWithSelection`, the G14 full-re-vdisplay content hook, and the outline/label/art bindings that retired `redraw_mainmenu`'s raw `allbuttons_[N]` writes and both `OPTIONS_BUTTON_INDEX` #defines (`picker_mainmenu_options_index()` now) |
 | Team build | Legacy | `create_team_menu()` |
-| View team | Legacy | `create_view_menu()` |
-| Save/Load slots | Legacy | `create_save_menu()` / `create_load_menu()` |
+| View team | **Engine** | `view_team_menu_screen_spec()` via `create_view_menu()` (`exit_on_redraw`; GO gating = the legacy sync as its Rewire program) |
+| Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
 | Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
 | Scenario / TEAMS | Legacy | `create_scenario_menu()` / `create_teams_menu()` |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |

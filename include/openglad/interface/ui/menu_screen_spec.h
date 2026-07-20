@@ -93,6 +93,11 @@ struct MenuButtonSpec {
     Sint32 outline_arg = 0;
     MenuColorFormatter color = nullptr;
     bool no_draw = false;
+    // Static default hidden flag, transcribed verbatim from the legacy
+    // table's `hidden` constructor argument (conditionally-shown rows start
+    // hidden on the materialized surface; per-frame gates/rewires own the
+    // live state). test_menu_layout pins these defaults per screen.
+    bool hidden = false;
     MenuBuildGate build = MenuBuildGate::Always;
 };
 
@@ -158,6 +163,14 @@ struct MenuScreenSpec {
     EnterTransition enter = EnterTransition::None;
     int default_highlight = 0;
     bool right_click_enabled = false;
+    // Subscreens whose BACK carries MENU_REDRAW (view team / TEAMS / the
+    // slot menus): the loop must END on a redraw-bearing retvalue — checked
+    // right where the legacy loops checked, after handle_menu_nav and
+    // BEFORE reset_buttons could consume it — and run_menu_screen returns
+    // MENU_REDRAW from that break. Screens whose nested subscreens return
+    // MENU_REDRAW to be consumed by reset_buttons (team build, SCENARIO)
+    // keep this false.
+    bool exit_on_redraw = false;
     // Draw the picker backdrop (draw_backdrop()) before draw_background.
     bool backdrop = false;
     // Frame obligations (single-point, §1.4/G12).

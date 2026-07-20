@@ -1520,14 +1520,8 @@ static const button k_createmenu_buttons[] =
         button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=5, .left=7}),
     };
 
-static const button k_viewteam_buttons[] =
-    {
-        //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
-        //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
-        button("go", "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.left=1}),
-        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_REDRAW, MenuNav{.right=0}),
-
-    };
+// VIEW TEAM: engine-hosted — spec, accessor shims, and create_view_menu live
+// in menu_screen_specs.cpp (docs/menu-engine.md).
 
 static const button k_details_buttons[] =
     {
@@ -1614,37 +1608,9 @@ static const button k_networking_menu_buttons[] =
 #endif
 
 
-static const button k_saveteam_buttons[] =
-    {
-        button("save_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoSave), 1, MenuNav{.up=10, .down=1}),
-        button("save_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoSave), 2, MenuNav{.up=0, .down=2}),
-        button("save_slot_3", "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, button_action_id(ButtonAction::DoSave), 3, MenuNav{.up=1, .down=3}),
-        button("save_slot_4", "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, button_action_id(ButtonAction::DoSave), 4, MenuNav{.up=2, .down=4}),
-        button("save_slot_5", "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, button_action_id(ButtonAction::DoSave), 5, MenuNav{.up=3, .down=5}),
-        button("save_slot_6", "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, button_action_id(ButtonAction::DoSave),  6, MenuNav{.up=4, .down=6}),
-        button("save_slot_7", "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, button_action_id(ButtonAction::DoSave), 7, MenuNav{.up=5, .down=7}),
-        button("save_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, button_action_id(ButtonAction::DoSave), 8, MenuNav{.up=6, .down=8}),
-        button("save_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, button_action_id(ButtonAction::DoSave), 9, MenuNav{.up=7, .down=9}),
-        button("save_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, button_action_id(ButtonAction::DoSave), 10, MenuNav{.up=8, .down=10}),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
-
-    };
-
-static const button k_loadteam_buttons[] =
-    {
-        button("load_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoLoad), 1, MenuNav{.up=10, .down=1}),
-        button("load_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoLoad), 2, MenuNav{.up=0, .down=2}),
-        button("load_slot_3", "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, button_action_id(ButtonAction::DoLoad), 3, MenuNav{.up=1, .down=3}),
-        button("load_slot_4", "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, button_action_id(ButtonAction::DoLoad), 4, MenuNav{.up=2, .down=4}),
-        button("load_slot_5", "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, button_action_id(ButtonAction::DoLoad), 5, MenuNav{.up=3, .down=5}),
-        button("load_slot_6", "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, button_action_id(ButtonAction::DoLoad),  6, MenuNav{.up=4, .down=6}),
-        button("load_slot_7", "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, button_action_id(ButtonAction::DoLoad), 7, MenuNav{.up=5, .down=7}),
-        button("load_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, button_action_id(ButtonAction::DoLoad), 8, MenuNav{.up=6, .down=8}),
-        button("load_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, button_action_id(ButtonAction::DoLoad), 9, MenuNav{.up=7, .down=9}),
-        button("load_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, button_action_id(ButtonAction::DoLoad), 10, MenuNav{.up=8, .down=10}),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
-
-    };
+// SAVE / LOAD slot menus: engine-hosted — specs, accessor shims, and
+// create_save_menu / create_load_menu live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
 // TEAMS subscreen (create_teams_menu): team rows are drawn at y=32+30*t with
 // the per-team JOIN column at x=240; the CTF match settings (host-gated, CTF
@@ -1727,38 +1693,9 @@ int picker_createmenu_button_count()
     return static_cast<int>(pks().createmenu_buttons.size());
 }
 
-button* picker_viewteam_buttons()
-{
-    reset_mutable_button_layout(pks().viewteam_buttons, k_viewteam_buttons);
-    return pks().viewteam_buttons.data();
-}
-
-int picker_viewteam_button_count()
-{
-    return static_cast<int>(pks().viewteam_buttons.size());
-}
-
-button* picker_saveteam_buttons()
-{
-    reset_mutable_button_layout(pks().saveteam_buttons, k_saveteam_buttons);
-    return pks().saveteam_buttons.data();
-}
-
-int picker_saveteam_button_count()
-{
-    return static_cast<int>(pks().saveteam_buttons.size());
-}
-
-button* picker_loadteam_buttons()
-{
-    reset_mutable_button_layout(pks().loadteam_buttons, k_loadteam_buttons);
-    return pks().loadteam_buttons.data();
-}
-
-int picker_loadteam_button_count()
-{
-    return static_cast<int>(pks().loadteam_buttons.size());
-}
+// picker_viewteam_buttons()/picker_saveteam_buttons()/picker_loadteam_buttons()
+// (+ counts): engine-hosted screens — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 button* picker_details_buttons()
 {

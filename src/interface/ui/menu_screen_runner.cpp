@@ -275,7 +275,7 @@ void materialize_menu_buttons_for(const MenuScreenSpec& spec,
         const MenuButtonSpec& row = *row_ptr;
         button materialized(row.id, row.label, row.hotkey, row.x, row.y, row.w,
                             row.h, button_action_id(row.action), row.arg,
-                            row.nav);
+                            row.nav, row.hidden);
         materialized.no_draw = row.no_draw;
         out.push_back(materialized);
     }
@@ -410,6 +410,15 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         if (retvalue == MENU_EXIT)
             break;
+
+        // Subscreens whose BACK carries MENU_REDRAW (view team / TEAMS /
+        // the slot menus) END here — the same point the legacy loops
+        // checked, before reset_buttons could consume the value — and
+        // return MENU_REDRAW to the parent loop. MENU_EXIT-bearing exits
+        // (remote start, an intercepted GO) still return spec.exit_value /
+        // the remote MENU_EXIT through their own paths above.
+        if (spec.exit_on_redraw && (retvalue & MENU_REDRAW))
+            return MENU_REDRAW;
 
         // G3 generic row dispatch: ButtonAction::MenuSpecRow stashed which
         // materialized row was activated; retvalue only carried the action
