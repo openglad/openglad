@@ -76,6 +76,31 @@ constexpr std::array<PickerMenuItem, 6> kDifficultyMenuItems = {{
     {"back", "Back", PickerMenuCommand::Back},
 }};
 
+// The Company & Base Camp screens (design §2.2-§2.4). LoadCompany and
+// Backups list dynamic rows (companies on disk / snapshots) at runtime; the
+// model carries the fixed command chrome all three clients share. Nothing
+// presents these menus yet — the SDL specs and the terminal flows land with
+// the WP3 screen reshapes, atomically with their re-pins.
+constexpr std::array<PickerMenuItem, 4> kLoadCompanyItems = {{
+    {"open_company", "Open Company", PickerMenuCommand::OpenCompany},
+    {"company_backups", "Backups", PickerMenuCommand::OpenCompanyBackups},
+    {"delete_company", "Delete Company", PickerMenuCommand::DeleteCompany},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
+constexpr std::array<PickerMenuItem, 3> kBackupsItems = {{
+    {"restore_backup", "Restore Backup", PickerMenuCommand::RestoreBackup},
+    {"delete_backup", "Delete Backup", PickerMenuCommand::DeleteBackup},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
+constexpr std::array<PickerMenuItem, 4> kNameEntryItems = {{
+    {"company_name_value", "Company Name", PickerMenuCommand::EditCompanyName},
+    {"company_name_reroll", "Reroll", PickerMenuCommand::RerollCompanyName},
+    {"company_name_accept", "Accept", PickerMenuCommand::AcceptCompanyName},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
 constexpr PickerMenuDefinition kMainMenu{
     PickerMenuId::Main,
     "OpenGlad Main Menu",
@@ -100,6 +125,24 @@ constexpr PickerMenuDefinition kDifficultyMenu{
     std::span<const PickerMenuItem>(kDifficultyMenuItems),
 };
 
+constexpr PickerMenuDefinition kLoadCompanyMenu{
+    PickerMenuId::LoadCompany,
+    "Companies",
+    std::span<const PickerMenuItem>(kLoadCompanyItems),
+};
+
+constexpr PickerMenuDefinition kBackupsMenu{
+    PickerMenuId::Backups,
+    "Backups",
+    std::span<const PickerMenuItem>(kBackupsItems),
+};
+
+constexpr PickerMenuDefinition kNameEntryMenu{
+    PickerMenuId::NameEntry,
+    "Found Your Company",
+    std::span<const PickerMenuItem>(kNameEntryItems),
+};
+
 } // namespace
 
 const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
@@ -113,6 +156,12 @@ const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
         return kScenarioMenu;
     case PickerMenuId::Difficulty:
         return kDifficultyMenu;
+    case PickerMenuId::LoadCompany:
+        return kLoadCompanyMenu;
+    case PickerMenuId::Backups:
+        return kBackupsMenu;
+    case PickerMenuId::NameEntry:
+        return kNameEntryMenu;
     }
     return kMainMenu;
 }

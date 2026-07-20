@@ -9,9 +9,11 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
 #include <string_view>
@@ -19,6 +21,7 @@
 
 class guy;
 class GameWorld;
+class IRandom;
 
 namespace og::ui {
 
@@ -77,6 +80,31 @@ const char* get_random_name(unsigned char family);
 
 // Return a unique name not already in the save's team list.
 std::string get_unique_name(unsigned char family, const SaveData& save);
+
+// --- Company name generation (design §2.2) ---
+
+// Hard cap on a generated company display name. 18 chars fits every later
+// surface without truncation: the Load-list name column, the main-menu
+// company strip, and the base-camp header all budget exactly 18.
+inline constexpr std::size_t kCompanyNameMaxLen = 18;
+
+// The three word banks behind generate_company_name, exposed so the unit
+// pins can assert the budget contract structurally: every word is uppercase
+// A-Z only, and max(adjective) + max(noun) + max(group) + 2 spaces
+// <= kCompanyNameMaxLen, so no combination can ever overflow.
+struct CompanyNameBanks {
+    std::span<const char* const> adjectives;
+    std::span<const char* const> nouns;
+    std::span<const char* const> groups;
+};
+CompanyNameBanks company_name_banks();
+
+// One generated fantasy company name, "<ADJ> <NOUN> <GROUP>" (e.g.
+// "IRON KETTLE BAND"), always <= kCompanyNameMaxLen chars by the bank
+// budget contract above — never truncated. Pure and deterministic under the
+// injected rng (exactly three next() draws per call); the name screen's
+// REROLL simply calls it again on the advancing rng.
+std::string generate_company_name(IRandom& rng);
 
 // --- Team queries ---
 
@@ -328,6 +356,35 @@ std::string format_permadeath_label(const SaveData& save);
 
 // "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
 std::string format_generator_rate_label(const SaveData& save);
+
+// --- Company screens: label formatters (design §2.2/§2.3) ---
+
+// "file: <slug>.gtl" — the §2.2 name-entry preview line that teaches the
+// display-name/filename split. The slug is the one ACCEPT would write right
+// now: og::data::derive_company_slot (§3.4), including collision probing
+// against the existing save files. <= 6 + 40 + 4 = 50 chars by the slug
+// truncation rule; <= 28 for any generated (18-char) display name.
+std::string format_company_file_preview(const std::string& display_name);
+
+// "COMPANIES (N)" — the §2.3 Company List header line.
+std::string format_company_list_title(int count);
+
+// One §2.3 Company List row, pre-split into the three drawn columns (the
+// SDL content pass draws them at x=27/141/155; terminals join them).
+struct CompanyRowText {
+    // Display name, <= kCompanyNameMaxLen (18) chars, clipped; empty
+    // display names (and corrupt headers that never parsed one) fall back
+    // to the slot name so the row still identifies its file.
+    std::string name;
+    // Roster count, right-aligned 2 chars ("12", " 3"); "--" on corrupt
+    // rows (the count did not parse).
+    std::string roster;
+    // Last-played "YYYY-MM-DD" (UTC), 10 chars; "" when never played;
+    // "CORRUPT" on corrupt rows — the §2.3 corrupt-row marking.
+    std::string played;
+    bool corrupt = false;
+};
+CompanyRowText format_company_row(const og::data::CompanyInfo& info);
 
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 // Pure string helpers over the depth-effect selector values

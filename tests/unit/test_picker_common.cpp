@@ -4,6 +4,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -16,8 +17,10 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <list>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -2577,4 +2580,262 @@ TEST(PickerCommon, company_autosave_context_empty_roster_uses_my_team)
         og::ui::company_autosave_context(save, /*networked_lobby=*/true);
     for (const bool owned : clamped.owned_teams)
         EXPECT_FALSE(owned);
+}
+
+// --- Company name generator (design §2.2) ---
+
+namespace {
+
+// EXPECT-only bank sweep (helpers that return values cannot use ASSERT_*);
+// returns the longest word so the combined-budget pin can sum the maxima.
+std::size_t check_company_bank(std::span<const char* const> bank,
+                               std::size_t per_word_budget,
+                               const char* what)
+{
+    std::size_t longest = 0;
+    std::set<std::string> unique;
+    for (const char* word : bank)
+    {
+        if (word == nullptr)
+        {
+            ADD_FAILURE() << what << " contains a null word";
+            continue;
+        }
+        const std::string text(word);
+        EXPECT_FALSE(text.empty()) << what << " contains an empty word";
+        EXPECT_LE(text.size(), per_word_budget) << what << ": " << text;
+        longest = std::max(longest, text.size());
+        for (const char c : text)
+            EXPECT_TRUE(c >= 'A' && c <= 'Z')
+                << what << " word has a non-A-Z character: " << text;
+        unique.insert(text);
+    }
+    EXPECT_EQ(unique.size(), bank.size()) << what << " has duplicate words";
+    return longest;
+}
+
+std::vector<std::string> split_words(const std::string& text)
+{
+    std::vector<std::string> words;
+    std::string current;
+    for (const char c : text)
+    {
+        if (c == ' ')
+        {
+            words.push_back(current);
+            current.clear();
+        }
+        else
+        {
+            current += c;
+        }
+    }
+    words.push_back(current);
+    return words;
+}
+
+bool bank_contains(std::span<const char* const> bank, const std::string& word)
+{
+    for (const char* entry : bank)
+    {
+        if (word == entry)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+TEST(CompanyNameGen, banks_respect_the_18_char_budget_and_charset)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    ASSERT_FALSE(banks.adjectives.empty());
+    ASSERT_FALSE(banks.nouns.empty());
+    ASSERT_FALSE(banks.groups.empty());
+
+    // Per-bank word budgets: 5 + 6 + 5 (+ two spaces) == the 18-char cap.
+    const std::size_t adj = check_company_bank(banks.adjectives, 5, "adjectives");
+    const std::size_t noun = check_company_bank(banks.nouns, 6, "nouns");
+    const std::size_t group = check_company_bank(banks.groups, 5, "groups");
+    EXPECT_LE(adj + noun + group + 2, og::ui::kCompanyNameMaxLen)
+        << "the longest <ADJ> <NOUN> <GROUP> combination must fit the cap "
+           "(the generator never truncates)";
+
+    // The design's own example must stay generatable.
+    EXPECT_TRUE(bank_contains(banks.adjectives, "IRON"));
+    EXPECT_TRUE(bank_contains(banks.nouns, "KETTLE"));
+    EXPECT_TRUE(bank_contains(banks.groups, "BAND"));
+}
+
+TEST(CompanyNameGen, deterministic_under_seed_and_reroll_advances)
+{
+    SeededRandom first_rng(42u);
+    SeededRandom second_rng(42u);
+    std::vector<std::string> first;
+    std::vector<std::string> second;
+    for (int i = 0; i < 12; ++i)
+    {
+        first.push_back(og::ui::generate_company_name(first_rng));
+        second.push_back(og::ui::generate_company_name(second_rng));
+    }
+    EXPECT_EQ(first, second)
+        << "same seed, same call sequence => byte-identical names";
+
+    // Reroll support: repeated calls on the ADVANCING rng vary the name.
+    const std::set<std::string> distinct(first.begin(), first.end());
+    EXPECT_GE(distinct.size(), 2u) << "reroll must be able to change the name";
+}
+
+TEST(CompanyNameGen, fixed_rng_picks_the_indexed_words)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+
+    FixedRandom zero(0u);
+    EXPECT_EQ(std::format("{} {} {}", banks.adjectives[0], banks.nouns[0],
+                          banks.groups[0]),
+              og::ui::generate_company_name(zero));
+
+    FixedRandom three(3u);
+    EXPECT_EQ(std::format("{} {} {}",
+                          banks.adjectives[3u % banks.adjectives.size()],
+                          banks.nouns[3u % banks.nouns.size()],
+                          banks.groups[3u % banks.groups.size()]),
+              og::ui::generate_company_name(three));
+}
+
+TEST(CompanyNameGen, seeded_sweep_stays_in_budget_and_covers_every_word)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    SeededRandom rng(1234u);
+    std::set<std::string> seen_adjectives;
+    std::set<std::string> seen_nouns;
+    std::set<std::string> seen_groups;
+    std::set<std::string> distinct_names;
+    for (int i = 0; i < 2000; ++i)
+    {
+        const std::string name = og::ui::generate_company_name(rng);
+        ASSERT_LE(name.size(), og::ui::kCompanyNameMaxLen) << name;
+        ASSERT_FALSE(name.empty());
+
+        const std::vector<std::string> words = split_words(name);
+        ASSERT_EQ(3u, words.size()) << "shape is <ADJ> <NOUN> <GROUP>: " << name;
+        ASSERT_TRUE(bank_contains(banks.adjectives, words[0])) << name;
+        ASSERT_TRUE(bank_contains(banks.nouns, words[1])) << name;
+        ASSERT_TRUE(bank_contains(banks.groups, words[2])) << name;
+
+        seen_adjectives.insert(words[0]);
+        seen_nouns.insert(words[1]);
+        seen_groups.insert(words[2]);
+        distinct_names.insert(name);
+    }
+    EXPECT_EQ(seen_adjectives.size(), banks.adjectives.size())
+        << "every adjective must be reachable";
+    EXPECT_EQ(seen_nouns.size(), banks.nouns.size())
+        << "every noun must be reachable";
+    EXPECT_EQ(seen_groups.size(), banks.groups.size())
+        << "every group word must be reachable";
+    EXPECT_GE(distinct_names.size(), 100u) << "the space must have variety";
+}
+
+// --- Company label formatters (design §2.2/§2.3) ---
+
+TEST(CompanyFormat, file_preview_derives_the_accept_slug)
+{
+    // The §2.2 example: display name -> the slug ACCEPT would write.
+    EXPECT_EQ("file: iron-kettle-band.gtl",
+              og::ui::format_company_file_preview("Iron Kettle Band"));
+    // Empty and all-dropped names fall back to the "company" slug (§3.4).
+    EXPECT_EQ("file: company.gtl", og::ui::format_company_file_preview(""));
+    EXPECT_EQ("file: company.gtl", og::ui::format_company_file_preview("!!!"));
+
+    // Budget: any generated (<= 18 char) name previews in <= 28 chars
+    // ("file: " + slug <= 18 + ".gtl").
+    const std::string longest =
+        og::ui::format_company_file_preview("STORM KETTLE GUILD");
+    EXPECT_EQ("file: storm-kettle-guild.gtl", longest);
+    EXPECT_LE(longest.size(), 28u);
+}
+
+TEST(CompanyFormat, list_title_and_row_columns)
+{
+    EXPECT_EQ("COMPANIES (12)", og::ui::format_company_list_title(12));
+    EXPECT_EQ("COMPANIES (0)", og::ui::format_company_list_title(0));
+
+    og::data::CompanyInfo info;
+    info.slot = "iron-kettle-band";
+    info.display_name = "IRON KETTLE BAND";
+    info.roster_size = 12;
+    info.last_played_unix_s = 1000000000; // 2001-09-09 01:46:40 UTC
+    info.valid = true;
+
+    const og::ui::CompanyRowText row = og::ui::format_company_row(info);
+    EXPECT_FALSE(row.corrupt);
+    EXPECT_EQ("IRON KETTLE BAND", row.name);
+    EXPECT_EQ("12", row.roster);
+    EXPECT_EQ("2001-09-09", row.played) << "dates are UTC, never local time";
+
+    // Column budgets (§2.3): name <= 18 chars, roster exactly 2, date <= 10.
+    EXPECT_LE(row.name.size(), og::ui::kCompanyNameMaxLen);
+    EXPECT_EQ(2u, row.roster.size());
+    EXPECT_LE(row.played.size(), 10u);
+}
+
+TEST(CompanyFormat, row_edges_clip_pad_and_mark_corruption)
+{
+    og::data::CompanyInfo info;
+    info.slot = "long";
+    info.display_name = "AN EXTREMELY LONG COMPANY NAME"; // 30 chars
+    info.roster_size = 3;
+    info.last_played_unix_s = 0; // never played
+    info.valid = true;
+
+    og::ui::CompanyRowText row = og::ui::format_company_row(info);
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, row.name.size())
+        << "over-budget names clip to the column";
+    EXPECT_EQ(0u, row.name.find("AN EXTREMELY LONG"));
+    EXPECT_EQ(" 3", row.roster) << "single digits right-align to 2 chars";
+    EXPECT_EQ("", row.played) << "never-played rows draw no date";
+
+    info.roster_size = 250; // out-of-range header value
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("99", row.roster) << "roster clamps to the 2-char column";
+
+    info.roster_size = -1;
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ(" 0", row.roster);
+
+    // Absurd timestamps (beyond year 9999) blank rather than widen the
+    // 10-char date column.
+    info.roster_size = 3;
+    info.last_played_unix_s = INT64_C(400000000000000);
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("", row.played);
+    info.last_played_unix_s = -5;
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("", row.played);
+
+    // Corrupt rows: keep the parsed name, mark CORRUPT in the date column.
+    info.valid = false;
+    info.last_played_unix_s = 0;
+    row = og::ui::format_company_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ(0u, row.name.find("AN EXTREMELY LONG"));
+    EXPECT_EQ("--", row.roster);
+    EXPECT_EQ("CORRUPT", row.played);
+
+    // Corrupt before the name parsed: fall back to the slot.
+    info.display_name.clear();
+    info.slot = "damaged-company";
+    row = og::ui::format_company_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ("damaged-company", row.name);
+
+    // A valid save with an empty stored name also identifies by slot.
+    og::data::CompanyInfo unnamed;
+    unnamed.slot = "save0";
+    unnamed.roster_size = 1;
+    unnamed.valid = true;
+    row = og::ui::format_company_row(unnamed);
+    EXPECT_FALSE(row.corrupt);
+    EXPECT_EQ("save0", row.name);
 }

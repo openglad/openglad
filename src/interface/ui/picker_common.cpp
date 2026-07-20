@@ -21,8 +21,10 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/core/irandom.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <format>
@@ -320,6 +322,58 @@ std::string get_unique_name(unsigned char family, const SaveData& save)
     }
 
     return std::string(result);
+}
+
+// --- Company name generation (design §2.2) ---
+
+namespace {
+
+// Word banks for "<ADJ> <NOUN> <GROUP>". Budget contract (asserted by the
+// unit pins over company_name_banks()): adjectives <= 5 chars, nouns <= 6,
+// groups <= 5, so the longest combination is 5 + 1 + 6 + 1 + 5 = 18
+// = kCompanyNameMaxLen — the generator can never overflow and never
+// truncates (the cap is load-bearing: §2.2 promises the name fits every
+// later surface untrimmed).
+constexpr const char* kCompanyAdjectives[] = {
+    "IRON", "GREY", "BLACK", "WHITE", "ASHEN", "AMBER", "IVORY", "STONE",
+    "THORN", "EMBER", "RIVER", "NORTH", "SABLE", "FROST", "STORM", "GOLD",
+};
+
+constexpr const char* kCompanyNouns[] = {
+    "KETTLE", "RAVEN", "FALCON", "WOLF", "LION", "DRAGON", "HAMMER",
+    "SHIELD", "DAGGER", "BANNER", "VIPER", "BADGER", "WYVERN", "LANCE",
+    "CROW", "ANVIL",
+};
+
+constexpr const char* kCompanyGroups[] = {
+    "BAND", "CREW", "HOST", "GUILD", "ORDER", "LODGE", "TROOP", "WATCH",
+    "PACK", "CADRE",
+};
+
+const char* pick_bank_word(IRandom& rng, std::span<const char* const> bank)
+{
+    return bank[rng.next(static_cast<std::uint32_t>(bank.size()))];
+}
+
+} // namespace
+
+CompanyNameBanks company_name_banks()
+{
+    return CompanyNameBanks{
+        std::span<const char* const>(kCompanyAdjectives),
+        std::span<const char* const>(kCompanyNouns),
+        std::span<const char* const>(kCompanyGroups),
+    };
+}
+
+std::string generate_company_name(IRandom& rng)
+{
+    // Exactly three draws, adjective->noun->group, so the output for a given
+    // rng state is pinned (determinism is part of the API contract).
+    const char* adjective = pick_bank_word(rng, company_name_banks().adjectives);
+    const char* noun = pick_bank_word(rng, company_name_banks().nouns);
+    const char* group = pick_bank_word(rng, company_name_banks().groups);
+    return std::format("{} {} {}", adjective, noun, group);
 }
 
 // --- Team queries ---
@@ -1083,6 +1137,71 @@ std::string format_generator_rate_label(const SaveData& save)
     if (save.generator_rate == 200)
         return "Generators: Frenzy";
     return "Generators: Normal";
+}
+
+// --- Company screens: label formatters (design §2.2/§2.3) ---
+
+namespace {
+
+std::string clip_to(std::string text, std::size_t max_len)
+{
+    if (text.size() > max_len)
+        text.resize(max_len);
+    return text;
+}
+
+// "YYYY-MM-DD" in UTC (deterministic — never the machine's timezone), or ""
+// for never-played (<= 0) and out-of-calendar values (a 4-digit year keeps
+// the §2.3 10-char date column budget honest).
+std::string format_played_date_utc(std::int64_t unix_s)
+{
+    // 9999-12-31T23:59:59Z. Values beyond this would overflow the int day
+    // count inside year_month_day (wrapping to a bogus in-range date), so
+    // bound the input BEFORE converting.
+    constexpr std::int64_t kMaxFourDigitYearUnixS = 253402300799;
+    if (unix_s <= 0 || unix_s > kMaxFourDigitYearUnixS)
+        return {};
+    const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
+    const std::chrono::year_month_day ymd{
+        std::chrono::floor<std::chrono::days>(when)};
+    if (!ymd.ok())
+        return {};
+    return std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()),
+                       static_cast<unsigned>(ymd.month()),
+                       static_cast<unsigned>(ymd.day()));
+}
+
+} // namespace
+
+std::string format_company_file_preview(const std::string& display_name)
+{
+    return std::format("file: {}.gtl",
+                       og::data::derive_company_slot(display_name));
+}
+
+std::string format_company_list_title(int count)
+{
+    return std::format("COMPANIES ({})", count);
+}
+
+CompanyRowText format_company_row(const og::data::CompanyInfo& info)
+{
+    CompanyRowText row;
+    row.corrupt = !info.valid;
+    // Corrupt headers may still have parsed a display name before failing;
+    // fall back to the slot so the row always identifies its file.
+    row.name = clip_to(
+        !info.display_name.empty() ? info.display_name : info.slot,
+        kCompanyNameMaxLen);
+    if (row.corrupt)
+    {
+        row.roster = "--";
+        row.played = "CORRUPT";
+        return row;
+    }
+    row.roster = std::format("{:2}", std::clamp(info.roster_size, 0, 99));
+    row.played = format_played_date_utc(info.last_played_unix_s);
+    return row;
 }
 
 // --- Team family extraction ---

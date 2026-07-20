@@ -19,6 +19,10 @@ enum class PickerMenuId : std::int32_t
     TeamBuild,
     Scenario,
     Difficulty,
+    // Company & Base Camp screens (design §2.2-§2.4), append-only:
+    LoadCompany, // §2.3 Company List (LOAD)
+    Backups,     // §2.4 per-company Backups sub-view
+    NameEntry,   // §2.2 new-company name entry
 };
 
 enum class PickerMenuCommand : std::int32_t
@@ -56,6 +60,15 @@ enum class PickerMenuCommand : std::int32_t
     CycleRespawnDelay,
     TogglePermadeath,
     CycleGeneratorRate,
+    // Company & Base Camp commands (design §2.2-§2.4), append-only:
+    OpenCompany,        // §2.3 open the selected company (row click / "open N")
+    OpenCompanyBackups, // §2.3 BK — enter the Backups sub-view
+    DeleteCompany,      // §2.3 X — delete company (+ backups) after confirm
+    RestoreBackup,      // §2.4 rewind to the selected snapshot after confirm
+    DeleteBackup,       // §2.4 delete one snapshot
+    EditCompanyName,    // §2.2 edit the name strip in place
+    RerollCompanyName,  // §2.2 REROLL — regenerate the fantasy default
+    AcceptCompanyName,  // §2.2 ACCEPT — create the company file
 };
 
 struct PickerMenuItem
