@@ -1155,10 +1155,10 @@ inline constexpr Mutation kMut_smoke_score_event = {
 };
 
 inline constexpr Mutation kMut_smoke_inputs_no_move = {
-    "src/gameplay/sim_input_handler.cpp", 345,
-    "control->walkstep(walkx, walky);",
-    "control->walkstep(0, 0);",
-    "Drops the input-driven walkstep delta so the player walker no longer steps east when K_RIGHT is held; flips WalkerPositionMoved(SOLDIER,240,0)."
+    "src/gameplay/walker_movement.cpp", 174,
+    "returnvalue = walk(x * stepsize(), y * stepsize());",
+    "returnvalue = walk(x * 0.0f, y * 0.0f);",
+    "Zeroes the movement delta inside walker::walkstep — the line the parity driver actually reaches (WP7 canary triage 2026-07-20: scenario_runtime.cpp computes walkx/walky itself and calls control->walkstep directly, so the old sim_input_handler.cpp:345 pin was runtime-dead — zero-flip, pre-existing on master). walk(0,0) returns success without moving, so the K_RIGHT soldier never steps east and WalkerPositionMoved(SOLDIER,240,0) flips."
 };
 
 inline constexpr Mutation kMut_smoke_empty_tick_count = {
@@ -1183,10 +1183,10 @@ inline constexpr Mutation kMut_save_corrupt = {
 };
 
 inline constexpr Mutation kMut_exit_neuter = {
-    "src/gameplay/sim_input_handler.cpp", 340,
-    "int walkx = pi.move_x();",
-    "int walkx = 0;",
-    "Force-zeroes the east/west walk vector at the sim_input_handler movement dispatch site (distinct line from kMut_smoke_inputs_no_move which mutates the walkstep call site at line 340); exit_trigger scenarios rely on K_RIGHT translation to reach the exit tile, and zeroing walkx leaves the player walker at its spawn xpos so WalkerPositionMoved(SOLDIER, X, 0) flips."
+    "src/gameplay/walker_movement.cpp", 174,
+    "returnvalue = walk(x * stepsize(), y * stepsize());",
+    "returnvalue = walk(x * 0.0f, y * stepsize());",
+    "Force-zeroes the east/west step inside walker::walkstep — the movement line the parity driver actually reaches (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:340 pin was runtime-dead because scenario_runtime.cpp decodes K_RIGHT itself and calls walkstep directly — zero-flip, pre-existing on master). The K_RIGHT soldier is parked at its spawn xpos and never reaches the exit pad, so WalkerPositionMoved(SOLDIER, 623, 224) flips."
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
@@ -1230,10 +1230,10 @@ inline constexpr Mutation kMut_special_thief_do_special = {
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "src/gameplay/families/family_druid.cpp", 191,
-    ".do_special = druid_do_special,",
-    ".do_special = (true ? nullptr : druid_do_special),",
-    "Descriptor neuters druid summon-faerie special; the faerie pet never appears, flipping LevelDoneEquals(2) downstream and any predicate that counts the summoned child."
+    "src/gameplay/families/family_druid.cpp", 51,
+    "if (self->busy() > 0)",
+    "if (self->busy() > 0 && false)",
+    "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge."
 };
 
 // Per-family-row mutations. Each points at the named family's
@@ -4567,13 +4567,20 @@ inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
 
 // --- Phase 06: input-pipeline edge-case scenarios --------------------------
 //
-// These four rows drive the real player-input pipeline (PlayerInput decode +
-// sim_process_player_input) through edge cases that the family/effect rows
-// never reach: diagonal movement decode, sustained held-fire, mid-run
-// character switch, and special-slot index wrap. Each row's discriminating
-// mutation edits exactly one source line in input_state.cpp /
-// sim_input_handler.cpp; the byte-match `from` text is verified against the
-// live source line by the mutation canary (scripts/parity/_apply_mutation.py).
+// These four rows drive the player-input EDGE CASES that the family/effect
+// rows never reach: diagonal movement, sustained held-fire, mid-run character
+// switch, and special-slot index wrap. NOTE (WP7 canary triage 2026-07-20):
+// the parity harness does NOT run PlayerInput decode or
+// sim_process_player_input — tests/parity/scenario_runtime.cpp replicates
+// that pipeline (apply_inputs_at_tick decodes key masks and calls walkstep /
+// init_fire / special / its own cycle helpers directly), and the whole
+// og_test_parity suite passes with abort() planted at
+// sim_process_player_input entry. The discriminating mutations therefore pin
+// the DOWNSTREAM sim lines the replicated pipeline actually executes
+// (walker_movement/walker/families); the original input_state.cpp /
+// sim_input_handler.cpp pins were runtime-dead (zero-flip, pre-existing on
+// master). The byte-match `from` text is verified against the live source
+// line by the mutation canary (scripts/parity/_apply_mutation.py).
 
 // (1) DIAGONAL MOVEMENT. A lone soldier on the player team holds K_DOWN_RIGHT
 // for forty ticks. PlayerInput::move_x()/move_y() each decode the DownRight
@@ -4601,10 +4608,10 @@ inline constexpr FactPredicate kFacts_input_diagonal_movement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_diagonal_movement_scen99 = {
-    "src/interface/input/input_state.cpp", 35,
-    "        held[static_cast<int>(InputKey::DownRight)])",
-    "        false)",
-    "Drops the DownRight bit from PlayerInput::move_y(): the diagonal key no longer contributes a +1 y component, so the soldier advances only in x and never clears the ypos floor of WalkerPositionMoved(FAMILY_SOLDIER, 175, 175)."
+    "src/gameplay/walker_movement.cpp", 174,
+    "returnvalue = walk(x * stepsize(), y * stepsize());",
+    "returnvalue = walk(x * stepsize(), y * 0.0f);",
+    "Drops the y component of the walkstep delta inside walker::walkstep (WP7 canary triage 2026-07-20: the old input_state.cpp:35 move_y() decode pin was runtime-dead — the parity driver decodes K_DOWN_RIGHT itself in scenario_runtime.cpp and calls walkstep directly; zero-flip, pre-existing on master). The diagonal key no longer contributes a y step, so the soldier advances only in x and never clears the ypos floor of WalkerPositionMoved(FAMILY_SOLDIER, 175, 175)."
 };
 
 // (2) HELD FIRE. A lone player-team soldier holds K_FIRE for the whole run.
@@ -4641,10 +4648,10 @@ inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 353,
-    "        if (pi.is_held(InputAction::Fire))",
-    "        if (false)",
-    "Disables the held-fire branch so the soldier fires only on the single press edge at line 329; the sustained knife stream collapses to one throw and the play_sound count falls below the floor of EventKindAtLeast(play_sound, 5)."
+    "src/gameplay/walker.cpp", 487,
+    "set_busy(busy() + fire_frequency());",
+    "set_busy(busy() + fire_frequency() * 100.0f);",
+    "Inflates the post-throw busy pause inside walker::init_fire by 100x (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:353 held-fire pin was runtime-dead — the parity driver re-arms init_fire itself each held tick in scenario_runtime.cpp; zero-flip, pre-existing on master). The first throw now blocks every later held-fire re-arm at the busy gate, collapsing the sustained knife stream to a single throw and dropping the play_sound count below the floor of EventKindAtLeast(play_sound, 5)."
 };
 
 // (3) SWITCH CHARACTER. Two real_team==255 walkers share the player team
@@ -4691,10 +4698,10 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 193,
-    "        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);",
-    "        control = oldcontrol;",
-    "Makes K_SWITCH a no-op: control never leaves the soldier, so the held K_FIRE throws FAMILY_KNIFE rather than the archer's FAMILY_ARROW, and WeaponFamilyEmitted(FAMILY_ARROW) finds no arrow."
+    "src/gameplay/families/family_archer.cpp", 127,
+    ".default_weapon = FAMILY_ARROW,",
+    ".default_weapon = FAMILY_KNIFE,",
+    "Swaps the archer's default weapon so the post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:193 switch pin was runtime-dead — the parity driver cycles characters itself via cycle_next_character in scenario_runtime.cpp; zero-flip, pre-existing on master). No FAMILY_ARROW is ever emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
 };
 
 // (4) SPECIAL-SLOT WRAP. A player-team mage cycles K_SPECIAL_SWITCH seven
@@ -4740,10 +4747,10 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 209,
-    "        control->set_current_special(control->current_special() + 1);",
-    "        control->set_current_special(1);",
-    "Replaces the per-press increment with a hard reset to slot 1, so the wrap never reaches FREEZE TIME (slot 3); K_SPECIAL fires TELEPORT, which emits no SetPalette event, failing EventKindAtLeast(set_palette, 1)."
+    "src/gameplay/families/family_mage.cpp", 198,
+    "if (self->team_num() == 0 || self->myguy)",
+    "if (false)",
+    "Reroutes the team-0 FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the friendly-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips."
 };
 
 
