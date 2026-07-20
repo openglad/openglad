@@ -4083,12 +4083,16 @@ TEST(PickerNetworkClient,
 
     const std::uint32_t reward_delta = authoritative_cash - 5000u;
     EXPECT_GT(reward_delta, 246u);
+    // §4.6: the fold is UNCHANGED, so each machine's in-memory SESSION (combined
+    // display) save still folds the whole delta onto its own wallet base. This
+    // is the combined session total, NOT the per-machine private share — the
+    // deploy-ratio split happens only at the save0 persist, asserted below.
     {
         auto join_scope = join_a_session.activate();
         EXPECT_EQ(6000u + reward_delta,
                   join_a_session.myscreen_->save_data.m_totalcash[0])
-            << "client A must apply the same authoritative score/tick reward "
-               "to its own private wallet base";
+            << "the session fold is unchanged: the full delta lands on the "
+               "combined display save";
         EXPECT_EQ(123u,
                   join_a_session.myscreen_->save_data.m_totalscore[0]);
     }
@@ -4111,7 +4115,18 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(7, static_cast<int>(merged.team_size));
         EXPECT_EQ(2, static_cast<int>(merged.scen_num))
             << "each machine's save0 cursor advances as if played alone";
-        EXPECT_EQ(123u, merged.m_totalscore[0]);
+        // §4.6 CONSERVATION (the anti-duplication pin): the pre-session save0
+        // wallet was the 5000 new-game grubstake (SaveData::reset seeds it), and
+        // the three machines each banked only their deploy-ratio SHARE of the
+        // pot on top of it. Their shares sum to exactly the pot, so the shared
+        // save0 holds baseline + the whole delta once — never the v7 behaviour
+        // where each machine overlaid the full pot and the last writer won
+        // (which would leave 6381 or 7381 here depending on write order).
+        EXPECT_EQ(5000u + reward_delta, merged.m_totalcash[0])
+            << "shared save0 accumulates baseline + exactly the pot (shares "
+               "conserve; no full-pot duplication)";
+        EXPECT_EQ(123u, merged.m_totalscore[0])
+            << "score shares likewise conserve to the whole score delta";
         for (const char* const name :
              {"HostAce", "HostBee", "JoinAOne", "JoinATwo", "JoinAThree",
               "JoinAFour", "JoinBSolo"})

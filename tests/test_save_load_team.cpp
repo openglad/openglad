@@ -607,7 +607,7 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
     scr->save_data.keep_fallen_heroes = 0;
 }
 
-TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
+TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
 
@@ -632,6 +632,9 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
     scr->save_data.completed_levels[disk.current_campaign].insert(7);
     scr->save_data.completed_levels["org.openglad.host-history"] = {11};
     scr->world().id = 1;
+    // The session (combined) wallet totals are deliberately WRONG values: §4.6
+    // banks the disk baseline plus this machine's SHARE of the fold DELTA, never
+    // the absolute session totals, so these must never surface in save0.
     for (std::size_t team = 0;
          team < std::size(scr->save_data.m_totalcash);
          ++team)
@@ -642,16 +645,23 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
             10100u + static_cast<std::uint32_t>(team);
     }
 
-    // Global player ids 6 and 7 share gameplay team 2. They must select the
-    // team-2 wallet (never index the four-element totals arrays by player id),
-    // and duplicate seats on that team must not add the payout twice.
+    // Global player ids 6 and 7 each deployed one character on gameplay team 2;
+    // the level's fold added 300 cash / 120 score to team 2. As the ONLY
+    // contributors, the machine banks the whole team-2 delta over its disk
+    // baseline. Wallets are keyed by gameplay team, never by player id.
+    og::progression::NetWinFoldCapture capture;
+    capture.cash_delta[2] = 300u;
+    capture.score_delta[2] = 120u;
+    capture.deployed.push_back({.owner = 6, .team = 2});
+    capture.deployed.push_back({.owner = 7, .team = 2});
+
     const std::array<og::runtime::LocalSeatBinding, 2> seats = {{
         {.player_index = 6, .team = 2},
         {.player_index = 7, .team = 2},
     }};
-    og::runtime::detail::persist_owned_characters_to_save0(
-        *scr,
-        std::span<const og::runtime::LocalSeatBinding>(seats));
+    ASSERT_TRUE(og::runtime::detail::persist_network_win_to_save0(
+        *scr, std::span<const og::runtime::LocalSeatBinding>(seats),
+        /*completed_level=*/1, capture));
 
     SaveData after;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
@@ -659,10 +669,9 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
     {
         if (team == 2)
         {
-            EXPECT_EQ(scr->save_data.m_totalcash[team],
-                      after.m_totalcash[team]);
-            EXPECT_EQ(scr->save_data.m_totalscore[team],
-                      after.m_totalscore[team]);
+            EXPECT_EQ(disk.m_totalcash[team] + 300u, after.m_totalcash[team])
+                << "owned team banks disk baseline + the machine's share";
+            EXPECT_EQ(disk.m_totalscore[team] + 120u, after.m_totalscore[team]);
         }
         else
         {
@@ -672,10 +681,11 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
                 << "an unowned team's score must remain private";
         }
     }
-    EXPECT_EQ(scr->save_data.m_totalcash[2], after.totalcash)
+    EXPECT_EQ(after.m_totalcash[2], after.totalcash)
         << "the legacy primary-wallet field follows the first local seat";
     EXPECT_EQ(2, static_cast<int>(after.scen_num));
-    EXPECT_TRUE(after.is_level_completed(1));
+    EXPECT_TRUE(after.is_level_completed(1))
+        << "a machine that deployed characters earns completion credit";
     EXPECT_TRUE(after.is_level_completed(4))
         << "the client's divergent private completion history must survive";
     EXPECT_FALSE(after.is_level_completed(7))
@@ -769,10 +779,13 @@ TEST(SaveLoadTeam,
     scr->save_data.m_totalcash[0] = 93000u;
     scr->save_data.m_totalscore[0] = 92000u;
 
+    // A zero-seat spectator ignores the capture entirely (no owned player to
+    // bank a share for): cursor advances, no roster/money/completion.
     ASSERT_TRUE(og::runtime::detail::persist_network_win_to_save0(
         *scr,
         std::span<const og::runtime::LocalSeatBinding>(),
-        /*completed_level=*/1));
+        /*completed_level=*/1,
+        og::progression::NetWinFoldCapture{}));
 
     SaveData after;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));

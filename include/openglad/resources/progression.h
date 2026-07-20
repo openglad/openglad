@@ -54,7 +54,24 @@ struct WinFoldContext {
     // finalize sites fill it.
     short finished_level = -1;
     og::mode::LevelOutcome outcome{};
+
+    // OUT-params (§4.6 Edit 1): the per-team cash/score the fold ADDED this
+    // pass, captured in steps 2-3 before m_score is zeroed. `mutable` so a
+    // caller holding the context by const reference still reads them; the
+    // networked money split reads these to size each machine's share, while
+    // the additions themselves are unchanged (local byte-identity pins hold).
+    // A second (idempotent) fold pass fills them with all zeros: m_score is
+    // already zero and on_finished is false, so no delta is applied.
+    mutable std::array<std::uint32_t, 4> applied_cash_delta{};
+    mutable std::array<std::uint32_t, 4> applied_score_delta{};
 };
+
+// The deterministic time-bonus helper shared by every win executor (SDL live
+// results, the headless/dedicated server, and the curses networked persist) so
+// each machine sizes the same pot. Player > 0 and out-of-window frames score
+// zero, matching the legacy get_time_bonus math. Pure (GameWorld + SaveData).
+std::uint32_t calculate_win_time_bonus(const GameWorld& world,
+                                       const SaveData& save, int player_index);
 
 // The canonical win fold (transplanted from the shadow finalize, verbatim
 // order). `finished` = ctx.finished_level, or save.scen_num when the caller

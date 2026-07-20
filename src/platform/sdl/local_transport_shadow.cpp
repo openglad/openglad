@@ -251,18 +251,24 @@ void persist_owned_characters_to_save0(
     if (!has_valid_owner)
         return;
 
+    // Compatibility/test entry point: no fold delta is available here, so the
+    // empty capture banks no money (own_deployed 0 -> no wallet change, no
+    // completion). It still merges the owned roster and advances the cursor.
+    // Production win persistence always threads the real capture through
+    // finalize_level_and_advance_cursor / persist_client_win_progress_once.
+    const og::progression::NetWinFoldCapture empty_capture;
     (void)persist_network_win_to_save0(
-        world_screen, own_seats, world_screen.world().id);
+        world_screen, own_seats, world_screen.world().id, empty_capture);
 }
 
 bool persist_network_win_to_save0(
     const screen& world_screen,
     std::span<const LocalSeatBinding> own_seats,
-    int completed_level)
+    int completed_level,
+    const og::progression::NetWinFoldCapture& capture)
 {
     std::vector<std::uint8_t> owners;
     owners.reserve(own_seats.size());
-    std::array<bool, MAX_PLAYERS> owned_teams{};
     std::optional<std::size_t> primary_team;
     for (const LocalSeatBinding& seat : own_seats)
     {
@@ -275,94 +281,18 @@ bool persist_network_win_to_save0(
         owners.push_back(static_cast<std::uint8_t>(seat.player_index));
         if (seat.team < 0 || seat.team >= MAX_PLAYERS)
             continue;
-        const std::size_t team = static_cast<std::size_t>(seat.team);
-        owned_teams[team] = true;
         if (!primary_team.has_value())
-            primary_team = team;
-    }
-    SaveData merged;
-    if (merged.load_with_error(og::data::active_company_slot()) !=
-        SaveDataIoError::None)
-    {
-        // No untouched pre-level roster to merge into; skip rather than
-        // clobber the company save with a partial team.
-        LogError("net_persist_skipped reason=no_prelevel_save0 player={}\n",
-                 owners.empty() ? -1 : static_cast<int>(owners.front()));
-        return false;
+            primary_team = static_cast<std::size_t>(seat.team);
     }
 
-    if (!owners.empty())
-    {
-        // The permadeath rule is a lobby-negotiated MATCH setting: read it from
-        // the session save (which carries the negotiated flag), never from
-        // whatever the on-disk save0 last stored — the lobby apply-back only
-        // updates in-memory saves, so the disk copy is stale for this session.
-        // Deliberately persisted below with the rest of the merged save (like
-        // the campaign cursor), so save0 reflects the last session's rules.
-        merged.keep_fallen_heroes = world_screen.save_data.keep_fallen_heroes;
-
-        merged.merge_owned_guys_from(world_screen.world().oblist,
-                                     std::span<const std::uint8_t>(owners));
-
-        // The win fold already produced final totals. Overlay only this
-        // machine's gameplay team(s); copying all four would leak opponents'
-        // progression, while indexing by owner_player_index would be out of
-        // bounds for sessions with more than four global players. These are
-        // absolute post-fold values, never additive reward deltas.
-        for (std::size_t team = 0; team < owned_teams.size(); ++team)
-        {
-            if (!owned_teams[team])
-                continue;
-            merged.m_totalcash[team] = world_screen.save_data.m_totalcash[team];
-            merged.m_totalscore[team] =
-                world_screen.save_data.m_totalscore[team];
-        }
-        if (primary_team.has_value())
-        {
-            merged.totalcash =
-                world_screen.save_data.m_totalcash[*primary_team];
-            merged.totalscore =
-                world_screen.save_data.m_totalscore[*primary_team];
-        }
-
-        // Keep this peer's private history and add only the level this machine
-        // just completed. InitialSetup carries the host's full history in the
-        // session save, so assigning that map wholesale would replace/leak a
-        // client's divergent disk history.
-        const auto session_history = world_screen.save_data.completed_levels.find(
-            world_screen.save_data.current_campaign);
-        if (completed_level >= 0 &&
-            session_history != world_screen.save_data.completed_levels.end() &&
-            session_history->second.contains(completed_level))
-        {
-            merged.add_level_completed(
-                world_screen.save_data.current_campaign, completed_level);
-        }
-    }
-
-    // Advance this machine's OWN campaign cursor whether it owns characters or
-    // is spectating. The team-build menu reloads save0 between rounds, so a
-    // zero-seat host/client must still rejoin at the server's next destination.
-    merged.current_campaign = world_screen.save_data.current_campaign;
-    merged.scen_num = world_screen.save_data.scen_num;
-
-    // §3.8: the networked per-player win persists through the LevelWin choke
-    // point — stamp last_played, atomic write, and exactly one backup
-    // snapshot on this machine per win (the persist itself is once-latched
-    // by the callers; only a FAILED attempt is retried, and a failed write
-    // takes no snapshot). `merged` IS the private on-disk company overlaid
-    // with only this machine's own roster/wallets/cursor, so the default
-    // (plain) context is correct — the [SAVE-F1]-style merge already
-    // happened above.
-    if (og::data::company_autosave(
-            merged, og::data::CompanyAutosaveKind::LevelWin) !=
-        SaveDataIoError::None)
-    {
-        LogError("net_persist_save_failed player={}\n",
-                 owners.empty() ? -1 : static_cast<int>(owners.front()));
-        return false;
-    }
-    return true;
+    // The SDL wrapper just resolves the active company slot + this machine's
+    // seats; the roster merge, baseline+share wallet overlay, §4.7 completion
+    // gate, cursor advance and LevelWin autosave live in the SDL-free shared
+    // core (also used by the curses networked client).
+    return og::progression::persist_networked_win(
+        og::data::active_company_slot(), world_screen.save_data,
+        world_screen.world(), std::span<const std::uint8_t>(owners),
+        primary_team, capture, completed_level);
 }
 
 bool persist_private_campaign_cursor_to_save0(
@@ -560,8 +490,19 @@ bool finalize_level_and_advance_cursor(
     fold_ctx.outcome.ending = 0;
     fold_ctx.outcome.next_level = static_cast<short>(next_level);
     fold_ctx.outcome.networked = networked;
+
+    // §4.6: capture the deploy roster BEFORE the fold (dead heroes still ride
+    // the oblist here — update_guys drops them from team_list only), then read
+    // the applied per-team deltas back out for the money split.
+    og::progression::NetWinFoldCapture win_capture;
+    win_capture.deployed = og::progression::collect_deployed_contributors(
+        gameplay_screen.world());
+
     og::progression::apply_win_fold(
         gameplay_screen.save_data, gameplay_screen.world(), fold_ctx);
+
+    win_capture.cash_delta = fold_ctx.applied_cash_delta;
+    win_capture.score_delta = fold_ctx.applied_score_delta;
 
     // Persist tail (site-owned policy), gated on the mode's win persistence.
     if (!og::mode::current_progression().persist_after_win())
@@ -577,7 +518,7 @@ bool finalize_level_and_advance_cursor(
                                    "netsession"))
             return false;
         return og::runtime::detail::persist_network_win_to_save0(
-            gameplay_screen, own_seats, fold_ctx.finished_level);
+            gameplay_screen, own_seats, fold_ctx.finished_level, win_capture);
     }
 
     // §3.8: the local shadow-finalize write is a WindowEvent-kind autosave —
@@ -982,12 +923,21 @@ void persist_client_win_progress_once(
         og::ui::is_spectator_mode(gameplay_screen.save_data)
         ? std::span<const og::runtime::LocalSeatBinding>()
         : display_seats;
+    // §4.6: the client's screen::endgame folds inside event dispatch and
+    // latches the win capture (deploy roster + applied deltas) onto the screen;
+    // this persist, which runs afterwards, reads that latch to size the machine
+    // share. A missing latch (defensive) falls back to no money.
+    static const og::progression::NetWinFoldCapture kEmptyCapture;
+    const og::progression::NetWinFoldCapture& capture =
+        gameplay_screen.pending_net_win_capture_.has_value()
+            ? *gameplay_screen.pending_net_win_capture_
+            : kEmptyCapture;
     // Latch only a successful persist. A win can surface through both the sim
     // and game-flow callbacks; if the first disk attempt fails, the alternate
     // callback gets one safe retry instead of being suppressed by the guard.
     runtime.owned_progress_persisted =
         og::runtime::detail::persist_network_win_to_save0(
-            gameplay_screen, owned_seats, gameplay_screen.world().id);
+            gameplay_screen, owned_seats, gameplay_screen.world().id, capture);
 }
 
 void configure_display_game_client(

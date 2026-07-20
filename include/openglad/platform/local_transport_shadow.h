@@ -3,6 +3,7 @@
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/resources/win_shares.h>
 
 #include <array>
 #include <cstddef>
@@ -67,14 +68,18 @@ void persist_owned_characters_to_save0(
     std::span<const LocalSeatBinding> own_seats);
 
 // Production network win persist. The private campaign cursor is advanced for
-// every machine, including a zero-seat spectator. Roster/team totals and the
-// just-finished completion mark are merged only when own_seats contains a valid
-// owned player. completed_level is the local level that actually finished; the
-// server/session's unrelated completed-level history is never copied to save0.
+// every machine, including a zero-seat spectator. Roster and the just-finished
+// completion mark are merged only when own_seats contains a valid owned player
+// AND this machine deployed >= 1 character (§4.7). Team wallets are the disk
+// baseline PLUS this machine's deploy-ratio share of the fold delta carried in
+// `capture` (§4.6 Edit 2) — never the whole session pot. completed_level is the
+// local level that actually finished; the server/session's unrelated
+// completed-level history is never copied to save0.
 [[nodiscard]] bool persist_network_win_to_save0(
     const screen& world_screen,
     std::span<const LocalSeatBinding> own_seats,
-    int completed_level);
+    int completed_level,
+    const og::progression::NetWinFoldCapture& capture);
 
 // Network withdraw persist. Load the private save0 and update only its campaign
 // cursor (current_campaign/scen_num; SaveData::save updates current_levels).

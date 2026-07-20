@@ -254,23 +254,9 @@ std::uint32_t calculate_headless_time_bonus(const GameWorld& world,
                                             const SaveData& save,
                                             int player_index)
 {
-    if (player_index > 0)
-        return 0;
-
-    const std::uint32_t frames = world.level_tick_count();
-    const std::uint32_t time_limit =
-        world.time_bonus_limit > 0
-            ? static_cast<std::uint32_t>(world.time_bonus_limit)
-            : 0U;
-    if (time_limit == 0 || frames >= time_limit)
-        return 0;
-
-    const float multiplier =
-        (1.0f + static_cast<float>(world.par_value) / 10.0f) *
-        (static_cast<float>(time_limit - frames) /
-         static_cast<float>(time_limit));
-    return static_cast<std::uint32_t>(
-        static_cast<float>(save.m_score[player_index]) * multiplier);
+    // Single-sourced with the SDL results / curses networked persist through
+    // the shared og_resources helper so every machine sizes the same pot.
+    return og::progression::calculate_win_time_bonus(world, save, player_index);
 }
 
 void prepare_world_for_gameplay(LevelRuntimeData& level_data,

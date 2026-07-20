@@ -45,20 +45,26 @@
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/win_shares.h>
 #include <openglad/server/headless_server_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <exception>
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
@@ -332,6 +338,54 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 // Networked sessions
 // =====================================================================
 
+// §4.6: a curses networked win persists this machine's deploy-ratio SHARE of
+// the pot into its own company save (active_company_slot), while `session_save`
+// (the in-memory authoritative/mirror save) keeps the full combined fold. The
+// fold's applied deltas + the pre-fold deploy roster feed the shared SDL-free
+// win-share core, so a curses peer conserves with an SDL peer in the same
+// match. Only a genuine win (ended, ending == 0, not a CTF rematch) persists.
+void persist_curses_networked_win(SaveData& session_save, const GameWorld& world,
+                                  std::size_t player_index, int next_level)
+{
+    if (is_ctf_rematch_end(world, /*ending=*/0, next_level))
+        return;
+
+    og::server::sync_headless_server_save_data_from_world(session_save, world);
+
+    og::progression::WinFoldContext fold_ctx;
+    for (std::size_t team = 0; team < fold_ctx.time_bonus.size(); ++team)
+        fold_ctx.time_bonus[team] = og::progression::calculate_win_time_bonus(
+            world, session_save, static_cast<int>(team));
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        world, session_save, static_cast<short>(next_level));
+    fold_ctx.finished_level = session_save.scen_num;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(
+        next_level >= 0 ? next_level : (session_save.scen_num + 1));
+    fold_ctx.outcome.networked = true;
+
+    og::progression::NetWinFoldCapture capture;
+    capture.deployed = og::progression::collect_deployed_contributors(world);
+
+    const int finished_level = fold_ctx.finished_level;
+    // The in-memory session save keeps the full combined fold.
+    og::progression::apply_win_fold(session_save, world, fold_ctx);
+    capture.cash_delta = fold_ctx.applied_cash_delta;
+    capture.score_delta = fold_ctx.applied_score_delta;
+
+    const std::array<std::uint8_t, 1> owners = {
+        static_cast<std::uint8_t>(player_index)};
+    std::optional<std::size_t> primary_team;
+    if (session_save.my_team >= 0 && session_save.my_team < MAX_PLAYERS)
+        primary_team = static_cast<std::size_t>(session_save.my_team);
+
+    // The disk company save gets baseline + this machine's share.
+    (void)og::progression::persist_networked_win(
+        og::data::active_company_slot(), session_save, world,
+        std::span<const std::uint8_t>(owners), primary_team, capture,
+        finished_level);
+}
+
 // HOST: authoritative GameServer over the lobby's shared transport + a
 // co-located mirror GameClient connected over a loopback client transport. Almost
 // identical to LocalCursesSession, but the transport, save and player bindings
@@ -403,10 +457,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    // Networked persistence flows through the lobby/server save-sync path; the
-    // ncurses host does not write the caller's save directly (parity with the
-    // SDL networked host, which persists via reset_network_host_transport_shadow).
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the host banks its deploy-ratio share into its
+    // own company save (the authoritative server_save_ keeps the full fold).
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(server_save_, server_world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameServer& server() { return *server_; }
     og::sim::GameClient& client() { return *client_; }
@@ -689,7 +748,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the joiner banks its deploy-ratio share into its
+    // own company save; the mirror client_save_ keeps the full fold.
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(client_save_, client_level_->world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameClient& client() { return *client_; }
 

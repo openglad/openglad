@@ -277,6 +277,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/win_shares.cpp
     ${SRC_DIR}/resources/tower_progression.cpp
     ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/gameplay/mapgen/builders.cpp
@@ -363,6 +364,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/win_shares.cpp
     ${SRC_DIR}/resources/tower_progression.cpp
     ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
@@ -2603,6 +2605,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
