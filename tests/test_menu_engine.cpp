@@ -172,6 +172,7 @@ static bool remote_start_none_is_legacy_faithful(const std::string& name)
 {
     static const std::set<std::string> kLegacyNoRemoteStart = {
         "gameplay_fx", "ui_fx", "graphics_fx",
+        "display_settings", "control_options",
     };
     return kLegacyNoRemoteStart.count(name) > 0;
 }
@@ -649,12 +650,111 @@ TEST(MenuEngine, options_family_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::UiFx).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::GraphicsFx).kind);
-    EXPECT_EQ(Kind::Legacy,
+    EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::DisplaySettings).kind);
-    EXPECT_EQ(Kind::Legacy,
+    EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings).kind);
     EXPECT_EQ(Kind::Legacy,
               og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions).kind);
+}
+
+// ---------------------------------------------------------------------------
+// G13 drift pins: while spec ordinals and picker_sdl_defs.h constants
+// coexist, the DISPLAY rows must sit at their kDisplayMenu*Index positions,
+// and the four cfg-derived LabelBindings must produce exactly the labels
+// the legacy per-frame sync_label block derived (the bindings replaced both
+// that block and the click-side writes — G8). Includes the unset-key
+// fallbacks the injector flow pins on the live surface ("Zoom: 1.0x" /
+// "Smooth: Off" for empty cfg keys).
+TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::DisplaySettings);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    ASSERT_EQ(7, count);
+    EXPECT_EQ("display_back", buttons[kDisplayMenuBackIndex].id);
+    EXPECT_EQ("display_mode", buttons[kDisplayMenuModeIndex].id);
+    EXPECT_EQ("display_resolution", buttons[kDisplayMenuResolutionIndex].id);
+    EXPECT_EQ("overscan_minus", buttons[kDisplayMenuOverscanMinusIndex].id);
+    EXPECT_EQ("overscan_plus", buttons[kDisplayMenuOverscanPlusIndex].id);
+    EXPECT_EQ("display_zoom", buttons[kDisplayMenuZoomIndex].id);
+    EXPECT_EQ("display_smoothing", buttons[kDisplayMenuSmoothingIndex].id);
+
+    og::ui::MenuLabelContext context;
+    const og::ui::LabelFormatter mode_formatter =
+        spec.rows[kDisplayMenuModeIndex].label_binding.formatter;
+    const og::ui::LabelFormatter resolution_formatter =
+        spec.rows[kDisplayMenuResolutionIndex].label_binding.formatter;
+    const og::ui::LabelFormatter zoom_formatter =
+        spec.rows[kDisplayMenuZoomIndex].label_binding.formatter;
+    const og::ui::LabelFormatter smoothing_formatter =
+        spec.rows[kDisplayMenuSmoothingIndex].label_binding.formatter;
+    ASSERT_NE(nullptr, mode_formatter);
+    ASSERT_NE(nullptr, resolution_formatter);
+    ASSERT_NE(nullptr, zoom_formatter);
+    ASSERT_NE(nullptr, smoothing_formatter);
+
+    EXPECT_EQ(og::ui::format_display_mode_label(
+                  cfg.get_setting("graphics", "fullscreen")),
+              mode_formatter(context));
+    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"))
+        != og::ui::DisplayMode::Borderless) {
+        EXPECT_EQ(og::ui::format_resolution_label(
+                      cfg.get_setting("graphics", "width"),
+                      cfg.get_setting("graphics", "height")),
+                  resolution_formatter(context));
+    }
+
+    const std::string prev_zoom = cfg.get_setting("graphics", "zoom");
+    const std::string prev_smoothing = cfg.get_setting("graphics", "smoothing");
+    const std::string prev_render = cfg.get_setting("graphics", "render");
+    cfg.apply_setting("graphics", "zoom", "");
+    cfg.apply_setting("graphics", "smoothing", "");
+    cfg.apply_setting("graphics", "render", "normal");
+    EXPECT_EQ("Zoom: 1.0x", zoom_formatter(context))
+        << "empty cfg (graphics, zoom) must fall back to the classic default";
+    EXPECT_EQ("Smooth: Off", smoothing_formatter(context))
+        << "empty cfg (graphics, smoothing) must fall back to Off";
+    cfg.apply_setting("graphics", "zoom", prev_zoom);
+    cfg.apply_setting("graphics", "smoothing", prev_smoothing);
+    cfg.apply_setting("graphics", "render", prev_render);
+}
+
+// The CONTROLS mode faces: the LabelBindings must track the live control
+// mode exactly as the legacy loop's per-frame writes did.
+TEST(MenuEngine, control_options_mode_label_bindings_follow_the_mode)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    ASSERT_EQ(10, count);
+
+    og::ui::MenuLabelContext context;
+    for (int player = 0; player < 4; ++player) {
+        const int mode_index = 1 + player * 2;
+        EXPECT_EQ("player" + std::to_string(player + 1) + "_mode",
+                  buttons[mode_index].id);
+        const og::ui::LabelFormatter formatter =
+            spec.rows[mode_index].label_binding.formatter;
+        ASSERT_NE(nullptr, formatter) << buttons[mode_index].id;
+
+        const int saved_mode = get_player_control_mode(player);
+        set_player_control_mode(
+            player, static_cast<int>(ControlDirectionMode::FourDirection));
+        EXPECT_EQ("4-DIRECTION", formatter(context)) << buttons[mode_index].id;
+        set_player_control_mode(
+            player, static_cast<int>(ControlDirectionMode::EightDirection));
+        EXPECT_EQ("8-DIRECTION", formatter(context)) << buttons[mode_index].id;
+        set_player_control_mode(player, saved_mode);
+    }
 }
 
 // ---------------------------------------------------------------------------

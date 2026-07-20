@@ -1593,60 +1593,13 @@ static const button k_main_options_buttons[] =
         button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=7, .down=0}),
 };
 
-inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
-
-// DISPLAY subscreen: the window/presentation settings a normal game keeps
-// together — mode (windowed / borderless / exclusive fullscreen), a real
-// WxH resolution that sizes the window when windowed and picks the closest
-// exclusive video mode when fullscreen, the overscan trim, the sprite/world
-// scale, and the present filter. 102px faces (17-char label budget) so
-// "Mode: Borderless" and "Res: 2560x1440" fit. Rows on the effects grid.
-static const button k_display_settings_buttons[] =
-{
-    button("display_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=6, .down=1}),
-    button("display_mode", "Mode: Windowed", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 102, 15,
-        button_action_id(ButtonAction::CycleDisplayMode), -1, MenuNav{.up=0, .down=2}),
-    button("display_resolution", "Res: 640x400", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 102, 15,
-        button_action_id(ButtonAction::CycleResolution), -1, MenuNav{.up=1, .down=3}),
-    button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=5, .right=4}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 159, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=2, .down=5, .left=3}),
-    button("display_zoom", "Zoom: 1.0x", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 102, 15,
-        button_action_id(ButtonAction::CycleZoom), -1, MenuNav{.up=3, .down=6}),
-    button("display_smoothing", "Smooth: Off", KEYSTATE_UNKNOWN, 115, effects_row_y(4), 102, 15,
-        button_action_id(ButtonAction::CycleSmoothing), -1, MenuNav{.up=5, .down=0}),
-};
+// DISPLAY and CONTROLS subscreens: engine-hosted — specs, accessor shims,
+// and the entry functions live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
 // FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX): engine-hosted — specs,
 // accessor shims, and the entry functions live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
-
-// Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
-// Text labels ("Px", key info) drawn in main_controls_options() below each section's buttons.
-#define CTRL_PLAYER_PITCH 28
-#define CTRL_PLAYER_Y(i) (40 + (i) * CTRL_PLAYER_PITCH)
-
-static const button k_control_options_buttons[] =
-{
-    button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1}),
-    button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 0, MenuNav{.up=0, .down=3, .right=2}),
-    button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(0), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 0, MenuNav{.up=0, .down=4, .left=1}),
-    button("player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(1), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 1, MenuNav{.up=1, .down=5, .right=4}),
-    button("player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(1), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 1, MenuNav{.up=2, .down=6, .left=3}),
-    button("player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(2), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 2, MenuNav{.up=3, .down=7, .right=6}),
-    button("player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(2), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 2, MenuNav{.up=4, .down=8, .left=5}),
-    button("player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(3), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 3, MenuNav{.up=5, .down=9, .right=8}),
-    button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(3), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 3, MenuNav{.up=6, .down=9, .left=7}),
-    button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15,
-        button_action_id(ButtonAction::RestoreDefaultControls), -1, MenuNav{.up=7}),
-};
 
 // beginmenu (first menu of new game), create_team_menu.
 // A clean 3x3 grid on the classic x=30/120/210 columns: the scenario-shaped
@@ -1928,28 +1881,6 @@ button* picker_main_options_buttons()
 int picker_main_options_button_count()
 {
     return static_cast<int>(pks().main_options_buttons.size());
-}
-
-button* picker_control_options_buttons()
-{
-    reset_mutable_button_layout(pks().control_options_buttons, k_control_options_buttons);
-    return pks().control_options_buttons.data();
-}
-
-int picker_control_options_button_count()
-{
-    return static_cast<int>(pks().control_options_buttons.size());
-}
-
-button* picker_display_settings_buttons()
-{
-    reset_mutable_button_layout(pks().display_settings_buttons, k_display_settings_buttons);
-    return pks().display_settings_buttons.data();
-}
-
-int picker_display_settings_button_count()
-{
-    return static_cast<int>(pks().display_settings_buttons.size());
 }
 
 button* picker_details_buttons()
@@ -2429,70 +2360,8 @@ Sint32 edit_player_keymap(Sint32 arg)
     return MENU_REDRAW;
 }
 
-Sint32 main_controls_options()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = picker_control_options_buttons();
-    const int num_buttons = picker_control_options_button_count();
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        for (int i = 0; i < 4; ++i)
-        {
-            const bool eight_dir = get_player_control_mode(i) == static_cast<int>(ControlDirectionMode::EightDirection);
-            const int mode_index = 1 + i * 2;
-            buttons[mode_index].label = eight_dir ? "8-DIRECTION" : "4-DIRECTION";
-            og::runtime::current_session->allbuttons_[mode_index]->label = buttons[mode_index].label;
-        }
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        // The header sits below the BACK button's animated highlight box
-        // (which reaches 3px past the bevel) and above the P1 row at y=40;
-        // drawing it any higher lets the highlight overwrite the first chars.
-        mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
-                        DARK_BLUE, "Player control modes and key remapping");
-
-        for (int i = 0; i < 4; ++i)
-        {
-            const int btn_y = CTRL_PLAYER_Y(i);
-            mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
-            const std::string summary = build_player_control_summary(i);
-            mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s", summary.c_str());
-        }
-
-        mytext.write_xy(10, 155, DARK_BLUE, "4-dir = cardinal only. 8-dir adds diagonals.");
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
+// main_controls_options(): engine-hosted (menu_screen_specs.cpp drives it
+// through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
 
 // gameplay_fx_options() / ui_fx_options() / graphics_fx_options(): engine-
 // hosted (menu_screen_specs.cpp drives them through run_menu_screen; the
@@ -3326,8 +3195,11 @@ Sint32 change_depth_fx()
 
 // DISPLAY zoom selector: step graphics/zoom through the resource-safe range,
 // apply its aspect-relative world canvas (menus use the fixed UI canvas),
-// relayout views when the logical dimensions change, and sync both label
-// copies. main_options() persists cfg on exit.
+// and relayout views when the logical dimensions change. main_options()
+// persists cfg on exit. The face re-derives from cfg on both surfaces every
+// frame via the engine spec's LabelBinding (which is why the platform's
+// reflect-back of an allocation-rejected request shows correctly), so this
+// callback no longer writes labels (G8).
 Sint32 change_zoom()
 {
    screen* scr = og::runtime::current_session->myscreen_;
@@ -3342,16 +3214,6 @@ Sint32 change_zoom()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   // The platform reflects an allocation-rejected request back to the live
-   // zoom. Read cfg after applying so the face never advertises a canvas that
-   // was not installed.
-   const std::string label = og::ui::format_zoom_label(
-       cfg.get_setting("graphics", "zoom"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuZoomIndex)
-       pks().display_settings_buttons[kDisplayMenuZoomIndex].label = label;
-
    return MENU_OK;
 }
 
@@ -3365,13 +3227,6 @@ Sint32 change_smoothing()
 
    screen* scr = og::runtime::current_session->myscreen_;
    scr->reapply_world_scale(); // engine-only change: canvas dims are stable
-
-   const std::string label = og::ui::format_smoothing_label(
-       next, scr->world_smoothing_supported());
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuSmoothingIndex)
-       pks().display_settings_buttons[kDisplayMenuSmoothingIndex].label = label;
 
    return MENU_OK;
 }
@@ -3414,14 +3269,9 @@ Sint32 change_display_mode()
        scr->relayout_views();
 
    // SDL may reject exclusive fullscreen and leave the window in borderless
-   // (or windowed) mode. The platform apply normalizes cfg to that real state,
-   // so the button must read back cfg instead of displaying the request.
-   const std::string label = og::ui::format_display_mode_label(
-       cfg.get_setting("graphics", "fullscreen"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuModeIndex)
-       pks().display_settings_buttons[kDisplayMenuModeIndex].label = label;
+   // (or windowed) mode. The platform apply normalizes cfg to that real
+   // state, and the engine spec's LabelBinding reads cfg back every frame,
+   // so the button never displays the request (label writes removed — G8).
    return MENU_OK;
 }
 
@@ -3447,25 +3297,10 @@ static std::vector<std::pair<int, int>> resolution_choices()
 		display_modes, desktop, current, mode);
 }
 
-static std::string active_resolution_label()
-{
-    screen* scr = og::runtime::current_session->myscreen_;
-    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
-        og::ui::DisplayMode::Borderless)
-    {
-        // Borderless always uses the desktop mode; showing the remembered
-        // window size here made a 640x400 label describe a 1920x1080 screen.
-        const std::pair<int, int> desktop = scr->desktop_resolution();
-        if (desktop.first >= 320 && desktop.second >= 200)
-            return og::ui::format_resolution_label(
-                std::to_string(desktop.first), std::to_string(desktop.second));
-        return "Res: Desktop";
-    }
-    return og::ui::format_resolution_label(
-        cfg.get_setting("graphics", "width"),
-        cfg.get_setting("graphics", "height"));
-}
-
+// The face ("Res: WxH" / the borderless desktop mode) re-derives from cfg
+// on both surfaces every frame via the engine spec's LabelBinding
+// (active_resolution_label in menu_screen_specs.cpp), so this callback no
+// longer writes labels (G8).
 Sint32 change_resolution()
 {
    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
@@ -3475,11 +3310,6 @@ Sint32 change_resolution()
        // mode. Leave the remembered window size alone and keep the face
        // truthful; users can select a mode after choosing Windowed or
        // Fullscreen.
-       const std::string label = active_resolution_label();
-       if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
-           og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
-       if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
-           pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
        return MENU_OK;
    }
 
@@ -3497,98 +3327,13 @@ Sint32 change_resolution()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   const std::string label = og::ui::format_resolution_label(
-       cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
-       pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
    return MENU_OK;
 }
 
-// The DISPLAY subscreen blocking loop. Same shape as the FX subscreens
-// (poll, click, nav, per-frame label sync, draw); cfg persists when
-// main_options() exits, which is the only path back out.
-Sint32 display_settings_options()
-{
-    button* buttons = picker_display_settings_buttons();
-    const int num_buttons = picker_display_settings_button_count();
-
-    #if defined(OUYA) || defined(ANDROID) || defined(__IPHONEOS__) || \
-        defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
-    // No window to size or mode to pick: TV/mobile targets are always
-    // fullscreen, and on web the page/CSS owns the window (the fullscreen
-    // cfg is also deliberately ignored at boot there). Hide both rows and
-    // route the vertical cycle around them (BACK <-> overscan pair).
-    buttons[kDisplayMenuModeIndex].hidden = buttons[kDisplayMenuModeIndex].no_draw = true;
-    buttons[kDisplayMenuResolutionIndex].hidden = buttons[kDisplayMenuResolutionIndex].no_draw = true;
-    buttons[kDisplayMenuBackIndex].nav.down = kDisplayMenuOverscanMinusIndex;
-    buttons[kDisplayMenuOverscanMinusIndex].nav.up = kDisplayMenuBackIndex;
-    buttons[kDisplayMenuOverscanPlusIndex].nav.up = kDisplayMenuBackIndex;
-    #endif
-
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-
-    Sint32 retvalue = 0;
-    while(!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        // Every face is cfg-derived: re-derive all four each frame on both
-        // label surfaces (the click callbacks also write them, but RESTORE
-        // DEFAULTS or a lobby-applied cfg must reflect here too).
-        const auto sync_label = [&](int index, std::string label) {
-            buttons[index].label = label;
-            og::runtime::current_session->allbuttons_[index]->label = std::move(label);
-        };
-        sync_label(kDisplayMenuModeIndex,
-                   og::ui::format_display_mode_label(cfg.get_setting("graphics", "fullscreen")));
-        sync_label(kDisplayMenuResolutionIndex, active_resolution_label());
-        sync_label(kDisplayMenuZoomIndex,
-                   og::ui::format_zoom_label(cfg.get_setting("graphics", "zoom")));
-        sync_label(kDisplayMenuSmoothingIndex,
-                   og::ui::format_smoothing_label(
-                       og::ui::effective_smoothing_setting(
-                           cfg.get_setting("graphics", "smoothing"),
-                           cfg.get_setting("graphics", "render")),
-                       og::runtime::current_session->myscreen_
-                           ->world_smoothing_supported()));
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", "Display");
-        // Live overscan percentage next to its +/- pair.
-        mytext.write_xy(200, effects_row_y(2) + 4, DARK_BLUE, "Overscan: %d%%",
-                        static_cast<int>(
-                            og::runtime::current_session->overscan_percentage_ * 100.0f + 0.5f));
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
+// display_settings_options(): engine-hosted (menu_screen_specs.cpp drives
+// it through run_menu_screen; the legacy loop and its platform hide/rewire
+// block are gone — the spec's Rewire program carries the platform fork.
+// docs/menu-engine.md).
 
 Sint32 teams_join_team(Sint32 team)
 {
