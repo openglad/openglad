@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -1962,6 +1963,68 @@ TEST(LobbyServer, start_denied_when_nonhost_not_ready_keeps_lobby_live)
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
     EXPECT_EQ(0u, server.state().last_start_denial) << "acceptance clears the denial";
+}
+
+TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every_peer)
+{
+    // The dedicated-server shape (server_main.cpp): a LobbyServer with NO
+    // local session whose host is the FIRST-CONNECTED peer — the ELECTED host,
+    // the NORMAL openglad_server path per [NET-R3]. Pins the two reads that
+    // shape drives:
+    //   1. consume_start_game_requested() — server_main's lobby-loop read
+    //      (server_main.cpp `if (lobby_server.consume_start_game_requested())
+    //      break;`) — stays FALSE on a denied GO, so the dedicated loop keeps
+    //      polling instead of breaking into gameplay;
+    //   2. the denial reason rides the serialized LobbyState ECHO to EVERY
+    //      peer. The elected host has no in-process server.state() to read —
+    //      the echo is its ONLY source of the reason — and guests render the
+    //      same echo.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // first-connected peer ⇒ elected host
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Elected Host", 0,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1,
+                          {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(0u, server.state().host_player_id)
+        << "the first-connected peer is the elected host";
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+
+    EXPECT_FALSE(server.consume_start_game_requested())
+        << "server_main's loop read: a denied GO keeps the lobby loop polling";
+
+    const std::uint8_t expected_reason = start_denial_reason_value(
+        og::sim::StartDenialReason::MachinesNotReady);
+    std::set<og::sim::PeerId> echoed_peers;
+    for (const og::sim::ReceivedMessage& message : transport.sent_messages())
+    {
+        const og::sim::LobbyState echoed = decode_lobby_state(message);
+        EXPECT_EQ(expected_reason, echoed.last_start_denial)
+            << "every state echo after the denial carries the reason";
+        echoed_peers.insert(message.peer_id);
+    }
+    EXPECT_EQ((std::set<og::sim::PeerId>{11u, 22u}), echoed_peers)
+        << "the denial echo must reach the elected host AND the guest";
+
+    // The dedicated loop stays live: the guest readies, the elected host's
+    // next GO is accepted, and consume_start_game_requested() flips true —
+    // the exact condition that breaks server_main into gameplay.
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.consume_start_game_requested())
+        << "server_main's break-into-gameplay read";
+    EXPECT_EQ(0u, server.state().last_start_denial);
 }
 
 TEST(LobbyServer, start_denial_survives_interleaved_join_cleared_on_next_start)

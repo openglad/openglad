@@ -122,6 +122,15 @@ struct PickerSaveStateGuard
     unsigned char numplayers = 0;
     short allied_mode = 0;
     short my_team = 0;
+    // Difficulty-submenu + lobby-negotiated session fields: tests that cycle
+    // these (e.g. host_and_join_difficulty_settings_sync_to_joiner_save leaves
+    // respawn_mode=2 "Everyone") must not leak them into a later test's level
+    // start — respawning foes make a win undetectable (shuffle-order trap).
+    short respawn_mode = 0;
+    short generator_rate = 0;
+    short ctf_respawn_ticks = 0;
+    short keep_fallen_heroes = 0;
+    short cross_control = 0;
     std::unique_ptr<guy> team_list[MAX_TEAM_SIZE];
 
     explicit PickerSaveStateGuard(SaveData& save_in)
@@ -132,6 +141,11 @@ struct PickerSaveStateGuard
         , numplayers(save.numplayers)
         , allied_mode(save.allied_mode)
         , my_team(save.my_team)
+        , respawn_mode(save.respawn_mode)
+        , generator_rate(save.generator_rate)
+        , ctf_respawn_ticks(save.ctf_respawn_ticks)
+        , keep_fallen_heroes(save.keep_fallen_heroes)
+        , cross_control(save.cross_control)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[i] = std::move(save.team_list[i]);
@@ -145,6 +159,11 @@ struct PickerSaveStateGuard
         save.numplayers = numplayers;
         save.allied_mode = allied_mode;
         save.my_team = my_team;
+        save.respawn_mode = respawn_mode;
+        save.generator_rate = generator_rate;
+        save.ctf_respawn_ticks = ctf_respawn_ticks;
+        save.keep_fallen_heroes = keep_fallen_heroes;
+        save.cross_control = cross_control;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[i] = std::move(team_list[i]);
     }
@@ -5373,6 +5392,142 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
         status_lines_contain_exact(join_client->status_lines(), "Status: connected"));
 
     join_client->shutdown();
+}
+
+// [NET-R3] dedicated-server denial, end to end over the server_main transport
+// shape (WebSocketServerTransport + a no-local-session LobbyServer): the
+// first-connected peer is the ELECTED host, so a remote host's GO denial is
+// the NORMAL dedicated path, not a rare one. The elected host reads the
+// precise reason from the LobbyState ECHO (it has no in-process server state
+// to consult), the dedicated lobby loop keeps polling on denial
+// (consume_start_game_requested() false — server_main.cpp's loop read), and
+// once the guest readies the SAME loop's consume flips true, the exact
+// condition that breaks server_main into gameplay. Cheap: lobby only, no
+// level runs.
+TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then_start)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+    g_start_game_requested = false;
+
+    // server_main's exact transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, transport_options);
+    server_transport.accept_connections();
+    og::sim::LobbyServer lobby_server(server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    // The elected host must connect FIRST (election is first-connected).
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+
+    og::runtime::GameSession::Config guest_cfg;
+    guest_cfg.create_display = false;
+    guest_cfg.install_legacy_globals = false;
+    og::runtime::GameSession guest_session(guest_cfg);
+    prepare_single_member_network_save(
+        guest_session.myscreen_->save_data, 1, "Dedicated Guest");
+    og::ui::PickerJoinGameOptions guest_options;
+    guest_options.mode = og::ui::PickerJoinMode::Direct;
+    guest_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> guest_client;
+    {
+        auto guest_scope = guest_session.activate();
+        guest_client = og::ui::create_join_picker_lobby_client(guest_options);
+        guest_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* guest_session = nullptr;
+        og::ui::IPickerLobbyClient* elected_host = nullptr;
+        og::ui::IPickerLobbyClient* guest_client = nullptr;
+        ~CleanupGuard()
+        {
+            if (guest_session != nullptr && guest_client != nullptr)
+            {
+                auto guest_scope = guest_session->activate();
+                guest_client->shutdown();
+            }
+            if (elected_host != nullptr)
+                elected_host->shutdown();
+        }
+    } cleanup{&guest_session, elected_host.get(), guest_client.get()};
+
+    const auto pump = [&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        auto guest_scope = guest_session.activate();
+        guest_client->poll_and_apply();
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump();
+        return lobby_server.state().players.size() == 2u &&
+            status_lines_contain_exact(elected_host->status_lines(),
+                                       "Lobby: 2 players");
+    })) << "both machines should join the dedicated lobby";
+    elected_host->sync_roster_from_save();
+
+    // (1) The elected host's GO is DENIED while the guest is unready. The
+    // reason arrives via the state echo — the electing joiner's only source.
+    ASSERT_TRUE(wait_until([&] {
+        (void)elected_host->request_start_game();
+        pump();
+        return elected_host->last_start_denial() ==
+                og::sim::StartDenialReason::MachinesNotReady &&
+            !elected_host->start_request_pending();
+    })) << "the denial echo must reach the elected host with the precise reason";
+    EXPECT_FALSE(g_start_game_requested);
+    EXPECT_FALSE(elected_host->has_game_start_config());
+    EXPECT_FALSE(lobby_server.consume_start_game_requested())
+        << "server_main's loop read: the dedicated loop keeps polling on denial";
+
+    // (2) The guest readies over the live (never locked) lobby.
+    {
+        auto guest_scope = guest_session.activate();
+        (void)guest_client->set_ready(true);
+    }
+    ASSERT_TRUE(wait_until([&] {
+        pump();
+        auto guest_scope = guest_session.activate();
+        return guest_client->local_ready();
+    })) << "the guest's ready must land on the dedicated server";
+
+    // (3) The elected host's GO now passes the gate; the StartGame broadcast
+    // reaches BOTH machines and the dedicated loop's consume breaks to
+    // gameplay.
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)elected_host->request_start_game();
+            pump();
+            bool guest_has_config = false;
+            {
+                auto guest_scope = guest_session.activate();
+                guest_has_config = guest_client->has_game_start_config();
+            }
+            return elected_host->has_game_start_config() && guest_has_config;
+        },
+        10s)) << "both machines should receive the start-game handoff";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              elected_host->last_start_denial())
+        << "acceptance clears the denial echo";
+    EXPECT_TRUE(lobby_server.consume_start_game_requested())
+        << "server_main's break-into-gameplay read";
 }
 
 TEST(PickerNetworkClient,
