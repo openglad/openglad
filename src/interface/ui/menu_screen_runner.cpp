@@ -436,6 +436,12 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.exit_on_redraw && (retvalue & MENU_REDRAW))
             return MENU_REDRAW;
 
+        // Screen-owned click consumption (the VIEW LEVEL page-step stash) —
+        // at the exact legacy point: after the redraw-exit test, before
+        // reset_buttons could consume the retvalue.
+        if (spec.consume_click != nullptr)
+            retvalue = spec.consume_click(retvalue, screen_state);
+
         // G3 generic row dispatch: ButtonAction::MenuSpecRow stashed which
         // materialized row was activated; retvalue only carried the action
         // id (101). 101 & MENU_EXIT != 0, so the stash MUST be consumed and

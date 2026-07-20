@@ -508,6 +508,17 @@ bool sweep_rows_overlap(const button& a, const button& b)
            a.y < b.y + b.sizey && b.y < a.y + a.sizey;
 }
 
+// Declared exception to the keyboard-liveness invariant (G13): the PROGRESS
+// screen's PREV/NEXT shipped KEYBOARD-DEAD (myfun = 0, raw mouse-rect
+// dispatch) and Layer E must reproduce that exactly — making them
+// keyboard-live is a visible change deferred past 10a (§1.8 step 6). Every
+// other engine row must stay live.
+bool sweep_keyboard_dead_is_legacy_faithful(const std::string& screen,
+                                            const std::string& id)
+{
+    return screen == "progress" && (id == "prev" || id == "next");
+}
+
 } // namespace
 
 TEST(MenuEngine, engine_screen_gate_lattice_sweep)
@@ -549,8 +560,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                 EXPECT_TRUE(ids.insert(b.id).second)
                     << spec.name << " duplicate id " << b.id;
                 EXPECT_FALSE(b.id.empty()) << spec.name << " row " << i;
-                EXPECT_NE(0, b.myfun)
-                    << spec.name << " keyboard-dead row " << b.id;
+                if (!sweep_keyboard_dead_is_legacy_faithful(spec.name, b.id)) {
+                    EXPECT_NE(0, b.myfun)
+                        << spec.name << " keyboard-dead row " << b.id;
+                }
                 EXPECT_LE(static_cast<int>(b.label.size()) * 6, b.sizex)
                     << spec.name << " " << b.id << " label '" << b.label
                     << "' escapes its face";
@@ -637,11 +650,11 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 15)
+    EXPECT_GE(engine_screens, 17)
         << "difficulty + the FX trio + display + controls + main options + "
            "main menu + the full team-build cluster (team build, view team, "
-           "slot menus, SCENARIO, TEAMS) + hire + train must be "
-           "engine-hosted by this stage";
+           "slot menus, SCENARIO, TEAMS) + hire + train + progress + "
+           "view level must be engine-hosted by this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -823,6 +836,58 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
                   static_cast<int>(train->rows[i].art_family))
             << "row " << i
             << ": the legacy set_graphic loop must be the art binding";
+    }
+
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::Progress).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).kind);
+
+    // PROGRESS: PREV/NEXT stay KEYBOARD-DEAD (myfun 0 — the shipped screen;
+    // the raw mouse-rect dispatch lives in frame_tick); every local exit
+    // returns MENU_REDRAW.
+    const og::ui::MenuScreenSpec* progress =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Progress).spec;
+    ASSERT_NE(nullptr, progress);
+    EXPECT_EQ(MENU_REDRAW, progress->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              progress->remote_start);
+    EXPECT_EQ(2, progress->default_highlight);
+    EXPECT_NE(nullptr, progress->frame_tick)
+        << "raw PREV/NEXT + per-row GO dispatch";
+    {
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(*progress, rows);
+        ASSERT_EQ(3, static_cast<int>(rows.size()));
+        EXPECT_EQ(0, rows[0].myfun) << "prev keyboard-dead (shipped shape)";
+        EXPECT_EQ(0, rows[1].myfun) << "next keyboard-dead (shipped shape)";
+        EXPECT_NE(0, rows[2].myfun) << "back stays live";
+    }
+
+    // VIEW LEVEL: BACK carries MENU_REDRAW (exit_on_redraw); pager
+    // visibility is a per-frame state override over the PageModel, and the
+    // page-step stash is consumed by consume_click at the legacy point.
+    const og::ui::MenuScreenSpec* view_scenario =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).spec;
+    ASSERT_NE(nullptr, view_scenario);
+    EXPECT_TRUE(view_scenario->exit_on_redraw);
+    EXPECT_EQ(MENU_REDRAW, view_scenario->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              view_scenario->remote_start);
+    EXPECT_EQ(kViewScenarioBackIndex, view_scenario->default_highlight);
+    EXPECT_NE(nullptr, view_scenario->consume_click);
+    ASSERT_EQ(3, view_scenario->row_count);
+    EXPECT_NE(nullptr,
+              view_scenario->rows[kViewScenarioPrevIndex].state_override);
+    EXPECT_NE(nullptr,
+              view_scenario->rows[kViewScenarioNextIndex].state_override);
+    // No open screen (null wrapper state) presents the single-page shape:
+    // pagers hidden — the shape the bare G5/gate-lattice sweeps drive.
+    {
+        og::ui::MenuLabelContext context;
+        EXPECT_EQ(og::ui::RowState::Hidden,
+                  view_scenario->rows[kViewScenarioPrevIndex].state_override(
+                      context));
     }
 }
 

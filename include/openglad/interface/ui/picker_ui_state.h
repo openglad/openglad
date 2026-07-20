@@ -107,6 +107,7 @@ struct PickerState {
     std::vector<button> networking_buttons;
     std::vector<button> teamsmenu_buttons;
     std::vector<button> viewscenario_buttons;
+    std::vector<button> progressmenu_buttons;
     std::vector<button> scenariomenu_buttons;
     std::vector<button> difficulty_menu_buttons;
 
@@ -118,7 +119,8 @@ struct PickerState {
     std::array<int, 4> teams_menu_team_page{};
 
     // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
-    // (-1/+1), consumed by create_view_scenario_menu's frame loop.
+    // (-1/+1), consumed by the engine screen's consume_click hook
+    // (picker_view_scenario_engine_consume_click).
     int view_scenario_page_step = 0;
 
     // NETWORKING subscreen: ACTIVE GAMES row clicked by the last

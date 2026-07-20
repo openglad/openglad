@@ -423,14 +423,19 @@ TEST(MenuEnginePins, loadteam_exact_table)
 // allbuttons via the interaction API, and compare against the transcription.
 //
 // Fields not observable through the live surface, transcribed here for the
-// migration-time differential (picker_team_build.cpp, create_progress_menu):
+// migration-time differential — VERIFIED at migration time against the
+// deleted function-local table and now carried by kProgressMenuRows
+// (menu_screen_specs.cpp):
 //   prev: myfun=0 (keyboard-dead by design at Layer E), arg=-1,
 //         nav{.right=1}, hotkey=KEYSTATE_UNKNOWN
-//   next: myfun=0, arg=1, nav{.left=0, .right=2}, hotkey=KEYSTATE_UNKNOWN
+//   next: myfun=0, arg=-1, nav{.left=0, .right=2}, hotkey=KEYSTATE_UNKNOWN
 //   back: myfun=ReturnMenu, arg=MENU_EXIT, nav{.left=1},
 //         hotkey=KEYSTATE_ESCAPE
-// PREV/NEXT are dispatched by the loop's own retvalue==MENU_OK checks, not
-// do_call; the screen returns MENU_REDRAW to its parent.
+// (This comment originally transcribed next's arg as 1; the deleted table
+// read `0, -1` — the arg was never dispatched for the myfun=0 pagers.)
+// PREV/NEXT are dispatched by raw mouse-rect checks in the screen's frame
+// hook, never do_call (the legacy loop's retvalue==MENU_OK branches were
+// dead code); the screen returns MENU_REDRAW to its parent.
 // ---------------------------------------------------------------------------
 
 namespace

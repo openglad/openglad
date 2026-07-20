@@ -84,6 +84,18 @@ void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
                                      int& highlighted_button);
 void picker_train_menu_engine_on_reset(void* screen_state);
 void picker_train_menu_engine_draw_content(void* screen_state);
+// PROGRESS / VIEW LEVEL engine hooks (§1.8 step 6; defined beside their
+// file-local helpers in picker_team_build.cpp).
+void picker_progress_menu_engine_draw_background(void* screen_state);
+bool picker_progress_menu_engine_frame_tick(void* screen_state, int frame);
+void picker_progress_menu_engine_draw_content(void* screen_state);
+og::ui::RowState picker_view_scenario_engine_pager_row_state(
+    const og::ui::MenuLabelContext& context);
+void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
+                                        int& highlighted_button);
+Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
+                                                 void* screen_state);
+void picker_view_scenario_engine_draw_content(void* screen_state);
 
 static inline PickerState& pks()
 {
@@ -1673,6 +1685,66 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
 };
 
 // ---------------------------------------------------------------------------
+// PROGRESS (§1.8 step 6): the campaign-progress report (cleared levels,
+// per-level GO shortcuts) under PREV | NEXT | BACK. Rows transcribed
+// VERBATIM from the deleted function-local table in create_progress_menu —
+// including the shipped quirk that PREV/NEXT are KEYBOARD-DEAD (myfun = 0;
+// action Invalid materializes the same 0): the legacy loop dispatched them
+// by raw mouse-rect checks, which survive in the frame_tick hook. Making
+// them keyboard-live would be a visible change — deferred past Layer E
+// (the gate-lattice sweep carries the declared exception). The row list,
+// GO-button scan, and scroll indicator are the content/frame hooks in
+// picker_team_build.cpp; the screen draws over a plain cleared buffer (no
+// backdrop — legacy shape).
+
+constexpr MenuButtonSpec kProgressMenuRows[] = {
+    {.id = "prev", .label = "PREV",
+     .x = 30, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::Invalid, .arg = -1,
+     .nav = {.right = 1}},
+    {.id = "next", .label = "NEXT",
+     .x = 80, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::Invalid, .arg = -1,
+     .nav = {.left = 0, .right = 2}},
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 260, .y = 170, .w = 50, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.left = 1}},
+};
+
+// ---------------------------------------------------------------------------
+// VIEW LEVEL (§1.8 step 6): the read-only framed roster report of the
+// current scenario. Rows transcribed VERBATIM from the deleted
+// k_viewscenario_buttons (PREV/NEXT start hidden — the static table
+// defaults). Visibility re-derives per frame from the open screen's
+// PageModel (state override; hidden while the report fits one page) and the
+// rewire keeps BACK's right-link closed over it — both read the file-static
+// screen state in picker_team_build.cpp, null (single-page shape) when no
+// wrapper is open. The page-step stash consumption sits in consume_click at
+// the exact legacy point (a pager MENU_OK flips the page instead of
+// reaching reset_buttons). BACK carries MENU_REDRAW (exit_on_redraw); a
+// remote start propagates MENU_EXIT.
+
+constexpr MenuButtonSpec kViewScenarioRows[] = {
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 44, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
+     .nav = {.right = 1}},
+    {.id = "page_prev", .label = "PREV",
+     .x = 220, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::ViewScenarioPageFlip, .arg = -1,
+     .nav = {.left = 0, .right = 2},
+     .state_override = &picker_view_scenario_engine_pager_row_state,
+     .hidden = true},
+    {.id = "page_next", .label = "NEXT",
+     .x = 270, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::ViewScenarioPageFlip, .arg = 1,
+     .nav = {.left = 1},
+     .state_override = &picker_view_scenario_engine_pager_row_state,
+     .hidden = true},
+};
+
+// ---------------------------------------------------------------------------
 // TEAM BUILD (§1.8 step 5, the cluster's parent screen). A clean 3x3 grid on
 // the classic x=30/120/210 columns, transcribed VERBATIM from the deleted
 // k_createmenu_buttons: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
@@ -1941,6 +2013,65 @@ const MenuScreenSpec& train_menu_screen_spec()
     return spec;
 }
 
+const MenuScreenSpec& progress_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "progress",
+        .rows = kProgressMenuRows,
+        .row_count = static_cast<int>(std::size(kProgressMenuRows)),
+        .buttons_accessor = &picker_progressmenu_buttons,
+        .count_accessor = &picker_progressmenu_button_count,
+        // The loop-top host-GO check that launches a joiner parked here.
+        // The remote MENU_EXIT propagates directly (legacy split: the
+        // loop-top break folded to MENU_REDRAW, the click spin-wait
+        // returned MENU_EXIT — normalized to the propagating shape).
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = 2,  // back, as the legacy loop
+        .polls_lobby = true,
+        // No backdrop: the legacy screen drew over a plain cleared buffer.
+        .draw_background = &picker_progress_menu_engine_draw_background,
+        .draw_content = &picker_progress_menu_engine_draw_content,
+        // The raw-mouse PREV/NEXT + per-row GO dispatch (returns false to
+        // exit with MENU_REDRAW when a GO shortcut picks a level).
+        .frame_tick = &picker_progress_menu_engine_frame_tick,
+        // Every legacy local exit returned MENU_REDRAW.
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+const MenuScreenSpec& view_scenario_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "view_scenario",
+        .rows = kViewScenarioRows,
+        .row_count = static_cast<int>(std::size(kViewScenarioRows)),
+        .buttons_accessor = &picker_viewscenario_buttons,
+        .count_accessor = &picker_viewscenario_button_count,
+        // Nav closure over the hidden pagers (BACK's right-link), reading
+        // the open screen's PageModel.
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &picker_view_scenario_engine_rewire},
+        // The loop-top host-GO check; the remote MENU_EXIT propagates
+        // (exactly the legacy `retvalue & MENU_EXIT` return).
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kViewScenarioBackIndex,
+        // BACK carries MENU_REDRAW and ends the screen at the legacy check
+        // position (before the page-step consumption).
+        .exit_on_redraw = true,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &picker_view_scenario_engine_draw_content,
+        // The legacy page-step consumption (retvalue-zero + clamped flip +
+        // flip trace), at the legacy point in the frame.
+        .consume_click = &picker_view_scenario_engine_consume_click,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -1988,10 +2119,10 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::Train,
                 {.kind = Kind::Engine, .spec = &train_menu_screen_spec()});
             set(MenuScreenId::Progress,
-                {.kind = Kind::Legacy, .legacy_entry = &create_progress_menu});
+                {.kind = Kind::Engine, .spec = &progress_menu_screen_spec()});
             set(MenuScreenId::ViewScenario,
-                {.kind = Kind::Legacy,
-                 .legacy_entry = &create_view_scenario_menu});
+                {.kind = Kind::Engine,
+                 .spec = &view_scenario_menu_screen_spec()});
             set(MenuScreenId::Scenario,
                 {.kind = Kind::Engine, .spec = &scenario_menu_screen_spec()});
             set(MenuScreenId::Teams,
@@ -2159,6 +2290,30 @@ button* picker_trainmenu_buttons()
 int picker_trainmenu_button_count()
 {
     return static_cast<int>(pks().trainmenu_buttons.size());
+}
+
+button* picker_progressmenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::progress_menu_screen_spec(),
+                                     pks().progressmenu_buttons);
+    return pks().progressmenu_buttons.data();
+}
+
+int picker_progressmenu_button_count()
+{
+    return static_cast<int>(pks().progressmenu_buttons.size());
+}
+
+button* picker_viewscenario_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::view_scenario_menu_screen_spec(),
+                                     pks().viewscenario_buttons);
+    return pks().viewscenario_buttons.data();
+}
+
+int picker_viewscenario_button_count()
+{
+    return static_cast<int>(pks().viewscenario_buttons.size());
 }
 
 // The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit

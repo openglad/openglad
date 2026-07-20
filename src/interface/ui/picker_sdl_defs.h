@@ -148,6 +148,8 @@ button* picker_teamsmenu_buttons();
 int picker_teamsmenu_button_count();
 button* picker_viewscenario_buttons();
 int picker_viewscenario_button_count();
+button* picker_progressmenu_buttons();
+int picker_progressmenu_button_count();
 button* picker_scenariomenu_buttons();
 int picker_scenariomenu_button_count();
 button* picker_difficulty_menu_buttons();

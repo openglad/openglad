@@ -190,6 +190,13 @@ struct MenuScreenSpec {
     void (*draw_content)(void* screen_state) = nullptr;    // after draw_buttons (G14 hooks here)
     bool (*frame_tick)(void* screen_state, int frame) = nullptr; // false => exit loop
     void (*on_reset)(void* screen_state) = nullptr;        // after reset_buttons re-init
+    // Post-nav click consumption for screens whose legacy loops interpreted
+    // retvalue themselves BEFORE reset_buttons could consume it (the VIEW
+    // LEVEL page-step stash: a pager click's MENU_OK must flip the page and
+    // zero retvalue instead of re-initializing the buttons). Runs right
+    // after the exit_on_redraw check, at the legacy consumption point;
+    // returns the frame's new retvalue.
+    Sint32 (*consume_click)(Sint32 retvalue, void* screen_state) = nullptr;
     // G3 generic row dispatch: consumes the ButtonAction::MenuSpecRow stash.
     // Return value is the frame's new retvalue (MENU_OK/MENU_REDRAW/0, or
     // MENU_EXIT for a structural exit).
@@ -266,6 +273,8 @@ const MenuScreenSpec& difficulty_menu_screen_spec();
 // picker_team_build.cpp; the wrappers call run_menu_screen on these.
 const MenuScreenSpec& hire_menu_screen_spec();
 const MenuScreenSpec& train_menu_screen_spec();
+const MenuScreenSpec& progress_menu_screen_spec();
+const MenuScreenSpec& view_scenario_menu_screen_spec();
 
 // The main menu (§1.8 step 4). §1.6: ONE MP spec + ONE no-MP spec (the no-MP
 // variant genuinely repositions rows), selected at registry init by

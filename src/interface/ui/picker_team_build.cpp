@@ -979,19 +979,110 @@ void picker_test_render_teams_menu_frame()
 // a scratch headless level load (never touches the live picker world).
 // ---------------------------------------------------------------------------
 
-// PREV/NEXT handler: records the requested page step for the frame loop and
-// returns MENU_OK so both vbutton::leftclick and handle_menu_nav fire it.
+// PREV/NEXT handler: records the requested page step and returns MENU_OK so
+// both vbutton::leftclick and handle_menu_nav fire it; the engine screen's
+// consume_click hook turns the step into a clamped page flip.
 Sint32 view_scenario_page_flip(Sint32 step)
 {
     pks().view_scenario_page_step = (step < 0) ? -1 : 1;
     return MENU_OK;
 }
 
+// VIEW LEVEL: engine-hosted (§1.8 step 6; the spec lives in
+// menu_screen_specs.cpp, docs/menu-engine.md). The open screen's report and
+// PageModel live in the wrapper; the hooks read them through a file-static
+// pointer (the rewire and state-override signatures carry no screen_state —
+// the TEAMS pattern). Null state = no open screen (the G5 sweep and the
+// gate-lattice sweep drive the spec bare) and presents the single-page
+// shape: pagers hidden, BACK's right-link closed.
+struct ViewScenarioEngineState
+{
+    og::ui::PageModel pager;
+    std::vector<std::string> lines;
+    std::string title;
+};
+
+static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
+
+// PREV/NEXT visibility: the legacy entry-time `hidden = !multi_page()`,
+// re-derived per frame (page count never changes while the screen is open).
+og::ui::RowState picker_view_scenario_engine_pager_row_state(
+    const og::ui::MenuLabelContext& /*context*/)
+{
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    return (state != nullptr && state->pager.multi_page())
+        ? og::ui::RowState::Visible
+        : og::ui::RowState::Hidden;
+}
+
+// The legacy entry-time nav closure (`back.nav.right = -1` when one page),
+// re-asserted per frame over the static base link.
+void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
+                                        int& /*highlighted_button*/)
+{
+    if (num_buttons <= kViewScenarioBackIndex)
+        return;
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    const bool multi_page = state != nullptr && state->pager.multi_page();
+    buttons[kViewScenarioBackIndex].nav.right =
+        multi_page ? kViewScenarioPrevIndex : -1;
+}
+
+// The legacy page-step consumption, verbatim at the legacy frame point:
+// PREV/NEXT carry ButtonAction::ViewScenarioPageFlip — both mouse leftclick
+// and keyboard FIRE route through do_call, which records the requested step
+// and returns MENU_OK. Consume the step here (retvalue-zero + clamped flip
+// + the flip trace).
+Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
+                                                 void* /*screen_state*/)
+{
+    ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr)
+        return retvalue;
+    const int step = pks().view_scenario_page_step;
+    pks().view_scenario_page_step = 0;
+    if (step != 0)
+    {
+        retvalue = 0;
+        if (state->pager.step(step))
+        {
+            TRACE("picker", "view_scenario lines=%d page=%d",
+                  static_cast<int>(state->lines.size()), state->pager.page);
+        }
+    }
+    return retvalue;
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons —
+// the report frame at (5,5,314,160) never covers the y>=170 buttons).
+void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
+{
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr)
+        return;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
+    mytext.write_xy(10, 8, state->title.c_str(), static_cast<unsigned char>(BLACK), 1);
+    const int first_line = state->pager.first_index();
+    for (int line_index = first_line; line_index < state->pager.end_index();
+         ++line_index)
+    {
+        mytext.write_xy(10, 18 + (line_index - first_line) * 6,
+                        state->lines[static_cast<std::size_t>(line_index)].c_str(),
+                        static_cast<unsigned char>(BLACK), 1);
+    }
+    if (state->pager.multi_page())
+    {
+        mytext.write_xy(140, 176, state->pager.indicator().c_str(), WHITE, 1);
+    }
+}
+
+// VIEW LEVEL, engine-hosted (the legacy loop is gone). The pre-loop guards,
+// the scratch level load, and the exit shape are the legacy code, verbatim:
+// BACK returns MENU_REDRAW; a remote start propagates its MENU_EXIT.
 Sint32 create_view_scenario_menu(Sint32 arg1)
 {
     (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // The viewer is read-only and never mounts: a joiner without the host's
@@ -1013,96 +1104,31 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(scenario.world(), save);
-    const std::vector<std::string> lines =
-        og::ui::format_scenario_report_lines(report);
+    ViewScenarioEngineState state;
+    state.lines = og::ui::format_scenario_report_lines(report);
     // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
     // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
     // all come from the model; the oracle test in tests/unit/test_menu_spec
     // pins its equivalence to the legacy arithmetic this replaced.
-    og::ui::PageModel pager = og::ui::PageModel::make(
-        static_cast<int>(lines.size()), kViewScenarioRowsPerPage);
+    state.pager = og::ui::PageModel::make(
+        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
 
-    std::string title =
+    state.title =
         std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
-    if (title.size() > 48)
-        title.resize(48);
+    if (state.title.size() > 48)
+        state.title.resize(48);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
-          static_cast<int>(lines.size()), pager.page);
+          static_cast<int>(state.lines.size()), state.pager.page);
 
     og::runtime::current_session->myscreen_->clearbuffer();
 
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_viewscenario_buttons();
-    int num_buttons = picker_viewscenario_button_count();
-    int highlighted_button = kViewScenarioBackIndex;
-    buttons[kViewScenarioPrevIndex].hidden = !pager.multi_page();
-    buttons[kViewScenarioNextIndex].hidden = !pager.multi_page();
-    if (!pager.multi_page())
-        buttons[kViewScenarioBackIndex].nav.right = -1;
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-
     pks().view_scenario_page_step = 0;
+    g_view_scenario_engine_state = &state;
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::view_scenario_menu_screen_spec(), &state);
+    g_view_scenario_engine_state = nullptr;
 
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input: the leftmouse() result is the consumed press transition; a
-        // fast press+release must still dispatch the click.
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        // PREV/NEXT carry ButtonAction::ViewScenarioPageFlip: both mouse
-        // leftclick and keyboard FIRE route through do_call, which records
-        // the requested step and returns MENU_OK. Consume the step here.
-        const int step = pks().view_scenario_page_step;
-        pks().view_scenario_page_step = 0;
-        if (step != 0)
-        {
-            retvalue = 0;
-            if (pager.step(step))
-            {
-                TRACE("picker", "view_scenario lines=%d page=%d",
-                      static_cast<int>(lines.size()), pager.page);
-            }
-        }
-
-        reset_buttons(og::runtime::current_session->localbuttons_,
-                      buttons, num_buttons, retvalue);
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
-        mytext.write_xy(10, 8, title.c_str(), static_cast<unsigned char>(BLACK), 1);
-        const int first_line = pager.first_index();
-        for (int line_index = first_line; line_index < pager.end_index();
-             ++line_index)
-        {
-            mytext.write_xy(10, 18 + (line_index - first_line) * 6,
-                            lines[static_cast<std::size_t>(line_index)].c_str(),
-                            static_cast<unsigned char>(BLACK), 1);
-        }
-        if (pager.multi_page())
-        {
-            mytext.write_xy(140, 176, pager.indicator().c_str(), WHITE, 1);
-        }
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
     og::runtime::current_session->myscreen_->clearbuffer();
 
     if (retvalue & MENU_EXIT)
@@ -1134,24 +1160,198 @@ struct LevelProgress {
 
 std::vector<int> get_accessible_levels();
 
-Sint32 create_progress_menu(Sint32 arg1)
+// ---------------------------------------------------------------------------
+// PROGRESS: engine-hosted (§1.8 step 6; the spec lives in
+// menu_screen_specs.cpp, docs/menu-engine.md). PREV/NEXT are KEYBOARD-DEAD
+// by design (myfun = 0 — the shipped screen; fixing that is a visible
+// change deferred past Layer E): the raw mouse-rect dispatch, the per-row
+// GO shortcut scan, and the held-click spin-wait live in the frame_tick
+// hook, verbatim. The screen draws over a plain cleared buffer (no
+// backdrop). NOTE the draw-order normalization: legacy painted the report
+// BEFORE its three buttons; the runner paints buttons first — no content
+// pixel reaches y >= 170, so the output is identical.
+// ---------------------------------------------------------------------------
+
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct ProgressEngineState
 {
-    Sint32 retvalue = 0;
+    std::vector<LevelProgress> levels;
+    int num_cleared = 0;
+    int scroll_offset = 0;
+    int visible_rows = 10;
+};
+
+// The legacy button rects, needed by the raw mouse-rect dispatch (the
+// engine spec transcribes the same values).
+constexpr UiRect kProgressPrevBtn = {30, 170, 40, 20};
+constexpr UiRect kProgressNextBtn = {80, 170, 40, 20};
+
+void picker_progress_menu_engine_draw_background(void* /*screen_state*/)
+{
+    og::runtime::current_session->myscreen_->clearbuffer();
+}
+
+// The legacy custom input block, verbatim: held-click spin-wait (lobby kept
+// alive; a remote start ends the wait and fires the loop-top check next
+// frame — team_build_remote_start_requested is idempotent), raw-rect
+// PREV/NEXT scrolling, and the per-row GO shortcut (false => the runner
+// exits with MENU_REDRAW, the legacy return). The legacy block also read
+// retvalue == MENU_OK for keyboard PREV/NEXT — dead code (their myfun is 0,
+// so neither leftclick nor handle_menu_nav ever produced MENU_OK here) —
+// and that dead branch does not survive.
+bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
+{
+    auto* const state = static_cast<ProgressEngineState*>(screen_state);
+    if (state == nullptr)
+        return true;
+
+    MouseState& mymouse = query_mouse();
+    bool clicked = mymouse.left;
+    const int mx = static_cast<int>(mymouse.x);
+    const int my = static_cast<int>(mymouse.y);
+    if (clicked) {
+        while (mymouse.left) {
+            picker_lobby_poll();
+            Sint32 remote_retvalue = 0;
+            if (team_build_remote_start_requested(remote_retvalue))
+                return true;
+            og::input_native::sleep_ms(1);
+            get_input_events(POLL);
+        }
+    }
+
+    bool prev_enabled = (state->scroll_offset > 0);
+    bool next_enabled = (state->scroll_offset + state->visible_rows < static_cast<int>(state->levels.size()));
+
+    bool do_prev = prev_enabled && clicked && kProgressPrevBtn.x <= mx && mx <= kProgressPrevBtn.x + kProgressPrevBtn.w
+                   && kProgressPrevBtn.y <= my && my <= kProgressPrevBtn.y + kProgressPrevBtn.h;
+    bool do_next = next_enabled && clicked && kProgressNextBtn.x <= mx && mx <= kProgressNextBtn.x + kProgressNextBtn.w
+                   && kProgressNextBtn.y <= my && my <= kProgressNextBtn.y + kProgressNextBtn.h;
+
+    if (do_prev) {
+        state->scroll_offset--;
+    }
+    if (do_next) {
+        state->scroll_offset++;
+    }
+
+    // Check for GO button clicks on level rows
+    if (clicked) {
+        int row_y = 36;
+        int row_height = 13;
+        int go_btn_x = 295;
+        int go_btn_w = 20;
+        for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
+            LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
+            if (!lp.is_cleared) {
+                // Check if click is on this row's GO button
+                if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
+                    my >= row_y && my <= row_y + row_height) {
+                    // Set current level and exit
+                    og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
+                    picker_lobby_sync_settings_from_save();
+                    og::runtime::current_session->myscreen_->clearbuffer();
+                    return false;
+                }
+            }
+            row_y += row_height;
+        }
+    }
+
+    return true;
+}
+
+// The legacy report pass, verbatim: header, column bar, level rows with GO
+// shortcuts, scroll indicator. No pixel reaches the y >= 170 button strip,
+// so painting after draw_buttons (the runner order) is output-identical.
+void picker_progress_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<ProgressEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
-    if (arg1)
-        arg1 = 1;
+    // Header
+    std::string header = std::format("Level Progress: {} cleared of {} discovered",
+             state->num_cleared, static_cast<int>(state->levels.size()));
+    mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
+
+    // Column headers
+    og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
+    mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
+    mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
+    mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
+    mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
+
+    // Level rows
+    int y = 36;
+    int row_height = 13;
+    for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
+        LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
+
+        // ID
+        std::string buf = std::format("{}", lp.id);
+        mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
+
+        // Status
+        unsigned char status_color;
+        const char* status_text;
+        if (lp.is_cleared) {
+            status_text = "CLEARED";
+            status_color = DARK_GREEN;
+        } else if (lp.is_current) {
+            status_text = "CURRENT";
+            status_color = YELLOW;
+        } else {
+            status_text = "-------";
+            status_color = WHITE;
+        }
+        mytext.write_xy(36, y + 2, status_text, status_color, 1);
+
+        // Title
+        mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
+
+        // Enemy count
+        if (lp.is_cleared) {
+            mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
+        } else {
+            buf = std::format("{}", lp.num_enemies);
+            mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
+
+            // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
+            og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
+            mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
+        }
+
+        y += row_height;
+    }
+
+    // Scroll indicator
+    if (state->levels.size() > static_cast<size_t>(state->visible_rows)) {
+        std::string scroll_info = std::format("{}-{} of {}",
+                 state->scroll_offset + 1,
+                 std::min(state->scroll_offset + state->visible_rows, static_cast<int>(state->levels.size())),
+                 static_cast<int>(state->levels.size()));
+        mytext.write_xy(140, 172, scroll_info.c_str(), WHITE, 1);
+    }
+}
+
+// PROGRESS, engine-hosted (the legacy loop is gone). The level-report build
+// and the exit shape are the legacy code, verbatim: every local exit (BACK,
+// a GO shortcut) returns MENU_REDRAW; a remote start propagates its
+// MENU_EXIT (legacy split both ways across its two check sites — normalized
+// to the propagating shape).
+Sint32 create_progress_menu(Sint32 arg1)
+{
+    // arg1 is part of the button.h signature but was never read by the
+    // legacy loop (it only normalized it and moved on).
+    (void)arg1;
 
     og::runtime::current_session->myscreen_->clearbuffer();
 
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
     // Get accessible levels
     std::vector<int> level_ids = get_accessible_levels();
-    std::vector<LevelProgress> levels;
-
-    // Count cleared levels
-    int num_cleared = 0;
+    ProgressEngineState state;
 
     // Load level info for each accessible level
     for (int level_id : level_ids) {
@@ -1161,7 +1361,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         lp.is_current = (level_id == og::runtime::current_session->myscreen_->save_data.scen_num);
 
         if (lp.is_cleared)
-            num_cleared++;
+            state.num_cleared++;
 
         // Load level to get title and enemy count
         LevelRuntimeData ld(level_id);
@@ -1182,175 +1382,15 @@ Sint32 create_progress_menu(Sint32 arg1)
             lp.num_enemies = 0;
         }
 
-        levels.push_back(lp);
+        state.levels.push_back(lp);
     }
 
-    // Scrolling state
-    int scroll_offset = 0;
-    int visible_rows = 10;
-
-    // Buttons
-    UiRect prev_btn = {30, 170, 40, 20};
-    UiRect next_btn = {80, 170, 40, 20};
-    UiRect back_btn = {260, 170, 50, 20};
-
-    button buttons[] = {
-        button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav{.right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav{.left=0, .right=2}),
-        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.left=1}),
-    };
-    int num_buttons = 3;
-    int highlighted_button = 2;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Handle scroll buttons
-        MouseState& mymouse = query_mouse();
-        bool clicked = mymouse.left;
-        const int mx = static_cast<int>(mymouse.x);
-        const int my = static_cast<int>(mymouse.y);
-        if (clicked) {
-            while (mymouse.left) {
-                picker_lobby_poll();
-                if (team_build_remote_start_requested(retvalue))
-                    return retvalue;
-                og::input_native::sleep_ms(1);
-                get_input_events(POLL);
-            }
-        }
-
-        bool prev_enabled = (scroll_offset > 0);
-        bool next_enabled = (scroll_offset + visible_rows < static_cast<int>(levels.size()));
-
-        bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mx && mx <= prev_btn.x + prev_btn.w
-                       && prev_btn.y <= my && my <= prev_btn.y + prev_btn.h)
-                       || (retvalue == MENU_OK && highlighted_button == 0));
-        bool do_next = next_enabled && ((clicked && next_btn.x <= mx && mx <= next_btn.x + next_btn.w
-                       && next_btn.y <= my && my <= next_btn.y + next_btn.h)
-                       || (retvalue == MENU_OK && highlighted_button == 1));
-
-        if (do_prev) {
-            scroll_offset--;
-            retvalue = 0;
-        }
-        if (do_next) {
-            scroll_offset++;
-            retvalue = 0;
-        }
-
-        // Check for GO button clicks on level rows
-        if (clicked) {
-            int row_y = 36;
-            int row_height = 13;
-            int go_btn_x = 295;
-            int go_btn_w = 20;
-            for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
-                LevelProgress& lp = levels[i];
-                if (!lp.is_cleared) {
-                    // Check if click is on this row's GO button
-                    if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
-                        my >= row_y && my <= row_y + row_height) {
-                        // Set current level and exit
-                        og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
-                        picker_lobby_sync_settings_from_save();
-                        og::runtime::current_session->myscreen_->clearbuffer();
-                        return MENU_REDRAW;
-                    }
-                }
-                row_y += row_height;
-            }
-        }
-
-        // Reset
-        if (retvalue == MENU_OK && highlighted_button != 2)
-            retvalue = 0;
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-
-        // Header
-        std::string header = std::format("Level Progress: {} cleared of {} discovered",
-                 num_cleared, static_cast<int>(levels.size()));
-        mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
-
-        // Column headers
-        og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
-        mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
-        mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
-        mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
-        mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
-
-        // Level rows
-        int y = 36;
-        int row_height = 13;
-        for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
-            LevelProgress& lp = levels[i];
-
-            // ID
-            std::string buf = std::format("{}", lp.id);
-            mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
-
-            // Status
-            unsigned char status_color;
-            const char* status_text;
-            if (lp.is_cleared) {
-                status_text = "CLEARED";
-                status_color = DARK_GREEN;
-            } else if (lp.is_current) {
-                status_text = "CURRENT";
-                status_color = YELLOW;
-            } else {
-                status_text = "-------";
-                status_color = WHITE;
-            }
-            mytext.write_xy(36, y + 2, status_text, status_color, 1);
-
-            // Title
-            mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
-
-            // Enemy count
-            if (lp.is_cleared) {
-                mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
-            } else {
-                buf = std::format("{}", lp.num_enemies);
-                mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
-
-                // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
-                og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
-                mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
-            }
-
-            y += row_height;
-        }
-
-        // Scroll indicator
-        if (levels.size() > static_cast<size_t>(visible_rows)) {
-            std::string scroll_info = std::format("{}-{} of {}",
-                     scroll_offset + 1,
-                     std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
-                     static_cast<int>(levels.size()));
-            mytext.write_xy(140, 172, scroll_info.c_str(), WHITE, 1);
-        }
-
-        // Buttons
-        draw_buttons(buttons, num_buttons);
-        draw_highlight(buttons[highlighted_button]);
-
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::progress_menu_screen_spec(), &state);
 
     og::runtime::current_session->myscreen_->clearbuffer();
+    if (retvalue & MENU_EXIT)
+        return retvalue;
     return MENU_REDRAW;
 }
 

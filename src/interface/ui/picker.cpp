@@ -1471,6 +1471,7 @@ void picker_cleanup_resources()
     pks().networking_buttons.clear();
     pks().teamsmenu_buttons.clear();
     pks().viewscenario_buttons.clear();
+    pks().progressmenu_buttons.clear();
     pks().scenariomenu_buttons.clear();
     pks().difficulty_menu_buttons.clear();
 }
@@ -1569,14 +1570,10 @@ static const button k_networking_menu_buttons[] =
 // machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
 // (docs/menu-engine.md).
 
-// VIEW LEVEL (create_view_scenario_menu): a read-only framed report; PREV and
-// NEXT page through it and stay hidden while the report fits one page.
-static const button k_viewscenario_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.right=1}),
-        button("page_prev", "PREV", KEYSTATE_UNKNOWN, 220, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), -1, MenuNav{.left=0, .right=2}, true),
-        button("page_next", "NEXT", KEYSTATE_UNKNOWN, 270, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), 1, MenuNav{.left=1}, true),
-    };
+// VIEW LEVEL (create_view_scenario_menu) and PROGRESS (create_progress_menu):
+// engine-hosted — specs, accessor shims, and the per-frame hooks/entry
+// wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
+// (docs/menu-engine.md).
 
 // SCENARIO subscreen (create_scenario_menu): engine-hosted — the spec,
 // accessor shim, title-strip content pass, and entry wrapper live in
@@ -1710,16 +1707,9 @@ int picker_networking_button_count()
 // picker_teamsmenu_buttons()/picker_teamsmenu_button_count(): engine-hosted
 // screen — the D3 materialization shims live in menu_screen_specs.cpp.
 
-button* picker_viewscenario_buttons()
-{
-    reset_mutable_button_layout(pks().viewscenario_buttons, k_viewscenario_buttons);
-    return pks().viewscenario_buttons.data();
-}
-
-int picker_viewscenario_button_count()
-{
-    return static_cast<int>(pks().viewscenario_buttons.size());
-}
+// picker_viewscenario_buttons()/picker_progressmenu_buttons() (+ counts):
+// engine-hosted screens — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 // picker_scenariomenu_buttons()/picker_scenariomenu_button_count():
 // engine-hosted screen — the D3 materialization shims live in

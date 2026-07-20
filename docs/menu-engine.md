@@ -25,7 +25,8 @@ window. Keep this table in sync with the registry:
 | Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
 | Hire | **Engine** | `hire_menu_screen_spec()` via `create_hire_menu()` (entry-time PREV/NEXT repositioning = `prepare_buttons`, so the accessor keeps the pinned table shape; solo-hidden team cycler = state override + nav-closure rewire; new-game popup = `frame_tick`; stat/cost/description panels = content hook in picker_team_build.cpp) |
 | Train | **Engine** | `train_menu_screen_spec()` via `create_train_menu()` (the +/- pixie faces = `art_family` bindings re-applied after every reset; the bug-A9 promotion resync = `on_reset`; the wrapper keeps the need-a-team entry guards and the start-selected exit fold) |
-| Progress / View level | Legacy | `create_progress_menu()` / `create_view_scenario_menu()` |
+| Progress | **Engine** | `progress_menu_screen_spec()` via `create_progress_menu()` (PREV/NEXT stay KEYBOARD-DEAD — the shipped myfun=0 shape, a declared exception to the liveness invariant; raw mouse-rect dispatch + per-row GO shortcuts + held-click spin-wait = `frame_tick`; no backdrop) |
+| View level | **Engine** | `view_scenario_menu_screen_spec()` via `create_view_scenario_menu()` (`exit_on_redraw`; pager visibility = state override over the wrapper's PageModel, nav closure = rewire; the page-step stash is consumed by `consume_click` at the legacy frame point; pre-loop mount/load popup guards stay in the wrapper) |
 | Scenario | **Engine** | `scenario_menu_screen_spec()` via `create_scenario_menu()` (host gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard; the wrapper folds BACK's MENU_EXIT unless a start was selected) |
 | TEAMS | **Engine** | `teams_menu_screen_spec()` via `create_teams_menu()` (`exit_on_redraw`; the Rewire program replays the legacy compute+sync+trace verbatim from picker_team_build.cpp; row bars draw beneath the buttons in `draw_background`; the reload guard sits in `frame_tick` — one frame later than the legacy loop-top reload, the flows poll with timeouts) |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
@@ -88,6 +89,8 @@ Per §1.4, transcribed from the canonical legacy loops:
    - `leftmouse` → `leftclick` (exact-`MENU_EXIT` break preserved);
      `rightclick` only when `right_click_enabled`;
    - `handle_menu_nav` (unchanged spin-wait), exact-`MENU_EXIT` break;
+   - `consume_click` hook (screen-owned click consumption before
+     reset_buttons — the VIEW LEVEL page-step stash);
    - MenuSpecRow stash consume + dispatch (G3 discipline above), G12
      `sync_settings_after_mutation` hook;
    - `reset_buttons`; on reset re-apply art bindings + `on_reset`;
