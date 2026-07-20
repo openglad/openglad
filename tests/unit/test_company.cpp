@@ -6,6 +6,10 @@
 
 #include <openglad/resources/company.h>
 
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -14,6 +18,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -933,4 +939,290 @@ TEST(CompanyBackups, restore_aborts_on_corrupt_or_missing_backup)
         << "an aborted restore must not create a pre-restore backup";
     EXPECT_EQ(123u, memory.totalcash)
         << "an aborted restore leaves the in-memory save untouched";
+}
+
+// --- Autosave choke point (§3.8) ------------------------------------------
+
+namespace {
+
+// Restores whatever campaign mount the test found, so full SaveData loads in
+// merge tests can't leak a mount into sibling tests under --gtest_shuffle
+// (the known GameModeYaml mount-sensitivity landmine).
+class ScopedMountRestore
+{
+public:
+    ScopedMountRestore() : before_(get_mounted_campaign()) {}
+    ~ScopedMountRestore()
+    {
+        const std::string after = get_mounted_campaign();
+        if (after == before_)
+            return;
+        if (before_.empty())
+        {
+            (void)unmount_campaign_package_with_error(after);
+        }
+        else
+        {
+            std::map<std::string, int> scratch;
+            (void)load_campaign(before_, scratch);
+        }
+    }
+
+private:
+    std::string before_;
+};
+
+std::unique_ptr<guy> make_test_guy(int family,
+                                   const std::string& name,
+                                   short teamnum,
+                                   bool deployed)
+{
+    auto member = std::make_unique<guy>(family);
+    member->name = name;
+    member->teamnum = teamnum;
+    member->deployed = deployed;
+    return member;
+}
+
+} // namespace
+
+TEST(CompanyAutosave, stamps_and_writes_atomically_without_backup)
+{
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(4100);
+
+    SaveData save;
+    save.save_name = "Choke Point Co";
+    save.scen_num = 3;
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::BaseCampMutation));
+    EXPECT_EQ(4100, save.last_played_unix_s)
+        << "the choke point stamps the in-memory save on the plain path";
+    const auto header = og::data::read_company_header("save0");
+    ASSERT_TRUE(header.has_value());
+    EXPECT_EQ(4100, header->last_played_unix_s)
+        << "the stamped timestamp must reach the active company on disk";
+    EXPECT_FALSE(user_file_exists("save/save0.tmp.gtl"))
+        << "the §3.6 atomic write must leave no staging file";
+    EXPECT_TRUE(og::data::list_company_backups("save0").empty())
+        << "a base-camp mutation autosave never snapshots";
+
+    og::data::set_company_clock_for_tests(4200);
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::WindowEvent));
+    EXPECT_EQ(4200, og::data::read_company_header("save0")->last_played_unix_s);
+    EXPECT_TRUE(og::data::list_company_backups("save0").empty())
+        << "a WindowEvent autosave never snapshots (§3.8)";
+}
+
+TEST(CompanyAutosave, level_win_snapshots_exactly_once_per_call)
+{
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(500);
+
+    SaveData save;
+    save.save_name = "Winner Co";
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::LevelWin));
+    const std::vector<og::data::CompanyBackupInfo> first =
+        og::data::list_company_backups("save0");
+    ASSERT_EQ(1u, first.size()) << "one win = exactly one snapshot";
+    EXPECT_EQ(read_file_bytes(sandbox.dir() / "save0.gtl"),
+              read_file_bytes(sandbox.dir() / "backups" / first[0].filename))
+        << "the snapshot byte-copies the freshly stamped company file";
+    EXPECT_EQ(500, first[0].header.last_played_unix_s);
+
+    ASSERT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::LevelWin));
+    EXPECT_EQ(2u, og::data::list_company_backups("save0").size())
+        << "each win takes its own snapshot; other kinds never do";
+}
+
+// [SAVE-F1]: while a networked lobby holds the in-memory save (host campaign
+// / cursor / settings), a mutation autosave must MERGE into the private
+// on-disk company: own roster + owned wallets overlaid, everything else —
+// campaign cursor, history, difficulty, ctf/respawn/tower settings, seat
+// fields — preserved from disk, and the ambient campaign mount restored.
+TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
+{
+    SaveDirSandbox sandbox;
+    ScopedMountRestore mount_guard;
+    ScopedCompanyClock clock(999);
+
+    // The merge path does a FULL private load, which mounts the private
+    // campaign — make the builtin packages available in the unit config dir
+    // (the og_unit_tower_progression precedent).
+    restore_default_campaigns();
+
+    {
+        SaveData priv;
+        priv.save_name = "Private Co";
+        priv.current_campaign = "org.openglad.gladiator";
+        priv.scen_num = 5;
+        priv.my_team = 0;
+        priv.numplayers = 2;
+        priv.allied_mode = 1;
+        priv.respawn_mode = 2;
+        priv.generator_rate = 150;
+        priv.keep_fallen_heroes = 1;
+        priv.ctf_team_count = 3;
+        priv.ctf_capture_limit = 7;
+        priv.ctf_respawn_ticks = 60;
+        priv.ctf_strip_scenario_troops = 1;
+        priv.tower_best_floor = 4;
+        priv.tower_run_seed = 777u;
+        priv.m_totalcash[0] = 100;
+        priv.m_totalcash[1] = 5;
+        priv.m_totalcash[2] = 6;
+        priv.m_totalcash[3] = 7;
+        priv.m_totalscore[0] = 10;
+        priv.m_totalscore[1] = 1;
+        priv.m_totalscore[2] = 2;
+        priv.m_totalscore[3] = 3;
+        priv.totalcash = 100;
+        priv.totalscore = 10;
+        priv.team_list[0] =
+            make_test_guy(FAMILY_SOLDIER, "Alice", 0, true);
+        priv.team_list[0]->strength = 10;
+        priv.team_list[1] = make_test_guy(FAMILY_ELF, "Bob", 0, false);
+        priv.team_size = 2;
+        priv.add_level_completed("org.openglad.gladiator", 1);
+        priv.add_level_completed("org.openglad.gladiator", 2);
+        ASSERT_TRUE(priv.save("save0"));
+    }
+
+    // The lobby-held session save: HOST campaign/cursor/settings, this
+    // machine's PRIVATE roster stamped onto session team 2, post-hire/train
+    // wallet on team 2.
+    SaveData session;
+    session.current_campaign = "org.openglad.ctf";
+    session.scen_num = 502;
+    session.my_team = 2;
+    session.numplayers = 1;
+    session.allied_mode = 0;
+    session.respawn_mode = 0;
+    session.generator_rate = 0;
+    session.keep_fallen_heroes = 0;
+    session.tower_best_floor = 0;
+    session.tower_run_seed = 0;
+    session.m_totalcash[0] = 55; // NOT owned: must never reach disk
+    session.m_totalcash[2] = 77; // owned team, post-spend
+    session.m_totalscore[0] = 9;
+    session.m_totalscore[2] = 33;
+    session.team_list[0] = make_test_guy(FAMILY_SOLDIER, "Alice", 2, true);
+    session.team_list[0]->strength = 12; // trained in the lobby
+    session.team_list[1] = make_test_guy(FAMILY_ELF, "Bob", 2, false);
+    session.team_list[2] = make_test_guy(FAMILY_SOLDIER, "Carol", 2, true);
+    session.team_size = 3;
+    session.add_level_completed("org.openglad.ctf", 500); // host history
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(session, /*networked_lobby=*/true);
+    ASSERT_TRUE(context.networked_lobby);
+    EXPECT_FALSE(context.owned_teams[0]);
+    EXPECT_FALSE(context.owned_teams[1]);
+    EXPECT_TRUE(context.owned_teams[2])
+        << "roster teamnums + my_team decide the owned wallets";
+    EXPECT_FALSE(context.owned_teams[3]);
+
+    const std::string mounted_before = get_mounted_campaign();
+    ASSERT_EQ(SaveDataIoError::None,
+              og::ui::company_autosave_after_mutation(
+                  session, /*networked_lobby_active=*/true));
+    EXPECT_EQ(mounted_before, get_mounted_campaign())
+        << "the merge write must restore the ambient campaign mount";
+    EXPECT_EQ(0, session.last_played_unix_s)
+        << "the merge stamps only the merged disk copy, not the session save";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
+
+    // Preserved from disk ([SAVE-F1] contract).
+    EXPECT_EQ("org.openglad.gladiator", reloaded.current_campaign);
+    EXPECT_EQ(5, reloaded.scen_num);
+    EXPECT_EQ(5, reloaded.current_levels["org.openglad.gladiator"]);
+    EXPECT_TRUE(reloaded.is_level_completed(1));
+    EXPECT_TRUE(reloaded.is_level_completed(2));
+    EXPECT_FALSE(
+        reloaded.completed_levels.contains("org.openglad.ctf"))
+        << "the host's session history must never leak into the company";
+    EXPECT_EQ(0, reloaded.my_team);
+    EXPECT_EQ(2, static_cast<int>(reloaded.numplayers));
+    EXPECT_EQ(1, reloaded.allied_mode);
+    EXPECT_EQ(2, reloaded.respawn_mode);
+    EXPECT_EQ(150, reloaded.generator_rate);
+    EXPECT_EQ(1, reloaded.keep_fallen_heroes);
+    EXPECT_EQ(3, reloaded.ctf_team_count);
+    EXPECT_EQ(7, reloaded.ctf_capture_limit);
+    EXPECT_EQ(60, reloaded.ctf_respawn_ticks);
+    EXPECT_EQ(1, reloaded.ctf_strip_scenario_troops);
+    EXPECT_EQ(4, reloaded.tower_best_floor);
+    EXPECT_EQ(777u, reloaded.tower_run_seed);
+    EXPECT_EQ(100u, reloaded.m_totalcash[0])
+        << "a non-owned wallet keeps the disk value";
+    EXPECT_EQ(5u, reloaded.m_totalcash[1]);
+    EXPECT_EQ(7u, reloaded.m_totalcash[3]);
+    EXPECT_EQ(10u, reloaded.m_totalscore[0]);
+
+    // Overlaid from the session ([SAVE-F1] contract).
+    EXPECT_EQ(77u, reloaded.m_totalcash[2]) << "owned wallet post-spend";
+    EXPECT_EQ(33u, reloaded.m_totalscore[2]);
+    EXPECT_EQ(77u, reloaded.totalcash)
+        << "legacy scalar mirrors follow the primary owned team";
+    EXPECT_EQ(33u, reloaded.totalscore);
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ("Alice", reloaded.team_list[0]->name);
+    EXPECT_EQ(12, reloaded.team_list[0]->strength)
+        << "lobby training must persist";
+    EXPECT_TRUE(reloaded.team_list[0]->deployed);
+    ASSERT_TRUE(reloaded.team_list[1] != nullptr);
+    EXPECT_FALSE(reloaded.team_list[1]->deployed)
+        << "held-back flags ride the merged roster";
+    ASSERT_TRUE(reloaded.team_list[2] != nullptr);
+    EXPECT_EQ("Carol", reloaded.team_list[2]->name)
+        << "lobby hires must persist";
+    EXPECT_EQ(3, static_cast<int>(reloaded.team_size));
+    EXPECT_EQ(999, reloaded.last_played_unix_s);
+}
+
+TEST(CompanyAutosave, networked_merge_without_private_file_never_clobbers)
+{
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(777);
+
+    SaveData session;
+    session.current_campaign = "org.openglad.ctf";
+    session.scen_num = 501;
+    og::data::CompanyAutosaveContext context;
+    context.networked_lobby = true;
+    context.owned_teams[0] = true;
+
+    EXPECT_NE(SaveDataIoError::None,
+              og::data::company_autosave(
+                  session, og::data::CompanyAutosaveKind::BaseCampMutation,
+                  context))
+        << "no private baseline: the merge reports the load failure";
+    EXPECT_FALSE(user_file_exists("save/save0.gtl"))
+        << "the merge must never clobber-create from host-synced state";
+    EXPECT_FALSE(user_file_exists("save/save0.tmp.gtl"));
+    EXPECT_EQ(0, session.last_played_unix_s);
+}
+
+TEST(CompanyAutosave, local_mutation_hook_is_a_plain_stamped_write)
+{
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(1234);
+
+    SaveData save;
+    save.save_name = "Local Hook Co";
+    ASSERT_EQ(SaveDataIoError::None,
+              og::ui::company_autosave_after_mutation(
+                  save, /*networked_lobby_active=*/false));
+    EXPECT_EQ(1234, save.last_played_unix_s);
+    EXPECT_EQ(1234, og::data::read_company_header("save0")->last_played_unix_s);
+    EXPECT_TRUE(og::data::list_company_backups("save0").empty());
 }

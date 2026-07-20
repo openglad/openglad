@@ -346,7 +346,16 @@ bool persist_network_win_to_save0(
     merged.current_campaign = world_screen.save_data.current_campaign;
     merged.scen_num = world_screen.save_data.scen_num;
 
-    if (merged.save_with_error(og::data::active_company_slot()) !=
+    // §3.8: the networked per-player win persists through the LevelWin choke
+    // point — stamp last_played, atomic write, and exactly one backup
+    // snapshot on this machine per win (the persist itself is once-latched
+    // by the callers; only a FAILED attempt is retried, and a failed write
+    // takes no snapshot). `merged` IS the private on-disk company overlaid
+    // with only this machine's own roster/wallets/cursor, so the default
+    // (plain) context is correct — the [SAVE-F1]-style merge already
+    // happened above.
+    if (og::data::company_autosave(
+            merged, og::data::CompanyAutosaveKind::LevelWin) !=
         SaveDataIoError::None)
     {
         LogError("net_persist_save_failed player={}\n",
@@ -571,8 +580,21 @@ bool finalize_level_and_advance_cursor(
             gameplay_screen, own_seats, fold_ctx.finished_level);
     }
 
-    return save_shadow_save_data(gameplay_screen, "complete_level",
-                                 og::data::active_company_slot());
+    // §3.8: the local shadow-finalize write is a WindowEvent-kind autosave —
+    // stamp + atomic write to the active company, and deliberately NO backup:
+    // the display's screen::endgame LevelWin autosave owns the once-per-win
+    // snapshot, so a LevelWin here would double it.
+    const SaveDataIoError shadow_save_error = og::data::company_autosave(
+        gameplay_screen.save_data, og::data::CompanyAutosaveKind::WindowEvent);
+    if (shadow_save_error != SaveDataIoError::None)
+    {
+        LogError("local_transport_shadow_save_failed action={} slot={} error={}\n",
+                 "complete_level",
+                 og::data::active_company_slot(),
+                 static_cast<int>(shadow_save_error));
+        return false;
+    }
+    return true;
 }
 
 // Withdraw (retreat) discards the current level's gains: reload the roster from

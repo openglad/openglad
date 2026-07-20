@@ -478,11 +478,16 @@ bool picker_replace_lobby_client(
         // Establish a durable private baseline before network initialization
         // applies shared campaign/team settings. The lobby keeps the roster
         // private in memory; its combined roster lives only in LobbyState and
-        // the gameplay handoff.
+        // the gameplay handoff. The write goes through the §3.8 choke point
+        // (WindowEvent: stamp + atomic, no backup; the save is still fully
+        // private here, so the plain default context is correct), and
+        // [SAVE-R7] keeps the hard gate: a failed baseline write REFUSES to
+        // enter the networked session.
         if (og::runtime::current_session == nullptr ||
             og::runtime::current_session->myscreen_ == nullptr ||
-            og::runtime::current_session->myscreen_->save_data
-                    .save_with_error(og::data::active_company_slot()) !=
+            og::data::company_autosave(
+                og::runtime::current_session->myscreen_->save_data,
+                og::data::CompanyAutosaveKind::WindowEvent) !=
                 SaveDataIoError::None)
         {
             popup_dialog(popup_title,

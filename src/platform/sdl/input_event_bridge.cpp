@@ -9,6 +9,8 @@
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
@@ -33,10 +35,25 @@ void autosave_active_screen(screen& s, const char* event_name)
     if (og::runtime::current_session != nullptr &&
         og::runtime::current_session->gameplay_active_)
     {
+        // [SAVE-F2] Never write the company file during a NETWORKED level:
+        // the display save holds the combined netsession-shaped state
+        // (screen.cpp's endgame documents this), and the per-player win/
+        // withdraw paths persist this machine's own progress. Skipping also
+        // leaves the company timestamp un-promoted.
+        if (og::runtime::current_session->networked_session_)
+            return;
         s.sync_save_data_from_world();
     }
-    const SaveDataIoError err =
-        s.save_data.save_with_error(og::data::active_company_slot());
+    // §3.8 WindowEvent autosave: stamp + atomic write to the active company,
+    // no backup. [SAVE-F1] In a networked LOBBY (menus / between levels) the
+    // in-memory save carries the HOST's campaign/settings, so the context
+    // routes the write through the owner-preserving merge instead of a
+    // plain save.
+    const SaveDataIoError err = og::data::company_autosave(
+        s.save_data,
+        og::data::CompanyAutosaveKind::WindowEvent,
+        og::ui::company_autosave_context(s.save_data,
+                                         picker_lobby_is_networked()));
     if (err != SaveDataIoError::None)
     {
         LogError("window_autosave_failed event={} error={}\n",

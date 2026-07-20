@@ -17,8 +17,10 @@
 
 #pragma once
 
+#include <openglad/core/constants.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -232,5 +234,67 @@ bool delete_company_backup(const std::string& slot, int seq);
 // was removed (stray backups of an already-missing company are still
 // reaped).
 bool delete_company(const std::string& slot);
+
+// ---------------------------------------------------------------------------
+// Autosave choke point (§3.8)
+// ---------------------------------------------------------------------------
+
+// Why an autosave ran. The kind decides the backup policy: LevelWin also
+// snapshots the freshly written company into save/backups/ (exactly once per
+// call — the level-win producers fire once per win); BaseCampMutation and
+// WindowEvent (minimize/close, the lobby-entry baseline, the local shadow
+// finalize) stamp + write only, never snapshot.
+enum class CompanyAutosaveKind
+{
+    BaseCampMutation,
+    LevelWin,
+    WindowEvent,
+};
+
+// [SAVE-F1] session context, provided by the CALLER. og_resources cannot see
+// the lobby layer, so the picker/lobby glue reports whether a networked
+// lobby currently owns the in-memory save (apply_lobby_state_to_save has
+// overwritten campaign/scen_num/settings with the HOST's values) and which
+// session team indexes this machine's seats own. og::ui::
+// company_autosave_context (picker_common) builds this for menu callers.
+struct CompanyAutosaveContext
+{
+    // True while a networked lobby is active: the write must become an
+    // owner-preserving MERGE (below), never a plain save of the host-synced
+    // combined state.
+    bool networked_lobby = false;
+    // Session team indexes whose wallets this machine's seats own; consulted
+    // only on the merge path.
+    std::array<bool, SCORE_TEAM_COUNT> owned_teams{};
+};
+
+// The single autosave choke point (§3.8): every company write that is not an
+// explicit user save funnels through here. Stamps `save.last_played_unix_s`
+// from the wall-clock seam and atomic-writes (§3.6) to the ACTIVE company
+// slot; LevelWin then snapshots the written file via backup_company_now.
+// Failures are logged and returned; callers surface them but don't crash —
+// EXCEPT the lobby-entry baseline [SAVE-R7], which keeps its hard gate
+// (popup + refuse to enter the networked session).
+//
+// [SAVE-F1] With context.networked_lobby set, the write routes through an
+// owner-preserving merge instead (the persist_private_campaign_cursor
+// pattern): the private company file is loaded from disk and only (a) the
+// machine's own roster (team_list entries incl. their deployed flags — in a
+// networked lobby the in-memory roster IS private to this machine) and
+// (b) the owned session teams' m_totalcash/m_totalscore plus their legacy
+// scalar mirrors are overlaid from `save`; current_campaign, scen_num,
+// current_levels, difficulty and all ctf_*/respawn_*/tower_* settings,
+// numplayers, my_team and allied_mode stay as the DISK holds them. The
+// timestamp is stamped on the merged copy (the in-memory session save is
+// left untouched), and the campaign mount is restored afterwards, so the
+// open lobby menu never loses its session campaign. A missing/unreadable
+// private file aborts with the load error — the merge never clobbers
+// (the [SAVE-R7] baseline guarantees the file exists in real flows).
+[[nodiscard]] SaveDataIoError company_autosave(SaveData& save,
+                                               CompanyAutosaveKind kind);
+[[nodiscard]] SaveDataIoError company_autosave(
+    SaveData& save,
+    CompanyAutosaveKind kind,
+    const CompanyAutosaveContext& context);
 
 } // namespace og::data

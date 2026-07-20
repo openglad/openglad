@@ -18,6 +18,8 @@
 #include <openglad/resources/company.h>
 
 #include <openglad/core/util.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/filesystem_sync.h>
 #include <openglad/resources/io_common.h>
@@ -30,6 +32,8 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <map>
+#include <memory>
 #include <string_view>
 #include <system_error>
 
@@ -652,8 +656,10 @@ CompanyRestoreError restore_company_backup(SaveData& save,
     // Step 4: re-stamp last_played so Continue still points at this company
     // (a pure byte copy would resurrect the old timestamp). Re-serializing
     // right after a fresh load makes save()'s cursor side effect a no-op.
-    // §3.8 routes this through company_autosave(WindowEvent) once the
-    // autosave choke point exists.
+    // Deliberately NOT routed through company_autosave (§3.8): the choke
+    // point targets the ACTIVE company, while restore may lawfully target
+    // any slot — this inline stamp + atomic write is the same
+    // WindowEvent-kind operation, addressed by `slot`.
     save.last_played_unix_s = company_clock_now_s();
     if (atomic_company_save(save, slot) != SaveDataIoError::None)
         return CompanyRestoreError::RestampFailed;
@@ -689,6 +695,148 @@ bool delete_company(const std::string& slot)
     (void)remove_user_file("save/" + slot + ".tmp.gtl");
     (void)remove_user_file("save/" + slot + ".gtl.restoretmp");
     return remove_user_file("save/" + slot + ".gtl");
+}
+
+// ---------------------------------------------------------------------------
+// Autosave choke point (§3.8)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// [SAVE-F1] owner-preserving merge write. While a networked lobby is active
+// the in-memory save has been overwritten by apply_lobby_state_to_save with
+// the HOST's campaign/scen_num/settings; a plain save() would also rewrite
+// current_levels[host campaign] to the host's level — silently rewinding the
+// client's solo cursor and settings on disk. So: load the private company
+// file, overlay ONLY the machine's own roster and its owned teams' wallets,
+// stamp, atomic-save. Everything else — current_campaign, scen_num,
+// current_levels, difficulty, ctf_*/respawn_*/tower_* settings, numplayers,
+// my_team, allied_mode — stays as the disk holds it, simply by never being
+// touched on the loaded copy.
+SaveDataIoError company_autosave_merge_networked_lobby(
+    const SaveData& session_save,
+    const CompanyAutosaveContext& context,
+    const std::string& slot)
+{
+    // load() below mounts the PRIVATE save's campaign; the open lobby menu
+    // is showing the HOST's. Remember the ambient mount and restore it after
+    // the write so the merge is mount-neutral.
+    const std::string mounted_before = get_mounted_campaign();
+
+    SaveData merged;
+    const SaveDataIoError load_error = merged.load_with_error(slot);
+    if (load_error != SaveDataIoError::None)
+    {
+        // No untouched private baseline to merge into: never clobber the
+        // company file with host-synced combined state ([SAVE-F1]; the
+        // [SAVE-R7] lobby-entry baseline guarantees the file exists in
+        // real flows).
+        LogError("company_autosave_merge_load_failed slot={} error={}\n",
+                 slot, static_cast<int>(load_error));
+        return load_error;
+    }
+
+    // (a) The machine's own roster. In a networked lobby the in-memory
+    // team_list is private to this machine (remote players never enter it),
+    // so a wholesale deep copy carries hires, training, renames and the
+    // per-guy deployed flags while dropping nothing of anyone else's.
+    for (std::size_t index = 0; index < merged.team_list.size(); ++index)
+    {
+        merged.team_list[index] =
+            session_save.team_list[index]
+                ? std::make_unique<guy>(*session_save.team_list[index])
+                : nullptr;
+    }
+    merged.team_size = session_save.team_size;
+
+    // (b) The owned session teams' wallets (post-hire/train spend) and their
+    // legacy scalar mirrors — same-index overlay, the
+    // persist_network_win_to_save0 precedent. Non-owned teams keep the disk
+    // values.
+    bool primary_team_assigned = false;
+    for (std::size_t team = 0; team < context.owned_teams.size(); ++team)
+    {
+        if (!context.owned_teams[team])
+            continue;
+        merged.m_totalcash[team] = session_save.m_totalcash[team];
+        merged.m_totalscore[team] = session_save.m_totalscore[team];
+        if (!primary_team_assigned)
+        {
+            merged.totalcash = session_save.m_totalcash[team];
+            merged.totalscore = session_save.m_totalscore[team];
+            primary_team_assigned = true;
+        }
+    }
+
+    merged.last_played_unix_s = company_clock_now_s();
+    const SaveDataIoError write_error = atomic_company_save(merged, slot);
+
+    const std::string mounted_after = get_mounted_campaign();
+    if (mounted_after != mounted_before)
+    {
+        if (mounted_before.empty())
+        {
+            (void)unmount_campaign_package_with_error(mounted_after);
+        }
+        else
+        {
+            std::map<std::string, int> scratch_levels;
+            if (load_campaign(mounted_before, scratch_levels) < 0)
+            {
+                LogError("company_autosave_remount_failed campaign={}\n",
+                         mounted_before);
+            }
+        }
+    }
+    return write_error;
+}
+
+} // namespace
+
+SaveDataIoError company_autosave(SaveData& save, CompanyAutosaveKind kind)
+{
+    return company_autosave(save, kind, CompanyAutosaveContext{});
+}
+
+SaveDataIoError company_autosave(SaveData& save,
+                                 CompanyAutosaveKind kind,
+                                 const CompanyAutosaveContext& context)
+{
+    // The active slot can never be "netsession" (the setter rejects it), so
+    // the server-economy scratch structurally never gains timestamps or
+    // backups through this path.
+    const std::string slot = active_company_slot();
+
+    SaveDataIoError write_error;
+    if (context.networked_lobby)
+    {
+        write_error = company_autosave_merge_networked_lobby(
+            save, context, slot);
+    }
+    else
+    {
+        save.last_played_unix_s = company_clock_now_s();
+        write_error = atomic_company_save(save, slot);
+    }
+
+    if (write_error != SaveDataIoError::None)
+    {
+        LogError("company_autosave_failed kind={} slot={} error={}\n",
+                 static_cast<int>(kind), slot,
+                 static_cast<int>(write_error));
+        return write_error;
+    }
+
+    if (kind == CompanyAutosaveKind::LevelWin)
+    {
+        // §3.7: every level win snapshots the freshly written company —
+        // exactly one retention-pruned byte copy per call. A snapshot
+        // failure is logged but does not fail the autosave (the save itself
+        // landed; retention is retried on the next win).
+        if (!backup_company_now(slot))
+            LogError("company_autosave_backup_failed slot={}\n", slot);
+    }
+    return SaveDataIoError::None;
 }
 
 } // namespace og::data

@@ -1513,14 +1513,16 @@ short screen::endgame(short ending, short nextlevel)
 		if (!networked &&
 		    og::mode::current_progression().persist_after_win())
 		{
-			// Autosave because we won
-			save_data.save(og::data::active_company_slot());
-			// §3.7: every local level win snapshots the freshly-saved
-			// company into save/backups/ (retention-pruned byte copy).
-			// backup_company_now refuses the netsession scratch slot,
-			// and the networked branch never reaches here, so the
-			// server economy can never leave snapshots behind.
-			og::data::backup_company_now(og::data::active_company_slot());
+			// Autosave because we won: the §3.8 choke point stamps
+			// last_played, atomic-writes the active company, and
+			// (LevelWin) snapshots the freshly-saved file into
+			// save/backups/ exactly once (§3.7 retention-pruned byte
+			// copy). The netsession scratch can never reach here: the
+			// networked branch is excluded above and the active slot
+			// can never be "netsession", so the server economy never
+			// leaves snapshots behind.
+			(void)og::data::company_autosave(
+			    save_data, og::data::CompanyAutosaveKind::LevelWin);
 		}
 
 		// Every win ends this display session. Single-player and local play

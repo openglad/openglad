@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <array>
 #include <cstdint>
@@ -171,6 +172,29 @@ short cycle_guy_team(SaveData& save, int slot_index, int dir);
 // it has members. Single source of truth for seat labels (P1..P4) and the
 // local lobby's synthetic peer teams.
 std::vector<short> derive_local_seat_teams(const SaveData& save);
+
+// --- Company autosave (design §3.8; §1.2 G12 autosave_on_mutation) ---
+
+// Builds the [SAVE-F1] session context for og::data::company_autosave.
+// `networked_lobby_active` is the caller's lobby flag (SDL passes
+// picker_lobby_is_networked(); the terminal clients pass their own state —
+// picker_common stays link-free of the lobby client on purpose). When it is
+// set, the owned teams are every wallet index a base-camp mutation can spend
+// from on this machine: the in-range teamnums of the (private-to-this-
+// machine) in-memory roster, plus my_team for the empty-roster hire case.
+og::data::CompanyAutosaveContext company_autosave_context(
+    const SaveData& save, bool networked_lobby_active);
+
+// The single mutation-autosave choke point the menu layer consumes: the
+// declarative per-screen `autosave_on_mutation` obligation (design §1.2 G12)
+// calls this ONCE after any handled click on a flagged screen — replacing
+// per-callback save tails. Routes through og::data::company_autosave
+// (BaseCampMutation) with the [SAVE-F1] context above, so networked-lobby
+// mutations become owner-preserving merge writes. No screen sets the flag
+// yet (WP4 flips it on); until then nothing calls this in production and
+// legacy flows stay byte-identical.
+[[nodiscard]] SaveDataIoError company_autosave_after_mutation(
+    SaveData& save, bool networked_lobby_active);
 
 // One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored

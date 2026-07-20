@@ -973,6 +973,18 @@ void CursesPickerClient::run_game()
     const GameRunResult result =
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
+    if (result.ended && result.ending == 0 && !result.ctf_rematch) {
+        // §3.8: the curses win commit (run_level_loop already folded the win
+        // into save_data_ via commit_result_to_save, gated on this same
+        // shape) persists through the company autosave choke point against
+        // the client's active slot: stamp last_played, atomic write, one
+        // retention-pruned backup snapshot. Failures are logged inside the
+        // choke point; the committed roster stays in memory either way.
+        assert_company_slot_authority(); // [SAVE-R2]
+        (void)og::data::company_autosave(
+            save_data_, og::data::CompanyAutosaveKind::LevelWin);
+    }
+
     if (result.ended) {
         // mission_verdict_line is CTF-aware: a CTF loss still ends with the
         // classic WIN shape, so ending==0 alone must not claim victory. The
