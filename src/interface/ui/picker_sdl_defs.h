@@ -113,6 +113,10 @@ inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();
+// The options gear's materialized main-menu index, derived from the spec
+// (replaces the retired OPTIONS_BUTTON_INDEX #defines: 10 with multiplayer,
+// 5 without).
+int picker_mainmenu_options_index();
 button* picker_createmenu_buttons();
 int picker_createmenu_button_count();
 button* picker_viewteam_buttons();

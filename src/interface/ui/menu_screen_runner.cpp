@@ -20,6 +20,7 @@
 #include <openglad/interface/ui/menu_screen_spec.h>
 
 #include <openglad/core/test_trace.h>
+#include <openglad/core/util.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
@@ -89,13 +90,18 @@ MenuLabelContext build_label_context(const MenuScreenSpec& spec)
     return context;
 }
 
+// The materialized-index view of the spec rows (build-gate filtered): every
+// per-row pass below indexes THROUGH this so buttons[i] pairs with the spec
+// row it was materialized from.
+using SpecRowView = std::vector<const MenuButtonSpec*>;
+
 // Re-apply pixie art faces. Must run AFTER init_buttons (and after every
 // reset_buttons): set_graphic overwrites the vbutton's w/h from the loaded
 // pixie (button.cpp), so a reset without a re-apply drops the face.
-void apply_art_bindings(const MenuScreenSpec& spec, int num_buttons)
+void apply_art_bindings(const SpecRowView& rows, int num_buttons)
 {
-    for (int i = 0; i < num_buttons && i < spec.row_count; ++i) {
-        const MenuButtonSpec& row = spec.rows[i];
+    for (int i = 0; i < num_buttons && i < static_cast<int>(rows.size()); ++i) {
+        const MenuButtonSpec& row = *rows[static_cast<std::size_t>(i)];
         if (row.art_family < 0)
             continue;
         vbutton* live = og::runtime::current_session->allbuttons_[i];
@@ -108,12 +114,12 @@ void apply_art_bindings(const MenuScreenSpec& spec, int num_buttons)
 // surfaces, and make Disabled rows inert on both activation paths (leftclick
 // and handle_menu_nav both gate on a nonzero myfun/myfunc) while keeping
 // them visible for nav, with a dimmed face.
-void apply_row_states(const MenuScreenSpec& spec, button* buttons,
+void apply_row_states(const SpecRowView& rows, button* buttons,
                       int num_buttons, const MenuLabelContext& context,
                       RowState* states)
 {
-    for (int i = 0; i < num_buttons && i < spec.row_count; ++i) {
-        const MenuButtonSpec& row = spec.rows[i];
+    for (int i = 0; i < num_buttons && i < static_cast<int>(rows.size()); ++i) {
+        const MenuButtonSpec& row = *rows[static_cast<std::size_t>(i)];
         const RowState state = row.state_override != nullptr
             ? row.state_override(context)
             : gate_state(row.gate, context);
@@ -196,11 +202,11 @@ bool remote_start_requested(const MenuScreenSpec& spec, Sint32& retvalue)
 // context and written to BOTH surfaces — the mutable descriptor row (backs
 // later redraws/resets) and the live vbutton (what draw_buttons shows).
 // Outline and color bindings ride the same pass.
-void apply_label_bindings(const MenuScreenSpec& spec, button* buttons,
+void apply_label_bindings(const SpecRowView& rows, button* buttons,
                           int num_buttons, const MenuLabelContext& context)
 {
-    for (int i = 0; i < num_buttons && i < spec.row_count; ++i) {
-        const MenuButtonSpec& row = spec.rows[i];
+    for (int i = 0; i < num_buttons && i < static_cast<int>(rows.size()); ++i) {
+        const MenuButtonSpec& row = *rows[static_cast<std::size_t>(i)];
         vbutton* live = og::runtime::current_session->allbuttons_[i];
         if (row.label_binding.formatter != nullptr) {
             const std::string label = row.label_binding.formatter(context);
@@ -218,22 +224,55 @@ void apply_label_bindings(const MenuScreenSpec& spec, button* buttons,
     }
 }
 
+// The build this binary materializes for by default.
+constexpr MenuBuildVariant kCompiledBuildVariant =
+#ifdef __EMSCRIPTEN__
+    MenuBuildVariant::Web;
+#else
+    MenuBuildVariant::Native;
+#endif
+
+bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
+{
+    switch (row.build) {
+    case MenuBuildGate::NativeOnly:
+        return variant == MenuBuildVariant::Native;
+    case MenuBuildGate::WebOnly:
+        return variant == MenuBuildVariant::Web;
+    case MenuBuildGate::Always:
+        break;
+    }
+    return true;
+}
+
 } // namespace
 
-void materialize_menu_buttons(const MenuScreenSpec& spec,
-                              std::vector<button>& out)
+std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
+    const MenuScreenSpec& spec, MenuBuildVariant variant)
+{
+    std::vector<const MenuButtonSpec*> rows;
+    rows.reserve(static_cast<std::size_t>(spec.row_count));
+    for (int i = 0; i < spec.row_count; ++i) {
+        if (spec_row_survives_build(spec.rows[i], variant))
+            rows.push_back(&spec.rows[i]);
+    }
+    return rows;
+}
+
+std::vector<const MenuButtonSpec*> materialized_spec_rows(
+    const MenuScreenSpec& spec)
+{
+    return materialized_spec_rows_for(spec, kCompiledBuildVariant);
+}
+
+void materialize_menu_buttons_for(const MenuScreenSpec& spec,
+                                  MenuBuildVariant variant,
+                                  std::vector<button>& out)
 {
     out.clear();
     out.reserve(static_cast<std::size_t>(spec.row_count));
-    for (int i = 0; i < spec.row_count; ++i) {
-        const MenuButtonSpec& row = spec.rows[i];
-#ifdef __EMSCRIPTEN__
-        if (row.build == MenuBuildGate::NativeOnly)
-            continue;
-#else
-        if (row.build == MenuBuildGate::WebOnly)
-            continue;
-#endif
+    for (const MenuButtonSpec* row_ptr : materialized_spec_rows_for(spec, variant)) {
+        const MenuButtonSpec& row = *row_ptr;
         button materialized(row.id, row.label, row.hotkey, row.x, row.y, row.w,
                             row.h, button_action_id(row.action), row.arg,
                             row.nav);
@@ -242,6 +281,12 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
     }
     OG_MENU_ENGINE_CHECK(out.size() <= static_cast<std::size_t>(MAX_BUTTONS),
                          "materialized row count exceeds MAX_BUTTONS");
+}
+
+void materialize_menu_buttons(const MenuScreenSpec& spec,
+                              std::vector<button>& out)
+{
+    materialize_menu_buttons_for(spec, kCompiledBuildVariant, out);
 }
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
@@ -253,23 +298,56 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
                          "engine screen materialized no buttons");
     OG_MENU_ENGINE_CHECK(num_buttons <= MAX_BUTTONS,
                          "engine screen exceeds MAX_BUTTONS");
-    // Entry transitions land with the screens that use them (main menu);
-    // every migrated screen so far enters cold, exactly like its legacy loop.
-    OG_MENU_ENGINE_CHECK(spec.enter == EnterTransition::None,
-                         "EnterTransition not implemented yet");
+    // The materialized spec-row view: buttons[i] <-> *spec_rows[i]. Raw
+    // spec ordinals diverge from materialized indices past a build-gated row
+    // (the main-menu quit/help fork), so every per-row pass uses this.
+    const SpecRowView spec_rows = materialized_spec_rows(spec);
+    OG_MENU_ENGINE_CHECK(static_cast<int>(spec_rows.size()) == num_buttons,
+                         "accessor row count diverges from the spec's "
+                         "build-gate materialization");
+    // FadeAroundEntry lands with the screen that first needs it (team build).
+    OG_MENU_ENGINE_CHECK(spec.enter != EnterTransition::FadeAroundEntry,
+                         "EnterTransition::FadeAroundEntry not implemented yet");
 
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
-    apply_art_bindings(spec, num_buttons);
+    apply_art_bindings(spec_rows, num_buttons);
 
     RowState states[MAX_BUTTONS] = {};
     {
         // Initial visibility + nav, before the first frame (the legacy
         // pre-loop sync_* call).
         const MenuLabelContext context = build_label_context(spec);
-        apply_row_states(spec, buttons, num_buttons, context, states);
+        apply_row_states(spec_rows, buttons, num_buttons, context, states);
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
+    }
+
+    if (spec.enter == EnterTransition::FadeWithInitialDraw) {
+        // The legacy mainmenu entry, verbatim: settle one timer tick, fade
+        // the previous menu out, compose the first frame in the buffer, and
+        // fade it in (fadeblack presents the buffer itself — no
+        // buffer_to_screen here). Injector SDL_Delay(750) cadence depends on
+        // this exact sequence.
+        reset_timer();
+        while (query_timer() < 1)
+            ;
+        screen* scr = og::runtime::current_session->myscreen_;
+        scr->fadeblack(0);
+        {
+            const MenuLabelContext context = build_label_context(spec);
+            apply_label_bindings(spec_rows, buttons, num_buttons, context);
+        }
+        if (spec.backdrop)
+            draw_backdrop();
+        if (spec.draw_background != nullptr)
+            spec.draw_background(screen_state);
+        draw_buttons(buttons, num_buttons);
+        if (spec.draw_content != nullptr)
+            spec.draw_content(screen_state);
+        draw_highlight(buttons[highlighted_button]);
+        scr->fadeblack(1);
+        grab_mouse();
     }
 
     int frame = 0;
@@ -282,7 +360,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // lobby changes). Both surfaces, then the nav program, then the
         // highlight pull.
         const MenuLabelContext context = build_label_context(spec);
-        apply_row_states(spec, buttons, num_buttons, context, states);
+        apply_row_states(spec_rows, buttons, num_buttons, context, states);
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
 
         // Remote-start preemption: a host GO must launch a peer parked in
@@ -359,7 +437,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             og::runtime::current_session->localbuttons_, buttons, num_buttons,
             retvalue);
         if (was_reset) {
-            apply_art_bindings(spec, num_buttons);
+            apply_art_bindings(spec_rows, num_buttons);
             if (spec.on_reset != nullptr)
                 spec.on_reset(screen_state);
         }
@@ -372,7 +450,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // lobby poll rewriting the save under the open screen) must show on
         // this frame's draw, exactly like the legacy per-frame re-derives.
         const MenuLabelContext label_context = build_label_context(spec);
-        apply_label_bindings(spec, buttons, num_buttons, label_context);
+        apply_label_bindings(spec_rows, buttons, num_buttons, label_context);
 
         if (spec.backdrop)
             draw_backdrop();

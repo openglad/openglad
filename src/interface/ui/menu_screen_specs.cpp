@@ -19,6 +19,7 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
@@ -33,6 +34,8 @@
 #include <format>
 #include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 // Shared FX-face draw helpers and picker loop helpers (defined in picker.cpp
 // / picker_team_build.cpp; declared locally by every consumer — repo
@@ -42,6 +45,7 @@ void draw_toggle_effect_button(button& b, const std::string& category,
 void draw_cycle_effect_button(button& b, const std::string& category,
                               const std::string& setting);
 void draw_sprite_sheet_button(button& b);
+void draw_version_number();
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
@@ -771,7 +775,254 @@ const MenuScreenSpec& main_options_menu_screen_spec()
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// MAIN MENU (§1.8 step 4, the heaviest 10a screen). The four legacy
+// k_mainmenu_buttons build variants (picker.cpp, deleted with this
+// migration) unify into TWO specs — MP and no-MP (the no-MP variant
+// genuinely repositions rows into a single column and moves the bottom row
+// to y=175) — each carrying the web/native fork as the build-gated
+// quit/help row pair: identical geometry and nav, different id/label/
+// hotkey/action, exactly one surviving materialization. Nav links are
+// written in MATERIALIZED index space and are identical across the fork
+// (§1.6: 2 static nav columns cover all 4 variants).
+//
+// redraw_mainmenu's raw allbuttons_[N] writes became bindings (§1.6):
+//   [2..5] player-count outlines -> OutlineBinding::PlayerCountEquals,
+//   [7] SPECTATOR/PVP label      -> the pvp_allied LabelBinding,
+//   [0]/[options] pixie faces    -> art_family rows (FAMILY_NORMAL1 /
+//       FAMILY_WRENCH — the normal1.png Begin New Game face is preserved by
+//       construction: same empty label, same set_graphic path, re-applied
+//       after init_buttons and after every reset_buttons).
+// Its title/columns drawMix + the FULL re-vdisplay-after-title pass + the
+// native version stamp survive as the draw_content hook (G14): the 136x58
+// title frames at (15,8)/(151,8) overlap begin_new_game (80,50,140,20) in
+// y=50-66, and legacy re-vdisplayed EVERY button after the title drawMix —
+// the runner's draw_buttons -> content order would invert that overlap
+// without the full re-vdisplay here.
+//
+// Both OPTIONS_BUTTON_INDEX #defines (picker.cpp x4 and the
+// picker_main_menu.cpp pair) are gone — picker_mainmenu_options_index()
+// derives the index from the materialized spec.
+
+// The legacy USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping, kept at the
+// variant-selection point (it lived beside the k_mainmenu tables in
+// picker.cpp:1484-1486 until they were deleted with this migration).
+#ifdef USE_TOUCH_INPUT
+#ifndef DISABLE_MULTIPLAYER
+#define DISABLE_MULTIPLAYER
+#endif
+#endif
+
+// Live label for the pvp_allied row: redraw_mainmenu's per-frame write,
+// verbatim (SPECTATOR when no local player count is selected).
+std::string pvp_allied_row_label(const MenuLabelContext& context)
+{
+    if (context.save == nullptr)
+        return "PVP: Allied";
+    if (context.save->numplayers == 0)
+        return "SPECTATOR";
+    return format_allied_mode_label(*context.save);
+}
+
+constexpr MenuButtonSpec kMainMenuRowsMP[] = {
+    {.id = "begin_new_game", .label = "",
+     .x = 80, .y = 50, .w = 140, .h = 20,
+     .action = ButtonAction::BeginMenu, .arg = 1,
+     .nav = {.down = 1},
+     .art_family = FAMILY_NORMAL1},
+    {.id = "continue_game", .label = "CONTINUE GAME",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::CreateTeamMenu, .arg = -1,
+     .nav = {.up = 0, .down = 5}},
+    {.id = "4_player", .label = "4 PLAYER", .hotkey = KEYSTATE_4,
+     .x = 152, .y = 125, .w = 68, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 4,
+     .nav = {.up = 4, .down = 6, .left = 3},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 4},
+    {.id = "3_player", .label = "3 PLAYER", .hotkey = KEYSTATE_3,
+     .x = 80, .y = 125, .w = 68, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 3,
+     .nav = {.up = 5, .down = 6, .right = 2},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 3},
+    {.id = "2_player", .label = "2 PLAYER", .hotkey = KEYSTATE_2,
+     .x = 152, .y = 100, .w = 68, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 2,
+     .nav = {.up = 1, .down = 2, .left = 5},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 2},
+    {.id = "1_player", .label = "1 PLAYER", .hotkey = KEYSTATE_1,
+     .x = 80, .y = 100, .w = 68, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 1,
+     .nav = {.up = 1, .down = 3, .right = 4},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 1},
+    {.id = "difficulty", .label = "DIFFICULTY",
+     .x = 80, .y = 148, .w = 140, .h = 10,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 3, .down = 7}},
+    {.id = "pvp_allied", .label = "PVP: Allied",
+     .x = 80, .y = 160, .w = 68, .h = 10,
+     .action = ButtonAction::AlliedMode, .arg = -1,
+     .nav = {.up = 6, .down = 9, .right = 8},
+     .label_binding = {.formatter = &pvp_allied_row_label}},
+    {.id = "level_edit", .label = "Level Edit",
+     .x = 152, .y = 160, .w = 68, .h = 10,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 6, .down = 10, .left = 7}},
+    // The web/native fork (§1.6): one of this pair survives materialization,
+    // always at index 9 with identical geometry and nav. The trailing space
+    // in "QUIT " is part of the shipped label.
+    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
+     .x = 120, .y = 182, .w = 60, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 7, .left = 10},
+     .build = MenuBuildGate::NativeOnly},
+    {.id = "help", .label = "HELP",
+     .x = 120, .y = 182, .w = 60, .h = 15,
+     .action = ButtonAction::ShowHelp, .arg = -1,
+     .nav = {.up = 7, .left = 10},
+     .build = MenuBuildGate::WebOnly},
+    {.id = "options", .label = "",
+     .x = 90, .y = 182, .w = 20, .h = 15,
+     .action = ButtonAction::MainOptions, .arg = -1,
+     .nav = {.up = 8, .right = 9},
+     .art_family = FAMILY_WRENCH},
+};
+
+constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
+    {.id = "begin_new_game", .label = "",
+     .x = 80, .y = 50, .w = 140, .h = 20,
+     .action = ButtonAction::BeginMenu, .arg = 1,
+     .nav = {.down = 1},
+     .art_family = FAMILY_NORMAL1},
+    {.id = "continue_game", .label = "CONTINUE GAME",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::CreateTeamMenu, .arg = -1,
+     .nav = {.up = 0, .down = 2}},
+    {.id = "difficulty", .label = "DIFFICULTY",
+     .x = 80, .y = 100, .w = 140, .h = 15,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 1, .down = 3}},
+    {.id = "level_edit", .label = "Level Edit",
+     .x = 80, .y = 118, .w = 140, .h = 15,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 2, .down = 4}},
+    // The web/native fork — always index 4 here.
+    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
+     .x = 120, .y = 175, .w = 60, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 3, .left = 5},
+     .build = MenuBuildGate::NativeOnly},
+    {.id = "help", .label = "HELP",
+     .x = 120, .y = 175, .w = 60, .h = 15,
+     .action = ButtonAction::ShowHelp, .arg = -1,
+     .nav = {.up = 3, .left = 5},
+     .build = MenuBuildGate::WebOnly},
+    {.id = "options", .label = "",
+     .x = 90, .y = 175, .w = 20, .h = 15,
+     .action = ButtonAction::MainOptions, .arg = -1,
+     .nav = {.up = 3, .right = 4},
+     .art_family = FAMILY_WRENCH},
+};
+
+void main_menu_draw_background(void* /*screen_state*/)
+{
+    og::runtime::current_session->myscreen_->clearbuffer();
+}
+
+// The surviving body of redraw_mainmenu (picker_main_menu.cpp, deleted with
+// this migration): title + columns, then the G14 FULL re-vdisplay pass, then
+// the native version stamp. The outline/label/set_graphic writes it carried
+// are bindings now (see the spec comment above); the per-frame set_graphic
+// re-applies were redundant (set_graphic draws nothing — the art survives
+// on the live vbutton until a reset, which the runner re-applies after).
+// The pixie null-guards only matter to headless engine tests that run the
+// screen without picker_initialize_shared_menu_state; production always has
+// them loaded.
+void main_menu_draw_content(void* /*screen_state*/)
+{
+    screen* game = og::runtime::current_session->myscreen_;
+
+    if (pks().main_title_logo_pix) {
+        pks().main_title_logo_pix->set_frame(0);
+        pks().main_title_logo_pix->drawMix(15, 8, game->viewob[0].get());
+        pks().main_title_logo_pix->set_frame(1);
+        pks().main_title_logo_pix->drawMix(151, 8, game->viewob[0].get());
+    }
+    if (pks().main_columns_pix) {
+        pks().main_columns_pix->set_frame(0);
+        pks().main_columns_pix->drawMix(12, 40, game->viewob[0].get());
+        pks().main_columns_pix->set_frame(1);
+        pks().main_columns_pix->drawMix(242, 40, game->viewob[0].get());
+    }
+
+    // G14: re-vdisplay EVERY button after the title drawMix (the title
+    // frames overlap begin_new_game; buttons must win that overlap).
+    int count = 0;
+    while (count < static_cast<int>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[count]) {
+        og::runtime::current_session->allbuttons_[count]->vdisplay();
+        count++;
+    }
+
+    // On native builds, show the version number on the main menu. On
+    // Emscripten/web builds the version is displayed elsewhere (the help UI).
+#ifndef __EMSCRIPTEN__
+    draw_version_number();
+#endif
+}
+
+constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
+                                             int row_count)
+{
+    MenuScreenSpec spec{};
+    spec.name = "mainmenu";
+    spec.rows = rows;
+    spec.row_count = row_count;
+    spec.buttons_accessor = &picker_mainmenu_buttons;
+    spec.count_accessor = &picker_mainmenu_button_count;
+    // A host GO while this joiner sits on the main menu: break with
+    // CONTINUE selected so present_menu() routes the shared state machine
+    // into team build, whose loop-top check launches the game.
+    spec.remote_start = RemoteStartScope::MainScope;
+    spec.remote_start_exit = RemoteStartExit::BreakWithSelection;
+    // Legacy entry: fade the previous menu out, first draw, fade in.
+    spec.enter = EnterTransition::FadeWithInitialDraw;
+    spec.default_highlight = 1;  // continue_game
+    // Right-click is live here: deselecting the current player count enters
+    // spectator mode (do_call_right, SetPlayerMode).
+    spec.right_click_enabled = true;
+    spec.polls_lobby = true;
+    spec.draw_background = &main_menu_draw_background;
+    spec.draw_content = &main_menu_draw_content;
+    // Every caller ignores mainmenu()'s return value; MENU_EXIT mirrors the
+    // legacy loop's exit-bearing retvalue.
+    spec.exit_value = MENU_EXIT;
+    return spec;
+}
+
 } // namespace
+
+const MenuScreenSpec& main_menu_screen_spec_mp()
+{
+    static const MenuScreenSpec spec = make_main_menu_spec(
+        kMainMenuRowsMP, static_cast<int>(std::size(kMainMenuRowsMP)));
+    return spec;
+}
+
+const MenuScreenSpec& main_menu_screen_spec_nomp()
+{
+    static const MenuScreenSpec spec = make_main_menu_spec(
+        kMainMenuRowsNoMP, static_cast<int>(std::size(kMainMenuRowsNoMP)));
+    return spec;
+}
+
+const MenuScreenSpec& main_menu_screen_spec()
+{
+#ifndef DISABLE_MULTIPLAYER
+    return main_menu_screen_spec_mp();
+#else
+    return main_menu_screen_spec_nomp();
+#endif
+}
 
 const MenuScreenSpec& difficulty_menu_screen_spec()
 {
@@ -818,7 +1069,7 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             };
             using Kind = MenuScreenHost::Kind;
             set(MenuScreenId::MainMenu,
-                {.kind = Kind::Legacy, .legacy_entry = &mainmenu});
+                {.kind = Kind::Engine, .spec = &main_menu_screen_spec()});
             set(MenuScreenId::TeamBuild,
                 {.kind = Kind::Legacy, .legacy_entry = &create_team_menu});
             set(MenuScreenId::ViewTeam,
@@ -869,6 +1120,45 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
 } // namespace og::ui
 
 // --- D3 materialization shims (moved from picker.cpp with the migration) ---
+
+button* picker_mainmenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::main_menu_screen_spec(),
+                                     pks().mainmenu_buttons);
+    return pks().mainmenu_buttons.data();
+}
+
+int picker_mainmenu_button_count()
+{
+    return static_cast<int>(pks().mainmenu_buttons.size());
+}
+
+// Replaces both OPTIONS_BUTTON_INDEX #defines (10 with multiplayer, 5
+// without): the options gear's materialized index, derived from the spec
+// instead of hand-tracked per variant.
+int picker_mainmenu_options_index()
+{
+    const std::vector<const og::ui::MenuButtonSpec*> rows =
+        og::ui::materialized_spec_rows(og::ui::main_menu_screen_spec());
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (std::string_view(rows[i]->id) == "options")
+            return static_cast<int>(i);
+    }
+    return static_cast<int>(rows.size()) - 1;
+}
+
+// The main menu, engine-hosted (the legacy loop in picker_main_menu.cpp is
+// gone). The fade-out/first-draw/fade-in entry is the spec's
+// FadeWithInitialDraw transition; every caller (present_menu /
+// picker_mainmenu_loop) acts on pks().selected_menu_item and ignores the
+// return value, exactly as it ignored the legacy loop's retvalue.
+Sint32 mainmenu(Sint32 arg1)
+{
+    (void)arg1;
+    if (og::runtime::current_session->myscreen_ == nullptr)
+        return MENU_EXIT;
+    return og::ui::run_menu_screen(og::ui::main_menu_screen_spec());
+}
 
 button* picker_difficulty_menu_buttons()
 {

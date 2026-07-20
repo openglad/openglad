@@ -536,9 +536,12 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             const int count = spec.count_accessor();
             ASSERT_GT(count, 0) << spec.name;
             ASSERT_LE(count, MAX_BUTTONS) << spec.name;
-            // Layer E: no build-gated rows on migrated screens yet, so spec
-            // ordinals == materialized indices (nav links line up 1:1).
-            ASSERT_EQ(spec.row_count, count) << spec.name;
+            // Build-gated rows (the main-menu quit/help fork) drop at
+            // materialization; index spec rows through the same mapping the
+            // runner uses so buttons[i] pairs with its materialized spec row.
+            const std::vector<const og::ui::MenuButtonSpec*> spec_rows =
+                og::ui::materialized_spec_rows(spec);
+            ASSERT_EQ(static_cast<int>(spec_rows.size()), count) << spec.name;
 
             std::set<std::string> ids;
             for (int i = 0; i < count; ++i) {
@@ -565,7 +568,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                 og::runtime::current_session->current_difficulty_;
             context.is_host = host_visible;
             for (int i = 0; i < count; ++i) {
-                const og::ui::MenuButtonSpec& row = spec.rows[i];
+                const og::ui::MenuButtonSpec& row =
+                    *spec_rows[static_cast<std::size_t>(i)];
                 const og::ui::RowState state = row.state_override != nullptr
                     ? row.state_override(context)
                     : og::ui::gate_state(row.gate, context);
@@ -760,6 +764,247 @@ TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
     cfg.apply_setting("graphics", "zoom", prev_zoom);
     cfg.apply_setting("graphics", "smoothing", prev_smoothing);
     cfg.apply_setting("graphics", "render", prev_render);
+}
+
+// ---------------------------------------------------------------------------
+// MAIN MENU (§1.8 step 4). Registry + spec-shape pins, the G9 variant
+// materialization pins (the four legacy k_mainmenu_buttons shapes re-derived
+// from the TWO specs — the un-compiled shapes have no other oracle), and the
+// binding pins that replaced redraw_mainmenu's raw allbuttons_[N] writes.
+// The compiled variant's exact table remains independently pinned by
+// tests/test_menu_pins.cpp (G2/G11) and geometry by test_menu_layout.
+namespace
+{
+
+struct ExpectedSpecRow
+{
+    const char* id;
+    const char* label;
+    int hotkey;
+    int x, y, w, h;
+    ButtonAction action;
+    Sint32 arg;
+    MenuNav nav;
+};
+
+void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
+                              og::ui::MenuBuildVariant variant,
+                              const ExpectedSpecRow* expected,
+                              int expected_count, const char* shape_name)
+{
+    std::vector<button> rows;
+    og::ui::materialize_menu_buttons_for(spec, variant, rows);
+    ASSERT_EQ(expected_count, static_cast<int>(rows.size())) << shape_name;
+    for (int i = 0; i < expected_count; ++i)
+    {
+        const ExpectedSpecRow& want = expected[i];
+        const button& got = rows[static_cast<std::size_t>(i)];
+        EXPECT_EQ(want.id, got.id) << shape_name << " index " << i;
+        EXPECT_EQ(want.label, got.label) << shape_name << " " << got.id;
+        EXPECT_EQ(want.hotkey, got.hotkey) << shape_name << " " << got.id;
+        EXPECT_EQ(want.x, got.x) << shape_name << " " << got.id;
+        EXPECT_EQ(want.y, got.y) << shape_name << " " << got.id;
+        EXPECT_EQ(want.w, got.sizex) << shape_name << " " << got.id;
+        EXPECT_EQ(want.h, got.sizey) << shape_name << " " << got.id;
+        EXPECT_EQ(button_action_id(want.action), got.myfun)
+            << shape_name << " " << got.id;
+        EXPECT_EQ(want.arg, got.arg1) << shape_name << " " << got.id;
+        EXPECT_EQ(want.nav.up, got.nav.up) << shape_name << " " << got.id;
+        EXPECT_EQ(want.nav.down, got.nav.down) << shape_name << " " << got.id;
+        EXPECT_EQ(want.nav.left, got.nav.left) << shape_name << " " << got.id;
+        EXPECT_EQ(want.nav.right, got.nav.right)
+            << shape_name << " " << got.id;
+        EXPECT_FALSE(got.hidden) << shape_name << " " << got.id;
+        EXPECT_FALSE(got.no_draw) << shape_name << " " << got.id;
+    }
+    // The options gear is the last row of every variant.
+    EXPECT_EQ("options", rows.back().id) << shape_name;
+}
+
+// The MP chassis shared by the native/web fork (rows 0-8); row 9 is the fork.
+constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 5}},
+    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
+     ButtonAction::SetPlayerMode, 4, MenuNav{.up = 4, .down = 6, .left = 3}},
+    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
+     ButtonAction::SetPlayerMode, 3, MenuNav{.up = 5, .down = 6, .right = 2}},
+    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
+     ButtonAction::SetPlayerMode, 2, MenuNav{.up = 1, .down = 2, .left = 5}},
+    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
+     ButtonAction::SetPlayerMode, 1, MenuNav{.up = 1, .down = 3, .right = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 3, .down = 7}},
+    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
+     ButtonAction::AlliedMode, -1, MenuNav{.up = 6, .down = 9, .right = 8}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 6, .down = 10, .left = 7}},
+};
+
+// The trailing space in "QUIT " is part of the shipped label.
+constexpr ExpectedSpecRow kMainMenuMPQuit = {
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15,
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 7, .left = 10}};
+constexpr ExpectedSpecRow kMainMenuMPHelp = {
+    "help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15,
+    ButtonAction::ShowHelp, -1, MenuNav{.up = 7, .left = 10}};
+constexpr ExpectedSpecRow kMainMenuMPOptions = {
+    "options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
+    ButtonAction::MainOptions, -1, MenuNav{.up = 8, .right = 9}};
+
+// The no-MP chassis (single column, bottom row at y=175); row 4 is the fork.
+constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 1, .down = 3}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 2, .down = 4}},
+};
+
+constexpr ExpectedSpecRow kMainMenuNoMPQuit = {
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15,
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 3, .left = 5}};
+constexpr ExpectedSpecRow kMainMenuNoMPHelp = {
+    "help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15,
+    ButtonAction::ShowHelp, -1, MenuNav{.up = 3, .left = 5}};
+constexpr ExpectedSpecRow kMainMenuNoMPOptions = {
+    "options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
+    ButtonAction::MainOptions, -1, MenuNav{.up = 3, .right = 4}};
+
+std::vector<ExpectedSpecRow> build_expected_shape(
+    const ExpectedSpecRow* common, int common_count,
+    const ExpectedSpecRow& fork, const ExpectedSpecRow& options)
+{
+    std::vector<ExpectedSpecRow> shape(common, common + common_count);
+    shape.push_back(fork);
+    shape.push_back(options);
+    return shape;
+}
+
+} // namespace
+
+// Registry + spec-shape pins. The main menu is the heaviest 10a screen: its
+// legacy loop HAD a remote-start check (MainScope, break-with-selection), a
+// fade-bracketed entry, live right-click (spectator deselect), and returns
+// an exit-bearing value every caller ignores.
+TEST(MenuEngine, main_menu_registry_and_spec_shape)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::MainMenu);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    ASSERT_EQ(&og::ui::main_menu_screen_spec(), host.spec);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+
+    EXPECT_STREQ("mainmenu", spec.name);
+    EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::BreakWithSelection,
+              spec.remote_start_exit);
+    EXPECT_EQ(og::ui::EnterTransition::FadeWithInitialDraw, spec.enter);
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_TRUE(spec.right_click_enabled);
+    EXPECT_EQ(1, spec.default_highlight);  // continue_game, as the legacy loop
+    EXPECT_EQ(MENU_EXIT, spec.exit_value);
+
+    // The options-index helper that retired both OPTIONS_BUTTON_INDEX
+    // #defines: always the last materialized row.
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    ASSERT_GT(count, 0);
+    EXPECT_EQ(count - 1, picker_mainmenu_options_index());
+    EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
+}
+
+// G9: the four materialized shapes, re-derived from the two specs. The
+// compiled shape is independently pinned by test_menu_pins (G11); the other
+// three have no legacy oracle anymore — these pins are it.
+TEST(MenuEngine, main_menu_four_variant_materialization_pins)
+{
+    using og::ui::MenuBuildVariant;
+
+    const std::vector<ExpectedSpecRow> mp_native = build_expected_shape(
+        kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
+        kMainMenuMPQuit, kMainMenuMPOptions);
+    check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
+                             MenuBuildVariant::Native, mp_native.data(),
+                             static_cast<int>(mp_native.size()),
+                             "mainmenu_mp_native");
+
+    const std::vector<ExpectedSpecRow> mp_web = build_expected_shape(
+        kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
+        kMainMenuMPHelp, kMainMenuMPOptions);
+    check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
+                             MenuBuildVariant::Web, mp_web.data(),
+                             static_cast<int>(mp_web.size()),
+                             "mainmenu_mp_web");
+
+    const std::vector<ExpectedSpecRow> nomp_native = build_expected_shape(
+        kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
+        kMainMenuNoMPQuit, kMainMenuNoMPOptions);
+    check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
+                             MenuBuildVariant::Native, nomp_native.data(),
+                             static_cast<int>(nomp_native.size()),
+                             "mainmenu_nomp_native");
+
+    const std::vector<ExpectedSpecRow> nomp_web = build_expected_shape(
+        kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
+        kMainMenuNoMPHelp, kMainMenuNoMPOptions);
+    check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
+                             MenuBuildVariant::Web, nomp_web.data(),
+                             static_cast<int>(nomp_web.size()),
+                             "mainmenu_nomp_web");
+}
+
+// The bindings that replaced redraw_mainmenu's raw allbuttons_[N] writes
+// (§1.6): the player-count outlines, the SPECTATOR/PVP label, and the two
+// pixie art faces (normal1.png Begin New Game, wrench Options) — the art is
+// re-applied by the runner after init_buttons and after every reset.
+TEST(MenuEngine, main_menu_binding_pins)
+{
+    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& nomp = og::ui::main_menu_screen_spec_nomp();
+
+    // Art faces, both variants: row 0 begin_new_game, last row options.
+    EXPECT_EQ(FAMILY_NORMAL1, mp.rows[0].art_family);
+    EXPECT_EQ(FAMILY_WRENCH, mp.rows[mp.row_count - 1].art_family);
+    EXPECT_EQ(FAMILY_NORMAL1, nomp.rows[0].art_family);
+    EXPECT_EQ(FAMILY_WRENCH, nomp.rows[nomp.row_count - 1].art_family);
+
+    // Player-count outlines: spec rows 2..5 are 4/3/2/1 PLAYER.
+    for (int i = 2; i <= 5; ++i) {
+        EXPECT_EQ(og::ui::MenuOutlineBinding::PlayerCountEquals,
+                  mp.rows[i].outline)
+            << mp.rows[i].id;
+        EXPECT_EQ(mp.rows[i].arg, mp.rows[i].outline_arg) << mp.rows[i].id;
+    }
+
+    // The pvp_allied live label: SPECTATOR at numplayers==0, else the
+    // shared allied-mode formatter (redraw_mainmenu's write, verbatim).
+    const og::ui::LabelFormatter pvp_formatter =
+        mp.rows[7].label_binding.formatter;
+    ASSERT_NE(nullptr, pvp_formatter);
+    SaveData save;
+    og::ui::MenuLabelContext context;
+    context.save = &save;
+    save.numplayers = 0;
+    EXPECT_EQ("SPECTATOR", pvp_formatter(context));
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    EXPECT_EQ("PVP: Ally", pvp_formatter(context));
+    save.allied_mode = 0;
+    EXPECT_EQ("PVP: Enemy", pvp_formatter(context));
+
+    // The no-MP variant carries none of the MP-only bindings.
+    for (int i = 0; i < nomp.row_count; ++i) {
+        EXPECT_EQ(og::ui::MenuOutlineBinding::None, nomp.rows[i].outline)
+            << nomp.rows[i].id;
+        EXPECT_EQ(nullptr, nomp.rows[i].label_binding.formatter)
+            << nomp.rows[i].id;
+    }
 }
 
 // The CONTROLS mode faces: the LabelBindings must track the live control

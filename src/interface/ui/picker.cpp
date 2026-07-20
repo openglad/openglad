@@ -1481,90 +1481,12 @@ void picker_quit()
     destroy_global_screen();
 }
 
-#ifdef USE_TOUCH_INPUT
-#define DISABLE_MULTIPLAYER
-#endif
-
-// mainmenu
-
-#ifndef DISABLE_MULTIPLAYER
-
-#ifdef __EMSCRIPTEN__
-// Web build: Replace QUIT with HELP (QUIT doesn't make sense in browser)
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
-
-        button("4_player", "4 PLAYER", KEYSTATE_4, 152,125,68,20, button_action_id(ButtonAction::SetPlayerMode), 4 , MenuNav{.up=4, .down=6, .left=3}),
-        button("3_player", "3 PLAYER", KEYSTATE_3, 80,125,68,20, button_action_id(ButtonAction::SetPlayerMode),3 , MenuNav{.up=5, .down=6, .right=2}),
-        button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
-        button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
-
-        button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
-    };
-#define OPTIONS_BUTTON_INDEX 10
-
-#else // Native build
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
-
-        button("4_player", "4 PLAYER", KEYSTATE_4, 152,125,68,20, button_action_id(ButtonAction::SetPlayerMode), 4 , MenuNav{.up=4, .down=6, .left=3}),
-        button("3_player", "3 PLAYER", KEYSTATE_3, 80,125,68,20, button_action_id(ButtonAction::SetPlayerMode),3 , MenuNav{.up=5, .down=6, .right=2}),
-        button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
-        button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
-
-        button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
-    };
-#define OPTIONS_BUTTON_INDEX 10
-#endif // __EMSCRIPTEN__
-
-#else // DISABLE_MULTIPLAYER
-
-#ifdef __EMSCRIPTEN__
-// Web build without multiplayer: Replace QUIT with HELP
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
-    };
-#define OPTIONS_BUTTON_INDEX 5
-
-#else // Native build without multiplayer
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
-    };
-#define OPTIONS_BUTTON_INDEX 5
-#endif // __EMSCRIPTEN__
-
-#endif // DISABLE_MULTIPLAYER
-
+// MAIN MENU: engine-hosted — the four k_mainmenu_buttons build variants
+// unified into the MP/no-MP spec pair (web/native = the build-gated
+// quit/help row fork), the USE_TOUCH_INPUT => DISABLE_MULTIPLAYER variant
+// selection, the accessor shims, picker_mainmenu_options_index() (which
+// retired both OPTIONS_BUTTON_INDEX #defines), and mainmenu() itself all
+// live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // MAIN OPTIONS: engine-hosted — spec, accessor shims, and the entry
 // function (which keeps the family-wide cfg-persist epilogue) live in
@@ -1793,17 +1715,6 @@ void reset_mutable_button_layout(std::vector<button>& out, const button (&defaul
     out.assign(defaults, defaults + N);
 }
 } // namespace
-
-button* picker_mainmenu_buttons()
-{
-    reset_mutable_button_layout(pks().mainmenu_buttons, k_mainmenu_buttons);
-    return pks().mainmenu_buttons.data();
-}
-
-int picker_mainmenu_button_count()
-{
-    return static_cast<int>(pks().mainmenu_buttons.size());
-}
 
 button* picker_createmenu_buttons()
 {
@@ -2963,6 +2874,11 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
 
+   // Raw click-side write, redundant with the engine main menu's pvp_allied
+   // LabelBinding (which re-derives BOTH surfaces every frame) but pinned
+   // directly by test_picker_funcs. The G8 sweep that deletes it belongs to
+   // the Layer-F main-menu reshape commit, atomically with that pin's
+   // re-pin (design §1.2 G8).
    if (og::runtime::current_session->allbuttons_[7] != nullptr)
        og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
 

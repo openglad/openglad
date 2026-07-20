@@ -19,7 +19,7 @@ window. Keep this table in sync with the registry:
 | DISPLAY | **Engine** | `display_settings_menu_screen_spec()` via `display_settings_options()` (platform hide/rewire = the spec's Rewire program) |
 | CONTROLS | **Engine** | `control_options_menu_screen_spec()` via `main_controls_options()` |
 | MAIN OPTIONS | **Engine** | `main_options_menu_screen_spec()` via `main_options()` (which keeps the family-wide cfg-persist exit epilogue) |
-| Main menu | Legacy | `mainmenu()` |
+| Main menu | **Engine** | `main_menu_screen_spec()` via `mainmenu()` — the §1.6 MP/no-MP spec pair (build-gated quit/help fork), `FadeWithInitialDraw` entry, MainScope remote-start with `BreakWithSelection`, the G14 full-re-vdisplay content hook, and the outline/label/art bindings that retired `redraw_mainmenu`'s raw `allbuttons_[N]` writes and both `OPTIONS_BUTTON_INDEX` #defines (`picker_mainmenu_options_index()` now) |
 | Team build | Legacy | `create_team_menu()` |
 | View team | Legacy | `create_view_menu()` |
 | Save/Load slots | Legacy | `create_save_menu()` / `create_load_menu()` |
@@ -168,14 +168,23 @@ runtime route-around resolver for NEW screens' gating.
 
 ## Current limitations (deliberate, tracked)
 
-- `EnterTransition` Fade* variants are not implemented (TESTING-checked);
-  they land with the main-menu migration, which also brings the G14
-  full-re-vdisplay `draw_content` hook.
+- `EnterTransition::FadeWithInitialDraw` is implemented (the legacy mainmenu
+  entry: one timer tick, fade out, first-frame compose, fade in,
+  `grab_mouse`); `FadeAroundEntry` remains TESTING-checked until the screen
+  that needs it (team build) migrates.
 - `NavProgramKind::RouteAround` (`rewire_nav_transitive_skip`) is reserved
   until a consumer proves equivalence (G1).
-- `MenuBuildGate` filtering shifts materialized indices; until id-keyed nav
-  (G9) lands, filtered variants must keep raw nav indices valid across
-  variants (the main-menu quit/help fork satisfies this by construction).
+- `MenuBuildGate` filtering shifts materialized indices; the runner and the
+  gate-lattice sweep pair `buttons[i]` with its spec row through
+  `materialized_spec_rows()`, but NAV LINKS are raw materialized indices:
+  until id-keyed nav (G9) lands, filtered variants must keep them valid
+  across variants (the main-menu quit/help fork satisfies this by
+  construction — one survivor, same index, same links).
+- The `change_allied` raw `allbuttons_[7]` click-side write is redundant
+  under the engine main menu (the pvp_allied LabelBinding re-derives both
+  surfaces every frame) but stays: test_picker_funcs pins it directly, and
+  WP1 may not re-pin. Its G8 deletion belongs to the Layer-F main-menu
+  reshape commit, atomically with that re-pin.
 - `RowTemplateSpec`/PageModel (§1.7) are declared but undefined; G6 requires
   proving PageModel against the VIEW LEVEL pager before the company list
   may depend on it.

@@ -32,11 +32,21 @@ namespace og::ui {
 // Build-variant row filter (§1.6): rows are dropped at materialization when
 // they do not apply to the compiled platform. NOTE: until id-keyed nav (G9)
 // lands, a spec whose variants actually filter rows must keep nav indices
-// valid for every variant it compiles into.
+// valid for every variant it compiles into (the main-menu quit/help fork
+// satisfies this by construction: exactly one of the pair survives, at the
+// same materialized index, with identical nav links).
 enum class MenuBuildGate : std::uint8_t {
     Always,
     NativeOnly,
     WebOnly,
+};
+
+// The platform a materialization filters for. Runtime-parameterized so a
+// native test can pin the web shape of a build-gated spec (G9: the touch/web
+// variants have no other oracle); production paths use the compiled default.
+enum class MenuBuildVariant : std::uint8_t {
+    Native,
+    Web,
 };
 
 // Live-vbutton outline binding, applied every frame in the label-sync pass
@@ -176,6 +186,18 @@ struct MenuScreenSpec {
 // may call it into their own storage.
 void materialize_menu_buttons(const MenuScreenSpec& spec,
                               std::vector<button>& out);
+void materialize_menu_buttons_for(const MenuScreenSpec& spec,
+                                  MenuBuildVariant variant,
+                                  std::vector<button>& out);
+
+// The spec rows surviving the build gates, in materialized index order. The
+// runner's per-row passes (gates, labels, art) index THROUGH this mapping so
+// buttons[i] always pairs with the spec row it was materialized from — raw
+// spec ordinals diverge from materialized indices past a filtered row.
+std::vector<const MenuButtonSpec*> materialized_spec_rows(
+    const MenuScreenSpec& spec);
+std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
+    const MenuScreenSpec& spec, MenuBuildVariant variant);
 
 // The single frame skeleton (§1.4). Blocks until the screen exits; returns
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
@@ -219,5 +241,15 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id);
 
 // The first migrated screen (§1.8 step 2).
 const MenuScreenSpec& difficulty_menu_screen_spec();
+
+// The main menu (§1.8 step 4). §1.6: ONE MP spec + ONE no-MP spec (the no-MP
+// variant genuinely repositions rows), selected at registry init by
+// DISABLE_MULTIPLAYER (with the USE_TOUCH_INPUT => DISABLE_MULTIPLAYER
+// mapping). The web/native fork inside each is the build-gated quit/help row
+// pair. Both specs exist on every build so the un-compiled shapes stay
+// unit-pinnable (G9).
+const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
+const MenuScreenSpec& main_menu_screen_spec_mp();
+const MenuScreenSpec& main_menu_screen_spec_nomp();
 
 } // namespace og::ui
