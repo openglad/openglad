@@ -831,6 +831,13 @@ std::vector<std::string> picker_lobby_status_lines()
     return {};
 }
 
+std::optional<std::string> picker_lobby_connection_alert()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->connection_alert();
+    return std::nullopt;
+}
+
 bool picker_lobby_host_controls_visible()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())

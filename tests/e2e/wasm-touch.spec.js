@@ -504,6 +504,10 @@ test.describe('Touch overlay activation', () => {
     await page.addInitScript(() => {
       window.__opengladSkipIntroForTests = true;
       window.__opengladForceTouchControls = true;
+      // The company-era main menu only has the CONTINUE half at (114,85)
+      // when a company save exists — seed the standard web company so the
+      // all-taps CONTINUE -> NETWORKING navigation below lands.
+      window.__opengladSeedSinglePlayerTeam = true;
       window.__opengladRelayBaseUrlForTests = 'https://relay.test';
     });
     // Keep discovery deterministic and entirely local to Playwright. A DNS

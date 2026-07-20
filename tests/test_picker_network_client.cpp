@@ -5959,6 +5959,19 @@ TEST(PickerNetworkClient,
         join_client->status_lines(),
         "Room: GLAD-XKCD"));
 
+    // The base camp's §2.5 line-B alert mirrors the failed link, and the
+    // free function resolves it through the installed active client (no
+    // client installed => no alert => line B keeps the READY/DEP header).
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connection failed", *join_client->connection_alert());
+    EXPECT_FALSE(picker_lobby_connection_alert().has_value());
+    {
+        ActivePickerLobbyClientGuard active_guard(join_client.get());
+        ASSERT_TRUE(picker_lobby_connection_alert().has_value());
+        EXPECT_EQ("Status: connection failed",
+                  *picker_lobby_connection_alert());
+    }
+
     join_client->shutdown();
 }
 
@@ -5989,6 +6002,8 @@ TEST(PickerNetworkClient,
             "Status: connected");
     },
     10s)) << "relay join client should report a connected link";
+    // Healthy link: no alert — the base camp keeps the READY/DEP header.
+    EXPECT_FALSE(join_client->connection_alert().has_value());
 
     relay_server.reset();
 
@@ -6000,6 +6015,8 @@ TEST(PickerNetworkClient,
     },
     10s)) << "a relay drop after connecting must surface as a lost "
              "connection instead of reverting to 'Status: connecting'";
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connection lost", *join_client->connection_alert());
 
     join_client->shutdown();
 }
@@ -6030,6 +6047,8 @@ TEST(PickerNetworkClient,
     EXPECT_TRUE(status_lines_contain_exact(
         host_client->status_lines(),
         "Room: GLAD-XKCD"));
+    // A live advertised room raises no alert on the host's base camp.
+    EXPECT_FALSE(host_client->connection_alert().has_value());
 
     relay_server.reset();
 
@@ -6043,6 +6062,8 @@ TEST(PickerNetworkClient,
     EXPECT_FALSE(status_lines_contain_exact(
         host_client->status_lines(),
         "Room: GLAD-XKCD"));
+    ASSERT_TRUE(host_client->connection_alert().has_value());
+    EXPECT_EQ("Relay: connection lost", *host_client->connection_alert());
 
     host_client->shutdown();
 }

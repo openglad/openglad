@@ -2921,6 +2921,25 @@ public:
         return status_lines_;
     }
 
+    // §2.5 line-B alert: the host's own lobby is in-process and cannot die,
+    // but an advertised relay room whose socket dropped means remote joiners
+    // can no longer reach this machine — surface exactly the drop condition
+    // rebuild_status_lines() folds into the "Relay: connection lost" line.
+    [[nodiscard]] std::optional<std::string> connection_alert() const override
+    {
+        if (relay_transport_ && !relay_room_code_.empty())
+        {
+            const og::sim::TransportLinkState relay_link =
+                relay_transport_->link_state();
+            if (relay_link == og::sim::TransportLinkState::Failed ||
+                relay_link == og::sim::TransportLinkState::Lost)
+            {
+                return "Relay: connection lost";
+            }
+        }
+        return std::nullopt;
+    }
+
     [[nodiscard]] bool host_controls_visible() const noexcept override
     {
         if (!state_.has_value())
@@ -3534,6 +3553,28 @@ public:
     [[nodiscard]] std::vector<std::string> status_lines() const override
     {
         return status_lines_;
+    }
+
+    // §2.5 line-B alert: mirror of rebuild_status_lines()'s "Status: ..."
+    // line, read live from the transport so the base camp shows the link
+    // state every frame — Connected clears the alert and hands line B back
+    // to the READY/DEP header.
+    [[nodiscard]] std::optional<std::string> connection_alert() const override
+    {
+        if (!transport_)
+            return "Status: connecting";
+        switch (transport_->link_state())
+        {
+        case og::sim::TransportLinkState::Connecting:
+            return "Status: connecting";
+        case og::sim::TransportLinkState::Connected:
+            return std::nullopt;
+        case og::sim::TransportLinkState::Failed:
+            return "Status: connection failed";
+        case og::sim::TransportLinkState::Lost:
+            return "Status: connection lost";
+        }
+        return std::nullopt;
     }
 
     [[nodiscard]] bool host_controls_visible() const noexcept override

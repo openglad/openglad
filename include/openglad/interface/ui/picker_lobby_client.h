@@ -68,6 +68,15 @@ public:
     {
         return {};
     }
+    // A short degraded-link banner for the base camp's §2.5 line-B slot, or
+    // nullopt while the session is healthy (the READY/DEP header carries the
+    // healthy state). Local/solo clients never alert. Join clients report the
+    // transport link ("Status: connecting / connection failed / connection
+    // lost"); the host reports a dead relay room ("Relay: connection lost").
+    [[nodiscard]] virtual std::optional<std::string> connection_alert() const
+    {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual bool host_controls_visible() const noexcept
     {
         return true;
@@ -151,6 +160,7 @@ picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
+std::optional<std::string> picker_lobby_connection_alert();
 bool picker_lobby_host_controls_visible();
 bool picker_lobby_request_team_change(short team);
 bool picker_lobby_set_ready(bool ready);

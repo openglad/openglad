@@ -2076,17 +2076,30 @@ void base_camp_draw_content(void* screen_state)
     // non-host MACHINES; DEP counts the merged display list.
     const bool networked = picker_lobby_is_networked();
     std::string line_b;
+    unsigned char line_b_color = WHITE;
     if (networked) {
-        line_b = format_base_camp_net_line(
-            count_base_camp_ready_machines(picker_lobby_players()),
-            st != nullptr
-                ? count_base_camp_display_deploys(st->slots, save)
-                : BaseCampDeployCounts{},
-            save.scen_num);
+        // Degraded-link alert (join connecting/failed/lost, host relay
+        // drop): the READY/DEP header would be dead placeholder data, so
+        // the alert takes over the §2.5 line-B slot until the link heals.
+        // This is the base-camp home of the lobby clients' status lines —
+        // the pre-reshape team-build screen drew them at the same spot.
+        const std::optional<std::string> alert =
+            picker_lobby_connection_alert();
+        if (alert.has_value()) {
+            line_b = *alert;
+            line_b_color = static_cast<unsigned char>(ORANGE_START);
+        } else {
+            line_b = format_base_camp_net_line(
+                count_base_camp_ready_machines(picker_lobby_players()),
+                st != nullptr
+                    ? count_base_camp_display_deploys(st->slots, save)
+                    : BaseCampDeployCounts{},
+                save.scen_num);
+        }
     } else {
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
-    strip_text(8, 13, line_b, WHITE);
+    strip_text(8, 13, line_b, line_b_color);
 
     if (st != nullptr && st->page.multi_page())
         strip_text(283, 13, st->page.indicator(), WHITE);
