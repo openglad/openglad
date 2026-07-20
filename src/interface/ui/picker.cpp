@@ -56,7 +56,6 @@
 #include <format>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <set>
 #include <vector>
@@ -1617,54 +1616,9 @@ static const button k_display_settings_buttons[] =
         button_action_id(ButtonAction::CycleSmoothing), -1, MenuNav{.up=5, .down=0}),
 };
 
-// FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
-// budget at 6px/char), rows at 23px pitch from y=35 (bottoms inside the
-// 4..196 bevel). All toggle button ids and (category, setting) cfg pairs are
-// unchanged from the single pre-split EFFECTS screen. Each BACK id is unique
-// (gameplay_fx_back / ui_fx_back / graphics_fx_back) because injector flows
-// disambiguate screens by button id.
-
-// GAMEPLAY FX: toggles that change how the game feels to play. Single
-// centered column; nav is a vertical cycle through BACK.
-static const button k_gameplay_fx_options_buttons[] =
-{
-    button("gameplay_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=2, .down=1}),
-    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=0, .down=2}),
-    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=1, .down=0}),
-};
-
-// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
-static const button k_ui_fx_options_buttons[] =
-{
-    button("ui_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .down=1}),
-    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=0, .down=2}),
-    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=1, .down=3}),
-    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=2, .down=0}),
-};
-
-// GRAPHICS FX: purely visual effects. 13 toggles on the 3-column grid:
-// 4 full rows plus a single-button fifth row (floor glide, the
-// generator_rate lone-row idiom). Weather (cfg effects/weather) is the
-// client-side display opt-out for the per-level sim weather (the old
-// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
-// bottom row's down land on BACK; BACK's up wraps to the bottom toggle.
-static const button k_graphics_fx_options_buttons[] =
-{
-    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=13, .down=1}),
-    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 15, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=0, .down=4, .left=3, .right=2}),
-    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=0, .down=5, .left=1, .right=3}),
-    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 215, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=0, .down=6, .left=2, .right=1}),
-    button("toggle_shadows", "Shadows", KEYSTATE_UNKNOWN, 15, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleShadows), -1, MenuNav{.up=1, .down=7, .left=6, .right=5}),
-    button("toggle_reflections", "Reflections", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleReflections), -1, MenuNav{.up=2, .down=8, .left=4, .right=6}),
-    button("toggle_weather", "Weather", KEYSTATE_UNKNOWN, 215, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleWeather), -1, MenuNav{.up=3, .down=9, .left=5, .right=4}),
-    button("toggle_dust", "Dust", KEYSTATE_UNKNOWN, 15, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDust), -1, MenuNav{.up=4, .down=10, .left=9, .right=8}),
-    button("depth_fx", "Depth: Fog", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::CycleDepthFx), -1, MenuNav{.up=5, .down=11, .left=7, .right=9}),
-    button("toggle_trails", "Trails", KEYSTATE_UNKNOWN, 215, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleTrails), -1, MenuNav{.up=6, .down=12, .left=8, .right=7}),
-    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=13, .left=12, .right=11}),
-    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=13, .left=10, .right=12}),
-    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=13, .left=11, .right=10}),
-    button("toggle_floor_glide", "Floor glide", KEYSTATE_UNKNOWN, 15, effects_row_y(4), 90, 15, button_action_id(ButtonAction::ToggleFloorGlide), -1, MenuNav{.up=10, .down=0}),
-};
+// FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX): engine-hosted — specs,
+// accessor shims, and the entry functions live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
 // Text labels ("Px", key info) drawn in main_controls_options() below each section's buttons.
@@ -1996,39 +1950,6 @@ button* picker_display_settings_buttons()
 int picker_display_settings_button_count()
 {
     return static_cast<int>(pks().display_settings_buttons.size());
-}
-
-button* picker_gameplay_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().gameplay_fx_options_buttons, k_gameplay_fx_options_buttons);
-    return pks().gameplay_fx_options_buttons.data();
-}
-
-int picker_gameplay_fx_options_button_count()
-{
-    return static_cast<int>(pks().gameplay_fx_options_buttons.size());
-}
-
-button* picker_ui_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().ui_fx_options_buttons, k_ui_fx_options_buttons);
-    return pks().ui_fx_options_buttons.data();
-}
-
-int picker_ui_fx_options_button_count()
-{
-    return static_cast<int>(pks().ui_fx_options_buttons.size());
-}
-
-button* picker_graphics_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().graphics_fx_options_buttons, k_graphics_fx_options_buttons);
-    return pks().graphics_fx_options_buttons.data();
-}
-
-int picker_graphics_fx_options_button_count()
-{
-    return static_cast<int>(pks().graphics_fx_options_buttons.size());
 }
 
 button* picker_details_buttons()
@@ -2573,126 +2494,9 @@ Sint32 main_controls_options()
     return MENU_REDRAW;
 }
 
-namespace {
-
-// One per-frame FX subscreen draw entry: which toggle button reflects which
-// cfg (category, setting) pair. A cycle entry's setting is a value string
-// (the depth selector) rather than an on/off flag.
-struct FxToggleDraw
-{
-    int index;
-    const char* category;
-    const char* setting;
-    bool cycle = false;
-};
-
-// Shared blocking loop for the three FX subscreens. Toggles only write cfg;
-// main_options() persists cfg when it exits, which is the only path back out
-// of these screens.
-Sint32 run_fx_options_screen(button* buttons, int num_buttons,
-                             std::span<const FxToggleDraw> toggles,
-                             const char* title)
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", title);
-
-        for (const FxToggleDraw& toggle : toggles)
-        {
-            if (toggle.cycle)
-                draw_cycle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
-            else
-                draw_toggle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
-        }
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
-
-} // namespace
-
-Sint32 gameplay_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "hit_recoil"},
-        {2, "effects", "attack_lunge"},
-    };
-    // Sequence the accessors: the count reads the vector the buttons
-    // accessor populates.
-    button* buttons = picker_gameplay_fx_options_buttons();
-    const int num_buttons = picker_gameplay_fx_options_button_count();
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Gameplay effects");
-}
-
-Sint32 ui_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "mini_hp_bar"},
-        {2, "effects", "damage_numbers"},
-        {3, "effects", "heal_numbers"},
-    };
-    button* buttons = picker_ui_fx_options_buttons();
-    const int num_buttons = picker_ui_fx_options_button_count();
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Interface effects");
-}
-
-Sint32 graphics_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "hit_flash"},
-        {2, "effects", "hit_anim"},
-        {3, "effects", "gore"},
-        {4, "effects", "shadows"},
-        {5, "effects", "reflections"},
-        {6, "effects", "weather"},
-        {7, "effects", "dust"},
-        {8, "effects", "depth_fx", true},
-        {9, "effects", "trails"},
-        {10, "effects", "fire_glow"},
-        {11, "effects", "ripples"},
-        {12, "effects", "screen_shake"},
-        {13, "effects", "floor_glide"},
-    };
-    button* buttons = picker_graphics_fx_options_buttons();
-    const int num_buttons = picker_graphics_fx_options_button_count();
-    // The depth row's label is cfg-derived ("Depth: Fog" ... "Depth: Off"):
-    // write it into the mutable descriptor before run_fx_options_screen's
-    // init_buttons clones the rows, so both label surfaces start correct.
-    buttons[kGraphicsFxDepthFxIndex].label =
-        og::ui::format_depth_fx_label(cfg.get_setting("effects", "depth_fx"));
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Graphics effects");
-}
+// gameplay_fx_options() / ui_fx_options() / graphics_fx_options(): engine-
+// hosted (menu_screen_specs.cpp drives them through run_menu_screen; the
+// shared legacy loop run_fx_options_screen is gone — docs/menu-engine.md).
 
 // A remote (host) GO while this peer sits on the main menu or one of its
 // blocking subscreens: mainmenu()'s caller (present_menu) acts on the
@@ -3506,21 +3310,16 @@ Sint32 change_generator_rate()
    return MENU_OK;
 }
 
-// GRAPHICS FX depth selector: step cfg effects/depth_fx one value and
-// rewrite the row's label on both surfaces (the live vbutton and the
-// mutable descriptor row backing later redraws). Pure cfg, no save/lobby
-// state — main_options() persists cfg on exit like every FX toggle.
+// GRAPHICS FX depth selector: step cfg effects/depth_fx one value. Pure
+// cfg, no save/lobby state — main_options() persists cfg on exit like every
+// FX toggle. The row's label re-derives from cfg on both surfaces every
+// frame via the engine spec's LabelBinding (menu_screen_specs.cpp), so this
+// callback no longer writes it (G8).
 Sint32 change_depth_fx()
 {
    const std::string next =
        og::ui::cycle_depth_fx(cfg.get_setting("effects", "depth_fx"));
    cfg.apply_setting("effects", "depth_fx", next);
-
-   const std::string label = og::ui::format_depth_fx_label(next);
-   if (og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex]->label = label;
-   if (static_cast<int>(pks().graphics_fx_options_buttons.size()) > kGraphicsFxDepthFxIndex)
-       pks().graphics_fx_options_buttons[kGraphicsFxDepthFxIndex].label = label;
 
    return MENU_OK;
 }

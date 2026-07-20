@@ -15,11 +15,12 @@ window. Keep this table in sync with the registry:
 | Screen | Host | Entry |
 |---|---|---|
 | DIFFICULTY | **Engine** | `difficulty_menu_screen_spec()` via `run_difficulty_menu()` |
+| GAMEPLAY FX / UI FX / GRAPHICS FX | **Engine** | `*_fx_menu_screen_spec()` via `gameplay_fx_options()` etc. |
 | Main menu | Legacy | `mainmenu()` |
 | Team build | Legacy | `create_team_menu()` |
 | View team | Legacy | `create_view_menu()` |
 | Save/Load slots | Legacy | `create_save_menu()` / `create_load_menu()` |
-| Options family (main/display/controls/3 FX) | Legacy | `main_options()` etc. |
+| Options (main/display/controls) | Legacy | `main_options()` etc. |
 | Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
 | Scenario / TEAMS | Legacy | `create_scenario_menu()` / `create_teams_menu()` |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
@@ -101,7 +102,11 @@ cost of the migration window — this list is the reminder):
 - [x] remote-start preemption (scope checkers
       `picker_main_scope_remote_start_requested` /
       `team_build_remote_start_requested`, both declared in
-      picker_sdl_defs.h)
+      picker_sdl_defs.h). Engine screens whose LEGACY loop provably had no
+      check keep `RemoteStartScope::None` at Layer E (10a fidelity: the
+      options family — a joiner parked there launches when the screen exits
+      into a checking loop, exactly as before); the allowlist in
+      test_menu_engine.cpp guards against new screens forgetting a scope.
 - [x] dual-label-surface writes (engine label pass / legacy per-callback +
       per-frame writes)
 - [x] visibility + nav rewire + `ensure_highlighted_button_visible`

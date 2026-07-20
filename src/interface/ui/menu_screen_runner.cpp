@@ -297,8 +297,19 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             break;
         }
 
+        // Click dispatch, both legacy shapes: screens WITH right-click
+        // support branch on the exact 2 (the hire/train `clickvalue`
+        // pattern); every other legacy loop is `if (leftmouse(buttons))` —
+        // ANY nonzero click (right included) activates leftclick.
         const Sint32 click = leftmouse(buttons);
-        if (click == 1) {
+        if (click == 2 && spec.right_click_enabled) {
+            const Sint32 click_result =
+                og::runtime::current_session->localbuttons_->rightclick();
+            if (click_result == MENU_EXIT)
+                break;
+            if (click_result != 0)
+                retvalue = click_result;
+        } else if (click != 0) {
 #ifdef TESTING
             // §1.5: a click landing on a Disabled row no-ops, with a TRACE.
             for (int i = 0; i < num_buttons; ++i) {
@@ -312,13 +323,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 #endif
             const Sint32 click_result =
                 og::runtime::current_session->localbuttons_->leftclick();
-            if (click_result == MENU_EXIT)
-                break;
-            if (click_result != 0)
-                retvalue = click_result;
-        } else if (click == 2 && spec.right_click_enabled) {
-            const Sint32 click_result =
-                og::runtime::current_session->localbuttons_->rightclick();
             if (click_result == MENU_EXIT)
                 break;
             if (click_result != 0)

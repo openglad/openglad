@@ -23,12 +23,21 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/resources/gparser.h>
 
 #include "picker_sdl_defs.h"
 
 #include <array>
 #include <cstddef>
+#include <span>
 #include <string>
+
+// Shared FX-face draw helpers (defined in picker.cpp; declared locally by
+// every consumer — repo pattern).
+void draw_toggle_effect_button(button& b, const std::string& category,
+                               const std::string& setting);
+void draw_cycle_effect_button(button& b, const std::string& category,
+                              const std::string& setting);
 
 static inline PickerState& pks()
 {
@@ -128,7 +137,10 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
      .gate = kHostOnlyGate},
 };
 
-void difficulty_draw_background(void* /*screen_state*/)
+// The options-family panel chrome, shared by DIFFICULTY and every options
+// subscreen: full-window clear (the overscan may have been adjusted), the
+// black frame, the inverted bevel.
+void options_panel_draw_background(void* /*screen_state*/)
 {
     screen* scr = og::runtime::current_session->myscreen_;
     scr->clear_window();
@@ -140,6 +152,262 @@ void difficulty_draw_content(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->text_normal.write_xy(
         80, 13, DARK_BLUE, "%s", "DIFFICULTY");
+}
+
+// ---------------------------------------------------------------------------
+// The three FX subscreens (§1.8 step 3): toggle grid rows transcribed
+// VERBATIM from the deleted k_*_fx_options_buttons tables. Columns
+// x=15/115/215, 90px faces (15-char label budget at 6px/char), rows at 23px
+// pitch from y=35 (bottoms inside the 4..196 bevel). All toggle button ids
+// and (category, setting) cfg pairs are unchanged from the single pre-split
+// EFFECTS screen. Each BACK id is unique (gameplay_fx_back / ui_fx_back /
+// graphics_fx_back) because injector flows disambiguate screens by button
+// id. Toggles only write cfg; main_options() persists cfg when it exits,
+// which is the only path back out of these screens. The legacy loops had NO
+// remote-start check (a joiner parked here launches on the next screen
+// exit), so RemoteStartScope stays None — 10a fidelity, pinned by the
+// engine-test allowlist.
+
+inline constexpr Sint32 fx_row_y(int row) { return 35 + row * 23; }
+
+// One per-frame FX subscreen draw entry: which toggle button reflects which
+// cfg (category, setting) pair. A cycle entry's setting is a value string
+// (the depth selector) rather than an on/off flag.
+struct FxToggleDraw
+{
+    int index;
+    const char* category;
+    const char* setting;
+    bool cycle = false;
+};
+
+// Shared content pass for the three FX subscreens: title text plus the
+// green/red state faces drawn over the bevels (the draw reads each
+// descriptor row's geometry and label).
+void fx_options_draw_content(const char* title,
+                             std::span<const FxToggleDraw> toggles,
+                             std::vector<button>& rows)
+{
+    og::runtime::current_session->myscreen_->text_normal.write_xy(
+        80, 13, DARK_BLUE, "%s", title);
+
+    for (const FxToggleDraw& toggle : toggles)
+    {
+        if (toggle.cycle)
+            draw_cycle_effect_button(rows[static_cast<std::size_t>(toggle.index)],
+                                     toggle.category, toggle.setting);
+        else
+            draw_toggle_effect_button(rows[static_cast<std::size_t>(toggle.index)],
+                                      toggle.category, toggle.setting);
+    }
+}
+
+// GAMEPLAY FX: toggles that change how the game feels to play. Single
+// centered column; nav is a vertical cycle through BACK.
+constexpr MenuButtonSpec kGameplayFxRows[] = {
+    {.id = "gameplay_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 2, .down = 1}},
+    {.id = "toggle_hit_recoil", .label = "Hit recoil",
+     .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleHitRecoil, .arg = -1,
+     .nav = {.up = 0, .down = 2}},
+    {.id = "toggle_attack_lunge", .label = "Attack lunge",
+     .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleAttackLunge, .arg = -1,
+     .nav = {.up = 1, .down = 0}},
+};
+
+constexpr FxToggleDraw kGameplayFxToggleDraws[] = {
+    {1, "effects", "hit_recoil"},
+    {2, "effects", "attack_lunge"},
+};
+
+void gameplay_fx_draw_content(void* /*screen_state*/)
+{
+    fx_options_draw_content("Gameplay effects", kGameplayFxToggleDraws,
+                            pks().gameplay_fx_options_buttons);
+}
+
+// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
+constexpr MenuButtonSpec kUiFxRows[] = {
+    {.id = "ui_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 3, .down = 1}},
+    {.id = "toggle_mini_hp_bar", .label = "Mini HP bar",
+     .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleMiniHpBar, .arg = -1,
+     .nav = {.up = 0, .down = 2}},
+    {.id = "toggle_damage_numbers", .label = "Damage numbers",
+     .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleDamageNumbers, .arg = -1,
+     .nav = {.up = 1, .down = 3}},
+    {.id = "toggle_heal_numbers", .label = "Healing numbers",
+     .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleHealNumbers, .arg = -1,
+     .nav = {.up = 2, .down = 0}},
+};
+
+constexpr FxToggleDraw kUiFxToggleDraws[] = {
+    {1, "effects", "mini_hp_bar"},
+    {2, "effects", "damage_numbers"},
+    {3, "effects", "heal_numbers"},
+};
+
+void ui_fx_draw_content(void* /*screen_state*/)
+{
+    fx_options_draw_content("Interface effects", kUiFxToggleDraws,
+                            pks().ui_fx_options_buttons);
+}
+
+// GRAPHICS FX: purely visual effects. 13 toggles on the 3-column grid:
+// 4 full rows plus a single-button fifth row (floor glide, the
+// generator_rate lone-row idiom). Weather (cfg effects/weather) is the
+// client-side display opt-out for the per-level sim weather (the old
+// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
+// bottom row's down land on BACK; BACK's up wraps to the bottom toggle.
+// The depth row's label is cfg-derived ("Depth: Fog" ... "Depth: Off") —
+// the LabelBinding below replaces both the legacy pre-entry descriptor
+// write and change_depth_fx()'s click-side label writes (G8).
+
+std::string depth_fx_row_label(const MenuLabelContext& /*context*/)
+{
+    return format_depth_fx_label(cfg.get_setting("effects", "depth_fx"));
+}
+
+constexpr MenuButtonSpec kGraphicsFxRows[] = {
+    {.id = "graphics_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 13, .down = 1}},
+    {.id = "toggle_hit_flash", .label = "Hit flash",
+     .x = 15, .y = fx_row_y(0), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleHitFlash, .arg = -1,
+     .nav = {.up = 0, .down = 4, .left = 3, .right = 2}},
+    {.id = "toggle_hit_sparks", .label = "Hit sparks",
+     .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleHitAnim, .arg = -1,
+     .nav = {.up = 0, .down = 5, .left = 1, .right = 3}},
+    {.id = "toggle_gore", .label = "Gore",
+     .x = 215, .y = fx_row_y(0), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleGore, .arg = -1,
+     .nav = {.up = 0, .down = 6, .left = 2, .right = 1}},
+    {.id = "toggle_shadows", .label = "Shadows",
+     .x = 15, .y = fx_row_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleShadows, .arg = -1,
+     .nav = {.up = 1, .down = 7, .left = 6, .right = 5}},
+    {.id = "toggle_reflections", .label = "Reflections",
+     .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleReflections, .arg = -1,
+     .nav = {.up = 2, .down = 8, .left = 4, .right = 6}},
+    {.id = "toggle_weather", .label = "Weather",
+     .x = 215, .y = fx_row_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleWeather, .arg = -1,
+     .nav = {.up = 3, .down = 9, .left = 5, .right = 4}},
+    {.id = "toggle_dust", .label = "Dust",
+     .x = 15, .y = fx_row_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleDust, .arg = -1,
+     .nav = {.up = 4, .down = 10, .left = 9, .right = 8}},
+    {.id = "depth_fx", .label = "Depth: Fog",
+     .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::CycleDepthFx, .arg = -1,
+     .nav = {.up = 5, .down = 11, .left = 7, .right = 9},
+     .label_binding = {.formatter = &depth_fx_row_label}},
+    {.id = "toggle_trails", .label = "Trails",
+     .x = 215, .y = fx_row_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleTrails, .arg = -1,
+     .nav = {.up = 6, .down = 12, .left = 8, .right = 7}},
+    {.id = "toggle_fire_glow", .label = "Fire glow",
+     .x = 15, .y = fx_row_y(3), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleFireGlow, .arg = -1,
+     .nav = {.up = 7, .down = 13, .left = 12, .right = 11}},
+    {.id = "toggle_ripples", .label = "Ripples",
+     .x = 115, .y = fx_row_y(3), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleRipples, .arg = -1,
+     .nav = {.up = 8, .down = 13, .left = 10, .right = 12}},
+    {.id = "toggle_screen_shake", .label = "Screen shake",
+     .x = 215, .y = fx_row_y(3), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleScreenShake, .arg = -1,
+     .nav = {.up = 9, .down = 13, .left = 11, .right = 10}},
+    {.id = "toggle_floor_glide", .label = "Floor glide",
+     .x = 15, .y = fx_row_y(4), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleFloorGlide, .arg = -1,
+     .nav = {.up = 10, .down = 0}},
+};
+
+constexpr FxToggleDraw kGraphicsFxToggleDraws[] = {
+    {1, "effects", "hit_flash"},
+    {2, "effects", "hit_anim"},
+    {3, "effects", "gore"},
+    {4, "effects", "shadows"},
+    {5, "effects", "reflections"},
+    {6, "effects", "weather"},
+    {7, "effects", "dust"},
+    {8, "effects", "depth_fx", true},
+    {9, "effects", "trails"},
+    {10, "effects", "fire_glow"},
+    {11, "effects", "ripples"},
+    {12, "effects", "screen_shake"},
+    {13, "effects", "floor_glide"},
+};
+
+void graphics_fx_draw_content(void* /*screen_state*/)
+{
+    fx_options_draw_content("Graphics effects", kGraphicsFxToggleDraws,
+                            pks().graphics_fx_options_buttons);
+}
+
+// The shared FX-subscreen spec shape: cold entry, lobby kept alive, static
+// verbatim nav (no gated rows), MENU_REDRAW back into main_options().
+constexpr MenuScreenSpec make_fx_options_spec(const char* name,
+                                              const MenuButtonSpec* rows,
+                                              int row_count,
+                                              button* (*buttons_accessor)(),
+                                              int (*count_accessor)(),
+                                              void (*draw_content)(void*))
+{
+    MenuScreenSpec spec{};
+    spec.name = name;
+    spec.rows = rows;
+    spec.row_count = row_count;
+    spec.buttons_accessor = buttons_accessor;
+    spec.count_accessor = count_accessor;
+    spec.polls_lobby = true;
+    spec.draw_background = &options_panel_draw_background;
+    spec.draw_content = draw_content;
+    spec.exit_value = MENU_REDRAW;
+    return spec;
+}
+
+const MenuScreenSpec& gameplay_fx_menu_screen_spec()
+{
+    static const MenuScreenSpec spec = make_fx_options_spec(
+        "gameplay_fx", kGameplayFxRows,
+        static_cast<int>(std::size(kGameplayFxRows)),
+        &picker_gameplay_fx_options_buttons,
+        &picker_gameplay_fx_options_button_count, &gameplay_fx_draw_content);
+    return spec;
+}
+
+const MenuScreenSpec& ui_fx_menu_screen_spec()
+{
+    static const MenuScreenSpec spec = make_fx_options_spec(
+        "ui_fx", kUiFxRows, static_cast<int>(std::size(kUiFxRows)),
+        &picker_ui_fx_options_buttons, &picker_ui_fx_options_button_count,
+        &ui_fx_draw_content);
+    return spec;
+}
+
+const MenuScreenSpec& graphics_fx_menu_screen_spec()
+{
+    static const MenuScreenSpec spec = make_fx_options_spec(
+        "graphics_fx", kGraphicsFxRows,
+        static_cast<int>(std::size(kGraphicsFxRows)),
+        &picker_graphics_fx_options_buttons,
+        &picker_graphics_fx_options_button_count, &graphics_fx_draw_content);
+    return spec;
 }
 
 } // namespace
@@ -166,7 +434,7 @@ const MenuScreenSpec& difficulty_menu_screen_spec()
         // picker_lobby_sync_settings_from_save() tails (Layer E: byte-for-
         // byte legacy behavior), so the G12 single-point flag stays off.
         .sync_settings_after_mutation = false,
-        .draw_background = &difficulty_draw_background,
+        .draw_background = &options_panel_draw_background,
         .draw_content = &difficulty_draw_content,
         .exit_value = MENU_REDRAW,
     };
@@ -210,14 +478,11 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
                  .legacy_entry =
                      +[](Sint32) { return main_controls_options(); }});
             set(MenuScreenId::GameplayFx,
-                {.kind = Kind::Legacy,
-                 .legacy_entry = +[](Sint32) { return gameplay_fx_options(); }});
+                {.kind = Kind::Engine, .spec = &gameplay_fx_menu_screen_spec()});
             set(MenuScreenId::UiFx,
-                {.kind = Kind::Legacy,
-                 .legacy_entry = +[](Sint32) { return ui_fx_options(); }});
+                {.kind = Kind::Engine, .spec = &ui_fx_menu_screen_spec()});
             set(MenuScreenId::GraphicsFx,
-                {.kind = Kind::Legacy,
-                 .legacy_entry = +[](Sint32) { return graphics_fx_options(); }});
+                {.kind = Kind::Engine, .spec = &graphics_fx_menu_screen_spec()});
             set(MenuScreenId::Difficulty,
                 {.kind = Kind::Engine, .spec = &difficulty_menu_screen_spec()});
             set(MenuScreenId::Hire,
@@ -258,10 +523,63 @@ int picker_difficulty_menu_button_count()
     return static_cast<int>(pks().difficulty_menu_buttons.size());
 }
 
+button* picker_gameplay_fx_options_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::gameplay_fx_menu_screen_spec(),
+                                     pks().gameplay_fx_options_buttons);
+    return pks().gameplay_fx_options_buttons.data();
+}
+
+int picker_gameplay_fx_options_button_count()
+{
+    return static_cast<int>(pks().gameplay_fx_options_buttons.size());
+}
+
+button* picker_ui_fx_options_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::ui_fx_menu_screen_spec(),
+                                     pks().ui_fx_options_buttons);
+    return pks().ui_fx_options_buttons.data();
+}
+
+int picker_ui_fx_options_button_count()
+{
+    return static_cast<int>(pks().ui_fx_options_buttons.size());
+}
+
+button* picker_graphics_fx_options_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::graphics_fx_menu_screen_spec(),
+                                     pks().graphics_fx_options_buttons);
+    return pks().graphics_fx_options_buttons.data();
+}
+
+int picker_graphics_fx_options_button_count()
+{
+    return static_cast<int>(pks().graphics_fx_options_buttons.size());
+}
+
 // Blocking DIFFICULTY subscreen (the main-menu DIFFICULTY door): session
 // difficulty plus the SaveData match rules (respawns, respawn delay,
 // permadeath, generator rate). Engine-hosted (the legacy loop is gone).
 Sint32 run_difficulty_menu()
 {
     return og::ui::run_menu_screen(og::ui::difficulty_menu_screen_spec());
+}
+
+// The three FX subscreens, engine-hosted (the shared legacy loop
+// run_fx_options_screen is gone).
+Sint32 gameplay_fx_options()
+{
+    return og::ui::run_menu_screen(og::ui::gameplay_fx_menu_screen_spec());
+}
+
+Sint32 ui_fx_options()
+{
+    return og::ui::run_menu_screen(og::ui::ui_fx_menu_screen_spec());
+}
+
+Sint32 graphics_fx_options()
+{
+    return og::ui::run_menu_screen(og::ui::graphics_fx_menu_screen_spec());
 }
