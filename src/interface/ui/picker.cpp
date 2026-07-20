@@ -1566,32 +1566,9 @@ static const button k_mainmenu_buttons[] =
 #endif // DISABLE_MULTIPLAYER
 
 
-inline constexpr Sint32 BUTTON_PADDING = 8;
-inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
-
-// Main options: sound/graphics settings plus doors into the CONTROLS screen
-// and the three FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX), whose
-// toggles live in the k_*_fx_options_buttons tables below.
-static const button k_main_options_buttons[] =
-{
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=8, .down=1, .right=5}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=6}),
-    // Door into the DISPLAY subscreen (mode / resolution / overscan /
-    // scaling / filter live there; k_display_settings_buttons below).
-    button("display_settings", "DISPLAY", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenDisplaySettings), -1, MenuNav{.up=1, .down=3, .right=6}),
-    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=2, .down=7}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=8, .down=6, .left=5}),
-    button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=8, .down=1, .left=0, .right=4}),
-    button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=4, .down=2, .left=1}),
-    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=3, .down=8}),
-    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=7, .down=0}),
-};
+// MAIN OPTIONS: engine-hosted — spec, accessor shims, and the entry
+// function (which keeps the family-wide cfg-persist epilogue) live in
+// menu_screen_specs.cpp (docs/menu-engine.md).
 
 // DISPLAY and CONTROLS subscreens: engine-hosted — specs, accessor shims,
 // and the entry functions live in menu_screen_specs.cpp
@@ -1870,17 +1847,6 @@ button* picker_loadteam_buttons()
 int picker_loadteam_button_count()
 {
     return static_cast<int>(pks().loadteam_buttons.size());
-}
-
-button* picker_main_options_buttons()
-{
-    reset_mutable_button_layout(pks().main_options_buttons, k_main_options_buttons);
-    return pks().main_options_buttons.data();
-}
-
-int picker_main_options_button_count()
-{
-    return static_cast<int>(pks().main_options_buttons.size());
 }
 
 button* picker_details_buttons()
@@ -2387,76 +2353,9 @@ bool picker_main_scope_remote_start_requested(int32_t& retvalue)
 // run_difficulty_menu(): engine-hosted (menu_screen_specs.cpp drives it
 // through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
 
-Sint32 main_options()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-	button* buttons = picker_main_options_buttons();
-	int num_buttons = picker_main_options_button_count();
-
-
-	int highlighted_button = 0;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	clear_keyboard();
-    
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-	    // Input
-		if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-			if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-        
-        // Reset buttons
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        {
-            buttons[6].label = "Sprite Sheet";
-            og::runtime::current_session->allbuttons_[6]->label = buttons[6].label;
-        }
-		
-		// Draw
-		og::runtime::current_session->myscreen_->clear_window();  // Clearing entire window because the overscan may have been adjusted.
-		
-		og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-		og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-		
-        
-        draw_buttons(buttons, num_buttons);
-        
-		draw_toggle_effect_button(buttons[1], "sound", "sound");
-		// Section rule between the sound row and the DISPLAY/effects doors.
-		og::runtime::current_session->myscreen_->hor_line(60, buttons[2].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Display:");
-		mytext.write_xy(20, buttons[3].y + 3, DARK_BLUE, "Effects:");
-        draw_sprite_sheet_button(buttons[6]);
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-	
-	og::runtime::current_session->myscreen_->soundp->set_sound(!cfg.is_on("sound", "sound"));
-	// Sync overscan to config before saving (data/ can't depend on input/)
-	cfg.apply_setting("graphics", "overscan_percentage",
-	    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
-    save_player_control_settings_to_cfg(cfg);
-	cfg.save_settings();
-    
-    return MENU_REDRAW;
-}
+// main_options(): engine-hosted (menu_screen_specs.cpp drives it through
+// run_menu_screen and keeps the exit epilogue that persists cfg for the
+// whole options family; the legacy loop is gone — docs/menu-engine.md).
 
 Sint32 overscan_adjust(Sint32 arg)
 {

@@ -172,7 +172,7 @@ static bool remote_start_none_is_legacy_faithful(const std::string& name)
 {
     static const std::set<std::string> kLegacyNoRemoteStart = {
         "gameplay_fx", "ui_fx", "graphics_fx",
-        "display_settings", "control_options",
+        "display_settings", "control_options", "main_options",
     };
     return kLegacyNoRemoteStart.count(name) > 0;
 }
@@ -633,8 +633,9 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 4)
-        << "difficulty + the FX trio must be engine-hosted by this stage";
+    EXPECT_GE(engine_screens, 7)
+        << "difficulty + the FX trio + display + controls + main options "
+           "must be engine-hosted by this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -654,8 +655,45 @@ TEST(MenuEngine, options_family_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::DisplaySettings).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings).kind);
-    EXPECT_EQ(Kind::Legacy,
+    EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions).kind);
+}
+
+// ---------------------------------------------------------------------------
+// MAIN OPTIONS content-draw index pins + the sprite-sheet label restore.
+// The draw hook reads rows [1]/[2]/[3]/[6] by ordinal (sound face, section
+// rule + captions, sprite-sheet face) — pin those ids so a row insertion
+// cannot silently redraw the wrong faces. The legacy loop also re-wrote
+// "Sprite Sheet" to BOTH surfaces every frame after reset_buttons (the
+// pick-spritesheet subscreen swaps allbuttons_ under this screen); that
+// restore is now the row's LabelBinding, so pin that it exists and yields
+// the exact string.
+TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    EXPECT_STREQ("main_options", spec.name);
+    // The legacy loop kept the lobby alive and returned MENU_REDRAW into
+    // mainmenu(); remote-start None is pinned by the G5 allowlist.
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_EQ(MENU_REDRAW, spec.exit_value);
+
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    ASSERT_EQ(9, count);
+    EXPECT_EQ("toggle_sound", buttons[1].id);
+    EXPECT_EQ("display_settings", buttons[2].id);
+    EXPECT_EQ("gameplay_fx", buttons[3].id);
+    EXPECT_EQ("pick_sprite_sheet", buttons[6].id);
+
+    const og::ui::LabelFormatter sprite_formatter =
+        spec.rows[6].label_binding.formatter;
+    ASSERT_NE(nullptr, sprite_formatter)
+        << "the sprite-sheet dual-surface label restore must be a binding";
+    og::ui::MenuLabelContext context;
+    EXPECT_EQ("Sprite Sheet", sprite_formatter(context));
 }
 
 // ---------------------------------------------------------------------------

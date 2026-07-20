@@ -21,6 +21,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/sound.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/gparser.h>
@@ -29,6 +30,7 @@
 
 #include <array>
 #include <cstddef>
+#include <format>
 #include <span>
 #include <string>
 
@@ -39,6 +41,7 @@ void draw_toggle_effect_button(button& b, const std::string& category,
                                const std::string& setting);
 void draw_cycle_effect_button(button& b, const std::string& category,
                               const std::string& setting);
+void draw_sprite_sheet_button(button& b);
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
@@ -669,6 +672,105 @@ const MenuScreenSpec& control_options_menu_screen_spec()
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// MAIN OPTIONS (§1.8 step 3, last slice): sound/graphics settings plus doors
+// into the CONTROLS screen and the three FX subscreens (GAMEPLAY FX / UI FX /
+// GRAPHICS FX). Rows transcribed VERBATIM from the deleted
+// k_main_options_buttons table: the settings/door column stacks at the
+// classic 23px pitch (BUTTON_HEIGHT 15 + 8 padding). The sound face and the
+// sprite-sheet face are content-pass state draws over the bevels (green per
+// cfg), not label bindings. Every subscreen door just opens its blocking
+// screen; the exit epilogue in main_options() below is the single point
+// where the whole family's cfg edits persist.
+
+inline constexpr Sint32 kOptionsButtonPadding = 8;
+inline constexpr Sint32 kOptionsButtonPitch = 15 + kOptionsButtonPadding;
+inline constexpr Sint32 options_col_y(int row)
+{
+    return 10 + row * kOptionsButtonPitch;
+}
+
+// The legacy loop re-wrote "Sprite Sheet" to BOTH surfaces every frame
+// (after reset_buttons — the pick-spritesheet subscreen swaps allbuttons_
+// under this screen and a MENU_REDRAW re-init restores it from the
+// descriptor row). A fixed binding reproduces that dual-surface restore at
+// the same point in the frame.
+std::string sprite_sheet_row_label(const MenuLabelContext& /*context*/)
+{
+    return "Sprite Sheet";
+}
+
+constexpr MenuButtonSpec kMainOptionsRows[] = {
+    {.id = "options_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 8, .down = 1, .right = 5}},
+    {.id = "toggle_sound", .label = "Sound",
+     .x = 135, .y = options_col_y(1), .w = 50, .h = 15,
+     .action = ButtonAction::ToggleSound, .arg = -1,
+     .nav = {.up = 0, .down = 2, .right = 6}},
+    // Door into the DISPLAY subscreen (mode / resolution / overscan /
+    // scaling / filter live there).
+    {.id = "display_settings", .label = "DISPLAY",
+     .x = 130, .y = options_col_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::OpenDisplaySettings, .arg = -1,
+     .nav = {.up = 1, .down = 3, .right = 6}},
+    {.id = "gameplay_fx", .label = "GAMEPLAY FX",
+     .x = 130, .y = options_col_y(3), .w = 90, .h = 15,
+     .action = ButtonAction::OpenGameplayFxSettings, .arg = -1,
+     .nav = {.up = 2, .down = 7}},
+    {.id = "restore_defaults", .label = "RESTORE DEFAULTS",
+     .x = 210, .y = 10, .w = 100, .h = 15,
+     .action = ButtonAction::RestoreDefaultSettings, .arg = -1,
+     .nav = {.up = 8, .down = 6, .left = 5}},
+    {.id = "player_controls", .label = "CONTROLS",
+     .x = 100, .y = 10, .w = 80, .h = 15,
+     .action = ButtonAction::OpenControlSettings, .arg = -1,
+     .nav = {.up = 8, .down = 1, .left = 0, .right = 4}},
+    {.id = "pick_sprite_sheet", .label = "Sprite Sheet",
+     .x = 210, .y = options_col_y(1), .w = 90, .h = 15,
+     .action = ButtonAction::PickSpriteSheet, .arg = 0,
+     .nav = {.up = 4, .down = 2, .left = 1},
+     .label_binding = {.formatter = &sprite_sheet_row_label}},
+    {.id = "ui_fx", .label = "UI FX",
+     .x = 130, .y = options_col_y(4), .w = 90, .h = 15,
+     .action = ButtonAction::OpenUiFxSettings, .arg = -1,
+     .nav = {.up = 3, .down = 8}},
+    {.id = "graphics_fx", .label = "GRAPHICS FX",
+     .x = 130, .y = options_col_y(5), .w = 90, .h = 15,
+     .action = ButtonAction::OpenGraphicsFxSettings, .arg = -1,
+     .nav = {.up = 7, .down = 0}},
+};
+
+void main_options_draw_content(void* /*screen_state*/)
+{
+    screen* scr = og::runtime::current_session->myscreen_;
+    std::vector<button>& rows = pks().main_options_buttons;
+
+    draw_toggle_effect_button(rows[1], "sound", "sound");
+    // Section rule between the sound row and the DISPLAY/effects doors.
+    scr->hor_line(60, rows[2].y - kOptionsButtonPadding / 2, 200, PURE_WHITE);
+    scr->text_normal.write_xy(20, rows[2].y + 3, DARK_BLUE, "Display:");
+    scr->text_normal.write_xy(20, rows[3].y + 3, DARK_BLUE, "Effects:");
+    draw_sprite_sheet_button(rows[6]);
+}
+
+const MenuScreenSpec& main_options_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "main_options",
+        .rows = kMainOptionsRows,
+        .row_count = static_cast<int>(std::size(kMainOptionsRows)),
+        .buttons_accessor = &picker_main_options_buttons,
+        .count_accessor = &picker_main_options_button_count,
+        .polls_lobby = true,
+        .draw_background = &options_panel_draw_background,
+        .draw_content = &main_options_draw_content,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
 } // namespace
 
 const MenuScreenSpec& difficulty_menu_screen_spec()
@@ -726,8 +828,8 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::LoadSlots,
                 {.kind = Kind::Legacy, .legacy_entry = &create_load_menu});
             set(MenuScreenId::MainOptions,
-                {.kind = Kind::Legacy,
-                 .legacy_entry = +[](Sint32) { return main_options(); }});
+                {.kind = Kind::Engine,
+                 .spec = &main_options_menu_screen_spec()});
             set(MenuScreenId::DisplaySettings,
                 {.kind = Kind::Engine,
                  .spec = &display_settings_menu_screen_spec()});
@@ -875,4 +977,36 @@ Sint32 display_settings_options()
 Sint32 main_controls_options()
 {
     return og::ui::run_menu_screen(og::ui::control_options_menu_screen_spec());
+}
+
+button* picker_main_options_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::main_options_menu_screen_spec(),
+                                     pks().main_options_buttons);
+    return pks().main_options_buttons.data();
+}
+
+int picker_main_options_button_count()
+{
+    return static_cast<int>(pks().main_options_buttons.size());
+}
+
+// MAIN OPTIONS, engine-hosted (the legacy loop is gone). The exit epilogue is
+// preserved verbatim: this is the single point where the whole options
+// family's cfg edits are committed — sound device state, overscan, control
+// settings, then cfg.save_settings().
+Sint32 main_options()
+{
+    og::ui::run_menu_screen(og::ui::main_options_menu_screen_spec());
+
+    og::runtime::current_session->myscreen_->soundp->set_sound(
+        !cfg.is_on("sound", "sound"));
+    // Sync overscan to config before saving (data/ can't depend on input/)
+    cfg.apply_setting("graphics", "overscan_percentage",
+        std::format("{:.0f}",
+                    100 * og::runtime::current_session->overscan_percentage_));
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+
+    return MENU_REDRAW;
 }

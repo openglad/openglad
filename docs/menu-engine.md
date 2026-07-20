@@ -18,11 +18,11 @@ window. Keep this table in sync with the registry:
 | GAMEPLAY FX / UI FX / GRAPHICS FX | **Engine** | `*_fx_menu_screen_spec()` via `gameplay_fx_options()` etc. |
 | DISPLAY | **Engine** | `display_settings_menu_screen_spec()` via `display_settings_options()` (platform hide/rewire = the spec's Rewire program) |
 | CONTROLS | **Engine** | `control_options_menu_screen_spec()` via `main_controls_options()` |
+| MAIN OPTIONS | **Engine** | `main_options_menu_screen_spec()` via `main_options()` (which keeps the family-wide cfg-persist exit epilogue) |
 | Main menu | Legacy | `mainmenu()` |
 | Team build | Legacy | `create_team_menu()` |
 | View team | Legacy | `create_view_menu()` |
 | Save/Load slots | Legacy | `create_save_menu()` / `create_load_menu()` |
-| MAIN OPTIONS | Legacy | `main_options()` |
 | Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
 | Scenario / TEAMS | Legacy | `create_scenario_menu()` / `create_teams_menu()` |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
