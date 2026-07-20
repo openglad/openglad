@@ -38,7 +38,9 @@ static int push_intro_click_then_key(void*)
     {
         SDL_Delay(1);
     }
-    const auto [win_x, win_y] = active_canvas_to_window(160.0f, 100.0f);
+    // UI-canvas-pinned map: this injector thread races the main thread's
+    // World<->UI canvas flip (see test_interact.h).
+    const auto [win_x, win_y] = ui_canvas_to_window(160.0f, 100.0f);
     inject_mouse_down(static_cast<int>(win_x), static_cast<int>(win_y));
     inject_mouse_up(static_cast<int>(win_x), static_cast<int>(win_y));
     push_any_keypress();

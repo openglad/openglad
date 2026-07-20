@@ -407,14 +407,13 @@ static int fairy_injector(void* data)
                                   "expected observed fairy death or generic defeat");
         }
         SDL_Delay(kMenuTransitionMs + kUiSettleMs);
-        const int back_win_x = static_cast<int>(
-            static_cast<float>(kTeamMenuBackGameX) *
-                (og::runtime::current_session->viewport_w_ / 320.0f) +
-            og::runtime::current_session->viewport_offset_x_);
-        const int back_win_y = static_cast<int>(
-            static_cast<float>(kTeamMenuBackGameY) *
-                (og::runtime::current_session->viewport_h_ / 200.0f) +
-            og::runtime::current_session->viewport_offset_y_);
+        // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
+        // windows (see test_interact.h).
+        const auto [back_mapped_x, back_mapped_y] = ui_canvas_to_window(
+            static_cast<float>(kTeamMenuBackGameX),
+            static_cast<float>(kTeamMenuBackGameY));
+        const int back_win_x = static_cast<int>(back_mapped_x);
+        const int back_win_y = static_cast<int>(back_mapped_y);
         fprintf(stderr,
                 "  [test] clicking back from team menu after auto-defeat\n");
         inject_click(back_win_x, back_win_y);

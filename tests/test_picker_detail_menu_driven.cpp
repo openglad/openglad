@@ -4,6 +4,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/company.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -114,12 +115,13 @@ static int injector_thread_exit_detail_menu(void* data)
 
     const int logical_x = a->go_to_promote ? 200 : 20;
     const int logical_y = a->go_to_promote ? 30 : 180;
-    const int click_x = static_cast<int>(std::lround(
-        static_cast<float>(logical_x) * og::runtime::current_session->viewport_w_ / 320.0f
-        + og::runtime::current_session->viewport_offset_x_));
-    const int click_y = static_cast<int>(std::lround(
-        static_cast<float>(logical_y) * og::runtime::current_session->viewport_h_ / 200.0f
-        + og::runtime::current_session->viewport_offset_y_));
+    // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
+    // windows (see test_interact.h).
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(static_cast<float>(logical_x),
+                            static_cast<float>(logical_y));
+    const int click_x = static_cast<int>(std::lround(mapped_x));
+    const int click_y = static_cast<int>(std::lround(mapped_y));
     do
     {
         og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, click_x, click_y);
@@ -193,6 +195,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
 
     og::runtime::current_session->editguy_ = 0;
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
     og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_MAGE";
     og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 6;
@@ -215,6 +218,18 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
 
     ASSERT_EQ(2, (int)r) << "mage promote should request redraw";
     ASSERT_EQ(FAMILY_ARCHMAGE, og::runtime::current_session->myscreen_->save_data.team_list[0]->family);
+
+    // §3.8: PROMOTE is a roster mutation — it must run the shared mutation
+    // tail, so the promotion round-trips from the ACTIVE company file with
+    // no manual save (with SAVE retired, a bare lobby sync would lose a
+    // promote-then-quit).
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load(og::data::active_company_slot()))
+        << "the promote autosave must have written the active company slot";
+    ASSERT_EQ(1, (int)reloaded.team_size);
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(FAMILY_ARCHMAGE, (int)reloaded.team_list[0]->family)
+        << "the promotion must be on disk via the §3.8 autosave";
 }
 
 

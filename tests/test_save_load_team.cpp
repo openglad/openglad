@@ -50,12 +50,18 @@ static bool interact_match(
         if (item.id == id && !item.hidden && predicate(item)) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x)
-                * (og::runtime::current_session->viewport_w_ / 320.0f)
-                + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y)
-                * (og::runtime::current_session->viewport_h_ / 200.0f)
-                + og::runtime::current_session->viewport_offset_y_);
+            // UI-canvas-pinned map (NOT hand-rolled viewport math): the raw
+            // viewport_* fields are the FULL window, so scaling by
+            // viewport_h_/200 ignores the aspect-fit letterbox and mismaps
+            // clicks in any non-16:10 window (a preceding display-settings
+            // test leaves 1024x768 under --gtest_shuffle: game y=187 mapped
+            // to win 718, which production inverse-mapped OFF-canvas to
+            // y=204 — the seed-23 og_test_menu_ui wedge).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            const int win_x = static_cast<int>(mapped_x);
+            const int win_y = static_cast<int>(mapped_y);
             fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
             inject_click(win_x, win_y);

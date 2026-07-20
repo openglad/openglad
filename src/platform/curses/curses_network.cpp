@@ -1033,8 +1033,36 @@ public:
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
                 request_start();
             }
-            if (key.is_char(U'r') || key.is_char(U'R'))
-                (void)set_ready(!local_ready());
+            if (key.is_char(U'r') || key.is_char(U'R')) {
+                // §2.6 client ready gate (parity with the SDL
+                // teams_toggle_ready click): setting ready with brought
+                // characters, none deployed, and cross-control OFF is
+                // denied — surface the caption instead of sending.
+                // Spectator/empty-roster machines ready freely [NET-R9];
+                // host machines never gate (the state table returns a
+                // host state with no ClientUnready caption).
+                const bool next_ready = !local_ready();
+                const og::ui::ReadyGoPresentation ready_presentation =
+                    og::ui::format_ready_go_button(
+                        /*networked=*/true,
+                        /*is_host=*/role_ == LobbyRole::Host,
+                        /*my_ready=*/!next_ready,
+                        /*all_other_machines_ready=*/true,
+                        /*global_deployed=*/1,
+                        /*own_deployed=*/
+                        og::ui::count_deployed_members(save_),
+                        /*cross_control=*/save_.cross_control != 0,
+                        /*spectator=*/save_.numplayers <= 0 ||
+                            save_.team_size <= 0);
+                if (next_ready &&
+                    ready_presentation.state ==
+                        og::ui::ReadyGoState::ClientUnready &&
+                    !ready_presentation.caption.empty()) {
+                    team_status_ = ready_presentation.caption;
+                } else {
+                    (void)set_ready(next_ready);
+                }
+            }
             if (key.is_char(U'c') || key.is_char(U'C')) {
                 // §2.7 cross-control (curses parity surface = the lobby):
                 // host-only actionable; a toggle is a SETTINGS change, so

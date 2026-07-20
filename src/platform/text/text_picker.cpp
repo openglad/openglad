@@ -817,11 +817,13 @@ private:
                     save_data_.team_list[slot - 1]->teamnum;
                 const short moved = cycle_guy_team(save_data_, slot - 1,
                     (value - 1) - static_cast<int>(current));
-                if (moved < 0)
+                if (moved < 0) {
                     std::printf("Invalid slot or team.\n");
-                else
+                } else {
                     std::printf("Moved slot %d to %s.\n", slot,
                         og::sim::ctf_team_color_name(value - 1));
+                    autosave_company_after_mutation();  // §3.8 team cycle
+                }
                 continue;
             }
             std::printf("Unrecognized command.\n");

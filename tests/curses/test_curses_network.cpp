@@ -379,6 +379,68 @@ TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
     EXPECT_TRUE(reverted);
 }
 
+// §2.6 curses parity (the lobby is the curses MP surface): the 'r' key runs
+// the client ready gate the SDL twin runs — a joiner with brought
+// characters, none deployed, and cross-control OFF is denied with the
+// DEPLOY AT LEAST ONE caption and never readies; once a character is
+// deployed, 'r' readies and the flag replicates to the host.
+TEST(CursesNetwork, lobby_ready_key_gates_on_zero_deployed)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    ASSERT_TRUE(join_save.team_list[0] != nullptr);
+    join_save.team_list[0]->deployed = false;  // brought but benched
+    host_save.cross_control = 0;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+
+    // Benched roster + cross-control OFF: 'r' is denied with the §2.6
+    // caption; nothing is sent, so the host never sees [ready].
+    join_term.push_char(U'r');
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_FALSE(join_lobby->local_ready())
+        << "a gated 'r' must not set ready";
+    EXPECT_TRUE(status_contains(*join_lobby, "DEPLOY AT LEAST ONE"))
+        << "the denial must surface the §2.6 caption";
+    EXPECT_FALSE(status_contains(*host_lobby, "[ready]"))
+        << "a denied ready must not replicate";
+
+    // Deploy the character: the gate opens and 'r' readies + replicates.
+    join_save.team_list[0]->deployed = true;
+    join_term.push_char(U'r');
+    bool host_sees_ready = false;
+    for (int i = 0; i < 200 && !host_sees_ready; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        host_sees_ready = status_contains(*host_lobby, "[ready]");
+    }
+    EXPECT_TRUE(join_lobby->local_ready());
+    EXPECT_TRUE(host_sees_ready)
+        << "the accepted ready must replicate to the host";
+}
+
 TEST(CursesNetwork, cancel_tears_down_cleanly)
 {
     SaveData save;

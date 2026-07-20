@@ -100,12 +100,17 @@ inline void interact(const std::string& id)
                 int game_x = og::runtime::current_session->allbuttons_[i]->xloc + og::runtime::current_session->allbuttons_[i]->width / 2;
                 int game_y = og::runtime::current_session->allbuttons_[i]->yloc + og::runtime::current_session->allbuttons_[i]->height / 2;
 
-                // Menus live on the fixed UI canvas. Use the same aspect-fit
-                // transform as production input/presentation so widescreen
-                // pillarboxes and narrow-window letterboxes are not clicked.
+                // Menus live on the fixed UI canvas. Use the UI-canvas-pinned
+                // aspect-fit transform: this thread races the main thread's
+                // per-frame World<->UI canvas flip, so the active-canvas
+                // transform can sample the World state and mismap the click
+                // whenever the window aspect differs from the canvas aspect
+                // (the seed-23 og_test_menu_ui wedge — a bottom-strip click
+                // forward-mapped with World(320x240) inverse-maps to game
+                // y=204, off-canvas, and is silently dropped forever).
                 const auto [mapped_x, mapped_y] =
-                    active_canvas_to_window(static_cast<float>(game_x),
-                                            static_cast<float>(game_y));
+                    ui_canvas_to_window(static_cast<float>(game_x),
+                                        static_cast<float>(game_y));
                 win_x = static_cast<int>(mapped_x);
                 win_y = static_cast<int>(mapped_y);
 

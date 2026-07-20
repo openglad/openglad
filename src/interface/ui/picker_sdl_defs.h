@@ -315,3 +315,11 @@ bool team_build_remote_start_requested(int32_t& retvalue);
 // label/color bindings and rewire, teams_toggle_ready's client gate, and
 // go_menu's host pre-check.
 og::ui::ReadyGoPresentation picker_compute_ready_go_presentation();
+
+// The §3.8 base-camp mutation tail (defined in picker_team_build.cpp):
+// lobby roster re-sync (a networked content change clears that machine's
+// ready server-side, §4.3), optimistic local ready drop, then the company
+// autosave ([SAVE-F1] merge write in networked lobbies). Call after EVERY
+// roster mutation: deploy toggle, hire, train accept, rename, promote,
+// per-character team cycle.
+void picker_base_camp_after_roster_mutation();

@@ -672,7 +672,8 @@ void teams_screen(Menu& menu, SaveData& save)
                     og::sim::ctf_team_color_name(action.play_team))});
             }
         } else if (action.cycle_slot >= 0) {
-            (void)og::ui::cycle_guy_team(save, action.cycle_slot, 1);
+            if (og::ui::cycle_guy_team(save, action.cycle_slot, 1) >= 0)
+                autosave_company_after_mutation(save);  // §3.8 team cycle
         }
     }
 }

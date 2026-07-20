@@ -616,3 +616,9 @@ bool window_point_in_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> window_to_active_canvas(float x, float y);
 std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> active_canvas_to_window(float x, float y);
+// Forward map pinned to the fixed UI canvas regardless of the active canvas.
+// Cross-thread callers (the test click injectors) MUST use this for menu
+// coordinates: active_canvas_to_window races the main thread's per-frame
+// World<->UI canvas flip, and whenever the window aspect differs from the
+// canvas aspect the two transforms diverge and the click lands off-canvas.
+std::pair<float, float> ui_canvas_to_window(float x, float y);

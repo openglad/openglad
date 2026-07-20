@@ -314,6 +314,15 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
+    // §2.0 U6 roster-row tap debounce: a second ACCEPTED deploy toggle of
+    // the same display row (same tapped rect resolving to the same save
+    // slot) within 250 ms is silently ignored — every touch mistap
+    // double-toggle would otherwise be a spurious MP ready-clear. Denied /
+    // foreign / stale taps never stamp. Public so tests can rewind the
+    // stamp instead of sleeping.
+    int last_deploy_toggle_idx = -1;
+    int last_deploy_toggle_slot = -1;
+    std::int64_t last_deploy_toggle_ms = -1;
 };
 
 // The base camp spec is team_build_menu_screen_spec() (the screen keeps its

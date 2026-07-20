@@ -171,12 +171,12 @@ struct PlatformBridgeGuard
 
 void inject_mouse_click(int x, int y, int delay_ms = 50)
 {
-    const int sx = static_cast<int>(
-        static_cast<float>(x) * og::runtime::current_session->viewport_w_ / 320.0f +
-        og::runtime::current_session->viewport_offset_x_);
-    const int sy = static_cast<int>(
-        static_cast<float>(y) * og::runtime::current_session->viewport_h_ / 200.0f +
-        og::runtime::current_session->viewport_offset_y_);
+    // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
+    // windows (see test_interact.h).
+    const auto [mapped_x, mapped_y] = ui_canvas_to_window(
+        static_cast<float>(x), static_cast<float>(y));
+    const int sx = static_cast<int>(mapped_x);
+    const int sy = static_cast<int>(mapped_y);
 
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));

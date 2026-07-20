@@ -33,12 +33,13 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_Event event{};
     event.type = SDL_EVENT_MOUSE_MOTION;
     event.motion.type = SDL_EVENT_MOUSE_MOTION;
-    // Use the exact inverse of the input path's window_to_active_canvas
-    // (like test_interact.h does) instead of hand-rolled session viewport
-    // math: a preceding zoom/resolution/display-mode test can leave the
-    // active-canvas viewport different from the legacy 320x200 mapping, and
-    // under --gtest_shuffle the round trip must still land on game coords.
-    const auto [win_x, win_y] = active_canvas_to_window(
+    // Use the UI-canvas-pinned forward map (like test_interact.h does)
+    // instead of hand-rolled session viewport math: a preceding
+    // zoom/resolution/display-mode test can leave a non-16:10 window, and
+    // this injector thread races the main thread's per-frame World<->UI
+    // canvas flip — active_canvas_to_window sampled mid-flip mismaps the
+    // coordinates. Menus live on the fixed UI canvas.
+    const auto [win_x, win_y] = ui_canvas_to_window(
         static_cast<float>(game_x), static_cast<float>(game_y));
     event.motion.x = win_x;
     event.motion.y = win_y;

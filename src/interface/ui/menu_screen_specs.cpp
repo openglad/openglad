@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <ctime>
@@ -68,7 +69,7 @@ bool team_build_start_selected();
 // picker_team_build.cpp).
 og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g);
 void picker_set_train_seed_slot(int slot);
-void picker_base_camp_after_roster_mutation();
+// picker_base_camp_after_roster_mutation() comes from picker_sdl_defs.h.
 Sint32 create_train_menu(Sint32 arg1);
 void popup_dialog(const char* title, const char* message);
 bool no_or_yes_prompt(const char* title, const char* message,
@@ -2249,6 +2250,24 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         return 0;
 
     if (!is_train) {
+        // §2.0 U6 roster-row tap debounce: a second toggle of the SAME row
+        // (same display index resolving to the same save slot — a page flip
+        // in between retargets the rect and is never debounced) within
+        // 250 ms is silently ignored. Touch mistaps double-fire the
+        // pending-click queue, and every accepted double-toggle would be a
+        // spurious §4.3 MP ready-clear. Only ACCEPTED toggles stamp.
+        const std::int64_t now_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        constexpr std::int64_t kDeployToggleDebounceMs = 250;
+        if (idx == st->last_deploy_toggle_idx &&
+            slot == st->last_deploy_toggle_slot &&
+            st->last_deploy_toggle_ms >= 0 &&
+            now_ms - st->last_deploy_toggle_ms < kDeployToggleDebounceMs) {
+            TRACE("basecamp", "deploy_debounced slot=%d", slot);
+            return MENU_OK;
+        }
         // §2.5 client-side 24-cap guard: a toggle-ON that would exceed 24
         // deployed across the merged lobby roster is denied with a popup,
         // pre-empting the server's §4.2 force-bench path.
@@ -2268,6 +2287,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         [[maybe_unused]] const bool deployed = toggle_deploy_slot(save, slot);
         TRACE("basecamp", "deploy slot=%d %s", slot,
               deployed ? "on" : "off");
+        st->last_deploy_toggle_idx = idx;
+        st->last_deploy_toggle_slot = slot;
+        st->last_deploy_toggle_ms = now_ms;
         picker_base_camp_after_roster_mutation();
         return MENU_OK;
     }

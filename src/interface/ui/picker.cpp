@@ -2362,14 +2362,16 @@ Sint32 create_detail_menu(guy *arg1)
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
                thisguy->upgrade_to_level(new_level);
                thisguy->family = static_cast<unsigned char>(fd->promotes_to);
-               // The promotion mutated the REAL team member in place, so push
-               // the roster to the lobby client now — the same commit path the
-               // train menu's ACCEPT uses. Every picker menu loop starts with
-               // picker_lobby_poll(), which rewrites save.team_list from the
-               // lobby's cached roster; without this push the very next poll
-               // reverts the promotion (issue #133: the Archmage upgrade only
-               // "stuck" if a stat edit re-synced the roster afterwards).
-               picker_lobby_sync_roster_from_save();
+               // The promotion mutated the REAL team member in place: run
+               // the full §3.8 mutation tail — the lobby roster push (every
+               // picker menu loop starts with picker_lobby_poll(), which
+               // rewrites save.team_list from the lobby's cached roster;
+               // without this push the very next poll reverts the promotion,
+               // issue #133), the optimistic local ready drop (§4.3 — a
+               // networked content change re-readies this machine), and the
+               // company autosave (with SAVE retired, a bare sync would lose
+               // a promote-then-quit).
+               picker_base_camp_after_roster_mutation();
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
@@ -3086,7 +3088,13 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
 
    pks().teams_menu_guy_slot = slot;
    if (og::ui::cycle_guy_team(save, slot, static_cast<int>(whichway)) >= 0)
-       picker_lobby_sync_roster_from_save();
+   {
+       // §3.8 hook inventory row "team cycle": the cycler mutates the
+       // persisted roster (teamnum), so it takes the full mutation tail —
+       // solo-only surface (the networked early-return above), so the ready
+       // drop inside is a no-op and the autosave is a plain company write.
+       picker_base_camp_after_roster_mutation();
+   }
 
    return MENU_OK;
 }

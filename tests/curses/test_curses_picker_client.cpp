@@ -1331,6 +1331,17 @@ TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
     EXPECT_EQ(1, (int)f.save().my_team);
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("GREEN TEAM (P1) 1 HEROES"), std::string::npos) << dump;
+
+    // §3.8 hook inventory row "team cycle": the cycle AUTOSAVED the company
+    // — the new team round-trips from the active slot's file with no
+    // manual save (my_team is session-only and never serialized).
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()))
+        << "the team-cycle autosave must have written the active slot";
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
+        << "the cycled team must persist via the mutation autosave";
 }
 
 // Playing on an empty team is impossible: empty teams offer no Play entry.

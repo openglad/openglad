@@ -15,6 +15,7 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
@@ -182,8 +183,14 @@ static bool interact_match(
         if (item.id == id && !item.hidden && predicate(item)) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
+            // UI-canvas-pinned map — raw viewport_*/320 math ignores the
+            // aspect-fit letterbox and mismaps in non-16:10 windows (the
+            // seed-23 og_test_menu_ui wedge class; see test_interact.h).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            const int win_x = static_cast<int>(mapped_x);
+            const int win_y = static_cast<int>(mapped_y);
             fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
             inject_click(win_x, win_y);
@@ -201,13 +208,12 @@ static bool interact_silent(const std::string& id)
         if (item.id == id && !item.hidden) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x)
-                * (og::runtime::current_session->viewport_w_ / 320.0f)
-                + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y)
-                * (og::runtime::current_session->viewport_h_ / 200.0f)
-                + og::runtime::current_session->viewport_offset_y_);
-            inject_click(win_x, win_y);
+            // UI-canvas-pinned map (see interact_match above).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            inject_click(static_cast<int>(mapped_x),
+                         static_cast<int>(mapped_y));
             return true;
         }
     }
@@ -625,12 +631,12 @@ static int direct_menu_click_injector(void* data)
                 if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
                     const int game_x = item.x + item.width / 2;
                     const int game_y = item.y + item.height / 2;
-                    const int win_x = static_cast<int>(static_cast<float>(game_x)
-                        * (og::runtime::current_session->viewport_w_ / 320.0f)
-                        + og::runtime::current_session->viewport_offset_x_);
-                    const int win_y = static_cast<int>(static_cast<float>(game_y)
-                        * (og::runtime::current_session->viewport_h_ / 200.0f)
-                        + og::runtime::current_session->viewport_offset_y_);
+                    // UI-canvas-pinned map (see interact_match above).
+                    const auto [mapped_x, mapped_y] =
+                        ui_canvas_to_window(static_cast<float>(game_x),
+                                            static_cast<float>(game_y));
+                    const int win_x = static_cast<int>(mapped_x);
+                    const int win_y = static_cast<int>(mapped_y);
                     inject_click(win_x, win_y);
                     state->clicked_target = true;
                     click_cooldown_ms = 200;
@@ -1112,6 +1118,113 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     EXPECT_TRUE(save.team_list[state.slots[1].save_slot]->deployed);
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"))
         << "the post-refresh toggle should hit the re-derived slot";
+}
+
+// ---------------------------------------------------------------------------
+// §2.0 U6: roster-row tap debounce. A second ACCEPTED deploy toggle of the
+// SAME display row within 250 ms is silently ignored (a touch mistap
+// double-toggle would be a spurious §4.3 MP ready-clear); a different row
+// is never debounced, and the window expires (the test rewinds the public
+// stamp instead of sleeping).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    for (int i = 0; i < 2; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("TAP{:02}", i);
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = 2;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // First tap toggles row 1 off and stamps the debounce state.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 off"));
+    EXPECT_FALSE(save.team_list[1]->deployed);
+
+    // Immediate second tap of the SAME row: silently ignored (U6).
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy_debounced slot=1"))
+        << "the mistap must be traced as debounced";
+    EXPECT_FALSE(trace_contains("basecamp", "deploy slot=1"))
+        << "the mistap must not re-toggle";
+    EXPECT_FALSE(save.team_list[1]->deployed)
+        << "a double-tap within 250 ms must not flip the flag back";
+
+    // Rewinding the stamp past the window re-arms the same row.
+    state.last_deploy_toggle_ms -= 251;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"));
+    EXPECT_TRUE(save.team_list[1]->deployed);
+
+    // A DIFFERENT row right afterwards is never debounced.
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    EXPECT_FALSE(save.team_list[0]->deployed);
+
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §3.8 hook inventory row "team cycle": the TEAMS per-character cycler
+// mutates the persisted roster (teamnum), so it runs the shared mutation
+// tail — the new team round-trips from the active company file with no
+// manual save. Solo-only surface (networked lobbies hide the button).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, teams_cycle_guy_team_autosaves_solo_team_change)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "CYCLER";
+    member->teamnum = 0;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+    pks().teams_menu_guy_slot = 0;
+
+    ASSERT_EQ(MENU_OK, teams_cycle_guy_team(1));
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)save.team_list[0]->teamnum);
+
+    // §3.8: the cycle AUTOSAVED — the team change must be on disk without
+    // any manual save.
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"))
+        << "the team-cycle autosave must have written the active slot";
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
+        << "the cycled team must persist via the mutation autosave";
+
+    save.reset();
 }
 
 // ---------------------------------------------------------------------------
