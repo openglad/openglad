@@ -25,6 +25,7 @@
 #include <openglad/interface/sound.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gparser.h>
 
 #include "picker_sdl_defs.h"
@@ -52,8 +53,20 @@ void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
 void sync_view_team_host_control_visibility(button* buttons, int num_buttons,
                                             int& highlighted_button);
+void sync_scenario_menu_host_control_visibility(button* buttons,
+                                                int num_buttons,
+                                                int& highlighted_button);
 void view_team(short left, short top, short right, short bottom);
 std::string get_saved_name(const char* filename);
+bool team_build_start_selected();
+// TEAMS engine hooks (defined beside their file-local helpers in
+// picker_team_build.cpp).
+void picker_teams_menu_engine_reset_open_state();
+void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& highlighted_button);
+bool picker_teams_menu_engine_frame_tick(void* screen_state, int frame);
+void picker_teams_menu_engine_draw_background(void* screen_state);
+void picker_teams_menu_engine_draw_content(void* screen_state);
 
 static inline PickerState& pks()
 {
@@ -1216,6 +1229,251 @@ const MenuScreenSpec& load_slots_menu_screen_spec()
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// Level-reload guard (§1.4 frame_tick): the team-build family's per-frame
+// obligation — a SET LEVEL pick, a host sync while parked, or a nested
+// screen's reset must reload the picker world. screen_state carries one
+// open screen's cursor; the wrapper initializes it (team build forces the
+// entry reload with -1; SCENARIO starts at the current level).
+
+struct LevelReloadGuardState
+{
+    short last_level_id = -1;
+    bool was_reset = false;
+};
+
+void level_reload_guard_on_reset(void* screen_state)
+{
+    static_cast<LevelReloadGuardState*>(screen_state)->was_reset = true;
+}
+
+bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
+{
+    auto* const guard = static_cast<LevelReloadGuardState*>(screen_state);
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (guard->last_level_id != myscreen->save_data.scen_num ||
+        guard->was_reset)
+    {
+        guard->was_reset = false;
+        guard->last_level_id = myscreen->save_data.scen_num;
+        myscreen->world().id = guard->last_level_id;
+        myscreen->load_level();
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
+// SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
+// always-visible VIEW LEVEL | TEAMS | PROGRESS row; BACK sits apart at
+// (30,170) so no other screen's "back" shares its geometry (injector tests
+// disambiguate the per-screen "back" buttons by position). Rows transcribed
+// VERBATIM from the deleted k_scenariomenu_buttons; static nav encodes the
+// host variant and the legacy sync (hide + up-link rewire) is the spec's
+// Rewire program (G1). Nested screens return MENU_REDRAW for reset_buttons
+// to consume (exit_on_redraw stays FALSE); BACK carries MENU_EXIT and the
+// create_scenario_menu wrapper folds it to MENU_REDRAW unless a start was
+// selected.
+
+constexpr MenuButtonSpec kScenarioMenuRows[] = {
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 30, .y = 170, .w = 60, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 3}},
+    {.id = "set_campaign", .label = "SET CAMPAIGN",
+     .x = 30, .y = 40, .w = 80, .h = 15,
+     .action = ButtonAction::DoPickCampaign, .arg = -1,
+     .nav = {.down = 2}},
+    {.id = "set_level", .label = "SET LEVEL",
+     .x = 30, .y = 70, .w = 80, .h = 15,
+     .action = ButtonAction::DoSetScenLevel, .arg = -1,
+     .nav = {.up = 1, .down = 3}},
+    {.id = "view_scenario", .label = "VIEW LEVEL",
+     .x = 30, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::ViewScenario, .arg = -1,
+     .nav = {.up = 2, .down = 0, .right = 4}},
+    {.id = "teams", .label = "TEAMS",
+     .x = 120, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::CreateTeamsMenu, .arg = -1,
+     .nav = {.up = 2, .down = 0, .left = 3, .right = 5}},
+    {.id = "progress", .label = "PROGRESS",
+     .x = 210, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::CreateProgressMenu, .arg = -1,
+     .nav = {.up = 2, .down = 0, .left = 4}},
+};
+
+// The campaign-name / level-title strips sit beside the buttons that change
+// them (always drawn — joiners see the host's choices even while
+// SET CAMPAIGN / SET LEVEL are hidden). Verbatim from the deleted loop.
+void scenario_menu_draw_content(void* /*screen_state*/)
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    text& mytext = myscreen->text_normal;
+
+    mytext.write_xy(10, 8, "SCENARIO", WHITE, 1);
+
+    const auto draw_strip = [&mytext, myscreen](int y, std::string value) {
+        if (value.size() > 32)
+            value.resize(32);
+        const int strip_w = static_cast<int>(value.size()) * 6;
+        myscreen->draw_rect_filled(114, y - 1, strip_w + 4, 8, PURE_BLACK,
+                                   150);
+        mytext.write_xy(116, y, WHITE, "%s", value.c_str());
+    };
+    const std::vector<button>& rows = pks().scenariomenu_buttons;
+    draw_strip(rows[kScenarioMenuSetCampaignIndex].y + 4,
+               og::data::campaign_display_title(
+                   myscreen->save_data.current_campaign));
+    draw_strip(rows[kScenarioMenuSetLevelIndex].y + 4,
+               std::format("SCEN {}: {}", myscreen->save_data.scen_num,
+                           myscreen->world().title));
+}
+
+void scenario_menu_rewire(button* buttons, int num_buttons,
+                          int& highlighted_button)
+{
+    sync_scenario_menu_host_control_visibility(buttons, num_buttons,
+                                               highlighted_button);
+}
+
+const MenuScreenSpec& scenario_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "scenario_menu",
+        .rows = kScenarioMenuRows,
+        .row_count = static_cast<int>(std::size(kScenarioMenuRows)),
+        .buttons_accessor = &picker_scenariomenu_buttons,
+        .count_accessor = &picker_scenariomenu_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &scenario_menu_rewire},
+        // A joiner parked here still follows the host's GO.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kScenarioMenuBackIndex,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &scenario_menu_draw_content,
+        .frame_tick = &level_reload_guard_frame_tick,
+        .on_reset = &level_reload_guard_on_reset,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+// ---------------------------------------------------------------------------
+// TEAMS subscreen (§1.8 step 5): team rows drawn at y=32+30*t with the
+// per-team JOIN column at x=240; the CTF match settings (host-gated, CTF
+// campaign only) at the top (Teams/Limit) and bottom-right (Troops); the
+// local guy-cycling row at y=146; READY replaces the guy row when networked;
+// per-team member pagers at the row bars' right edge. Rows transcribed
+// VERBATIM from the deleted k_teamsmenu_buttons (static nav = the
+// local-classic variant; conditional rows start hidden). Every frame the
+// spec's Rewire program (picker_teams_menu_engine_rewire) replays the legacy
+// compute + sync + trace: visibility for every conditional row, both label
+// surfaces, the full picker_wire_teams_menu_nav rewire, and the highlight
+// pull — the 9-variant BFS matrix in test_menu_layout stays the oracle.
+
+constexpr MenuButtonSpec kTeamsMenuRows[] = {
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 40, .h = 20,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
+     .nav = {.up = 7}},
+    {.id = "ctf_teams", .label = "Teams: Auto",
+     .x = 120, .y = 8, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
+     .nav = {.down = 3, .right = 2},
+     .hidden = true},
+    {.id = "ctf_caps", .label = "Limit: Map",
+     .x = 210, .y = 8, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
+     .nav = {.down = 3, .left = 1},
+     .hidden = true},
+    {.id = "join_team_0", .label = "JOIN",
+     .x = 240, .y = 32, .w = 50, .h = 12,
+     .action = ButtonAction::JoinTeam, .arg = 0,
+     .nav = {.down = 4}},
+    {.id = "join_team_1", .label = "JOIN",
+     .x = 240, .y = 62, .w = 50, .h = 12,
+     .action = ButtonAction::JoinTeam, .arg = 1,
+     .nav = {.up = 3, .down = 5}},
+    {.id = "join_team_2", .label = "JOIN",
+     .x = 240, .y = 92, .w = 50, .h = 12,
+     .action = ButtonAction::JoinTeam, .arg = 2,
+     .nav = {.up = 4, .down = 6}},
+    {.id = "join_team_3", .label = "JOIN",
+     .x = 240, .y = 122, .w = 50, .h = 12,
+     .action = ButtonAction::JoinTeam, .arg = 3,
+     .nav = {.up = 5, .down = 9}},
+    {.id = "guy_prev", .label = "<",
+     .x = 10, .y = 146, .w = 16, .h = 12,
+     .action = ButtonAction::TeamsCycleGuy, .arg = -1,
+     .nav = {.up = 3, .down = 0, .right = 8}},
+    {.id = "guy_next", .label = ">",
+     .x = 120, .y = 146, .w = 16, .h = 12,
+     .action = ButtonAction::TeamsCycleGuy, .arg = 1,
+     .nav = {.up = 3, .down = 0, .left = 7, .right = 9}},
+    {.id = "guy_team", .label = "TEAM >",
+     .x = 150, .y = 146, .w = 70, .h = 12,
+     .action = ButtonAction::TeamsCycleGuyTeam, .arg = 1,
+     .nav = {.up = 6, .down = 0, .left = 8}},
+    {.id = "ready", .label = "READY",
+     .x = 120, .y = 170, .w = 80, .h = 20,
+     .action = ButtonAction::ToggleLobbyReady, .arg = -1,
+     .nav = {.up = 6, .left = 0},
+     .hidden = true},
+    {.id = "ctf_troops", .label = "Troops: Scen",
+     .x = 210, .y = 170, .w = 80, .h = 20,
+     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
+     .nav = {.up = 9, .left = 0},
+     .hidden = true},
+    // Per-team member pagers: a '>' at the right edge of each team row's
+    // readability bar (8..234), left of the JOIN column at x=240. Hidden
+    // unless that team's detail line needs more than one slice; nav is
+    // fully rewired per frame like every other conditional button here.
+    {.id = "team_page_0", .label = ">",
+     .x = 219, .y = 39, .w = 14, .h = 12,
+     .action = ButtonAction::TeamsPageFlip, .arg = 0,
+     .hidden = true},
+    {.id = "team_page_1", .label = ">",
+     .x = 219, .y = 69, .w = 14, .h = 12,
+     .action = ButtonAction::TeamsPageFlip, .arg = 1,
+     .hidden = true},
+    {.id = "team_page_2", .label = ">",
+     .x = 219, .y = 99, .w = 14, .h = 12,
+     .action = ButtonAction::TeamsPageFlip, .arg = 2,
+     .hidden = true},
+    {.id = "team_page_3", .label = ">",
+     .x = 219, .y = 129, .w = 14, .h = 12,
+     .action = ButtonAction::TeamsPageFlip, .arg = 3,
+     .hidden = true},
+};
+
+const MenuScreenSpec& teams_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "teams_menu",
+        .rows = kTeamsMenuRows,
+        .row_count = static_cast<int>(std::size(kTeamsMenuRows)),
+        .buttons_accessor = &picker_teamsmenu_buttons,
+        .count_accessor = &picker_teamsmenu_button_count,
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &picker_teams_menu_engine_rewire},
+        // A joiner parked here still follows the host's GO.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kTeamsMenuBackIndex,
+        // BACK returns MENU_REDRAW to signal "go back to team menu" — end
+        // the loop before reset_buttons could consume it (legacy check).
+        .exit_on_redraw = true,
+        .polls_lobby = true,
+        .draw_background = &picker_teams_menu_engine_draw_background,
+        .draw_content = &picker_teams_menu_engine_draw_content,
+        .frame_tick = &picker_teams_menu_engine_frame_tick,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
 constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
                                              int row_count)
 {
@@ -1351,9 +1609,9 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
                 {.kind = Kind::Legacy,
                  .legacy_entry = &create_view_scenario_menu});
             set(MenuScreenId::Scenario,
-                {.kind = Kind::Legacy, .legacy_entry = &create_scenario_menu});
+                {.kind = Kind::Engine, .spec = &scenario_menu_screen_spec()});
             set(MenuScreenId::Teams,
-                {.kind = Kind::Legacy, .legacy_entry = &create_teams_menu});
+                {.kind = Kind::Engine, .spec = &teams_menu_screen_spec()});
             // NETWORKING is owned by the SdlPickerClient state machine
             // (configure_networking is a client method); it migrates last,
             // under valve V2.
@@ -1440,6 +1698,69 @@ button* picker_loadteam_buttons()
 int picker_loadteam_button_count()
 {
     return static_cast<int>(pks().loadteam_buttons.size());
+}
+
+button* picker_scenariomenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::scenario_menu_screen_spec(),
+                                     pks().scenariomenu_buttons);
+    return pks().scenariomenu_buttons.data();
+}
+
+int picker_scenariomenu_button_count()
+{
+    return static_cast<int>(pks().scenariomenu_buttons.size());
+}
+
+button* picker_teamsmenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::teams_menu_screen_spec(),
+                                     pks().teamsmenu_buttons);
+    return pks().teamsmenu_buttons.data();
+}
+
+int picker_teamsmenu_button_count()
+{
+    return static_cast<int>(pks().teamsmenu_buttons.size());
+}
+
+// The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit
+// buffer clears and the exit fold are the legacy shape, verbatim: a remote
+// start (MENU_EXIT + the StartGame item) propagates so the parent team-build
+// screen exits into GO; BACK's own MENU_EXIT folds into MENU_REDRAW to keep
+// the parent running. The reload cursor starts at the current level (the
+// parent already loaded it — no reload on entry).
+Sint32 create_scenario_menu(Sint32 arg1)
+{
+    (void)arg1;
+    og::runtime::current_session->myscreen_->clearbuffer();
+    og::ui::LevelReloadGuardState guard{
+        .last_level_id =
+            og::runtime::current_session->myscreen_->save_data.scen_num,
+        .was_reset = false,
+    };
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::scenario_menu_screen_spec(), &guard);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+    return MENU_REDRAW;
+}
+
+// The TEAMS subscreen, engine-hosted (the legacy loop is gone). Pager pages
+// and the trace/reload cursors reset every open; the exit fold is the legacy
+// shape, verbatim.
+Sint32 create_teams_menu(Sint32 arg1)
+{
+    (void)arg1;
+    og::runtime::current_session->myscreen_->clearbuffer();
+    picker_teams_menu_engine_reset_open_state();
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::teams_menu_screen_spec());
+    og::runtime::current_session->myscreen_->clearbuffer();
+    if (retvalue & MENU_EXIT)
+        return retvalue;
+    return MENU_REDRAW;
 }
 
 // VIEW TEAM, engine-hosted (the legacy loop is gone). The buffer clears

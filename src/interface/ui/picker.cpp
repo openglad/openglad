@@ -1612,36 +1612,10 @@ static const button k_networking_menu_buttons[] =
 // create_save_menu / create_load_menu live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
 
-// TEAMS subscreen (create_teams_menu): team rows are drawn at y=32+30*t with
-// the per-team JOIN column at x=240; the CTF match settings (host-gated, CTF
-// campaign only) sit at the top (Teams/Limit) and bottom-right (Troops); the
-// local guy-cycling row sits at y=146; READY replaces the guy row when
-// networked. Static nav encodes the local-classic variant — every conditional
-// state is rewired per frame by picker_wire_teams_menu_nav (the graph never
-// links to a hidden button).
-static const button k_teamsmenu_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.up=7}),
-        button("ctf_teams", "Teams: Auto", KEYSTATE_UNKNOWN, 120, 8, 80, 15, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.down=3, .right=2}, true),
-        button("ctf_caps", "Limit: Map", KEYSTATE_UNKNOWN, 210, 8, 80, 15, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.down=3, .left=1}, true),
-        button("join_team_0", "JOIN", KEYSTATE_UNKNOWN, 240, 32, 50, 12, button_action_id(ButtonAction::JoinTeam), 0, MenuNav{.down=4}),
-        button("join_team_1", "JOIN", KEYSTATE_UNKNOWN, 240, 62, 50, 12, button_action_id(ButtonAction::JoinTeam), 1, MenuNav{.up=3, .down=5}),
-        button("join_team_2", "JOIN", KEYSTATE_UNKNOWN, 240, 92, 50, 12, button_action_id(ButtonAction::JoinTeam), 2, MenuNav{.up=4, .down=6}),
-        button("join_team_3", "JOIN", KEYSTATE_UNKNOWN, 240, 122, 50, 12, button_action_id(ButtonAction::JoinTeam), 3, MenuNav{.up=5, .down=9}),
-        button("guy_prev", "<", KEYSTATE_UNKNOWN, 10, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), -1, MenuNav{.up=3, .down=0, .right=8}),
-        button("guy_next", ">", KEYSTATE_UNKNOWN, 120, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), 1, MenuNav{.up=3, .down=0, .left=7, .right=9}),
-        button("guy_team", "TEAM >", KEYSTATE_UNKNOWN, 150, 146, 70, 12, button_action_id(ButtonAction::TeamsCycleGuyTeam), 1, MenuNav{.up=6, .down=0, .left=8}),
-        button("ready", "READY", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::ToggleLobbyReady), -1, MenuNav{.up=6, .left=0}, true),
-        button("ctf_troops", "Troops: Scen", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::CycleCtfScenarioTroops), -1, MenuNav{.up=9, .left=0}, true),
-        // Per-team member pagers: a '>' at the right edge of each team row's
-        // readability bar (8..234), left of the JOIN column at x=240. Hidden
-        // unless that team's detail line needs more than one slice; nav is
-        // fully rewired per frame like every other conditional button here.
-        button("team_page_0", ">", KEYSTATE_UNKNOWN, 219, 39, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 0, MenuNav{}, true),
-        button("team_page_1", ">", KEYSTATE_UNKNOWN, 219, 69, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 1, MenuNav{}, true),
-        button("team_page_2", ">", KEYSTATE_UNKNOWN, 219, 99, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 2, MenuNav{}, true),
-        button("team_page_3", ">", KEYSTATE_UNKNOWN, 219, 129, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 3, MenuNav{}, true),
-    };
+// TEAMS subscreen (create_teams_menu): engine-hosted — the spec, accessor
+// shim, and entry wrapper live in menu_screen_specs.cpp; the per-frame
+// machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
+// (docs/menu-engine.md).
 
 // VIEW LEVEL (create_view_scenario_menu): a read-only framed report; PREV and
 // NEXT page through it and stay hidden while the report fits one page.
@@ -1652,23 +1626,9 @@ static const button k_viewscenario_buttons[] =
         button("page_next", "NEXT", KEYSTATE_UNKNOWN, 270, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), 1, MenuNav{.left=1}, true),
     };
 
-// SCENARIO subscreen (create_scenario_menu): the column at x=30 stacks
-// SET CAMPAIGN (y=40) and SET LEVEL (y=70) — the campaign-name and
-// level-title strips draw beside them — over the always-visible
-// VIEW LEVEL | TEAMS | PROGRESS row (y=100). BACK sits apart at (30,170)
-// so no other screen's "back" shares its geometry (the injector tests
-// disambiguate the per-screen "back" buttons by position). Static nav
-// encodes the host variant; sync_scenario_menu_host_control_visibility
-// rewires the row's up-links when SET CAMPAIGN / SET LEVEL are hidden.
-static const button k_scenariomenu_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 30, 170, 60, 20, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3}),
-        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 30, 40, 80, 15, button_action_id(ButtonAction::DoPickCampaign), -1, MenuNav{.down=2}),
-        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::DoSetScenLevel), -1, MenuNav{.up=1, .down=3}),
-        button("view_scenario", "VIEW LEVEL", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::ViewScenario), -1, MenuNav{.up=2, .down=0, .right=4}),
-        button("teams", "TEAMS", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateTeamsMenu), -1, MenuNav{.up=2, .down=0, .left=3, .right=5}),
-        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 210, 100, 80, 15, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=2, .down=0, .left=4}),
-    };
+// SCENARIO subscreen (create_scenario_menu): engine-hosted — the spec,
+// accessor shim, title-strip content pass, and entry wrapper live in
+// menu_screen_specs.cpp (docs/menu-engine.md).
 
 // DIFFICULTY subscreen: engine-hosted — spec, accessor shim, and
 // run_difficulty_menu live in menu_screen_specs.cpp (docs/menu-engine.md).
@@ -1820,16 +1780,8 @@ int picker_networking_button_count()
     return static_cast<int>(pks().networking_buttons.size());
 }
 
-button* picker_teamsmenu_buttons()
-{
-    reset_mutable_button_layout(pks().teamsmenu_buttons, k_teamsmenu_buttons);
-    return pks().teamsmenu_buttons.data();
-}
-
-int picker_teamsmenu_button_count()
-{
-    return static_cast<int>(pks().teamsmenu_buttons.size());
-}
+// picker_teamsmenu_buttons()/picker_teamsmenu_button_count(): engine-hosted
+// screen — the D3 materialization shims live in menu_screen_specs.cpp.
 
 button* picker_viewscenario_buttons()
 {
@@ -1842,16 +1794,9 @@ int picker_viewscenario_button_count()
     return static_cast<int>(pks().viewscenario_buttons.size());
 }
 
-button* picker_scenariomenu_buttons()
-{
-    reset_mutable_button_layout(pks().scenariomenu_buttons, k_scenariomenu_buttons);
-    return pks().scenariomenu_buttons.data();
-}
-
-int picker_scenariomenu_button_count()
-{
-    return static_cast<int>(pks().scenariomenu_buttons.size());
-}
+// picker_scenariomenu_buttons()/picker_scenariomenu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 // picker_difficulty_menu_buttons()/picker_difficulty_menu_button_count():
 // engine-hosted screen — the D3 materialization shims live in

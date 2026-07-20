@@ -179,7 +179,9 @@ bool team_build_remote_start_requested(Sint32& retvalue)
     return true;
 }
 
-static bool team_build_start_selected()
+// Non-static: the engine wrappers for the team-build subscreens (SCENARIO in
+// menu_screen_specs.cpp) fold their exits through this too.
+bool team_build_start_selected()
 {
     return pks().selected_menu_item != nullptr
         && pks().selected_menu_item->command ==
@@ -962,104 +964,90 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
 
 } // namespace
 
-Sint32 create_teams_menu(Sint32 arg1)
+// create_teams_menu (the TEAMS subscreen): engine-hosted — the spec and the
+// entry wrapper live in menu_screen_specs.cpp; the per-frame machinery stays
+// here beside its helpers (compute_teams_menu_state and the draw passes are
+// file-local). One open screen's state is shared between the hooks: the
+// frame state the rewire computes and the draw hooks read, the per-team
+// trace dedup, and the level-reload guard cursor.
+static TeamsMenuFrameState g_teams_engine_state;
+static std::array<int, 4> g_teams_engine_traced_page = {-1, -1, -1, -1};
+static short g_teams_engine_last_level_id = -1;
+
+// Trace each paged team's slice on entry and on every flip (tests pin the
+// indicator and the rotating member names through these).
+static void teams_engine_trace_paged_rows(const TeamsMenuFrameState& frame)
 {
-    (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_teamsmenu_buttons();
-    int num_buttons = picker_teamsmenu_button_count();
-    int highlighted_button = kTeamsMenuBackIndex;
-    // Per-team pager pages are session state and reset every open.
-    pks().teams_menu_team_page.fill(0);
-    TeamsMenuFrameState state = compute_teams_menu_state();
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button, state);
-    short last_level_id =
-        og::runtime::current_session->myscreen_->save_data.scen_num;
-    // Trace each paged team's slice on entry and on every flip (tests pin
-    // the indicator and the rotating member names through these).
-    std::array<int, 4> traced_page = {-1, -1, -1, -1};
-    const auto trace_paged_rows = [&traced_page](
-                                      const TeamsMenuFrameState& frame) {
-        for (int t = 0; t < 4; ++t)
-        {
-            const auto& pages =
-                frame.detail_pages[static_cast<std::size_t>(t)];
-            if (pages.size() <= 1)
-                continue;
-            const int page = frame.detail_page[static_cast<std::size_t>(t)];
-            if (traced_page[static_cast<std::size_t>(t)] == page)
-                continue;
-            traced_page[static_cast<std::size_t>(t)] = page;
-            TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
-                  static_cast<int>(pages.size()),
-                  pages[static_cast<std::size_t>(page)].c_str());
-        }
-    };
-    trace_paged_rows(state);
-
-    while (!(retvalue & MENU_EXIT))
+    for (int t = 0; t < 4; ++t)
     {
-        picker_lobby_poll();
-        // Mirror the parent team-build loop's level-reload guard: a host
-        // SET LEVEL synced into save.scen_num while parked here must reload
-        // the picker world so JOIN gating reflects the real map.
-        if (last_level_id !=
-            og::runtime::current_session->myscreen_->save_data.scen_num)
-        {
-            last_level_id =
-                og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->world().id = last_level_id;
-            og::runtime::current_session->myscreen_->load_level();
-        }
-        state = compute_teams_menu_state();
-        sync_teams_menu_visibility(
-            buttons, num_buttons, highlighted_button, state);
-        trace_paged_rows(state);
-        // A joiner parked here still follows the host's GO.
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        // Check before reset_buttons can clear it.
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_,
-                      buttons, num_buttons, retvalue);
-
-        // Draw: row bars go beneath the buttons (the in-row pager must keep
-        // the standard button face); text content goes on top of both.
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_teams_menu_row_bars();
-        draw_buttons(buttons, num_buttons);
-        draw_teams_menu_content(state, mytext);
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
+        const auto& pages = frame.detail_pages[static_cast<std::size_t>(t)];
+        if (pages.size() <= 1)
+            continue;
+        const int page = frame.detail_page[static_cast<std::size_t>(t)];
+        if (g_teams_engine_traced_page[static_cast<std::size_t>(t)] == page)
+            continue;
+        g_teams_engine_traced_page[static_cast<std::size_t>(t)] = page;
+        TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
+              static_cast<int>(pages.size()),
+              pages[static_cast<std::size_t>(page)].c_str());
     }
+}
+
+// Per-open reset, called by the create_teams_menu wrapper before the runner:
+// pager pages are session state and reset every open; the reload cursor
+// starts at the current level (no reload on entry — the parent team-build
+// loop already loaded it).
+void picker_teams_menu_engine_reset_open_state()
+{
+    pks().teams_menu_team_page.fill(0);
+    g_teams_engine_traced_page = {-1, -1, -1, -1};
+    g_teams_engine_last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+}
+
+// The spec's Rewire program (G1): the legacy per-frame compute + sync +
+// trace, verbatim — visibility for every conditional row, both label
+// surfaces, the full nav rewire, and the highlight pull.
+void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& highlighted_button)
+{
+    g_teams_engine_state = compute_teams_menu_state();
+    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button,
+                               g_teams_engine_state);
+    teams_engine_trace_paged_rows(g_teams_engine_state);
+}
+
+// Mirror the parent team-build loop's level-reload guard: a host SET LEVEL
+// synced into save.scen_num while parked here must reload the picker world
+// so JOIN gating reflects the real map. Engine placement note (V1): the
+// legacy loop reloaded at loop-top BEFORE the frame's compute; frame_tick
+// runs after reset and before the draw, so the recompute lands one frame
+// (10ms) later — the flows that watch this poll with timeouts.
+bool picker_teams_menu_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (g_teams_engine_last_level_id != myscreen->save_data.scen_num)
+    {
+        g_teams_engine_last_level_id = myscreen->save_data.scen_num;
+        myscreen->world().id = g_teams_engine_last_level_id;
+        myscreen->load_level();
+    }
+    return true;
+}
+
+// Draw split: row bars go BENEATH the buttons (the in-row pager must keep
+// the standard button face); all text content goes on top of both.
+void picker_teams_menu_engine_draw_background(void* /*screen_state*/)
+{
     og::runtime::current_session->myscreen_->clearbuffer();
+    draw_backdrop();
+    draw_teams_menu_row_bars();
+}
 
-    // Propagate MENU_EXIT (remote start / GO) so TeamBuild interception works;
-    // BACK returns MENU_REDRAW to keep the parent create_team_menu running.
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-
-    return MENU_REDRAW;
+void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
+{
+    draw_teams_menu_content(g_teams_engine_state,
+                            og::runtime::current_session->myscreen_->text_normal);
 }
 
 #ifdef TESTING
@@ -1234,107 +1222,9 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 // the StartGame item), BACK returns MENU_REDRAW to the team-build screen.
 // ---------------------------------------------------------------------------
 
-Sint32 create_scenario_menu(Sint32 arg1)
-{
-    (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_scenariomenu_buttons();
-    int num_buttons = picker_scenariomenu_button_count();
-    int highlighted_button = kScenarioMenuBackIndex;
-    sync_scenario_menu_host_control_visibility(
-        buttons, num_buttons, highlighted_button);
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-
-    short last_level_id =
-        og::runtime::current_session->myscreen_->save_data.scen_num;
-
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        sync_scenario_menu_host_control_visibility(
-            buttons, num_buttons, highlighted_button);
-        // A joiner parked here still follows the host's GO.
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Nested screens (TEAMS / VIEW LEVEL / PROGRESS / the campaign and
-        // level pickers) return MENU_REDRAW; reset_buttons clears it and
-        // reinits this layout. BACK carries MENU_EXIT; a remote start that
-        // fired inside a nested screen propagates MENU_EXIT + StartGame.
-        const bool buttons_were_reset = reset_buttons(
-            og::runtime::current_session->localbuttons_, buttons, num_buttons,
-            retvalue);
-        if (retvalue & MENU_EXIT)
-            break;
-
-        // The parent loop's level-reload guard: a SET LEVEL pick (or a host
-        // sync while parked here) must refresh the title strip's world.
-        if (last_level_id !=
-                og::runtime::current_session->myscreen_->save_data.scen_num ||
-            buttons_were_reset)
-        {
-            retvalue = 0;
-            last_level_id =
-                og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->world().id = last_level_id;
-            og::runtime::current_session->myscreen_->load_level();
-        }
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        mytext.write_xy(10, 8, "SCENARIO", WHITE, 1);
-
-        // The campaign-name / level-title strips sit beside the buttons that
-        // change them (always drawn — joiners see the host's choices even
-        // while SET CAMPAIGN / SET LEVEL are hidden).
-        const auto draw_strip = [&mytext](int y, const std::string& value) {
-            const std::string clipped = clip_to_width(value, 32);
-            const int strip_w = static_cast<int>(clipped.size()) * 6;
-            og::runtime::current_session->myscreen_->draw_rect_filled(
-                114, y - 1, strip_w + 4, 8, PURE_BLACK, 150);
-            mytext.write_xy(116, y, WHITE, "%s", clipped.c_str());
-        };
-        draw_strip(
-            buttons[kScenarioMenuSetCampaignIndex].y + 4,
-            og::data::campaign_display_title(
-                og::runtime::current_session->myscreen_->save_data
-                    .current_campaign));
-        draw_strip(
-            buttons[kScenarioMenuSetLevelIndex].y + 4,
-            std::format(
-                "SCEN {}: {}",
-                og::runtime::current_session->myscreen_->save_data.scen_num,
-                og::runtime::current_session->myscreen_->world().title));
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-    // Propagate a remote start (MENU_EXIT + the StartGame item) so the
-    // parent team-build screen exits into GO; BACK's own MENU_EXIT folds
-    // into MENU_REDRAW to keep the parent running.
-    if ((retvalue & MENU_EXIT) && team_build_start_selected())
-        return retvalue;
-
-    return MENU_REDRAW;
-}
+// create_scenario_menu (the SCENARIO subscreen): engine-hosted — the spec,
+// the title-strip content pass, the level-reload guard, and the entry
+// wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // Helper struct for progress menu
 struct LevelProgress {

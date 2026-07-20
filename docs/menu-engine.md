@@ -24,7 +24,8 @@ window. Keep this table in sync with the registry:
 | View team | **Engine** | `view_team_menu_screen_spec()` via `create_view_menu()` (`exit_on_redraw`; GO gating = the legacy sync as its Rewire program) |
 | Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
 | Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
-| Scenario / TEAMS | Legacy | `create_scenario_menu()` / `create_teams_menu()` |
+| Scenario | **Engine** | `scenario_menu_screen_spec()` via `create_scenario_menu()` (host gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard; the wrapper folds BACK's MENU_EXIT unless a start was selected) |
+| TEAMS | **Engine** | `teams_menu_screen_spec()` via `create_teams_menu()` (`exit_on_redraw`; the Rewire program replays the legacy compute+sync+trace verbatim from picker_team_build.cpp; row bars draw beneath the buttons in `draw_background`; the reload guard sits in `frame_tick` — one frame later than the legacy loop-top reload, the flows poll with timeouts) |
 | NETWORKING | Legacy | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2, migrates last) |
 
 ## Calling conventions (unchanged by the engine)

@@ -637,10 +637,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 10)
+    EXPECT_GE(engine_screens, 12)
         << "difficulty + the FX trio + display + controls + main options + "
-           "main menu + view team + the slot menus must be engine-hosted by "
-           "this stage";
+           "main menu + view team + the slot menus + SCENARIO + TEAMS must "
+           "be engine-hosted by this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +677,10 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::SaveSlots).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::LoadSlots).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).kind);
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).kind);
 }
 
 // The exit_on_redraw contract on the migrated cluster: BACK on these
@@ -704,6 +708,29 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
                   slots->remote_start);
         EXPECT_EQ(10, slots->default_highlight);
     }
+
+    // TEAMS: BACK carries MENU_REDRAW (redraw-exit); MENU_EXIT propagates.
+    const og::ui::MenuScreenSpec* teams =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
+    ASSERT_NE(nullptr, teams);
+    EXPECT_TRUE(teams->exit_on_redraw);
+    EXPECT_EQ(MENU_EXIT, teams->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, teams->remote_start);
+    EXPECT_NE(nullptr, teams->frame_tick) << "TEAMS level-reload guard";
+
+    // SCENARIO: nested subscreens return MENU_REDRAW for reset_buttons to
+    // consume — exit_on_redraw must stay FALSE or every nested return would
+    // close the screen; BACK's MENU_EXIT is folded by the wrapper.
+    const og::ui::MenuScreenSpec* scenario =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).spec;
+    ASSERT_NE(nullptr, scenario);
+    EXPECT_FALSE(scenario->exit_on_redraw);
+    EXPECT_EQ(MENU_EXIT, scenario->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              scenario->remote_start);
+    EXPECT_NE(nullptr, scenario->frame_tick) << "SCENARIO level-reload guard";
+    EXPECT_NE(nullptr, scenario->on_reset)
+        << "a nested screen's reset must trigger the reload guard";
 }
 
 // ---------------------------------------------------------------------------
