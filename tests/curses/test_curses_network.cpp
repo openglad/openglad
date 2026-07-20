@@ -62,6 +62,8 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
 int curses_network_testing_exercise_internal_helpers();
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                             std::uint32_t pinned_team0_score);
+int curses_network_testing_clear_server_team(CursesGameSession& session,
+                                             short team);
 } // namespace og::curses
 
 namespace {
@@ -706,6 +708,91 @@ TEST(CursesNetwork, both_players_follow_distinct_avatars)
     // The avatars are present on both mirrors (server-authoritative).
     EXPECT_NE(game.join_session->mirror_world().find_by_id(host_avatar), nullptr);
     EXPECT_NE(game.host_session->mirror_world().find_by_id(join_avatar), nullptr);
+}
+
+// §4.5 curses follow parity: when the joiner's whole team dies while the
+// host's stays alive, the joiner's seat goes null (the bound-team wipe
+// suppression keeps the level running), the session auto-enters follow mode
+// on the host's hero, the HUD renders "(following Host)", and the seat's
+// SwitchChar binding cycles the watched target through the shared
+// follow-target selectors. Camera-only: nothing here claims control.
+TEST(CursesNetwork, joiner_follows_after_team_wipe_and_switch_char_cycles)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    // Before the wipe: the joiner follows its own avatar, no follow caption.
+    EXPECT_FALSE(game.join_session->follow_engaged());
+    const std::uint32_t own_avatar = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, own_avatar);
+
+    // Wipe the joiner's ENTIRE team on the authoritative server (troops on
+    // its team would otherwise be claimed by the shared-pool reacquire).
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, 1),
+              1);
+
+    bool engaged = false;
+    for (int i = 0; i < 120 && !engaged; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        engaged = game.join_session->follow_engaged();
+    }
+    ASSERT_TRUE(engaged) << "the joiner's null seat must auto-enter follow mode";
+    EXPECT_FALSE(game.join_session->ended())
+        << "the host's living team keeps the level running";
+    EXPECT_FALSE(game.host_session->follow_engaged())
+        << "the host still controls its own hero";
+
+    // Default target: the lowest player index with a live controlled walker
+    // — the host's hero, wearing its OWNER's replicated user tag.
+    const std::uint32_t followed = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, followed);
+    EXPECT_NE(own_avatar, followed);
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(followed);
+        ASSERT_NE(nullptr, w);
+        EXPECT_FALSE(w->dead());
+        ASSERT_NE(nullptr, w->myguy);
+        EXPECT_EQ("Host", w->myguy->name);
+        EXPECT_NE(-1, static_cast<int>(w->user()));
+    }
+
+    // The HUD captions the watched target.
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, game.join_session->mirror_world(),
+                  game.join_session->followed_entity_id(),
+                  game.join_session->follow_engaged());
+    EXPECT_NE(term.text_row(0).find("(following Host)"), std::string::npos)
+        << "row 0 must caption the watched target; got: " << term.text_row(0);
+
+    // SwitchChar cycles the watched target (the any-living fallback reaches
+    // the scenario troops once the host hero is the current target).
+    InputState cycle;
+    cycle.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    cycle.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    game.join_session->send_input(cycle);
+    game.host_session->send_input(InputState{});
+    game.host_session->advance();
+    game.join_session->advance();
+
+    const std::uint32_t cycled = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, cycled);
+    EXPECT_NE(followed, cycled) << "SwitchChar must move the watched target";
+    EXPECT_TRUE(game.join_session->follow_engaged());
+    {
+        const walker* w = game.join_session->mirror_world().find_by_id(cycled);
+        ASSERT_NE(nullptr, w);
+        EXPECT_FALSE(w->dead());
+    }
 }
 
 TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)

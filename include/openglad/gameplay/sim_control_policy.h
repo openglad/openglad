@@ -31,6 +31,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 class GameWorld;
 class walker;
@@ -128,5 +129,33 @@ SimReacquire sim_reacquire_control(GameWorld& level, short my_team,
                                        short player_index,
                                        walker*& control_out,
                                        SimInputResult& result);
+
+// --- §4.5 follow-camera target selection (client-side helpers) ---
+//
+// Pure selectors over a DISPLAY/mirror world for the follow camera of a
+// machine with no controllable walker (0-deploy, all-dead, spectator). They
+// are never called by the sim — the SDL local transport shadow and the
+// curses networked sessions share them so both clients pick identical
+// targets. They never mutate walkers (in particular: no user-tag writes).
+
+// Preferred watch targets: live, non-dormant Order::Living walkers that are
+// player-relevant (a user tag set or roster-owned). When no preferred target
+// exists any live, non-dormant living qualifies ("fallback any living").
+[[nodiscard]] bool follow_target_preferred(const walker* w) noexcept;
+[[nodiscard]] bool follow_target_visible(const walker* w) noexcept;
+
+// Default target (§4.5): the walker of the lowest global player index whose
+// controlled-entity slot resolves to a live walker, else the first eligible
+// walker in oblist order (preferred filter first, then any living). 0 when
+// the world holds nothing watchable.
+[[nodiscard]] std::uint32_t default_follow_target_id(
+    GameWorld& world, std::span<const std::uint32_t> controlled_entity_ids);
+
+// SwitchChar cycle (Shift = reverse): the next eligible target after
+// `current` in oblist order, wrapping. A null/stale `current` restarts from
+// the first eligible walker. 0 when the world holds nothing watchable.
+[[nodiscard]] std::uint32_t next_follow_target_id(GameWorld& world,
+                                                  walker* current,
+                                                  bool reverse);
 
 } // namespace og::sim

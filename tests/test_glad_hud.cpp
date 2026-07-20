@@ -358,6 +358,107 @@ TEST_F(GladHud, score_panel_draws_for_network_client_with_nonlocal_user_slot)
         ? old_control : nullptr;
 }
 
+// §2.8 follow caption + §4.5 [NET-R6]: a follow-engaged view draws the
+// bottom-center "FOLLOWING <name>" strip. Watching an AI target (user() ==
+// -1) renders the caption ALONE — the HUD box stays dark, because the follow
+// camera never stamps user tags and the HUD gates on them; a followed
+// foreign hero keeps its owner's snapshot-synced HUD alongside the caption.
+// With following_ off nothing new renders (both polarities pinned).
+TEST_F(GladHud, follow_caption_draws_and_ai_target_keeps_hud_dark)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->set_user(-1); // AI-shaped follow target
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+
+    walker* old_control = v->control;
+    const bool old_following = v->following_;
+    const std::string old_company = v->follow_company_;
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    // The TEAM/FOES counter box (the HUD's most robust probe region).
+    const int rm = v->endx;
+    const int kBoxX0 = rm - 57;
+    const int kBoxX1 = rm - 2;
+    constexpr int kBoxY0 = 1;
+    constexpr int kBoxY1 = 16;
+    auto box_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {
+        for (int y = kBoxY0; y < kBoxY1; ++y)
+            for (int x = kBoxX0; x < kBoxX1; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+    // The caption strip band: score_panel draws the yellow FOLLOWING text at
+    // cy = bm - 12 (strip cy-2..cy+8), bottom-center of the viewport.
+    // bm == endy in this build (score_panel's OVERSCAN_PADDING is 0 without
+    // REDUCE_OVERSCAN).
+    const int band_y0 = v->endy - 14;
+    const int band_y1 = v->endy - 2;
+    auto caption_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {
+        for (int y = band_y0; y < band_y1; ++y)
+            for (int x = v->xloc; x < v->endx; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+
+    // Not following: no caption band, no HUD (user() == -1).
+    v->following_ = false;
+    v->follow_company_.clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    {
+        const auto frame = capture_rendered_frame(*s);
+        EXPECT_FALSE(caption_has_pixels(frame))
+            << "a non-following view must not paint the caption strip";
+        EXPECT_FALSE(box_has_pixels(frame));
+    }
+
+    // Following an AI target: the caption alone; the HUD stays dark.
+    v->following_ = true;
+    v->follow_company_ = "Wolfpack";
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    {
+        const auto frame = capture_rendered_frame(*s);
+        EXPECT_TRUE(caption_has_pixels(frame))
+            << "the FOLLOWING strip must render for an engaged view";
+        EXPECT_FALSE(box_has_pixels(frame))
+            << "[NET-R6] an AI follow target (user() == -1) must not paint "
+               "the HUD";
+    }
+
+    // Following a foreign hero (its owner's snapshot-synced tag): the
+    // caption AND the owner's HUD.
+    controlp->set_user(2);
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    {
+        const auto frame = capture_rendered_frame(*s);
+        EXPECT_TRUE(caption_has_pixels(frame));
+        EXPECT_TRUE(box_has_pixels(frame))
+            << "a followed foreign hero shows its owner's HUD";
+    }
+
+    v->following_ = old_following;
+    v->follow_company_ = old_company;
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+}
+
 TEST_F(GladHud, fps_overlay_draws_when_enabled)
 {
     struct ShowFpsGuard {

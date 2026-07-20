@@ -363,7 +363,6 @@ short new_score_panel(screen* s, short /*do_it*/)
     walker* control;
     Sint32 lm, tm; // left and top margins
     Sint32 rm, bm; // right and bottom margins
-    (void)bm;
     char draw_button;  // do we draw a button background?
     char text_color;
     static char namelist[NUM_FAMILIES][20] =
@@ -401,6 +400,43 @@ short new_score_panel(screen* s, short /*do_it*/)
 
         if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
             draw_ctf_panel(s, control, lm, tm, rm);
+
+        // §2.8 follow caption: a follow-engaged view names its watched
+        // target on a black strip at the viewport's bottom-center,
+        // independent of the user() HUD gate below — an AI target
+        // (user() == -1) renders the caption ALONE, with no HUD/radar
+        // ([NET-R6] the follow camera never stamps user tags locally); a
+        // followed foreign hero shows its owner's snapshot-synced HUD too.
+        if (s->viewob[players]->following_ && control != nullptr)
+        {
+            std::string follow_name;
+            if (control->myguy && !control->myguy->name.empty())
+                follow_name = control->myguy->name;
+            else if (!control->stats()->name.empty())
+                follow_name = control->stats()->name;
+            else
+            {
+                int follow_fam = static_cast<int>(control->family());
+                if (follow_fam < 0 || follow_fam >= NUM_FAMILIES)
+                    follow_fam = 0;
+                follow_name = namelist[follow_fam];
+            }
+            if (follow_name.size() > 12)
+                follow_name.resize(12);
+            std::string caption = "FOLLOWING " + follow_name;
+            const std::string& company = s->viewob[players]->follow_company_;
+            if (!company.empty())
+                caption += " (" + company.substr(0, 8) + ")";
+            if (caption.size() > 26)
+                caption.resize(26);
+            const Sint32 caption_w = static_cast<Sint32>(caption.size()) * 6;
+            const Sint32 cx = lm + (rm - lm - caption_w) / 2;
+            const Sint32 cy = bm - 12;
+            s->fastbox(cx - 2, cy - 2, caption_w + 4, 11, 0, 1);
+            mytext.write_xy(cx, cy, caption.c_str(),
+                            static_cast<unsigned char>(YELLOW),
+                            static_cast<short>(1));
+        }
         // Draw the HUD whenever this viewport's control walker is a live,
         // human-claimed walker. We must NOT compare control->user() against the
         // local viewport index: that only holds for local split-screen (where

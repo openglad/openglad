@@ -235,4 +235,77 @@ bool sim_reacquire_apply(GameWorld& level, short my_team, short player_index,
     }
 }
 
+// --- §4.5 follow-camera target selection ---
+
+bool follow_target_visible(const walker* w) noexcept
+{
+    return w != nullptr && !w->dead() && !w->dormant() &&
+        w->query_order() == Order::Living;
+}
+
+bool follow_target_preferred(const walker* w) noexcept
+{
+    return follow_target_visible(w) && (w->user() != -1 || w->myguy != nullptr);
+}
+
+namespace {
+
+// First eligible walker in oblist order: preferred targets first, then the
+// any-living fallback so a scenario with only anonymous troops still has a
+// camera subject.
+std::uint32_t first_eligible_follow_target_id(GameWorld& world)
+{
+    std::uint32_t fallback_id = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        if (follow_target_preferred(w))
+            return w->entity_id();
+        if (fallback_id == 0 && follow_target_visible(w))
+            fallback_id = w->entity_id();
+    }
+    return fallback_id;
+}
+
+} // namespace
+
+std::uint32_t default_follow_target_id(
+    GameWorld& world, std::span<const std::uint32_t> controlled_entity_ids)
+{
+    // Lowest global player index with a live controlled walker...
+    for (const std::uint32_t entity_id : controlled_entity_ids)
+    {
+        if (entity_id == 0)
+            continue;
+        const walker* const w = world.find_by_id(entity_id);
+        if (w != nullptr && !w->dead())
+            return entity_id;
+    }
+    // ...else the first eligible walker in oblist order.
+    return first_eligible_follow_target_id(world);
+}
+
+std::uint32_t next_follow_target_id(GameWorld& world, walker* current,
+                                    bool reverse)
+{
+    if (current == nullptr)
+        return first_eligible_follow_target_id(world);
+
+    walker* const preferred = sim_cycle_next_character(
+        world.oblist, current, reverse,
+        [](const walker* w) { return follow_target_preferred(w); });
+    if (preferred != nullptr)
+        return preferred->entity_id();
+
+    walker* const any_living = sim_cycle_next_character(
+        world.oblist, current, reverse,
+        [](const walker* w) { return follow_target_visible(w); });
+    if (any_living != nullptr)
+        return any_living->entity_id();
+
+    // The cycle never returns `current` itself; keep watching it while it is
+    // still watchable rather than dropping to a static camera.
+    return follow_target_visible(current) ? current->entity_id() : 0;
+}
+
 } // namespace og::sim

@@ -91,7 +91,7 @@ void CursesRenderer::world_to_tile(int xpos, int ypos, int& tile_x, int& tile_y)
 }
 
 void CursesRenderer::draw(ITerminal& term, const GameWorld& world,
-                          std::uint32_t followed_id)
+                          std::uint32_t followed_id, bool following)
 {
     term.clear();
 
@@ -117,7 +117,7 @@ void CursesRenderer::draw(ITerminal& term, const GameWorld& world,
         draw_viewport(term, world, followed_id, viewport_top, 0, viewport_height, cols);
 
     if (hud_rows > 0 && cols > 0)
-        draw_hud(term, world, followed_id, 0, 0, cols);
+        draw_hud(term, world, followed_id, following, 0, 0, cols);
 
     if (log_rows > 0 && cols > 0)
         draw_log(term, log_top, 0, log_rows, cols);
@@ -262,7 +262,8 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
 }
 
 void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
-                              std::uint32_t followed_id, int top, int left, int width)
+                              std::uint32_t followed_id, bool following,
+                              int top, int left, int width)
 {
     const bool allow_color = opt_.allow_color && term.supports_color();
 
@@ -285,9 +286,14 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
     };
 
     // --- Line 0: character name + team color, then the level title. -----
+    // §4.5 follow camera: an engaged follow renders "(following NAME)" —
+    // the watched walker is a camera subject, not the player's avatar.
     std::string line0;
     Color name_color = Color::Default;
-    if (followed) {
+    if (followed && following) {
+        line0 = "(following " + followed_name(followed) + ")";
+        name_color = resolve_color(team_color(followed->team_num()), allow_color);
+    } else if (followed) {
         line0 = followed_name(followed);
         name_color = resolve_color(team_color(followed->team_num()), allow_color);
     } else {

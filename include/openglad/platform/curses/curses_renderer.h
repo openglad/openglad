@@ -40,7 +40,10 @@ public:
 
     // Draw a full frame. followed_id is the entity id to center the camera on and
     // describe in the HUD; 0 means "no followed entity" (camera stays at origin).
-    void draw(ITerminal& term, const GameWorld& world, std::uint32_t followed_id);
+    // following = §4.5 follow camera engaged: the HUD's name line becomes
+    // "(following NAME)" — the watched target is not the player's avatar.
+    void draw(ITerminal& term, const GameWorld& world, std::uint32_t followed_id,
+              bool following = false);
 
     // Convert an entity pixel position to a tile cell (GRID_SIZE == 16).
     static void world_to_tile(int xpos, int ypos, int& tile_x, int& tile_y);
@@ -51,7 +54,8 @@ private:
                        std::uint32_t followed_id,
                        int top, int left, int height, int width);
     void draw_hud(ITerminal& term, const GameWorld& world,
-                  std::uint32_t followed_id, int top, int left, int width);
+                  std::uint32_t followed_id, bool following,
+                  int top, int left, int width);
     void draw_log(ITerminal& term, int top, int left, int height, int width);
 
     Options opt_;
