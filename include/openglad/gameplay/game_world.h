@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -407,6 +408,20 @@ public:
     // (the hero's growth already survives — full salvage would double-dip).
     // Default 0 keeps parity scenarios and legacy content byte-identical.
     short keep_fallen_heroes = 0;
+    // Networked control policy (protocol v8 / snapshot v9, company-basecamp
+    // design §4.1/§4.4): 0 = legacy (any seat may claim any walker — every
+    // local/solo session and cross-control-ON lobbies), 1 = owner-locked
+    // (claims restricted to the owning machine's characters). Set only by
+    // the networked host installs; the defaults keep local play and the
+    // parity goldens byte-identical.
+    std::uint8_t control_policy = 0;
+    // Per-global-player machine map, indexed by global player index (16 ==
+    // kMaxGlobalPlayers, net_transport.h). Low 7 bits = machine id (the
+    // owning peer's lowest bound global player index); bit7 = "this player's
+    // machine deployed >= 1 character this level"; 0xff = no player bound.
+    std::array<std::uint8_t, 16> player_machine = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     og::sim::CtfState ctf;
     short current_scenario = 0;
     int guy_id_counter = 0;

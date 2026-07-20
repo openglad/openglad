@@ -300,6 +300,7 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.respawn_mode);
     append_i16(payload, settings.generator_rate);
     append_i16(payload, settings.keep_fallen_heroes);
+    append_i16(payload, settings.cross_control);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -316,17 +317,27 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.respawn_mode = reader.read_i16();
     settings.generator_rate = reader.read_i16();
     settings.keep_fallen_heroes = reader.read_i16();
+    settings.cross_control = reader.read_i16();
     return settings;
 }
 
+// v8 wire minimums: a slot is slot_index + slot_flags + the guy payload; a
+// player is index u8 + two empty strings (name, company: u32 lengths) +
+// team i16 + ready/is_host bools + the u32 slot count.
 constexpr std::size_t kMinSerializedLobbyCharacterSlotSize =
-    1 + kMinSerializedGuyDataSize;
-constexpr std::size_t kMinSerializedLobbyPlayerSize = 13;
+    2 + kMinSerializedGuyDataSize;
+constexpr std::size_t kMinSerializedLobbyPlayerSize = 17;
+
+// LobbyCharacterSlot slot_flags byte (v8): bit0 = deployed. The writer
+// zeroes bits 1-7; the reader masks bit0 and ignores the rest so future
+// flag bits stay wire-compatible.
+constexpr std::uint8_t kLobbySlotFlagDeployed = 0x01;
 
 void append_lobby_character_slot(std::vector<std::uint8_t>& payload,
                                  const og::sim::LobbyCharacterSlot& slot)
 {
     append_u8(payload, slot.slot_index);
+    append_u8(payload, slot.deployed ? kLobbySlotFlagDeployed : 0x00u);
     append_serialized_guy(payload, slot.character);
 }
 
@@ -334,6 +345,7 @@ og::sim::LobbyCharacterSlot read_lobby_character_slot(PayloadReader& reader)
 {
     og::sim::LobbyCharacterSlot slot;
     slot.slot_index = reader.read_u8();
+    slot.deployed = (reader.read_u8() & kLobbySlotFlagDeployed) != 0;
     slot.character = read_serialized_guy<og::sim::LobbyCharacterData>(reader);
     return slot;
 }
@@ -343,6 +355,7 @@ void append_lobby_player(std::vector<std::uint8_t>& payload,
 {
     append_u8(payload, player.player_index);
     append_string(payload, player.name);
+    append_string(payload, player.company);
     append_i16(payload, player.team);
     append_bool(payload, player.ready);
     append_bool(payload, player.is_host);
@@ -357,6 +370,9 @@ og::sim::LobbyPlayer read_lobby_player(PayloadReader& reader)
     og::sim::LobbyPlayer player;
     player.player_index = reader.read_u8();
     player.name = reader.read_string();
+    player.company = reader.read_string();
+    if (player.company.size() > og::sim::kMaxLobbyCompanyNameLength)
+        player.company.resize(og::sim::kMaxLobbyCompanyNameLength);
     player.team = reader.read_i16();
     player.ready = reader.read_bool();
     player.is_host = reader.read_bool();
@@ -620,6 +636,7 @@ std::vector<std::uint8_t> serialize_lobby_state_message(const LobbyState& state)
     std::vector<std::uint8_t> payload;
     append_lobby_settings(payload, state.settings);
     append_u8(payload, state.host_player_id);
+    append_u8(payload, state.last_start_denial);
     append_u32(payload, static_cast<std::uint32_t>(state.players.size()));
     for (const auto& player : state.players)
         append_lobby_player(payload, player);
@@ -634,6 +651,7 @@ std::optional<LobbyState> deserialize_lobby_state_message(
         [](PayloadReader& reader, LobbyState& state) {
             state.settings = read_lobby_settings(reader);
             state.host_player_id = reader.read_u8();
+            state.last_start_denial = reader.read_u8();
             const std::uint32_t player_count = reader.read_u32();
             if (!reader.ok() ||
                 player_count >

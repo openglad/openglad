@@ -77,6 +77,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
+    // assembly only materializes deployed slots, so mark the guy explicitly.
+    result->deployed = true;
     return result;
 }
 
@@ -103,6 +106,7 @@ void apply_lobby_game_start_config(
     save.respawn_mode = static_cast<short>(config_save.respawn_mode);
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
+    save.cross_control = static_cast<short>(config_save.cross_control);
     if (save.allied_mode != 0)
     {
         save.my_team = 0;

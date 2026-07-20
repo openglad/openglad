@@ -1501,7 +1501,24 @@ short screen::endgame(short ending, short nextlevel)
 		fold_ctx.outcome.ending = 0;
 		fold_ctx.outcome.next_level = nextlevel;
 		fold_ctx.outcome.networked = networked;
+
+		// §4.6 money split: on a networked win latch the capture — the pre-fold
+		// deploy roster (dead heroes still ride the oblist here) plus the fold's
+		// applied per-team deltas — onto this screen so the client's
+		// out-of-dispatch persist can size this machine's deploy-ratio share.
+		og::progression::NetWinFoldCapture net_win_capture;
+		if (networked)
+			net_win_capture.deployed =
+				og::progression::collect_deployed_contributors(world_);
+
 		og::progression::apply_win_fold(save_data, world_, fold_ctx);
+
+		if (networked)
+		{
+			net_win_capture.cash_delta = fold_ctx.applied_cash_delta;
+			net_win_capture.score_delta = fold_ctx.applied_score_delta;
+			pending_net_win_capture_ = std::move(net_win_capture);
+		}
 
 		// In a networked session this display screen holds the COMBINED roster
 		// (every player's characters). Autosaving it here would clobber this

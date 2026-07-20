@@ -97,6 +97,15 @@ public:
     {
         return false;
     }
+    // The most recent StartGame denial the server echoed to this client
+    // (protocol v8, §4.3). None for local/solo sessions (never gated) and
+    // until the host's first denied GO. The go_menu / dedicated-server host
+    // reads this to surface WHO is blocking the start.
+    [[nodiscard]] virtual og::sim::StartDenialReason last_start_denial()
+        const noexcept
+    {
+        return og::sim::StartDenialReason::None;
+    }
     // The replicated lobby roster (local clients expose their synthetic
     // per-seat players too). Empty before any state broadcast.
     [[nodiscard]] virtual std::vector<og::sim::LobbyPlayer> lobby_players() const
@@ -137,6 +146,7 @@ bool picker_lobby_host_controls_visible();
 bool picker_lobby_request_team_change(short team);
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
+og::sim::StartDenialReason picker_lobby_last_start_denial();
 std::vector<og::sim::LobbyPlayer> picker_lobby_players();
 bool picker_lobby_is_networked();
 inline bool picker_lobby_save_slot_editable(int slot_index)

@@ -663,3 +663,84 @@ TEST(CtfNetwork, bind_player_generic_claim_when_no_owner_tags)
     EXPECT_EQ(0, control->user());
     EXPECT_EQ(0, control->team_num());
 }
+
+// [NET-R1] allied claimed-teammates-alive equivalence pin (§4.4/§4.8): under
+// the LEGACY control policy (control_policy == 0 — the only policy protocol v8
+// ships in WP5), a player whose claimed hero dies while a teammate CLAIMED by
+// another player is still alive gets the existing wipe SUPPRESSION, not the
+// endgame: has_living_member_for_any_bound_team tracks ALL bound teams
+// including the requester's own, so the observable behavior is ControlChange
+// entity 0 on every mirror, world.ending == 0, the authoritative tick keeps
+// running, and the seat continues null (re-evaluated and re-suppressed every
+// tick). WP6's sim_reacquire_control Follow verdict must reproduce EXACTLY
+// this under policy-off — this test is the baseline it is diffed against.
+TEST(CtfNetwork, allied_claimed_teammate_alive_suppresses_endgame_seat_stays_null)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+
+    walker* player0 = fixture.server_control(0);
+    walker* player1 = fixture.server_control(1);
+    ASSERT_NE(nullptr, player0);
+    ASSERT_NE(nullptr, player1);
+    ASSERT_NE(player0, player1);
+    ASSERT_EQ(player0->team_num(), player1->team_num())
+        << "both fixture players bind onto the level's my_team";
+    const std::uint32_t id1 = player1->entity_id();
+    fixture.with_server_context([&] {
+        // The networked-allied shape: the world is allied-folded onto the
+        // shared bound team and both heroes are OWNED (myguy attached).
+        fixture.server_world().allied_mode = 1;
+        player0->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        player0->myguy->id = 51;
+        player1->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+        player1->myguy->id = 52;
+    });
+    const unsigned char bound_team = player0->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 2);
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_FALSE(fixture.server_world().type & GameWorld::TYPE_CTF)
+        << "this pins the CLASSIC (non-CTF) suppression path";
+
+    // Player 0's hero dies. The only other living member of the bound team is
+    // player 1's CLAIMED hero (user() == 1), which no sim_find_next_control
+    // pass may claim (all require user() == -1) — so player 0's reacquire
+    // fails and requests the endgame, which the suppression must swallow.
+    fixture.with_server_context([&] { player0->set_dead(1); });
+
+    const std::uint32_t tick_before = fixture.server_world().tick_count_;
+    fixture.step_ticks(6);
+    EXPECT_EQ(tick_before + 6, fixture.server_world().tick_count_)
+        << "the suppression must keep the authoritative tick running";
+    EXPECT_EQ(0, fixture.server_world().ending)
+        << "a claimed teammate alive means NO world ending";
+    EXPECT_FALSE(fixture.server_world().game_ended);
+    EXPECT_EQ(nullptr, fixture.server_control(0))
+        << "the dead player's seat continues null (re-suppressed every tick)";
+    EXPECT_EQ(0u, fixture.client(0).controlled_entity_ids()[0])
+        << "the ControlChange entity 0 must reach the mirror";
+    EXPECT_EQ(player1, fixture.server_control(1))
+        << "the living teammate's seat is untouched";
+    EXPECT_EQ(id1, fixture.client(0).controlled_entity_ids()[1]);
+    EXPECT_EQ(id1, fixture.client(1).controlled_entity_ids()[1]);
+    fixture.expect_clients_match_server();
+
+    // Equivalence terminal: once the claimed teammate ALSO dies, no bound team
+    // has a living member left and the suppression yields to the loss endgame
+    // exactly as team_wipe_still_ends_classic_level pins it.
+    fixture.with_server_context([&] { player1->set_dead(1); });
+    const std::uint32_t tick_after_suppression =
+        fixture.server_world().tick_count_;
+    fixture.step_ticks(4);
+    EXPECT_EQ(tick_after_suppression, fixture.server_world().tick_count_)
+        << "the full wipe must stop the authoritative tick";
+    EXPECT_EQ(1, fixture.server_world().ending)
+        << "the full wipe must request the loss endgame";
+}

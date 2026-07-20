@@ -92,6 +92,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     }
     if (sanitized.keep_fallen_heroes != 0 && sanitized.keep_fallen_heroes != 1)
         sanitized.keep_fallen_heroes = fallback.keep_fallen_heroes;
+    if (sanitized.cross_control != 0 && sanitized.cross_control != 1)
+        sanitized.cross_control = fallback.cross_control;
     return sanitized;
 }
 
@@ -230,6 +232,50 @@ struct OrderedLobbySlot {
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
+// Content-identical seat comparison for the ready-preservation rule (§4.3,
+// [NET-R7]). Two slots match on slot_index, deploy flag, and character data,
+// but NOT on the assembly-only owner_player_index/owner_save_slot: the
+// in-process loopback transport shares LobbyMessage objects with no serialize/
+// normalize pass, so "wire-defaulted 0xff on both sides" is not a safe
+// assumption on the host path. The deploy flag IS content — a changed deploy
+// selection clears ready (that machine's roster really changed, §4.2).
+bool lobby_slot_content_equal(const og::sim::LobbyCharacterSlot& lhs,
+                              const og::sim::LobbyCharacterSlot& rhs) noexcept
+{
+    return lhs.slot_index == rhs.slot_index &&
+        lhs.deployed == rhs.deployed &&
+        lhs.character == rhs.character;
+}
+
+// A re-sent join whose seats match the peer's stored seats content-for-content
+// preserves ready (kills the go_menu re-send deadlock). Compares seat count,
+// per-seat team, and per-seat character-slot content. Player name/company are
+// excluded (a rename never un-readies anyone); ready/is_host/player_index are
+// non-content.
+bool lobby_seats_content_identical(
+    const std::vector<og::sim::LobbyPlayer>& previous,
+    const std::vector<og::sim::LobbyPlayer>& next) noexcept
+{
+    if (previous.size() != next.size())
+        return false;
+    for (std::size_t seat = 0; seat < previous.size(); ++seat)
+    {
+        if (previous[seat].team != next[seat].team)
+            return false;
+        if (previous[seat].character_slots.size() !=
+            next[seat].character_slots.size())
+            return false;
+        for (std::size_t slot = 0; slot < previous[seat].character_slots.size();
+             ++slot)
+        {
+            if (!lobby_slot_content_equal(previous[seat].character_slots[slot],
+                                          next[seat].character_slots[slot]))
+                return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 namespace og::sim {
@@ -246,6 +292,81 @@ bool LobbyServer::consume_start_game_requested() noexcept
     const bool requested = start_game_requested_;
     start_game_requested_ = false;
     return requested;
+}
+
+void LobbyServer::unlock_for_new_round() noexcept
+{
+    lobby_locked_ = false;
+    start_game_requested_ = false;
+    // §4.3: every machine re-readies each round. Clear the stored seats AND the
+    // published state so the next content-identical join preserves the zeroed
+    // ready instead of re-arming a stale one.
+    for (auto& [peer_id, peer] : peers_)
+    {
+        (void)peer_id;
+        for (LobbyPlayer& seat : peer.seats)
+            seat.ready = false;
+    }
+    for (LobbyPlayer& player : state_.players)
+        player.ready = false;
+}
+
+bool LobbyServer::start_allowed(PeerId requester,
+                                StartDenialReason& reason) const noexcept
+{
+    reason = StartDenialReason::None;
+
+    // Rule 1: local/solo/split-screen lobbies GO exactly as today — the
+    // in-process LobbyServer that echoes the solo picker's own settings is
+    // never ready-gated.
+    if (local_session_)
+        return true;
+
+    // Rule 2: the requester must be the elected host peer.
+    if (!host_peer_id_.has_value() || *host_peer_id_ != requester)
+    {
+        reason = StartDenialReason::NotHost;
+        return false;
+    }
+
+    // Rules 3 + 4 share one pass: count deployed slots across ALL machines
+    // (rule 4) while requiring every NON-host joined peer to be ready (rule 3).
+    std::size_t deployed_total = 0;
+    for (const auto& [peer_id, peer] : peers_)
+    {
+        for (const LobbyPlayer& seat : peer.seats)
+        {
+            for (const LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (slot.deployed)
+                    ++deployed_total;
+            }
+        }
+
+        if (peer_id == *host_peer_id_)
+            continue;
+        if (peer.seats.empty())
+            continue; // Connected but not joined: nothing to ready.
+        for (const LobbyPlayer& seat : peer.seats)
+        {
+            if (!seat.ready)
+            {
+                // Rule 3 outranks rule 4 (§4.3 order): report unready first.
+                reason = StartDenialReason::MachinesNotReady;
+                return false;
+            }
+        }
+    }
+
+    // Rule 4: at least one deployed character across all machines (global
+    // minimum regardless of cross-control; per-machine minimums are gone).
+    if (deployed_total == 0)
+    {
+        reason = StartDenialReason::NoDeployedCharacters;
+        return false;
+    }
+
+    return true;
 }
 
 void LobbyServer::connect_client(PeerId peer_id)
@@ -366,13 +487,21 @@ std::int16_t LobbyServer::resolve_seat_team(
 
 std::size_t LobbyServer::remaining_team_capacity(PeerId peer_id) const noexcept
 {
+    // §4.2: only DEPLOYED slots consume the combined 24-slot match capacity —
+    // benched slots always replicate for display and never crowd anyone out.
     std::size_t used_slots = 0;
     for (const auto& [other_peer_id, peer] : peers_)
     {
         if (other_peer_id == peer_id)
             continue;
         for (const LobbyPlayer& seat : peer.seats)
-            used_slots += seat.character_slots.size();
+        {
+            for (const LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (slot.deployed)
+                    ++used_slots;
+            }
+        }
     }
 
     return used_slots >= kMaxLobbyTeamSize ? 0 : kMaxLobbyTeamSize - used_slots;
@@ -571,11 +700,41 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
             seat.is_host = false;
             seat.character_slots = sanitize_character_slots(
                 requested_seat.character_slots, team);
-            if (seat.character_slots.size() > slot_capacity)
-                seat.character_slots.resize(slot_capacity);
-            slot_capacity -= seat.character_slots.size();
+            // §4.2 [NET-F2] overflow convergence: the FULL roster replicates
+            // for display, but only DEPLOYED slots consume the combined
+            // 24-slot capacity. Deployed slots beyond the remaining budget
+            // are force-BENCHED in seat/slot order in the STORED seats and
+            // ride the state echo back for client reconciliation. This is
+            // idempotent: a client re-sending the same optimistic flags gets
+            // force-cleared to the same stored seats, so the re-send is
+            // content-identical and its ready survives (no perpetual
+            // ready-clearing while the client converges).
+            for (LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (!slot.deployed)
+                    continue;
+                if (slot_capacity == 0)
+                    slot.deployed = false;
+                else
+                    --slot_capacity;
+            }
             sibling_teams.push_back(team);
             new_seats.push_back(std::move(seat));
+        }
+
+        // §4.3 ready authority: the ready bit a client sends inside a Join is
+        // IGNORED. A re-sent join whose seats are content-identical to the
+        // stored seats PRESERVES the machine's ready (the go_menu re-send no
+        // longer deadlocks a ready lobby); any real roster/team/deploy change
+        // clears it.
+        const bool preserve_ready =
+            lobby_seats_content_identical(previous_seats, new_seats);
+        for (std::size_t seat_order = 0; seat_order < new_seats.size();
+             ++seat_order)
+        {
+            new_seats[seat_order].ready = preserve_ready
+                ? previous_seats[seat_order].ready
+                : false;
         }
 
         peer_it->second.seats = std::move(new_seats);
@@ -635,6 +794,10 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 seat.team = team;
                 for (auto& slot : seat.character_slots)
                     slot.character.teamnum = team;
+                // §4.3: a team change is a roster change for that machine —
+                // clear its ready (all seats share one machine's ready).
+                for (LobbyPlayer& machine_seat : seats)
+                    machine_seat.ready = false;
                 rebuild_needed = true;
             }
             else
@@ -651,13 +814,34 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     case LobbyMessageKind::StartGame:
         if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
-            lobby_locked_ = true;
-            start_game_requested_ = true;
-            accepted_start_player_index = !peer_it->second.seats.empty()
-                ? std::optional<std::uint8_t>(
-                      peer_it->second.seats.front().player_index)
-                : std::optional<std::uint8_t>(0xffu);
+            // [NET-R4] a host StartGame request clears the prior denial echo
+            // FIRST (queued non-StartGame messages between denial and read must
+            // not wipe it — only the next StartGame does).
+            state_.last_start_denial =
+                start_denial_reason_value(StartDenialReason::None);
+
+            StartDenialReason reason = StartDenialReason::None;
+            if (start_allowed(peer_id, reason))
+            {
+                lobby_locked_ = true;
+                start_game_requested_ = true;
+                accepted_start_player_index = !peer_it->second.seats.empty()
+                    ? std::optional<std::uint8_t>(
+                          peer_it->second.seats.front().player_index)
+                    : std::optional<std::uint8_t>(0xffu);
+            }
+            else
+            {
+                // §4.3 denial: record the reason and let the trailing
+                // broadcast echo it to every peer. The lobby lock is NEVER
+                // engaged, so the "locked lobby eats messages" hazard never
+                // triggers and the host stays free to fix the blocker and
+                // retry.
+                state_.last_start_denial = start_denial_reason_value(reason);
+            }
         }
+        // A non-host StartGame stays silently ignored (no denial echo),
+        // preserving the historic drop-on-non-host behavior.
         break;
 
     case LobbyMessageKind::SettingsChange:
@@ -772,6 +956,29 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     rebuild_needed = true;
                 }
             }
+
+            // §4.3: a host settings change that actually differs after
+            // sanitize clears every NON-host machine's ready (each machine
+            // re-confirms against the new match settings; the host uses GO,
+            // not ready). An echo of identical settings is a no-op (go_menu
+            // re-sends settings on every start attempt).
+            if (state_.settings != previous_state.settings)
+            {
+                for (auto& [other_peer_id, peer] : peers_)
+                {
+                    if (host_peer_id_.has_value() &&
+                        other_peer_id == *host_peer_id_)
+                        continue;
+                    for (LobbyPlayer& seat : peer.seats)
+                    {
+                        if (seat.ready)
+                        {
+                            seat.ready = false;
+                            rebuild_needed = true;
+                        }
+                    }
+                }
+            }
         }
         break;
     }
@@ -860,6 +1067,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.respawn_mode = state_.settings.respawn_mode;
     equivalent.generator_rate = state_.settings.generator_rate;
     equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
+    equivalent.cross_control = state_.settings.cross_control;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;
@@ -875,6 +1083,17 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         for (std::size_t slot_order = 0; slot_order < player.character_slots.size();
              ++slot_order)
         {
+            // §4.2: NETWORKED roster assembly materializes only DEPLOYED
+            // slots — benched characters never enter the netsession seed,
+            // InitialSetup, or GuySnapshots (filtered BEFORE densification,
+            // so compaction indices count deployed slots only). Local
+            // sessions deliberately keep the full roster: the local start
+            // path seeds the player's ACTIVE COMPANY slot from this
+            // equivalent, so filtering here would drop benched members from
+            // the real save file. The local assembly filter lives at spawn
+            // time instead (spawn_team_from_save skips benched members).
+            if (!local_session_ && !player.character_slots[slot_order].deployed)
+                continue;
             ordered_slots.push_back(OrderedLobbySlot{
                 .slot_index = player.character_slots[slot_order].slot_index,
                 .player_order = player_index,

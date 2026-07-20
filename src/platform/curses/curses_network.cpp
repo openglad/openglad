@@ -45,20 +45,26 @@
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/win_shares.h>
 #include <openglad/server/headless_server_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <exception>
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
@@ -185,6 +191,8 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
+    // v8: advertise the active company's display name (SaveData::save_name).
+    player.company = save.save_name;
     player.team = local_team;
     player.ready = false;
     player.is_host = false;
@@ -196,6 +204,8 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
             .character = make_lobby_character_data(*member),
+            // v8: stamped from the save guy's v14 deploy flag.
+            .deployed = member->deployed,
         });
     }
     return player;
@@ -228,6 +238,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.cross_control = save.cross_control;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -327,6 +338,54 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 // Networked sessions
 // =====================================================================
 
+// §4.6: a curses networked win persists this machine's deploy-ratio SHARE of
+// the pot into its own company save (active_company_slot), while `session_save`
+// (the in-memory authoritative/mirror save) keeps the full combined fold. The
+// fold's applied deltas + the pre-fold deploy roster feed the shared SDL-free
+// win-share core, so a curses peer conserves with an SDL peer in the same
+// match. Only a genuine win (ended, ending == 0, not a CTF rematch) persists.
+void persist_curses_networked_win(SaveData& session_save, const GameWorld& world,
+                                  std::size_t player_index, int next_level)
+{
+    if (is_ctf_rematch_end(world, /*ending=*/0, next_level))
+        return;
+
+    og::server::sync_headless_server_save_data_from_world(session_save, world);
+
+    og::progression::WinFoldContext fold_ctx;
+    for (std::size_t team = 0; team < fold_ctx.time_bonus.size(); ++team)
+        fold_ctx.time_bonus[team] = og::progression::calculate_win_time_bonus(
+            world, session_save, static_cast<int>(team));
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        world, session_save, static_cast<short>(next_level));
+    fold_ctx.finished_level = session_save.scen_num;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(
+        next_level >= 0 ? next_level : (session_save.scen_num + 1));
+    fold_ctx.outcome.networked = true;
+
+    og::progression::NetWinFoldCapture capture;
+    capture.deployed = og::progression::collect_deployed_contributors(world);
+
+    const int finished_level = fold_ctx.finished_level;
+    // The in-memory session save keeps the full combined fold.
+    og::progression::apply_win_fold(session_save, world, fold_ctx);
+    capture.cash_delta = fold_ctx.applied_cash_delta;
+    capture.score_delta = fold_ctx.applied_score_delta;
+
+    const std::array<std::uint8_t, 1> owners = {
+        static_cast<std::uint8_t>(player_index)};
+    std::optional<std::size_t> primary_team;
+    if (session_save.my_team >= 0 && session_save.my_team < MAX_PLAYERS)
+        primary_team = static_cast<std::size_t>(session_save.my_team);
+
+    // The disk company save gets baseline + this machine's share.
+    (void)og::progression::persist_networked_win(
+        og::data::active_company_slot(), session_save, world,
+        std::span<const std::uint8_t>(owners), primary_team, capture,
+        finished_level);
+}
+
 // HOST: authoritative GameServer over the lobby's shared transport + a
 // co-located mirror GameClient connected over a loopback client transport. Almost
 // identical to LocalCursesSession, but the transport, save and player bindings
@@ -398,10 +457,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    // Networked persistence flows through the lobby/server save-sync path; the
-    // ncurses host does not write the caller's save directly (parity with the
-    // SDL networked host, which persists via reset_network_host_transport_shadow).
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the host banks its deploy-ratio share into its
+    // own company save (the authoritative server_save_ keeps the full fold).
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(server_save_, server_world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameServer& server() { return *server_; }
     og::sim::GameClient& client() { return *client_; }
@@ -453,6 +517,39 @@ public:
         client_level_->world().type |= GameWorld::TYPE_CTF;
         current_game = saved;
         return ok;
+    }
+
+    // Force the deterministic WIN shape on the AUTHORITATIVE world, mirroring
+    // the SDL e2e recipe (g_test_remove_exits + clear-all-foes): pin a nonzero
+    // team-0 payout, kill the level exits, and slay every living hostile to
+    // the host team. The next server steps then declare the win
+    // (level_done == 2) and forward the terminal EndGame to every peer.
+    // Returns the number of foes slain.
+    int force_server_win_for_testing(std::uint32_t pinned_team0_score)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        world.m_score[0] = pinned_team0_score;
+        for (auto& uptr : world.fxlist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_EXIT)
+                w->set_dead(1);
+        }
+        const unsigned char host_team =
+            static_cast<unsigned char>(world.my_team);
+        int slain = 0;
+        for (auto& uptr : world.oblist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->is_friendly_to_team(host_team) == 0) {
+                w->set_dead(1);
+                ++slain;
+            }
+        }
+        current_game = saved;
+        return slain;
     }
 #endif
 
@@ -684,7 +781,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the joiner banks its deploy-ratio share into its
+    // own company save; the mirror client_save_ keeps the full fold.
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(client_save_, client_level_->world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameClient& client() { return *client_; }
 
@@ -1274,12 +1379,18 @@ private:
         eq.respawn_mode = state_->settings.respawn_mode;
         eq.generator_rate = state_->settings.generator_rate;
         eq.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        eq.cross_control = state_->settings.cross_control;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
         std::uint8_t next_slot = 0;
         for (const og::sim::LobbyPlayer& player : state_->players) {
             for (const og::sim::LobbyCharacterSlot& slot : player.character_slots) {
+                // §4.2: assembly materializes only DEPLOYED slots — must
+                // match the host's LobbyServer::build_save_data_equivalent
+                // filter or the joiner's spawn diverges from the server.
+                if (!slot.deployed)
+                    continue;
                 if (next_slot >= MAX_TEAM_SIZE)
                     break;
                 og::sim::LobbyCharacterSlot compacted = slot;
@@ -1411,6 +1522,7 @@ int curses_network_testing_exercise_internal_helpers()
     save.respawn_mode = 2;
     save.generator_rate = 50;
     save.keep_fallen_heroes = 1;
+    save.cross_control = 1;
     const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
     const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
         &rules_message.payload);
@@ -1419,11 +1531,13 @@ int curses_network_testing_exercise_internal_helpers()
         rules->settings.ctf_respawn_ticks == 60 &&
         rules->settings.respawn_mode == 2 &&
         rules->settings.generator_rate == 50 &&
-        rules->settings.keep_fallen_heroes == 1);
+        rules->settings.keep_fallen_heroes == 1 &&
+        rules->settings.cross_control == 1);
     save.ctf_respawn_ticks = 0;
     save.respawn_mode = 0;
     save.generator_rate = 0;
     save.keep_fallen_heroes = 0;
+    save.cross_control = 0;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";
@@ -1680,6 +1794,15 @@ bool curses_network_testing_inject_ctf(CursesGameSession& session,
     if (host == nullptr)
         return false;
     return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+}
+
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                            std::uint32_t pinned_team0_score)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return -1;
+    return host->force_server_win_for_testing(pinned_team0_score);
 }
 #endif
 

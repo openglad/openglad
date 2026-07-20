@@ -28,6 +28,7 @@
 #include <cstring>
 #include <format>
 #include <memory>
+#include <span>
 
 // For deterministic helper-only test coverage.
 #ifdef TESTING
@@ -862,7 +863,40 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 }
                 y += 22;
             }
-            
+
+            // §2.8: a networked win shows THIS machine's prospective share of
+            // the pot (split by deploy-ratio; 0-deploy machines see 0). The
+            // results screen renders pre-fold, so the delta is computed on the
+            // spot from the live m_score + time bonus. Local/solo prints
+            // nothing here, keeping single-player output byte-identical.
+            if (ending == 0 &&
+                og::runtime::current_session != nullptr &&
+                og::runtime::current_session->networked_session_)
+            {
+                BEGIN_IF_IN_SCROLL_AREA;
+                og::progression::NetWinFoldCapture prospective;
+                for (std::size_t t = 0; t < 4; ++t)
+                    prospective.cash_delta[t] =
+                        save_data.m_score[t] * 2u +
+                        bonuscash[t];
+                prospective.deployed =
+                    og::progression::collect_deployed_contributors(
+                        og::runtime::current_session->myscreen_->world());
+                const std::uint64_t share =
+                    og::progression::machine_cash_share(
+                        prospective,
+                        std::span<const std::uint8_t>(
+                            og::runtime::current_session->own_player_indices_));
+                const std::uint64_t pot =
+                    static_cast<std::uint64_t>(allscore) * 2u + allbonuscash;
+                std::string share_buf = std::format("{}", share);
+                std::string pot_buf = std::format("{}", pot);
+                mytext.write_xy_center_shadow(area.x + area.w / 2, y, YELLOW,
+                    "YOUR SHARE: %s OF %s", share_buf.c_str(), pot_buf.c_str());
+                END_IF_IN_SCROLL_AREA;
+                y += 12;
+            }
+
             BEGIN_IF_IN_SCROLL_AREA;
             if(ending == 0)
             {

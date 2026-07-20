@@ -145,6 +145,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
     {
 	    temp_guy = screenp->save_data.team_list[guy_idx].get();
 	    if (!temp_guy) continue;
+	    // §4.2: benched members stay in the save but never enter the level —
+	    // must match spawn_team_from_save (the authoritative server world) or
+	    // the display would show a hero the sim never spawned.
+	    if (!temp_guy->deployed) continue;
 	    temp_walker = guy_create_and_add_walker(*temp_guy, screenp);
 	    if (!temp_walker) continue;
 	    // Clear the new guy's battle data

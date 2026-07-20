@@ -23,6 +23,8 @@ struct LobbySaveDataEquivalent {
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
     std::int16_t keep_fallen_heroes = 0;
+    // Host-only cross-control setting (protocol v8; see LobbySettings).
+    std::int16_t cross_control = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;
@@ -60,11 +62,11 @@ public:
     // where the server is destroyed at game start. When the connection persists
     // across gameplay, the same server runs the NEXT level's lobby, so the lock
     // must be cleared to accept the new round's settings/joins.
-    void unlock_for_new_round() noexcept
-    {
-        lobby_locked_ = false;
-        start_game_requested_ = false;
-    }
+    //
+    // Also clears EVERY machine's ready (§4.3): each round requires a fresh
+    // ready-up, and the subsequent content-identical joins preserve the zeroed
+    // state instead of silently re-arming a stale ready.
+    void unlock_for_new_round() noexcept;
 
     [[nodiscard]] const LobbyState& state() const noexcept
     {
@@ -109,6 +111,17 @@ private:
         std::optional<std::int16_t> current_team,
         const std::vector<std::int16_t>& sibling_teams) const noexcept;
     [[nodiscard]] std::size_t remaining_team_capacity(PeerId peer_id) const noexcept;
+    // Server-authoritative StartGame gate (§4.3), evaluated in order:
+    //   1. local_session_ lobbies pass unconditionally (solo/split-screen GO);
+    //   2. the requester must be the elected host peer (else NotHost);
+    //   3. every non-host peer with joined seats must be ready (else
+    //      MachinesNotReady);
+    //   4. at least one deployed character across all machines (else
+    //      NoDeployedCharacters).
+    // On denial the lobby lock is NEVER engaged; the caller records the reason
+    // in LobbyState::last_start_denial and echoes it.
+    [[nodiscard]] bool start_allowed(PeerId requester,
+                                     StartDenialReason& reason) const noexcept;
     void rebuild_state();
     void send_state(PeerId peer_id) const;
     void broadcast_state() const;

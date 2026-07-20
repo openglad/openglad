@@ -2,6 +2,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
@@ -1193,6 +1194,9 @@ og::sim::LobbyPlayer build_local_lobby_player(
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
+    // v8: every seat of this machine advertises the active company's display
+    // name (SaveData::save_name; <= 40 chars by construction).
+    player.company = save.save_name;
     player.team = local_team;
     player.ready = false;
     player.is_host = false;
@@ -1209,6 +1213,9 @@ og::sim::LobbyPlayer build_local_lobby_player(
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
             .character = make_lobby_character_data(*member),
+            // v8: mission-roster selection rides the slot, stamped from the
+            // save guy's v14 deploy flag.
+            .deployed = member->deployed,
         });
     }
 
@@ -1329,6 +1336,12 @@ std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
              slot_order < player.character_slots.size();
              ++slot_order)
         {
+            // §4.2: the joiner mirror materializes only DEPLOYED slots,
+            // filtered BEFORE densification — must match
+            // LobbyServer::build_save_data_equivalent exactly (host and
+            // joiner derive the same in-level roster from the same state).
+            if (!player.character_slots[slot_order].deployed)
+                continue;
             ordered_slots.push_back(OrderedLobbySlot{
                 .slot_index = player.character_slots[slot_order].slot_index,
                 .player_order = player_index,
@@ -1418,6 +1431,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.respawn_mode = state.settings.respawn_mode;
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    equivalent.cross_control = state.settings.cross_control;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1438,13 +1452,27 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     return equivalent;
 }
 
-void apply_lobby_state_to_save(const og::sim::LobbyState& state,
-                               SaveData& save,
-                               bool spectator_mode,
-                               short local_team,
-                               std::size_t local_player_count = 1,
-                               std::string_view local_player_name = {})
+// What applying an authoritative lobby state changed on the PRIVATE save.
+// deploy_flags_adopted counts own-seat deploy flags overwritten by the echo
+// ([NET-F2] reconciliation); deploy_benched is the subset that flipped
+// deployed -> benched (the server's 24-cap force-undeploy). The caller
+// autosaves via the §3.8 merge path when adopted > 0 so the machine's next
+// join is content-identical (ready survives the convergence loop).
+struct LobbyStateApplyResult
 {
+    int deploy_flags_adopted = 0;
+    int deploy_benched = 0;
+};
+
+LobbyStateApplyResult apply_lobby_state_to_save(
+    const og::sim::LobbyState& state,
+    SaveData& save,
+    bool spectator_mode,
+    short local_team,
+    std::size_t local_player_count = 1,
+    std::string_view local_player_name = {})
+{
+    LobbyStateApplyResult result;
     save.current_campaign = state.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state.settings.campaign_id;
@@ -1459,6 +1487,7 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
     save.respawn_mode = state.settings.respawn_mode;
     save.generator_rate = state.settings.generator_rate;
     save.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    save.cross_control = state.settings.cross_control;
     save.numplayers = static_cast<unsigned char>(
         spectator_mode
             ? 0u
@@ -1490,6 +1519,18 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
                 }
                 save.team_list[private_slot]->teamnum =
                     static_cast<short>(seat->team);
+                // §4.2 [NET-F2] reconciliation: the server may have
+                // force-benched overflow slots (24-cap). Adopt the echoed
+                // authoritative deploy flag into the private roster so the
+                // machine's next join re-sends exactly what the server
+                // stored (content-identical ⇒ ready survives).
+                if (save.team_list[private_slot]->deployed != slot.deployed)
+                {
+                    save.team_list[private_slot]->deployed = slot.deployed;
+                    ++result.deploy_flags_adopted;
+                    if (!slot.deployed)
+                        ++result.deploy_benched;
+                }
             }
         }
     }
@@ -1499,6 +1540,27 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
         og::runtime::current_session->current_difficulty_ =
             static_cast<std::int32_t>(state.settings.difficulty);
     }
+
+    return result;
+}
+
+// §4.2 [NET-F2] second half of the convergence loop: once an echo's deploy
+// flags were adopted into the private roster, persist them through the §3.8
+// networked MERGE autosave (owner-preserving; never clobber-creates) so the
+// reconciled selection survives a restart and the machine's next join is
+// content-identical with the server's stored seats. The visible
+// "DEPLOY LIMIT 24 — N BENCHED" popup is WP4's; trace-only under TESTING.
+void persist_deploy_reconciliation(SaveData& save,
+                                   const LobbyStateApplyResult& applied)
+{
+    if (applied.deploy_flags_adopted == 0)
+        return;
+    TRACE("lobby", "deploy_reconcile adopted=%d benched=%d",
+          applied.deploy_flags_adopted, applied.deploy_benched);
+    if (applied.deploy_benched > 0)
+        TRACE("lobby", "deploy_limit_benched n=%d", applied.deploy_benched);
+    (void)og::ui::company_autosave_after_mutation(
+        save, /*networked_lobby_active=*/true);
 }
 
 void send_lobby_message(og::sim::ITransport& transport,
@@ -1574,6 +1636,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.cross_control = save.cross_control;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -2168,6 +2231,34 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           applied_save.team_list[0] != nullptr &&
           applied_save.team_list[0]->name == "Private");
 
+    // §4.2 [NET-F2] reconciliation: an echo whose own-seat deploy flag
+    // differs adopts the server's flag into the private roster and reports
+    // it (benched counted separately); a flag-identical re-apply reports
+    // nothing (the convergence loop terminates). Benched slots also drop
+    // out of the joiner-mirror equivalent (assembly filter).
+    og::sim::LobbyState benched_state = state;
+    for (og::sim::LobbyPlayer& benched_player : benched_state.players)
+    {
+        if (benched_player.name == "local-player")
+            benched_player.character_slots[0].deployed = false;
+    }
+    check(applied_save.team_list[0]->deployed);
+    const LobbyStateApplyResult reconciled = apply_lobby_state_to_save(
+        benched_state, applied_save, true, 4, 1u, "local-player");
+    check(reconciled.deploy_flags_adopted == 1 &&
+          reconciled.deploy_benched == 1 &&
+          applied_save.team_list[0] != nullptr &&
+          !applied_save.team_list[0]->deployed);
+    const LobbyStateApplyResult reconciled_again = apply_lobby_state_to_save(
+        benched_state, applied_save, true, 4, 1u, "local-player");
+    check(reconciled_again.deploy_flags_adopted == 0 &&
+          reconciled_again.deploy_benched == 0);
+    const auto benched_equivalent =
+        build_save_data_equivalent_from_state(benched_state, false);
+    check(benched_equivalent.team_list.size() == 1 &&
+          benched_equivalent.team_list[0].owner_player_index == 2);
+    applied_save.team_list[0]->deployed = true;
+
     class RawTransport final : public og::sim::ITransport {
     public:
         std::vector<og::sim::ReceivedMessage> incoming;
@@ -2585,6 +2676,13 @@ public:
             player_bindings_ = server_->build_player_bindings();
             pending_game_start_config_ = build_game_start_config();
         }
+        else if (!g_start_game_requested)
+        {
+            // §4.3 denial: the server echoed last_start_denial without locking
+            // the lobby. Drop the pending flag so the go_menu poll loop stops
+            // spinning to timeout; the reason is read via last_start_denial().
+            start_request_pending_ = false;
+        }
         return g_start_game_requested;
     }
 
@@ -2705,6 +2803,15 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        if (!state_.has_value())
+            return og::sim::StartDenialReason::None;
+        return static_cast<og::sim::StartDenialReason>(
+            state_->last_start_denial);
     }
 
     [[nodiscard]] bool is_networked_session() const noexcept override
@@ -2888,13 +2995,15 @@ private:
                 local_player_count_ = static_cast<int>(local_seats.size());
         }
 
-        og::ui::detail::apply_lobby_state_to_save(
-            *state_,
-            *save,
-            spectator_mode_,
-            local_team_,
-            static_cast<std::size_t>(std::max(local_player_count_, 0)),
-            player_name_);
+        const og::ui::detail::LobbyStateApplyResult applied =
+            og::ui::detail::apply_lobby_state_to_save(
+                *state_,
+                *save,
+                spectator_mode_,
+                local_team_,
+                static_cast<std::size_t>(std::max(local_player_count_, 0)),
+                player_name_);
+        og::ui::detail::persist_deploy_reconciliation(*save, applied);
     }
 
     void rebuild_status_lines()
@@ -3069,6 +3178,11 @@ public:
         if (transport_->connected_peers().empty())
         {
             join_message_sent_ = false;
+            // A pending start request can never resolve on a dead connection
+            // (neither the StartGame handoff nor the denial echo will arrive);
+            // release it so go_menu's wait loop gives up instead of spinning
+            // forever, and the user can retry after the reconnect.
+            start_request_pending_ = false;
             rebuild_status_lines();
             return;
         }
@@ -3115,6 +3229,11 @@ public:
 
         pending_game_start_config_.reset();
         start_request_pending_ = true;
+        // Mirror the server's [NET-R4] clear-on-next-StartGame in the CACHED
+        // state: a denial left over from a PREVIOUS attempt must not be read
+        // as this request's verdict (a fresh echo re-sets it if denied again).
+        state_->last_start_denial = og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::None);
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyStartGameMessage{
@@ -3125,6 +3244,13 @@ public:
             server_peer_id_,
             std::move(message));
 
+        // Over real sockets the verdict is usually ASYNC: the accept arrives
+        // as a StartGame message, a denial as a later denial-bearing
+        // LobbyState echo — BOTH are resolved inside handle_typed_message
+        // (which drops start_request_pending_ on a denial so go_menu's
+        // timeout-less wait loop can exit and surface last_start_denial()).
+        // This poll only catches a same-call reply when the echo is already
+        // queued (e.g. localhost loopback).
         poll_and_apply();
         if (g_start_game_requested)
             pending_game_start_config_ = build_game_start_config();
@@ -3278,6 +3404,15 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        if (!state_.has_value())
+            return og::sim::StartDenialReason::None;
+        return static_cast<og::sim::StartDenialReason>(
+            state_->last_start_denial);
     }
 
     [[nodiscard]] bool is_networked_session() const noexcept override
@@ -3436,6 +3571,25 @@ private:
             {
                 ++lobby_states_received_;
                 state_ = *message.lobby_state;
+                // §4.3 [NET-R3] ASYNC denial resolution: a denied StartGame is
+                // answered by a denial-bearing LobbyState echo and NO StartGame
+                // message will ever follow it, so an outstanding request must
+                // be released HERE — otherwise go_menu's timeout-less
+                // `while (pending) poll` wait blocks forever on the
+                // dedicated-server ELECTED host and the relay host (the
+                // in-process direct host resolves synchronously and never
+                // needs this). The cached denial was cleared when the request
+                // was sent, so a non-None value here is this request's fresh
+                // verdict (modulo a still-in-flight pre-request echo — a
+                // transient wrong reason at worst; an accepted start still
+                // lands via the StartGame handoff below).
+                if (start_request_pending_ &&
+                    state_->last_start_denial !=
+                        og::sim::start_denial_reason_value(
+                            og::sim::StartDenialReason::None))
+                {
+                    start_request_pending_ = false;
+                }
                 const std::vector<const og::sim::LobbyPlayer*> local_seats =
                     og::ui::detail::find_local_seats(*state_, player_name_);
                 if (!local_seats.empty())
@@ -3532,13 +3686,17 @@ private:
             applied_state = &*pending_merged_state;
         }
 
-        og::ui::detail::apply_lobby_state_to_save(
-            *applied_state,
-            *save,
-            spectator_mode_,
-            local_team_,
-            static_cast<std::size_t>(std::max(local_player_count_, 0)),
-            player_name_);
+        const og::ui::detail::LobbyStateApplyResult applied =
+            og::ui::detail::apply_lobby_state_to_save(
+                *applied_state,
+                *save,
+                spectator_mode_,
+                local_team_,
+                static_cast<std::size_t>(std::max(local_player_count_, 0)),
+                player_name_);
+        // A pending-merged state mirrors this machine's own optimistic
+        // seats, so adoption can only fire off a REAL server echo.
+        og::ui::detail::persist_deploy_reconciliation(*save, applied);
     }
 
     void rebuild_status_lines()

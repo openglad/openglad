@@ -18,6 +18,9 @@
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_network.h>
+#include <openglad/platform/curses/curses_game_runtime.h>
+#include <openglad/platform/curses/curses_input.h>
+#include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/platform/curses/headless_terminal.h>
 #include <openglad/platform/curses/clock.h>
 
@@ -28,10 +31,13 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -54,6 +60,8 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                            std::uint32_t pinned_team0_score);
 } // namespace og::curses
 
 namespace {
@@ -86,6 +94,24 @@ std::map<std::uint32_t, std::pair<int, int>> entity_positions(const GameWorld& w
         out[e->entity_id()] = {e->xpos(), e->ypos()};
     }
     return out;
+}
+
+// §4.3 ready gate: the host's start is denied until every non-host machine is
+// ready. Ready the joiner and drive both sides until the host's roster reflects
+// it, so a subsequent host GO is accepted.
+void ready_curses_joiner(CursesLobby& host_lobby, CursesLobby& join_lobby,
+                         HeadlessTerminal& host_term, HeadlessTerminal& join_term,
+                         FakeClock& clock)
+{
+    (void)join_lobby.set_ready(true);
+    for (int i = 0; i < 200; ++i) {
+        host_lobby.poll(host_term, clock);
+        join_lobby.poll(join_term, clock);
+        for (const og::sim::LobbyPlayer& player : host_lobby.players()) {
+            if (!player.is_host && player.ready)
+                return;
+        }
+    }
 }
 
 // Run the lobby handshake to a start over the shared in-process transport, then
@@ -135,6 +161,10 @@ StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
                        return false;
                    }();
     }
+
+    // §4.3 ready gate: the joiner must be ready before the host may start.
+    ready_curses_joiner(*game.host_lobby, *game.join_lobby, host_term, join_term,
+                        clock);
 
     // Host requests start, then both poll until the start is negotiated and the
     // sessions are ready.
@@ -420,6 +450,239 @@ TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
     EXPECT_GT(matched, 0) << "at least one entity should be mirrored on both sides";
 }
 
+// §4.2 deploy filter over the curses stack: a benched host member never
+// enters the level — the host's build_save_data_equivalent and the joiner's
+// build_join_save_equivalent apply the SAME filter, so both mirrors converge
+// on a world without the benched character.
+TEST(CursesNetwork, benched_member_never_enters_the_level)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    // Second host member, BENCHED: replicates in the lobby, filtered from
+    // the match assembly.
+    host_save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    host_save.team_list[1]->name = "Reserve";
+    host_save.team_list[1]->teamnum = 0;
+    host_save.team_list[1]->deployed = false;
+    host_save.team_size = 2;
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    const auto count_heroes = [](const GameWorld& world,
+                                 int& reserve_count) {
+        int heroes = 0;
+        reserve_count = 0;
+        for (const auto& up : world.oblist) {
+            const walker* e = up.get();
+            if (e == nullptr || e->dead() || e->myguy == nullptr)
+                continue;
+            ++heroes;
+            if (e->myguy->name == "Reserve")
+                ++reserve_count;
+        }
+        return heroes;
+    };
+
+    int host_reserve = 0;
+    int join_reserve = 0;
+    const int host_heroes =
+        count_heroes(game.host_session->mirror_world(), host_reserve);
+    const int join_heroes =
+        count_heroes(game.join_session->mirror_world(), join_reserve);
+    EXPECT_EQ(2, host_heroes)
+        << "only the two deployed heroes spawn (host mirror)";
+    EXPECT_EQ(2, join_heroes)
+        << "only the two deployed heroes spawn (join mirror)";
+    EXPECT_EQ(0, host_reserve) << "the benched member must not spawn";
+    EXPECT_EQ(0, join_reserve) << "the benched member must not spawn";
+
+    // The benched member is still in the host's save, flag intact.
+    ASSERT_NE(nullptr, host_save.team_list[1]);
+    EXPECT_FALSE(host_save.team_list[1]->deployed);
+    EXPECT_EQ("Reserve", host_save.team_list[1]->name);
+}
+
+// §4.6/§4.8 "curses share persists": a WON networked curses session banks
+// baseline + this machine's deploy-ratio SHARE into the active-company slot
+// on disk, through the exact production call (run_level_loop ends the level
+// and invokes commit_result_to_save -> persist_curses_networked_win). Allied
+// co-op puts BOTH machines' heroes on money team 0 (owners 0 and 1, one
+// deployed character each), so the pot splits 2 ways with the remainder going
+// to the lowest player index (the host) — and the two shares CONSERVE to
+// exactly the whole pot on the (process-shared) save0 file.
+TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
+{
+    namespace fs = std::filesystem;
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the suite listener must have restored the default slot";
+
+    // save0 hygiene (the test_curses_game_runtime precedent): preserve any
+    // prior slot file and restore it on exit so this test cannot leak state
+    // into later tests under --gtest_shuffle.
+    const fs::path save0_path =
+        fs::path(get_user_path()) / "save" / "save0.gtl";
+    std::error_code ec;
+    fs::create_directories(save0_path.parent_path(), ec);
+    const bool had_save0 = fs::exists(save0_path, ec);
+    if (had_save0)
+        fs::copy_file(save0_path, save0_path.string() + ".netwinbak",
+                      fs::copy_options::overwrite_existing, ec);
+    struct RestoreGuard {
+        fs::path save0_path;
+        bool had_save0;
+        ~RestoreGuard()
+        {
+            std::error_code ec2;
+            if (had_save0) {
+                fs::copy_file(save0_path.string() + ".netwinbak", save0_path,
+                              fs::copy_options::overwrite_existing, ec2);
+                fs::remove(save0_path.string() + ".netwinbak", ec2);
+            } else {
+                fs::remove(save0_path, ec2);
+            }
+        }
+    } restore{save0_path, had_save0};
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host Hero");
+    init_team_save(join_save, 1, FAMILY_ELF, "Join Hero");
+    // Allied mode is a HOST setting (the lobby settings ride the host save);
+    // in-level every hero folds to gameplay/money team 0.
+    host_save.allied_mode = 1;
+    // Distinct private save slots (host slot 0, joiner slot 1) so the two
+    // machines' roster merges land side by side in the shared save0 file.
+    join_save.team_list[1] = std::move(join_save.team_list[0]);
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr) << "allied host session should start";
+    ASSERT_NE(game.join_session, nullptr) << "allied join session should start";
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    // The company baseline this machine's shares are banked on top of. The
+    // merge overlays each machine's own PRE-SESSION slots, so the disk roster
+    // must (as in production) still hold the brought characters — seed stale
+    // copies at the two private slots for the win merges to overwrite.
+    SaveData base;
+    base.reset();
+    base.current_campaign = "org.openglad.gladiator";
+    base.scen_num = 1;
+    base.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    base.team_list[0]->name = "Stale Host";
+    base.team_list[0]->teamnum = 0;
+    base.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    base.team_list[1]->name = "Stale Join";
+    base.team_list[1]->teamnum = 1;
+    base.team_size = 2;
+    for (std::size_t team = 0; team < std::size(base.m_totalcash); ++team) {
+        base.m_totalcash[team] = 5000u + 100u * static_cast<std::uint32_t>(team);
+        base.m_totalscore[team] = 7000u + 100u * static_cast<std::uint32_t>(team);
+    }
+    ASSERT_TRUE(base.save("save0"));
+
+    // A mid-level commit is a NO-OP (the genuine-win gate): nothing banks
+    // before the level actually ends with a win.
+    game.host_session->commit_result_to_save();
+    {
+        SaveData untouched;
+        ASSERT_EQ(SaveDataIoError::None, untouched.load_with_error("save0"));
+        EXPECT_EQ(base.m_totalcash[0], untouched.m_totalcash[0])
+            << "an unfinished level must not bank any share";
+        EXPECT_EQ(1, static_cast<int>(untouched.scen_num));
+    }
+
+    // Force the deterministic win on the authoritative world: pin the pot
+    // (m_score[0] = 123 -> score delta 123, cash delta 246 + time bonus) and
+    // clear exits + foes, then pump until BOTH machines report the end.
+    const int slain =
+        curses_network_testing_force_server_win(*game.host_session, 123u);
+    ASSERT_GT(slain, 0) << "level 1 should contain foes to clear";
+    bool both_ended = false;
+    for (int round = 0; round < 400 && !both_ended; ++round) {
+        advance_all(*game.host_session, *game.join_session, 5);
+        both_ended =
+            game.host_session->ended() && game.join_session->ended();
+    }
+    ASSERT_TRUE(both_ended) << "the forced win must end both sessions";
+    EXPECT_EQ(0, game.host_session->ending()) << "a genuine win, not an abort";
+    EXPECT_EQ(0, game.join_session->ending());
+    EXPECT_EQ(2, game.host_session->next_level());
+
+    // HOST commit through the production loop tail: run_level_loop sees the
+    // ended session, breaks, and calls commit_result_to_save (the §4.6 curses
+    // share persist).
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    const GameRunResult host_result = run_level_loop(
+        *game.host_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(host_result.ended);
+    ASSERT_EQ(0, host_result.ending);
+
+    std::uint32_t host_cash_delta = 0;
+    {
+        SaveData after_host;
+        ASSERT_EQ(SaveDataIoError::None, after_host.load_with_error("save0"));
+        ASSERT_GE(after_host.m_totalcash[0], base.m_totalcash[0]);
+        host_cash_delta = after_host.m_totalcash[0] - base.m_totalcash[0];
+        // Two contributors, one each: score 123 splits 61/61 with the
+        // remainder to the LOWEST player index — the host (player 0) banks 62.
+        EXPECT_EQ(base.m_totalscore[0] + 62u, after_host.m_totalscore[0])
+            << "host score share = floor(123/2) + remainder";
+        for (std::size_t team = 1; team < std::size(after_host.m_totalcash);
+             ++team) {
+            EXPECT_EQ(base.m_totalcash[team], after_host.m_totalcash[team])
+                << "teams without contributors stay at the disk baseline";
+            EXPECT_EQ(base.m_totalscore[team], after_host.m_totalscore[team]);
+        }
+        EXPECT_EQ(2, static_cast<int>(after_host.scen_num))
+            << "the machine's own campaign cursor advances";
+        EXPECT_TRUE(after_host.is_level_completed(1))
+            << "a deployed machine earns completion credit (§4.7)";
+    }
+
+    // JOINER commit through the same production loop tail: banks ITS share on
+    // top of the (already host-credited) shared save0 file.
+    const GameRunResult join_result = run_level_loop(
+        *game.join_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(join_result.ended);
+    ASSERT_EQ(0, join_result.ending);
+
+    {
+        SaveData after_both;
+        ASSERT_EQ(SaveDataIoError::None, after_both.load_with_error("save0"));
+        const std::uint32_t total_cash_delta =
+            after_both.m_totalcash[0] - base.m_totalcash[0];
+        // §4.6 CONSERVATION: the two deploy-ratio shares sum to exactly the
+        // whole pot — never the v7 duplicated-pot overlay (which would have
+        // banked the full delta twice, or the session's absolute totals).
+        EXPECT_EQ(base.m_totalscore[0] + 123u, after_both.m_totalscore[0])
+            << "score shares conserve to the exact pinned pot";
+        EXPECT_GE(total_cash_delta, 246u)
+            << "cash pot = 2x score + first-win time bonus";
+        EXPECT_EQ(total_cash_delta - total_cash_delta / 2u, host_cash_delta)
+            << "host (lowest player index) banked the remainder half, the "
+               "joiner the floor half — the split conserves ONLY if both "
+               "machines sized the pot identically from the synced state";
+        // Both machines merged their own hero at its own private slot.
+        ASSERT_NE(nullptr, after_both.team_list[0]);
+        EXPECT_EQ("Host Hero", after_both.team_list[0]->name);
+        ASSERT_NE(nullptr, after_both.team_list[1]);
+        EXPECT_EQ("Join Hero", after_both.team_list[1]->name);
+        EXPECT_TRUE(after_both.is_level_completed(1));
+        EXPECT_EQ(2, static_cast<int>(after_both.scen_num));
+    }
+}
+
 TEST(CursesNetwork, both_players_follow_distinct_avatars)
 {
     SaveData host_save;
@@ -540,6 +803,9 @@ TEST(CursesNetwork, host_start_via_s_key)
         join_lobby->poll(join_term, clock);
     }
 
+    // §4.3: the joiner readies so the host's GO is accepted.
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+
     // Pressing 's' on the host terminal requests the start (no direct call).
     host_term.push_char(U's');
     bool host_started = false;
@@ -586,6 +852,9 @@ TEST(CursesNetwork, host_start_via_uppercase_s_and_enter)
             host_lobby->poll(host_term, clock);
             join_lobby->poll(join_term, clock);
         }
+
+        // §4.3: the joiner readies so the host's GO is accepted.
+        ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
 
         host_term.push_key(key);
         bool host_started = false;

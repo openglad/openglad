@@ -806,6 +806,10 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     // test_ctf_snapshot.cpp stay valid.
     append_i16(buffer, snapshot.respawn_mode);
     append_i16(buffer, snapshot.generator_rate);
+    // Snapshot v9: control policy + per-player machine map.
+    append_u8(buffer, snapshot.control_policy);
+    for (const std::uint8_t machine : snapshot.player_machine)
+        append_u8(buffer, machine);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -840,6 +844,9 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     deserialize_ctf_state(reader, snapshot);
     snapshot.respawn_mode = reader.read_i16("world.respawn_mode");
     snapshot.generator_rate = reader.read_i16("world.generator_rate");
+    snapshot.control_policy = reader.read_u8("world.control_policy");
+    for (std::uint8_t& machine : snapshot.player_machine)
+        machine = reader.read_u8("world.player_machine");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -2399,6 +2406,8 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     capture_ctf_state(world, snapshot);
     snapshot.respawn_mode = world.respawn_mode;
     snapshot.generator_rate = world.generator_rate;
+    snapshot.control_policy = world.control_policy;
+    snapshot.player_machine = world.player_machine;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -2845,6 +2854,8 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     apply_ctf_state(world, snapshot);
     world.respawn_mode = snapshot.respawn_mode;
     world.generator_rate = snapshot.generator_rate;
+    world.control_policy = snapshot.control_policy;
+    world.player_machine = snapshot.player_machine;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -2976,6 +2987,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
         delta.ctf_requested_strip_scenario_troops;
     baseline.respawn_mode = delta.respawn_mode;
     baseline.generator_rate = delta.generator_rate;
+    baseline.control_policy = delta.control_policy;
+    baseline.player_machine = delta.player_machine;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

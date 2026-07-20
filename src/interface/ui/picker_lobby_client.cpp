@@ -99,6 +99,12 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload. This
+    // copy default-deploys; the LOCAL round-trip rebuild overrides it from
+    // the slot right after (a benched member must survive the state sync —
+    // the local lobby echoes the machine's own roster, it is not the
+    // match-assembly filter).
+    result->deployed = true;
     return result;
 }
 
@@ -450,6 +456,7 @@ private:
         settings.respawn_mode = save.respawn_mode;
         settings.generator_rate = save.generator_rate;
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
+        settings.cross_control = save.cross_control;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -476,6 +483,9 @@ private:
 
             og::sim::LobbyPlayer player;
             player.name = peer.name;
+            // v8: every seat of one machine advertises the same active
+            // company display name (SaveData::save_name).
+            player.company = save.save_name;
             player.team = peer.team;
             player.ready = false;
             player.is_host = peer_index == 0;
@@ -489,6 +499,8 @@ private:
                 player.character_slots.push_back(og::sim::LobbyCharacterSlot{
                     .slot_index = static_cast<std::uint8_t>(slot_index),
                     .character = make_lobby_character_data(*member),
+                    // v8: stamped from the save guy's v14 deploy flag.
+                    .deployed = member->deployed,
                 });
             }
 
@@ -582,6 +594,7 @@ private:
         save.respawn_mode = state_->settings.respawn_mode;
         save.generator_rate = state_->settings.generator_rate;
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        save.cross_control = state_->settings.cross_control;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0
@@ -637,6 +650,12 @@ private:
 
             save.team_list[slot_index] =
                 make_guy_from_lobby_character(ordered_slots[index].slot->character);
+            // §4.2: preserve the slot's deploy flag through the round-trip —
+            // the local lobby state carries the machine's WHOLE roster
+            // (benched included) and this rebuild writes back into the real
+            // save, so re-deploying here would wipe a benched selection.
+            save.team_list[slot_index]->deployed =
+                ordered_slots[index].slot->deployed;
             save.team_size++;
         }
 
@@ -836,6 +855,13 @@ bool picker_lobby_local_ready()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->local_ready();
     return false;
+}
+
+og::sim::StartDenialReason picker_lobby_last_start_denial()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->last_start_denial();
+    return og::sim::StartDenialReason::None;
 }
 
 std::vector<og::sim::LobbyPlayer> picker_lobby_players()

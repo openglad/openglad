@@ -62,6 +62,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
+    // assembly only materializes deployed slots, so mark the guy explicitly.
+    result->deployed = true;
     return result;
 }
 
@@ -154,6 +157,15 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
     for (const auto& member : save.team_list)
     {
         if (!member)
+            continue;
+
+        // §4.2: benched (deployed == false) members stay in the save's
+        // roster but never enter the level. Networked rosters arrive
+        // pre-filtered (the lobby equivalent drops benched slots and its guy
+        // copies re-deploy), so this guard is the LOCAL session's assembly
+        // filter — the local equivalent deliberately keeps benched members
+        // so the active-company seed never loses them from the save file.
+        if (!member->deployed)
             continue;
 
         walker* const created = create_team_walker(world, *member);
@@ -251,23 +263,9 @@ std::uint32_t calculate_headless_time_bonus(const GameWorld& world,
                                             const SaveData& save,
                                             int player_index)
 {
-    if (player_index > 0)
-        return 0;
-
-    const std::uint32_t frames = world.level_tick_count();
-    const std::uint32_t time_limit =
-        world.time_bonus_limit > 0
-            ? static_cast<std::uint32_t>(world.time_bonus_limit)
-            : 0U;
-    if (time_limit == 0 || frames >= time_limit)
-        return 0;
-
-    const float multiplier =
-        (1.0f + static_cast<float>(world.par_value) / 10.0f) *
-        (static_cast<float>(time_limit - frames) /
-         static_cast<float>(time_limit));
-    return static_cast<std::uint32_t>(
-        static_cast<float>(save.m_score[player_index]) * multiplier);
+    // Single-sourced with the SDL results / curses networked persist through
+    // the shared og_resources helper so every machine sizes the same pot.
+    return og::progression::calculate_win_time_bonus(world, save, player_index);
 }
 
 void prepare_world_for_gameplay(LevelRuntimeData& level_data,
@@ -310,6 +308,10 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.ctf_capture_limit = source.ctf_capture_limit;
     destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
     destination.ctf_strip_scenario_troops = source.ctf_strip_scenario_troops;
+    // Cross-control (protocol v8): session-only match setting; must survive
+    // the server/checkpoint copies like the other lobby-negotiated settings
+    // (the documented dropped-field bug class, design §4.1).
+    destination.cross_control = source.cross_control;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
@@ -352,6 +354,7 @@ void apply_headless_lobby_game_start_config(
     save.respawn_mode = static_cast<short>(config_save.respawn_mode);
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
+    save.cross_control = static_cast<short>(config_save.cross_control);
     save.my_team = 0;
 
     for (auto& member : save.team_list)

@@ -2172,6 +2172,69 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
     save.allied_mode = orig_allied;
 }
 
+// §4.2: the LOCAL lobby round-trips the machine's own roster through the
+// lobby state on every sync. A benched member must survive that round-trip
+// (flag intact, never force-redeployed, never dropped) and must still ride
+// the game-start equivalent — the local start path seeds the real company
+// save from it, so dropping benched members would be save data loss. The
+// local benched member is kept OUT of the level at spawn time instead.
+TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Stash what this test mutates.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Front";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Reserve";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        // Drive a second sync (what the picker loop does every frame): the
+        // round-trip rebuild must keep the benched member benched.
+        client->sync_roster_from_save();
+
+        ASSERT_NE(nullptr, save.team_list[0]);
+        ASSERT_NE(nullptr, save.team_list[1]);
+        EXPECT_TRUE(save.team_list[0]->deployed);
+        EXPECT_FALSE(save.team_list[1]->deployed)
+            << "the lobby echo must not force-redeploy a benched member";
+        EXPECT_EQ("Reserve", save.team_list[1]->name);
+
+        const auto config = client->build_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        ASSERT_EQ(2u, config->save_data.team_list.size())
+            << "the LOCAL equivalent keeps benched slots (save-seed safety)";
+        EXPECT_TRUE(config->save_data.team_list[0].deployed);
+        EXPECT_FALSE(config->save_data.team_list[1].deployed);
+        client->shutdown();
+    }
+
+    // Restore.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
 // ---------------------------------------------------------------------------
 // Sprite sheet picker tests
 // ---------------------------------------------------------------------------
