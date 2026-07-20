@@ -13,6 +13,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -143,13 +144,11 @@ SimInputResult sim_process_player_input(
     }
     if (!control || control->dead())
     {
-        control = sim_find_next_control(level, my_team);
-        if (!control)
-        {
-            result.endgame_requested = true;
-            result.endgame_type = 1;
+        // §4.4 site 2 (death auto-switch / entry claim): Follow ⇒ null seat,
+        // NO endgame request (server broadcasts ControlChange entity 0);
+        // EndGame ⇒ today's result fields; Claimed ⇒ today's claim tail.
+        if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
-        }
         if (control->user() == -1)
             control->set_user(static_cast<signed char>(player_num));
         control->set_act_type(ACT_CONTROL);
@@ -180,7 +179,7 @@ SimInputResult sim_process_player_input(
         }
         control = nullptr;
 
-        auto filter = [oldcontrol, my_team](const walker* w) {
+        auto filter = [&level, oldcontrol, my_team, player_num](const walker* w) {
             // Never hand control to a dead or dormant (delayed-spawn) ally:
             // dormant walkers are invisible, out of the obmap, skipped by the
             // act phase, and excluded from snapshots, so selecting one strands
@@ -188,7 +187,8 @@ SimInputResult sim_process_player_input(
             return !w->dead() && !w->dormant() &&
                    w->query_order() == Order::Living &&
                    w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                   w->real_team_num() == 255 && w->user() == -1;
+                   w->real_team_num() == 255 && w->user() == -1 &&
+                   og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
         };
         control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
 

@@ -1341,8 +1341,35 @@ void viewscreen::process_input(const InputState& input_state)
 {
 	const PlayerInput& pi = input_state.players[mynum];
 
+	// §4.5 networked follow camera. When the networked transport shadow is
+	// installed, a follow-engaged view (0-deploy, all-dead, spectator — the
+	// shadow stamps following_ on every control re-sync) owns the SwitchChar
+	// edge and cycles its watched target through the runtime's follow state,
+	// which survives the per-snapshot control re-sync. [NET-F1]: the legacy
+	// spectator block below is gated OFF for networked sessions — it would
+	// consume the edge, claim a camera target directly on the mirror, and
+	// RETURN before the shadow guard, only for the next snapshot sync to
+	// stomp the choice within the frame. It remains for non-networked
+	// spectators (demo/local) unchanged. The same key still rides the
+	// InputMessage; the server ignores it for null seats.
+	const bool networked_shadow =
+	    og::runtime::current_session != nullptr &&
+	    og::runtime::current_session->networked_session_ &&
+	    og::runtime::local_transport_active(*og::runtime::current_session);
+	if (networked_shadow)
+	{
+		if (!pi.was_pressed(InputAction::SwitchChar))
+			g_viewscreen_debounce[mynum].changedchar = 0;
+		else if (following_ && !g_viewscreen_debounce[mynum].changedchar)
+		{
+			g_viewscreen_debounce[mynum].changedchar = 1;
+			og::runtime::display_follow_cycle_target(
+			    *og::runtime::current_session, mynum,
+			    pi.is_held(InputAction::Shift));
+		}
+	}
 	// --- Spectator mode: only allow switching the camera target ---
-	if (og::ui::is_spectator_mode(active_screen()->save_data))
+	else if (og::ui::is_spectator_mode(active_screen()->save_data))
 	{
 		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
 		if (!pi.was_pressed(InputAction::SwitchChar))

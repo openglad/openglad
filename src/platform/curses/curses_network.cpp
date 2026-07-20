@@ -29,6 +29,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -39,6 +40,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -67,6 +69,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -292,6 +295,99 @@ std::uint32_t resolve_followed_entity_id(const og::sim::GameClient& client,
     return 0;
 }
 
+// §4.5 follow camera for a networked curses peer — the curses parity of the
+// SDL DisplayFollowState. Engaged while the local seat has no controllable
+// walker (0-deploy, all-dead, spectator); the seat's SwitchChar binding
+// cycles the watched target (Shift = reverse) through the shared
+// og::sim follow-target selectors, so a curses peer picks the same targets
+// an SDL peer would. Camera-only: never stamps user tags.
+struct CursesFollowState {
+    bool engaged = false;
+    std::uint32_t target_entity_id = 0;
+};
+
+// Per-frame maintenance, run after the mirror poll: engage when the legacy
+// resolution has nothing (no live mapped walker, no user-tagged fallback)
+// and no respawn-pending corpse holds the "(spectating)" countdown view;
+// disengage the moment the seat resolves again; auto-advance a
+// dead/unresolved target.
+void maintain_curses_follow(CursesFollowState& follow,
+                            const og::sim::GameClient& client,
+                            GameWorld& mirror,
+                            std::size_t local_player_index)
+{
+    if (resolve_followed_entity_id(client, mirror, local_player_index) != 0) {
+        follow = {};
+        return;
+    }
+
+    // A dead own corpse with a pending revive entry keeps today's
+    // "(spectating)" respawn-countdown shape instead of engaging.
+    if (((mirror.type & GameWorld::TYPE_CTF) && mirror.ctf.active) ||
+        og::sim::classic_respawn_active(mirror)) {
+        for (const auto& up : mirror.oblist) {
+            const walker* w = up.get();
+            if (w && w->dead() && w->myguy != nullptr &&
+                w->user() == static_cast<int>(local_player_index) &&
+                og::sim::ctf_pending_player_respawn(mirror.ctf,
+                                                    w->entity_id())) {
+                follow = {};
+                return;
+            }
+        }
+    }
+
+    if (!follow.engaged) {
+        follow.engaged = true;
+        follow.target_entity_id = og::sim::default_follow_target_id(
+            mirror, client.controlled_entity_ids());
+        return;
+    }
+
+    walker* const target = follow.target_entity_id != 0
+        ? mirror.find_by_id(follow.target_entity_id)
+        : nullptr;
+    if (target == nullptr) {
+        follow.target_entity_id = og::sim::default_follow_target_id(
+            mirror, client.controlled_entity_ids());
+    } else if (target->dead()) {
+        follow.target_entity_id =
+            og::sim::next_follow_target_id(mirror, target, false);
+    }
+}
+
+// SwitchChar press-edge cycles the watched target. The same input still
+// rides to the server, which ignores it for a null seat (harmless dual
+// consumption, matching the SDL client).
+void handle_curses_follow_input(CursesFollowState& follow,
+                                const InputState& input, GameWorld& mirror)
+{
+    if (!follow.engaged ||
+        !input.players[0].was_pressed(InputAction::SwitchChar))
+        return;
+    walker* const current = follow.target_entity_id != 0
+        ? mirror.find_by_id(follow.target_entity_id)
+        : nullptr;
+    follow.target_entity_id = og::sim::next_follow_target_id(
+        mirror, current, input.players[0].is_held(InputAction::Shift));
+}
+
+// followed_entity_id() resolution while engaged: the watched target when it
+// is still live, else the legacy resolution (maintenance re-targets on the
+// next advance).
+std::uint32_t follow_or_legacy_entity_id(const CursesFollowState& follow,
+                                         const og::sim::GameClient& client,
+                                         const GameWorld& mirror,
+                                         std::size_t local_player_index)
+{
+    if (follow.engaged && follow.target_entity_id != 0) {
+        if (const walker* w = mirror.find_by_id(follow.target_entity_id);
+            w != nullptr && !w->dead())
+            return follow.target_entity_id;
+    }
+    return resolve_followed_entity_id(client, mirror, local_player_index);
+}
+
 // Decode lobby traffic regardless of whether the transport speaks typed messages
 // (in-process) or raw envelopes (WebSocket / relay).
 std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
@@ -407,6 +503,7 @@ public:
 
     void send_input(const InputState& input) override
     {
+        handle_curses_follow_input(follow_, input, client_level_->world());
         pending_input_ = input;
         have_input_ = true;
     }
@@ -422,15 +519,20 @@ public:
         server_->step();
         current_game = &client_ctx_;
         client_->poll_messages();
+        maintain_curses_follow(follow_, *client_, client_level_->world(),
+                               local_player_index_);
     }
 
     GameWorld& mirror_world() override { return client_level_->world(); }
 
     std::uint32_t followed_entity_id() const override
     {
-        return resolve_followed_entity_id(*client_, client_level_->world(),
+        return follow_or_legacy_entity_id(follow_, *client_,
+                                          client_level_->world(),
                                           local_player_index_);
     }
+
+    bool follow_engaged() const override { return follow_.engaged; }
 
     std::uint32_t next_input_tick() const override
     {
@@ -552,6 +654,30 @@ public:
         current_game = saved;
         return slain;
     }
+
+    // Kill every living walker on `team` in the AUTHORITATIVE server world
+    // (§4.5 follow tests). With the whole team gone the seat's
+    // death-reacquire finds nothing claimable; while another bound team
+    // stays alive the wipe is suppressed, the seat goes null, and the
+    // mirror's follow camera engages. Returns the number of walkers slain.
+    int clear_server_team_for_testing(short team)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        int slain = 0;
+        for (auto& uptr : world.oblist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Living &&
+                static_cast<short>(w->team_num()) == team) {
+                w->set_dead(1);
+                ++slain;
+            }
+        }
+        current_game = saved;
+        return slain;
+    }
 #endif
 
 private:
@@ -582,6 +708,7 @@ private:
     og::sim::PeerId host_peer_id_ = 0;
     std::unique_ptr<og::sim::GameClient> client_;
     std::size_t local_player_index_ = 0;
+    CursesFollowState follow_;
 
     GameplayContext* saved_game_ = nullptr;
     PendingEnd pending_end_;
@@ -641,6 +768,17 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
         current_game = s->saved_game_;
         return set_error("failed to load level for host game");
     }
+
+    // §4.4 control-policy install: derive owner-locked from the negotiated
+    // lobby config (session-only cross_control rides the equivalent, never a
+    // disk round-trip) and stamp the machine map BEFORE bind_player scans run
+    // below; snapshot v9 replicates both scalars to every mirror, including
+    // the host's own.
+    og::sim::install_control_policy(sw,
+                                    /*networked=*/true,
+                                    s->server_save_.cross_control != 0,
+                                    bindings,
+                                    s->server_save_.team_list);
 
     // --- Client mirror world: load the same level (grid + smoother) ---
     s->client_level_ = std::make_unique<LevelRuntimeData>(
@@ -739,6 +877,7 @@ public:
     void send_input(const InputState& input) override
     {
         current_game = &client_ctx_;
+        handle_curses_follow_input(follow_, input, client_level_->world());
         client_->send_input(input, client_level_->world().tick_count_ + 1);
     }
 
@@ -746,15 +885,20 @@ public:
     {
         current_game = &client_ctx_;
         client_->poll_messages();
+        maintain_curses_follow(follow_, *client_, client_level_->world(),
+                               local_player_index_);
     }
 
     GameWorld& mirror_world() override { return client_level_->world(); }
 
     std::uint32_t followed_entity_id() const override
     {
-        return resolve_followed_entity_id(*client_, client_level_->world(),
+        return follow_or_legacy_entity_id(follow_, *client_,
+                                          client_level_->world(),
                                           local_player_index_);
     }
+
+    bool follow_engaged() const override { return follow_.engaged; }
 
     std::uint32_t next_input_tick() const override
     {
@@ -806,6 +950,7 @@ private:
     std::shared_ptr<og::sim::ITransport> transport_;
     std::unique_ptr<og::sim::GameClient> client_;
     std::size_t local_player_index_ = 0;
+    CursesFollowState follow_;
 
     GameplayContext* saved_game_ = nullptr;
     PendingEnd pending_end_;
@@ -1884,6 +2029,15 @@ int curses_network_testing_force_server_win(CursesGameSession& session,
     if (host == nullptr)
         return -1;
     return host->force_server_win_for_testing(pinned_team0_score);
+}
+
+int curses_network_testing_clear_server_team(CursesGameSession& session,
+                                             short team)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return -1;
+    return host->clear_server_team_for_testing(team);
 }
 #endif
 

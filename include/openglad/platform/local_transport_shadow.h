@@ -11,6 +11,8 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
+#include <utility>
 #include <vector>
 
 struct InputState;
@@ -32,6 +34,18 @@ struct LocalSeatBinding {
     short team = 0;
 };
 
+// §4.5 follow camera: per-view watched-target state for a networked machine
+// with no controllable walker (0-deploy, all-dead, spectator). Client-side
+// only — the server's whole contribution is the null seat (ControlChange
+// entity 0). Lives on the local transport runtime so the per-snapshot
+// control re-sync cannot stomp the player's choice, and is honored by
+// select_control_for_view BEFORE the mapped-entity branch, so the mapped
+// user-tag stamp never runs for a follow target ([NET-R6] no local stamps).
+struct DisplayFollowState {
+    bool engaged = false;
+    std::uint32_t target_entity_id = 0;
+};
+
 bool local_transport_active(const SessionState& session) noexcept;
 std::size_t local_transport_client_count(const GameSession& session) noexcept;
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept;
@@ -43,7 +57,21 @@ walker* select_control_for_view(
     viewscreen* view,
     std::span<const std::uint32_t> controlled_entity_ids,
     GameWorld* world,
-    std::optional<std::size_t> player_index = std::nullopt);
+    std::optional<std::size_t> player_index = std::nullopt,
+    const DisplayFollowState* follow = nullptr);
+
+// §4.5 follow engagement/maintenance for one view, run by
+// sync_display_controls BEFORE select_control_for_view honors the state
+// (exposed for tests). Engagement: the view's seat maps to entity 0 (or it
+// has no seat) AND no respawn-retained corpse holds the camera. A live
+// mapped walker disengages; a dead/unresolved target auto-advances to the
+// next eligible one (0 = static camera).
+void update_display_view_follow(
+    DisplayFollowState& follow,
+    viewscreen* view,
+    std::optional<std::size_t> player_index,
+    std::span<const std::uint32_t> controlled_entity_ids,
+    GameWorld* world);
 
 // Networked "as if played alone" persist: merge only the characters owned by
 // this machine's own seat(s), plus those seats' post-win team cash/score totals,
@@ -111,6 +139,14 @@ void reset_network_client_transport_shadow(
     og::sim::PeerId server_peer_id,
     std::size_t local_player_index);
 void clear_local_transport_shadow(GameSession& session) noexcept;
+// §2.8 follow caption: per-global-player-index company display names from
+// the lobby state, stamped onto the installed runtime right after a
+// networked install so the follow caption can name a followed hero's owning
+// machine. Unknown indices stay empty (AI targets render name-only).
+// Consumption-only — nothing new rides the wire.
+void local_transport_shadow_set_player_companies(
+    GameSession& session,
+    std::span<const std::pair<std::uint8_t, std::string>> companies);
 bool local_transport_shadow_toggle_pause(GameSession& session);
 // Abort the current mission. Host / local play ends it authoritatively and
 // returns true. A networked client instead asks the server to withdraw ALL

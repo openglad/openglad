@@ -3,6 +3,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
@@ -5252,6 +5253,14 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(0, host_save.team_list[0]->teamnum);
     EXPECT_EQ("Bravo", host_save.team_list[1]->name);
     EXPECT_EQ(0, host_save.team_list[1]->teamnum);
+    // Cross-control ON (§4.4): this test pins the DELIBERATE v7 shared-pool
+    // bind/switch semantics — the joiner's seat rides the host's Bravo and
+    // the host steals the joiner's Charlie — which survive only under the
+    // legacy policy. The host-only setting propagates through the lobby, and
+    // the install derives control_policy 0 from the game-start config (the
+    // owner-locked default would give every machine its own characters
+    // instead; that shape is pinned by the game-loop install e2e).
+    host_save.cross_control = 1;
     g_start_game_requested = false;
 
     og::ui::PickerHostGameOptions host_options;
@@ -5467,6 +5476,20 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(alpha_id, join_observation.alpha->entity_id());
     EXPECT_EQ(bravo_id, join_observation.bravo->entity_id());
     EXPECT_EQ(charlie_id, join_observation.charlie->entity_id());
+
+    // Snapshot v9 consumption: the cross-control-ON install derives the
+    // LEGACY policy but still stamps the machine map, and both scalars reach
+    // each machine's display mirror over the real socket transports.
+    EXPECT_EQ(0, static_cast<int>(
+                     cleanup.host_session->myscreen_->world().control_policy));
+    EXPECT_EQ(0,
+              static_cast<int>(join_session.myscreen_->world().control_policy));
+    EXPECT_EQ(og::sim::encode_player_machine(0, true),
+              join_session.myscreen_->world().player_machine[0]);
+    EXPECT_EQ(og::sim::encode_player_machine(1, true),
+              join_session.myscreen_->world().player_machine[1]);
+    EXPECT_EQ(og::sim::kPlayerMachineNone,
+              join_session.myscreen_->world().player_machine[2]);
 
     ASSERT_EQ(host_observation.claimed_ids, host_observation.mapped_ids)
         << claim_mapping_details(*cleanup.host_session->myscreen_,

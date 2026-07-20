@@ -313,6 +313,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
     ${SRC_DIR}/interface/sdl_context_services.cpp
@@ -449,6 +450,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -539,6 +541,7 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/gameplay/mapgen/builders.cpp
     ${SRC_DIR}/gameplay/mapgen/audits.cpp
@@ -1311,6 +1314,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
         ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
+        ${SRC_DIR}/gameplay/sim_control_policy.cpp
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
@@ -2564,6 +2568,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_network.cpp
         )
         if(TARGET og_platform_ws_transport)

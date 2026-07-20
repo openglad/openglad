@@ -10,6 +10,8 @@
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/sim_control_policy.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -141,6 +143,62 @@ void isolate_bound_players_on_team(NetworkTestFixture& fixture,
                 w->set_team_num(enemy_team);
         }
     });
+}
+
+// Stages the owner-locked networked-allied pair used by the §4.4 enforcement
+// tests: both bound heroes owner-tagged to their machines (player 0 =
+// machine 0, player 1 = machine 1, both deployed), the bound team isolated,
+// and one SPARE unclaimed hero owned by player 1 — the walker the legacy
+// shared pool WOULD hand player 0.
+struct OwnerLockedAlliedStage {
+    walker* hero0 = nullptr;
+    walker* hero1 = nullptr;
+    walker* spare = nullptr;
+};
+
+OwnerLockedAlliedStage stage_owner_locked_allied_pair(NetworkTestFixture& fixture)
+{
+    OwnerLockedAlliedStage stage;
+    stage.hero0 = fixture.server_control(0);
+    stage.hero1 = fixture.server_control(1);
+    if (stage.hero0 == nullptr || stage.hero1 == nullptr)
+        return stage;
+
+    const unsigned char bound_team = stage.hero0->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    fixture.with_server_context([&] {
+        fixture.server_world().allied_mode = 1;
+        stage.hero0->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        stage.hero0->myguy->id = 71;
+        stage.hero0->myguy->owner_player_index = 0;
+        stage.hero1->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+        stage.hero1->myguy->id = 72;
+        stage.hero1->myguy->owner_player_index = 1;
+    });
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 2);
+
+    fixture.with_server_context([&] {
+        stage.spare =
+            fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+        if (stage.spare != nullptr)
+        {
+            stage.spare->setxy(static_cast<short>(stage.hero1->xpos() + 32),
+                               static_cast<short>(stage.hero1->ypos()));
+            stage.spare->set_team_num(bound_team);
+            stage.spare->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            stage.spare->myguy->id = 73;
+            stage.spare->myguy->owner_player_index = 1;
+        }
+
+        std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+        machines.fill(og::sim::kPlayerMachineNone);
+        machines[0] = og::sim::encode_player_machine(0, true);
+        machines[1] = og::sim::encode_player_machine(1, true);
+        og::sim::set_control_policy(fixture.server_world(),
+                                    og::sim::kControlPolicyOwnerLocked,
+                                    machines);
+    });
+    return stage;
 }
 
 } // namespace
@@ -743,4 +801,256 @@ TEST(CtfNetwork, allied_claimed_teammate_alive_suppresses_endgame_seat_stays_nul
         << "the full wipe must stop the authoritative tick";
     EXPECT_EQ(1, fixture.server_world().ending)
         << "the full wipe must request the loss endgame";
+}
+
+// §4.4 site 2 policy-ON, server end to end: under owner-locked a dead
+// player's reacquire is DENIED a foreign machine's unclaimed hero — the seat
+// goes null (Follow: ControlChange entity 0, no world ending, tick keeps
+// running) and the refused hero is never stamped, where the legacy pool
+// would have claimed it. The [NET-F3] terminal keeps the wipe endgame
+// reachable once every bound-team living falls.
+TEST(CtfNetwork, owner_locked_death_rebind_follows_instead_of_claiming_foreign)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+
+    const OwnerLockedAlliedStage stage =
+        stage_owner_locked_allied_pair(fixture);
+    ASSERT_NE(nullptr, stage.hero0);
+    ASSERT_NE(nullptr, stage.hero1);
+    ASSERT_NE(nullptr, stage.spare);
+    const std::uint32_t id1 = stage.hero1->entity_id();
+    const unsigned char bound_team = stage.hero0->team_num();
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+
+    // Snapshot v9 replicates the policy scalars to every mirror.
+    EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+              fixture.client_world(0).control_policy);
+    EXPECT_EQ(fixture.server_world().player_machine,
+              fixture.client_world(1).player_machine);
+
+    // The legacy shared pool WOULD claim the spare for the bound team.
+    fixture.with_server_context([&] {
+        ASSERT_EQ(stage.spare,
+                  sim_find_next_control(fixture.server_world(),
+                                        static_cast<short>(bound_team)));
+    });
+
+    fixture.with_server_context([&] { stage.hero0->set_dead(1); });
+    const std::uint32_t tick_before = fixture.server_world().tick_count_;
+    fixture.step_ticks(6);
+    EXPECT_EQ(tick_before + 6, fixture.server_world().tick_count_)
+        << "a Follow seat must keep the authoritative tick running";
+    EXPECT_EQ(0, fixture.server_world().ending);
+    EXPECT_FALSE(fixture.server_world().game_ended);
+    EXPECT_EQ(nullptr, fixture.server_control(0))
+        << "owner-locked must NOT hand player 0 the foreign spare";
+    EXPECT_EQ(-1, stage.spare->user())
+        << "the refused hero is never stamped (its AI keeps running)";
+    EXPECT_EQ(0u, fixture.client(0).controlled_entity_ids()[0])
+        << "the ControlChange entity 0 must reach the mirror";
+    EXPECT_EQ(stage.hero1, fixture.server_control(1))
+        << "the owning player's claimed seat is untouched";
+    EXPECT_EQ(id1, fixture.client(0).controlled_entity_ids()[1]);
+    fixture.expect_clients_match_server();
+
+    // [NET-F3] terminal: the spare and the claimed teammate fall — the wipe
+    // endgame stays reachable from the Follow state.
+    fixture.with_server_context([&] {
+        stage.hero1->set_dead(1);
+        stage.spare->set_dead(1);
+    });
+    const std::uint32_t tick_at_wipe = fixture.server_world().tick_count_;
+    fixture.step_ticks(4);
+    EXPECT_EQ(tick_at_wipe, fixture.server_world().tick_count_)
+        << "the full wipe must stop the authoritative tick";
+    EXPECT_EQ(1, fixture.server_world().ending)
+        << "the full wipe must request the loss endgame";
+}
+
+// §4.4 site 1 policy-ON, server end to end ("a client claiming a foreign
+// walker is refused"): a SwitchChar InputMessage from the owning client
+// cannot cycle onto a foreign machine's hero — the server-side conjunction
+// filters it and the seat falls back to its own walker.
+TEST(CtfNetwork, owner_locked_switch_char_input_cannot_claim_foreign_hero)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+
+    const OwnerLockedAlliedStage stage =
+        stage_owner_locked_allied_pair(fixture);
+    ASSERT_NE(nullptr, stage.hero0);
+    ASSERT_NE(nullptr, stage.spare);
+    const std::uint32_t id0 = stage.hero0->entity_id();
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_EQ(stage.hero0, fixture.server_control(0));
+
+    InputState switch_input;
+    switch_input.clear();
+    switch_input.players[0]
+        .pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    fixture.step_tick(switch_input);
+    EXPECT_EQ(stage.hero0, fixture.server_control(0))
+        << "the cycle must refuse the foreign hero and fall back";
+    EXPECT_EQ(-1, stage.spare->user())
+        << "the foreign hero is never stamped by the refused claim";
+
+    // The release/re-stamp dance completes on the next tick: the seat's own
+    // walker carries its user tag again and the mirror mapping is unchanged.
+    InputState idle;
+    idle.clear();
+    fixture.step_tick(idle);
+    EXPECT_EQ(0, stage.hero0->user());
+    EXPECT_EQ(id0, fixture.client(0).controlled_entity_ids()[0]);
+    fixture.expect_clients_match_server();
+}
+
+// §4.4 site 3/4 policy-ON: the bind-time claim (and the per-level rebind
+// that funnels through it) gives every deployed machine its OWN hero
+// regardless of oblist order, and binds a 0-deploy machine's seat null (the
+// [NET-F3] follow seat) while the watched heroes keep running unstamped.
+TEST(CtfNetwork, owner_locked_bind_gives_own_hero_and_zero_deploy_binds_null)
+{
+    NetworkTestFixture fixture({
+        .player_count = 3,
+        .level_id = 1,
+    });
+    fixture.load_level();
+
+    walker* first = nullptr;
+    walker* second = nullptr;
+    fixture.with_server_context([&] {
+        // NON-CTF world: this exercises the generic owner-locked claim, not
+        // the CTF own-hero preference.
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != 0)
+            {
+                continue;
+            }
+            if (first == nullptr)
+            {
+                first = w;
+                continue;
+            }
+            second = w;
+            break;
+        }
+        if (second == nullptr)
+        {
+            second = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+            ASSERT_NE(nullptr, second);
+            second->setxy(static_cast<short>(first->xpos() + 32),
+                          static_cast<short>(first->ypos()));
+            second->set_team_num(0);
+        }
+
+        // Tag in REVERSE order: the earlier walker belongs to player 1's
+        // machine, the later one to player 0's. The legacy pool would hand
+        // player 0 the earlier walker; owner-locked must not.
+        first->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        first->myguy->id = 81;
+        first->myguy->owner_player_index = 1;
+        second->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        second->myguy->id = 82;
+        second->myguy->owner_player_index = 0;
+
+        std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+        machines.fill(og::sim::kPlayerMachineNone);
+        machines[0] = og::sim::encode_player_machine(0, true);
+        machines[1] = og::sim::encode_player_machine(1, true);
+        machines[2] = og::sim::encode_player_machine(2, false);
+        og::sim::set_control_policy(fixture.server_world(),
+                                    og::sim::kControlPolicyOwnerLocked,
+                                    machines);
+    });
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    fixture.rebind_players();
+
+    EXPECT_EQ(second, fixture.server_control(0))
+        << "player 0 must claim its own machine's hero";
+    EXPECT_EQ(first, fixture.server_control(1))
+        << "player 1 must claim its own machine's hero";
+    EXPECT_EQ(nullptr, fixture.server_control(2))
+        << "the 0-deploy machine's seat must bind null (follow seat)";
+    EXPECT_EQ(0, second->user());
+    EXPECT_EQ(1, first->user());
+
+    // The null seat reaches the mirror as entity 0; the watched heroes'
+    // mappings are the owners', untouched.
+    fixture.initial_sync();
+    EXPECT_EQ(0u, fixture.client(2).controlled_entity_ids()[2]);
+    EXPECT_EQ(second->entity_id(), fixture.client(2).controlled_entity_ids()[0]);
+    EXPECT_EQ(first->entity_id(), fixture.client(2).controlled_entity_ids()[1]);
+}
+
+// §4.4 reclaim compatibility policy-ON: user tags survive death/revive, so
+// the CTF respawn reclaim-by-user-tag rebinds a dead solo player's OWN
+// revived walker identically under owner-locked (the reclaim is
+// ownership-neutral: same entity, same tag).
+TEST(CtfNetwork, owner_locked_reclaim_by_user_tag_survives_death_and_revive)
+{
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+    inject_ctf_scenario(fixture, 1, /*requested_respawn_ticks=*/8);
+
+    walker* player = fixture.server_control(0);
+    ASSERT_NE(nullptr, player);
+    const std::uint32_t player_id = player->entity_id();
+    fixture.with_server_context([&] {
+        player->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        player->myguy->id = 91;
+        player->myguy->owner_player_index = 0;
+
+        std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+        machines.fill(og::sim::kPlayerMachineNone);
+        machines[0] = og::sim::encode_player_machine(0, true);
+        og::sim::set_control_policy(fixture.server_world(),
+                                    og::sim::kControlPolicyOwnerLocked,
+                                    machines);
+    });
+    const unsigned char bound_team = player->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 1);
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_TRUE(fixture.server_world().ctf.active);
+
+    fixture.with_server_context([&] { player->set_dead(1); });
+    fixture.step_ticks(2);
+    ASSERT_EQ(nullptr, fixture.server_control(0))
+        << "no fallback body: the control must be null while dead";
+    ASSERT_EQ(0u, fixture.client(0).controlled_entity_ids()[0]);
+
+    fixture.step_ticks(40);
+    walker* revived = fixture.server_world().find_by_id(player_id);
+    ASSERT_NE(nullptr, revived);
+    ASSERT_FALSE(revived->dead()) << "the sim revive must have fired";
+    EXPECT_EQ(0, revived->user())
+        << "the user tag survives death and revive (§4.4)";
+    EXPECT_EQ(revived, fixture.server_control(0))
+        << "the reclaim-by-user-tag rebind must work under owner-locked";
+    EXPECT_EQ(player_id, fixture.client(0).controlled_entity_ids()[0]);
+    fixture.expect_clients_match_server();
 }

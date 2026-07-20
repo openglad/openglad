@@ -2992,6 +2992,17 @@ public:
             local_client_transport_,
             player_bindings_);
 
+        // §2.8 follow caption: stamp each global player's company display
+        // name (from the final lobby state) onto the installed runtime.
+        if (state_.has_value())
+        {
+            std::vector<std::pair<std::uint8_t, std::string>> companies;
+            for (const og::sim::LobbyPlayer& player : state_->players)
+                companies.emplace_back(player.player_index, player.company);
+            og::runtime::local_transport_shadow_set_player_companies(
+                session, companies);
+        }
+
         // Keep the lobby connection ALIVE across gameplay so the team-build menu
         // can start the next level over it (single-player parity). The runtime
         // holds its own shared_ptr refs to the transports, so they outlive the
@@ -3651,6 +3662,17 @@ public:
             transport_,
             server_peer_id_,
             std::move(local_seats));
+
+        // §2.8 follow caption: stamp each global player's company display
+        // name (from the last lobby state) onto the installed runtime.
+        if (state_.has_value())
+        {
+            std::vector<std::pair<std::uint8_t, std::string>> companies;
+            for (const og::sim::LobbyPlayer& player : state_->players)
+                companies.emplace_back(player.player_index, player.company);
+            og::runtime::local_transport_shadow_set_player_companies(
+                session, companies);
+        }
 
         // Keep the connection ALIVE across gameplay (see the host note): the
         // runtime holds its own ref to the transport, so it outlives the

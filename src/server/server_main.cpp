@@ -9,6 +9,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -335,6 +336,16 @@ int main(int argc, char* argv[])
                 io_exit();
             return 1;
         }
+
+        // §4.4 control-policy install: derive owner-locked from the
+        // negotiated lobby config (session-only cross_control rides the
+        // equivalent) and stamp the machine map BEFORE bind_player scans run
+        // below; snapshot v9 replicates both scalars to every joiner mirror.
+        og::sim::install_control_policy(level_data.world(),
+                                        /*networked=*/true,
+                                        active_save.cross_control != 0,
+                                        player_bindings,
+                                        active_save.team_list);
 
         og::sim::GameServer game_server(
             level_data.world(),

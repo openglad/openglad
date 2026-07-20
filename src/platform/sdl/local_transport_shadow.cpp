@@ -10,6 +10,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -90,6 +91,14 @@ struct LocalTransportRuntime {
     // InitialSetup by multiple websocket frames. Keep polling while the old
     // display world has end=1 so split delivery cannot strand the client.
     bool awaiting_level_transition = false;
+    // §4.5 follow camera: per-view watched-target state (networked sessions
+    // only; local shadows never engage). Runtime-owned so the per-snapshot
+    // control re-sync cannot stomp the player's choice. Reset on level
+    // transitions along with the rebuilt views.
+    std::array<DisplayFollowState, MAX_PLAYERS> view_follow = {};
+    // §2.8 follow caption: company display names keyed by GLOBAL player
+    // index, stamped from the lobby state after a networked install.
+    std::array<std::string, og::sim::kMaxGlobalPlayers> player_company = {};
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -114,14 +123,68 @@ struct LocalTransportRuntime {
 
 namespace og::runtime::detail {
 
+namespace {
+
+// Respawn keep-alive (CTF match or classic respawn mode): while a player is
+// dead the server nulls its control (ControlChange entity 0), but the view
+// must keep following the corpse so the camera holds and the RESPAWN IN
+// countdown renders. Retain the previous control when it still resolves in
+// this display world (re-verified by id every sync — clients can receive
+// removals) and is either a dead myguy corpse with a pending revive entry,
+// or already alive wearing this player's user tag (the one-tick window
+// between the mirror's revive snapshot and the server's reclaim
+// ControlChange). An explicit nonzero mapped id always wins, so a player who
+// switched bodies never has the old corpse steal the view back; once the
+// pending entry disappears without a revive, this returns nullptr.
+walker* respawn_retained_control(viewscreen* view,
+                                 GameWorld* world,
+                                 std::optional<std::size_t> player_index)
+{
+    if ((((world->type & GameWorld::TYPE_CTF) && world->ctf.active) ||
+         og::sim::classic_respawn_active(*world)) &&
+        view->control != nullptr &&
+        world->find_by_id(view->control->entity_id()) == view->control)
+    {
+        walker* const previous = view->control;
+        if (!previous->dead() && player_index.has_value() &&
+            previous->user() == static_cast<int>(*player_index))
+        {
+            return previous;
+        }
+        if (previous->dead() && previous->myguy != nullptr &&
+            og::sim::ctf_pending_player_respawn(world->ctf,
+                                                previous->entity_id()))
+        {
+            return previous;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
 walker* select_control_for_view(
     viewscreen* view,
     std::span<const std::uint32_t> controlled_entity_ids,
     GameWorld* world,
-    std::optional<std::size_t> player_index)
+    std::optional<std::size_t> player_index,
+    const DisplayFollowState* follow)
 {
     if (view == nullptr || world == nullptr)
         return nullptr;
+
+    // §4.5 follow camera, checked BEFORE the mapped-entity branch: an
+    // engaged view renders its watched target and never reaches the mapped
+    // user-tag stamp below — the no-local-stamp rule ([NET-R6]) holds
+    // structurally. Target upkeep (engage/disengage/auto-advance) happened
+    // in update_display_view_follow before this call; an unresolved target
+    // here means a static camera this frame, exactly like a seatless view.
+    if (follow != nullptr && follow->engaged)
+    {
+        walker* const target =
+            resolve_control_from_entity_id(*world, follow->target_entity_id);
+        return (target != nullptr && !target->dead()) ? target : nullptr;
+    }
 
     if (player_index.has_value() &&
         *player_index < controlled_entity_ids.size())
@@ -145,36 +208,10 @@ walker* select_control_for_view(
         }
     }
 
-    // Respawn keep-alive (CTF match or classic respawn mode): while a player
-    // is dead the server nulls its control (ControlChange entity 0), but the
-    // view must keep following the corpse so the camera holds and the
-    // RESPAWN IN countdown renders. Retain the previous control when it
-    // still resolves in this display world (re-verified by id every sync —
-    // clients can receive removals) and is either a dead myguy corpse with a
-    // pending revive entry, or already alive wearing this player's user tag
-    // (the one-tick window between the mirror's revive snapshot and the
-    // server's reclaim ControlChange). An explicit nonzero mapped id above
-    // always wins, so a player who switched bodies never has the old corpse
-    // steal the view back; once the pending entry disappears without a
-    // revive, this falls through to nullptr.
-    if ((((world->type & GameWorld::TYPE_CTF) && world->ctf.active) ||
-         og::sim::classic_respawn_active(*world)) &&
-        view->control != nullptr &&
-        world->find_by_id(view->control->entity_id()) == view->control)
-    {
-        walker* const previous = view->control;
-        if (!previous->dead() && player_index.has_value() &&
-            previous->user() == static_cast<int>(*player_index))
-        {
-            return previous;
-        }
-        if (previous->dead() && previous->myguy != nullptr &&
-            og::sim::ctf_pending_player_respawn(world->ctf,
-                                                previous->entity_id()))
-        {
-            return previous;
-        }
-    }
+    walker* const retained =
+        respawn_retained_control(view, world, player_index);
+    if (retained != nullptr)
+        return retained;
 
     for (const std::uint32_t entity_id : controlled_entity_ids)
     {
@@ -184,6 +221,60 @@ walker* select_control_for_view(
     }
 
     return nullptr;
+}
+
+// §4.5 engagement/maintenance, run by sync_display_controls before
+// select_control_for_view honors the state.
+void update_display_view_follow(
+    DisplayFollowState& follow,
+    viewscreen* view,
+    std::optional<std::size_t> player_index,
+    std::span<const std::uint32_t> controlled_entity_ids,
+    GameWorld* world)
+{
+    if (view == nullptr || world == nullptr)
+        return;
+
+    // A live mapped walker means the seat controls again: disengage.
+    if (player_index.has_value() &&
+        *player_index < controlled_entity_ids.size() &&
+        resolve_control_from_entity_id(
+            *world, controlled_entity_ids[*player_index]) != nullptr)
+    {
+        follow = {};
+        return;
+    }
+
+    // A respawn-retained corpse keeps the camera home (the RESPAWN IN
+    // countdown view); follow engages only once nothing is retained.
+    if (respawn_retained_control(view, world, player_index) != nullptr)
+    {
+        follow = {};
+        return;
+    }
+
+    if (!follow.engaged)
+    {
+        follow.engaged = true;
+        follow.target_entity_id =
+            og::sim::default_follow_target_id(*world, controlled_entity_ids);
+        return;
+    }
+
+    // Auto-advance a dead/unresolved target; 0 = static camera until
+    // something watchable appears.
+    walker* const target =
+        resolve_control_from_entity_id(*world, follow.target_entity_id);
+    if (target == nullptr)
+    {
+        follow.target_entity_id =
+            og::sim::default_follow_target_id(*world, controlled_entity_ids);
+    }
+    else if (target->dead())
+    {
+        follow.target_entity_id =
+            og::sim::next_follow_target_id(*world, target, false);
+    }
 }
 
 // Networked "as if played alone" persist: write only the characters owned by
@@ -850,10 +941,25 @@ walker* find_control_for_view(viewscreen* view,
                               std::optional<std::size_t> player_index,
                               std::span<const std::uint32_t>
                                   controlled_entity_ids,
-                              GameWorld* world)
+                              GameWorld* world,
+                              const og::runtime::DisplayFollowState* follow =
+                                  nullptr)
 {
     return og::runtime::detail::select_control_for_view(
-        view, controlled_entity_ids, world, player_index);
+        view, controlled_entity_ids, world, player_index, follow);
+}
+
+// §2.8 follow caption: the company of the watched walker's owning machine,
+// resolved through its roster owner tag ("" for AI targets / unknown).
+std::string follow_company_for_control(
+    const og::runtime::LocalTransportRuntime* runtime, const walker* control)
+{
+    if (runtime == nullptr || control == nullptr || control->myguy == nullptr)
+        return {};
+    const std::uint8_t owner = control->myguy->owner_player_index;
+    if (owner >= runtime->player_company.size())
+        return {};
+    return runtime->player_company[owner];
 }
 
 // View i follows seats[i] (a networked machine's local seat list); with no
@@ -863,7 +969,8 @@ void sync_display_controls(
     screen& gameplay_screen,
     std::span<const std::uint32_t> controlled_entity_ids,
     GameWorld* world,
-    const std::vector<og::runtime::LocalSeatBinding>& display_seats)
+    const std::vector<og::runtime::LocalSeatBinding>& display_seats,
+    og::runtime::LocalTransportRuntime* runtime = nullptr)
 {
     if (world == nullptr)
         return;
@@ -883,9 +990,24 @@ void sync_display_controls(
                 : std::nullopt;
         }
 
+        // §4.5: only genuine networked sessions engage the follow camera —
+        // local shadows (splitscreen, demo spectator) keep today's paths.
+        og::runtime::DisplayFollowState* follow = nullptr;
+        if (runtime != nullptr && runtime->networked &&
+            index < runtime->view_follow.size())
+        {
+            follow = &runtime->view_follow[index];
+            og::runtime::detail::update_display_view_follow(
+                *follow, view, player_index, controlled_entity_ids, world);
+        }
+
         view->control =
             find_control_for_view(
-                view, player_index, controlled_entity_ids, world);
+                view, player_index, controlled_entity_ids, world, follow);
+        view->following_ = follow != nullptr && follow->engaged;
+        view->follow_company_ = view->following_
+            ? follow_company_for_control(runtime, view->control)
+            : std::string();
     }
 }
 
@@ -995,18 +1117,22 @@ void configure_display_game_client(
                 runtime_ptr->owned_progress_persisted = false;
                 runtime_ptr->awaiting_level_transition = false;
                 runtime_ptr->display_session_finished = false;
+                // Follow targets belong to the wiped level (§4.5); the next
+                // control re-sync re-engages against the new world.
+                runtime_ptr->view_follow = {};
             }
             display_client_ptr->send_client_ready();
         });
     display_client.set_control_mapping_callback(
-        [&gameplay_screen, display_seats](
+        [&gameplay_screen, display_seats, runtime_ptr = &runtime](
             const og::sim::ControlledEntityIds& controlled_entity_ids,
             GameWorld* world) {
             sync_display_controls(
                 gameplay_screen,
                 controlled_entity_ids,
                 world,
-                display_seats);
+                display_seats,
+                runtime_ptr);
         });
     display_client.set_sim_event_batch_callback(
         [&gameplay_screen, runtime_ptr = &runtime, display_seats](
@@ -1145,6 +1271,69 @@ namespace og::runtime {
 bool local_transport_active(const SessionState& session) noexcept
 {
     return session.has_local_transport_runtime();
+}
+
+// §4.5 follow cycle (declared in session_state.h so the render layer's input
+// path can reach it). has_local_transport_runtime() is overridden ONLY by
+// GameSession, so a true result guarantees the downcast — the exact
+// local_transport_active seam pattern.
+bool display_follow_cycle_target(SessionState& session, int view_index,
+                                 bool reverse)
+{
+    if (!session.has_local_transport_runtime() || session.myscreen_ == nullptr)
+        return false;
+    GameSession& game_session = static_cast<GameSession&>(session);
+    const auto runtime = game_session.local_transport_runtime_;
+    if (runtime == nullptr || !runtime->networked || view_index < 0 ||
+        static_cast<std::size_t>(view_index) >= runtime->view_follow.size())
+    {
+        return false;
+    }
+    DisplayFollowState& follow =
+        runtime->view_follow[static_cast<std::size_t>(view_index)];
+    if (!follow.engaged)
+        return false;
+
+    GameWorld& world = session.myscreen_->world();
+    walker* const current =
+        resolve_control_from_entity_id(world, follow.target_entity_id);
+    follow.target_entity_id =
+        og::sim::next_follow_target_id(world, current, reverse);
+
+    // Reflect the choice immediately (the next control re-sync would land it
+    // one frame later): the target rides view->control WITHOUT a user-tag
+    // stamp ([NET-R6]).
+    if (view_index < session.myscreen_->numviews)
+    {
+        viewscreen* const view =
+            session.myscreen_->viewob[static_cast<std::size_t>(view_index)]
+                .get();
+        if (view != nullptr)
+        {
+            walker* const target = resolve_control_from_entity_id(
+                world, follow.target_entity_id);
+            view->control =
+                (target != nullptr && !target->dead()) ? target : nullptr;
+            view->follow_company_ =
+                follow_company_for_control(runtime.get(), view->control);
+        }
+    }
+    session.myscreen_->redrawme = 1;
+    return true;
+}
+
+void local_transport_shadow_set_player_companies(
+    GameSession& session,
+    std::span<const std::pair<std::uint8_t, std::string>> companies)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr)
+        return;
+    for (const auto& [player_index, company] : companies)
+    {
+        if (player_index < runtime->player_company.size())
+            runtime->player_company[player_index] = company;
+    }
 }
 
 std::size_t local_transport_client_count(const GameSession& session) noexcept
@@ -1694,6 +1883,19 @@ void reset_network_host_transport_shadow(
     screen* const server_screen = runtime->server_screen();
     if (server_screen == nullptr)
         return;
+
+    // §4.4 control-policy install: derive owner-locked from the game-start
+    // config (the display save carries cross_control + the deploy-filtered
+    // owner tags from apply_lobby_game_start_config — never a
+    // disk-round-tripped save) and stamp the machine map BEFORE the seats
+    // bind below: owner-locked bind scans consult it, and snapshot v9
+    // replicates both scalars to every client mirror.
+    og::sim::install_control_policy(
+        server_screen->world(),
+        runtime->networked,
+        gameplay_screen.save_data.cross_control != 0,
+        player_bindings,
+        gameplay_screen.save_data.team_list);
 
     runtime->server = std::make_unique<og::sim::GameServer>(
         server_screen->world(),
