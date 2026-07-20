@@ -279,7 +279,10 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     // Default settings are allied: cross-peer team sharing is allowed, so the
     // guest keeps its requested team 0 alongside the host.
     EXPECT_EQ(0, state.players[1].team);
-    EXPECT_TRUE(state.players[1].ready);
+    // §4.3: the ready bit a client sends inside a Join is IGNORED — a first
+    // join has no matching stored content, so ready lands false regardless of
+    // the requested flag. Readiness is negotiated only via LobbyReadyMessage.
+    EXPECT_FALSE(state.players[1].ready);
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), state);
 
@@ -867,6 +870,17 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     transport.queue_lobby_message(
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
+
+    // §4.3 ready gate: the non-host guest must be ready before the host may
+    // start. Without this the host's StartGame is denied (MachinesNotReady).
+    og::sim::LobbyMessage guest_ready;
+    guest_ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 1u,
+        .ready = true,
+    };
+    transport.queue_lobby_message(22u, guest_ready);
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
 
     transport.clear_sent_messages();
     og::sim::LobbyMessage non_host_start;
@@ -1701,4 +1715,342 @@ TEST(LobbyServer, save_data_equivalent_tags_owner_per_seat)
     // Allied gameplay folds every seat onto team 0.
     for (const auto& slot : equivalent.team_list)
         EXPECT_EQ(0, slot.character.teamnum);
+}
+
+// ---------------------------------------------------------------------------
+// §4.3 ready system (protocol v8): server-authoritative ready, content-
+// identical join preservation, the StartGame gate, and the denial echo.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyReadyMessage{
+        .player_index = player_index,
+        .ready = ready,
+    };
+    return message;
+}
+
+og::sim::LobbyMessage make_start_message(std::uint8_t player_index)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyStartGameMessage{.player_index = player_index};
+    return message;
+}
+
+// Host (11u) + ready guest (22u), each with one deployed character over a typed
+// (in-process loopback) transport — the shape the go_menu deadlock bit on.
+void ready_two_peer_lobby(MockLobbyTransport& transport,
+                          og::sim::LobbyServer& server)
+{
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
+}
+
+} // namespace
+
+TEST(LobbyServer, content_identical_join_resend_preserves_ready)
+{
+    // The deadlock regression: go_menu re-sends the machine's join right before
+    // requesting start. A content-identical re-send must NOT clear ready.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    // Re-send the guest's IDENTICAL join (same seat, team, and character).
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready)
+        << "a content-identical join re-send preserves ready";
+
+    // And the host can now start over the re-synced-but-still-ready lobby.
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
+TEST(LobbyServer, content_identical_comparison_excludes_owner_fields)
+{
+    // [NET-R7]: the assembly-only owner_player_index/owner_save_slot are NOT
+    // content — the loopback host path never normalizes them, so a re-send that
+    // differs ONLY in those fields still preserves ready.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    og::sim::LobbyCharacterSlot slot = make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER);
+    slot.owner_player_index = 7u;   // differs from the stored default (0xff)
+    slot.owner_save_slot = 9u;
+    transport.queue_lobby_message(22u, make_join_message("Guest", 1, {slot}));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready)
+        << "owner_* fields are excluded from the content-identical comparison";
+}
+
+TEST(LobbyServer, join_rename_and_company_change_preserve_ready)
+{
+    // A rename (or company change) never un-readies anyone.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    og::sim::LobbyMessage renamed = make_join_message(
+        "Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)});
+    std::get<og::sim::LobbyJoinMessage>(renamed.payload).player.company =
+        "New Company Name";
+    transport.queue_lobby_message(22u, renamed);
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready);
+}
+
+TEST(LobbyServer, join_roster_change_clears_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    // Re-send with an ADDED character: a real roster change clears ready.
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1,
+                          {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER),
+                           make_slot(2u, 201, "Recruit", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.state().players[1].ready)
+        << "an added character clears ready";
+}
+
+TEST(LobbyServer, join_deploy_change_clears_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    // Re-send with the same character BENCHED: the deploy flag IS content.
+    og::sim::LobbyCharacterSlot benched =
+        make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER);
+    benched.deployed = false;
+    transport.queue_lobby_message(22u, make_join_message("Guest", 1, {benched}));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.state().players[1].ready)
+        << "changing a deploy selection clears ready";
+}
+
+TEST(LobbyServer, team_change_clears_that_machines_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    og::sim::LobbyMessage team_change;
+    team_change.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = 1u,
+        .team = 2,
+    };
+    transport.queue_lobby_message(22u, team_change);
+    server.poll_incoming_messages();
+    ASSERT_EQ(2, server.state().players[1].team);
+    EXPECT_FALSE(server.state().players[1].ready)
+        << "an accepted team change clears the machine's ready";
+}
+
+TEST(LobbyServer, host_settings_change_clears_only_nonhost_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+    // Ready the host too (informational) to prove ONLY the non-host is cleared.
+    transport.queue_lobby_message(11u, make_ready_message(0u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[0].ready);
+
+    og::sim::LobbySettings settings = server.state().settings;
+    settings.difficulty = settings.difficulty == 3 ? 2 : 3; // a real change
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = settings,
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
+    EXPECT_TRUE(server.state().players[0].ready) << "host ready is not cleared";
+    EXPECT_FALSE(server.state().players[1].ready)
+        << "a host settings change clears every non-host machine's ready";
+}
+
+TEST(LobbyServer, identical_settings_change_preserves_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    // Echo the CURRENT settings (what go_menu re-sends on every start attempt):
+    // identical after sanitize ⇒ no ready clear.
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = server.state().settings,
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready)
+        << "an identical settings echo is a no-op for ready";
+}
+
+TEST(LobbyServer, start_denied_when_nonhost_not_ready_keeps_lobby_live)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    // Guest is not ready: the host's GO is denied WITHOUT locking the lobby.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.start_game_requested());
+    EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
+              server.state().last_start_denial);
+    // The denial is echoed (the host must see WHO is blocking).
+    ASSERT_FALSE(transport.sent_messages().empty());
+
+    // The lobby is still LIVE — a subsequent ready is processed, not eaten by a
+    // lock, and the next start is accepted.
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial) << "acceptance clears the denial";
+}
+
+TEST(LobbyServer, start_denial_survives_interleaved_join_cleared_on_next_start)
+{
+    // [NET-R4]: the denial is cleared ONLY by the next StartGame request — a
+    // queued joiner message between denial and read must not wipe it.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    ASSERT_EQ(
+        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
+        server.state().last_start_denial);
+
+    // Interleaved non-StartGame message (a content-identical guest re-join):
+    // the recorded denial must survive it.
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    EXPECT_EQ(
+        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
+        server.state().last_start_denial)
+        << "an interleaved join must not wipe the recorded denial";
+
+    // A ready message likewise leaves it in place.
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    EXPECT_EQ(
+        start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
+        server.state().last_start_denial);
+
+    // The NEXT StartGame clears and re-evaluates it (now accepted).
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
+TEST(LobbyServer, start_denied_when_no_deployed_characters)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    og::sim::LobbyCharacterSlot benched =
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER);
+    benched.deployed = false;
+    transport.queue_lobby_message(11u, make_join_message("Host", 0, {benched}));
+    server.poll_incoming_messages();
+
+    // Single-peer lobby ⇒ rule 3 passes vacuously, but zero deployed ⇒ rule 4
+    // denies with NoDeployedCharacters.
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.start_game_requested());
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::NoDeployedCharacters),
+              server.state().last_start_denial);
+}
+
+TEST(LobbyServer, local_session_start_bypasses_ready_and_deploy_gates)
+{
+    // Rule 1: a local/split-screen lobby GOes exactly as today — never gated on
+    // ready. Two local peers join, neither readies; the start is still accepted.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("P1", 0, {make_slot(0u, 100, "A", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("P2", 1, {make_slot(1u, 200, "B", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
+TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+    transport.queue_lobby_message(11u, make_ready_message(0u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[0].ready);
+    ASSERT_TRUE(server.state().players[1].ready);
+
+    // Start (locks the lobby), then reopen it for the next round.
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.start_game_requested());
+
+    server.unlock_for_new_round();
+    EXPECT_FALSE(server.start_game_requested());
+    for (const og::sim::LobbyPlayer& player : server.state().players)
+        EXPECT_FALSE(player.ready) << "every machine re-readies each round";
+
+    // The reopened lobby accepts messages again (the lock was cleared).
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready);
 }

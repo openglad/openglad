@@ -258,6 +258,40 @@ bool status_lines_contain_exact(const std::vector<std::string>& lines,
         });
 }
 
+// §4.3 ready gate: a networked host's StartGame is denied until every non-host
+// machine is ready. Each joiner is a (session, client) pair; this readies them
+// all, then drives the host server + every joiner in lockstep until each joiner
+// observes its own ready. Once all joiners report ready the host's start passes
+// (checking the joiners' own local_ready avoids the host-machine multi-seat
+// ambiguity of scanning the host's non-host lobby rows).
+struct JoinerReadyPeer
+{
+    og::runtime::GameSession* session = nullptr;
+    og::ui::IPickerLobbyClient* client = nullptr;
+};
+
+bool ready_up_joiners(og::ui::IPickerLobbyClient& host_client,
+                      const std::vector<JoinerReadyPeer>& joiners)
+{
+    for (const JoinerReadyPeer& joiner : joiners)
+    {
+        auto scope = joiner.session->activate();
+        (void)joiner.client->set_ready(true);
+    }
+    return wait_until([&] {
+        host_client.poll_and_apply();
+        bool all_ready = true;
+        for (const JoinerReadyPeer& joiner : joiners)
+        {
+            auto scope = joiner.session->activate();
+            joiner.client->poll_and_apply();
+            if (!joiner.client->local_ready())
+                all_ready = false;
+        }
+        return all_ready;
+    });
+}
+
 bool save_contains_named_member(const SaveData& save, std::string_view name)
 {
     return std::any_of(
@@ -2282,6 +2316,9 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
     })) << "host and join clients should converge on the same two-player lobby";
 
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -2514,6 +2551,9 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
     })) << "host and join should converge on a two-player lobby";
 
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -2766,6 +2806,9 @@ TEST(PickerNetworkClient, host_and_join_real_exit_returns_both_peers_to_menu)
     })) << "host and join should converge on a two-player lobby";
 
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -3000,6 +3043,11 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     };
 
     const auto start_level = [&](const char* phase) {
+        // §4.3: each round requires a fresh ready-up (unlock_for_new_round
+        // clears ready between levels), so the joiner re-readies before GO.
+        ASSERT_TRUE(ready_up_joiners(*host_client,
+                                     {{&join_session, join_client.get()}}))
+            << phase;
         ASSERT_TRUE(host_client->request_start_game()) << phase;
         ASSERT_TRUE(wait_until([&] {
             host_client->poll_and_apply();
@@ -3181,6 +3229,118 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     check_on_level_2(join_session, "join");
 }
 
+// §4.3 ready gate, end to end over real websockets (cheap: no level runs).
+// (1) The host's GO is DENIED while the joiner is unready, and the denial reason
+// is echoed to the host without engaging the lobby lock. (2) The joiner readies.
+// (3) The deadlock regression: the joiner re-sends its content-identical join
+// (what go_menu does every frame) and its ready SURVIVES. (4) The host's GO now
+// succeeds.
+TEST(PickerNetworkClient, host_go_denied_until_joiner_ready_and_resend_preserves_ready)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr && join_client != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup{&join_session, host_client.get(), join_client.get()};
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_two = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_two = status_lines_contain_exact(join_client->status_lines(),
+                                                  "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_two;
+    })) << "host and join should converge on a two-player lobby";
+
+    // (1) GO denied — the joiner has not readied. The lobby stays LIVE.
+    ASSERT_TRUE(host_save.save("save0"));
+    EXPECT_FALSE(host_client->request_start_game())
+        << "GO must be denied while a non-host machine is unready";
+    EXPECT_FALSE(host_client->start_request_pending())
+        << "the pending flag is cleared on denial (no go_menu spin)";
+    EXPECT_EQ(og::sim::StartDenialReason::MachinesNotReady,
+              host_client->last_start_denial())
+        << "the denial reason is echoed to the host";
+    EXPECT_FALSE(host_client->has_game_start_config());
+
+    // (2) The joiner readies.
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+
+    // (3) Deadlock regression: the joiner re-sends its content-identical join
+    // (go_menu's every-frame re-sync) and stays ready.
+    {
+        auto join_scope = join_session.activate();
+        join_client->sync_roster_from_save();
+    }
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+        }
+        for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+            if (!player.is_host && !player.ready)
+                return false;
+        return host_client->lobby_players().size() == 2u;
+    })) << "a content-identical join re-send must not clear the joiner's ready";
+
+    // (4) GO now succeeds over the still-ready lobby.
+    EXPECT_TRUE(host_client->request_start_game())
+        << "GO succeeds once every non-host machine is ready";
+    EXPECT_EQ(og::sim::StartDenialReason::None, host_client->last_start_denial());
+
+    og::runtime::clear_local_transport_shadow(*active_game_session());
+}
+
 // P4 edge case: a peer that DISCONNECTS between levels (over the persisted
 // connection) must be reconciled by the host's surviving LobbyServer — the host
 // drops back to a one-player lobby and can still start the next level solo. This
@@ -3272,6 +3432,9 @@ TEST(PickerNetworkClient, host_and_join_join_disconnect_between_levels_reconcile
 
     // Start level 1 (establishes the per-level runtime on the live connection).
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -3549,6 +3712,11 @@ TEST(PickerNetworkClient,
     write_stale_seven_member_save0();
 
     // ---- Start level 1. ----
+    // §4.3: both joiner machines must be ready before the host may start.
+    ASSERT_TRUE(ready_up_joiners(
+        *host_client,
+        {{&join_a_session, join_a_client.get()},
+         {&join_b_session, join_b_client.get()}}));
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until(
         [&] {
@@ -4212,6 +4380,9 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
     })) << "host and join should converge on a two-player lobby";
 
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -4446,6 +4617,9 @@ TEST(PickerNetworkClient,
     })) << "host and join clients should converge on the same allied lobby";
 
     ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
     ASSERT_TRUE(host_client->request_start_game());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();

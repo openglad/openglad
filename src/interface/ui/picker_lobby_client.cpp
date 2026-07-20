@@ -848,6 +848,13 @@ bool picker_lobby_local_ready()
     return false;
 }
 
+og::sim::StartDenialReason picker_lobby_last_start_denial()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->last_start_denial();
+    return og::sim::StartDenialReason::None;
+}
+
 std::vector<og::sim::LobbyPlayer> picker_lobby_players()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())

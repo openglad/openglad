@@ -88,6 +88,24 @@ std::map<std::uint32_t, std::pair<int, int>> entity_positions(const GameWorld& w
     return out;
 }
 
+// §4.3 ready gate: the host's start is denied until every non-host machine is
+// ready. Ready the joiner and drive both sides until the host's roster reflects
+// it, so a subsequent host GO is accepted.
+void ready_curses_joiner(CursesLobby& host_lobby, CursesLobby& join_lobby,
+                         HeadlessTerminal& host_term, HeadlessTerminal& join_term,
+                         FakeClock& clock)
+{
+    (void)join_lobby.set_ready(true);
+    for (int i = 0; i < 200; ++i) {
+        host_lobby.poll(host_term, clock);
+        join_lobby.poll(join_term, clock);
+        for (const og::sim::LobbyPlayer& player : host_lobby.players()) {
+            if (!player.is_host && player.ready)
+                return;
+        }
+    }
+}
+
 // Run the lobby handshake to a start over the shared in-process transport, then
 // hand back the two started sessions. The HeadlessTerminal/FakeClock feed
 // poll(); the host presses 's' to start.
@@ -135,6 +153,10 @@ StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
                        return false;
                    }();
     }
+
+    // §4.3 ready gate: the joiner must be ready before the host may start.
+    ready_curses_joiner(*game.host_lobby, *game.join_lobby, host_term, join_term,
+                        clock);
 
     // Host requests start, then both poll until the start is negotiated and the
     // sessions are ready.
@@ -540,6 +562,9 @@ TEST(CursesNetwork, host_start_via_s_key)
         join_lobby->poll(join_term, clock);
     }
 
+    // §4.3: the joiner readies so the host's GO is accepted.
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+
     // Pressing 's' on the host terminal requests the start (no direct call).
     host_term.push_char(U's');
     bool host_started = false;
@@ -586,6 +611,9 @@ TEST(CursesNetwork, host_start_via_uppercase_s_and_enter)
             host_lobby->poll(host_term, clock);
             join_lobby->poll(join_term, clock);
         }
+
+        // §4.3: the joiner readies so the host's GO is accepted.
+        ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
 
         host_term.push_key(key);
         bool host_started = false;

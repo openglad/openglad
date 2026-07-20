@@ -2594,6 +2594,13 @@ public:
             player_bindings_ = server_->build_player_bindings();
             pending_game_start_config_ = build_game_start_config();
         }
+        else if (!g_start_game_requested)
+        {
+            // §4.3 denial: the server echoed last_start_denial without locking
+            // the lobby. Drop the pending flag so the go_menu poll loop stops
+            // spinning to timeout; the reason is read via last_start_denial().
+            start_request_pending_ = false;
+        }
         return g_start_game_requested;
     }
 
@@ -2714,6 +2721,15 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        if (!state_.has_value())
+            return og::sim::StartDenialReason::None;
+        return static_cast<og::sim::StartDenialReason>(
+            state_->last_start_denial);
     }
 
     [[nodiscard]] bool is_networked_session() const noexcept override
@@ -3137,6 +3153,15 @@ public:
         poll_and_apply();
         if (g_start_game_requested)
             pending_game_start_config_ = build_game_start_config();
+        else if (state_.has_value() &&
+                 state_->last_start_denial !=
+                     og::sim::start_denial_reason_value(
+                         og::sim::StartDenialReason::None))
+        {
+            // §4.3 denial echoed without locking the lobby: stop the pending
+            // spin so go_menu can surface the reason (last_start_denial()).
+            start_request_pending_ = false;
+        }
         return g_start_game_requested;
     }
 
@@ -3287,6 +3312,15 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        if (!state_.has_value())
+            return og::sim::StartDenialReason::None;
+        return static_cast<og::sim::StartDenialReason>(
+            state_->last_start_denial);
     }
 
     [[nodiscard]] bool is_networked_session() const noexcept override
