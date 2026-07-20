@@ -119,14 +119,18 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    // Make sure team_size is 0 so beginmenu doesn't prompt "restart?"
+    // §2.1: BEGIN NEW GAME's "There is already a game loaded. Do you want to
+    // restart?" prompt is RETIRED — founding a company never destroys the
+    // loaded game. Seed save0 with a team member (the exact team_size > 0
+    // condition that used to raise the prompt) so this flow proves BEGIN NEW
+    // GAME now goes straight to the intro. Were the prompt still present, the
+    // injector — which never answers it — would hang until timeout.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (og::runtime::current_session->myscreen_->save_data.team_list[i]) {
-            og::runtime::current_session->myscreen_->save_data.team_list[i].reset();
-            og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
-        }
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
     }
-    og::runtime::current_session->myscreen_->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] =
+        std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     NewGameState state = { false, false, false, false };

@@ -1204,6 +1204,28 @@ CompanyRowText format_company_row(const og::data::CompanyInfo& info)
     return row;
 }
 
+ContinueResult open_most_recent_company(SaveData& save)
+{
+    // §2.1: CONTINUE opens the most-recent company (WP2 startup selection).
+    const std::string slot = og::data::select_startup_company();
+    if (slot.empty())
+        return ContinueResult::NoCompany;  // CONTINUE is gated hidden anyway.
+
+    // Never SILENTLY switch to a corrupt most-recent company (§2.1): validate
+    // the header first and keep the currently loaded save on damage. The
+    // corrupt-row Company List surfacing is WP3's later Load screen; here we
+    // simply refuse to swap in a broken file.
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header(slot);
+    if (!header || !header->valid)
+        return ContinueResult::Corrupt;
+
+    (void)og::data::set_active_company_slot(slot);
+    if (save.load_with_error(slot) != SaveDataIoError::None)
+        return ContinueResult::LoadFailed;
+    return ContinueResult::Opened;
+}
+
 // --- Team family extraction ---
 
 std::vector<int> collect_team_families(const SaveData& save)

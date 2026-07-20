@@ -386,6 +386,21 @@ struct CompanyRowText {
 };
 CompanyRowText format_company_row(const og::data::CompanyInfo& info);
 
+// Outcome of CONTINUE (§2.1): the caller acts on failures (the SDL surface
+// keeps whatever is loaded rather than silently swapping in a broken file).
+enum class ContinueResult {
+    Opened,     // active company repointed and loaded
+    NoCompany,  // select_startup_company() was empty (CONTINUE is gated hidden)
+    Corrupt,    // the most-recent company header is invalid — do not switch
+    LoadFailed, // header validated but the full load failed
+};
+
+// §2.1 CONTINUE: select the most-recent company (WP2 startup selection),
+// point the active-company slot at it, and load it into `save`. Never
+// silently switches to a corrupt most-recent company (validates the header
+// first). Returns why it stopped so the surface can react.
+ContinueResult open_most_recent_company(SaveData& save);
+
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 // Pure string helpers over the depth-effect selector values
 // {fog, haze, mist, tint, off}. Any value outside the set — including the

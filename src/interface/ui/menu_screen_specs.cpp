@@ -27,6 +27,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 
 #include "picker_sdl_defs.h"
@@ -860,6 +861,81 @@ const MenuScreenSpec& main_options_menu_screen_spec()
 #endif
 #endif
 
+// Company & Base Camp (design §2.1): CONTINUE and LOAD are gated on the
+// existence of at least one company file, and the main menu shows the
+// active/most-recent company name in a black caption strip. list_companies()
+// touches the filesystem, so the view is cached and refreshed exactly once
+// per mainmenu() entry — the company set is stable while the blocking loop
+// runs (Begin New Game and the Load list both exit the loop first). The gate,
+// nav rewire, and caption all read this cache; the default (companies
+// present) keeps the headless engine sweeps deterministic without any
+// filesystem, and a test seam pins the no-company shape.
+struct MainMenuCompanyView {
+    bool present = true;
+    std::string display_name;
+};
+MainMenuCompanyView g_main_menu_company_view;
+
+// The generator's hard cap (design §2.2): a real display name never exceeds
+// this, so the caption clip never truncates one.
+constexpr std::size_t kMainMenuCompanyNameClip = 18;
+
+// Caption strip Y per §2.1: y=171 with the MP split, y=166 without (the no-MP
+// variant's bottom row sits one notch higher). The compiled build selects the
+// variant, so the constant follows it.
+#ifdef DISABLE_MULTIPLAYER
+constexpr int kMainMenuCaptionY = 166;
+#else
+constexpr int kMainMenuCaptionY = 171;
+#endif
+
+// §2.1 gate: CONTINUE and LOAD are hidden when no company file exists.
+bool main_menu_company_present(const MenuLabelContext& /*context*/)
+{
+    return g_main_menu_company_view.present;
+}
+
+int main_menu_row_index(const button* buttons, int count, std::string_view id)
+{
+    for (int i = 0; i < count; ++i) {
+        if (buttons[i].id == id)
+            return i;
+    }
+    return -1;
+}
+
+// §2.1 nav rewire: CONTINUE (index 1) and LOAD (the appended row) share the
+// company gate, so the graph routes around them when no company exists. The
+// static graph is re-asserted when they are present, keeping the rewire
+// idempotent regardless of a prior frame's state. Links are resolved by id so
+// the one function serves both the MP and no-MP variants (no 2_player /
+// player row in the no-MP graph). Verbatim design links: begin.down -> the
+// row below the pair (1_player in MP, difficulty in no-MP); the player/
+// difficulty up-links point back at begin while the pair is hidden.
+void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
+{
+    const int i_begin = main_menu_row_index(buttons, count, "begin_new_game");
+    const int i_continue = main_menu_row_index(buttons, count, "continue_game");
+    const int i_load = main_menu_row_index(buttons, count, "load_company");
+    const int i_1p = main_menu_row_index(buttons, count, "1_player");
+    const int i_2p = main_menu_row_index(buttons, count, "2_player");
+    const int i_diff = main_menu_row_index(buttons, count, "difficulty");
+    const bool nomp = (i_2p < 0);              // no player grid => no-MP variant
+    const int i_below = nomp ? i_diff : i_1p;  // the row beneath the split pair
+
+    if (g_main_menu_company_view.present) {
+        if (i_begin >= 0) buttons[i_begin].nav.down = i_continue;
+        if (i_1p >= 0) buttons[i_1p].nav.up = i_continue;
+        if (i_2p >= 0) buttons[i_2p].nav.up = i_load;
+        if (nomp && i_diff >= 0) buttons[i_diff].nav.up = i_continue;
+    } else {
+        if (i_begin >= 0) buttons[i_begin].nav.down = i_below;
+        if (i_1p >= 0) buttons[i_1p].nav.up = i_begin;
+        if (i_2p >= 0) buttons[i_2p].nav.up = i_begin;
+        if (nomp && i_diff >= 0) buttons[i_diff].nav.up = i_begin;
+    }
+}
+
 // Live label for the pvp_allied row: redraw_mainmenu's per-frame write,
 // verbatim (SPECTATOR when no local player count is selected).
 std::string pvp_allied_row_label(const MenuLabelContext& context)
@@ -877,10 +953,16 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
-    {.id = "continue_game", .label = "CONTINUE GAME",
-     .x = 80, .y = 75, .w = 140, .h = 20,
+    // §2.1: CONTINUE and LOAD split the old full-width continue_game into the
+    // established side-by-side 68x20 player-button grammar. Both are gated on
+    // company existence and appear/vanish together; load_company is appended
+    // at the table END (index 11) so indices 0-10 — and the raw allbuttons_[N]
+    // writes keyed off them — stay valid.
+    {.id = "continue_game", .label = "CONTINUE",
+     .x = 80, .y = 75, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 5}},
+     .nav = {.up = 0, .down = 5, .right = 11},
+     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "4_player", .label = "4 PLAYER", .hotkey = KEYSTATE_4,
      .x = 152, .y = 125, .w = 68, .h = 20,
      .action = ButtonAction::SetPlayerMode, .arg = 4,
@@ -891,10 +973,11 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::SetPlayerMode, .arg = 3,
      .nav = {.up = 5, .down = 6, .right = 2},
      .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 3},
+    // up -> load_company (index 11), the right-column row directly above.
     {.id = "2_player", .label = "2 PLAYER", .hotkey = KEYSTATE_2,
      .x = 152, .y = 100, .w = 68, .h = 20,
      .action = ButtonAction::SetPlayerMode, .arg = 2,
-     .nav = {.up = 1, .down = 2, .left = 5},
+     .nav = {.up = 11, .down = 2, .left = 5},
      .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 2},
     {.id = "1_player", .label = "1 PLAYER", .hotkey = KEYSTATE_1,
      .x = 80, .y = 100, .w = 68, .h = 20,
@@ -932,6 +1015,15 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 8, .right = 9},
      .art_family = FAMILY_WRENCH},
+    // §2.1 index 11 (appended at the table END): the LOAD half of the split.
+    // Opens the load flow (Company List — the legacy load-slots screen until
+    // WP3's Company List screen lands). Gated on company existence with
+    // CONTINUE.
+    {.id = "load_company", .label = "LOAD",
+     .x = 152, .y = 75, .w = 68, .h = 20,
+     .action = ButtonAction::CreateLoadMenu, .arg = 0,
+     .nav = {.up = 0, .down = 4, .left = 1},
+     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -940,10 +1032,12 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
-    {.id = "continue_game", .label = "CONTINUE GAME",
-     .x = 80, .y = 75, .w = 140, .h = 20,
+    // §2.1 no-MP split: same 68x20 CONTINUE | LOAD pair at y=75.
+    {.id = "continue_game", .label = "CONTINUE",
+     .x = 80, .y = 75, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2}},
+     .nav = {.up = 0, .down = 2, .right = 6},
+     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "difficulty", .label = "DIFFICULTY",
      .x = 80, .y = 100, .w = 140, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
@@ -968,6 +1062,12 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 3, .right = 4},
      .art_family = FAMILY_WRENCH},
+    // §2.1 index 6 (appended at the table END): the no-MP LOAD half.
+    {.id = "load_company", .label = "LOAD",
+     .x = 152, .y = 75, .w = 68, .h = 20,
+     .action = ButtonAction::CreateLoadMenu, .arg = 0,
+     .nav = {.up = 0, .down = 2, .left = 1},
+     .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
 };
 
 void main_menu_draw_background(void* /*screen_state*/)
@@ -1008,6 +1108,30 @@ void main_menu_draw_content(void* /*screen_state*/)
            && og::runtime::current_session->allbuttons_[count]) {
         og::runtime::current_session->allbuttons_[count]->vdisplay();
         count++;
+    }
+
+    // §2.1 company caption: a black strip (the SCEN-hint idiom) naming the
+    // active/most-recent company CONTINUE would open, or the new-game prompt
+    // when none exists yet. Drawn after the re-vdisplay so it wins the strip's
+    // own y-band.
+    {
+        std::string caption;
+        if (g_main_menu_company_view.present) {
+            std::string name = g_main_menu_company_view.display_name;
+            if (name.size() > kMainMenuCompanyNameClip)
+                name.resize(kMainMenuCompanyNameClip);
+            caption = "COMPANY: " + name;
+            if (caption.size() > 28)
+                caption.resize(28);
+        } else {
+            caption = "NO COMPANY YET - BEGIN A NEW GAME";
+        }
+        const int width = static_cast<int>(caption.size()) * 6;
+        const int caption_x = 160 - width / 2;
+        game->draw_rect_filled(caption_x - 2, kMainMenuCaptionY - 1, width + 4, 8,
+                               PURE_BLACK, 150);
+        game->text_normal.write_xy(caption_x, kMainMenuCaptionY, WHITE, "%s",
+                                   caption.c_str());
     }
 
     // On native builds, show the version number on the main menu. On
@@ -1873,6 +1997,10 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
     spec.row_count = row_count;
     spec.buttons_accessor = &picker_mainmenu_buttons;
     spec.count_accessor = &picker_mainmenu_button_count;
+    // §2.1: CONTINUE/LOAD gate on company existence, so the nav graph routes
+    // around them per frame (the pair's own hidden state is written by the
+    // gate pass; the rewire fixes the links INTO them).
+    spec.nav = {.kind = NavProgramKind::Rewire, .rewire = &main_menu_nav_rewire};
     // A host GO while this joiner sits on the main menu: break with
     // CONTINUE selected so present_menu() routes the shared state machine
     // into team build, whose loop-top check launches the game.
@@ -1894,6 +2022,24 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
 }
 
 } // namespace
+
+// §2.1: refresh the cached company view once per mainmenu() entry (the
+// blocking loop's gate/rewire/caption read the cache, never the filesystem).
+void refresh_main_menu_company_view()
+{
+    const std::vector<og::data::CompanyInfo> companies = og::data::list_companies();
+    g_main_menu_company_view.present = !companies.empty();
+    g_main_menu_company_view.display_name =
+        companies.empty() ? std::string() : companies.front().display_name;
+}
+
+// Test seam: pin the company view (present flag + display name) without a
+// filesystem, so the no-company gate/rewire/caption shape is deterministic.
+void set_main_menu_company_view_for_tests(bool present, std::string display_name)
+{
+    g_main_menu_company_view.present = present;
+    g_main_menu_company_view.display_name = std::move(display_name);
+}
 
 const MenuScreenSpec& main_menu_screen_spec_mp()
 {
@@ -2181,6 +2327,8 @@ Sint32 mainmenu(Sint32 arg1)
     (void)arg1;
     if (og::runtime::current_session->myscreen_ == nullptr)
         return MENU_EXIT;
+    // §2.1: sample the company set once, before the blocking loop opens.
+    og::ui::refresh_main_menu_company_view();
     return og::ui::run_menu_screen(og::ui::main_menu_screen_spec());
 }
 

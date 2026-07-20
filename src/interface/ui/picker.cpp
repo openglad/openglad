@@ -259,8 +259,20 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::BeginNewGame);
             break;
         case ButtonAction::CreateTeamMenu:
+            // §2.1 CONTINUE opens the most-recent company (WP2 startup
+            // selection). A corrupt/failed most-recent keeps the loaded save
+            // rather than silently switching; the popup + Company List
+            // fallback is WP3's later Load screen.
+            (void)og::ui::open_most_recent_company(
+                og::runtime::current_session->myscreen_->save_data);
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
+            break;
+        case ButtonAction::CreateLoadMenu:
+            // §2.1 LOAD door: routes through the shared LoadGame action (the
+            // legacy load-slots flow until WP3's Company List screen lands).
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::LoadGame);
             break;
         case ButtonAction::MainOptions:
             menu_item = og::ui::find_picker_menu_item(
@@ -2684,13 +2696,11 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
 
-   // Raw click-side write, redundant with the engine main menu's pvp_allied
-   // LabelBinding (which re-derives BOTH surfaces every frame) but pinned
-   // directly by test_picker_funcs. The G8 sweep that deletes it belongs to
-   // the Layer-F main-menu reshape commit, atomically with that pin's
-   // re-pin (design §1.2 G8).
-   if (og::runtime::current_session->allbuttons_[7] != nullptr)
-       og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
+   // G8 sweep (design §1.2): the raw allbuttons_[7] click-side label write is
+   // gone — the engine main menu's pvp_allied LabelBinding re-derives BOTH
+   // surfaces every frame, so the write was redundant. Deleted atomically
+   // with its test_picker_funcs re-pin, as G8 assigns to the Layer-F main-menu
+   // reshape.
 
    picker_lobby_sync_settings_from_save();
 

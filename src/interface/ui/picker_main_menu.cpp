@@ -31,7 +31,6 @@
 
 #include "picker_sdl_defs.h"
 
-bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Sint32 create_team_menu(Sint32 arg1);
 void picker_lobby_initialize_from_save();
 
@@ -42,12 +41,10 @@ bool picker_prepare_new_game_setup()
     if (!game)
         return false;
 
-    // Do we have a team already?  Then prompt to reset.
-    if(game->save_data.team_size > 0)
-    {
-        if(!yes_or_no_prompt("NEW GAME", "There is already a game loaded.\nDo you want to restart?", false))
-            return false;
-    }
+    // §2.1: BEGIN NEW GAME always founds a fresh company — the legacy
+    // "There is already a game loaded. Do you want to restart?" prompt is
+    // RETIRED. Nothing is destroyed: a new company writes its own file, and
+    // the previously active company stays on disk (reopenable via LOAD).
 
 	game->clear();
 

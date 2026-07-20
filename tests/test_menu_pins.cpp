@@ -102,9 +102,9 @@ void check_exact_table(button* buttons, int count,
 static const ExpectedButton kExpectedMainMenu[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 5}},
+     MenuNav{.up = 0, .down = 5, .right = 11}},
     {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 4,
      MenuNav{.up = 4, .down = 6, .left = 3}},
@@ -113,7 +113,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 5, .down = 6, .right = 2}},
     {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 2,
-     MenuNav{.up = 1, .down = 2, .left = 5}},
+     MenuNav{.up = 11, .down = 2, .left = 5}},
     {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 1,
      MenuNav{.up = 1, .down = 3, .right = 4}},
@@ -132,15 +132,18 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 8, .right = 9}},
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     button_action_id(ButtonAction::CreateLoadMenu), 0,
+     MenuNav{.up = 0, .down = 4, .left = 1}},
 };
 #else
 // Native + multiplayer: the variant CI compiles and pins.
 static const ExpectedButton kExpectedMainMenu[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 5}},
+     MenuNav{.up = 0, .down = 5, .right = 11}},
     {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 4,
      MenuNav{.up = 4, .down = 6, .left = 3}},
@@ -149,7 +152,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 5, .down = 6, .right = 2}},
     {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 2,
-     MenuNav{.up = 1, .down = 2, .left = 5}},
+     MenuNav{.up = 11, .down = 2, .left = 5}},
     {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
      button_action_id(ButtonAction::SetPlayerMode), 1,
      MenuNav{.up = 1, .down = 3, .right = 4}},
@@ -168,6 +171,10 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 8, .right = 9}},
+    // §2.1 index 11: the appended LOAD half of the CONTINUE|LOAD split.
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     button_action_id(ButtonAction::CreateLoadMenu), 0,
+     MenuNav{.up = 0, .down = 4, .left = 1}},
 };
 #endif // __EMSCRIPTEN__
 
@@ -178,9 +185,9 @@ static const ExpectedButton kExpectedMainMenu[] = {
 static const ExpectedButton kExpectedMainMenu[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2}},
+     MenuNav{.up = 0, .down = 2, .right = 6}},
     {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
      MenuNav{.up = 1, .down = 3}},
@@ -192,15 +199,18 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 3, .right = 4}},
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     button_action_id(ButtonAction::CreateLoadMenu), 0,
+     MenuNav{.up = 0, .down = 2, .left = 1}},
 };
 #else
 // Native without multiplayer (also the USE_TOUCH_INPUT shape).
 static const ExpectedButton kExpectedMainMenu[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2}},
+     MenuNav{.up = 0, .down = 2, .right = 6}},
     {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
      MenuNav{.up = 1, .down = 3}},
@@ -212,6 +222,9 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 3, .right = 4}},
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     button_action_id(ButtonAction::CreateLoadMenu), 0,
+     MenuNav{.up = 0, .down = 2, .left = 1}},
 };
 #endif // __EMSCRIPTEN__
 
@@ -224,9 +237,11 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     check_exact_table(buttons, count, kExpectedMainMenu,
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
-    // The options gear is the last row in every variant — the index the
-    // OPTIONS_BUTTON_INDEX #define encodes in picker.cpp.
-    ASSERT_EQ("options", buttons[count - 1].id);
+    // §2.1: load_company is appended at the table END, so the options gear is
+    // now the second-to-last row (picker_mainmenu_options_index() finds it by
+    // id — it is no longer count-1).
+    ASSERT_EQ("load_company", buttons[count - 1].id);
+    ASSERT_EQ("options", buttons[count - 2].id);
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,8 @@ MainMenuAction IPickerClient::show_main_menu()
             return MainMenuAction::NewGame;
         case PickerMenuCommand::ContinueGame:
             return MainMenuAction::ViewTeam;
+        case PickerMenuCommand::LoadGame:
+            return MainMenuAction::LoadGame;
         case PickerMenuCommand::Networking:
             return MainMenuAction::Networking;
         case PickerMenuCommand::HostGame:

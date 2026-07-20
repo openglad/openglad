@@ -69,6 +69,9 @@ enum class PickerMenuCommand : std::int32_t
     EditCompanyName,    // §2.2 edit the name strip in place
     RerollCompanyName,  // §2.2 REROLL — regenerate the fantasy default
     AcceptCompanyName,  // §2.2 ACCEPT — create the company file
+    // §2.1 main-menu LOAD door. Temporarily opens the legacy load flow until
+    // WP3's Company List screen lands; then this routes to LoadCompany.
+    LoadGame,
 };
 
 struct PickerMenuItem

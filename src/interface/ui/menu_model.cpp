@@ -13,7 +13,7 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
     {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
@@ -31,6 +31,9 @@ constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
 #else
     {"quit", "Quit", PickerMenuCommand::Quit},
 #endif
+    // §2.1: the LOAD half of the CONTINUE|LOAD split, appended at the END so
+    // the legacy 1-based positions 1-11 are untouched.
+    {"load_company", "Load Company", PickerMenuCommand::LoadGame},
 }};
 
 constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{

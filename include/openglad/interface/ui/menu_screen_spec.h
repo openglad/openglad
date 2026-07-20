@@ -287,4 +287,10 @@ const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
 
+// §2.1 Company & Base Camp: CONTINUE/LOAD gate and the company caption read a
+// cached view of the company set, refreshed once per mainmenu() entry (never
+// per frame — list_companies() touches the filesystem). Tests pin the view.
+void refresh_main_menu_company_view();
+void set_main_menu_company_view_for_tests(bool present, std::string display_name);
+
 } // namespace og::ui

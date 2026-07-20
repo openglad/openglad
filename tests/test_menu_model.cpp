@@ -354,8 +354,9 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(11u, main_def.items.size())
-        << "main menu shape must not change (1-based text-drive numbers)";
+    ASSERT_EQ(12u, main_def.items.size())
+        << "main menu gained load_company (§2.1), appended so 1-based text-"
+           "drive positions 1-11 stay put";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -507,9 +508,20 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
         }
     }
 
-    // Re-affirm the legacy 1-based contracts are untouched by the append.
-    ASSERT_EQ(11u, picker_menu_definition(PickerMenuId::Main).items.size());
+    // §2.1: Main gains load_company (LOAD), appended at the END so positions
+    // 1-11 (the text 1-based contract) are untouched; TeamBuild/Scenario/
+    // Difficulty shapes are unchanged.
+    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
+
+    // load_company resolves by id and by command, and is the last Main item.
+    const PickerMenuItem* load_company =
+        find_picker_menu_item(PickerMenuId::Main, "load_company");
+    ASSERT_TRUE(load_company != nullptr);
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::LoadGame),
+              static_cast<int>(load_company->command));
+    ASSERT_EQ(load_company,
+              &picker_menu_definition(PickerMenuId::Main).items.back());
 }

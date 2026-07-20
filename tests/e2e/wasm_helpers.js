@@ -209,9 +209,11 @@ async function waitForPickerReady(page, settlingMs = 5_000) {
 }
 
 // From the picker main menu: CONTINUE opens the team-build menu.
+// §2.1/§2.10: CONTINUE was split into the 68x20 CONTINUE|LOAD pair, so its
+// center moved from (150,85) to (114,85).
 async function continueToTeamBuildMenu(page) {
   await waitForPickerReady(page);
-  await clickCanvasGameCoord(page, 150, 85);
+  await clickCanvasGameCoord(page, 114, 85);
   await page.waitForTimeout(1_500);
 }
 
@@ -230,7 +232,7 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
   const {
     preStartSettlingMs = 5_000,
     expectedCaptureProfileId = null,
-    continueButton = { x: 150, y: 85 },
+    continueButton = { x: 114, y: 85 },
     goButton = { x: 250, y: 107 },
     onTeamBuildReady = null,
   } = options;

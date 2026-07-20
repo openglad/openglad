@@ -255,11 +255,10 @@ runtime route-around resolver for NEW screens' gating.
   until id-keyed nav (G9) lands, filtered variants must keep them valid
   across variants (the main-menu quit/help fork satisfies this by
   construction — one survivor, same index, same links).
-- The `change_allied` raw `allbuttons_[7]` click-side write is redundant
-  under the engine main menu (the pvp_allied LabelBinding re-derives both
-  surfaces every frame) but stays: test_picker_funcs pins it directly, and
-  WP1 may not re-pin. Its G8 deletion belongs to the Layer-F main-menu
-  reshape commit, atomically with that re-pin.
+- The `change_allied` raw `allbuttons_[7]` click-side write was DELETED by
+  the G8 sweep in the Layer-F main-menu reshape (design §2.1), atomically
+  with its test_picker_funcs re-pin — the pvp_allied LabelBinding re-derives
+  both label surfaces every frame, so the write was redundant.
 - `PageModel` is implemented (menu_binding.{h,cpp}) and PROVEN against the
   pinned VIEW LEVEL pager (the G6 differential oracle in
   tests/unit/test_menu_spec.cpp); the VIEW LEVEL screen runs on it. The
