@@ -4,6 +4,7 @@
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
@@ -3203,6 +3204,25 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     })) << "the advanced level-2 cursor must reach both peers over the live "
            "connection while staying a two-player lobby";
 
+    // ---- §4.2 per-level reassembly: bench Bravo for level 2. The host's
+    // roster re-send updates the server's stored seats, and the next level's
+    // assembly (the SAME build_save_data_equivalent source of truth the
+    // rebind path consumes) must exclude the benched character. ----
+    {
+        bool benched = false;
+        for (auto& member : host_save.team_list)
+        {
+            if (member != nullptr && member->name == "Bravo")
+            {
+                member->deployed = false;
+                benched = true;
+            }
+        }
+        ASSERT_TRUE(benched) << "Bravo must still be on the host's private roster";
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        host_client->sync_roster_from_save();
+    }
+
     // ---- Ready up and start LEVEL 2 over the persisted connection. ----
     start_level("level 2");
 
@@ -3227,6 +3247,26 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         };
     check_on_level_2(*cleanup.host_session, "host");
     check_on_level_2(join_session, "join");
+
+    // §4.2: the level-2 authoritative roster honors the between-levels deploy
+    // change — Bravo (benched in the lobby) never spawns on level 2 while
+    // Alpha and the joiner's character do.
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *cleanup.host_session);
+        ASSERT_NE(nullptr, server_screen);
+        auto host_scope = cleanup.host_session->activate();
+        EXPECT_NE(nullptr,
+                  find_named_team_member(server_screen->world(), "Alpha"))
+            << "the still-deployed host character spawns on level 2";
+        EXPECT_NE(nullptr,
+                  find_named_team_member(server_screen->world(), "Joiner"))
+            << "the joiner's character spawns on level 2";
+        EXPECT_EQ(nullptr,
+                  find_named_team_member(server_screen->world(), "Bravo"))
+            << "a character benched between levels must not enter level 2";
+    }
 }
 
 // §4.3 ready gate, end to end over real websockets (cheap: no level runs).
@@ -3337,6 +3377,379 @@ TEST(PickerNetworkClient, host_go_denied_until_joiner_ready_and_resend_preserves
     EXPECT_TRUE(host_client->request_start_game())
         << "GO succeeds once every non-host machine is ready";
     EXPECT_EQ(og::sim::StartDenialReason::None, host_client->last_start_denial());
+
+    og::runtime::clear_local_transport_shadow(*active_game_session());
+}
+
+// §4.2 deploy filter + §4.4 cross-control propagation, end to end: a host
+// benches one of its two characters and flips cross_control ON. The joiner
+// learns cross_control over the settings echo (host → all peers; the 7-step
+// chain then carries it into every session's game-start save). The started
+// level contains ONLY deployed characters — the benched one never spawns,
+// never rides the netsession seed, and stays in the host's private save0
+// with its flag intact.
+TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_propagates)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_allied_host_network_save(host_save);
+    // Bench Bravo (slot 1). Alpha stays deployed.
+    ASSERT_NE(nullptr, host_save.team_list[1]);
+    host_save.team_list[1]->deployed = false;
+    // Host-only §4.4 setting: ON. (Not restored by PickerSaveStateGuard —
+    // scoped restore below.)
+    struct CrossControlRestore
+    {
+        SaveData& save;
+        short prev;
+        ~CrossControlRestore() { save.cross_control = prev; }
+    } cross_control_restore{host_save, host_save.cross_control};
+    host_save.cross_control = 1;
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : join_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    join_session->myscreen_->world().delete_objects();
+                }
+            }
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : host_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    host_session->myscreen_->world().delete_objects();
+                }
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    // Converge, and require the joiner to have LEARNED cross_control=1 from
+    // the host's settings echo (§4.4 propagation; sanitize keeps {0,1}).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_converged = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_converged = status_lines_contain_exact(
+                                 join_client->status_lines(),
+                                 "Lobby: 2 players") &&
+                join_session.myscreen_->save_data.cross_control == 1;
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_converged;
+    })) << "the joiner must converge AND adopt the host's cross_control=1";
+
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff";
+
+    const auto host_start_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(host_start_config.has_value());
+    // The equivalent itself is the assembly: Alpha + Joiner only.
+    ASSERT_EQ(2u, host_start_config->save_data.team_list.size())
+        << "the benched slot must be filtered out of the game-start roster";
+    EXPECT_EQ(1, host_start_config->save_data.cross_control);
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *cleanup.host_session->myscreen_, &*host_start_config);
+        glad_init(false, &*host_start_config);
+    }
+    {
+        auto join_scope = join_session.activate();
+        auto join_start_config = join_client->consume_game_start_config();
+        ASSERT_TRUE(join_start_config.has_value());
+        ASSERT_EQ(2u, join_start_config->save_data.team_list.size())
+            << "the joiner mirror must filter the benched slot identically";
+        EXPECT_EQ(1, join_start_config->save_data.cross_control);
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        ready_screen_for_game_start(
+            *join_session.myscreen_, &*join_start_config);
+        glad_init(false, &*join_start_config);
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        bool host_ready = false;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            og::runtime::local_transport_shadow_finish_tick(
+                *cleanup.host_session);
+            const og::sim::GameClient* const dc =
+                cleanup.host_session->myscreen_->render_interpolation_client();
+            host_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const dc =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        return host_ready && join_ready;
+    })) << "both runtimes should receive initial snapshots";
+
+    // The authoritative server world: deployed characters only (allied mode
+    // folds every hero onto gameplay team 0).
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *cleanup.host_session);
+        ASSERT_NE(nullptr, server_screen);
+        auto host_scope = cleanup.host_session->activate();
+        EXPECT_NE(nullptr,
+                  find_named_team_member(server_screen->world(), "Alpha"))
+            << "the deployed host character spawns";
+        EXPECT_NE(nullptr,
+                  find_named_team_member(server_screen->world(), "Joiner"))
+            << "the joiner's character spawns";
+        EXPECT_EQ(nullptr,
+                  find_named_team_member(server_screen->world(), "Bravo"))
+            << "the benched character must never enter the level";
+        EXPECT_EQ(1, static_cast<int>(server_screen->save_data.cross_control))
+            << "cross_control must survive the headless save-data copy chain";
+    }
+
+    // Save isolation: the netsession seed carries only deployed characters;
+    // the private save0 on disk keeps the benched one, flag intact.
+    {
+        SaveData netsession;
+        ASSERT_EQ(SaveDataIoError::None, netsession.load_with_error("netsession"));
+        EXPECT_TRUE(save_contains_named_member(netsession, "Alpha"));
+        EXPECT_FALSE(save_contains_named_member(netsession, "Bravo"))
+            << "the benched character must not ride the netsession seed";
+
+        SaveData private_save;
+        ASSERT_EQ(SaveDataIoError::None, private_save.load_with_error("save0"));
+        ASSERT_TRUE(save_contains_named_member(private_save, "Bravo"))
+            << "the benched character stays in the private save";
+        for (const auto& member : private_save.team_list)
+        {
+            if (member != nullptr && member->name == "Bravo")
+                EXPECT_FALSE(member->deployed);
+        }
+    }
+}
+
+// §4.2 [NET-F2] client half of the convergence loop, end to end: a joiner
+// whose deployed roster overflows the 24-cap is force-benched by the server;
+// the echoed flags are ADOPTED into the joiner's private roster (autosaved
+// via the §3.8 merge path — traced), so its next roster re-send is
+// content-identical and its ready SURVIVES; the host's GO then succeeds with
+// exactly 24 deployed slots in the assembly.
+TEST(PickerNetworkClient, overflow_join_reconciles_echoed_bench_flags_and_preserves_ready)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_allied_host_network_save(host_save);
+    // Grow the host to a full 24-slot deployed roster: capacity for the
+    // joiner is zero.
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+    {
+        if (host_save.team_list[slot] == nullptr)
+        {
+            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+            member->name = std::format("Host{}", slot);
+            member->teamnum = 0;
+            host_save.team_list[slot] = std::move(member);
+        }
+    }
+    host_save.team_size = static_cast<unsigned char>(MAX_TEAM_SIZE);
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+#ifdef TESTING
+    trace_clear();
+#endif
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "JoinA");
+    {
+        auto member = std::make_unique<guy>(FAMILY_ARCHER);
+        member->name = "JoinB";
+        member->teamnum = 1;
+        join_save.team_list[1] = std::move(member);
+        join_save.team_size = 2;
+    }
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr && join_client != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup{&join_session, host_client.get(), join_client.get()};
+
+    // Converge AND reconcile: the joiner's two members must both flip to
+    // benched in its PRIVATE in-memory roster (adopted from the echo).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool reconciled = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            reconciled =
+                join_save.team_list[0] != nullptr &&
+                join_save.team_list[1] != nullptr &&
+                !join_save.team_list[0]->deployed &&
+                !join_save.team_list[1]->deployed;
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            reconciled;
+    })) << "the joiner must adopt the server's force-benched flags";
+#ifdef TESTING
+    EXPECT_TRUE(trace_contains("lobby", "deploy_reconcile"))
+        << "the reconciliation must be traced";
+    EXPECT_TRUE(trace_contains("lobby", "deploy_limit_benched n=2"))
+        << "the 24-cap bench count must be traced (WP4 popup hook)";
+#endif
+
+    // Ready up, then re-send the (now reconciled) roster — the §4.2
+    // convergence promise: the re-send is content-identical, ready survives.
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}));
+    {
+        auto join_scope = join_session.activate();
+        join_client->sync_roster_from_save();
+    }
+    // Bounded pump (NOT a wait-until-ready, which would pass before the
+    // re-send even lands): drive both sides long enough for the join
+    // round-trip, then require ready to have SURVIVED. The strict
+    // idempotence guarantee is unit-pinned in
+    // LobbyServer.overflow_force_bench_is_idempotent_and_preserves_ready.
+    for (int round = 0; round < 40; ++round)
+    {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->local_ready())
+            << "a reconciled roster re-send must not clear ready ([NET-F2])";
+    }
+
+    // GO succeeds; the assembly holds exactly the host's 24 deployed slots.
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(host_client->request_start_game());
+    EXPECT_EQ(og::sim::StartDenialReason::None, host_client->last_start_denial());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->has_game_start_config();
+    }));
+    const auto start_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(start_config.has_value());
+    EXPECT_EQ(24u, start_config->save_data.team_list.size())
+        << "the assembly must hold exactly the 24 deployed slots";
+    for (const auto& slot : start_config->save_data.team_list)
+    {
+        EXPECT_NE("JoinA", slot.character.name);
+        EXPECT_NE("JoinB", slot.character.name);
+    }
 
     og::runtime::clear_local_transport_shadow(*active_game_session());
 }

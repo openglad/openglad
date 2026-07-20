@@ -487,13 +487,21 @@ std::int16_t LobbyServer::resolve_seat_team(
 
 std::size_t LobbyServer::remaining_team_capacity(PeerId peer_id) const noexcept
 {
+    // §4.2: only DEPLOYED slots consume the combined 24-slot match capacity —
+    // benched slots always replicate for display and never crowd anyone out.
     std::size_t used_slots = 0;
     for (const auto& [other_peer_id, peer] : peers_)
     {
         if (other_peer_id == peer_id)
             continue;
         for (const LobbyPlayer& seat : peer.seats)
-            used_slots += seat.character_slots.size();
+        {
+            for (const LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (slot.deployed)
+                    ++used_slots;
+            }
+        }
     }
 
     return used_slots >= kMaxLobbyTeamSize ? 0 : kMaxLobbyTeamSize - used_slots;
@@ -692,9 +700,24 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
             seat.is_host = false;
             seat.character_slots = sanitize_character_slots(
                 requested_seat.character_slots, team);
-            if (seat.character_slots.size() > slot_capacity)
-                seat.character_slots.resize(slot_capacity);
-            slot_capacity -= seat.character_slots.size();
+            // §4.2 [NET-F2] overflow convergence: the FULL roster replicates
+            // for display, but only DEPLOYED slots consume the combined
+            // 24-slot capacity. Deployed slots beyond the remaining budget
+            // are force-BENCHED in seat/slot order in the STORED seats and
+            // ride the state echo back for client reconciliation. This is
+            // idempotent: a client re-sending the same optimistic flags gets
+            // force-cleared to the same stored seats, so the re-send is
+            // content-identical and its ready survives (no perpetual
+            // ready-clearing while the client converges).
+            for (LobbyCharacterSlot& slot : seat.character_slots)
+            {
+                if (!slot.deployed)
+                    continue;
+                if (slot_capacity == 0)
+                    slot.deployed = false;
+                else
+                    --slot_capacity;
+            }
             sibling_teams.push_back(team);
             new_seats.push_back(std::move(seat));
         }
@@ -1060,6 +1083,17 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         for (std::size_t slot_order = 0; slot_order < player.character_slots.size();
              ++slot_order)
         {
+            // §4.2: NETWORKED roster assembly materializes only DEPLOYED
+            // slots — benched characters never enter the netsession seed,
+            // InitialSetup, or GuySnapshots (filtered BEFORE densification,
+            // so compaction indices count deployed slots only). Local
+            // sessions deliberately keep the full roster: the local start
+            // path seeds the player's ACTIVE COMPANY slot from this
+            // equivalent, so filtering here would drop benched members from
+            // the real save file. The local assembly filter lives at spawn
+            // time instead (spawn_team_from_save skips benched members).
+            if (!local_session_ && !player.character_slots[slot_order].deployed)
+                continue;
             ordered_slots.push_back(OrderedLobbySlot{
                 .slot_index = player.character_slots[slot_order].slot_index,
                 .player_order = player_index,

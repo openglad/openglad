@@ -99,8 +99,11 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
-    // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
-    // assembly only materializes deployed slots, so mark the guy explicitly.
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload. This
+    // copy default-deploys; the LOCAL round-trip rebuild overrides it from
+    // the slot right after (a benched member must survive the state sync —
+    // the local lobby echoes the machine's own roster, it is not the
+    // match-assembly filter).
     result->deployed = true;
     return result;
 }
@@ -647,6 +650,12 @@ private:
 
             save.team_list[slot_index] =
                 make_guy_from_lobby_character(ordered_slots[index].slot->character);
+            // §4.2: preserve the slot's deploy flag through the round-trip —
+            // the local lobby state carries the machine's WHOLE roster
+            // (benched included) and this rebuild writes back into the real
+            // save, so re-deploying here would wipe a benched selection.
+            save.team_list[slot_index]->deployed =
+                ordered_slots[index].slot->deployed;
             save.team_size++;
         }
 

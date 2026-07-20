@@ -159,6 +159,15 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         if (!member)
             continue;
 
+        // §4.2: benched (deployed == false) members stay in the save's
+        // roster but never enter the level. Networked rosters arrive
+        // pre-filtered (the lobby equivalent drops benched slots and its guy
+        // copies re-deploy), so this guard is the LOCAL session's assembly
+        // filter — the local equivalent deliberately keeps benched members
+        // so the active-company seed never loses them from the save file.
+        if (!member->deployed)
+            continue;
+
         walker* const created = create_team_walker(world, *member);
         if (created == nullptr || created->myguy == nullptr)
             continue;

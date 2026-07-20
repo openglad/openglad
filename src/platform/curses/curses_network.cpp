@@ -1353,6 +1353,11 @@ private:
         std::uint8_t next_slot = 0;
         for (const og::sim::LobbyPlayer& player : state_->players) {
             for (const og::sim::LobbyCharacterSlot& slot : player.character_slots) {
+                // §4.2: assembly materializes only DEPLOYED slots — must
+                // match the host's LobbyServer::build_save_data_equivalent
+                // filter or the joiner's spawn diverges from the server.
+                if (!slot.deployed)
+                    continue;
                 if (next_slot >= MAX_TEAM_SIZE)
                     break;
                 og::sim::LobbyCharacterSlot compacted = slot;

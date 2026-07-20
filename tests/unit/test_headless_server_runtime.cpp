@@ -198,6 +198,53 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_FALSE(guest->has_render());
 }
 
+// §4.2 LOCAL assembly filter: a benched (deployed == false) save member is
+// SKIPPED at spawn time but stays in the save's roster untouched. This is
+// the local-session half of the deploy rule — networked rosters arrive
+// pre-filtered by the lobby equivalent, local saves keep benched members on
+// disk and rely on this spawn guard to keep them out of the level.
+TEST_F(HeadlessServerRuntimeTest, spawn_skips_benched_members_but_save_keeps_them)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Front", FAMILY_SOLDIER, 0),
+        make_slot(1u, 200, "Reserve", FAMILY_ARCHER, 0),
+    };
+
+    og::server::apply_headless_lobby_game_start_config(active_save_, lobby_save);
+    // Bench the second member directly in the save — the LOCAL shape (the
+    // local equivalent deliberately keeps benched members so the company
+    // seed never loses them; spawn is where they are filtered).
+    ASSERT_NE(nullptr, active_save_.team_list[1]);
+    active_save_.team_list[1]->deployed = false;
+    og::server::copy_headless_server_save_data(checkpoint_save_, active_save_);
+    create_level_runtime_data(active_save_.scen_num);
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            /*difficulty_setting=*/1,
+            events_,
+            /*authoritative=*/true);
+    }));
+
+    EXPECT_NE(nullptr, find_team_member(level_data_->world(), 100))
+        << "the deployed member spawns";
+    EXPECT_EQ(nullptr, find_team_member(level_data_->world(), 200))
+        << "the benched member must never enter the level";
+
+    // The save's roster is untouched: both members present, flag intact.
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    ASSERT_NE(nullptr, active_save_.team_list[1]);
+    EXPECT_TRUE(active_save_.team_list[0]->deployed);
+    EXPECT_FALSE(active_save_.team_list[1]->deployed);
+    EXPECT_EQ("Reserve", active_save_.team_list[1]->name);
+}
+
 TEST_F(HeadlessServerRuntimeTest,
        lobby_start_preserves_distinct_owners_with_same_private_save_slot)
 {

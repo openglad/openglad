@@ -2303,21 +2303,46 @@ Sint32 go_menu(Sint32 arg1)
     // Make sure the launched match has a valid team. Networked picker saves
     // remain private, so a spectator/empty-local peer must consult the
     // authoritative lobby roster rather than only its own save_data.
-    bool has_gameplay_roster =
+    //
+    // §4.3 rule 4 / [NET-R9]: the guard requires >= 1 DEPLOYED character
+    // GLOBALLY — never a per-machine minimum (an all-spectator or 0-deploy
+    // host machine starts fine when any other machine deploys; the server's
+    // start_allowed is the authoritative backstop). Hired-but-benched rosters
+    // get the deploy popup instead of the hire popup.
+    bool has_any_member =
         og::runtime::current_session->myscreen_->save_data.team_size > 0;
+    bool has_gameplay_roster = std::any_of(
+        og::runtime::current_session->myscreen_->save_data.team_list.begin(),
+        og::runtime::current_session->myscreen_->save_data.team_list.end(),
+        [](const std::unique_ptr<guy>& member) {
+            return member != nullptr && member->deployed;
+        });
     if (picker_lobby_is_networked())
     {
         const std::vector<og::sim::LobbyPlayer> players =
             picker_lobby_players();
-        has_gameplay_roster = std::any_of(
+        has_any_member = std::any_of(
             players.begin(), players.end(),
             [](const og::sim::LobbyPlayer& player) {
                 return !player.character_slots.empty();
             });
+        has_gameplay_roster = std::any_of(
+            players.begin(), players.end(),
+            [](const og::sim::LobbyPlayer& player) {
+                return std::any_of(
+                    player.character_slots.begin(),
+                    player.character_slots.end(),
+                    [](const og::sim::LobbyCharacterSlot& slot) {
+                        return slot.deployed;
+                    });
+            });
     }
     if (!has_gameplay_roster)
     {
-        popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+        if (has_any_member)
+            popup_dialog("NO ONE DEPLOYED", "Deploy at least\none character\nbefore starting");
+        else
+            popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 
         return MENU_REDRAW;
     }
@@ -2457,6 +2482,8 @@ int picker_team_build_testing_exercise_internal_paths()
         bool has_start_config = true;
         bool editable = true;
         bool requested = false;
+        bool networked = false;
+        std::vector<og::sim::LobbyPlayer> players;
 
         void initialize_from_save() override {}
         void shutdown() override {}
@@ -2497,6 +2524,14 @@ int picker_team_build_testing_exercise_internal_paths()
         bool is_save_slot_editable(std::size_t) const noexcept override
         {
             return editable;
+        }
+        bool is_networked_session() const noexcept override
+        {
+            return networked;
+        }
+        std::vector<og::sim::LobbyPlayer> lobby_players() const override
+        {
+            return players;
         }
     };
 
@@ -2724,6 +2759,37 @@ int picker_team_build_testing_exercise_internal_paths()
     client.requested = false;
     g_start_game_requested = false;
     check(go_menu(0) == MENU_REDRAW && client.requested);
+
+    // §4.3 rule 4 / [NET-R9] go_menu guard: a hired-but-benched LOCAL roster
+    // blocks the launch (deploy popup, no start request)...
+    save.team_list[0]->deployed = false;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    save.team_list[0]->deployed = true;
+    // ...and the NETWORKED guard is GLOBAL any-deployed, not per-machine:
+    // an all-benched lobby blocks, one deployed slot ANYWHERE (even on a
+    // remote machine) launches.
+    client.networked = true;
+    {
+        og::sim::LobbyPlayer remote_machine;
+        remote_machine.name = "Remote";
+        remote_machine.character_slots.push_back(og::sim::LobbyCharacterSlot{
+            .slot_index = 0,
+            .deployed = false,
+        });
+        client.players = {remote_machine};
+    }
+    client.requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    client.players[0].character_slots[0].deployed = true;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && client.requested);
+    client.networked = false;
+    client.players.clear();
+    client.requested = false;
+    g_start_game_requested = false;
 
     guy source(FAMILY_ELF);
     guy destination(FAMILY_SOLDIER);

@@ -1416,6 +1416,12 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         {
             return;
         }
+        // cross_control is SESSION-only (never serialized), so the slot
+        // round-trip through disk just dropped it — carry the lobby-config
+        // value from the display save (the same dropped-field trap
+        // copy_headless_server_save_data guards against on the headless path).
+        server_screen->save_data.cross_control =
+            gameplay_screen.save_data.cross_control;
         prepare_server_session_for_gameplay(*runtime->server_session);
         og::sim::apply_snapshot(
             server_screen->world(),
@@ -1656,6 +1662,10 @@ void reset_network_host_transport_shadow(
         {
             return;
         }
+        // Session-only cross_control dropped by the disk round-trip — carry
+        // it (see reset_local_transport_shadow above).
+        server_screen->save_data.cross_control =
+            gameplay_screen.save_data.cross_control;
 
         prepare_server_session_for_gameplay(*runtime->server_session);
         og::sim::apply_snapshot(

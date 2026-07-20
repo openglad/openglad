@@ -816,7 +816,12 @@ TEST(LobbyServer, slot_sanitization_and_save_data_mapping_compact_sparse_slots)
     EXPECT_EQ("Second", equivalent.team_list[1].character.name);
 }
 
-TEST(LobbyServer, join_trims_total_character_count_to_save_data_limit)
+// §4.2 [NET-F2]: a join whose deployed total would exceed the 24-slot match
+// capacity keeps its FULL roster for display but the overflow slots are
+// force-BENCHED (deployed cleared) in slot order in the stored seats — the
+// v7 hard truncation is gone. The assembly equivalent then materializes
+// exactly the 24 deployed slots.
+TEST(LobbyServer, join_overflow_force_benches_instead_of_truncating)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
@@ -845,9 +850,24 @@ TEST(LobbyServer, join_trims_total_character_count_to_save_data_limit)
 
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_EQ(20u, server.state().players[0].character_slots.size());
-    EXPECT_EQ(4u, server.state().players[1].character_slots.size());
+    // The guest's whole 10-slot roster replicates for display; only the 4
+    // that fit the 24-cap stay deployed, the tail 6 are force-benched.
+    ASSERT_EQ(10u, server.state().players[1].character_slots.size());
     EXPECT_EQ(20u, server.state().players[1].character_slots[0].slot_index);
-    EXPECT_EQ(23u, server.state().players[1].character_slots[3].slot_index);
+    EXPECT_EQ(29u, server.state().players[1].character_slots[9].slot_index);
+    for (std::size_t slot = 0; slot < 10u; ++slot)
+    {
+        EXPECT_EQ(slot < 4u,
+                  server.state().players[1].character_slots[slot].deployed)
+            << "guest slot " << slot;
+    }
+    // Owner-only benching: the host's own flags are untouched by the guest's
+    // overflow join (a join only replaces the SENDER's seats).
+    for (const og::sim::LobbyCharacterSlot& slot :
+         server.state().players[0].character_slots)
+    {
+        EXPECT_TRUE(slot.deployed);
+    }
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
@@ -2053,4 +2073,226 @@ TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.state().players[1].ready);
+}
+
+// §4.2: only DEPLOYED slots consume the combined 24-slot capacity. A host
+// with half its 20-slot roster benched leaves 24-10 = 14 slots of budget, so
+// a 10-slot guest fits fully deployed — and the assembly equivalent
+// materializes exactly the deployed slots (benched filtered BEFORE
+// densification, owner mapping intact through compaction).
+TEST(LobbyServer, benched_slots_free_capacity_and_assembly_filters_them)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    std::vector<og::sim::LobbyCharacterSlot> host_slots =
+        make_slots(0u, 20u, 100, FAMILY_SOLDIER);
+    for (std::size_t slot = 10; slot < host_slots.size(); ++slot)
+        host_slots[slot].deployed = false;
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, std::move(host_slots)));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, make_slots(30u, 10u, 200, FAMILY_ARCHER)));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ(20u, server.state().players[0].character_slots.size());
+    ASSERT_EQ(10u, server.state().players[1].character_slots.size());
+    for (const og::sim::LobbyCharacterSlot& slot :
+         server.state().players[1].character_slots)
+    {
+        EXPECT_TRUE(slot.deployed)
+            << "benched host slots must not crowd the guest out of the 24-cap";
+    }
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(20u, equivalent.team_list.size())
+        << "assembly materializes only the 10+10 deployed slots";
+    // Sparse deployed indices (0..9 host + 30..39 guest) compact to 0..19
+    // while owner_save_slot keeps the owner's ORIGINAL private slot.
+    EXPECT_EQ(0u, equivalent.team_list.front().slot_index);
+    EXPECT_EQ(19u, equivalent.team_list.back().slot_index);
+    EXPECT_EQ(0u, equivalent.team_list.front().owner_save_slot);
+    EXPECT_EQ(39u, equivalent.team_list.back().owner_save_slot);
+    for (const og::sim::LobbyCharacterSlot& slot : equivalent.team_list)
+        EXPECT_TRUE(slot.deployed);
+}
+
+// §4.2 [NET-F2] server half of the convergence loop: the overflow
+// force-bench is IDEMPOTENT against re-sends. A client that re-sends its
+// optimistic (all-deployed) join gets force-cleared to the same stored
+// seats — content-identical, ready survives — and one that re-sends the
+// ADOPTED (reconciled) flags is content-identical too.
+TEST(LobbyServer, overflow_force_bench_is_idempotent_and_preserves_ready)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, make_slots(0u, 24u, 100, FAMILY_SOLDIER)));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, make_slots(0u, 3u, 200, FAMILY_ARCHER)));
+    server.poll_incoming_messages();
+
+    // Capacity is exhausted by the host: every guest slot is force-benched
+    // and the echo carries the flags.
+    ASSERT_EQ(3u, server.state().players[1].character_slots.size());
+    for (const og::sim::LobbyCharacterSlot& slot :
+         server.state().players[1].character_slots)
+    {
+        EXPECT_FALSE(slot.deployed);
+    }
+
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
+
+    // Optimistic re-send (client not yet reconciled: claims deployed=true).
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, make_slots(0u, 3u, 200, FAMILY_ARCHER)));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready)
+        << "the force-bench must be idempotent: an optimistic re-send "
+           "converges to the same stored seats and ready survives";
+
+    // Reconciled re-send (client adopted the echoed flags).
+    std::vector<og::sim::LobbyCharacterSlot> adopted =
+        make_slots(0u, 3u, 200, FAMILY_ARCHER);
+    for (og::sim::LobbyCharacterSlot& slot : adopted)
+        slot.deployed = false;
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, std::move(adopted)));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.state().players[1].ready)
+        << "a reconciled re-send is content-identical with the stored seats";
+
+    // The gate still passes: the host's 24 deployed satisfy rule 4.
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(24u, server.build_save_data_equivalent().team_list.size());
+}
+
+// §4.3 rule 4 has NO per-machine minimum (with or without cross-control): a
+// host machine with its whole roster benched starts fine when any other
+// machine deploys at least one character.
+TEST(LobbyServer, zero_deploy_host_starts_when_another_machine_deploys)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    og::sim::LobbyCharacterSlot benched_host =
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER);
+    benched_host.deployed = false;
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {benched_host}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+
+    // cross_control stays OFF (default 0): the per-machine minimum is gone
+    // regardless — only the GLOBAL >= 1 deployed rule exists server-side.
+    ASSERT_EQ(0, server.state().settings.cross_control);
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(1u, equivalent.team_list.size())
+        << "only the guest's deployed character enters the match";
+    EXPECT_EQ(server.state().players[1].player_index,
+              equivalent.team_list[0].owner_player_index);
+}
+
+// §4.3 rule 4 stays GLOBAL under cross-control: an all-benched lobby is
+// denied NoDeployedCharacters even with cross_control ON (cross-control
+// removes per-machine minimums, never the global >= 1).
+TEST(LobbyServer, all_benched_start_denied_even_with_cross_control_on)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    og::sim::LobbyCharacterSlot benched_host =
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER);
+    benched_host.deployed = false;
+    og::sim::LobbyCharacterSlot benched_guest =
+        make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER);
+    benched_guest.deployed = false;
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {benched_host}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {benched_guest}));
+    server.poll_incoming_messages();
+
+    // Host flips cross-control ON (host-only settings path; §4.4).
+    og::sim::LobbySettings cross_on = server.state().settings;
+    cross_on.cross_control = 1;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(cross_on),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    server.poll_incoming_messages();
+    ASSERT_EQ(1, server.state().settings.cross_control);
+    ASSERT_TRUE(server.state().players[1].ready);
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.start_game_requested());
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::NoDeployedCharacters),
+              server.state().last_start_denial);
+
+    // Deploying one character anywhere clears the blocker.
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(22u, make_ready_message(1u, true));
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
+// §4.2: LOCAL sessions deliberately DO NOT filter benched slots out of the
+// save-data equivalent — the local start path seeds the player's real
+// active-company save from it, so filtering would drop benched members from
+// the save file. The local assembly filter lives at spawn time instead
+// (spawn_team_from_save), keeping solo saves loss-free and byte-identical.
+TEST(LobbyServer, local_session_equivalent_keeps_benched_slots)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+
+    og::sim::LobbyCharacterSlot deployed =
+        make_slot(0u, 100, "Front", FAMILY_SOLDIER);
+    og::sim::LobbyCharacterSlot benched =
+        make_slot(1u, 101, "Reserve", FAMILY_MAGE);
+    benched.deployed = false;
+    transport.queue_lobby_message(
+        11u, make_join_message("P1", 0, {deployed, benched}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(2u, equivalent.team_list.size());
+    EXPECT_TRUE(equivalent.team_list[0].deployed);
+    EXPECT_FALSE(equivalent.team_list[1].deployed)
+        << "the benched member must ride the local equivalent (and thus the "
+           "save seed) with its flag intact";
+    EXPECT_EQ("Reserve", equivalent.team_list[1].character.name);
 }

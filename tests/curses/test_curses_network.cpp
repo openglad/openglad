@@ -442,6 +442,64 @@ TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
     EXPECT_GT(matched, 0) << "at least one entity should be mirrored on both sides";
 }
 
+// §4.2 deploy filter over the curses stack: a benched host member never
+// enters the level — the host's build_save_data_equivalent and the joiner's
+// build_join_save_equivalent apply the SAME filter, so both mirrors converge
+// on a world without the benched character.
+TEST(CursesNetwork, benched_member_never_enters_the_level)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    // Second host member, BENCHED: replicates in the lobby, filtered from
+    // the match assembly.
+    host_save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    host_save.team_list[1]->name = "Reserve";
+    host_save.team_list[1]->teamnum = 0;
+    host_save.team_list[1]->deployed = false;
+    host_save.team_size = 2;
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    const auto count_heroes = [](const GameWorld& world,
+                                 int& reserve_count) {
+        int heroes = 0;
+        reserve_count = 0;
+        for (const auto& up : world.oblist) {
+            const walker* e = up.get();
+            if (e == nullptr || e->dead() || e->myguy == nullptr)
+                continue;
+            ++heroes;
+            if (e->myguy->name == "Reserve")
+                ++reserve_count;
+        }
+        return heroes;
+    };
+
+    int host_reserve = 0;
+    int join_reserve = 0;
+    const int host_heroes =
+        count_heroes(game.host_session->mirror_world(), host_reserve);
+    const int join_heroes =
+        count_heroes(game.join_session->mirror_world(), join_reserve);
+    EXPECT_EQ(2, host_heroes)
+        << "only the two deployed heroes spawn (host mirror)";
+    EXPECT_EQ(2, join_heroes)
+        << "only the two deployed heroes spawn (join mirror)";
+    EXPECT_EQ(0, host_reserve) << "the benched member must not spawn";
+    EXPECT_EQ(0, join_reserve) << "the benched member must not spawn";
+
+    // The benched member is still in the host's save, flag intact.
+    ASSERT_NE(nullptr, host_save.team_list[1]);
+    EXPECT_FALSE(host_save.team_list[1]->deployed);
+    EXPECT_EQ("Reserve", host_save.team_list[1]->name);
+}
+
 TEST(CursesNetwork, both_players_follow_distinct_avatars)
 {
     SaveData host_save;
