@@ -37,6 +37,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -1184,11 +1185,12 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
         og::ui::build_scenario_roster_report(scenario.world(), save);
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    const int total_pages = std::max(
-        1,
-        (static_cast<int>(lines.size()) + kViewScenarioRowsPerPage - 1) /
-            kViewScenarioRowsPerPage);
-    int page = 0;
+    // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
+    // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
+    // all come from the model; the oracle test in tests/unit/test_menu_spec
+    // pins its equivalence to the legacy arithmetic this replaced.
+    og::ui::PageModel pager = og::ui::PageModel::make(
+        static_cast<int>(lines.size()), kViewScenarioRowsPerPage);
 
     std::string title =
         std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
@@ -1196,7 +1198,7 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
         title.resize(48);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
-          static_cast<int>(lines.size()), page);
+          static_cast<int>(lines.size()), pager.page);
 
     og::runtime::current_session->myscreen_->clearbuffer();
 
@@ -1205,9 +1207,9 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
     button* buttons = picker_viewscenario_buttons();
     int num_buttons = picker_viewscenario_button_count();
     int highlighted_button = kViewScenarioBackIndex;
-    buttons[kViewScenarioPrevIndex].hidden = total_pages <= 1;
-    buttons[kViewScenarioNextIndex].hidden = total_pages <= 1;
-    if (total_pages <= 1)
+    buttons[kViewScenarioPrevIndex].hidden = !pager.multi_page();
+    buttons[kViewScenarioNextIndex].hidden = !pager.multi_page();
+    if (!pager.multi_page())
         buttons[kViewScenarioBackIndex].nav.right = -1;
     og::runtime::current_session->localbuttons_ =
         init_buttons(buttons, num_buttons);
@@ -1238,14 +1240,11 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
         pks().view_scenario_page_step = 0;
         if (step != 0)
         {
-            const int next_page =
-                std::clamp(page + step, 0, total_pages - 1);
             retvalue = 0;
-            if (next_page != page)
+            if (pager.step(step))
             {
-                page = next_page;
                 TRACE("picker", "view_scenario lines=%d page=%d",
-                      static_cast<int>(lines.size()), page);
+                      static_cast<int>(lines.size()), pager.page);
             }
         }
 
@@ -1258,21 +1257,17 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
         mytext.write_xy(10, 8, title.c_str(), static_cast<unsigned char>(BLACK), 1);
-        const int first_line =
-            page * kViewScenarioRowsPerPage;
-        for (int row = 0; row < kViewScenarioRowsPerPage; ++row)
+        const int first_line = pager.first_index();
+        for (int line_index = first_line; line_index < pager.end_index();
+             ++line_index)
         {
-            const int line_index = first_line + row;
-            if (line_index >= static_cast<int>(lines.size()))
-                break;
-            mytext.write_xy(10, 18 + row * 6, lines[line_index].c_str(),
+            mytext.write_xy(10, 18 + (line_index - first_line) * 6,
+                            lines[static_cast<std::size_t>(line_index)].c_str(),
                             static_cast<unsigned char>(BLACK), 1);
         }
-        if (total_pages > 1)
+        if (pager.multi_page())
         {
-            const std::string page_info =
-                std::format("{}/{}", page + 1, total_pages);
-            mytext.write_xy(140, 176, page_info.c_str(), WHITE, 1);
+            mytext.write_xy(140, 176, pager.indicator().c_str(), WHITE, 1);
         }
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);

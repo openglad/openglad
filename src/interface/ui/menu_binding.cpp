@@ -19,6 +19,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <format>
 #include <string>
 
@@ -100,6 +101,55 @@ const PickerMenuItem* menu_cancel_item(PickerMenuId menu_id)
     if (menu_id == PickerMenuId::Main)
         return find_picker_menu_item(menu_id, PickerMenuCommand::Quit);
     return find_picker_menu_item(menu_id, PickerMenuCommand::Back);
+}
+
+// --- PageModel (G6) ---------------------------------------------------------
+// The arithmetic is a verbatim lift of the VIEW LEVEL pager
+// (create_view_scenario_menu): ceiling page count floored at one page,
+// clamped stepping, hidden-when-<=1-page, and the 1-based "p/N" indicator.
+// The differential oracle in tests/unit/test_menu_spec.cpp pins the
+// equivalence against the transcribed legacy arithmetic.
+
+PageModel PageModel::make(int item_count, int rows_per_page)
+{
+    PageModel model;
+    model.item_count = std::max(0, item_count);
+    model.rows_per_page = std::max(1, rows_per_page);
+    return model;
+}
+
+int PageModel::page_count() const
+{
+    return std::max(1, (item_count + rows_per_page - 1) / rows_per_page);
+}
+
+bool PageModel::multi_page() const
+{
+    return page_count() > 1;
+}
+
+int PageModel::first_index() const
+{
+    return page * rows_per_page;
+}
+
+int PageModel::end_index() const
+{
+    return std::min(item_count, first_index() + rows_per_page);
+}
+
+bool PageModel::step(int delta)
+{
+    const int next_page = std::clamp(page + delta, 0, page_count() - 1);
+    if (next_page == page)
+        return false;
+    page = next_page;
+    return true;
+}
+
+std::string PageModel::indicator() const
+{
+    return std::format("{}/{}", page + 1, page_count());
 }
 
 } // namespace og::ui

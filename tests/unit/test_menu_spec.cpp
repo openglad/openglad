@@ -21,11 +21,16 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <format>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+// kViewScenarioRowsPerPage: the G6 oracle pins PageModel against the legacy
+// VIEW LEVEL pager at the exact pinned page size (header is SDL-free).
+#include "../../src/interface/ui/picker_sdl_defs.h"
 
 namespace {
 
@@ -523,6 +528,136 @@ TEST(MenuSpec, show_submenu_dispatches_until_back_or_null)
     EXPECT_TRUE(cancelled.handled.empty());
     ASSERT_EQ(1u, cancelled.presented_menus.size());
     EXPECT_EQ(PickerMenuId::Scenario, cancelled.presented_menus.front());
+}
+
+// --- PageModel vs the legacy VIEW LEVEL pager (G6 differential oracle) ----
+//
+// The legacy create_view_scenario_menu pager arithmetic, transcribed
+// VERBATIM as a hand-owned oracle (picker_team_build.cpp as it shipped
+// before the PageModel migration): ceiling page count floored at one,
+// pagers hidden when everything fits one page, clamped flips that report a
+// change only when the page moved, the 1-based "{page+1}/{total}"
+// indicator, and the 23-row draw window. PageModel must reproduce every
+// value byte-for-byte BEFORE any Layer-F screen may depend on it.
+
+namespace {
+
+struct LegacyViewLevelPagerOracle {
+    int lines = 0;
+    int total_pages = 1;
+    int page = 0;
+
+    explicit LegacyViewLevelPagerOracle(int line_count)
+        : lines(line_count),
+          total_pages(
+              std::max(1, (line_count + kViewScenarioRowsPerPage - 1) /
+                              kViewScenarioRowsPerPage))
+    {
+    }
+
+    [[nodiscard]] bool pagers_hidden() const { return total_pages <= 1; }
+
+    // The step-consumption block of the legacy loop; true = page changed
+    // (the legacy TRACE fired only then).
+    bool flip(int step)
+    {
+        const int next_page = std::clamp(page + step, 0, total_pages - 1);
+        if (next_page == page)
+            return false;
+        page = next_page;
+        return true;
+    }
+
+    [[nodiscard]] std::string indicator() const
+    {
+        return std::format("{}/{}", page + 1, total_pages);
+    }
+
+    // The draw loop's visible line indices for the current page.
+    [[nodiscard]] std::vector<int> visible_lines() const
+    {
+        std::vector<int> visible;
+        const int first_line = page * kViewScenarioRowsPerPage;
+        for (int row = 0; row < kViewScenarioRowsPerPage; ++row) {
+            const int line_index = first_line + row;
+            if (line_index >= lines)
+                break;
+            visible.push_back(line_index);
+        }
+        return visible;
+    }
+};
+
+std::vector<int> page_model_visible_lines(const og::ui::PageModel& model)
+{
+    std::vector<int> visible;
+    for (int line_index = model.first_index(); line_index < model.end_index();
+         ++line_index)
+        visible.push_back(line_index);
+    return visible;
+}
+
+} // namespace
+
+TEST(MenuSpec, page_model_matches_legacy_view_level_pager_oracle)
+{
+    // Every report size the viewer can meet around the page boundaries
+    // (0..5 pages), including the exact-multiple edges.
+    for (int line_count = 0; line_count <= kViewScenarioRowsPerPage * 5 + 2;
+         ++line_count) {
+        LegacyViewLevelPagerOracle oracle(line_count);
+        og::ui::PageModel model =
+            og::ui::PageModel::make(line_count, kViewScenarioRowsPerPage);
+
+        ASSERT_EQ(oracle.total_pages, model.page_count())
+            << "lines=" << line_count;
+        ASSERT_EQ(oracle.pagers_hidden(), !model.multi_page())
+            << "lines=" << line_count;
+
+        // A deterministic flip gauntlet: forward past the last page,
+        // backward past the first, and the legacy PREV/NEXT unit steps.
+        static const int kFlips[] = {1,  1,  1, 1, 1, 1, 1, -1, -1, -1,
+                                     -1, -1, -1, -1, -1, 1, -1, 1,  1,  -1};
+        for (const int step : kFlips) {
+            const bool oracle_changed = oracle.flip(step);
+            const bool model_changed = model.step(step);
+            ASSERT_EQ(oracle_changed, model_changed)
+                << "lines=" << line_count << " step=" << step;
+            ASSERT_EQ(oracle.page, model.page)
+                << "lines=" << line_count << " step=" << step;
+            ASSERT_EQ(oracle.indicator(), model.indicator())
+                << "lines=" << line_count << " step=" << step;
+            ASSERT_EQ(oracle.visible_lines(), page_model_visible_lines(model))
+                << "lines=" << line_count << " step=" << step;
+        }
+    }
+}
+
+TEST(MenuSpec, page_model_generic_shape_edges)
+{
+    // The model is the Layer-F pagination core too: sane on degenerate
+    // inputs (no items, nonsense rows-per-page) without div-by-zero.
+    og::ui::PageModel empty = og::ui::PageModel::make(0, 10);
+    EXPECT_EQ(1, empty.page_count());
+    EXPECT_FALSE(empty.multi_page());
+    EXPECT_EQ(0, empty.first_index());
+    EXPECT_EQ(0, empty.end_index());
+    EXPECT_FALSE(empty.step(1));
+    EXPECT_EQ("1/1", empty.indicator());
+
+    og::ui::PageModel degenerate = og::ui::PageModel::make(-5, 0);
+    EXPECT_EQ(0, degenerate.item_count);
+    EXPECT_EQ(1, degenerate.rows_per_page);
+    EXPECT_EQ(1, degenerate.page_count());
+
+    // A short last page keeps the window inside the item count.
+    og::ui::PageModel partial = og::ui::PageModel::make(25, 10);
+    EXPECT_EQ(3, partial.page_count());
+    EXPECT_TRUE(partial.step(5));
+    EXPECT_EQ(2, partial.page);
+    EXPECT_EQ(20, partial.first_index());
+    EXPECT_EQ(25, partial.end_index());
+    EXPECT_EQ("3/3", partial.indicator());
 }
 
 } // namespace

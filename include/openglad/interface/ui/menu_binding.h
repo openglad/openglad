@@ -92,4 +92,30 @@ const PickerMenuItem* menu_cancel_item(PickerMenuId menu_id);
 // show the bare number instead.
 std::string level_display_guarded(std::string_view campaign, int level);
 
+// The pure pagination core behind every engine pager (§1.7 PageModel, graft
+// G6): page count from item count, clamped page stepping, pager visibility
+// (pagers hide when everything fits one page), the current page's item
+// window, and the 1-based "p/N" indicator. Proven equivalent to the legacy
+// VIEW LEVEL pager arithmetic by the differential oracle in
+// tests/unit/test_menu_spec.cpp BEFORE any Layer-F screen may depend on it.
+struct PageModel {
+    int item_count = 0;
+    int rows_per_page = 1;
+    int page = 0;
+
+    static PageModel make(int item_count, int rows_per_page);
+
+    [[nodiscard]] int page_count() const;
+    // Pagers are hidden when false (the legacy hidden-when-<=1-page rule).
+    [[nodiscard]] bool multi_page() const;
+    // The current page's item window: [first_index, end_index).
+    [[nodiscard]] int first_index() const;
+    [[nodiscard]] int end_index() const;
+    // Step by delta, clamped to [0, page_count()-1]; true when the page
+    // actually changed (the legacy flip traces only on a real change).
+    bool step(int delta);
+    // 1-based "p/N" (the VIEW LEVEL page_info / TEAMS slice format).
+    [[nodiscard]] std::string indicator() const;
+};
+
 } // namespace og::ui
