@@ -439,6 +439,65 @@ int recover_corrupt_company_injector(void* data)
     return 0;
 }
 
+// --- CONTINUE failure fallback (§2.9 flow 2) --------------------------------
+
+int continue_torn_newest_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    FlowState* state = static_cast<FlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);  // FadeWithInitialDraw settle
+    fprintf(stderr, "  [test] clicking CONTINUE (torn newest)\n");
+    interact("continue_game");
+
+    // The failure popup is trace-only under TESTING; CONTINUE falls through
+    // to the Company List (rows ts desc: 0 = torn newest, 1 = good previous).
+    if (wait_for_interactable("company_row_1", 5000)) {
+        SDL_Delay(750);  // FadeAroundEntry settle
+        fprintf(stderr, "  [test] opening the good row from the fallback list\n");
+        interact("company_row_1");
+        if (wait_for_team_menu()) {
+            state->saw_team_menu = true;
+            SDL_Delay(750);
+            fprintf(stderr, "  [test] clicking back from team menu\n");
+            interact("back");
+        }
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+int continue_corrupt_only_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    FlowState* state = static_cast<FlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking CONTINUE (corrupt only company)\n");
+    interact("continue_game");
+
+    // The fallback list presents the single CORRUPT row; BACK re-presents
+    // the main menu (nothing opened, nothing switched).
+    if (wait_for_interactable("company_row_0", 5000)) {
+        SDL_Delay(750);
+        fprintf(stderr, "  [test] backing out of the fallback list\n");
+        interact("back");
+    }
+    if (wait_for_interactable("begin_new_game", 10000)) {
+        SDL_Delay(750);
+        fprintf(stderr, "  [test] quitting from the re-entered main menu\n");
+        interact("quit");
+    }
+
+    state->finished = true;
+    return 0;
+}
+
 } // namespace
 
 // Open: row 0 is the most-recent company — exactly what CONTINUE opens — and
@@ -827,4 +886,73 @@ TEST(CompanyList, backup_row_level_titles_follow_the_mount_guard)
     info.header.scen_num = 2;
     info.header.campaign_id = "org.openglad.never-mounted";
     EXPECT_EQ("L2", og::ui::format_backup_row(info).level);
+}
+
+// §2.9 flow 2 failure leg: CONTINUE on a header-valid, body-torn newest
+// company pops up the load error, restores the previously open company
+// (slot AND memory), and falls through to the Company List, where opening
+// a good row proceeds to base camp.
+TEST(CompanyList, continue_torn_newest_pops_up_and_falls_back_to_list)
+{
+    trace_clear();
+    CompanySlotCleanup cleanup{{"wp3ctg", "wp3ctt"}};
+    ASSERT_TRUE(seed_company("wp3ctg", "GOOD BAND", 1000));
+    ASSERT_TRUE(seed_torn_company("wp3ctt", "TORN BAND", 4000));
+    // The good company is the one currently open (picker startup loads it).
+    ASSERT_TRUE(og::data::set_active_company_slot("wp3ctg"));
+
+    FlowState state;
+    SDL_Thread* thread = SDL_CreateThread(continue_torn_newest_injector,
+                                          "continue_torn", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(trace_contains("popup", "CONTINUE:"))
+        << "the CONTINUE failure must surface a popup (§2.1)";
+    ASSERT_TRUE(state.saw_team_menu)
+        << "the fallback list must open the good row into base camp";
+    ASSERT_EQ("wp3ctg", og::data::active_company_slot())
+        << "CONTINUE must never leave the slot on the torn company";
+    ASSERT_EQ("GOOD BAND",
+              og::runtime::current_session->myscreen_->save_data.save_name)
+        << "the good company's save must be the one loaded";
+}
+
+// §3.5 corrupt-most-recent policy: with only a corrupt (bad-magic) company
+// on disk, CONTINUE pops up COMPANY FILE DAMAGED and opens the Load list
+// with the CORRUPT row — it never switches the active slot, and BACK
+// re-presents the main menu.
+TEST(CompanyList, continue_corrupt_only_pops_up_and_never_switches)
+{
+    trace_clear();
+    CompanySlotCleanup cleanup{{"wp3cfo"}};
+    ASSERT_TRUE(seed_corrupt_company("wp3cfo"));
+    const std::string slot_before = og::data::active_company_slot();
+
+    FlowState state;
+    SDL_Thread* thread = SDL_CreateThread(continue_corrupt_only_injector,
+                                          "continue_corrupt", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;  // BACK re-presents the main menu
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(trace_contains("popup", "CONTINUE: COMPANY FILE DAMAGED"))
+        << "the corrupt newest must popup before the fallback list (§3.5)";
+    ASSERT_EQ(slot_before, og::data::active_company_slot())
+        << "a corrupt CONTINUE target must never repoint the active slot";
+    ASSERT_TRUE(user_file_exists("save/wp3cfo.gtl"))
+        << "the corrupt file stays on disk (restore/delete are explicit)";
 }

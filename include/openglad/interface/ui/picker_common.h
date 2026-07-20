@@ -450,8 +450,10 @@ ContinueResult open_company_slot(SaveData& save, const std::string& slot,
 
 // §2.1 CONTINUE: select the most-recent company (WP2 startup selection) and
 // open it via open_company_slot. Returns why it stopped so the surface can
-// react.
-ContinueResult open_most_recent_company(SaveData& save);
+// react (popup + Company List fallback on Corrupt/LoadFailed, §2.9 flow 2).
+// `io_error`, when non-null, receives the load error for surfacing.
+ContinueResult open_most_recent_company(SaveData& save,
+                                        SaveDataIoError* io_error = nullptr);
 
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 // Pure string helpers over the depth-effect selector values

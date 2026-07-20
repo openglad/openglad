@@ -259,16 +259,40 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::BeginNewGame);
             break;
-        case ButtonAction::CreateTeamMenu:
+        case ButtonAction::CreateTeamMenu: {
             // §2.1 CONTINUE opens the most-recent company (WP2 startup
             // selection). A corrupt/failed most-recent keeps the loaded save
-            // rather than silently switching; the popup + Company List
-            // fallback is WP3's later Load screen.
-            (void)og::ui::open_most_recent_company(
-                og::runtime::current_session->myscreen_->save_data);
-            menu_item = og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
+            // rather than silently switching (§3.5), surfaces a popup, and
+            // routes through the LOAD door so the Company List presents the
+            // CORRUPT row (restore/delete live there — §2.9 flow 2).
+            SaveDataIoError continue_io = SaveDataIoError::None;
+            const og::ui::ContinueResult continue_result =
+                og::ui::open_most_recent_company(
+                    og::runtime::current_session->myscreen_->save_data,
+                    &continue_io);
+            switch (continue_result) {
+            case og::ui::ContinueResult::Corrupt:
+                popup_dialog("CONTINUE", "COMPANY FILE DAMAGED");
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::LoadGame);
+                break;
+            case og::ui::ContinueResult::LoadFailed:
+                popup_dialog("CONTINUE",
+                             og::ui::save_error_string(continue_io));
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::LoadGame);
+                break;
+            case og::ui::ContinueResult::Opened:
+            case og::ui::ContinueResult::NoCompany:
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::ContinueGame);
+                break;
+            }
             break;
+        }
         case ButtonAction::CreateLoadMenu:
             // §2.1 LOAD door: routes through the shared LoadGame command —
             // show_main_menu presents the §2.3 Company List engine screen

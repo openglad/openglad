@@ -1345,13 +1345,14 @@ ContinueResult open_company_slot(SaveData& save, const std::string& slot,
     return ContinueResult::Opened;
 }
 
-ContinueResult open_most_recent_company(SaveData& save)
+ContinueResult open_most_recent_company(SaveData& save,
+                                        SaveDataIoError* io_error)
 {
     // §2.1: CONTINUE opens the most-recent company (WP2 startup selection).
     const std::string slot = og::data::select_startup_company();
     if (slot.empty())
         return ContinueResult::NoCompany;  // CONTINUE is gated hidden anyway.
-    return open_company_slot(save, slot);
+    return open_company_slot(save, slot, io_error);
 }
 
 // --- Team family extraction ---
