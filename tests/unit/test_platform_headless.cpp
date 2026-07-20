@@ -654,8 +654,9 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         << "the ctf package ships with the game and should mount";
 
     const std::string input =
-        "1\n"       // main: begin new game -> forced campaign select
-        "\n"        //   blank keeps current (= default after the reset)
+        "1\n"       // main: begin new game -> §2.2 name entry
+        "\n"        //   name entry: blank accepts the generated company name
+        "\n"        //   campaign select: blank keeps current (= default reset)
         "7\n"       // team build: back -> main
         "11\n";     // main: quit
 

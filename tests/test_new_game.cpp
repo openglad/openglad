@@ -88,8 +88,15 @@ static int new_game_injector(void* data)
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
-    // beginmenu() calls read_campaign_intro() which blocks until
-    // input_continue is set (SDLK_ESCAPE keydown triggers this).
+    // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
+    // generated company name to found the company and proceed to the intro.
+    wait_for_interactable("company_name_accept", 5000);
+    SDL_Delay(750);  // FadeAroundEntry settle
+    fprintf(stderr, "  [test] accepting generated company name\n");
+    interact("company_name_accept");
+
+    // picker_prepare_new_game_setup then calls read_campaign_intro() which
+    // blocks until input_continue is set (SDLK_ESCAPE keydown triggers this).
     SDL_Delay(1000);
     fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
     inject_key_press(SDLK_ESCAPE);
@@ -155,4 +162,150 @@ TEST(NewGame, begin_new_game) {
     // beginmenu calls save_data.reset(), so cash should be the default (starting cash)
     // rather than our 99999
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.totalcash != 99999) << "totalcash should have been reset by new game";
+
+    // §2.2: the name-entry ACCEPT founded the company (traced with the chosen
+    // display name), and that name landed in the 40-byte save_name field.
+    ASSERT_TRUE(trace_contains("name_entry", "accept")) << "name-entry ACCEPT should have fired";
+    ASSERT_FALSE(og::runtime::current_session->myscreen_->save_data.save_name.empty())
+        << "the founded company's display name should be stamped into save_name";
+}
+
+// §2.2: BACK from the name-entry screen founds NOTHING — the previously loaded
+// game survives (its cash is not reset), and REROLL is reachable/clickable
+// before cancelling. Proves the "nothing is destroyed" contract for cancel.
+static int name_entry_cancel_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    NewGameState* state = static_cast<NewGameState*>(data);
+    state->started = true;
+
+    wait_for_interactable("begin_new_game", 5000);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking begin_new_game\n");
+    interact("begin_new_game");
+
+    // Name-entry appears. Reroll the suggestion, then BACK out (cancel).
+    if (wait_for_interactable("company_name_reroll", 5000)) {
+        SDL_Delay(750);  // FadeAroundEntry settle
+        fprintf(stderr, "  [test] clicking REROLL\n");
+        interact("company_name_reroll");
+        SDL_Delay(300);  // let the click release before the next press
+        fprintf(stderr, "  [test] clicking BACK (cancel)\n");
+        interact("back");
+        state->saw_team_menu = true;  // reused flag: reached & left name-entry
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(NewGame, name_entry_back_cancels_without_founding) {
+    trace_clear();
+
+    // Seed a distinctly-valued loaded game and persist it: picker_main reloads
+    // the active company (save0) at startup, so the sentinels must be on disk
+    // to survive into the run. BACK must then leave them untouched.
+    og::runtime::current_session->myscreen_->save_data.totalcash = 424242;
+    og::runtime::current_session->myscreen_->save_data.save_name = "PRIOR COMPANY";
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    NewGameState state = { false, false, false, false };
+    SDL_Thread* thread =
+        SDL_CreateThread(name_entry_cancel_injector, "name_entry_cancel", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_team_menu) << "should have reached the name-entry screen";
+    ASSERT_TRUE(trace_contains("name_entry", "reroll")) << "REROLL should have fired";
+    ASSERT_TRUE(trace_contains("name_entry", "cancel")) << "BACK should have cancelled";
+    // The loaded game survived: cancel founded nothing, so no reset ran.
+    ASSERT_EQ(424242u, og::runtime::current_session->myscreen_->save_data.totalcash)
+        << "cancel must not reset the loaded game";
+    ASSERT_EQ("PRIOR COMPANY", og::runtime::current_session->myscreen_->save_data.save_name)
+        << "cancel must not overwrite the loaded company name";
+}
+
+// §2.2: clicking the name strip opens an in-place editor; the typed name
+// becomes the founded company's display name. Exercises the SDL edit path
+// (input_string_value under the engine's MenuSpecRow dispatch).
+static int name_entry_edit_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    NewGameState* state = static_cast<NewGameState*>(data);
+    state->started = true;
+
+    wait_for_interactable("begin_new_game", 5000);
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] clicking begin_new_game\n");
+    interact("begin_new_game");
+
+    if (wait_for_interactable("company_name_value", 5000)) {
+        SDL_Delay(750);  // FadeAroundEntry settle
+        fprintf(stderr, "  [test] clicking the name strip to edit\n");
+        interact("company_name_value");  // opens input_string_value (blocks)
+        SDL_Delay(400);  // let the engine dispatch + the editor start + clear
+        // The first text input replaces the pre-filled suggestion entirely.
+        inject_text_input("MY GUILD");
+        SDL_Delay(50);
+        inject_key_press(SDLK_RETURN);  // commit the edit
+        SDL_Delay(400);
+        fprintf(stderr, "  [test] accepting the edited name\n");
+        interact("company_name_accept");
+    }
+
+    // Dismiss the campaign intro so the flow reaches team build.
+    SDL_Delay(1000);
+    inject_key_press(SDLK_ESCAPE);
+
+    // Unwind back to the main menu so picker_main can hit its Quit gate.
+    SDL_Delay(500);
+    if (wait_for_team_menu()) {
+        state->saw_team_menu = true;
+        SDL_Delay(750);
+        fprintf(stderr, "  [test] clicking back from team menu\n");
+        interact("back");
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(NewGame, name_entry_edit_strip_sets_company_name) {
+    trace_clear();
+
+    NewGameState state = { false, false, false, false };
+    SDL_Thread* thread =
+        SDL_CreateThread(name_entry_edit_injector, "name_entry_edit", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_team_menu) << "should have reached the name-entry strip";
+    ASSERT_TRUE(trace_contains("name_entry", "edit MY GUILD"))
+        << "the strip edit should capture the typed name";
+    ASSERT_EQ("MY GUILD", og::runtime::current_session->myscreen_->save_data.save_name)
+        << "the edited name should become the founded company's display name";
 }

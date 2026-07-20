@@ -122,4 +122,19 @@ inline void interact(const std::string& id)
         fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n", id.c_str());
 }
 
+// §2.2: after clicking BEGIN NEW GAME, the flow opens the name-entry screen
+// (generated company name, REROLL, editable, ACCEPT). Every injector flow that
+// founds a new game must clear this screen; accepting the generated name is
+// the canonical path into the campaign intro + team build. Returns whether the
+// screen appeared and was accepted.
+inline bool accept_generated_company_name(int timeout_ms = 5000)
+{
+    if (!wait_for_interactable("company_name_accept", timeout_ms))
+        return false;
+    SDL_Delay(750);  // FadeAroundEntry settle (fadeblack eats events)
+    fprintf(stderr, "  [test] accepting generated company name\n");
+    interact("company_name_accept");
+    return true;
+}
+
 #endif // _TEST_INTERACT_H__

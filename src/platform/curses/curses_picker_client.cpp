@@ -23,6 +23,7 @@
 #include <openglad/platform/curses/curses_picker_client.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
@@ -787,8 +788,36 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
 
 bool CursesPickerClient::prepare_new_game()
 {
+    // §2.2 name entry: a generated fantasy name the user can edit inline or
+    // reroll (clear the field to get a fresh suggestion). Esc cancels —
+    // nothing is created, so the loaded game survives untouched.
+    Menu menu(term_, clock_);
+    SeededRandom rng(
+        static_cast<std::uint32_t>(og::data::company_clock_now_s()));
+    std::string company_name = og::ui::generate_company_name(rng);
+    for (;;) {
+        bool accepted = false;
+        const std::string label = std::format(
+            "Name ({}): ", og::ui::format_company_file_preview(company_name));
+        std::string result =
+            menu.prompt("Found Your Company", label, company_name, accepted);
+        if (!accepted)
+            return false;
+        if (result.empty()) {
+            company_name = og::ui::generate_company_name(rng);
+            continue;
+        }
+        if (result.size() > og::ui::kCompanyNameMaxLen)
+            result.resize(og::ui::kCompanyNameMaxLen);
+        company_name = std::move(result);
+        break;
+    }
+
     og::ui::reset_for_new_game(save_data_);
     og::ui::ensure_team_populated(save_data_);
+    // The display name lives in the 40-byte save_name; the filename stays this
+    // client's own slot (config_.save_name, [SAVE-R2]).
+    save_data_.save_name = company_name;
     assert_company_slot_authority(); // [SAVE-R2]
     // A new game always starts on the default campaign: drop any campaign a
     // previously loaded save left in the session config (run_game copies

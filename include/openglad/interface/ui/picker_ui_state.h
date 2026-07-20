@@ -110,6 +110,8 @@ struct PickerState {
     std::vector<button> progressmenu_buttons;
     std::vector<button> scenariomenu_buttons;
     std::vector<button> difficulty_menu_buttons;
+    // §2.2 new-company name entry (Layer F engine screen).
+    std::vector<button> name_entry_buttons;
 
     // TEAMS subscreen: roster slot selected by the local guy-cycling row.
     int teams_menu_guy_slot = 0;

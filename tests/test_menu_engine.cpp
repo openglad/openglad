@@ -657,6 +657,81 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
            "view level must be engine-hosted by this stage";
 }
 
+// §2.2 new-company name entry: a Layer-F engine screen entered directly from
+// the BEGIN NEW GAME flow, NOT a registry (legacy-vs-engine) screen, so the
+// gate-lattice sweep above cannot reach it. Pin its materialized shape, the
+// generic MenuSpecRow dispatch (every row keyboard-live), the ACCEPT default
+// highlight, no overlap, and nav closure + BFS reachability.
+TEST(MenuEngine, name_entry_spec_shape_and_nav)
+{
+    EngineTestGuard guard;
+    clear_allbuttons();
+    const og::ui::MenuScreenSpec& spec = og::ui::name_entry_menu_screen_spec();
+
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    ASSERT_EQ(4, count);
+    ASSERT_LE(count, MAX_BUTTONS);
+    const std::vector<const og::ui::MenuButtonSpec*> spec_rows =
+        og::ui::materialized_spec_rows(spec);
+    ASSERT_EQ(static_cast<int>(spec_rows.size()), count);
+
+    const Sint32 spec_row_action = button_action_id(ButtonAction::MenuSpecRow);
+    std::set<std::string> ids;
+    for (int i = 0; i < count; ++i) {
+        const button& b = buttons[i];
+        EXPECT_TRUE(ids.insert(b.id).second) << "duplicate id " << b.id;
+        EXPECT_FALSE(b.id.empty()) << "row " << i;
+        // Every row routes through the single generic action (G3), so all are
+        // keyboard-live and never hidden on this ungated screen.
+        EXPECT_EQ(spec_row_action, b.myfun) << b.id << " not MenuSpecRow";
+        EXPECT_FALSE(b.hidden) << b.id;
+        EXPECT_LE(static_cast<int>(b.label.size()) * 6, b.sizex)
+            << b.id << " label '" << b.label << "' escapes its face";
+        EXPECT_GE(b.x, 0) << b.id;
+        EXPECT_GE(b.y, 0) << b.id;
+        EXPECT_LE(b.x + b.sizex, 320) << b.id;
+        EXPECT_LE(b.y + b.sizey, 200) << b.id;
+    }
+
+    int highlighted = spec.default_highlight;
+    ensure_highlighted_button_visible(buttons, count, highlighted);
+    ASSERT_GE(highlighted, 0);
+    ASSERT_LT(highlighted, count);
+    EXPECT_EQ("company_name_accept", buttons[highlighted].id)
+        << "initial highlight should be ACCEPT (§2.2)";
+
+    for (int i = 0; i < count; ++i)
+        for (int j = i + 1; j < count; ++j)
+            EXPECT_FALSE(sweep_rows_overlap(buttons[i], buttons[j]))
+                << buttons[i].id << " overlaps " << buttons[j].id;
+
+    // Nav closure + BFS reachability from the ensured highlight.
+    std::vector<bool> reached(static_cast<std::size_t>(count), false);
+    std::vector<int> frontier{highlighted};
+    reached[static_cast<std::size_t>(highlighted)] = true;
+    while (!frontier.empty()) {
+        const int at = frontier.back();
+        frontier.pop_back();
+        const int links[4] = {buttons[at].nav.up, buttons[at].nav.down,
+                              buttons[at].nav.left, buttons[at].nav.right};
+        for (const int link : links) {
+            EXPECT_LT(link, count) << buttons[at].id << " nav link out of range";
+            if (link < 0 || link >= count)
+                continue;
+            EXPECT_FALSE(buttons[link].hidden)
+                << buttons[at].id << " nav-links to hidden " << buttons[link].id;
+            if (!reached[static_cast<std::size_t>(link)]) {
+                reached[static_cast<std::size_t>(link)] = true;
+                frontier.push_back(link);
+            }
+        }
+    }
+    for (int i = 0; i < count; ++i)
+        EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
+            << buttons[i].id << " unreachable by keyboard";
+}
+
 // ---------------------------------------------------------------------------
 // §1.8 step 3 registry state: the options family migrates in order (FX trio,
 // then display + controls, then main options). Updated in the SAME commit as

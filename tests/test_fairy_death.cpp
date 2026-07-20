@@ -219,6 +219,9 @@ static int fairy_injector(void* data)
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
+    // §2.2: accept the generated company name at the name-entry screen.
+    accept_generated_company_name();
+
     // Dismiss campaign intro screen (blocks until Escape)
     SDL_Delay(kMenuTransitionMs);
     fprintf(stderr, "  [test] dismissing campaign intro\n");

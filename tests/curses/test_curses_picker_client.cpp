@@ -198,6 +198,8 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
     for (auto& slot : f.save().team_list)
         slot.reset();
 
+    // §2.2: accept the generated company name at the name-entry prompt.
+    f.t().push_special(KeyCode::Enter);
     ASSERT_TRUE(f.client.prepare_new_game());
 
     EXPECT_GE(team_count(f.save()), 1) << "new game must populate a team";
@@ -218,6 +220,8 @@ TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
               mount_campaign_package_with_error("org.openglad.ctf"))
         << "the ctf package ships with the game and should mount";
 
+    // §2.2: accept the generated company name at the name-entry prompt.
+    f.t().push_special(KeyCode::Enter);
     ASSERT_TRUE(f.client.prepare_new_game());
 
     EXPECT_EQ(f.config.campaign, "org.openglad.gladiator")
@@ -225,6 +229,55 @@ TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
     EXPECT_EQ(f.save().current_campaign, "org.openglad.gladiator");
     EXPECT_EQ(get_mounted_campaign(), "org.openglad.gladiator")
         << "the in-picker scenario viewer reads the mounted package";
+}
+
+// §2.2: a typed name at the name-entry prompt becomes the company display
+// name (save_name). Clear the pre-filled suggestion, then type the new name.
+TEST(CursesPickerClient, name_entry_typed_name_becomes_company)
+{
+    PickerFixture f;
+    // Clear the pre-filled suggestion (generous backspaces), type a name.
+    for (int i = 0; i < 30; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("MY BAND");
+    f.t().push_special(KeyCode::Enter);
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_EQ(f.save().save_name, "MY BAND")
+        << "the typed name should land in the 40-byte save_name";
+}
+
+// §2.2: an empty entry rerolls a fresh suggestion; accepting it founds a
+// company with a non-empty generated name.
+TEST(CursesPickerClient, name_entry_empty_rerolls_then_accepts)
+{
+    PickerFixture f;
+    // Clear the field and Enter -> reroll; then accept the new suggestion.
+    for (int i = 0; i < 30; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_special(KeyCode::Enter);  // empty -> reroll
+    f.t().push_special(KeyCode::Enter);  // accept the fresh suggestion
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_FALSE(f.save().save_name.empty())
+        << "reroll then accept must found a company with a generated name";
+}
+
+// §2.2: Esc at the name-entry prompt cancels — nothing is created, so the
+// loaded game (its gold) survives untouched.
+TEST(CursesPickerClient, name_entry_escape_cancels_without_founding)
+{
+    PickerFixture f;
+    f.save().m_totalcash[0] = 4242u;
+    f.save().save_name = "PRIOR CO";
+
+    f.t().push_special(KeyCode::Escape);
+    EXPECT_FALSE(f.client.prepare_new_game())
+        << "Esc at the name prompt cancels the new game";
+    EXPECT_EQ(f.save().m_totalcash[0], 4242u)
+        << "cancel must not reset the loaded game";
+    EXPECT_EQ(f.save().save_name, "PRIOR CO")
+        << "cancel must not overwrite the loaded company name";
 }
 
 // --- difficulty ----------------------------------------------------------
@@ -757,6 +810,8 @@ TEST(CursesPickerClient, asserts_company_slot_authority)
 
     // A stale process-wide slot must not survive a new game.
     ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+    // §2.2: accept the generated company name at the name-entry prompt.
+    term.push_special(KeyCode::Enter);
     ASSERT_TRUE(client.prepare_new_game());
     EXPECT_EQ("curses_quicksave", og::data::active_company_slot());
 }

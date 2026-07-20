@@ -293,4 +293,15 @@ const MenuScreenSpec& main_menu_screen_spec_nomp();
 void refresh_main_menu_company_view();
 void set_main_menu_company_view_for_tests(bool present, std::string display_name);
 
+// §2.2 new-company name entry (Layer F engine screen): a generated fantasy
+// default shown in an editable strip, REROLL, a slug preview teaching the
+// display-name/filename split, and a NO-first-confirm-free ACCEPT/BACK pair
+// (BACK creates nothing). All rows route through ButtonAction::MenuSpecRow.
+const MenuScreenSpec& name_entry_menu_screen_spec();
+
+// Runs the name-entry screen (blocking). On ACCEPT, fills `out_name` with the
+// chosen display name (<= kCompanyNameMaxLen) and returns true; on BACK/cancel
+// returns false and leaves `out_name` untouched (nothing is created).
+bool run_new_company_name_entry(std::string& out_name);
+
 } // namespace og::ui

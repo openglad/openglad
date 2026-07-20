@@ -1497,6 +1497,7 @@ void picker_cleanup_resources()
     pks().progressmenu_buttons.clear();
     pks().scenariomenu_buttons.clear();
     pks().difficulty_menu_buttons.clear();
+    pks().name_entry_buttons.clear();
 }
 
 void picker_quit()

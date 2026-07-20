@@ -26,10 +26,14 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/company.h>
 
 #include "picker_sdl_defs.h"
+
+#include <string>
 
 Sint32 create_team_menu(Sint32 arg1);
 void picker_lobby_initialize_from_save();
@@ -46,6 +50,13 @@ bool picker_prepare_new_game_setup()
     // RETIRED. Nothing is destroyed: a new company writes its own file, and
     // the previously active company stays on disk (reopenable via LOAD).
 
+    // §2.2: found the company FIRST — the generated-name screen (REROLL,
+    // editable, slug preview). BACK cancels here, before anything is reset or
+    // written, so the loaded game survives untouched.
+    std::string company_name;
+    if (!og::ui::run_new_company_name_entry(company_name))
+        return false;
+
 	game->clear();
 
     // Reset the save data so we have a fresh, new team. This happens BEFORE
@@ -53,6 +64,17 @@ bool picker_prepare_new_game_setup()
     // the intro about to be shown and the mounted package must not be
     // whatever campaign the previous session or match left selected.
 	og::ui::reset_for_new_game(game->save_data);
+
+    // §2.2: the display name lives in the 40-byte save_name; the filename is a
+    // derived, collision-probed slug (SaveData::reset does not touch
+    // save_name). Repoint the active company to that slug and write the file —
+    // creation IS the first autosave. The previous company keeps its own file.
+    game->save_data.save_name = company_name;
+    const std::string slug = og::data::derive_company_slot(company_name);
+    (void)og::data::set_active_company_slot(slug);
+    (void)og::data::company_autosave(game->save_data,
+                                     og::data::CompanyAutosaveKind::BaseCampMutation);
+
 	(void)og::ui::sync_campaign_mount_to_save(game->save_data);
 	og::runtime::current_session->current_guy_ = nullptr;
     picker_lobby_initialize_from_save();

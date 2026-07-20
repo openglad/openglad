@@ -16,6 +16,8 @@
 
 #include <openglad/interface/ui/menu_screen_spec.h>
 
+#include <openglad/core/irandom.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
@@ -35,7 +37,9 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <ctime>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -2021,6 +2025,127 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// §2.2 new-company name entry (Layer F engine screen)
+// ---------------------------------------------------------------------------
+
+// Screen state carried through run_menu_screen's opaque screen_state pointer:
+// the working display name and the ACCEPT/BACK verdict the wrapper reads.
+struct NameEntryState {
+    std::string name;
+    bool accepted = false;
+};
+
+// A process-lifetime RNG for the generated suggestions, seeded once from the
+// wall clock so the first suggestion varies between sessions; REROLL and each
+// new-game entry simply advance it. Determinism is irrelevant here (the name
+// is user-visible and re-rollable, and generate_company_name itself is
+// unit-pinned against injected RNGs).
+IRandom& name_entry_rng()
+{
+    static SeededRandom rng(static_cast<std::uint32_t>(std::time(nullptr)));
+    return rng;
+}
+
+// All four rows dispatch through the single generic ButtonAction::MenuSpecRow
+// (G3): the arg is the row ordinal on_spec_row switches on. No build-gating
+// here, so the materialized index equals the spec ordinal.
+constexpr int kNameEntryBackIndex = 0;
+constexpr int kNameEntryValueIndex = 1;
+constexpr int kNameEntryRerollIndex = 2;
+constexpr int kNameEntryAcceptIndex = 3;
+
+// 320-wide canvas center, which also centers the strip (48,78,224,16).
+constexpr int kNameEntryCenterX = 160;
+
+constexpr MenuButtonSpec kNameEntryRows[] = {
+    // BACK cancels — nothing is written (§2.2). Escape hotkey.
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 170, .w = 44, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kNameEntryBackIndex,
+     .nav = {.up = kNameEntryRerollIndex}},
+    // The editable name strip. Empty label: the current name is drawn centered
+    // over it in the content pass (like the begin_new_game art face). y+h = 94
+    // <= 100, so a web soft keyboard never covers it (§2.0 U5).
+    {.id = "company_name_value", .label = "",
+     .x = 48, .y = 78, .w = 224, .h = 16,
+     .action = ButtonAction::MenuSpecRow, .arg = kNameEntryValueIndex,
+     .nav = {.down = kNameEntryRerollIndex}},
+    {.id = "company_name_reroll", .label = "REROLL",
+     .x = 86, .y = 102, .w = 68, .h = 14,
+     .action = ButtonAction::MenuSpecRow, .arg = kNameEntryRerollIndex,
+     .nav = {.up = kNameEntryValueIndex, .down = kNameEntryBackIndex,
+             .right = kNameEntryAcceptIndex}},
+    {.id = "company_name_accept", .label = "ACCEPT",
+     .x = 166, .y = 102, .w = 68, .h = 14,
+     .action = ButtonAction::MenuSpecRow, .arg = kNameEntryAcceptIndex,
+     .nav = {.up = kNameEntryValueIndex, .down = kNameEntryBackIndex,
+             .left = kNameEntryRerollIndex}},
+};
+
+void name_entry_draw_content(void* screen_state)
+{
+    const NameEntryState* st = static_cast<const NameEntryState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    game->text_normal.write_xy_center(kNameEntryCenterX, 30, YELLOW, "%s",
+                                      "FOUND YOUR COMPANY");
+    std::string name = st != nullptr ? st->name : std::string();
+    if (name.size() > kCompanyNameMaxLen)
+        name.resize(kCompanyNameMaxLen);
+    game->text_normal.write_xy_center(kNameEntryCenterX, 82, WHITE, "%s",
+                                      name.c_str());
+    // The slug preview teaches the display-name/filename split (§2.2, spec 2).
+    game->text_normal.write_xy_center(
+        kNameEntryCenterX, 126, GREY, "%s",
+        format_company_file_preview(name).c_str());
+}
+
+Sint32 name_entry_on_spec_row(int row, void* screen_state)
+{
+    NameEntryState* st = static_cast<NameEntryState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    switch (row) {
+    case kNameEntryBackIndex:
+        // Cancel: nothing is created (§2.2). Structural exit (MENU_EXIT).
+        st->accepted = false;
+        TRACE("name_entry", "cancel");
+        return MENU_EXIT;
+    case kNameEntryValueIndex: {
+        // Edit the name in place. input_string_value's maxlength counts the
+        // NUL, so pass one past the display cap to allow a full 18 chars.
+        release_mouse();
+        std::optional<std::string> edited =
+            game->text_normal.input_string_value(
+                52, 82, static_cast<short>(kCompanyNameMaxLen + 1),
+                st->name.c_str());
+        grab_mouse();
+        if (edited.has_value()) {
+            // input_string_value already caps the entry at maxlength-1 ==
+            // kCompanyNameMaxLen, so no further clamp is needed here.
+            std::string value = *edited;
+            // Empty clears back to a fresh suggestion (§2.2).
+            if (value.empty())
+                value = generate_company_name(name_entry_rng());
+            st->name = std::move(value);
+        }
+        TRACE("name_entry", "edit %s", st->name.c_str());
+        return MENU_REDRAW;
+    }
+    case kNameEntryRerollIndex:
+        st->name = generate_company_name(name_entry_rng());
+        TRACE("name_entry", "reroll %s", st->name.c_str());
+        return MENU_OK;
+    case kNameEntryAcceptIndex:
+        // Found the company (§2.2). Structural exit; the wrapper writes the
+        // file (creation IS the first autosave).
+        st->accepted = true;
+        TRACE("name_entry", "accept %s", st->name.c_str());
+        return MENU_EXIT;
+    default:
+        return 0;
+    }
+}
+
 } // namespace
 
 // §2.1: refresh the cached company view once per mainmenu() entry (the
@@ -2216,6 +2341,44 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
         .exit_value = MENU_REDRAW,
     };
     return spec;
+}
+
+const MenuScreenSpec& name_entry_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "name_entry",
+        .rows = kNameEntryRows,
+        .row_count = static_cast<int>(std::size(kNameEntryRows)),
+        .buttons_accessor = &picker_name_entry_buttons,
+        .count_accessor = &picker_name_entry_button_count,
+        // Fade the main menu out, draw the name screen cold, fade in (the
+        // team-build entry idiom).
+        .enter = EnterTransition::FadeAroundEntry,
+        // Initial highlight: ACCEPT (§2.2).
+        .default_highlight = kNameEntryAcceptIndex,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &name_entry_draw_content,
+        // G3 generic row dispatch: BACK/edit/REROLL/ACCEPT.
+        .on_spec_row = &name_entry_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+// §2.2: run the name-entry screen and report whether the user founded a
+// company. Called at the top of the BEGIN NEW GAME flow, before anything is
+// reset or written — BACK returns false and leaves the loaded game intact.
+bool run_new_company_name_entry(std::string& out_name)
+{
+    if (og::runtime::current_session->myscreen_ == nullptr)
+        return false;
+    NameEntryState state;
+    state.name = generate_company_name(name_entry_rng());
+    (void)run_menu_screen(name_entry_menu_screen_spec(), &state);
+    if (!state.accepted)
+        return false;
+    out_name = state.name;
+    return true;
 }
 
 // G4 registry: the one-lookup answer to "which system owns this screen"
@@ -2467,6 +2630,18 @@ button* picker_viewscenario_buttons()
 int picker_viewscenario_button_count()
 {
     return static_cast<int>(pks().viewscenario_buttons.size());
+}
+
+button* picker_name_entry_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::name_entry_menu_screen_spec(),
+                                     pks().name_entry_buttons);
+    return pks().name_entry_buttons.data();
+}
+
+int picker_name_entry_button_count()
+{
+    return static_cast<int>(pks().name_entry_buttons.size());
 }
 
 // The SCENARIO subscreen, engine-hosted (the legacy loop is gone). Entry/exit

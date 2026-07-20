@@ -6,6 +6,7 @@
  */
 
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
@@ -127,10 +128,48 @@ public:
         handle_team_build_item(item);
     }
 
+    // §2.2 terminal name entry: the read_line projection of the SDL screen.
+    // Prints the generated suggestion + slug preview, then accepts a blank
+    // line (keep the suggestion), "reroll" (a fresh suggestion), or any typed
+    // text (the new name, clamped to the display cap). Exhausted input (EOF)
+    // keeps the suggestion — the headless internal-path checks call
+    // prepare_new_game with no stdin and still expect a founded company.
+    std::string prompt_new_company_name()
+    {
+        SeededRandom rng(
+            static_cast<std::uint32_t>(og::data::company_clock_now_s()));
+        std::string name = og::ui::generate_company_name(rng);
+        for (;;) {
+            std::printf("\n=== Found Your Company ===\n");
+            std::printf("Name: %s\n", name.c_str());
+            std::printf("%s\n",
+                og::ui::format_company_file_preview(name).c_str());
+            std::printf("Enter a name, blank to accept, "
+                        "or 'reroll' for another suggestion: ");
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return name;
+            if (line == "reroll") {
+                name = og::ui::generate_company_name(rng);
+                continue;
+            }
+            if (line.size() > og::ui::kCompanyNameMaxLen)
+                line.resize(og::ui::kCompanyNameMaxLen);
+            return line;
+        }
+    }
+
     bool prepare_new_game() override
     {
+        // §2.2: found the company FIRST (generated name, reroll, editable).
+        std::string company_name = prompt_new_company_name();
+
         reset_for_new_game(save_data_);
         ensure_team_populated(save_data_);
+        // The display name lives in the 40-byte save_name; the filename stays
+        // this terminal client's own slot (config_.save_name, [SAVE-R2]).
+        save_data_.save_name = company_name;
         assert_company_slot_authority(); // [SAVE-R2]
 
         // A new game always starts on the default campaign: pull the session

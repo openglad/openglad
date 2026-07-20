@@ -265,6 +265,39 @@ TEST(MenuEnginePins, viewteam_exact_table)
 }
 
 // ---------------------------------------------------------------------------
+// §2.2 new-company name entry: a Layer-F engine screen. All four rows dispatch
+// through the single generic ButtonAction::MenuSpecRow (arg = row ordinal).
+// BACK carries the Escape hotkey; the strip label is empty (the current name
+// is drawn in the content pass); nav is the §2.2 reference graph.
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, name_entry_exact_table)
+{
+    static const ExpectedButton kExpected[] = {
+        {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20,
+         button_action_id(ButtonAction::MenuSpecRow), 0, MenuNav{.up = 2}},
+        {"company_name_value", "", KEYSTATE_UNKNOWN, 48, 78, 224, 16,
+         button_action_id(ButtonAction::MenuSpecRow), 1, MenuNav{.down = 2}},
+        {"company_name_reroll", "REROLL", KEYSTATE_UNKNOWN, 86, 102, 68, 14,
+         button_action_id(ButtonAction::MenuSpecRow), 2,
+         MenuNav{.up = 1, .down = 0, .right = 3}},
+        {"company_name_accept", "ACCEPT", KEYSTATE_UNKNOWN, 166, 102, 68, 14,
+         button_action_id(ButtonAction::MenuSpecRow), 3,
+         MenuNav{.up = 1, .down = 0, .left = 2}},
+    };
+    button* buttons = picker_name_entry_buttons();
+    const int count = picker_name_entry_button_count();
+    check_exact_table(buttons, count, kExpected,
+                      static_cast<int>(std::size(kExpected)), "name_entry");
+
+    // §2.0 U5 soft-keyboard lint: an in-place-editable field must sit with
+    // y+h <= 100 so a web soft keyboard never covers it. The strip (row 1) is
+    // the editable field; the in-place editor opens at y=82 inside it.
+    EXPECT_LE(buttons[1].y + buttons[1].sizey, 100)
+        << "name strip must satisfy the soft-keyboard lint (y+h <= 100)";
+}
+
+// ---------------------------------------------------------------------------
 // Train (k_trainmenu_buttons): the six +/- stat pairs beside the portrait,
 // PREV/NEXT cyclers, RENAME/DETAILS.. header row, team cycler, ACCEPT /
 // VIEW TEAM / BACK bottom row.

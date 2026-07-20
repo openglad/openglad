@@ -14,7 +14,8 @@ TMPIN=$(mktemp)
 trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 # Drive sequence (1-based menu indices):
-#   Main: 1=Begin New Game; blank keeps the campaign.
+#   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
+#     name entry); blank keeps the campaign.
 #   Team Build (12 items): 3=Hire Troops (n/h/b), 5=Save Team, 4=Load Team,
 #     9=Scenario, 6=GO!, 7=Back.
 #   Scenario submenu (6 items): 4=Teams (play 1, blank exits),
@@ -23,6 +24,7 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 11=Quit.
 cat > "$TMPIN" << 'INP'
 1
+
 
 3
 n
@@ -60,6 +62,11 @@ home = os.environ['TMPHOME']
 lines = [l.rstrip('\n') for l in open(out_path, encoding='utf-8', errors='replace')]
 if not any('OpenGlad Main Menu' in l for l in lines):
     print('FAIL: interactive picker banner not found', file=sys.stderr)
+    sys.exit(1)
+
+# §2.2: Begin New Game opens the name-entry screen (generated company name).
+if not any('Found Your Company' in l for l in lines):
+    print('FAIL: expected the name-entry banner', file=sys.stderr)
     sys.exit(1)
 
 json_lines = []
