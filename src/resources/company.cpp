@@ -703,6 +703,45 @@ bool delete_company(const std::string& slot)
 
 namespace {
 
+// Restores the ambient campaign mount on scope exit so the merge write is
+// mount-neutral on EVERY exit path. The merge's private load() mounts the
+// PRIVATE save's campaign — and can UNMOUNT the ambient (host) campaign even
+// when it FAILS: load_campaign_with_error unmounts the old package before
+// mounting the new one, so an unmountable private campaign leaves nothing
+// mounted while the lobby menu is still showing the host's campaign. A plain
+// restore block after the write would (and once did) miss the load-failure
+// early return.
+class ScopedAmbientMountRestore
+{
+public:
+    ScopedAmbientMountRestore() : mounted_before_(get_mounted_campaign()) {}
+    ScopedAmbientMountRestore(const ScopedAmbientMountRestore&) = delete;
+    ScopedAmbientMountRestore& operator=(const ScopedAmbientMountRestore&) =
+        delete;
+    ~ScopedAmbientMountRestore()
+    {
+        const std::string mounted_after = get_mounted_campaign();
+        if (mounted_after == mounted_before_)
+            return;
+        if (mounted_before_.empty())
+        {
+            (void)unmount_campaign_package_with_error(mounted_after);
+        }
+        else
+        {
+            std::map<std::string, int> scratch_levels;
+            if (load_campaign(mounted_before_, scratch_levels) < 0)
+            {
+                LogError("company_autosave_remount_failed campaign={}\n",
+                         mounted_before_);
+            }
+        }
+    }
+
+private:
+    std::string mounted_before_;
+};
+
 // [SAVE-F1] owner-preserving merge write. While a networked lobby is active
 // the in-memory save has been overwritten by apply_lobby_state_to_save with
 // the HOST's campaign/scen_num/settings; a plain save() would also rewrite
@@ -718,10 +757,11 @@ SaveDataIoError company_autosave_merge_networked_lobby(
     const CompanyAutosaveContext& context,
     const std::string& slot)
 {
-    // load() below mounts the PRIVATE save's campaign; the open lobby menu
-    // is showing the HOST's. Remember the ambient mount and restore it after
-    // the write so the merge is mount-neutral.
-    const std::string mounted_before = get_mounted_campaign();
+    // load() below mounts the PRIVATE save's campaign (and unmounts the
+    // ambient one even on failure); the open lobby menu is showing the
+    // HOST's. The guard restores the ambient mount on every exit path,
+    // including the load-failure early return below.
+    ScopedAmbientMountRestore mount_guard;
 
     SaveData merged;
     const SaveDataIoError load_error = merged.load_with_error(slot);
@@ -769,26 +809,7 @@ SaveDataIoError company_autosave_merge_networked_lobby(
     }
 
     merged.last_played_unix_s = company_clock_now_s();
-    const SaveDataIoError write_error = atomic_company_save(merged, slot);
-
-    const std::string mounted_after = get_mounted_campaign();
-    if (mounted_after != mounted_before)
-    {
-        if (mounted_before.empty())
-        {
-            (void)unmount_campaign_package_with_error(mounted_after);
-        }
-        else
-        {
-            std::map<std::string, int> scratch_levels;
-            if (load_campaign(mounted_before, scratch_levels) < 0)
-            {
-                LogError("company_autosave_remount_failed campaign={}\n",
-                         mounted_before);
-            }
-        }
-    }
-    return write_error;
+    return atomic_company_save(merged, slot);
 }
 
 } // namespace

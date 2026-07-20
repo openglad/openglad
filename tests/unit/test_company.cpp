@@ -1212,6 +1212,56 @@ TEST(CompanyAutosave, networked_merge_without_private_file_never_clobbers)
     EXPECT_EQ(0, session.last_played_unix_s);
 }
 
+// The load-failure early return must be mount-neutral too. load_with_error
+// on a company whose campaign package is missing UNMOUNTS the ambient (host)
+// campaign before failing — load_campaign_with_error unmounts the old
+// package, then the new mount fails — so a merge that only restores the
+// mount after a successful load would leave the open lobby menu with no
+// campaign mounted (the round-1 review's [SAVE-F1] leak).
+TEST(CompanyAutosave, networked_merge_load_failure_restores_ambient_mount)
+{
+    SaveDirSandbox sandbox;
+    ScopedMountRestore mount_guard;
+    ScopedCompanyClock clock(888);
+
+    restore_default_campaigns();
+
+    // A private company referencing a campaign package that no longer
+    // exists (deleted/unmountable package).
+    {
+        SaveData priv;
+        priv.save_name = "Broken Mount Co";
+        priv.current_campaign = "org.openglad.deleted-package";
+        ASSERT_TRUE(priv.save("save0"));
+    }
+    const std::string bytes_before =
+        read_file_bytes(sandbox.dir() / "save0.gtl");
+
+    // The ambient mount is the HOST's session campaign.
+    std::map<std::string, int> scratch;
+    ASSERT_GE(load_campaign("org.openglad.gladiator", scratch), 0);
+
+    SaveData session;
+    session.current_campaign = "org.openglad.gladiator";
+    session.scen_num = 2;
+    og::data::CompanyAutosaveContext context;
+    context.networked_lobby = true;
+    context.owned_teams[0] = true;
+
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed,
+              og::data::company_autosave(
+                  session, og::data::CompanyAutosaveKind::BaseCampMutation,
+                  context))
+        << "an unmountable private campaign surfaces as the load error";
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+        << "the merge must restore the ambient mount on the load-failure "
+           "path (load_with_error unmounts the host campaign before failing)";
+    EXPECT_EQ(bytes_before, read_file_bytes(sandbox.dir() / "save0.gtl"))
+        << "the failed merge leaves the company file untouched";
+    EXPECT_FALSE(user_file_exists("save/save0.tmp.gtl"));
+    EXPECT_EQ(0, session.last_played_unix_s);
+}
+
 TEST(CompanyAutosave, local_mutation_hook_is_a_plain_stamped_write)
 {
     SaveDirSandbox sandbox;
