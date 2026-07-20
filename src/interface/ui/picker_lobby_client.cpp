@@ -99,6 +99,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
+    // assembly only materializes deployed slots, so mark the guy explicitly.
+    result->deployed = true;
     return result;
 }
 
@@ -450,6 +453,7 @@ private:
         settings.respawn_mode = save.respawn_mode;
         settings.generator_rate = save.generator_rate;
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
+        settings.cross_control = save.cross_control;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -476,6 +480,9 @@ private:
 
             og::sim::LobbyPlayer player;
             player.name = peer.name;
+            // v8: every seat of one machine advertises the same active
+            // company display name (SaveData::save_name).
+            player.company = save.save_name;
             player.team = peer.team;
             player.ready = false;
             player.is_host = peer_index == 0;
@@ -489,6 +496,8 @@ private:
                 player.character_slots.push_back(og::sim::LobbyCharacterSlot{
                     .slot_index = static_cast<std::uint8_t>(slot_index),
                     .character = make_lobby_character_data(*member),
+                    // v8: stamped from the save guy's v14 deploy flag.
+                    .deployed = member->deployed,
                 });
             }
 
@@ -582,6 +591,7 @@ private:
         save.respawn_mode = state_->settings.respawn_mode;
         save.generator_rate = state_->settings.generator_rate;
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        save.cross_control = state_->settings.cross_control;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0

@@ -495,6 +495,7 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
 {
     SaveData source;
     source.last_played_unix_s = 0x0A0B0C0D0E0F1011LL;
+    source.cross_control = 1; // session-only v8 setting must ride the copy
     source.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     source.team_list[0]->name = "BROUGHT";
     source.team_list[0]->deployed = true;
@@ -505,11 +506,14 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
 
     SaveData destination;
     destination.last_played_unix_s = 42; // must be overwritten, not merged
+    destination.cross_control = 0;
 
     og::server::copy_headless_server_save_data(destination, source);
 
     EXPECT_EQ(0x0A0B0C0D0E0F1011LL, destination.last_played_unix_s)
         << "timestamp must survive the server/checkpoint copy";
+    EXPECT_EQ(1, (int)destination.cross_control)
+        << "cross_control must survive the server/checkpoint copy";
     ASSERT_TRUE(destination.team_list[0] != nullptr);
     ASSERT_TRUE(destination.team_list[1] != nullptr);
     EXPECT_NE(destination.team_list[0].get(), source.team_list[0].get())

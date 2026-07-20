@@ -1102,20 +1102,24 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     EXPECT_EQ(0, server.state().settings.respawn_mode);
     EXPECT_EQ(0, server.state().settings.generator_rate);
     EXPECT_EQ(0, server.state().settings.keep_fallen_heroes);
+    EXPECT_EQ(0, server.state().settings.cross_control);
 
     // In-range values pass through and reach the game-start equivalent.
     og::sim::LobbySettings valid = make_ctf_lobby_settings();
     valid.respawn_mode = 2;
     valid.generator_rate = 200;
     valid.keep_fallen_heroes = 1;
+    valid.cross_control = 1;
     transport.queue_lobby_message(11u, make_settings_change_message(valid));
     server.poll_incoming_messages();
     EXPECT_EQ(2, server.state().settings.respawn_mode);
     EXPECT_EQ(200, server.state().settings.generator_rate);
     EXPECT_EQ(1, server.state().settings.keep_fallen_heroes);
+    EXPECT_EQ(1, server.state().settings.cross_control);
     EXPECT_EQ(2, server.build_save_data_equivalent().respawn_mode);
     EXPECT_EQ(200, server.build_save_data_equivalent().generator_rate);
     EXPECT_EQ(1, server.build_save_data_equivalent().keep_fallen_heroes);
+    EXPECT_EQ(1, server.build_save_data_equivalent().cross_control);
 
     // respawn_mode outside {0,1,2} falls back to the current value.
     og::sim::LobbySettings junk_mode = make_ctf_lobby_settings();
@@ -1167,6 +1171,27 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     server.poll_incoming_messages();
     EXPECT_EQ(1, server.state().settings.keep_fallen_heroes)
         << "junk falls back to the previously accepted value";
+
+    // cross_control is binary-or-fallback (protocol v8). Establish 1 as the
+    // accepted value, then a junk value must fall back to it.
+    og::sim::LobbySettings cross_on = make_ctf_lobby_settings();
+    cross_on.cross_control = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(cross_on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.cross_control);
+
+    og::sim::LobbySettings junk_cross = make_ctf_lobby_settings();
+    junk_cross.cross_control = 5;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_cross));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.cross_control)
+        << "out-of-range cross_control falls back to the accepted value";
+
+    og::sim::LobbySettings cross_off = make_ctf_lobby_settings();
+    cross_off.cross_control = 0;
+    transport.queue_lobby_message(11u, make_settings_change_message(cross_off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.cross_control);
 }
 
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)

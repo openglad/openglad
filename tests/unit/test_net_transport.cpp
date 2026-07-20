@@ -166,12 +166,15 @@ og::sim::LobbyPlayer make_lobby_player_for_test()
     og::sim::LobbyPlayer player;
     player.player_index = 1u;
     player.name = "Player One";
+    // v8: company display name rides the player; deployed rides the slot.
+    player.company = "Ari's Company";
     player.team = 2;
     player.ready = true;
     player.is_host = true;
     player.character_slots.push_back({
         .slot_index = 3u,
         .character = character,
+        .deployed = false,
     });
     return player;
 }
@@ -215,7 +218,12 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.ctf_capture_limit = 7;
     state.settings.ctf_respawn_ticks = 96;
     state.settings.ctf_strip_scenario_troops = 1;
+    // v8: host-only cross-control setting and the start-denial echo field.
+    state.settings.cross_control = 1;
     state.host_player_id = 1u;
+    state.last_start_denial =
+        og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::MachinesNotReady);
     state.players.push_back(make_lobby_player_for_test());
     return state;
 }
@@ -237,7 +245,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x07, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x08, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -403,6 +411,95 @@ TEST(NetTransport, lobby_state_roundtrip_and_decode_received_message)
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState, typed.kind);
     ASSERT_NE(nullptr, typed.lobby_state);
     EXPECT_EQ(expected, *typed.lobby_state);
+}
+
+// Protocol v8 (company-basecamp design §4.1/§4.8): the slot deployed flag,
+// the player company string, the settings cross_control field, and the
+// LobbyState last_start_denial echo must survive the wire. The reserved
+// slot_flags bits are tolerated (masked to bit0), and an over-length company
+// name clamps to 40 chars rather than being rejected.
+TEST(NetTransport, v8_deploy_company_cross_control_and_denial_fields_round_trip)
+{
+    // Cross-control and last_start_denial travel on the lobby state; the
+    // test helper sets both non-default, and the roundtrip above already
+    // covers equality — assert the raw values reached the decode explicitly.
+    const og::sim::LobbyState state = make_lobby_state_for_test();
+    const auto state_bytes = og::sim::serialize_lobby_state_message(state);
+    const auto decoded_state =
+        og::sim::deserialize_lobby_state_message(state_bytes);
+    ASSERT_TRUE(decoded_state.has_value());
+    EXPECT_EQ(1, decoded_state->settings.cross_control);
+    EXPECT_EQ(og::sim::start_denial_reason_value(
+                  og::sim::StartDenialReason::MachinesNotReady),
+              decoded_state->last_start_denial);
+    ASSERT_EQ(1u, decoded_state->players.size());
+    EXPECT_EQ("Ari's Company", decoded_state->players.front().company);
+    ASSERT_EQ(1u, decoded_state->players.front().character_slots.size());
+    // The helper's slot is deployed=false; it must survive the wire.
+    EXPECT_FALSE(
+        decoded_state->players.front().character_slots.front().deployed);
+
+    // Locate the slot_flags byte structurally by diffing a deployed vs a
+    // benched serialization of the same single-seat join, then verify the
+    // writer wrote exactly bit0 for each state.
+    const auto make_join = [](bool deployed) {
+        og::sim::LobbyPlayer player;
+        player.player_index = 0u; // empty name + empty company
+        player.character_slots.push_back(og::sim::LobbyCharacterSlot{
+            .slot_index = 0u,
+            .character = {},
+            .deployed = deployed,
+        });
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyJoinMessage{.player = player};
+        return og::sim::serialize_lobby_message(message);
+    };
+    const auto deployed_bytes = make_join(true);
+    const auto benched_bytes = make_join(false);
+    ASSERT_EQ(deployed_bytes.size(), benched_bytes.size());
+    std::optional<std::size_t> flags_offset;
+    for (std::size_t i = 0; i < deployed_bytes.size(); ++i)
+    {
+        if (deployed_bytes[i] != benched_bytes[i])
+        {
+            ASSERT_FALSE(flags_offset.has_value())
+                << "only the slot_flags byte should differ";
+            flags_offset = i;
+        }
+    }
+    ASSERT_TRUE(flags_offset.has_value());
+    EXPECT_EQ(0x01u, deployed_bytes[*flags_offset]);
+    EXPECT_EQ(0x00u, benched_bytes[*flags_offset]);
+
+    // Reserved-bit tolerance: a peer that sets bits 1-7 is still read as
+    // deployed==bit0 (0xfe clears bit0 -> benched; 0xff sets it -> deployed).
+    const auto decode_with_flags = [&](std::uint8_t flags) {
+        auto crafted = deployed_bytes;
+        crafted[*flags_offset] = flags;
+        const auto decoded = og::sim::deserialize_lobby_message(crafted);
+        return std::get<og::sim::LobbyJoinMessage>(decoded.value().payload)
+            .player.character_slots.front()
+            .deployed;
+    };
+    EXPECT_TRUE(decode_with_flags(0xffu));
+    EXPECT_FALSE(decode_with_flags(0xfeu));
+    EXPECT_TRUE(decode_with_flags(0x03u));
+
+    // Company name clamps to 40 chars on read rather than rejecting.
+    og::sim::LobbyPlayer long_company_player;
+    long_company_player.player_index = 0u;
+    long_company_player.company = std::string(50, 'C');
+    og::sim::LobbyMessage long_message;
+    long_message.payload =
+        og::sim::LobbyJoinMessage{.player = long_company_player};
+    const auto long_bytes = og::sim::serialize_lobby_message(long_message);
+    const auto long_decoded = og::sim::deserialize_lobby_message(long_bytes);
+    ASSERT_TRUE(long_decoded.has_value());
+    const auto& clamped =
+        std::get<og::sim::LobbyJoinMessage>(long_decoded->payload).player;
+    EXPECT_EQ(og::sim::kMaxLobbyCompanyNameLength, clamped.company.size());
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'C'),
+              clamped.company);
 }
 
 TEST(NetTransport, lightweight_message_roundtrips_and_decode)
@@ -826,8 +923,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x07, 0x01, 0x17, 0x00,
-            0x07, 0x07, 0x03,
+            0x08, 0x01, 0x17, 0x00,
+            0x08, 0x08, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -2405,17 +2502,18 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState: 4-byte transport header, then the
-    // settings block (4-byte empty campaign string + 10 i16 fields: scenario,
-    // difficulty, allied mode, the four CTF settings, and the three difficulty
-    // submenu settings = 24 bytes), then the 1-byte host player id — so the
-    // player-count u32 sits at offset 29.
+    // Wire layout of an empty LobbyState (protocol v8): 4-byte transport
+    // header, then the settings block (4-byte empty campaign string + 11 i16
+    // fields: scenario, difficulty, allied mode, the four CTF settings, the
+    // three difficulty submenu settings, and cross_control = 26 bytes), then
+    // the 1-byte host player id and the 1-byte last_start_denial echo — so the
+    // player-count u32 sits at offset 32.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 29, 0xffffffffu);
+    write_u32_le(oversized_player_count, 32, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -2429,9 +2527,10 @@ TEST(NetTransport,
     auto oversized_slot_count =
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
-    // First player record: index u8 + empty-name u32 + team i16 + ready/host
-    // bools = 9 bytes after the count, putting its slot-count u32 at 42.
-    write_u32_le(oversized_slot_count, 42, 0xffffffffu);
+    // First player record (v8): index u8 + empty-name u32 + empty-company u32
+    // + team i16 + ready/host bools = 13 bytes after the count, putting its
+    // slot-count u32 at 49.
+    write_u32_le(oversized_slot_count, 49, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());

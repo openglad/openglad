@@ -2,6 +2,7 @@
 
 #include <openglad/core/ctf_constants.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -9,6 +10,26 @@
 #include <vector>
 
 namespace og::sim {
+
+// Maximum company display-name length preserved by the lobby wire (matches
+// the 40-byte SaveData::save_name field the name comes from). The lobby-state
+// reader clamps longer strings instead of rejecting them.
+inline constexpr std::size_t kMaxLobbyCompanyNameLength = 40;
+
+// Reason a StartGame request was denied by the LobbyServer (protocol v8,
+// company-basecamp design §4.3). Serialized as the u8 LobbyState
+// last_start_denial echo; None (0) means "no denial recorded".
+enum class StartDenialReason : std::uint8_t {
+    None = 0,
+    NotHost = 1,
+    MachinesNotReady = 2,
+    NoDeployedCharacters = 3,
+};
+
+constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexcept
+{
+    return static_cast<std::uint8_t>(reason);
+}
 
 struct LobbyCharacterData {
     std::int32_t guy_id = 0;
@@ -41,6 +62,12 @@ struct LobbyCharacterSlot {
     // Slot index maps back to SaveData::team_list when the lobby is applied.
     std::uint8_t slot_index = 0;
     LobbyCharacterData character;
+    // Mission-roster selection (protocol v8): whether the owning machine
+    // brings this character into the next level. Serialized as bit0 of the
+    // slot_flags byte (the writer zeroes bits 1-7; the reader masks bit0 and
+    // ignores the rest). Stamped from the save guy's v14 deploy flag by the
+    // three slot builders.
+    bool deployed = true;
     // Player slot that owns this character (0xff == unowned). Populated only
     // when assembling the combined game-start roster; NOT part of the lobby
     // wire format (the owning player is implicit in the lobby state). Used so
@@ -57,6 +84,10 @@ struct LobbyCharacterSlot {
 struct LobbyPlayer {
     std::uint8_t player_index = 0xff;
     std::string name;
+    // The owning machine's active-company display name (protocol v8),
+    // identical across all of one machine's seats. Serialized after name;
+    // the reader clamps it to kMaxLobbyCompanyNameLength chars.
+    std::string company;
     std::int16_t team = 0;
     std::vector<LobbyCharacterSlot> character_slots;
     bool ready = false;
@@ -79,6 +110,11 @@ struct LobbySettings {
     std::int16_t respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
     std::int16_t generator_rate = 0;     // percent; 0 = default (100)
     std::int16_t keep_fallen_heroes = 0; // 0 = permadeath on win (classic)
+    // Host-only cross-control setting (protocol v8, company-basecamp design
+    // §4.1/§4.4): 0 = owner-locked control in networked levels (default),
+    // 1 = players may control other machines' characters. sanitize_settings
+    // keeps it in {0, 1}.
+    std::int16_t cross_control = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };
@@ -104,6 +140,11 @@ inline bool lobby_teams_shareable(const LobbySettings& settings) noexcept
 struct LobbyState {
     LobbySettings settings;
     std::uint8_t host_player_id = 0xff;
+    // Echo of the most recent StartGame denial (protocol v8, [NET-R3]):
+    // 0 = none, else a StartDenialReason value. Recorded by the LobbyServer
+    // so every peer (including a remote host elected on a dedicated server)
+    // can render the precise reason instead of a poll timeout.
+    std::uint8_t last_start_denial = 0;
     std::vector<LobbyPlayer> players;
 
     bool operator==(const LobbyState&) const = default;

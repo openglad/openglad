@@ -23,6 +23,8 @@ struct LobbySaveDataEquivalent {
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
     std::int16_t keep_fallen_heroes = 0;
+    // Host-only cross-control setting (protocol v8; see LobbySettings).
+    std::int16_t cross_control = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

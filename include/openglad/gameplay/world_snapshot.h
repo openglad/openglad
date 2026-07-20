@@ -31,7 +31,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 8;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 9;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -266,6 +266,17 @@ struct WorldSnapshot {
     // the CTF block so the CTF payload-offset pins stay valid.
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
+    // Snapshot v9 (protocol v8, company-basecamp design §4.1/§4.4): the
+    // server-authoritative control policy (0 = legacy claim-anything, 1 =
+    // owner-locked) and the per-global-player machine map, serialized right
+    // after the generator_rate scalar. Encoding per entry: low 7 bits =
+    // machine id (the owning peer's lowest bound global player index),
+    // bit7 = "this player's machine deployed >= 1 character this level",
+    // 0xff = no player bound at that index.
+    std::uint8_t control_policy = 0;
+    std::array<std::uint8_t, kMaxGlobalPlayers> player_machine = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
     std::uint8_t grid_width = 0;
     std::uint8_t grid_height = 0;

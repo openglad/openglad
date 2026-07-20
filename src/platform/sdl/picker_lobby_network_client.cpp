@@ -1193,6 +1193,9 @@ og::sim::LobbyPlayer build_local_lobby_player(
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
+    // v8: every seat of this machine advertises the active company's display
+    // name (SaveData::save_name; <= 40 chars by construction).
+    player.company = save.save_name;
     player.team = local_team;
     player.ready = false;
     player.is_host = false;
@@ -1209,6 +1212,9 @@ og::sim::LobbyPlayer build_local_lobby_player(
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
             .character = make_lobby_character_data(*member),
+            // v8: mission-roster selection rides the slot, stamped from the
+            // save guy's v14 deploy flag.
+            .deployed = member->deployed,
         });
     }
 
@@ -1418,6 +1424,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.respawn_mode = state.settings.respawn_mode;
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    equivalent.cross_control = state.settings.cross_control;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1459,6 +1466,7 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
     save.respawn_mode = state.settings.respawn_mode;
     save.generator_rate = state.settings.generator_rate;
     save.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    save.cross_control = state.settings.cross_control;
     save.numplayers = static_cast<unsigned char>(
         spectator_mode
             ? 0u
@@ -1574,6 +1582,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.cross_control = save.cross_control;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{

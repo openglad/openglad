@@ -73,6 +73,13 @@ public:
     short respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
     short generator_rate = 0;     // percent; 0 = default (100)
     short keep_fallen_heroes = 0; // 0 = permadeath on win (classic), 1 = keep
+    // Cross-control (protocol v8, company-basecamp design §4.1): host-only
+    // lobby setting; 0 = owner-locked networked control (default), 1 =
+    // players may control other machines' characters. SESSION-ONLY — never
+    // serialized to the GTL file (a lobby-negotiated match setting that is
+    // meaningless outside a networked session), so save()/load() bytes are
+    // untouched.
+    short cross_control = 0;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation

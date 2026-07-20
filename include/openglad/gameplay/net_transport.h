@@ -69,7 +69,17 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // local_slot. Global player indices may now exceed MAX_PLAYERS (per-machine
 // cap) up to kMaxGlobalPlayers. Snapshot format stays v8, replay stays v9,
 // and the InputMessage keeps exactly MAX_PLAYERS slots (per-machine cap).
-inline constexpr std::uint8_t kNetworkProtocolVersion = 7;
+// v8: company & base camp (docs/company-basecamp-design.md §4.1).
+// LobbyCharacterSlot gains a slot_flags byte after slot_index (bit0 =
+// deployed, bits 1-7 reserved-zero; the serialized guy payload is unchanged),
+// LobbyPlayer gains a company display-name string after name (reader clamps
+// to 40 chars), lobby settings gain cross_control as the 11th i16, and
+// LobbyState gains a u8 last_start_denial echo (StartDenialReason) after
+// host_player_id. WorldSnapshot carries the control_policy byte and the
+// u8[16] player_machine map (low 7 bits machine id, bit7 machine-deployed,
+// 0xff none) after the respawn_mode/generator_rate scalars; snapshot format
+// moved to v9 and replay to v10 alongside them.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 8;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

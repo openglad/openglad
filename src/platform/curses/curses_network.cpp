@@ -185,6 +185,8 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
+    // v8: advertise the active company's display name (SaveData::save_name).
+    player.company = save.save_name;
     player.team = local_team;
     player.ready = false;
     player.is_host = false;
@@ -196,6 +198,8 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
             .character = make_lobby_character_data(*member),
+            // v8: stamped from the save guy's v14 deploy flag.
+            .deployed = member->deployed,
         });
     }
     return player;
@@ -228,6 +232,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.cross_control = save.cross_control;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -1274,6 +1279,7 @@ private:
         eq.respawn_mode = state_->settings.respawn_mode;
         eq.generator_rate = state_->settings.generator_rate;
         eq.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        eq.cross_control = state_->settings.cross_control;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
@@ -1411,6 +1417,7 @@ int curses_network_testing_exercise_internal_helpers()
     save.respawn_mode = 2;
     save.generator_rate = 50;
     save.keep_fallen_heroes = 1;
+    save.cross_control = 1;
     const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
     const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
         &rules_message.payload);
@@ -1419,11 +1426,13 @@ int curses_network_testing_exercise_internal_helpers()
         rules->settings.ctf_respawn_ticks == 60 &&
         rules->settings.respawn_mode == 2 &&
         rules->settings.generator_rate == 50 &&
-        rules->settings.keep_fallen_heroes == 1);
+        rules->settings.keep_fallen_heroes == 1 &&
+        rules->settings.cross_control == 1);
     save.ctf_respawn_ticks = 0;
     save.respawn_mode = 0;
     save.generator_rate = 0;
     save.keep_fallen_heroes = 0;
+    save.cross_control = 0;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";
