@@ -20,7 +20,7 @@ window. Keep this table in sync with the registry:
 | CONTROLS | **Engine** | `control_options_menu_screen_spec()` via `main_controls_options()` |
 | MAIN OPTIONS | **Engine** | `main_options_menu_screen_spec()` via `main_options()` (which keeps the family-wide cfg-persist exit epilogue) |
 | Main menu | **Engine** | `main_menu_screen_spec()` via `mainmenu()` — the §1.6 MP/no-MP spec pair (build-gated quit/help fork), `FadeWithInitialDraw` entry, MainScope remote-start with `BreakWithSelection`, the G14 full-re-vdisplay content hook, and the outline/label/art bindings that retired `redraw_mainmenu`'s raw `allbuttons_[N]` writes and both `OPTIONS_BUTTON_INDEX` #defines (`picker_mainmenu_options_index()` now) |
-| Team build | Legacy | `create_team_menu()` |
+| Team build | **Engine** | `team_build_menu_screen_spec()` via `create_team_menu()` (`FadeAroundEntry`; GO gating = the legacy sync as its Rewire program; `frame_tick`/`on_reset` = the level-reload guard, entered at -1 so the first frame always reloads) |
 | View team | **Engine** | `view_team_menu_screen_spec()` via `create_view_menu()` (`exit_on_redraw`; GO gating = the legacy sync as its Rewire program) |
 | Save/Load slots | **Engine** | `save_slots_menu_screen_spec()` / `load_slots_menu_screen_spec()` via `create_save_menu()` / `create_load_menu()` (`exit_on_redraw`; slot-header live labels in the content pass) |
 | Hire / Train / Progress / View level | Legacy | `create_*_menu()` |
@@ -169,10 +169,10 @@ runtime route-around resolver for NEW screens' gating.
 
 ## Current limitations (deliberate, tracked)
 
-- `EnterTransition::FadeWithInitialDraw` is implemented (the legacy mainmenu
-  entry: one timer tick, fade out, first-frame compose, fade in,
-  `grab_mouse`); `FadeAroundEntry` remains TESTING-checked until the screen
-  that needs it (team build) migrates.
+- `EnterTransition::FadeWithInitialDraw` (the legacy mainmenu entry: one
+  timer tick, fade out, first-frame compose, fade in, `grab_mouse`) and
+  `FadeAroundEntry` (the legacy team-build entry: fade out, cold
+  background+buttons draw, fade in) are both implemented.
 - `NavProgramKind::RouteAround` (`rewire_nav_transitive_skip`) is reserved
   until a consumer proves equivalence (G1).
 - `MenuBuildGate` filtering shifts materialized indices; the runner and the

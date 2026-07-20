@@ -24,6 +24,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gparser.h>
@@ -56,6 +57,8 @@ void sync_view_team_host_control_visibility(button* buttons, int num_buttons,
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);
+void sync_team_build_host_control_visibility(button* buttons, int num_buttons,
+                                             int& highlighted_button);
 void view_team(short left, short top, short right, short bottom);
 std::string get_saved_name(const char* filename);
 bool team_build_start_selected();
@@ -1244,11 +1247,17 @@ struct LevelReloadGuardState
 
 void level_reload_guard_on_reset(void* screen_state)
 {
+    if (screen_state == nullptr)
+        return;
     static_cast<LevelReloadGuardState*>(screen_state)->was_reset = true;
 }
 
 bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 {
+    // Null state = a caller that never reaches the guard in practice (the
+    // G5 remote-start sweep exits before any frame tick); stay inert.
+    if (screen_state == nullptr)
+        return true;
     auto* const guard = static_cast<LevelReloadGuardState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     if (guard->last_level_id != myscreen->save_data.scen_num ||
@@ -1474,6 +1483,126 @@ const MenuScreenSpec& teams_menu_screen_spec()
     return spec;
 }
 
+// ---------------------------------------------------------------------------
+// TEAM BUILD (§1.8 step 5, the cluster's parent screen). A clean 3x3 grid on
+// the classic x=30/120/210 columns, transcribed VERBATIM from the deleted
+// k_createmenu_buttons: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
+// BACK | SCENARIO | NETWORKING (y=140). GO is the only host-gated button —
+// the legacy sync (hide + picker_wire_team_build_nav) is the spec's Rewire
+// program (G1). FadeAroundEntry replays the legacy fade-out / cold
+// backdrop+buttons draw / fade-in entry; the level-reload guard
+// (frame_tick/on_reset, entered with last_level_id = -1) reloads the picker
+// world on the first frame and after every SET LEVEL / nested-screen reset,
+// exactly where the legacy loop reloaded.
+
+constexpr MenuButtonSpec kTeamBuildRows[] = {
+    {.id = "view_team", .label = "VIEW TEAM",
+     .x = 30, .y = 70, .w = 80, .h = 15,
+     .action = ButtonAction::CreateViewMenu, .arg = -1,
+     .nav = {.down = 3, .right = 1}},
+    {.id = "train_team", .label = "TRAIN TEAM",
+     .x = 120, .y = 70, .w = 80, .h = 15,
+     .action = ButtonAction::CreateTrainMenu, .arg = -1,
+     .nav = {.down = 4, .left = 0, .right = 2}},
+    {.id = "hire_troops", .label = "HIRE TROOPS",
+     .x = 210, .y = 70, .w = 80, .h = 15,
+     .action = ButtonAction::CreateHireMenu, .arg = -1,
+     .nav = {.down = 5, .left = 1}},
+    {.id = "load_team", .label = "LOAD TEAM",
+     .x = 30, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::CreateLoadMenu, .arg = -1,
+     .nav = {.up = 0, .down = 6, .right = 4}},
+    {.id = "save_team", .label = "SAVE TEAM",
+     .x = 120, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::CreateSaveMenu, .arg = -1,
+     .nav = {.up = 1, .down = 7, .left = 3, .right = 5}},
+    {.id = "go", .label = "GO",
+     .x = 210, .y = 100, .w = 80, .h = 15,
+     .action = ButtonAction::GoMenu, .arg = -1,
+     .nav = {.up = 2, .down = 8, .left = 4}},
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 30, .y = 140, .w = 60, .h = 30,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 3, .right = 7}},
+    {.id = "scenario", .label = "SCENARIO",
+     .x = 120, .y = 140, .w = 80, .h = 20,
+     .action = ButtonAction::CreateScenarioMenu, .arg = -1,
+     .nav = {.up = 4, .left = 6, .right = 8}},
+    {.id = "networking", .label = "NETWORKING",
+     .x = 210, .y = 140, .w = 80, .h = 20,
+     .action = ButtonAction::Networking, .arg = -1,
+     .nav = {.up = 5, .left = 7}},
+};
+
+// The legacy per-frame content, verbatim: up to two translucent lobby-status
+// lines at the top, and the compact current-scenario hint in the empty y=40
+// band (the full level-title / campaign-name strips live in the SCENARIO
+// subscreen, next to the buttons that change them).
+void team_build_draw_content(void* /*screen_state*/)
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    text& mytext = myscreen->text_normal;
+
+    const std::vector<std::string> lobby_status = picker_lobby_status_lines();
+    for (std::size_t line_index = 0;
+         line_index < lobby_status.size() && line_index < 2; ++line_index)
+    {
+        const std::string& line = lobby_status[line_index];
+        if (line.empty())
+            continue;
+
+        const int status_y = 8 + static_cast<int>(line_index) * 10;
+        const int status_w = static_cast<int>(line.size()) * 6;
+        myscreen->draw_rect_filled(10, status_y - 1, status_w + 4, 8,
+                                   PURE_BLACK, 150);
+        mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
+    }
+
+    {
+        std::string hint = std::format("SCEN {}: {}",
+                                       myscreen->save_data.scen_num,
+                                       myscreen->world().title);
+        if (hint.size() > 34)
+            hint.resize(34);
+        const int hint_w = static_cast<int>(hint.size()) * 6;
+        myscreen->draw_rect_filled(10, 43, hint_w + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(12, 44, WHITE, "%s", hint.c_str());
+    }
+}
+
+void team_build_rewire(button* buttons, int num_buttons,
+                       int& highlighted_button)
+{
+    sync_team_build_host_control_visibility(buttons, num_buttons,
+                                            highlighted_button);
+}
+
+const MenuScreenSpec& team_build_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "team_build",
+        .rows = kTeamBuildRows,
+        .row_count = static_cast<int>(std::size(kTeamBuildRows)),
+        .buttons_accessor = &picker_createmenu_buttons,
+        .count_accessor = &picker_createmenu_button_count,
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = &team_build_rewire},
+        // The loop-top host-GO check that launches a joiner parked here.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .enter = EnterTransition::FadeAroundEntry,
+        .default_highlight = 1,  // train_team, as the legacy loop
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &team_build_draw_content,
+        .frame_tick = &level_reload_guard_frame_tick,
+        .on_reset = &level_reload_guard_on_reset,
+        // Every legacy exit carried MENU_EXIT (nested MENU_REDRAWs are
+        // consumed by reset_buttons; the reload guard keeps the loop alive).
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
 constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
                                              int row_count)
 {
@@ -1575,7 +1704,7 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::MainMenu,
                 {.kind = Kind::Engine, .spec = &main_menu_screen_spec()});
             set(MenuScreenId::TeamBuild,
-                {.kind = Kind::Legacy, .legacy_entry = &create_team_menu});
+                {.kind = Kind::Engine, .spec = &team_build_menu_screen_spec()});
             set(MenuScreenId::ViewTeam,
                 {.kind = Kind::Engine, .spec = &view_team_menu_screen_spec()});
             set(MenuScreenId::SaveSlots,
@@ -1698,6 +1827,35 @@ button* picker_loadteam_buttons()
 int picker_loadteam_button_count()
 {
     return static_cast<int>(pks().loadteam_buttons.size());
+}
+
+button* picker_createmenu_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::team_build_menu_screen_spec(),
+                                     pks().createmenu_buttons);
+    return pks().createmenu_buttons.data();
+}
+
+int picker_createmenu_button_count()
+{
+    return static_cast<int>(pks().createmenu_buttons.size());
+}
+
+// TEAM BUILD, engine-hosted (the legacy loop is gone). The reload cursor
+// enters at -1: the first frame always reloads the picker world (the legacy
+// entry behavior — the screen must reflect the save's level whatever was
+// loaded before it). Every legacy exit carried MENU_EXIT; the fold below
+// keeps the legacy return shape verbatim.
+Sint32 create_team_menu(Sint32 arg1)
+{
+    (void)arg1;
+    og::ui::LevelReloadGuardState guard{.last_level_id = -1,
+                                        .was_reset = false};
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::team_build_menu_screen_spec(), &guard);
+    if (retvalue & MENU_EXIT)
+        return retvalue;
+    return MENU_REDRAW;
 }
 
 button* picker_scenariomenu_buttons()

@@ -305,10 +305,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     OG_MENU_ENGINE_CHECK(static_cast<int>(spec_rows.size()) == num_buttons,
                          "accessor row count diverges from the spec's "
                          "build-gate materialization");
-    // FadeAroundEntry lands with the screen that first needs it (team build).
-    OG_MENU_ENGINE_CHECK(spec.enter != EnterTransition::FadeAroundEntry,
-                         "EnterTransition::FadeAroundEntry not implemented yet");
-
     int highlighted_button = spec.default_highlight;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
@@ -321,6 +317,22 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         const MenuLabelContext context = build_label_context(spec);
         apply_row_states(spec_rows, buttons, num_buttons, context, states);
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
+    }
+
+    if (spec.enter == EnterTransition::FadeAroundEntry) {
+        // The legacy team-build entry, verbatim: fade the previous screen
+        // out, compose the cold first frame — background and buttons only,
+        // no content pass and no highlight — and fade it in (fadeblack
+        // presents the buffer itself; the first full frame follows in the
+        // loop, after the level-reload guard).
+        screen* scr = og::runtime::current_session->myscreen_;
+        scr->fadeblack(0);
+        if (spec.backdrop)
+            draw_backdrop();
+        if (spec.draw_background != nullptr)
+            spec.draw_background(screen_state);
+        draw_buttons(buttons, num_buttons);
+        scr->fadeblack(1);
     }
 
     if (spec.enter == EnterTransition::FadeWithInitialDraw) {

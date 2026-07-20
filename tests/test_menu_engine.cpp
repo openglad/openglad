@@ -637,10 +637,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
         }
     }
-    EXPECT_GE(engine_screens, 12)
+    EXPECT_GE(engine_screens, 13)
         << "difficulty + the FX trio + display + controls + main options + "
-           "main menu + view team + the slot menus + SCENARIO + TEAMS must "
-           "be engine-hosted by this stage";
+           "main menu + the full team-build cluster (team build, view team, "
+           "slot menus, SCENARIO, TEAMS) must be engine-hosted by this stage";
 }
 
 // ---------------------------------------------------------------------------
@@ -671,6 +671,8 @@ TEST(MenuEngine, options_family_registry_hosts)
 TEST(MenuEngine, team_build_cluster_registry_hosts)
 {
     using Kind = og::ui::MenuScreenHost::Kind;
+    EXPECT_EQ(Kind::Engine,
+              og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::ViewTeam).kind);
     EXPECT_EQ(Kind::Engine,
@@ -731,6 +733,20 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_NE(nullptr, scenario->frame_tick) << "SCENARIO level-reload guard";
     EXPECT_NE(nullptr, scenario->on_reset)
         << "a nested screen's reset must trigger the reload guard";
+
+    // TEAM BUILD: fade-bracketed entry, nested MENU_REDRAWs consumed by
+    // reset_buttons (exit_on_redraw false), reload guard on both hooks.
+    const og::ui::MenuScreenSpec* team_build =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, team_build);
+    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, team_build->enter);
+    EXPECT_FALSE(team_build->exit_on_redraw);
+    EXPECT_EQ(MENU_EXIT, team_build->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              team_build->remote_start);
+    EXPECT_EQ(1, team_build->default_highlight);
+    EXPECT_NE(nullptr, team_build->frame_tick);
+    EXPECT_NE(nullptr, team_build->on_reset);
 }
 
 // ---------------------------------------------------------------------------

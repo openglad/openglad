@@ -1500,25 +1500,8 @@ void picker_quit()
 // accessor shims, and the entry functions live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
 
-// beginmenu (first menu of new game), create_team_menu.
-// A clean 3x3 grid on the classic x=30/120/210 columns: the scenario-shaped
-// commands (SET CAMPAIGN / SET LEVEL / VIEW LEVEL / TEAMS / PROGRESS) live in
-// the SCENARIO subscreen now (k_scenariomenu_buttons below). GO is the only
-// host-gated button here; sync_team_build_host_control_visibility rewires
-// hire_troops/save_team/networking around it when hidden.
-static const button k_createmenu_buttons[] =
-    {
-        button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.down=3, .right=1}),
-        button("train_team", "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, button_action_id(ButtonAction::CreateTrainMenu), -1, MenuNav{.down=4, .left=0, .right=2}),
-        button("hire_troops", "HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, button_action_id(ButtonAction::CreateHireMenu), -1, MenuNav{.down=5, .left=1}),
-        button("load_team", "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::CreateLoadMenu), -1, MenuNav{.up=0, .down=6, .right=4}),
-        button("save_team", "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateSaveMenu), -1, MenuNav{.up=1, .down=7, .left=3, .right=5}),
-        button("go", "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.up=2, .down=8, .left=4}),
-
-        button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .right=7}),
-        button("scenario", "SCENARIO", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateScenarioMenu), -1, MenuNav{.up=4, .left=6, .right=8}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=5, .left=7}),
-    };
+// TEAM BUILD (create_team_menu): engine-hosted — spec, accessor shims, and
+// the entry wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // VIEW TEAM: engine-hosted — spec, accessor shims, and create_view_menu live
 // in menu_screen_specs.cpp (docs/menu-engine.md).
@@ -1642,16 +1625,9 @@ void reset_mutable_button_layout(std::vector<button>& out, const button (&defaul
 }
 } // namespace
 
-button* picker_createmenu_buttons()
-{
-    reset_mutable_button_layout(pks().createmenu_buttons, k_createmenu_buttons);
-    return pks().createmenu_buttons.data();
-}
-
-int picker_createmenu_button_count()
-{
-    return static_cast<int>(pks().createmenu_buttons.size());
-}
+// picker_createmenu_buttons()/picker_createmenu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 // picker_viewteam_buttons()/picker_saveteam_buttons()/picker_loadteam_buttons()
 // (+ counts): engine-hosted screens — the D3 materialization shims live in
