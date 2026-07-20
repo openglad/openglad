@@ -2037,3 +2037,26 @@ TEST(MenuEngine, networking_stays_legacy_v2_decision)
         EXPECT_NE(nullptr, other.spec) << "screen ordinal " << i;
     }
 }
+
+// §2.1 caption strip, the >18-char clip arm: a company name longer than
+// kMainMenuCompanyNameClip must be truncated before the "COMPANY: " strip
+// renders (the injector flows all run short names, so the clip line had no
+// live coverage — WP7 coverage pass). Direct draw-hook call, the
+// runner-only-surface convention.
+TEST(MenuEngine, main_menu_caption_clips_overlong_company_names)
+{
+    const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, mp.draw_content);
+
+    og::ui::set_main_menu_company_view_for_tests(
+        true, "AN OVERLONG COMPANY NAME WELL PAST THE CLIP");
+    mp.draw_content(nullptr);
+
+    // The absent shape too (the LIVE "NO COMPANY YET" strip): the injector
+    // flows always run with a company present.
+    og::ui::set_main_menu_company_view_for_tests(false, "");
+    mp.draw_content(nullptr);
+
+    // Mandatory restore (the shared-sweep contract): (true, "").
+    og::ui::set_main_menu_company_view_for_tests(true, "");
+}

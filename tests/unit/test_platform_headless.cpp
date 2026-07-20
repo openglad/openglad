@@ -1119,3 +1119,66 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
     (void)remove_user_file("save/" + config.save_name + ".gtl");
     og::data::set_active_company_slot("save0");
 }
+
+// §2.5 teams sub-prompt ('play N' / 'move SLOT N'): re-seat P1, move a
+// roster slot across teams (the §3.8 move autosave rides the valid move),
+// and every rejection wording. The teams screen previously had no test
+// surface at all (WP7 coverage pass); the roster/deploy legs bundle their
+// invalid-row rejections for the same reason.
+TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+
+    const std::string input =
+        "2\n"           // main: continue -> team build (base camp)
+        "1\n"           // base camp: roster
+        "deploy 99\n"   //   roster: deploy row out of range
+        "train 99\n"    //   roster: train row out of range
+        "gibberish\n"   //   roster: unrecognized command
+        "\n"            //   roster: blank exits
+        "4\n"           // base camp: deploy prompt
+        "abc\n"         //   non-numeric row rejected
+        "9\n"           // base camp: Scenario submenu
+        "4\n"           // scenario: teams -> teams sub-prompt
+        "play 9\n"      //   team out of range
+        "play 4\n"      //   in range but no heroes on team 4
+        "play 1\n"      //   valid: P1 plays team 1
+        "move 0 1\n"    //   slot out of range
+        "move 1 9\n"    //   team out of range
+        "move 1 2\n"    //   valid: slot 1 -> team 2 (§3.8 autosave)
+        "move 1 1\n"    //   valid: back to team 1
+        "gibberish\n"   //   unrecognized command
+        "\n"            //   blank exits teams
+        "6\n"           // scenario: back -> team build
+        "7\n"           // base camp: back -> main
+        "11\n";         // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("No heroes on team 9.\n"))
+        << "an out-of-range 'play' team must be rejected";
+    EXPECT_NE(std::string::npos, out.find("No heroes on team 4.\n"))
+        << "'play' onto an unmanned team must be rejected";
+    EXPECT_NE(std::string::npos, out.find("Playing on "))
+        << "'play 1' must re-seat P1 on the starting team";
+    EXPECT_NE(std::string::npos, out.find("Invalid slot or team.\n"))
+        << "out-of-range 'move' inputs must be rejected";
+    EXPECT_NE(std::string::npos, out.find("Moved slot 1 to "))
+        << "a valid 'move' must land and report the target team";
+    EXPECT_NE(std::string::npos, out.find("Invalid roster row.\n"))
+        << "out-of-range roster deploy/train rows must be rejected";
+
+    // Hygiene: the valid move autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}

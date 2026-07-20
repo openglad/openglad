@@ -2283,6 +2283,45 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(multi_join.player.name == "local-player" &&
           multi_join.extra_players.size() == 1 &&
           multi_join.extra_players[0].name == "local-player#1");
+
+    // Between-levels restamp matrix (restamp_reloaded_members_to_seat_teams):
+    // the branch the live e2e cannot reach — no replicated state => every
+    // member collapses onto the seat-0 fallback — plus the two-seat shape
+    // (partition kept on seat teams, the rest collapse onto seat 0). The
+    // [NET-R5] editability-matrix self-check convention.
+    {
+        SaveData restamp_save;
+        restamp_save.team_list[0] = make_member(0, "Keep A", 2, 21);
+        restamp_save.team_list[1] = make_member(1, "Collapse", 5, 22);
+        restamp_save.team_list[2] = make_member(2, "Keep B", 3, 23);
+        restamp_save.team_size = 3;
+
+        restamp_reloaded_members_to_seat_teams(
+            restamp_save, std::nullopt, "rs", 2);
+        check(restamp_save.team_list[0]->teamnum == 2 &&
+              restamp_save.team_list[1]->teamnum == 2 &&
+              restamp_save.team_list[2]->teamnum == 2);
+
+        restamp_save.team_list[0]->teamnum = 2;
+        restamp_save.team_list[1]->teamnum = 5;
+        restamp_save.team_list[2]->teamnum = 3;
+        og::sim::LobbyState restamp_state;
+        og::sim::LobbyPlayer restamp_seat0;
+        restamp_seat0.player_index = 4;
+        restamp_seat0.name = "rs";
+        restamp_seat0.team = 2;
+        og::sim::LobbyPlayer restamp_seat1;
+        restamp_seat1.player_index = 5;
+        restamp_seat1.name = "rs#1";
+        restamp_seat1.team = 3;
+        restamp_state.players = {restamp_seat0, restamp_seat1};
+        restamp_reloaded_members_to_seat_teams(
+            restamp_save, restamp_state, "rs", 0);
+        check(restamp_save.team_list[0]->teamnum == 2 &&
+              restamp_save.team_list[1]->teamnum == 2 &&
+              restamp_save.team_list[2]->teamnum == 3);
+    }
+
     og::sim::LobbyMessage settings_message = make_settings_message(save);
     check(settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
 
