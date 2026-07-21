@@ -2082,6 +2082,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_company_list.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_uxshots_probe.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2359,6 +2360,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # here, never in og_test_menu_ui (~130s vs the 180s timeout).
         og_add_test_group(og_test_basecamp FILES
             test_company_list.cpp
+            test_uxshots_probe.cpp
         )
 
         og_add_test_group(og_test_input FILES
@@ -2857,6 +2859,14 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # sanitizer lanes already protect it below; give it the same dedicated
         # budget in EVERY lane, mirroring og_test_picker_network above.
         set_tests_properties(og_test_menu_ui PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
+        # The Base Camp group now includes the visual smoke matrix in addition
+        # to the company-list flows. Both drive wall-clock fades from injector
+        # threads, so isolate the combined ~80s binary and leave ample CI
+        # headroom just as we do for the older menu UI group.
+        set_tests_properties(og_test_basecamp PROPERTIES
             RUN_SERIAL TRUE
             TIMEOUT 420
         )
