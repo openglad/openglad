@@ -912,14 +912,14 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     const og::ui::MenuScreenSpec& spec = og::ui::company_list_menu_screen_spec();
 
     // Spec obligations (§2.3): main-scope remote start (a host GO launches a
-    // peer parked in the list), lobby poll, fade entry, row-0 highlight
-    // (row 0 IS what CONTINUE opens), generic MenuSpecRow dispatch.
+    // peer parked in the list), lobby poll, fade entry, the old load loop's
+    // BACK-first highlight, generic MenuSpecRow dispatch.
     EXPECT_EQ(std::string("company_list"), spec.name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
     EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
     EXPECT_TRUE(spec.polls_lobby);
-    EXPECT_EQ(0, spec.default_highlight);
+    EXPECT_EQ(30, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
     EXPECT_TRUE(spec.nav.kind == og::ui::NavProgramKind::Rewire
                 && spec.nav.rewire != nullptr);
@@ -1049,8 +1049,8 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     }
 
     // Draw smoke over the headless screen buffer: the restored classic panel
-    // plus the empty state (both null-state and zero-company shapes draw NO
-    // COMPANIES), then a populated two-page state with a corrupt row + the
+    // plus its ten visual EMPTY SLOT rows (the corresponding engine rows stay
+    // hidden/inert), then a populated two-page state with a corrupt row + the
     // "p/N" indicator. The flows pin behavior; this pins both draw passes.
     ASSERT_TRUE(spec.draw_background != nullptr);
     ASSERT_TRUE(spec.draw_content != nullptr);
@@ -1061,6 +1061,16 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
         state.page = og::ui::PageModel::make(0, 10);
         spec.draw_background(&state);
         spec.draw_content(&state);
+        // The last empty row still has all three classic button faces. Sample
+        // their top bevels independently so a future visibility cleanup cannot
+        // collapse the old menu back into a short list over a blank panel.
+        int pixel = -1;
+        og::runtime::current_session->myscreen_->get_pixel(25, 160, &pixel);
+        EXPECT_EQ(BUTTON_TOP, pixel) << "empty company face";
+        og::runtime::current_session->myscreen_->get_pixel(193, 160, &pixel);
+        EXPECT_EQ(BUTTON_TOP, pixel) << "empty BK face";
+        og::runtime::current_session->myscreen_->get_pixel(221, 160, &pixel);
+        EXPECT_EQ(BUTTON_TOP, pixel) << "empty X face";
         for (int i = 0; i < 15; ++i) {
             state.companies.push_back(make_company_info(
                 "wp3draw" + std::to_string(i), 1000 - i, i < 12));

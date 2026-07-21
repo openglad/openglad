@@ -343,7 +343,7 @@ TEST(MenuEnginePins, company_list_exact_table)
     for (int i = 0; i < 10; ++i) {
         const int y = 25 + 15 * i;
         check_row(i, "company_row_" + std::to_string(i), "", 25, y, 164, 10,
-                  MenuNav{.up = i > 0 ? i - 1 : -1,
+                  MenuNav{.up = i > 0 ? i - 1 : 30,
                           .down = i < 9 ? i + 1 : 30,
                           .left = -1, .right = 10 + i},
                   false);
@@ -361,7 +361,7 @@ TEST(MenuEnginePins, company_list_exact_table)
                   false);
     }
     check_row(30, "back", "BACK", 25, 175, 40, 20,
-              MenuNav{.up = 9, .down = -1, .left = -1, .right = 31}, false);
+              MenuNav{.up = 9, .down = 0, .left = -1, .right = 31}, false);
     EXPECT_EQ(KEYSTATE_ESCAPE, buttons[30].hotkey) << "company_list back";
     check_row(31, "company_page_prev", "PREV", 160, 175, 40, 20,
               MenuNav{.up = 29, .down = -1, .left = 30, .right = 32}, true);

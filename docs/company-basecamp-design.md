@@ -581,7 +581,9 @@ the VIEW-LEVEL pager precedent inside the footer (final presentation: §9.18).
 
 - Row text: the name ≤ 18ch is centered on the first face, as the saved-game
   name was in the old Load Game menu. Roster counts, dates, and column headers
-  stay off this intentionally spare screen.
+  stay off this intentionally spare screen. When a page has fewer than ten
+  companies, its remaining visual rows read `EMPTY SLOT`; all three placeholder
+  faces are inert and remain outside the navigation graph.
   Sort: last-played DESC; row 0 == what CONTINUE opens. **The active company's row gets
   red `do_outline`** (U4). Corrupt files list as `CORRUPT` rows (§3.5) with BK (restore
   path) and X (delete; confirm names the backups) still available.
@@ -590,7 +592,9 @@ the VIEW-LEVEL pager precedent inside the footer (final presentation: §9.18).
 - Deleting the most-recent retargets CONTINUE to the next row; deleting the last company
   returns to a main menu with CONTINUE/LOAD hidden.
 - Button count: 10×3 + 3 = 33 ≤ MAX_BUTTONS 50. Nav: rows chain vertically;
-  row.right→BK→X; row9.down→back; back.right→prev→next; per-frame rewire + BFS pin over
+  back.down→row0, row0.up→back, row.right→BK→X, row9.down→back;
+  back.right→prev→next; initial highlight is BACK, as in the old load loop;
+  per-frame rewire + BFS pin over
   {0 rows, partial page, 2 pages, corrupt rows}.
 
 ### 2.4 Backups sub-view (per company)
@@ -2413,8 +2417,13 @@ divide its existing slot faces instead.
   the original inset well between the faces.
 - The company face centers only the company name, matching the old saved-name
   button. Counts, dates, and headings are removed from the SDL list.
+- The old fixed ten-row silhouette is preserved on partial pages: remaining
+  rows show an inert `EMPTY SLOT` company face plus two blank action faces.
+  Exact pixel pins cover all three bottom-row bevels so this cannot silently
+  collapse back into a short list over an empty panel.
 - Multi-page controls stay inside the classic footer: PREV at x=160 and NEXT
   at x=205, with the page indicator centered at x=135. On a single page both
   hide, leaving the original BACK-only footer.
-- Actions, row ordinals, keyboard navigation, paging, active-company marker,
-  backups, deletion, and confirmation behavior are unchanged.
+- The initial keyboard highlight and primary-column vertical cycle are restored
+  from the old menu: BACK → row 0 → ... → BACK. Actions, row ordinals, paging,
+  active-company marker, backups, deletion, and confirmation behavior remain.

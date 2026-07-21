@@ -2724,7 +2724,7 @@ constexpr int kCompanyListNextIndex = 32;
     {.id = "company_row_" #i, .label = "",                                   \
      .x = 25, .y = 25 + 15 * (i), .w = 164, .h = 10,                          \
      .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
-     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+     .nav = {.up = (i) > 0 ? (i) - 1 : kCompanyListBackIndex,                 \
              .down = (i) < 9 ? (i) + 1 : kCompanyListBackIndex,               \
              .right = kCompanyListBakBase + (i)}}
 #define OG_COMPANY_LIST_BAK(i)                                               \
@@ -2761,7 +2761,7 @@ constexpr MenuButtonSpec kCompanyListRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 25, .y = 175, .w = 40, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListBackIndex,
-     .nav = {.up = 9, .right = kCompanyListPrevIndex}},
+     .nav = {.up = 9, .down = 0, .right = kCompanyListPrevIndex}},
     // Real MenuSpecRow pager actions (keyboard-live, §2.3); statically
     // hidden — the rewire shows them only when the list spans pages. They
     // share the old footer instead of growing a second rail outside it.
@@ -2804,7 +2804,7 @@ void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
         buttons[kCompanyListDelBase + r].hidden = !on;
         if (on) {
             buttons[r].nav = {
-                .up = r > 0 ? r - 1 : -1,
+                .up = r > 0 ? r - 1 : kCompanyListBackIndex,
                 .down = r + 1 < visible ? r + 1 : kCompanyListBackIndex,
                 .left = -1,
                 .right = kCompanyListBakBase + r};
@@ -2839,7 +2839,7 @@ void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
     buttons[kCompanyListNextIndex].hidden = !pagers;
     buttons[kCompanyListBackIndex].nav = {
         .up = visible > 0 ? visible - 1 : -1,
-        .down = -1,
+        .down = visible > 0 ? 0 : -1,
         .left = -1,
         .right = pagers ? kCompanyListPrevIndex : -1};
     buttons[kCompanyListPrevIndex].nav = {
@@ -2894,21 +2894,49 @@ void company_list_draw_content(void* screen_state)
             live->vdisplay();
     };
 
+    // The old load menu never collapsed: unused save slots still painted an
+    // EMPTY SLOT face. Company rows remain hidden/inert in the engine graph,
+    // but these plain no-callback faces preserve that ten-row silhouette.
+    const auto draw_empty_row = [game](int row) {
+        const int y = 25 + 15 * row;
+        game->draw_text_bar(23, y - 2, 246, y + 11);
+        vbutton company(25, y, 164, 10, static_cast<Sint32>(0), 0,
+                        "EMPTY SLOT", KEYSTATE_UNKNOWN);
+        vbutton backup(193, y, 24, 10, static_cast<Sint32>(0), 0, "",
+                       KEYSTATE_UNKNOWN);
+        vbutton remove(221, y, 24, 10, static_cast<Sint32>(0), 0, "",
+                       KEYSTATE_UNKNOWN);
+        company.vdisplay();
+        backup.vdisplay();
+        remove.vdisplay();
+        game->draw_box(24, y - 1, 245, y + 10, 0, 0, 1);
+    };
+    const auto draw_classic_back = [game] {
+        game->draw_text_bar(23, 173, 66, 196);
+        vbutton face(25, 175, 40, 20, static_cast<Sint32>(0), 0, "",
+                     KEYSTATE_UNKNOWN);
+        face.vdisplay();
+        // vbutton centering was corrected globally after this menu retired.
+        // Keep its historical BACK ink origin, verified from the old frame.
+        game->text_normal.write_xy(36, 182, "BACK", DARK_BLUE, 1);
+        game->draw_box(24, 174, 65, 195, 0, 0, 1);
+    };
+
     if (st == nullptr || total == 0) {
         // Transient shape: deleting the last company exits the screen, but
-        // the frame that consumed the delete still draws once.
-        game->text_normal.write_xy_center(160, 90, ORANGE_START, "%s",
-                                          "NO COMPANIES");
-        game->draw_text_bar(23, 173, 66, 196);
-        repaint_face(kCompanyListBackIndex);
-        game->draw_box(24, 174, 65, 195, 0, 0, 1);
+        // the frame that consumed the delete still draws once. Match the old
+        // all-empty load menu instead of leaving a blank panel behind.
+        for (int r = 0; r < kCompanyListRowsPerPage; ++r)
+            draw_empty_row(r);
+        draw_classic_back();
         return;
     }
 
     const int first = st->page.first_index();
     const int end = st->page.end_index();
+    const int visible = end - first;
     const std::string& active_slot = og::data::active_company_slot();
-    for (int r = 0; r < end - first; ++r) {
+    for (int r = 0; r < visible; ++r) {
         const og::data::CompanyInfo& info =
             st->companies[static_cast<std::size_t>(first + r)];
         const CompanyRowText row = format_company_row(info);
@@ -2930,10 +2958,10 @@ void company_list_draw_content(void* screen_state)
         // The old slot loop redrew one box around the complete slot face.
         game->draw_box(24, 24 + 15 * r, 245, 35 + 15 * r, 0, 0, 1);
     }
+    for (int r = visible; r < kCompanyListRowsPerPage; ++r)
+        draw_empty_row(r);
 
-    game->draw_text_bar(23, 173, 66, 196);
-    repaint_face(kCompanyListBackIndex);
-    game->draw_box(24, 174, 65, 195, 0, 0, 1);
+    draw_classic_back();
     if (st->page.multi_page()) {
         // Both pagers live inside the restored panel and therefore join BACK
         // in this single late footer repaint.
@@ -3553,8 +3581,9 @@ const MenuScreenSpec& company_list_menu_screen_spec()
         // Fade the main menu out, draw the list cold, fade in (the name-entry
         // entry idiom).
         .enter = EnterTransition::FadeAroundEntry,
-        // Initial highlight: row 0 — what CONTINUE opens (§2.3).
-        .default_highlight = 0,
+        // The retired load loop opened on BACK; keep that keyboard starting
+        // point and its BACK -> row 0 -> ... -> BACK vertical cycle.
+        .default_highlight = kCompanyListBackIndex,
         .polls_lobby = true,
         .draw_background = &company_list_draw_background,
         .draw_content = &company_list_draw_content,
