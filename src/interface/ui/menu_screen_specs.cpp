@@ -1697,7 +1697,7 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // VIEW TEAM screen retired into it): 9 rows/page at the 15px save-slot pitch
 // (§9.10.1 — round 2 trades the tenth row for clear margins around the
 // block) — a deploy toggle (8,41+15r,14,10) and the §9.11 row-body train
-// zone (26,41+15r,208,10; the TRAIN column is deleted, clicking the row
+// zone (26,41+15r,286,10; the TRAIN column is deleted, clicking the row
 // trains) — the page cluster top-right (< p/N >), and the bottom command
 // strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
@@ -1718,6 +1718,17 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 // below the pager cluster (ends 24) and 6px above the y=178 command strip.
 constexpr int kBaseCampRowY0 = 41;
 constexpr int kBaseCampRowPitch = 15;
+// Round-3 horizontal grid: keep a real gutter after DEPLOY and use the
+// right-hand third that became vacant when the TRAIN button column retired.
+// The row hit zone spans every text column, so the visible name remains the
+// affordance while taps anywhere on the body keep working.
+constexpr int kBaseCampNameColumnX = 52;
+constexpr int kBaseCampSoloClassColumnX = 136;
+constexpr int kBaseCampSoloLevelColumnX = 220;
+constexpr int kBaseCampSoloExpColumnX = 270;
+constexpr int kBaseCampNetCompanyColumnX = 128;
+constexpr int kBaseCampNetLevelColumnX = 278;
+constexpr char kBaseCampTrainHint[] = "TAP NAME TO TRAIN";
 // §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
 // glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
 // was nearly invisible; 21 restores a legible two-step drop while staying
@@ -1771,10 +1782,10 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
 // Static nav encodes the full-page shape (9 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
-// is deleted — the row BODY (26,y,208,10) is a no_draw hit zone spanning
+// is deleted — the row BODY (26,y,286,10) is a no_draw hit zone spanning
 // chip + name/class/level/exp ink (left edge 26 = the family chip, 4px
-// clear of the deploy toggle ending at x=22; right edge 234 = solo EXP ink
-// end 231 + 3px). no_draw, not a quiet face: the row text IS the affordance
+// clear of the deploy toggle ending at x=22; right edge 312 = solo EXP ink
+// end 306 + 6px). no_draw, not a quiet face: the row text IS the affordance
 // (a bevel would double-frame every row against the §9.5.2 panel), and the
 // keyboard draw_highlight pulse draws regardless of no_draw, so the row
 // highlight reads — the §2.5 foreign-hit-zone precedent.
@@ -1787,7 +1798,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
              .right = kBaseCampRowBodyBase + (i)}}
 #define OG_BASE_CAMP_ROW(i)                                                  \
     {.id = "roster_row_" #i, .label = "",                                    \
-     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 208,        \
+     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 286,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampRowBodyBase + (i),                                      \
      .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
@@ -2181,17 +2192,19 @@ void base_camp_draw_content(void* screen_state)
     // (damage never persists to base camp), redundant with CLASS+LVL, and
     // it lives one click away in TRAIN. EXP stays (progress is actionable).
     // §9.11 (G4): NO TRAIN header — the TRAIN column is deleted; clicking
-    // the row body opens the train screen on that character.
+    // the row body opens the train screen on that character. Round 3 spreads
+    // the columns across the full panel and restores a clear DEPLOY/NAME gap.
     if (networked) {
-        mytext.write_xy(40, 32, "NAME", WHITE, 1);
-        mytext.write_xy(106, 32, "COMPANY", WHITE, 1);
-        mytext.write_xy(208, 32, "LV", WHITE, 1);
+        mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", WHITE, 1);
+        mytext.write_xy(kBaseCampNetCompanyColumnX, 32, "COMPANY", WHITE, 1);
+        mytext.write_xy(kBaseCampNetLevelColumnX, 32, "LV", WHITE, 1);
     } else {
         mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
-        mytext.write_xy(40, 32, "NAME", WHITE, 1);
-        mytext.write_xy(118, 32, "CLASS", WHITE, 1);
-        mytext.write_xy(174, 32, "LV", WHITE, 1);
-        mytext.write_xy(196, 32, "EXP", WHITE, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", WHITE, 1);
+        mytext.write_xy(kBaseCampSoloClassColumnX, 32, "CLASS", WHITE, 1);
+        mytext.write_xy(kBaseCampSoloLevelColumnX, 32, "LV", WHITE, 1);
+        mytext.write_xy(kBaseCampSoloExpColumnX, 32, "EXP", WHITE, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
@@ -2255,17 +2268,28 @@ void base_camp_draw_content(void* screen_state)
                                 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
-            mytext.write_xy(40, y + 2, row.name.c_str(), row_color, 1);
-            mytext.write_xy(106, y + 2, row.company.c_str(), row_color, 1);
-            mytext.write_xy(208, y + 2, row.level.c_str(), row_color, 1);
+            mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
+                            row_color, 1);
+            mytext.write_xy(kBaseCampNetCompanyColumnX, y + 2,
+                            row.company.c_str(), row_color, 1);
+            mytext.write_xy(kBaseCampNetLevelColumnX, y + 2,
+                            row.level.c_str(), row_color, 1);
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
-            mytext.write_xy(40, y + 2, row.name.c_str(), row_color, 1);
-            mytext.write_xy(118, y + 2, row.cls.c_str(), row_color, 1);
-            mytext.write_xy(174, y + 2, row.level.c_str(), row_color, 1);
-            mytext.write_xy(196, y + 2, row.exp.c_str(), row_color, 1);
+            mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
+                            row_color, 1);
+            mytext.write_xy(kBaseCampSoloClassColumnX, y + 2, row.cls.c_str(),
+                            row_color, 1);
+            mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
+                            row.level.c_str(), row_color, 1);
+            mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, row.exp.c_str(),
+                            row_color, 1);
         }
     }
+
+    // The full-page roster ends at y=170 and the command buttons start at
+    // y=178, leaving one readable 6px line for the discoverability cue.
+    strip_text(109, 171, kBaseCampTrainHint, YELLOW);
 }
 
 // The team-build family's frame obligations: the level-reload guard (a SET

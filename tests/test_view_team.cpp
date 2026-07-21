@@ -519,9 +519,10 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
-// §2.5 flow 4 via the §9.11 row-body affordance: clicking a roster row's
-// BODY (the name/class/level area — the TRAIN column is deleted) opens the
-// train screen seeded ON THAT CHARACTER (no more enter-then-cycle), and
+// §2.5 flow 4 via the §9.11 row-body affordance: tapping a roster row's
+// visible NAME (inside the name/class/level body — the TRAIN column is
+// deleted) opens the train screen seeded ON THAT CHARACTER (no more
+// enter-then-cycle), and
 // backing out returns to the base camp with the roster intact.
 struct BaseCampRowTrainState {
     bool finished;
@@ -540,7 +541,11 @@ static int base_camp_row_train_injector(void* data)
         return 0;
     }
     SDL_Delay(750);  // FadeAroundEntry eats early clicks
-    interact("roster_row_1");
+    // Tap the rendered name itself, not the center of the wide row hit zone.
+    // Round 3 places NAME at x=52; row 1 is y=56..65.
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(54.0f, 61.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
@@ -566,7 +571,7 @@ static int base_camp_row_train_injector(void* data)
     return 0;
 }
 
-TEST(ViewTeam, base_camp_row_train_opens_seeded_on_that_character)
+TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
 {
     trace_clear();
 
@@ -601,7 +606,7 @@ TEST(ViewTeam, base_camp_row_train_opens_seeded_on_that_character)
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_train_menu)
-        << "a roster row-body click should open the train screen";
+        << "tapping a roster name should open the train screen";
     EXPECT_EQ(1, state.seeded_slot)
         << "row 1's body must seed the session on team_list slot 1 (§9.11)";
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";

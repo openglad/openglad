@@ -164,14 +164,14 @@ int picker_company_backups_button_count();
 // regridded §9.10) -----------------------------------------------------------
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
 // clear top/bottom margins): 9 roster rows/page (deploy toggle at x=8, the
-// §9.11 row-body train zone at x=26, y=41+15r), the page cluster top-right,
+// row-body train zone at x=26..311, y=41+15r), the page cluster top-right,
 // and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
 // y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24
 // roster = <=3 pages; the 40-slot defensive shape pages to 5.
 inline constexpr int kBaseCampRosterRowsPerPage = 9; // roster_dep_r = 0..8
 // §9.11 (G4): the per-row TRAIN column is deleted; the row BODY is the train
-// affordance — roster_row_r = 9+r, a no_draw hit zone over the row text that
+// affordance — roster_row_r = 9+r, a no_draw hit zone across the row text that
 // opens the train screen seeded on that character (Enter trains from the
 // keyboard row highlight — the curses roster grammar).
 inline constexpr int kBaseCampRowBodyBase = 9;       // roster_row_r = 9+r

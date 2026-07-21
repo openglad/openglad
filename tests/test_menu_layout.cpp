@@ -260,7 +260,7 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // header bar y=31, full-page panel ends y=171, 6px off the strip), the page
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
-// column is DELETED: the row body (26,y,208,10) is a label-less no_draw hit
+// column is DELETED: the row body (26,y,286,10) is a label-less no_draw hit
 // zone that opens the train screen (Enter on the row highlight trains).
 // Spec ordinals group by kind (dep 0-8, row body 9-17, pagers 18/19, strip
 // 20-24, ready twin 25) so MenuSpecRow args decode positionally; the layout
@@ -292,15 +292,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_dep_6", "", 8, 131, 14, 10, MenuNav{.up = 5, .down = 7, .right = 15}, false},
         {"roster_dep_7", "", 8, 146, 14, 10, MenuNav{.up = 6, .down = 8, .right = 16}, false},
         {"roster_dep_8", "", 8, 161, 14, 10, MenuNav{.up = 7, .down = 20, .right = 17}, false},
-        {"roster_row_0", "", 26, 41, 208, 10, MenuNav{.down = 10, .left = 0}, false, true},
-        {"roster_row_1", "", 26, 56, 208, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false, true},
-        {"roster_row_2", "", 26, 71, 208, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false, true},
-        {"roster_row_3", "", 26, 86, 208, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false, true},
-        {"roster_row_4", "", 26, 101, 208, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false, true},
-        {"roster_row_5", "", 26, 116, 208, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false, true},
-        {"roster_row_6", "", 26, 131, 208, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false, true},
-        {"roster_row_7", "", 26, 146, 208, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false, true},
-        {"roster_row_8", "", 26, 161, 208, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false, true},
+        {"roster_row_0", "", 26, 41, 286, 10, MenuNav{.down = 10, .left = 0}, false, true},
+        {"roster_row_1", "", 26, 56, 286, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false, true},
+        {"roster_row_2", "", 26, 71, 286, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false, true},
+        {"roster_row_3", "", 26, 86, 286, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false, true},
+        {"roster_row_4", "", 26, 101, 286, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false, true},
+        {"roster_row_5", "", 26, 116, 286, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false, true},
+        {"roster_row_6", "", 26, 131, 286, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false, true},
+        {"roster_row_7", "", 26, 146, 286, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false, true},
+        {"roster_row_8", "", 26, 161, 286, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false, true},
         {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 9, .right = 19}, true},
         {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 9, .left = 18}, true},
         {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 8, .right = 21}, false},

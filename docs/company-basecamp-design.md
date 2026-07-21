@@ -2266,3 +2266,30 @@ ownership semantics all FROZEN and untouched. Geometry is UNTOUCHED (the
 | curses status line | roster_reflects_two_players gains `HOSTING 2 MACH / 2 PLYR` + `JOINED - HOST: ...` pins |
 | geometry / nav / ordinals | ZERO (no button, rect, or model change — layout tables, BFS matrices, kCreateMenu*Index, 1-based text consumers, injector flows all untouched) |
 | wasm §2.10 ledger | ZERO (text-only change; no coordinate moved) |
+
+### 9.13 UX round 3 (2026-07-21) — roster discoverability and horizontal spacing [FINAL]
+
+Playtest feedback found two related problems in the §9.11 row-click design:
+the screen never explained that the name opens TRAIN, and removing the old
+TRAIN column left the surviving columns packed into the left 234 pixels.
+`DEPLOY` ended at x=38 while `NAME` began at x=40, visually reading as one
+`DEPLOYNAME` label. This subsection amends §9.11 geometry only; row count,
+vertical rhythm, ordinals, navigation, ownership, deploy behavior, and train
+dispatch are unchanged.
+
+- A non-empty roster draws `TAP NAME TO TRAIN` in YELLOW on a black strip at
+  (109,171), in the 7px band between the last possible row and the y=178
+  command buttons. Empty rosters omit the inapplicable hint.
+- Solo columns now span the full panel: `DEPLOY` x=2, `NAME` x=52, `CLASS`
+  x=136, `LV` x=220, `EXP` x=270. The 14px DEPLOY/NAME header gap removes
+  the merged label; maximum field ink ends at x=306.
+- Networked columns use `DEPLOY` x=2, `NAME` x=52, `COMPANY` x=128, `LV`
+  x=278. The explicit DEPLOY header now applies to owned toggles and foreign
+  X/- state glyphs alike.
+- The no-draw row training zone widens from (26,y,208,10) to
+  (26,y,286,10), ending at x=312 so all redistributed text remains inside
+  the tap target. The 4px non-overlap gutter after the deploy button remains.
+- Pins: the exact Base Camp button table carries the widened row rectangles;
+  the nav/ownership matrices remain green; the seeded-train flow now clicks
+  the rendered NAME coordinate instead of the row rectangle's center; native
+  visual smoke captures cover solo, host, joiner, and degraded-link layouts.
