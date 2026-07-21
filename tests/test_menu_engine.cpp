@@ -1048,16 +1048,18 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
             << "empty shape highlight must settle on BACK";
     }
 
-    // Draw smoke over the headless screen buffer: the empty state (both the
-    // null-state and zero-company shapes draw NO COMPANIES) and a populated
-    // two-page state with a corrupt row + the "p/N" indicator. The flows pin
-    // behavior; this pins that every content branch draws without a session
-    // beyond the shared test screen.
+    // Draw smoke over the headless screen buffer: the restored classic panel
+    // plus the empty state (both null-state and zero-company shapes draw NO
+    // COMPANIES), then a populated two-page state with a corrupt row + the
+    // "p/N" indicator. The flows pin behavior; this pins both draw passes.
+    ASSERT_TRUE(spec.draw_background != nullptr);
     ASSERT_TRUE(spec.draw_content != nullptr);
+    spec.draw_background(nullptr);
     spec.draw_content(nullptr);
     {
         og::ui::CompanyListScreenState state;
         state.page = og::ui::PageModel::make(0, 10);
+        spec.draw_background(&state);
         spec.draw_content(&state);
         for (int i = 0; i < 15; ++i) {
             state.companies.push_back(make_company_info(
@@ -1065,6 +1067,7 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
         }
         state.page = og::ui::PageModel::make(15, 10);
         state.page.page = 1;
+        spec.draw_background(&state);
         spec.draw_content(&state);
     }
 }

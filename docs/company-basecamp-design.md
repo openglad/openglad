@@ -560,25 +560,28 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 
 ### 2.3 Company List (Load) — unlimited, paged, delete, backups door
 
-Chassis: save-slot geometry (25,25+15i) + the VIEW-LEVEL pager precedent.
+Chassis: the classic `Gladiator: Load Game` grey panel and save-slot geometry
+(25,25+15i), with the company-only BK/X actions appended as a narrow rail and
+the VIEW-LEVEL pager precedent in the footer (final presentation: §9.17).
 
 ```
-| COMPANIES (12)          (y=8)                                                  |
-|  NAME               GUYS PLAYED       BKUP DEL      (headers y=16)             |
-|  [IRON KETTLE BAND   12  2026-07-19] [BK] [X]       row 0  (y=25)              |
+|        GLADIATOR: LOAD GAME          |          red inset title (y=15)          |
+|  [IRON KETTLE BAND   12  2026-07-19]   [BK] [X]    row 0  (y=25)              |
 |  ... rows 1..9 (15px pitch)                                                    |
 |  [BACK]                     1/2         [PREV] [NEXT]                          |
 ```
 
 | id | rect | label | budget | action |
 |---|---|---|---|---|
-| company_row_0..9 | (25,25+15i,190,10) | "" (content-pass text) | — | click = OPEN (1-click primary) |
-| company_bak_0..9 | (219,25+15i,20,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
-| company_del_0..9 | (243,25+15i,20,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
-| back | (10,170,44,20) | `BACK` | 4/6 | to main menu |
-| company_page_prev/next | (220,170,40,20)/(270,170,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text at (140,176) |
+| company_row_0..9 | (25,25+15i,220,10) | "" (content-pass text) | — | click = OPEN (1-click primary) |
+| company_bak_0..9 | (259,25+15i,24,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
+| company_del_0..9 | (287,25+15i,24,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
+| back | (25,175,40,20) | `BACK` | 4/5 | to main menu; classic slot-menu placement |
+| company_page_prev/next | (220,175,40,20)/(270,175,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text centered at (135,181) |
 
 - Row text: name ≤ 18ch at x=27, roster count 2ch at x=141, `YYYY-MM-DD` at x=155..215.
+  The old menu had no column-header row; the recognizable date and compact count ride
+  inside the restored 220px slot face.
   Sort: last-played DESC; row 0 == what CONTINUE opens. **The active company's row gets
   red `do_outline`** (U4). Corrupt files list as `CORRUPT` rows (§3.5) with BK (restore
   path) and X (delete; confirm names the backups) still available.
@@ -2372,3 +2375,26 @@ explicit column.
   ordinals and scenario click behavior are unchanged from §9.15.
 - Pins: exact geometry, nav matrices, NAME and TEAM coordinate taps, and all
   six Base Camp visual captures move to the new grid.
+
+### 9.17 UX round 7 (2026-07-21) — classic Load Game chassis [FINAL]
+
+The Company List keeps unlimited named companies, backups, deletion, sorting,
+and paging, but once again reads visually as OpenGlad's old Load Game menu.
+This supersedes §9.4's free-floating header treatment.
+
+- Restore the exact classic inner panel `(15,9)..(255,199)`, title well
+  `(19,13)..(251,21)`, red `Gladiator: Load Game` title centered at x=135,
+  per-row wells `(23,23+15r)..(246,36+15r)`, and BACK well
+  `(23,173)..(66,196)`.
+- Restore each primary slot face to `(25,25+15r,220,10)` and the BACK button
+  to `(25,175,40,20)`. The post-face one-pixel boxes from the old slot loop
+  are retained around every visible company row and BACK.
+- Company metadata remains inside the wider classic face at x=27/141/155.
+  The §9.4 column headers are removed; the date and compact roster count are
+  treated as extensions of the old saved-game label.
+- BK and X remain available as an intentionally newer side rail at
+  `(259,25+15r,24,10)` and `(287,25+15r,24,10)`. PREV/NEXT move to y=175;
+  the page indicator uses DARK_BLUE at `(135,181)` inside the grey footer.
+- Behavior, row ordinals, active-company outline, keyboard graph, and all
+  company/backups flows are unchanged. Exact-table pins carry the new rects;
+  engine draw smoke covers the custom background and content passes.
