@@ -2733,11 +2733,15 @@ void company_list_draw_content(void* screen_state)
     const int total =
         st != nullptr ? static_cast<int>(st->companies.size()) : 0;
     strip_text(25, 8, format_company_list_title(total));
+    // §9.4 header line, de-collided: GUYS right-aligns over the 2-char
+    // count column (141..152, 3px clear of PLAYED); BK matches the button
+    // label and centers over the BK column (219..239); DEL centers over
+    // the X column (243..263).
     strip_text(27, 16, "NAME");
-    strip_text(135, 16, "GUYS");
+    strip_text(129, 16, "GUYS");
     strip_text(155, 16, "PLAYED");
-    strip_text(219, 16, "BKUP");
-    strip_text(243, 16, "DEL");
+    strip_text(223, 16, "BK");
+    strip_text(245, 16, "DEL");
 
     if (st == nullptr || total == 0) {
         // Transient shape: deleting the last company exits the screen, but
@@ -2749,14 +2753,23 @@ void company_list_draw_content(void* screen_state)
 
     const int first = st->page.first_index();
     const int end = st->page.end_index();
+    // §9.4 active-row legibility: the active company's row wears the red
+    // do_outline face (U4, stamped by the rewire), where DARK_BLUE text is
+    // the recorded contrast fail — its content columns draw WHITE instead.
+    // Content-pass row text is not a vdisplay button label, so the §8.4
+    // "labels stay DARK_BLUE" rejection does not apply here.
+    const std::string& active_slot = og::data::active_company_slot();
     for (int r = 0; r < end - first; ++r) {
-        const CompanyRowText row = format_company_row(
-            st->companies[static_cast<std::size_t>(first + r)]);
+        const og::data::CompanyInfo& info =
+            st->companies[static_cast<std::size_t>(first + r)];
+        const CompanyRowText row = format_company_row(info);
+        const unsigned char row_color =
+            info.slot == active_slot ? WHITE : DARK_BLUE;
         const int y = 27 + 15 * r;
-        game->text_normal.write_xy(27, y, DARK_BLUE, "%s", row.name.c_str());
-        game->text_normal.write_xy(141, y, DARK_BLUE, "%s",
+        game->text_normal.write_xy(27, y, row_color, "%s", row.name.c_str());
+        game->text_normal.write_xy(141, y, row_color, "%s",
                                    row.roster.c_str());
-        game->text_normal.write_xy(155, y, DARK_BLUE, "%s",
+        game->text_normal.write_xy(155, y, row_color, "%s",
                                    row.played.c_str());
     }
 
