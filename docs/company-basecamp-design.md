@@ -1728,3 +1728,254 @@ grafts from all six judges folded in; resolutions where they conflicted:
     persistent-connection resume; the three-client SaveData store unification;
     progress-menu keyboard-dead pagers (visible change, needs its own pin round);
     endianness of the i64 timestamp (matches format precedent).
+
+---
+
+## 9. UX-pass amendment (2026-07-21) — playtest feedback F1–F11 [FINAL, judged]
+
+Merged verdict over the two vision-pass proposals (before-captures:
+scratchpad/uxshots/before/). **Winner: proposal B** (the G-series screen spec)
+with two grafts from proposal A — (a) benched-text shade 21, (b) padded
+fixed-width numerics — and one A arm rejected (recorded in §9.9). This section
+AMENDS §2.0–§2.5 and is the normative spec for the UX pass; where it is silent,
+the §2.x tables stand. Behavioral contracts (GO/READY §2.6, ready system §4.3,
+autosave §3.8, wasm ledger §2.10, all flows §2.9) are FROZEN — this pass is
+visual/layout plus the §9.6 platform fix only.
+
+### 9.1 Global — button label centering (F5) [amends §2.0 bullet 1]
+
+src/interface/ui/button.cpp, ALL FIVE vdisplay centering copies (:188-189,
+:198-200, :218-220, :231-233, :243-245):
+
+    start_x = (xloc+xend)/2 - ((label.size()-1)*(letters->w+1))/2;   // BEFORE
+    start_x = (xloc+xend)/2 - (label.size()*(letters->w+1)-1)/2;     // AFTER
+
+True ink width of N chars is N*(w+1)−1 (6N−1 for the 5px font); the old
+formula counts N−1 cells, so every label sits ~2–3px right of center and a
+1-char glyph ("X", "<", ">") hugs the right half of a 14px face. Render-only;
+no test pins rendered label x (verified). At-budget labels keep ≥4px margins
+under the corrected formula. Recapture every screen.
+
+### 9.2 Main menu (F1, F10) [amends §2.1]
+
+1. NEW row appended at the END of BOTH variant tables (append-only rule):
+   - id `no_company_note`, rect **(80,75,140,20)** — the exact envelope of the
+     CONTINUE|LOAD pair, same x/w as `begin_new_game` above it.
+   - label `NO COMPANY YET` (14 ≤ budget 22), engine-drawn DARK_BLUE on the
+     Disabled face — the requested greyed-out disabled-button look.
+   - action `MenuSpecRow` (arg = own ordinal; never dispatched — inert).
+   - `.state_override`: companies present → `RowState::Hidden`; absent →
+     `RowState::Disabled` (engine grammar: face GREY(23), bevel intact,
+     myfun/myfunc zeroed = keyboard-dead, click no-ops with the
+     `menu_engine/disabled_row_click` TRACE).
+   - nav: all links −1; NOTHING links into it in either variant — keyboard
+     flows keep today's hidden-variant routing (begin.down→5 MP / →2 no-MP).
+     The note is inert chrome: it is EXEMPT from any every-visible-button-
+     reachable assertion (add a Disabled-exemption arm to the helper if one
+     asserts it).
+   - Ordinals: MP variant **12**, no-MP variant **7**.
+2. Caption strip: with-company state UNCHANGED (`COMPANY: <name ≤18>` strip at
+   y=171 MP / y=166 no-MP). No-company state: the bottom caption
+   `NO COMPANY YET - BEGIN A NEW GAME` is REMOVED (draw nothing) — the note
+   box replaces it.
+3. Terminals: NO change (no menu-model item; the note is SDL-only chrome).
+4. wasm ledger UNCHANGED — (114,85) taps the note only in the no-company
+   state, where it is a no-op by design; specs seed a company first.
+
+### 9.3 Name entry (F2, F10) [amends §2.2]
+
+1. DELETE the slug preview EVERYWHERE: the GREY y=126 line in
+   `name_entry_draw_content` (menu_screen_specs.cpp ~:2450-2453), the
+   text_picker.cpp:146 banner line, the curses_picker_client.cpp:930 prompt
+   label — and DELETE `og::ui::format_company_file_preview` outright (no
+   consumer left; coverage hygiene). §2.2's "slug preview teaches the split"
+   sentence is retired.
+2. Name strip becomes a sunken input field: `company_name_value` face set to
+   PURE_BLACK via ColorBinding/rewire stamp on BOTH surfaces (§2.6 mechanism —
+   face only; grey bevel edges remain → reads as an inset DOS text field).
+   The name stays content-pass WHITE `write_xy_center(160,82)`; the button
+   label stays empty (no §8.4 conflict). Fixes the recorded white-on-face-13
+   contrast fail (146 vs 166).
+3. NEW hint in the freed slot: U2 black-strip text centered at (160,126):
+   `CLICK THE NAME TO EDIT IT` (25 ch, ink 149px; strip (160−ink/2−2, 125,
+   ink+4, 8) PURE_BLACK alpha 150), text GREY(23) — the secondary voice.
+   Fixer latitude: may be dropped if the captured sunken field already reads
+   as editable; nothing replaces it.
+4. Title/REROLL/ACCEPT/BACK rects, nav, generator, flows: UNCHANGED.
+
+### 9.4 Company list (F10) [amends §2.3; §2.4 Backups inherits §9.1 only]
+
+1. Header line y=16 de-collided: `NAME` x=27 (unchanged); `GUYS` x=**129**
+   (right edge aligns with the 2-ch count column at 141..152, 3px clear of
+   PLAYED); `PLAYED` x=155 (unchanged); `BK` x=**223** (renamed from BKUP —
+   matches the button label, centered over the BK button 219..239); `DEL`
+   x=**245** (centered over the X button 243..263).
+2. Active-row legibility: keep the U4 red `do_outline` face; draw the active
+   row's CONTENT columns (name/count/date) WHITE instead of DARK_BLUE.
+   Recorded reading: content-pass row text is not a vdisplay button label, so
+   the §8.4 "labels stay DARK_BLUE" rejection does not apply.
+3. Rows, rects, pager, nav, dispatch, sort: UNCHANGED (the X glyph centers via
+   §9.1). The 2-digit-count/date 2px kerning is period-typical — keep.
+
+### 9.5 Base camp (F4, F6–F9, F11, F10) [amends §2.5]. ONE atomic commit.
+
+#### 9.5.1 Row grid — F9, the §2.0 U6 pre-declared fallback: 10 rows/page, 15px pitch
+- picker_sdl_defs.h: `kBaseCampRosterRowsPerPage` 12→**10**, `kBaseCampRowY0`
+  32→**31**, `kBaseCampRowPitch` 12→**15**, `kBaseCampTrainBase` 12→**10**,
+  `kBaseCampPagePrevIndex` 24→**20**, `kBaseCampPageNextIndex` 25→**21**,
+  `kCreateMenuBackIndex` 26→**22**, `kCreateMenuHireIndex` 27→**23**,
+  `kCreateMenuScenarioIndex` 28→**24**, `kCreateMenuNetworkingIndex` 29→**25**,
+  `kCreateMenuGoIndex` 30→**26**, `kCreateMenuReadyIndex` 31→**27**,
+  `kCreateMenuButtonCount` 32→**28**. Sweep EVERY consumer (grep the
+  constants; raw ordinals also live in direct-dispatch tests).
+- `roster_dep_r` (8, 31+15r, 14, 10), r=0..9 (ordinals 0..9); `roster_train_r`
+  (**266**, 31+15r, **46**, 10), ordinals 10..19 (`TRAIN` 5 ≤ budget 6 — real
+  slack at last). Row text glyphs at y+2 (centers the 6px font in the 10px
+  band). MP foreign no_draw hit zone (8, 31+15r, **212**, 10).
+- Pager rects/indicator and the y=178 command strip UNCHANGED ⇒ the §2.10
+  wasm ledger is untouched.
+- Capacity: cap-24 roster = **≤ 3 pages** (supersedes §2.5's "≤ 2 pages");
+  the 40-slot defensive pin becomes 4 pages (ceil(40/10)).
+
+#### 9.5.2 Readability panel — replaces the per-row 150-alpha bars
+- `base_camp_draw_background`: header bar (4,21,312,8) PURE_BLACK **alpha
+  200**, then ONE roster panel (4,29,312,15·visible−2) PURE_BLACK alpha 200
+  (visible ≥ 1; full page = y 29..176, 1px above the strip). Row-gap air
+  stays INSIDE the panel — calm DOS-panel look, shield art ghosts through.
+  Lines A/B keep their 150-alpha strips. Fixer check: eyeball the capture;
+  **180 is the sanctioned alpha floor** — record the number.
+
+#### 9.5.3 Columns — F11 (HP column REMOVED, all clients) + graft (b)
+- Header line y=24→**22** (ink 22..27, above the panel seam).
+- SOLO headers: `DEPLOY` x=2, `NAME` x=40, `CLASS` x=118, `LV` x=174,
+  `EXP` x=196, `TRAIN` x=274. NO HP.
+- SOLO values: name x=40 (≤12ch), class x=118 (≤8ch), level x=174,
+  exp x=196 (ink ≤231, 35px clear of TRAIN).
+- MP headers: `NAME` x=40, `COMPANY` x=106, `LV` x=208, `TRAIN` x=274.
+  MP values: name x=40 (≤10ch), company x=106 (≤16ch), level x=208; foreign
+  X/− glyph x=11 unchanged. NO HP.
+- **Graft (b), padded numerics**: the shared formatters left-pad numeric
+  fields to fixed width — level `%2u`, exp `%6u` (within the existing clip
+  budgets) — so digit columns right-align down the page on all three clients
+  (space advances 6px like every glyph).
+- picker_common: `BaseCampRowText`/`BaseCampNetRowText` drop `.hp`;
+  `format_base_camp_row(guy)` drops the `derived_hp` param;
+  `format_base_camp_net_row(name, company, level)`; the base-camp draw drops
+  its `picker_compute_guy_derived_stats` call. Rationale (verified): the
+  column is DERIVED max HP — damage never persists to base camp — redundant
+  with CLASS+LVL; EXP STAYS (progress-to-next-level is actionable); HP lives
+  one click away in TRAIN. Text/curses roster views drop the HP field from
+  their row joins.
+
+#### 9.5.4 Uniform name color — F6/F7/F8 + graft (a)
+- DELETE the family-color branch (menu_screen_specs.cpp ~:2158-2167 + the
+  networked arm): `name_color = deployed ? WHITE : 21`; the CLASS column and
+  stats use the same deployed/benched pair (WHITE 24 / **shade 21**). MP
+  names follow the same rule. Removes the palette[16] black-top "clipped"
+  defect (F6) and the inverted benched cue. Graft rationale (measured): the
+  glyph shade-ramp of GREY(23) text (~121..170) overlaps WHITE(24)
+  (~134..182) by all but one step — benched at 23 is barely dimmer than
+  deployed; 21 (~97..146) restores a legible two-step drop while staying
+  "benched-grey dimming only" per the user decision.
+
+#### 9.5.5 Family chip — the F6-hazard companion (only family cue in MP)
+- Framed chip: `fastbox(26, y, 10, 10, GREY 23)` then
+  `fastbox(27, y+1, 8, 8, ((family+1)<<4))`. The 1px grey frame makes the
+  soldier pure-black chip and the near-black slime runs read as deliberate
+  dark chips. Same chip deployed and benched (dimming stays a text cue).
+
+#### 9.5.6 Empty state — F4, framed panel in the PRE-buttons pass
+- `base_camp_draw_background`, visible==0 branch (draw-order-safe — the
+  content-fills-over-buttons trap cannot bite): fill
+  `draw_rect_filled(60, 82, 200, 16, PURE_BLACK, 200)`; border = four 1px
+  GREY(23) fills (60,81,200,1) (60,98,200,1) (59,82,1,16) (260,82,1,16).
+- `base_camp_draw_content` empty branch: `write_xy_center(160, 87,
+  ORANGE_START, "NO SOLDIERS - HIRE YOUR FIRST")` — 29 ch, ink 173px
+  (74..247), ~14px inside the panel — replaces the bare write_xy(73,90) over
+  raw art (U2 satisfied by the panel). HIRE-seeded highlight unchanged.
+
+#### 9.5.7 Nav / MP / terminals
+- Nav pattern (b) unchanged in shape; ordinals shift per §9.5.1 (dep_r.right→
+  train_r; train_r.right→pager; last row.down→strip; go.up→train_last).
+- Injector flows address rows by id (`roster_dep_1`, `roster_train_0`, …) —
+  unchanged. Text/curses TeamBuild item numbering (§2.5 12-item substitution)
+  UNCHANGED — only their roster ROW STRINGS change (HP drop + padding).
+
+### 9.6 WebGL context-loss recovery (F3) — platform-only commit, no visuals
+
+1. web/shell.html: keep `e.preventDefault()` in 'webglcontextlost'; replace
+   the alert with the page's status-text machinery ("RESTORING GRAPHICS…") +
+   a ~10s watchdog that surfaces a reload prompt if restoration never fires
+   (Safari may never restore; IDBFS autosave makes reload lossless). Add
+   'webglcontextrestored' → guarded
+   `Module._openglad_web_notify_context_restored()` (the shell.html:627-632
+   call pattern).
+2. New KEEPALIVE C export `openglad_web_notify_context_restored()` next to
+   `openglad_web_restore_canvas_backing` (src/platform/sdl/glad.cpp:482-486):
+   sets a pending-recreate flag in the video layer ONLY (no GL work in the
+   callback — ASYNCIFY re-entrancy: html5 callbacks can run while the C stack
+   is suspended in a blocking menu loop).
+3. Recreate at the top of `Screen::swap` (src/platform/sdl/sai2x.cpp:1512,
+   the single production present site): `destroy_render2()` +
+   `destroy_gameplay_ui_overlay()` (lazy, self-recreating) → destroy
+   world_tex_ (if != ui_tex_), ui_tex_, renderer → `SDL_CreateRenderer` with
+   ctor parity (sai2x.cpp:800-805) → ui_tex_ ctor parity (:818-827: ARGB8888
+   STREAMING, BLENDMODE_NONE, SCALEMODE_NEAREST) →
+   `apply_world_scale_from_cfg()` (video_sdl.cpp:173, transactional world
+   rebuild) → `redrawme=1`. Content self-heals: swap re-uploads from CPU
+   surfaces every present. While lost, GL calls are silently ignored (no
+   exceptions — the -fexceptions dead-runtime trap does not apply).
+4. e2e: Playwright spec via `WEBGL_lose_context` loseContext()/
+   restoreContext(); assert repaint + no alert dialog. After the dist build,
+   grep dist/*.js for the export (archive-DCE trap). Expect the shared-
+   machine jitter flake class on the new spec.
+
+### 9.7 Re-pin blast radius (each row lands in the SAME commit as its change)
+
+| change | re-pins |
+|---|---|
+| §9.1 centering | none (no test pins rendered label x) — screenshot verify only |
+| §9.2 note row | test_menu_pins kExpectedMainMenu all 4 variants (+1 row; last-row relative pins shift: note=count−1, load=count−2, options=count−3); test_menu_engine main-menu shape + company gate/rewire test (Disabled face/keyboard-dead/TRACE when absent, Hidden when present, no inbound nav links in either state); reachability helper gains a Disabled-exemption arm if it asserts every-visible-reachable; wasm ledger + 1-based text consumers UNCHANGED |
+| §9.3 slug removal | tests/unit/test_picker_common.cpp slug/format pins DELETED with the helper; tests/unit/test_platform_headless.cpp name-entry banner assertions; curses prompt-label pins; grep scripts/test_text_picker_interactive.sh for slug/"file:" assertions; name-entry layout table only if it pins color bindings |
+| §9.4 headers + active-row white | company-list draw-smoke header-string assertions (check test_menu_engine); no structural pins |
+| §9.5 base camp | picker_sdl_defs.h constants + full consumer sweep; test_menu_layout createmenu_basecamp exact table (28 rows) + solo BFS matrix (roster {0,5,12,15,24} — 12 now PAGES) + networked ownership matrix (page counts at 10/page) + ready-twin exact-rect pins (ordinals 26/27); test_menu_pins static asserts; test_menu_engine row_count + gate-lattice same-geometry pins ({go,ready}); direct-dispatch raw-ordinal tests (win-fold, mp-columns, ready-twin, debounce, stale-click: dep r=r, train r=10+r, pagers 20/21); U7 clip-budget unit pins (hp pin deleted; 10/16/3 survive) + padded-numeric format pins; text/curses roster-row join pins (HP drop + padding); verify no pin asserts benched GREY(23) — re-pin to 21 if one does; injector flows by id unchanged; wasm: verify no dep-row coordinate exists (ledger says none) ⇒ NO ledger change |
+| §9.6 context restore | new Playwright context-loss spec; dist/ rebuilt in the same change; grep dist for the KEEPALIVE export |
+| all | canary pin-map audit before merge (no pinned sim file is touched — button.cpp/menu_screen_specs.cpp/video are interface/platform; run the wp7 pin-audit script anyway) |
+
+### 9.8 Commit plan (each lands green on the full nix gate; probe rig stays uncommitted)
+
+1. §9.1 centering — recapture all screens.
+2. §9.2 main-menu note box + caption removal + pins.
+3. §9.3 name entry (slug removal all clients + sunken field + hint) + pins.
+4. §9.4 company-list headers + active-row white text.
+5. §9.5 base-camp mega-commit + this section's §2.5 supersessions.
+6. §9.6 context-loss recovery + e2e + dist rebuild.
+
+AFTER captures per commit into scratchpad/uxshots/after/ via the uncommitted
+probe (settle ≥1500ms + double-capture; the torn-capture and stale-save0
+traps are recorded in the WPUX state file).
+
+### 9.9 Judgment record
+
+1. **Winner**: proposal B — concrete normative rect/color tables for every
+   screen, verified against source anchors and the before-captures, zero
+   wasm-ledger churn.
+2. **Graft (a)** from proposal A: benched text shade **21**, not GREY(23) —
+   palette-measured one-step ramp overlap made 23-vs-WHITE dimming nearly
+   invisible. Still "benched-grey dimming only" per F7/F8.
+3. **Graft (b)** from proposal A: padded fixed-width right-aligned numerics
+   in the shared formatters (LV `%2u`, EXP `%6u`) — table discipline on all
+   three clients for free.
+4. **REJECTED** (proposal A): terminals keeping a filename/slug hint — the
+   user said "remove entirely"; companies are fully managed in-game on every
+   client, the filename teaches nothing. `format_company_file_preview` is
+   deleted, not orphaned.
+5. Empty-state treatment: B's framed panel over A's bare strip (stronger F4
+   fix, still draw-order-safe in the pre-buttons pass).
+6. F11 (orchestrator addendum) folded in as §9.5.3: HP column removed on all
+   clients; EXP retained.
+7. Copy choice: the note box reads `NO COMPANY YET` (14ch) — the "BEGIN A NEW
+   GAME" half of the old caption is carried by the art button directly above.
+8. Latitude recorded: panel alpha 200 floor 180; the §9.3 hint may be
+   dropped; the Disabled note face stays engine GREY(23) — darkening it would
+   need a new engine channel (not sanctioned).
