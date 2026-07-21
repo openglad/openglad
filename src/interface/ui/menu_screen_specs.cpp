@@ -2065,6 +2065,18 @@ void base_camp_draw_background(void* /*screen_state*/)
         game->draw_rect_filled(4, kBaseCampRowY0 - 1 + kBaseCampRowPitch * r,
                                312, kBaseCampRowPitch - 1, PURE_BLACK, 150);
     }
+    if (visible == 0) {
+        // §9.5.6 empty-state panel (F4): a framed PURE_BLACK backing behind
+        // the "NO SOLDIERS" line — zero row bars means nothing else darkens
+        // that band and the bare ORANGE text drowned in the backdrop art
+        // (U2). Drawn HERE, in the pre-draw_buttons pass, so the fill can
+        // never land on top of a button (the draw-order trap).
+        game->draw_rect_filled(60, 82, 200, 16, PURE_BLACK, 200);
+        game->fastbox(60, 81, 200, 1, GREY);
+        game->fastbox(60, 98, 200, 1, GREY);
+        game->fastbox(59, 82, 1, 16, GREY);
+        game->fastbox(260, 82, 1, 16, GREY);
+    }
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
@@ -2149,8 +2161,11 @@ void base_camp_draw_content(void* screen_state)
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
     if (end - first <= 0) {
-        mytext.write_xy(73, 90, "NO SOLDIERS - HIRE YOUR FIRST",
-                        static_cast<unsigned char>(ORANGE_START), 1);
+        // §9.5.6: centered inside the framed panel the background pass drew
+        // (ink 74..247 in the 60..259 band; U2 satisfied by the panel).
+        mytext.write_xy_center(160, 87,
+                               static_cast<unsigned char>(ORANGE_START), "%s",
+                               "NO SOLDIERS - HIRE YOUR FIRST");
         return;
     }
 

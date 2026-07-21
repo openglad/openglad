@@ -1474,6 +1474,36 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
 }
 
 // ---------------------------------------------------------------------------
+// §9.5.6 empty-state treatment (F4): with zero visible rows the background
+// pass draws the framed PURE_BLACK panel (PRE-draw_buttons — the draw-order-
+// safe home) and the content pass centers the ORANGE line inside it. The
+// null install renders the empty shape on both hooks; smoke + coverage (no
+// pixel pins — the panel is verified by capture).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    // Null state == zero visible rows == the empty-roster shape.
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    spec.draw_background(nullptr);
+    spec.draw_content(nullptr);
+
+    // An installed-but-empty state windows zero rows and draws the same
+    // shape (the page model clamps to an empty slot list).
+    og::ui::BaseCampScreenState empty_state;
+    og::ui::install_base_camp_state_for_screen(&empty_state);
+    spec.draw_background(&empty_state);
+    spec.draw_content(&empty_state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // §2.6 READY twin (stage ready-go-slot): a networked joiner gets READY in
 // GO's exact rect; the click drives the shared lobby flag through the
 // production ToggleLobbyReady handler with the client deploy gate
