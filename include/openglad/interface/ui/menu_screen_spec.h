@@ -363,7 +363,7 @@ struct CompanyListScreenState {
     std::string backups_slot;
 };
 
-// §2.3 Company List (Layer F engine screen): 10 pageable rows with per-row
+// §2.3 Company List (Layer F engine screen): 8 pageable rows with per-row
 // BK (Backups door) and X (delete, NO-first confirm) buttons, BACK, and
 // PageModel PREV/NEXT pagers (hidden when one page fits everything).
 const MenuScreenSpec& company_list_menu_screen_spec();

@@ -301,14 +301,13 @@ TEST(MenuEnginePins, name_entry_exact_table)
 }
 
 // ---------------------------------------------------------------------------
-// §2.3 Company List (Load): a Layer-F engine screen. 10 visual rows, each a
-// (row, BK, X) triple at the save-slot pitch — rects transcribed from the
-// design amendment INDEPENDENTLY of the spec's macro: each classic Load Game
-// slot is three buttons — company (25,25+15i,164,10),
-// BK (193,25+15i,24,10), and X (221,25+15i,24,10) — followed by the old
-// BACK placement and in-frame PageModel pagers. Every row dispatches through
-// MenuSpecRow with arg ==
-// spec ordinal (rows 0-9, BK 10-19, X 20-29, back 30, prev 31, next 32).
+// §2.3 Company List (Load): a Layer-F engine screen. 8 visual rows, each a
+// (row, BK, X) triple inside the centered 220px slot column — rects transcribed
+// from the design amendment INDEPENDENTLY of the spec's macro: company
+// (50,35+17i,164,10), BK (218,35+17i,24,10), and X
+// (246,35+17i,24,10), followed by the centered footer controls. Every row
+// dispatches through MenuSpecRow with arg == spec ordinal (rows 0-7,
+// BK 8-15, X 16-23, back 24, prev 25, next 26).
 // Static nav is the full-page multi-page shape.
 // ---------------------------------------------------------------------------
 
@@ -316,7 +315,7 @@ TEST(MenuEnginePins, company_list_exact_table)
 {
     button* buttons = picker_company_list_buttons();
     const int count = picker_company_list_button_count();
-    ASSERT_EQ(33, count) << "10 row triples + back + prev + next";
+    ASSERT_EQ(27, count) << "8 row triples + back + prev + next";
     const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
 
     const auto check_row = [&](int index, const std::string& id,
@@ -340,33 +339,33 @@ TEST(MenuEnginePins, company_list_exact_table)
         EXPECT_FALSE(got.no_draw) << "company_list " << id;
     };
 
-    for (int i = 0; i < 10; ++i) {
-        const int y = 25 + 15 * i;
-        check_row(i, "company_row_" + std::to_string(i), "", 25, y, 164, 10,
-                  MenuNav{.up = i > 0 ? i - 1 : 30,
-                          .down = i < 9 ? i + 1 : 30,
-                          .left = -1, .right = 10 + i},
+    for (int i = 0; i < 8; ++i) {
+        const int y = 35 + 17 * i;
+        check_row(i, "company_row_" + std::to_string(i), "", 50, y, 164, 10,
+                  MenuNav{.up = i > 0 ? i - 1 : 24,
+                          .down = i < 7 ? i + 1 : 24,
+                          .left = -1, .right = 8 + i},
                   false);
-        check_row(10 + i, "company_bak_" + std::to_string(i), "BK", 193, y,
+        check_row(8 + i, "company_bak_" + std::to_string(i), "BK", 218, y,
                   24, 10,
-                  MenuNav{.up = i > 0 ? 10 + i - 1 : -1,
-                          .down = i < 9 ? 10 + i + 1 : 30,
-                          .left = i, .right = 20 + i},
+                  MenuNav{.up = i > 0 ? 8 + i - 1 : -1,
+                          .down = i < 7 ? 8 + i + 1 : 24,
+                          .left = i, .right = 16 + i},
                   false);
-        check_row(20 + i, "company_del_" + std::to_string(i), "X", 221, y,
+        check_row(16 + i, "company_del_" + std::to_string(i), "X", 246, y,
                   24, 10,
-                  MenuNav{.up = i > 0 ? 20 + i - 1 : -1,
-                          .down = i < 9 ? 20 + i + 1 : 31,
-                          .left = 10 + i, .right = -1},
+                  MenuNav{.up = i > 0 ? 16 + i - 1 : -1,
+                          .down = i < 7 ? 16 + i + 1 : 25,
+                          .left = 8 + i, .right = -1},
                   false);
     }
-    check_row(30, "back", "BACK", 25, 175, 40, 20,
-              MenuNav{.up = 9, .down = 0, .left = -1, .right = 31}, false);
-    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[30].hotkey) << "company_list back";
-    check_row(31, "company_page_prev", "PREV", 160, 175, 40, 20,
-              MenuNav{.up = 29, .down = -1, .left = 30, .right = 32}, true);
-    check_row(32, "company_page_next", "NEXT", 205, 175, 40, 20,
-              MenuNav{.up = 29, .down = -1, .left = 31, .right = -1}, true);
+    check_row(24, "back", "BACK", 50, 169, 40, 20,
+              MenuNav{.up = 7, .down = 0, .left = -1, .right = 25}, false);
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[24].hotkey) << "company_list back";
+    check_row(25, "company_page_prev", "PREV", 185, 169, 40, 20,
+              MenuNav{.up = 23, .down = -1, .left = 24, .right = 26}, true);
+    check_row(26, "company_page_next", "NEXT", 230, 169, 40, 20,
+              MenuNav{.up = 23, .down = -1, .left = 25, .right = -1}, true);
 }
 
 // ---------------------------------------------------------------------------

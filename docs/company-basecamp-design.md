@@ -560,28 +560,28 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 
 ### 2.3 Company List (Load) — unlimited, paged, delete, backups door
 
-Chassis: the classic `Gladiator: Load Game` grey panel and save-slot geometry
-(25,25+15i), with each original slot divided into company/BK/X buttons and
-the VIEW-LEVEL pager precedent inside the footer (final presentation: §9.18).
+Chassis: the classic `Gladiator: Load Game` grey-panel treatment, centered on
+the screen, with each slot divided into company/BK/X buttons and the
+VIEW-LEVEL pager precedent inside the footer (final presentation: §9.19).
 
 ```
-|        GLADIATOR: LOAD GAME          |          red inset title (y=15)          |
-|  [       IRON KETTLE BAND       ][BK][X]      row 0  (y=25)                  |
-|  ... rows 1..9 (15px pitch)                                                    |
-|  [BACK]                     1/2         [PREV] [NEXT]                          |
+|          GLADIATOR: LOAD GAME           |       centered red title (y=18)       |
+|   [       IRON KETTLE BAND       ][BK][X]     row 0  (y=35)                  |
+|   ... rows 1..7 (17px pitch)                                                   |
+|   [BACK]                  1/2         [PREV] [NEXT]                            |
 ```
 
 | id | rect | label | budget | action |
 |---|---|---|---|---|
-| company_row_0..9 | (25,25+15i,164,10) | centered company name | 18/27 | click = OPEN (1-click primary) |
-| company_bak_0..9 | (193,25+15i,24,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
-| company_del_0..9 | (221,25+15i,24,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
-| back | (25,175,40,20) | `BACK` | 4/5 | to main menu; classic slot-menu placement |
-| company_page_prev/next | (160,175,40,20)/(205,175,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text centered at (135,181) |
+| company_row_0..7 | (50,35+17i,164,10) | centered company name | 18/27 | click = OPEN (1-click primary) |
+| company_bak_0..7 | (218,35+17i,24,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
+| company_del_0..7 | (246,35+17i,24,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
+| back | (50,169,40,20) | `BACK` | 4/5 | to main menu; classic slot-menu placement |
+| company_page_prev/next | (185,169,40,20)/(230,169,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text centered at (160,175) |
 
 - Row text: the name ≤ 18ch is centered on the first face, as the saved-game
   name was in the old Load Game menu. Roster counts, dates, and column headers
-  stay off this intentionally spare screen. When a page has fewer than ten
+  stay off this intentionally spare screen. When a page has fewer than eight
   companies, its remaining visual rows read `EMPTY SLOT`; all three placeholder
   faces are inert and remain outside the navigation graph.
   Sort: last-played DESC; row 0 == what CONTINUE opens. **The active company's row gets
@@ -591,20 +591,21 @@ the VIEW-LEVEL pager precedent inside the footer (final presentation: §9.18).
   (load mounts campaigns).
 - Deleting the most-recent retargets CONTINUE to the next row; deleting the last company
   returns to a main menu with CONTINUE/LOAD hidden.
-- Button count: 10×3 + 3 = 33 ≤ MAX_BUTTONS 50. Nav: rows chain vertically;
-  back.down→row0, row0.up→back, row.right→BK→X, row9.down→back;
+- Button count: 8×3 + 3 = 27 ≤ MAX_BUTTONS 50. Nav: rows chain vertically;
+  back.down→row0, row0.up→back, row.right→BK→X, row7.down→back;
   back.right→prev→next; initial highlight is BACK, as in the old load loop;
   per-frame rewire + BFS pin over
   {0 rows, partial page, 2 pages, corrupt rows}.
 
 ### 2.4 Backups sub-view (per company)
 
-Same chassis; entered via `BK`; retention ~20 ⇒ ≤ 2 pages.
+The Backups sub-view retains the original classic 10-row chassis; it is
+entered via `BK`, and retention ~20 means at most 2 pages.
 
 | id | rect | content |
 |---|---|---|
 | backup_row_0..9 | (25,25+15i,220,10) | `L<nn> <level title ≤14ch>` at x=27, `MM-DD HH:MM` at x=151..217; newest first; `BEFORE RESTORE` rows appear here too |
-| back / backup_page_prev / next | as §2.3 | back → Company List |
+| back / backup_page_prev / next | (25,175,40,20) / (160,175,40,20) / (205,175,40,20) | back → Company List |
 
 Restore flow (UI): click row → **`no_or_yes`** confirm `REWIND TO THIS BACKUP?` /
 `CURRENT STATE IS BACKED UP FIRST.` → §3.7's validated restore sequence → on success the
@@ -2403,7 +2404,7 @@ This supersedes §9.4's free-floating header treatment.
   company/backups flows are unchanged. Exact-table pins carry the new rects;
   engine draw smoke covers the custom background and content passes.
 
-### 9.18 UX round 8 (2026-07-21) — three faces inside each old slot [FINAL]
+### 9.18 UX round 8 (2026-07-21) — three faces inside each old slot [SUPERSEDED BY §9.19]
 
 The §9.17 side rail made the screen wider than the original Load Game frame
 and defeated the restoration. Keep the old menu's complete footprint and
@@ -2427,3 +2428,27 @@ divide its existing slot faces instead.
 - The initial keyboard highlight and primary-column vertical cycle are restored
   from the old menu: BACK → row 0 → ... → BACK. Actions, row ordinals, paging,
   active-company marker, backups, deletion, and confirmation behavior remain.
+
+### 9.19 UX round 9 (2026-07-21) — centered, roomier paged Company List [FINAL]
+
+The classic three-face treatment remains, but the complete menu is centered
+on the 320×200 screen and uses fewer, more widely spaced rows so the title and
+content no longer crowd one another.
+
+- The outer panel is `(40,8)..(280,192)`, centered at `(160,100)`. The title
+  well grows to `(48,13)..(272,28)`, shares the row wells' horizontal bounds,
+  and centers `Gladiator: Load Game` at `(160,18)`.
+- Pages contain **8 rows** at `y=35+17r` (`r=0..7`). Each row well spans
+  `(48,y-2)..(272,y+11)` and divides the centered x=50..270 content into the
+  company `(50,y,164,10)`, BK `(218,y,24,10)`, and X `(246,y,24,10)` faces.
+  Partial pages retain inert `EMPTY SLOT` faces through row 7.
+- The footer moves to y=169: BACK at x=50, PREV at x=185, and NEXT at x=230;
+  the page indicator centers at `(160,175)`. One-page lists still hide both
+  pagers.
+- PageModel's actual company page size changes from 10 to 8. Ordinals become
+  rows 0..7, BK 8..15, X 16..23, BACK 24, PREV 25, NEXT 26 (27 total).
+  Keyboard closure, active-company marking, backup/delete actions, and the
+  classic BACK-first vertical cycle are retained.
+- Pins cover the new exact table, 8/7 two-page visibility split, placeholder
+  bevels, keyboard reachability, and a full flow that flips an 11-company list
+  and opens the ninth company from page 2 row 0.

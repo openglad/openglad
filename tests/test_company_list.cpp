@@ -316,13 +316,13 @@ int pagination_injector(void* data)
     SDL_Delay(750);
     interact("load_company");
 
-    // 11 companies span two pages: the pagers must be live.
+    // 11 companies span two eight-row pages: the pagers must be live.
     if (wait_for_interactable("company_page_next", 5000)) {
         SDL_Delay(750);
         fprintf(stderr, "  [test] flipping to page 2\n");
         interact("company_page_next");
         SDL_Delay(400);
-        // Page 2 shows one row: the 11th (least recent) company.
+        // Page 2 starts with the 9th company in recency order.
         fprintf(stderr, "  [test] opening the page-2 row\n");
         interact("company_row_0");
         if (wait_for_team_menu()) {
@@ -821,9 +821,9 @@ TEST(CompanyList, corrupt_torn_and_active_guards_never_switch)
         << "the previously open company must survive the failed opens";
 }
 
-// Pagination: 11 companies span two pages; NEXT is keyboard-live (a real
-// MenuSpecRow action), the page window retargets the row buttons, and
-// opening page 2's row 0 opens the 11th (least recent) company.
+// Pagination: 11 companies span two eight-row pages; NEXT is keyboard-live
+// (a real MenuSpecRow action), the page window retargets the row buttons, and
+// opening page 2's row 0 opens the 9th company.
 TEST(CompanyList, pagination_flips_pages_and_opens_windowed_row)
 {
     trace_clear();
@@ -852,9 +852,9 @@ TEST(CompanyList, pagination_flips_pages_and_opens_windowed_row)
     ASSERT_TRUE(state.saw_team_menu);
     ASSERT_TRUE(trace_contains("company_list", "page 2/2"))
         << "NEXT must flip to the second page";
-    ASSERT_TRUE(trace_contains("company_list", "open wp3page10"))
-        << "page 2 row 0 is the 11th (least recent) company";
-    ASSERT_EQ("wp3page10", og::data::active_company_slot());
+    ASSERT_TRUE(trace_contains("company_list", "open wp3page8"))
+        << "page 2 row 0 is the 9th company";
+    ASSERT_EQ("wp3page8", og::data::active_company_slot());
 }
 
 // The §2.4 BK door opens the Backups sub-view (empty here — no level wins,

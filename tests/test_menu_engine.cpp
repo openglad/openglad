@@ -919,7 +919,7 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
     EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
     EXPECT_TRUE(spec.polls_lobby);
-    EXPECT_EQ(30, spec.default_highlight);
+    EXPECT_EQ(24, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
     EXPECT_TRUE(spec.nav.kind == og::ui::NavProgramKind::Rewire
                 && spec.nav.rewire != nullptr);
@@ -936,9 +936,9 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     const Variant variants[] = {
         {"empty", 0, -1, 0, 0, false},
         {"partial_page", 3, -1, 0, 3, false},
-        {"two_pages_first", 15, -1, 0, 10, true},
-        {"two_pages_second", 15, -1, 1, 5, true},
-        {"corrupt_rows_second_page", 15, 12, 1, 5, true},
+        {"two_pages_first", 15, -1, 0, 8, true},
+        {"two_pages_second", 15, -1, 1, 7, true},
+        {"corrupt_rows_second_page", 15, 12, 1, 7, true},
     };
 
     for (const Variant& variant : variants) {
@@ -948,13 +948,13 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
                 "wp3var" + std::to_string(i), 1000 - i,
                 variant.corrupt_from < 0 || i < variant.corrupt_from));
         }
-        state.page = og::ui::PageModel::make(variant.companies, 10);
+        state.page = og::ui::PageModel::make(variant.companies, 8);
         state.page.page = variant.page;
         ScopedCompanyListState installed(&state);
 
         button* buttons = spec.buttons_accessor();
         const int count = spec.count_accessor();
-        ASSERT_EQ(33, count) << variant.label;
+        ASSERT_EQ(27, count) << variant.label;
 
         int highlighted = spec.default_highlight;
         spec.nav.rewire(buttons, count, highlighted);
@@ -963,18 +963,18 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
         // Visibility: the page window's row triples, BACK always, pagers
         // only when the list spans pages (corrupt rows keep BK/X — the
         // restore/delete doors stay available, §2.3).
-        for (int r = 0; r < 10; ++r) {
+        for (int r = 0; r < 8; ++r) {
             const bool want = r < variant.want_visible_rows;
             EXPECT_EQ(!want, buttons[r].hidden)
                 << variant.label << " company_row_" << r;
-            EXPECT_EQ(!want, buttons[10 + r].hidden)
+            EXPECT_EQ(!want, buttons[8 + r].hidden)
                 << variant.label << " company_bak_" << r;
-            EXPECT_EQ(!want, buttons[20 + r].hidden)
+            EXPECT_EQ(!want, buttons[16 + r].hidden)
                 << variant.label << " company_del_" << r;
         }
-        EXPECT_FALSE(buttons[30].hidden) << variant.label;
-        EXPECT_EQ(!variant.want_pagers, buttons[31].hidden) << variant.label;
-        EXPECT_EQ(!variant.want_pagers, buttons[32].hidden) << variant.label;
+        EXPECT_FALSE(buttons[24].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[25].hidden) << variant.label;
+        EXPECT_EQ(!variant.want_pagers, buttons[26].hidden) << variant.label;
 
         // No overlap among the visible rows.
         for (int i = 0; i < count; ++i) {
@@ -1049,7 +1049,7 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     }
 
     // Draw smoke over the headless screen buffer: the restored classic panel
-    // plus its ten visual EMPTY SLOT rows (the corresponding engine rows stay
+    // plus its eight visual EMPTY SLOT rows (the corresponding engine rows stay
     // hidden/inert), then a populated two-page state with a corrupt row + the
     // "p/N" indicator. The flows pin behavior; this pins both draw passes.
     ASSERT_TRUE(spec.draw_background != nullptr);
@@ -1058,24 +1058,24 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     spec.draw_content(nullptr);
     {
         og::ui::CompanyListScreenState state;
-        state.page = og::ui::PageModel::make(0, 10);
+        state.page = og::ui::PageModel::make(0, 8);
         spec.draw_background(&state);
         spec.draw_content(&state);
         // The last empty row still has all three classic button faces. Sample
         // their top bevels independently so a future visibility cleanup cannot
         // collapse the old menu back into a short list over a blank panel.
         int pixel = -1;
-        og::runtime::current_session->myscreen_->get_pixel(25, 160, &pixel);
+        og::runtime::current_session->myscreen_->get_pixel(50, 154, &pixel);
         EXPECT_EQ(BUTTON_TOP, pixel) << "empty company face";
-        og::runtime::current_session->myscreen_->get_pixel(193, 160, &pixel);
+        og::runtime::current_session->myscreen_->get_pixel(218, 154, &pixel);
         EXPECT_EQ(BUTTON_TOP, pixel) << "empty BK face";
-        og::runtime::current_session->myscreen_->get_pixel(221, 160, &pixel);
+        og::runtime::current_session->myscreen_->get_pixel(246, 154, &pixel);
         EXPECT_EQ(BUTTON_TOP, pixel) << "empty X face";
         for (int i = 0; i < 15; ++i) {
             state.companies.push_back(make_company_info(
                 "wp3draw" + std::to_string(i), 1000 - i, i < 12));
         }
-        state.page = og::ui::PageModel::make(15, 10);
+        state.page = og::ui::PageModel::make(15, 8);
         state.page.page = 1;
         spec.draw_background(&state);
         spec.draw_content(&state);
@@ -1094,7 +1094,7 @@ TEST(MenuEngine, company_list_active_row_outline)
     og::ui::CompanyListScreenState state;
     state.companies.push_back(make_company_info("wp3outlineb", 2000, true));
     state.companies.push_back(make_company_info("wp3outlinea", 1000, true));
-    state.page = og::ui::PageModel::make(2, 10);
+    state.page = og::ui::PageModel::make(2, 8);
     ScopedCompanyListState installed(&state);
     og::data::ScopedActiveCompany active("wp3outlineb");
     ASSERT_TRUE(active.applied());
