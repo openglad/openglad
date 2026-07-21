@@ -40,7 +40,7 @@
 
 namespace
 {
-constexpr unsigned char kMaxPlayers = 4;
+constexpr unsigned char kMaxPlayers = kMaxSavePlayers;
 constexpr int kMaxLegacyLevels = 500;
 }
 

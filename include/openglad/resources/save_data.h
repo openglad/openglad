@@ -30,6 +30,9 @@ class guy;
 class walker;
 
 inline constexpr int MAX_TEAM_SIZE = 24; // max # of guys on a team
+// Max # of player seats a save may claim; the GTL reader and the company
+// header scanner both reject anything larger.
+inline constexpr unsigned char kMaxSavePlayers = 4;
 
 enum class SaveDataIoError
 {

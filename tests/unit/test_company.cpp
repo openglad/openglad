@@ -886,6 +886,13 @@ TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
     sandbox.write_raw("delco.gtl", "DELETABLE STATE");
     ASSERT_TRUE(og::data::backup_company_now("delco")); // 001
     ASSERT_TRUE(og::data::backup_company_now("delco")); // 002
+    // Staging strays a crash can leave behind: the atomic-write tmp (§3.6),
+    // the restore staging copy (§3.7), and copy_user_file's "<dst>.tmp"
+    // halves of the two restore copies.
+    sandbox.write_raw("delco.tmp.gtl", "AUTOSAVE STAGING STRAY");
+    sandbox.write_raw("delco.gtl.restoretmp", "RESTORE STAGING STRAY");
+    sandbox.write_raw("delco.gtl.restoretmp.tmp", "RESTORE STAGE COPY STRAY");
+    sandbox.write_raw("delco.gtl.tmp", "RESTORE RENAME STRAY");
 
     EXPECT_TRUE(og::data::delete_company_backup("delco", 1));
     EXPECT_FALSE(user_file_exists("save/backups/delco.001.gtl"));
@@ -906,6 +913,11 @@ TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
     EXPECT_FALSE(user_file_exists("save/delco.gtl"));
     EXPECT_FALSE(user_file_exists("save/backups/delco.002.gtl"))
         << "delete_company reaps ALL backups with the file";
+    EXPECT_FALSE(user_file_exists("save/delco.tmp.gtl"));
+    EXPECT_FALSE(user_file_exists("save/delco.gtl.restoretmp"));
+    EXPECT_FALSE(user_file_exists("save/delco.gtl.restoretmp.tmp"));
+    EXPECT_FALSE(user_file_exists("save/delco.gtl.tmp"))
+        << "delete_company reaps interrupted-restore staging strays";
     EXPECT_FALSE(og::data::delete_company("delco"))
         << "a company with no file left reports false";
 }

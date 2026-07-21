@@ -261,8 +261,8 @@ std::optional<CompanyInfo> read_header_from(const char* dir,
     std::uint8_t numplayers = 0;
     if (!read_exact(&numplayers, 1))
         return info;
-    if (numplayers > 4)
-        return info; // mirrors the reader's kMaxPlayers reject
+    if (numplayers > kMaxSavePlayers)
+        return info; // mirrors the reader's reject (save_data.cpp)
 
     if (info.version >= 14)
     {
@@ -691,9 +691,13 @@ bool delete_company(const std::string& slot)
     // (minus some backups) instead of orphaning hidden backup strays.
     for (const BackupFile& file : scan_company_backups(slot))
         (void)remove_user_file(kBackupDirPrefix + file.filename);
-    // Stray staging files (atomic write / interrupted restore).
+    // Stray staging files: the atomic-write tmp (§3.6), the restore staging
+    // copy (§3.7), and copy_user_file's "<dst>.tmp" halves that an
+    // interrupted restore can leave behind for either copy destination.
     (void)remove_user_file("save/" + slot + ".tmp.gtl");
     (void)remove_user_file("save/" + slot + ".gtl.restoretmp");
+    (void)remove_user_file("save/" + slot + ".gtl.restoretmp.tmp");
+    (void)remove_user_file("save/" + slot + ".gtl.tmp");
     return remove_user_file("save/" + slot + ".gtl");
 }
 
