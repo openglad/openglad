@@ -572,8 +572,14 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // declared here, must never be simultaneously visible in any variant
     // (the per-variant overlap check enforces that), and BOTH halves must
     // be visible in at least one variant each (the allowance is exercised).
+    // §9.2: the no_company_note fills the exact CONTINUE|LOAD envelope and
+    // shows (Disabled) exactly when the pair hides — the company-presence
+    // axis below exercises both halves.
     const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
-        {{"go", "ready"}, {"cross_control", "guy_team"}};
+        {{"go", "ready"},
+         {"cross_control", "guy_team"},
+         {"continue_game", "no_company_note"},
+         {"load_company", "no_company_note"}};
 
     int engine_screens = 0;
     for (int s = 0; s < static_cast<int>(og::ui::MenuScreenId::Count); ++s) {
@@ -617,6 +623,13 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
         for (const SweepVariant& sweep_variant : kVariants) {
             lobby.host = sweep_variant.host;
             lobby.networked = sweep_variant.networked;
+            // §9.2 company-presence axis, ridden on the host flag (only the
+            // main-menu gates read it): host variants sweep the with-company
+            // shape (CONTINUE|LOAD visible, note Hidden), non-host variants
+            // the no-company shape (pair Hidden, note Disabled-visible) —
+            // both halves of the declared same-geometry pairs get exercised.
+            og::ui::set_main_menu_company_view_for_tests(
+                sweep_variant.host, sweep_variant.host ? "SWEEP BAND" : "");
             // Fresh materialization per variant (buttons() fills what
             // count() reads — the D3 sequencing contract).
             button* buttons = spec.buttons_accessor();
@@ -657,12 +670,15 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                 og::runtime::current_session->current_difficulty_;
             context.is_host = sweep_variant.host;
             context.is_networked = sweep_variant.networked;
+            std::vector<og::ui::RowState> row_states(
+                static_cast<std::size_t>(count), og::ui::RowState::Visible);
             for (int i = 0; i < count; ++i) {
                 const og::ui::MenuButtonSpec& row =
                     *spec_rows[static_cast<std::size_t>(i)];
                 const og::ui::RowState state = row.state_override != nullptr
                     ? row.state_override(context)
                     : og::ui::gate_state(row.gate, context);
+                row_states[static_cast<std::size_t>(i)] = state;
                 buttons[i].hidden = (state == og::ui::RowState::Hidden);
             }
             int highlighted = spec.default_highlight;
@@ -720,6 +736,13 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             }
             for (int i = 0; i < count; ++i) {
                 if (!buttons[i].hidden) {
+                    // §9.2 Disabled exemption: a Disabled row is inert
+                    // chrome (keyboard-dead by the engine's gate pass), so
+                    // keyboard reachability is not required of it — the
+                    // no_company_note is the declared consumer.
+                    if (row_states[static_cast<std::size_t>(i)]
+                        == og::ui::RowState::Disabled)
+                        continue;
                     EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
                         << spec.name << " " << sweep_variant.name << ": "
                         << buttons[i].id << " unreachable by keyboard";
@@ -750,6 +773,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         sweep_save.team_list[i] = std::move(sweep_saved_team[i]);
     sweep_save.team_size = sweep_old_team_size;
+    // Mandatory restore (the shared-sweep contract): (true, "").
+    og::ui::set_main_menu_company_view_for_tests(true, "");
     EXPECT_GE(engine_screens, 14)
         << "difficulty + the FX trio + display + controls + main options + "
            "main menu + the team-build cluster (base camp, SCENARIO, TEAMS) "
@@ -800,6 +825,18 @@ TEST(MenuEngine, name_entry_spec_shape_and_nav)
     ASSERT_LT(highlighted, count);
     EXPECT_EQ("company_name_accept", buttons[highlighted].id)
         << "initial highlight should be ACCEPT (§2.2)";
+
+    // §9.3 sunken input field: the name strip (row 1) carries the PURE_BLACK
+    // face binding (face only — the engine stamps the live surface every
+    // frame; the grey bevel edges remain). The other rows keep stock faces.
+    {
+        og::ui::MenuLabelContext face_context;
+        ASSERT_NE(nullptr, spec_rows[1]->color);
+        EXPECT_EQ(PURE_BLACK, spec_rows[1]->color(face_context));
+        for (const int plain : {0, 2, 3})
+            EXPECT_EQ(nullptr, spec_rows[static_cast<std::size_t>(plain)]->color)
+                << "only the name strip is a sunken field";
+    }
 
     for (int i = 0; i < count; ++i)
         for (int j = i + 1; j < count; ++j)
@@ -1612,6 +1649,9 @@ struct ExpectedSpecRow
     ButtonAction action;
     Sint32 arg;
     MenuNav nav;
+    // §9.2: the no_company_note row materializes statically hidden
+    // (companies present is the default view); every other row starts shown.
+    bool hidden = false;
 };
 
 void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
@@ -1641,12 +1681,13 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
         EXPECT_EQ(want.nav.left, got.nav.left) << shape_name << " " << got.id;
         EXPECT_EQ(want.nav.right, got.nav.right)
             << shape_name << " " << got.id;
-        EXPECT_FALSE(got.hidden) << shape_name << " " << got.id;
+        EXPECT_EQ(want.hidden, got.hidden) << shape_name << " " << got.id;
         EXPECT_FALSE(got.no_draw) << shape_name << " " << got.id;
     }
-    // §2.1: load_company is appended at the table END of every variant, so it
-    // is the last materialized row (options is second-to-last).
-    EXPECT_EQ("load_company", rows.back().id) << shape_name;
+    // §2.1/§9.2: load_company then the no_company_note are appended at the
+    // table END of every variant, so the note is the last materialized row.
+    EXPECT_EQ("no_company_note", rows.back().id) << shape_name;
+    EXPECT_EQ("load_company", rows[rows.size() - 2].id) << shape_name;
 }
 
 // The MP chassis shared by the native/web fork (rows 0-8); row 9 is the fork.
@@ -1685,6 +1726,11 @@ constexpr ExpectedSpecRow kMainMenuMPOptions = {
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 4, .left = 1}};
+// §9.2 index 12: the no-company note box (Disabled chrome; statically
+// hidden, no nav links in or out).
+constexpr ExpectedSpecRow kMainMenuMPNote = {
+    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    ButtonAction::MenuSpecRow, 12, MenuNav{}, true};
 
 // The no-MP chassis (single column, bottom row at y=175); row 4 is the fork.
 constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
@@ -1711,18 +1757,24 @@ constexpr ExpectedSpecRow kMainMenuNoMPOptions = {
 constexpr ExpectedSpecRow kMainMenuNoMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
+// §9.2 index 7: the no-MP note box.
+constexpr ExpectedSpecRow kMainMenuNoMPNote = {
+    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+    ButtonAction::MenuSpecRow, 7, MenuNav{}, true};
 
 // Materialized order: common chassis, then the quit/help fork survivor, then
-// options, then the appended load_company (§2.1 index-contract END).
+// options, then the appended load_company and no_company_note (§2.1/§9.2
+// index-contract END).
 std::vector<ExpectedSpecRow> build_expected_shape(
     const ExpectedSpecRow* common, int common_count,
     const ExpectedSpecRow& fork, const ExpectedSpecRow& options,
-    const ExpectedSpecRow& load)
+    const ExpectedSpecRow& load, const ExpectedSpecRow& note)
 {
     std::vector<ExpectedSpecRow> shape(common, common + common_count);
     shape.push_back(fork);
     shape.push_back(options);
     shape.push_back(load);
+    shape.push_back(note);
     return shape;
 }
 
@@ -1751,14 +1803,16 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ(MENU_EXIT, spec.exit_value);
 
     // The options-index helper that retired both OPTIONS_BUTTON_INDEX
-    // #defines: §2.1 appends load_company at the END, so options is now the
-    // second-to-last materialized row and the helper finds it by id.
+    // #defines: §2.1/§9.2 append load_company then the no_company_note at
+    // the END, so options is now the third-from-last materialized row and
+    // the helper finds it by id.
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_GT(count, 1);
-    EXPECT_EQ(count - 2, picker_mainmenu_options_index());
+    ASSERT_GT(count, 2);
+    EXPECT_EQ(count - 3, picker_mainmenu_options_index());
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
-    EXPECT_EQ("load_company", buttons[count - 1].id);
+    EXPECT_EQ("load_company", buttons[count - 2].id);
+    EXPECT_EQ("no_company_note", buttons[count - 1].id);
 }
 
 // G9: the four materialized shapes, re-derived from the two specs. The
@@ -1770,7 +1824,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_native = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuit, kMainMenuMPOptions, kMainMenuMPLoad);
+        kMainMenuMPQuit, kMainMenuMPOptions, kMainMenuMPLoad, kMainMenuMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Native, mp_native.data(),
                              static_cast<int>(mp_native.size()),
@@ -1778,7 +1832,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_web = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPHelp, kMainMenuMPOptions, kMainMenuMPLoad);
+        kMainMenuMPHelp, kMainMenuMPOptions, kMainMenuMPLoad, kMainMenuMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Web, mp_web.data(),
                              static_cast<int>(mp_web.size()),
@@ -1786,7 +1840,8 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> nomp_native = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPQuit, kMainMenuNoMPOptions, kMainMenuNoMPLoad);
+        kMainMenuNoMPQuit, kMainMenuNoMPOptions, kMainMenuNoMPLoad,
+        kMainMenuNoMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Native, nomp_native.data(),
                              static_cast<int>(nomp_native.size()),
@@ -1794,7 +1849,8 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> nomp_web = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPHelp, kMainMenuNoMPOptions, kMainMenuNoMPLoad);
+        kMainMenuNoMPHelp, kMainMenuNoMPOptions, kMainMenuNoMPLoad,
+        kMainMenuNoMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Web, nomp_web.data(),
                              static_cast<int>(nomp_web.size()),
@@ -1810,14 +1866,17 @@ TEST(MenuEngine, main_menu_binding_pins)
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& nomp = og::ui::main_menu_screen_spec_nomp();
 
-    // Art faces, both variants: row 0 begin_new_game; options is the second-
-    // to-last SPEC row (load_company, no art, is the appended last row §2.1).
+    // Art faces, both variants: row 0 begin_new_game; options is the third-
+    // from-last SPEC row (load_company and the §9.2 no_company_note, both
+    // art-free, are the appended tail).
     EXPECT_EQ(FAMILY_NORMAL1, mp.rows[0].art_family);
-    EXPECT_EQ(FAMILY_WRENCH, mp.rows[mp.row_count - 2].art_family);
-    EXPECT_EQ(-1, mp.rows[mp.row_count - 1].art_family);  // load_company
+    EXPECT_EQ(FAMILY_WRENCH, mp.rows[mp.row_count - 3].art_family);
+    EXPECT_EQ(-1, mp.rows[mp.row_count - 2].art_family);  // load_company
+    EXPECT_EQ(-1, mp.rows[mp.row_count - 1].art_family);  // no_company_note
     EXPECT_EQ(FAMILY_NORMAL1, nomp.rows[0].art_family);
-    EXPECT_EQ(FAMILY_WRENCH, nomp.rows[nomp.row_count - 2].art_family);
-    EXPECT_EQ(-1, nomp.rows[nomp.row_count - 1].art_family);  // load_company
+    EXPECT_EQ(FAMILY_WRENCH, nomp.rows[nomp.row_count - 3].art_family);
+    EXPECT_EQ(-1, nomp.rows[nomp.row_count - 2].art_family);  // load_company
+    EXPECT_EQ(-1, nomp.rows[nomp.row_count - 1].art_family);  // no_company_note
 
     // Player-count outlines: spec rows 2..5 are 4/3/2/1 PLAYER.
     for (int i = 2; i <= 5; ++i) {
@@ -1933,6 +1992,66 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
     int hl = 1;
     mp.nav.rewire(shown.data(), static_cast<int>(shown.size()), hl);
     EXPECT_EQ(i_continue, shown[i_begin].nav.down);
+
+    // §9.2 no_company_note: Hidden while a company exists, Disabled (the
+    // engine's greyed keyboard-dead chrome — face GREY, myfun/myfunc zeroed,
+    // clicks no-op with the menu_engine/disabled_row_click TRACE, pinned
+    // generically by MenuEngine.disabled_row_activation_no_op) when none
+    // does. Inert both ways: no nav links out, and NOTHING links into it in
+    // either state — keyboard flows keep the hidden-variant routing above.
+    for (const og::ui::MenuScreenSpec* variant :
+         {&mp, &og::ui::main_menu_screen_spec_nomp()}) {
+        const og::ui::MenuButtonSpec* note_row = nullptr;
+        for (int i = 0; i < variant->row_count; ++i) {
+            if (std::string_view(variant->rows[i].id) == "no_company_note")
+                note_row = &variant->rows[i];
+        }
+        ASSERT_NE(nullptr, note_row);
+        ASSERT_NE(nullptr, note_row->state_override);
+        og::ui::set_main_menu_company_view_for_tests(true, "");
+        EXPECT_EQ(og::ui::RowState::Hidden, note_row->state_override(ctx));
+        og::ui::set_main_menu_company_view_for_tests(false, "");
+        EXPECT_EQ(og::ui::RowState::Disabled, note_row->state_override(ctx));
+        EXPECT_EQ(-1, note_row->nav.up);
+        EXPECT_EQ(-1, note_row->nav.down);
+        EXPECT_EQ(-1, note_row->nav.left);
+        EXPECT_EQ(-1, note_row->nav.right);
+    }
+
+    // Zero inbound links, both company states, after the production rewire.
+    for (const bool present : {true, false}) {
+        og::ui::set_main_menu_company_view_for_tests(present, "");
+        std::vector<button> state_buttons;
+        og::ui::materialize_menu_buttons_for(
+            mp, og::ui::MenuBuildVariant::Native, state_buttons);
+        const int n = static_cast<int>(state_buttons.size());
+        int note_index = -1;
+        for (int i = 0; i < n; ++i)
+            if (std::string_view(state_buttons[i].id) == "no_company_note")
+                note_index = i;
+        ASSERT_GE(note_index, 0);
+        if (!present) {
+            for (auto& b : state_buttons)
+                if (std::string_view(b.id) == "continue_game"
+                    || std::string_view(b.id) == "load_company")
+                    b.hidden = true;
+        }
+        int note_hl = 1;
+        mp.nav.rewire(state_buttons.data(), n, note_hl);
+        for (int i = 0; i < n; ++i) {
+            for (const int link :
+                 {state_buttons[i].nav.up, state_buttons[i].nav.down,
+                  state_buttons[i].nav.left, state_buttons[i].nav.right}) {
+                EXPECT_NE(note_index, link)
+                    << state_buttons[i].id
+                    << " must not nav into the inert note row (present="
+                    << present << ")";
+            }
+        }
+    }
+
+    // Mandatory restore (the shared-sweep contract): (true, "").
+    og::ui::set_main_menu_company_view_for_tests(true, "");
 }
 
 // The CONTROLS mode faces: the LabelBindings must track the live control

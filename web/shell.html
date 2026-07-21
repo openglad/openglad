@@ -568,10 +568,57 @@
         document.addEventListener('webkitfullscreenchange',
             handleFullscreenControlChange);
 
-        // Handle WebGL context loss
+        // ------------------------------------------------------------------
+        // WebGL context loss/restore (iPad task-switch survival).
+        //
+        // preventDefault() promises the browser this page handles restoration
+        // itself — that is what allows 'webglcontextrestored' to fire at all.
+        // The wasm side only sets a pending flag from the restored
+        // notification (ASYNCIFY re-entrancy: no GL work may run inside a
+        // browser event callback) and rebuilds its renderer and textures at
+        // the next present; canvas content self-heals because every present
+        // re-uploads the CPU-side canvases. If the browser never restores the
+        // context (Safari can discard it for good), the watchdog reloads the
+        // page: saves live in IDBFS via autosave, so a reload resumes from
+        // the base camp without losing progress.
+        // ------------------------------------------------------------------
+        var contextRestoreWatchdog = null;
+        var contextRestoreWatchdogMs =
+            window.__opengladContextRestoreWatchdogMs || 10000;
+        window.__opengladContextLossState = {
+            lostEvents: 0,
+            restoredEvents: 0,
+            notifyCalls: 0,
+            reloadFallbacks: 0
+        };
+
         canvas.addEventListener('webglcontextlost', function(e) {
-            alert('WebGL context lost. Please reload the page.');
             e.preventDefault();
+            window.__opengladContextLossState.lostEvents += 1;
+            loadingText.textContent = 'RESTORING GRAPHICS…';
+            loadingBar.style.width = '0%';
+            loadingElement.classList.remove('hidden');
+            if (contextRestoreWatchdog === null) {
+                contextRestoreWatchdog = setTimeout(function() {
+                    contextRestoreWatchdog = null;
+                    window.__opengladContextLossState.reloadFallbacks += 1;
+                    window.location.reload();
+                }, contextRestoreWatchdogMs);
+            }
+        }, false);
+
+        canvas.addEventListener('webglcontextrestored', function() {
+            window.__opengladContextLossState.restoredEvents += 1;
+            if (contextRestoreWatchdog !== null) {
+                clearTimeout(contextRestoreWatchdog);
+                contextRestoreWatchdog = null;
+            }
+            if (typeof Module !== 'undefined' &&
+                typeof Module._openglad_web_notify_context_restored === 'function') {
+                window.__opengladContextLossState.notifyCalls += 1;
+                Module._openglad_web_notify_context_restored();
+            }
+            loadingElement.classList.add('hidden');
         }, false);
 
         // Ensure canvas gets focus on click (important for keyboard input)

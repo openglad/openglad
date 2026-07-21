@@ -67,7 +67,6 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
 bool team_build_start_selected();
 // Base camp helpers (defined beside the train/hire sessions in
 // picker_team_build.cpp).
-og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g);
 void picker_set_train_seed_slot(int slot);
 // picker_base_camp_after_roster_mutation() comes from picker_sdl_defs.h.
 Sint32 create_train_menu(Sint32 arg1);
@@ -909,6 +908,16 @@ bool main_menu_company_present(const MenuLabelContext& /*context*/)
     return g_main_menu_company_view.present;
 }
 
+// §9.2 note-row state: Hidden while any company exists; Disabled (the
+// engine's greyed-out inert-box grammar — GREY face, bevel intact,
+// keyboard-dead, click no-ops with the disabled_row_click TRACE) when none
+// does. Never Visible, so the MenuSpecRow action can never dispatch.
+RowState main_menu_no_company_note_state(const MenuLabelContext& /*context*/)
+{
+    return g_main_menu_company_view.present ? RowState::Hidden
+                                            : RowState::Disabled;
+}
+
 int main_menu_row_index(const button* buttons, int count, std::string_view id)
 {
     for (int i = 0; i < count; ++i) {
@@ -1038,6 +1047,17 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 4, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
+    // §9.2 (appended at the table END): the no-company note box — a greyed
+    // Disabled row filling the exact CONTINUE|LOAD envelope while no company
+    // exists, Hidden once one does. Inert chrome: MenuSpecRow arg = own
+    // materialized ordinal (never dispatched — the row is never Visible),
+    // no nav links in or out, statically hidden (companies present is the
+    // default view). Replaces the old no-company bottom caption.
+    {.id = "no_company_note", .label = "NO COMPANY YET",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 12,
+     .state_override = &main_menu_no_company_note_state,
+     .hidden = true},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1082,6 +1102,12 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
+    // §9.2 no-MP note box (see the MP table): materialized ordinal 7.
+    {.id = "no_company_note", .label = "NO COMPANY YET",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 7,
+     .state_override = &main_menu_no_company_note_state,
+     .hidden = true},
 };
 
 void main_menu_draw_background(void* /*screen_state*/)
@@ -1125,21 +1151,17 @@ void main_menu_draw_content(void* /*screen_state*/)
     }
 
     // §2.1 company caption: a black strip (the SCEN-hint idiom) naming the
-    // active/most-recent company CONTINUE would open, or the new-game prompt
-    // when none exists yet. Drawn after the re-vdisplay so it wins the strip's
-    // own y-band.
-    {
-        std::string caption;
-        if (g_main_menu_company_view.present) {
-            std::string name = g_main_menu_company_view.display_name;
-            if (name.size() > kMainMenuCompanyNameClip)
-                name.resize(kMainMenuCompanyNameClip);
-            caption = "COMPANY: " + name;
-            if (caption.size() > 28)
-                caption.resize(28);
-        } else {
-            caption = "NO COMPANY YET - BEGIN A NEW GAME";
-        }
+    // active/most-recent company CONTINUE would open. Drawn after the
+    // re-vdisplay so it wins the strip's own y-band. No-company state: the
+    // §9.2 no_company_note Disabled row in the CONTINUE|LOAD envelope
+    // replaces the old bottom caption — nothing is drawn here.
+    if (g_main_menu_company_view.present) {
+        std::string name = g_main_menu_company_view.display_name;
+        if (name.size() > kMainMenuCompanyNameClip)
+            name.resize(kMainMenuCompanyNameClip);
+        std::string caption = "COMPANY: " + name;
+        if (caption.size() > 28)
+            caption.resize(28);
         const int width = static_cast<int>(caption.size()) * 6;
         const int caption_x = 160 - width / 2;
         game->draw_rect_filled(caption_x - 2, kMainMenuCaptionY - 1, width + 4, 8,
@@ -1670,10 +1692,11 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 };
 
 // ---------------------------------------------------------------------------
-// TEAM BUILD -> BASE CAMP (§2.5): the command roster. The roster IS the
-// default view (the VIEW TEAM screen retired into it): 12 rows/page at 12px
-// pitch — a deploy toggle (8,32+12r,14,10) and a per-row TRAIN button
-// (272,32+12r,40,10) — the page cluster top-right (< p/N >), and the bottom
+// TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5): the command roster.
+// The roster IS the default view (the VIEW TEAM screen retired into it):
+// 10 rows/page at the 15px save-slot pitch (the §2.0 U6 pre-declared
+// fallback) — a deploy toggle (8,31+15r,14,10) and a per-row TRAIN button
+// (266,31+15r,46,10) — the page cluster top-right (< p/N >), and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
@@ -1688,8 +1711,13 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // pointer; run_menu_screen's screen_state points at the SAME object.
 BaseCampScreenState* g_base_camp_state = nullptr;
 
-constexpr int kBaseCampRowY0 = 32;
-constexpr int kBaseCampRowPitch = 12;
+constexpr int kBaseCampRowY0 = 31;
+constexpr int kBaseCampRowPitch = 15;
+// §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
+// glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
+// was nearly invisible; 21 restores a legible two-step drop while staying
+// "benched-grey dimming only".
+constexpr unsigned char kBenchedTextShade = 21;
 
 // §2.6 per-frame face/label bindings for the GO/READY slot: the engine's
 // label-sync pass re-derives BOTH surfaces from the lobby state every frame
@@ -1735,35 +1763,36 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
     return kReadyGoFaceUnready;
 }
 
-// Static nav encodes the full-page shape (12 visible rows, pagers hidden,
+// Static nav encodes the full-page shape (10 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
-// state anyway (§2.5 keyboard-nav pattern b).
+// state anyway (§2.5 keyboard-nav pattern b). TRAIN widened to (266,y,46,10)
+// per §9.5.1 — the 5-char label finally has budget slack (6).
 #define OG_BASE_CAMP_DEP(i)                                                  \
     {.id = "roster_dep_" #i, .label = "",                                    \
      .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
-             .down = (i) < 11 ? (i) + 1 : kCreateMenuBackIndex,               \
+             .down = (i) < 9 ? (i) + 1 : kCreateMenuBackIndex,                \
              .right = kBaseCampTrainBase + (i)}}
 #define OG_BASE_CAMP_TRAIN(i)                                                \
     {.id = "roster_train_" #i, .label = "TRAIN",                             \
-     .x = 272, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 40,        \
+     .x = 266, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 46,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampTrainBase + (i),                                        \
      .nav = {.up = (i) > 0 ? kBaseCampTrainBase + (i) - 1 : -1,               \
-             .down = (i) < 11 ? kBaseCampTrainBase + (i) + 1                  \
-                              : kCreateMenuGoIndex,                           \
+             .down = (i) < 9 ? kBaseCampTrainBase + (i) + 1                   \
+                             : kCreateMenuGoIndex,                            \
              .left = (i)}}
 
 constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
     OG_BASE_CAMP_DEP(3), OG_BASE_CAMP_DEP(4), OG_BASE_CAMP_DEP(5),
     OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7), OG_BASE_CAMP_DEP(8),
-    OG_BASE_CAMP_DEP(9), OG_BASE_CAMP_DEP(10), OG_BASE_CAMP_DEP(11),
+    OG_BASE_CAMP_DEP(9),
     OG_BASE_CAMP_TRAIN(0), OG_BASE_CAMP_TRAIN(1), OG_BASE_CAMP_TRAIN(2),
     OG_BASE_CAMP_TRAIN(3), OG_BASE_CAMP_TRAIN(4), OG_BASE_CAMP_TRAIN(5),
     OG_BASE_CAMP_TRAIN(6), OG_BASE_CAMP_TRAIN(7), OG_BASE_CAMP_TRAIN(8),
-    OG_BASE_CAMP_TRAIN(9), OG_BASE_CAMP_TRAIN(10), OG_BASE_CAMP_TRAIN(11),
+    OG_BASE_CAMP_TRAIN(9),
     // Page cluster (§2.5 header line B right edge); real MenuSpecRow pager
     // actions (keyboard-live), hidden until the roster spans pages.
     {.id = "roster_page_prev", .label = "<",
@@ -1781,21 +1810,21 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 8, .y = 178, .w = 44, .h = 18,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 11, .right = kCreateMenuHireIndex}},
+     .nav = {.up = 9, .right = kCreateMenuHireIndex}},
     {.id = "hire_troops", .label = "HIRE",
      .x = 58, .y = 178, .w = 50, .h = 18,
      .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.up = 11, .left = kCreateMenuBackIndex,
+     .nav = {.up = 9, .left = kCreateMenuBackIndex,
              .right = kCreateMenuScenarioIndex}},
     {.id = "scenario", .label = "SCENARIO",
      .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 11, .left = kCreateMenuHireIndex,
+     .nav = {.up = kBaseCampTrainBase + 9, .left = kCreateMenuHireIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
      .x = 182, .y = 178, .w = 56, .h = 18,
      .action = ButtonAction::Networking, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 11, .left = kCreateMenuScenarioIndex,
+     .nav = {.up = kBaseCampTrainBase + 9, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
     // §2.6 GO half of the dual-role slot: solo/local keeps the plain grey
     // bevel and the exact legacy behavior (GoMenu -> go_menu / the
@@ -1804,7 +1833,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "go", .label = "GO",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 11,
+     .nav = {.up = kBaseCampTrainBase + 9,
              .left = kCreateMenuNetworkingIndex},
      .color = &base_camp_go_face_color},
     // §2.6 READY twin: the SAME rect, visible exactly when GO is not
@@ -1814,7 +1843,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "ready", .label = "READY",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
-     .nav = {.up = kBaseCampTrainBase + 11,
+     .nav = {.up = kBaseCampTrainBase + 9,
              .left = kCreateMenuNetworkingIndex},
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
@@ -2027,7 +2056,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 }
 
 // Pre-buttons pass (§2.0 draw-order rule): backdrop, then the readability
-// bars behind the column-header line and each visible roster row.
+// panel behind the roster (§9.5.2): a header bar plus ONE roster panel,
+// replacing the old per-row 150-alpha bars — the row-gap air stays INSIDE
+// the panel (the calm DOS-panel look; the backdrop art still ghosts
+// through at alpha 200). Lines A/B keep their own 150-alpha strips in the
+// content pass.
 void base_camp_draw_background(void* /*screen_state*/)
 {
     picker_backdrop_draw_background(nullptr);
@@ -2037,10 +2070,24 @@ void base_camp_draw_background(void* /*screen_state*/)
         st != nullptr ? std::max(0, st->page.end_index() -
                                         st->page.first_index())
                       : 0;
-    game->draw_rect_filled(4, 23, 312, 9, PURE_BLACK, 150);
-    for (int r = 0; r < visible; ++r) {
-        game->draw_rect_filled(4, kBaseCampRowY0 - 1 + kBaseCampRowPitch * r,
-                               312, kBaseCampRowPitch - 1, PURE_BLACK, 150);
+    game->draw_rect_filled(4, 21, 312, 8, PURE_BLACK, 200);
+    if (visible > 0) {
+        // Full page = y 29..176, ending 1px above the y=178 command strip.
+        game->draw_rect_filled(4, kBaseCampRowY0 - 2, 312,
+                               kBaseCampRowPitch * visible - 2, PURE_BLACK,
+                               200);
+    }
+    if (visible == 0) {
+        // §9.5.6 empty-state panel (F4): a framed PURE_BLACK backing behind
+        // the "NO SOLDIERS" line — zero row bars means nothing else darkens
+        // that band and the bare ORANGE text drowned in the backdrop art
+        // (U2). Drawn HERE, in the pre-draw_buttons pass, so the fill can
+        // never land on top of a button (the draw-order trap).
+        game->draw_rect_filled(60, 82, 200, 16, PURE_BLACK, 200);
+        game->fastbox(60, 81, 200, 1, GREY);
+        game->fastbox(60, 98, 200, 1, GREY);
+        game->fastbox(59, 82, 1, 16, GREY);
+        game->fastbox(260, 82, 1, 16, GREY);
     }
 }
 
@@ -2104,30 +2151,34 @@ void base_camp_draw_content(void* screen_state)
     if (st != nullptr && st->page.multi_page())
         strip_text(283, 13, st->page.indicator(), WHITE);
 
-    // Column headers over the pre-pass bar: solo keeps CLASS/EXP; networked
-    // swaps in the 16-char COMPANY column (§2.5 U7 — CLASS is carried by
-    // the family chip + family-colored name).
+    // Column headers over the pre-pass bar (y=22, ink 22..27 above the
+    // §9.5.2 panel seam): solo keeps CLASS/EXP; networked swaps in the
+    // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
+    // chip). §9.5.3: NO HP column on any client — it was DERIVED max HP
+    // (damage never persists to base camp), redundant with CLASS+LVL, and
+    // it lives one click away in TRAIN. EXP stays (progress is actionable).
     if (networked) {
-        mytext.write_xy(40, 24, "NAME", WHITE, 1);
-        mytext.write_xy(106, 24, "COMPANY", WHITE, 1);
-        mytext.write_xy(208, 24, "LV", WHITE, 1);
-        mytext.write_xy(226, 24, "HP", WHITE, 1);
-        mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+        mytext.write_xy(40, 22, "NAME", WHITE, 1);
+        mytext.write_xy(106, 22, "COMPANY", WHITE, 1);
+        mytext.write_xy(208, 22, "LV", WHITE, 1);
+        mytext.write_xy(274, 22, "TRAIN", WHITE, 1);
     } else {
-        mytext.write_xy(2, 24, "DEPLOY", WHITE, 1);
-        mytext.write_xy(40, 24, "NAME", WHITE, 1);
-        mytext.write_xy(118, 24, "CLASS", WHITE, 1);
-        mytext.write_xy(172, 24, "LV", WHITE, 1);
-        mytext.write_xy(196, 24, "HP", WHITE, 1);
-        mytext.write_xy(226, 24, "EXP", WHITE, 1);
-        mytext.write_xy(274, 24, "TRAIN", WHITE, 1);
+        mytext.write_xy(2, 22, "DEPLOY", WHITE, 1);
+        mytext.write_xy(40, 22, "NAME", WHITE, 1);
+        mytext.write_xy(118, 22, "CLASS", WHITE, 1);
+        mytext.write_xy(174, 22, "LV", WHITE, 1);
+        mytext.write_xy(196, 22, "EXP", WHITE, 1);
+        mytext.write_xy(274, 22, "TRAIN", WHITE, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
     if (end - first <= 0) {
-        mytext.write_xy(73, 90, "NO SOLDIERS - HIRE YOUR FIRST",
-                        static_cast<unsigned char>(ORANGE_START), 1);
+        // §9.5.6: centered inside the framed panel the background pass drew
+        // (ink 74..247 in the 60..259 band; U2 satisfied by the panel).
+        mytext.write_xy_center(160, 87,
+                               static_cast<unsigned char>(ORANGE_START), "%s",
+                               "NO SOLDIERS - HIRE YOUR FIRST");
         return;
     }
 
@@ -2154,40 +2205,42 @@ void base_camp_draw_content(void* screen_state)
             member = foreign_guy.get();
         }
 
-        // Family chip: the view_team color convention ((family+1)<<4).
+        // §9.5.5 framed family chip: a 1px GREY frame around the view_team
+        // color fill ((family+1)<<4) — the soldier run's pure-black fill
+        // and the near-black slime runs read as deliberate dark chips
+        // instead of holes in the panel. Same chip deployed and benched.
         const unsigned char family_color =
             static_cast<unsigned char>(((member->family + 1) << 4) & 255);
-        game->fastbox(26, y, 10, 10, family_color);
+        game->fastbox(26, y, 10, 10, GREY);
+        game->fastbox(27, y + 1, 8, 8, family_color);
 
-        // Benched rows dim to GREY — the second deploy cue (§2.5).
-        const unsigned char name_color =
-            deployed ? family_color : static_cast<unsigned char>(GREY);
-        const unsigned char stat_color =
-            deployed ? static_cast<unsigned char>(WHITE)
-                     : static_cast<unsigned char>(GREY);
+        // §9.5.4 uniform row color (F6/F7/F8): every column — name, class,
+        // stats — draws WHITE when deployed and shade 21 when benched.
+        // The old family-colored names are GONE: the palette made them look
+        // random (soldier 16 = black-topped dark grey, slime runs near
+        // black) and inverted the benched-dimming cue; deploy state is
+        // signaled by benched-grey dimming ONLY.
+        const unsigned char row_color =
+            deployed ? static_cast<unsigned char>(WHITE) : kBenchedTextShade;
 
-        const int derived_hp =
-            static_cast<int>(picker_compute_guy_derived_stats(*member).hp);
+        // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
             // deploy state draws as the §2.5 X/- glyph at x=11.
             if (!display.owned)
-                mytext.write_xy(11, y + 1, deployed ? "X" : "-", stat_color,
+                mytext.write_xy(11, y + 2, deployed ? "X" : "-", row_color,
                                 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
-                member->name, display.company, member->level, derived_hp);
-            mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
-            mytext.write_xy(106, y + 1, row.company.c_str(), stat_color, 1);
-            mytext.write_xy(208, y + 1, row.level.c_str(), stat_color, 1);
-            mytext.write_xy(226, y + 1, row.hp.c_str(), stat_color, 1);
+                member->name, display.company, member->level);
+            mytext.write_xy(40, y + 2, row.name.c_str(), row_color, 1);
+            mytext.write_xy(106, y + 2, row.company.c_str(), row_color, 1);
+            mytext.write_xy(208, y + 2, row.level.c_str(), row_color, 1);
         } else {
-            const BaseCampRowText row =
-                format_base_camp_row(*member, derived_hp);
-            mytext.write_xy(40, y + 1, row.name.c_str(), name_color, 1);
-            mytext.write_xy(118, y + 1, row.cls.c_str(), name_color, 1);
-            mytext.write_xy(172, y + 1, row.level.c_str(), stat_color, 1);
-            mytext.write_xy(196, y + 1, row.hp.c_str(), stat_color, 1);
-            mytext.write_xy(226, y + 1, row.exp.c_str(), stat_color, 1);
+            const BaseCampRowText row = format_base_camp_row(*member);
+            mytext.write_xy(40, y + 2, row.name.c_str(), row_color, 1);
+            mytext.write_xy(118, y + 2, row.cls.c_str(), row_color, 1);
+            mytext.write_xy(174, y + 2, row.level.c_str(), row_color, 1);
+            mytext.write_xy(196, y + 2, row.exp.c_str(), row_color, 1);
         }
     }
 }
@@ -2411,6 +2464,15 @@ constexpr int kNameEntryAcceptIndex = 3;
 // 320-wide canvas center, which also centers the strip (48,78,224,16).
 constexpr int kNameEntryCenterX = 160;
 
+// §9.3 sunken input field: the name strip's face is stamped PURE_BLACK every
+// frame (the §2.6 color-binding mechanism — face only, the grey bevel edges
+// remain), reading as an inset DOS text field behind the WHITE name. Fixes
+// the recorded WHITE-on-face-13 contrast fail.
+unsigned char name_entry_value_face_color(const MenuLabelContext& /*context*/)
+{
+    return PURE_BLACK;
+}
+
 constexpr MenuButtonSpec kNameEntryRows[] = {
     // BACK cancels — nothing is written (§2.2). Escape hotkey.
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -2423,7 +2485,8 @@ constexpr MenuButtonSpec kNameEntryRows[] = {
     {.id = "company_name_value", .label = "",
      .x = 48, .y = 78, .w = 224, .h = 16,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryValueIndex,
-     .nav = {.down = kNameEntryRerollIndex}},
+     .nav = {.down = kNameEntryRerollIndex},
+     .color = &name_entry_value_face_color},
     {.id = "company_name_reroll", .label = "REROLL",
      .x = 86, .y = 102, .w = 68, .h = 14,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryRerollIndex,
@@ -2447,10 +2510,16 @@ void name_entry_draw_content(void* screen_state)
         name.resize(kCompanyNameMaxLen);
     game->text_normal.write_xy_center(kNameEntryCenterX, 82, WHITE, "%s",
                                       name.c_str());
-    // The slug preview teaches the display-name/filename split (§2.2, spec 2).
-    game->text_normal.write_xy_center(
-        kNameEntryCenterX, 126, GREY, "%s",
-        format_company_file_preview(name).c_str());
+    // §9.3: the slug preview is gone (F2 — the filename teaches nothing);
+    // the freed slot carries a GREY hint on a U2 black strip teaching the
+    // edit affordance instead (the secondary voice).
+    static constexpr const char kNameEntryHint[] = "CLICK THE NAME TO EDIT IT";
+    constexpr int kHintInk =
+        static_cast<int>(sizeof(kNameEntryHint) - 1) * 6 - 1;
+    game->draw_rect_filled(kNameEntryCenterX - kHintInk / 2 - 2, 125,
+                           kHintInk + 4, 8, PURE_BLACK, 150);
+    game->text_normal.write_xy_center(kNameEntryCenterX, 126, GREY, "%s",
+                                      kNameEntryHint);
 }
 
 Sint32 name_entry_on_spec_row(int row, void* screen_state)
@@ -2679,11 +2748,15 @@ void company_list_draw_content(void* screen_state)
     const int total =
         st != nullptr ? static_cast<int>(st->companies.size()) : 0;
     strip_text(25, 8, format_company_list_title(total));
+    // §9.4 header line, de-collided: GUYS right-aligns over the 2-char
+    // count column (141..152, 3px clear of PLAYED); BK matches the button
+    // label and centers over the BK column (219..239); DEL centers over
+    // the X column (243..263).
     strip_text(27, 16, "NAME");
-    strip_text(135, 16, "GUYS");
+    strip_text(129, 16, "GUYS");
     strip_text(155, 16, "PLAYED");
-    strip_text(219, 16, "BKUP");
-    strip_text(243, 16, "DEL");
+    strip_text(223, 16, "BK");
+    strip_text(245, 16, "DEL");
 
     if (st == nullptr || total == 0) {
         // Transient shape: deleting the last company exits the screen, but
@@ -2695,14 +2768,23 @@ void company_list_draw_content(void* screen_state)
 
     const int first = st->page.first_index();
     const int end = st->page.end_index();
+    // §9.4 active-row legibility: the active company's row wears the red
+    // do_outline face (U4, stamped by the rewire), where DARK_BLUE text is
+    // the recorded contrast fail — its content columns draw WHITE instead.
+    // Content-pass row text is not a vdisplay button label, so the §8.4
+    // "labels stay DARK_BLUE" rejection does not apply here.
+    const std::string& active_slot = og::data::active_company_slot();
     for (int r = 0; r < end - first; ++r) {
-        const CompanyRowText row = format_company_row(
-            st->companies[static_cast<std::size_t>(first + r)]);
+        const og::data::CompanyInfo& info =
+            st->companies[static_cast<std::size_t>(first + r)];
+        const CompanyRowText row = format_company_row(info);
+        const unsigned char row_color =
+            info.slot == active_slot ? WHITE : DARK_BLUE;
         const int y = 27 + 15 * r;
-        game->text_normal.write_xy(27, y, DARK_BLUE, "%s", row.name.c_str());
-        game->text_normal.write_xy(141, y, DARK_BLUE, "%s",
+        game->text_normal.write_xy(27, y, row_color, "%s", row.name.c_str());
+        game->text_normal.write_xy(141, y, row_color, "%s",
                                    row.roster.c_str());
-        game->text_normal.write_xy(155, y, DARK_BLUE, "%s",
+        game->text_normal.write_xy(155, y, row_color, "%s",
                                    row.played.c_str());
     }
 

@@ -134,9 +134,10 @@ public:
     // name, clamped to the display cap). Exhausted input (EOF) keeps the
     // suggestion — the headless internal-path checks call prepare_new_game
     // with no stdin and still expect a founded company. Deliberately NO
-    // "file: <slug>.gtl" preview here: the terminal clients persist in place
-    // to their own slot (config_.save_name, [SAVE-R2]), so the SDL slug
-    // preview would name a file that is never created.
+    // "file: <slug>.gtl" preview here (§9.3/F2 removed it on every client;
+    // for terminals it was also simply false: they persist in place to their
+    // own slot (config_.save_name, [SAVE-R2]), so the SDL slug preview would
+    // name a file that is never created).
     std::string prompt_new_company_name()
     {
         SeededRandom rng(
@@ -917,7 +918,7 @@ private:
             for (std::size_t i = 0; i < slots.size(); ++i) {
                 const guy& member =
                     *save_data_.team_list[static_cast<std::size_t>(slots[i])];
-                std::printf("%2zu. [%c] %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
+                std::printf("%2zu. [%c] %-14s Family=%-14s L=%2d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
                     i + 1,
                     member.deployed ? 'X' : ' ',
                     member.name.c_str(),

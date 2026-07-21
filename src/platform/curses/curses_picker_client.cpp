@@ -393,7 +393,7 @@ void view_team_roster(Menu& menu, SaveData& save)
             const guy& member =
                 *save.team_list[static_cast<std::size_t>(slots[i])];
             entries.push_back(ListEntry{std::format(
-                "[{}] {:<14} {:<14} L={} STR={} DEX={} CON={} INT={} ARM={}",
+                "[{}] {:<14} {:<14} L={:>2} STR={} DEX={} CON={} INT={} ARM={}",
                 member.deployed ? 'X' : ' ', member.name,
                 og::ui::family_display_name(member.family), member.level,
                 member.strength, member.dexterity, member.constitution,
@@ -938,10 +938,11 @@ bool CursesPickerClient::prepare_new_game()
     std::string company_name = og::ui::generate_company_name(rng);
     for (;;) {
         bool accepted = false;
-        // Deliberately NO "file: <slug>.gtl" preview in the label: the curses
-        // client persists in place to its own slot (config_.save_name,
+        // Deliberately NO "file: <slug>.gtl" preview in the label (§9.3/F2
+        // removed it on every client; here it was also simply false — the
+        // curses client persists in place to its own slot (config_.save_name,
         // [SAVE-R2]), so the SDL slug preview would name a file that is
-        // never created.
+        // never created).
         const std::string label = "Name: ";
         std::string result =
             menu.prompt("Found Your Company", label, company_name, accepted);
