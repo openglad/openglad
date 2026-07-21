@@ -614,6 +614,11 @@ pages** (roster cap 24). Entry keeps fadeblack and the full blocking-loop obliga
 (engine-owned: lobby poll, remote-start TeamBuildScope, level-reload guard,
 autosave_on_mutation, ready_reset_on_mutation).
 
+The final shipped geometry and line-B content are amended by §9.10–§9.12. In
+particular, the networked line-B slot is also the connection-health surface: an
+ORANGE `connection_alert` replaces the normal role/census status while the link is
+degraded, then yields back to that status when the connection recovers.
+
 ```
 | IRON KETTLE BAND                                    GOLD 12345    (y=3)        |
 | SCEN 7: THE FORTRESS   DEP 8/12              [<] 1/2 [>]          (y=13)       |
@@ -1659,11 +1664,17 @@ red commits.
    v10 constant tests; all in the single version-bump commit.
 7. **Save version pins**: test_save_data_versions.cpp:491, :686 (→ 14) + the v14
    ladder additions + fuzz replica, in the format-bump commit.
-8. **Canary pin-map audit**: before merge, verify byte-identity of
-   save_data.cpp:118, sim_input_handler.cpp:193/209/340/345/353, and the
-   walker.cpp/gloader.cpp/game_world.cpp/input_state.cpp anchors; run the mutation
-   canary manually; record the result in the PR (the canary is NOT in CI — silence is
-   not success).
+8. **Canary pin-map audit**: `tests/parity/scenario_table.h` is the source of truth.
+   Before merge, verify byte-identity of `save_data.cpp:118`;
+   `walker_movement.cpp:174`; `walker.cpp:487/1192/1354/2262`;
+   `gloader.cpp:467/473/475/483/672`; `game_world.cpp:1634/1636/1724`; and the
+   family anchors added by the WP7 triage (`family_druid.cpp:51`,
+   `family_archer.cpp:127`, `family_mage.cpp:198`, `family_slime.cpp:125/139`,
+   `treasure_family_navigation.cpp:85`) alongside the remaining table entries.
+   `sim_input_handler.cpp` and `input_state.cpp` are now deliberately pin-free: their
+   former mutations were runtime-dead and were retargeted to the lines above. Run the
+   mutation canary manually and record the result in the PR (the canary is NOT in CI
+   — silence is not success).
 9. **Money pins**: test_picker_network_client.cpp seven-player trio → shares +
    conservation; test_save_load_team.cpp:602-682 → baseline+share; spectator/withdraw
    completion-credit assertions; [NET-R2] request_start_game sweep — all in the WP5
@@ -1739,6 +1750,24 @@ grafts from all six judges folded in; resolutions where they conflicted:
     slot authority predates the company layer and terminal users address slots
     explicitly; silently multiplying files under a fixed-slot CLI contract would be
     the surprising behavior.
+14. **Accepted WP7 residue (known quirks, not merge blockers)**:
+    - A follow camera can retain a foreign hero's corpse through its revive window,
+      then re-enter follow on the default target rather than the previously selected
+      one (E1). Fixing it changes null-seat spectator semantics and needs a dedicated
+      follow-flow re-pin pass.
+    - The radar's `controlob->user() == mynum` gate retains a pre-existing
+      global/local-seat alias that follow mode can now expose (E2). A correct fix
+      requires plumbing the view's global seat into that gate.
+    - Local multi-view counts benched members when deciding which team views exist;
+      an only-benched team can therefore receive a view with nothing to control (E5).
+    - In allied network play, the between-level GOLD label reads the session-team
+      wallet while the machine's awarded share is banked in team 0, so a joiner's
+      freshly banked share may not be visible in that label until later (E6).
+    - Networked spectators may open the local preferences menu (E8). This is a
+      client-local side effect and does not grant simulation authority.
+    - The new-company name-entry screen intentionally has no lobby-poll or
+      remote-start obligation (E9): a joiner parked there observes a host launch only
+      after leaving the screen. The engine contract records the same exception.
 
 ---
 

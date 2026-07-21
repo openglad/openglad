@@ -33,6 +33,10 @@ window. Keep this table in sync with the registry:
 | TEAMS | **Engine** | `teams_menu_screen_spec()` via `create_teams_menu()` (`exit_on_redraw`; the Rewire program replays the legacy compute+sync+trace verbatim from picker_team_build.cpp; row bars draw beneath the buttons in `draw_background`; the reload guard sits in `frame_tick` — one frame later than the legacy loop-top reload, the flows poll with timeouts). §2.7 cross-control (WP4 ready-go-slot): row 16 reuses the local-only guy-team rect (150,146,70,12) — the second same-geometry mutually-exclusive pair — visible to ALL peers when networked, host-only actionable via the screen's one `MenuSpecRow` dispatch (`picker_teams_menu_engine_on_spec_row`: non-host popup, {0,1} sanitize, TRACE, `picker_lobby_sync_settings_from_save()` ⇒ the server clears every non-host machine's ready per §4.5; SESSION-ONLY field ⇒ no company autosave); curses parity = the lobby's `[c]` key + `Control:` status line |
 | NETWORKING | **Legacy (final for Layer E)** | `SdlPickerClient::configure_networking` (state-machine-owned; valve V2 EXERCISED — see the "V2 decision record" section; pinned by `MenuEngine.networking_stays_legacy_v2_decision`) |
 
+Layer-F exception (E9): the directly entered new-company name screen deliberately
+sets neither `polls_lobby` nor a remote-start scope. A joiner parked there launches
+only after leaving the screen and returning to a polling menu.
+
 ## Calling conventions (unchanged by the engine)
 
 - **Return flags** (`picker_sdl_defs.h`): `MENU_EXIT = 1`, `MENU_REDRAW = 2`,
