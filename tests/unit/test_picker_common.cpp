@@ -3286,19 +3286,131 @@ TEST(BaseCampMpDisplay, ready_counts_group_seats_into_machines)
     EXPECT_EQ(3, counts.machines);
 }
 
-TEST(BaseCampMpDisplay, net_line_and_net_row_formats_hold_their_budgets)
+TEST(BaseCampMpDisplay, session_census_counts_machines_and_players)
 {
-    const std::string line = og::ui::format_base_camp_net_line(
-        {.ready = 2, .machines = 3}, {.deployed = 9, .total = 16}, 7);
-    EXPECT_EQ("READY 2/3  DEP 9/16  SCEN 7", line)
-        << "the §2.5 networked line B shape";
-    EXPECT_LE(line.size(), 34u);
+    // Empty lobby (pre-first-state): 0/0.
+    const og::ui::BaseCampSessionCensus none =
+        og::ui::count_base_camp_session_census({});
+    EXPECT_EQ(0, none.machines);
+    EXPECT_EQ(0, none.players);
 
-    // Worst realistic case still clips inside the 34-char strip budget.
-    const std::string wide = og::ui::format_base_camp_net_line(
-        {.ready = 15, .machines = 15}, {.deployed = 48, .total = 48}, 9999);
-    EXPECT_LE(wide.size(), 34u);
+    // §9.12: machines = distinct machine keys with the HOST machine
+    // INCLUDED (unlike the §4.3 ready counts); players = total seats.
+    // net-host has 2 seats, net-b has 2 seats, net-c one — 3 machines,
+    // 5 players.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
+    };
+    const og::ui::BaseCampSessionCensus census =
+        og::ui::count_base_camp_session_census(players);
+    EXPECT_EQ(3, census.machines);
+    EXPECT_EQ(5, census.players);
+}
 
+TEST(BaseCampMpDisplay, host_display_name_prefers_company_over_wire_name)
+{
+    // §9.12: player names are machine-generated "net-<hex>" wire ids, so
+    // the joiner's HOST: display uses the host machine's company (the
+    // format_go_blockers naming convention), 16-char COMPANY clip.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "A COMPANY NAME PAST SIXTEEN", true,
+                        false, 1, 0),
+        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0),
+    };
+    EXPECT_EQ("A COMPANY NAME P",
+              og::ui::base_camp_host_display_name(players));
+
+    // Empty company falls back to the machine key (seat suffix stripped).
+    const std::vector<og::sim::LobbyPlayer> bare = {
+        make_lobby_seat(0, "net-h#2", "", true, false, 1, 0)};
+    EXPECT_EQ("net-h", og::ui::base_camp_host_display_name(bare));
+
+    // No host seat yet (pre-election): empty.
+    const std::vector<og::sim::LobbyPlayer> unelected = {
+        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0)};
+    EXPECT_EQ("", og::ui::base_camp_host_display_name(unelected));
+}
+
+TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 2, 0),
+        make_lobby_seat(1, "net-j", "JOIN RIVER BAND", false, false, 1, 0),
+        make_lobby_seat(2, "net-j#1", "JOIN RIVER BAND", false, false, 1, 0),
+    };
+
+    // §9.12 host shape: role + room + census. "MACH / PLYR" is the
+    // recorded budget latitude (spelled-out overruns 42 at double digits).
+    const std::string host = og::ui::format_base_camp_session_status(
+        true, "GLAD-7Q2F", players);
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR", host);
+    // Relay-less (LAN) host: the census alone.
+    EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
+              og::ui::format_base_camp_session_status(true, "", players));
+
+    // §9.12 joiner shape: room + the host machine's company.
+    EXPECT_EQ("IN GLAD-7Q2F - HOST: IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      players));
+    // Direct (LAN) joiner: no room code.
+    EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "", players));
+    // Host not yet known (pre-election on a dedicated server).
+    EXPECT_EQ("IN GLAD-7Q2F",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      {}));
+    EXPECT_EQ("JOINED",
+              og::ui::format_base_camp_session_status(false, "", {}));
+
+    // Budget pins: the absolute worst shapes fit the 42-char line-B band
+    // (x=8 text, pager wall at x=263 => 42 chars) — host at the 16-seat
+    // global cap, joiner at the full 16-char company clip; a pathological
+    // room code display-clips at 12 and the whole line at 42.
+    std::vector<og::sim::LobbyPlayer> sixteen;
+    for (int i = 0; i < 16; ++i) {
+        sixteen.push_back(make_lobby_seat(
+            static_cast<std::uint8_t>(i),
+            std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0));
+    }
+    const std::string worst_host = og::ui::format_base_camp_session_status(
+        true, "GLAD-XXXX", sixteen);
+    EXPECT_EQ("HOSTING GLAD-XXXX - 16 MACH / 16 PLYR", worst_host);
+    EXPECT_LE(worst_host.size(), 42u);
+    const std::string worst_join = og::ui::format_base_camp_session_status(
+        false, "GLAD-XXXX", players);
+    EXPECT_LE(worst_join.size(), 42u);
+    EXPECT_LE(og::ui::format_base_camp_session_status(
+                  true, "GLAD-TOO-LONG-CODE", sixteen)
+                  .size(),
+              42u);
+}
+
+TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0)};
+
+    // Healthy: the session status, plain color.
+    const og::ui::BaseCampLineB healthy = og::ui::compose_base_camp_line_b(
+        std::nullopt, true, "GLAD-7Q2F", players);
+    EXPECT_FALSE(healthy.alert);
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 1 MACH / 1 PLYR", healthy.text);
+
+    // Degraded: the alert takes the slot AND the color (§9.12 precedence —
+    // the ORANGE mapping rides the alert flag).
+    const og::ui::BaseCampLineB degraded = og::ui::compose_base_camp_line_b(
+        std::optional<std::string>("Status: connection lost"), true,
+        "GLAD-7Q2F", players);
+    EXPECT_TRUE(degraded.alert);
+    EXPECT_EQ("Status: connection lost", degraded.text);
+}
+
+TEST(BaseCampMpDisplay, net_row_formats_hold_their_budgets)
+{
     // §9.5.3: no HP column in the networked shape either.
     const og::ui::BaseCampNetRowText row = og::ui::format_base_camp_net_row(
         "TWELVECHARSNAME", "A COMPANY NAME PAST SIXTEEN", 123);

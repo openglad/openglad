@@ -3390,8 +3390,10 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
 
     // ---- §2.5 between-levels base camp, HOST view: merged roster (own rows
     // first from the reloaded private file, then the joiner's replicated
-    // slot), split-wallet GOLD label, READY n/m + DEP n/m header (§2.9
-    // flow 6: between levels every machine re-readies, so READY is 0/1). ----
+    // slot), split-wallet GOLD label, and the §9.12 (G5) session-status
+    // header: the host sees its role + the machine/player census (this
+    // direct-websocket lobby advertises no relay room, so the census
+    // stands alone after HOSTING). ----
     {
         auto host_scope = cleanup.host_session->activate();
         ActivePickerLobbyClientGuard active_client(host_client.get());
@@ -3410,14 +3412,14 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         EXPECT_EQ(std::format("GOLD {}", host_save.m_totalcash[0]),
                   og::ui::format_base_camp_gold_label(host_save))
             << "the GOLD block reads this machine's own banked wallet";
-        const og::ui::BaseCampDeployCounts deploys =
-            og::ui::count_base_camp_display_deploys(state.slots, host_save);
-        const og::ui::BaseCampReadyCounts ready =
-            og::ui::count_base_camp_ready_machines(
-                host_client->lobby_players());
-        EXPECT_EQ("READY 0/1  DEP 3/3  SCEN 2",
-                  og::ui::format_base_camp_net_line(ready, deploys,
-                                                    host_save.scen_num));
+        const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
+            host_client->connection_alert(),
+            host_client->host_controls_visible(),
+            host_client->session_room_code(),
+            host_client->lobby_players());
+        EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
+        EXPECT_EQ("HOSTING 2 MACH / 2 PLYR", header.text)
+            << "the host's line B carries role + census";
     }
 
     // ---- Same window, JOINER view: own row first, the host's two rows
@@ -3446,14 +3448,15 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         // follow-up (display source vs banking team under allied MP).
         ASSERT_EQ(1, join_save.my_team);
         EXPECT_EQ("GOLD 222", og::ui::format_base_camp_gold_label(join_save));
-        const og::ui::BaseCampDeployCounts deploys =
-            og::ui::count_base_camp_display_deploys(state.slots, join_save);
-        const og::ui::BaseCampReadyCounts ready =
-            og::ui::count_base_camp_ready_machines(
-                join_client->lobby_players());
-        EXPECT_EQ("READY 0/1  DEP 3/3  SCEN 2",
-                  og::ui::format_base_camp_net_line(ready, deploys,
-                                                    join_save.scen_num));
+        const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
+            join_client->connection_alert(),
+            join_client->host_controls_visible(),
+            join_client->session_room_code(),
+            join_client->lobby_players());
+        EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
+        EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND", header.text)
+            << "the joiner's line B names the host machine's company "
+               "(direct join: no room code)";
     }
 
     // ---- §2.9 flow 5 / §4.2 per-level reassembly, through the PRODUCTION
@@ -6084,7 +6087,8 @@ TEST(PickerNetworkClient,
 
     // The base camp's §2.5 line-B alert mirrors the failed link, and the
     // free function resolves it through the installed active client (no
-    // client installed => no alert => line B keeps the READY/DEP header).
+    // client installed => no alert => line B keeps the §9.12 session
+    // status).
     ASSERT_TRUE(join_client->connection_alert().has_value());
     EXPECT_EQ("Status: connection failed", *join_client->connection_alert());
     EXPECT_FALSE(picker_lobby_connection_alert().has_value());
@@ -6125,8 +6129,10 @@ TEST(PickerNetworkClient,
             "Status: connected");
     },
     10s)) << "relay join client should report a connected link";
-    // Healthy link: no alert — the base camp keeps the READY/DEP header.
+    // Healthy link: no alert — line B keeps the §9.12 session status,
+    // which names the joined room.
     EXPECT_FALSE(join_client->connection_alert().has_value());
+    EXPECT_EQ("GLAD-XKCD", join_client->session_room_code());
 
     relay_server.reset();
 
@@ -6170,8 +6176,20 @@ TEST(PickerNetworkClient,
     EXPECT_TRUE(status_lines_contain_exact(
         host_client->status_lines(),
         "Room: GLAD-XKCD"));
-    // A live advertised room raises no alert on the host's base camp.
+    // A live advertised room raises no alert on the host's base camp: the
+    // §9.12 line B carries the session status with the room code.
     EXPECT_FALSE(host_client->connection_alert().has_value());
+    EXPECT_EQ("GLAD-XKCD", host_client->session_room_code());
+    {
+        const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
+            host_client->connection_alert(),
+            host_client->host_controls_visible(),
+            host_client->session_room_code(),
+            host_client->lobby_players());
+        EXPECT_FALSE(header.alert);
+        EXPECT_EQ("HOSTING GLAD-XKCD - 1 MACH / 1 PLYR", header.text)
+            << "a healthy hosted room shows role + room + census";
+    }
 
     relay_server.reset();
 
@@ -6187,6 +6205,17 @@ TEST(PickerNetworkClient,
         "Room: GLAD-XKCD"));
     ASSERT_TRUE(host_client->connection_alert().has_value());
     EXPECT_EQ("Relay: connection lost", *host_client->connection_alert());
+    {
+        // §9.12 precedence: the degraded alert takes the line-B slot (and
+        // its ORANGE color) over the session status.
+        const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
+            host_client->connection_alert(),
+            host_client->host_controls_visible(),
+            host_client->session_room_code(),
+            host_client->lobby_players());
+        EXPECT_TRUE(header.alert);
+        EXPECT_EQ("Relay: connection lost", header.text);
+    }
 
     host_client->shutdown();
 }

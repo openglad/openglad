@@ -1464,8 +1464,8 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_FALSE(lobby.ready_calls[0]);
     EXPECT_EQ(1, lobby.roster_syncs);
 
-    // Networked draw pass: READY/DEP header, COMPANY column, foreign X/-
-    // glyphs (smoke + coverage; the strings are unit-pinned in
+    // Networked draw pass: §9.12 session-status header, COMPANY column,
+    // foreign X/- glyphs (smoke + coverage; the strings are unit-pinned in
     // test_picker_common).
     ASSERT_NE(nullptr, spec.draw_background);
     ASSERT_NE(nullptr, spec.draw_content);

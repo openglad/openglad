@@ -2142,31 +2142,28 @@ void base_camp_draw_content(void* screen_state)
     }
     strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
 
-    // Line B: solo scenario/deploy header, or the §2.5 networked
-    // READY n/m + DEP n/m + SCEN header (34-char budget). READY counts
-    // non-host MACHINES; DEP counts the merged display list.
+    // Line B: solo scenario/deploy header, or the §9.12 (G5) networked
+    // session status — role + room code + machine/player census ("HOSTING
+    // GLAD-XXXX - 2 MACH / 3 PLYR" / "IN GLAD-XXXX - HOST: <company>") —
+    // with the degraded-link alert (join connecting/failed/lost, host
+    // relay drop) keeping slot AND color precedence until the link heals.
+    // This is the base-camp home of the lobby clients' status lines — the
+    // pre-reshape team-build screen drew them at the same spot. The READY
+    // r/m + DEP d/t counts this line carried through round 1 are SUPERSEDED
+    // here (§9.12 records the 42-char band tradeoff): the §2.6 GO/READY
+    // button state machine + the per-row deploy toggles carry those states.
     const bool networked = picker_lobby_is_networked();
     std::string line_b;
     unsigned char line_b_color = WHITE;
     if (networked) {
-        // Degraded-link alert (join connecting/failed/lost, host relay
-        // drop): the READY/DEP header would be dead placeholder data, so
-        // the alert takes over the §2.5 line-B slot until the link heals.
-        // This is the base-camp home of the lobby clients' status lines —
-        // the pre-reshape team-build screen drew them at the same spot.
-        const std::optional<std::string> alert =
-            picker_lobby_connection_alert();
-        if (alert.has_value()) {
-            line_b = *alert;
+        const BaseCampLineB header = compose_base_camp_line_b(
+            picker_lobby_connection_alert(),
+            picker_lobby_host_controls_visible(),
+            picker_lobby_session_room_code(),
+            picker_lobby_players());
+        line_b = header.text;
+        if (header.alert)
             line_b_color = static_cast<unsigned char>(ORANGE_START);
-        } else {
-            line_b = format_base_camp_net_line(
-                count_base_camp_ready_machines(picker_lobby_players()),
-                st != nullptr
-                    ? count_base_camp_display_deploys(st->slots, save)
-                    : BaseCampDeployCounts{},
-                save.scen_num);
-        }
     } else {
         line_b = format_base_camp_scen_line(save, game->world().title);
     }

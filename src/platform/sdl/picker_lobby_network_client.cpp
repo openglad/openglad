@@ -2940,6 +2940,14 @@ public:
         return std::nullopt;
     }
 
+    // §9.12 session status: the advertised relay room, raw — a dead relay
+    // room surfaces through connection_alert(), which outranks the status
+    // line on the base camp, so this never displays a dead room as healthy.
+    [[nodiscard]] std::string session_room_code() const override
+    {
+        return relay_room_code_;
+    }
+
     [[nodiscard]] bool host_controls_visible() const noexcept override
     {
         if (!state_.has_value())
@@ -3558,7 +3566,7 @@ public:
     // §2.5 line-B alert: mirror of rebuild_status_lines()'s "Status: ..."
     // line, read live from the transport so the base camp shows the link
     // state every frame — Connected clears the alert and hands line B back
-    // to the READY/DEP header.
+    // to the §9.12 session status.
     [[nodiscard]] std::optional<std::string> connection_alert() const override
     {
         if (!transport_)
@@ -3575,6 +3583,13 @@ public:
             return "Status: connection lost";
         }
         return std::nullopt;
+    }
+
+    // §9.12 session status: the room this client joined through (empty for
+    // direct/LAN joins — the status helper falls back to "JOINED - ...").
+    [[nodiscard]] std::string session_room_code() const override
+    {
+        return relay_room_code_;
     }
 
     [[nodiscard]] bool host_controls_visible() const noexcept override

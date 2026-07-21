@@ -2163,3 +2163,77 @@ are all FROZEN and untouched.
 | TRAIN header deletion | no header-string pin existed (verified) — screenshot-verified |
 | terminals | ZERO re-pins (no change; suites re-run green) |
 | wasm | ZERO ledger changes (verification recorded above) |
+
+### 9.12 UX round 2 (2026-07-21) — G5: networked session-status header [stage host-visibility; FINAL]
+
+On a HEALTHY networked base camp nothing said you were hosting or how many
+players were connected — only degraded links surfaced (the orange
+connection_alert), and the round-1 line B carried READY r/m + DEP d/t +
+SCEN with no role/room/census. This subsection AMENDS the §2.5 networked
+line-B content (and the §9.5.3-era net-line formatter); it is DISPLAY-ONLY
+over existing lobby data — protocol, wire formats, GO/READY/deploy/
+ownership semantics all FROZEN and untouched. Geometry is UNTOUCHED (the
+§9.10 line-B slot at x=8, y=17 and every rect stand).
+
+#### 9.12.1 The line-B priority stack (SDL, networked)
+
+1. **`connection_alert` active** → the alert text, ORANGE — unchanged slot
+   AND color precedence (join connecting/failed/lost, host relay drop).
+2. **Healthy** → the G5 session status, WHITE
+   (`format_base_camp_session_status`, pure, picker_common):
+   - host: `HOSTING <ROOM> - <n> MACH / <p> PLYR`
+     (relay-less/LAN host: `HOSTING <n> MACH / <p> PLYR`)
+   - joiner: `IN <ROOM> - HOST: <company16>`
+     (direct join: `JOINED - HOST: <company16>`; host not yet elected:
+     the room half alone — `IN <ROOM>` / `JOINED`)
+
+   `compose_base_camp_line_b(alert, is_host, room, players)` is the
+   pinnable stack (returns text + an alert flag the draw arm maps to
+   ORANGE). Solo line B (scen/DEP) is byte-untouched.
+
+#### 9.12.2 Recorded decisions + budget math
+
+- **The 42-char band forced a cut (RECORDED)**: line B runs x=8 to the
+  pager wall at x=263 → 42 chars. Room code (9, "GLAD-XXXX") + census +
+  READY r/m + DEP d/t ≥ 43 in realistic shapes (48-slot two-machine DEP
+  alone is 9 chars) — they cannot coexist. The round-1 READY/DEP counts
+  are SUPERSEDED on this line: the §2.6 GO/READY button state machine
+  already carries them (host GO face grey-gated/green + the WAITING FOR
+  blockers popup names unready companies; the joiner's own state IS the
+  READY/UNREADY button; per-row deploy toggles + the §4.2 cap popup carry
+  deploys), while role/room/census existed NOWHERE — the G5 gap wins the
+  slot. SCEN n likewise (backdrop + SET LEVEL carry it; solo keeps it).
+- **`MACH / PLYR`, not spelled out (RECORDED, the "shape like" latitude)**:
+  `HOSTING GLAD-XXXX - 16 MACHINES / 16 PLAYERS` = 44 > 42; the
+  abbreviated absolute worst (16-seat global cap) is 37. Census machines
+  = distinct machine keys with the HOST machine INCLUDED
+  (`count_base_camp_session_census` — deliberately unlike the §4.3
+  READY denominator); players = total seats.
+- **HOST: shows the host machine's COMPANY (RECORDED)**: player names are
+  machine-generated `net-<hex>` wire ids; the company is the human
+  identity (the format_go_blockers naming convention), machine-key
+  fallback when empty, 16-char COMPANY-column clip.
+- **Room code source**: new display-only `IPickerLobbyClient::
+  session_room_code()` (default empty; both network clients return their
+  relay room code raw — a dead room surfaces through connection_alert,
+  which outranks the status, so it never advertises as healthy). Room
+  display-clips at 12 defensively; the NETWORKING screen keeps the
+  authoritative full form. Role = `host_controls_visible()` (a joiner
+  ELECTED host on a dedicated server correctly reads HOSTING).
+- **Terminals**: the curses lobby status list gains the SAME helper line
+  (role + census + host company; no room code exists on that path). The
+  text picker holds no networked lobby — ZERO text changes (recorded).
+- **format_base_camp_net_line DELETED** (the SDL screen was its only
+  consumer — the format_company_file_preview precedent);
+  `count_base_camp_ready_machines`/`count_base_camp_display_deploys`
+  live on under the frozen §2.6/§4.2 semantics.
+
+#### 9.12.3 Re-pin blast radius (landed in the SAME commit)
+
+| change | re-pins |
+|---|---|
+| net-line formatter replaced | unit: net-line pins DELETED with the helper; NEW census/host-name/status-shape/budget-42/compose-precedence pins (test_picker_common) |
+| line-B content (SDL draw arm) | flow: host_and_join_win_level1... line-B EXPECTs → host census + joiner host-name pins; host_relay_flow → healthy `HOSTING GLAD-XKCD - 1 MACH / 1 PLYR` + post-drop alert-precedence compose pins; join_relay_flow → session_room_code pin |
+| curses status line | roster_reflects_two_players gains `HOSTING 2 MACH / 2 PLYR` + `JOINED - HOST: ...` pins |
+| geometry / nav / ordinals | ZERO (no button, rect, or model change — layout tables, BFS matrices, kCreateMenu*Index, 1-based text consumers, injector flows all untouched) |
+| wasm §2.10 ledger | ZERO (text-only change; no coordinate moved) |

@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -323,11 +324,48 @@ struct BaseCampReadyCounts {
 BaseCampReadyCounts count_base_camp_ready_machines(
     const std::vector<og::sim::LobbyPlayer>& players);
 
-// §2.5 header line B, networked shape: "READY r/m  DEP d/t  SCEN n",
-// clipped to the 34-char budget.
-std::string format_base_camp_net_line(BaseCampReadyCounts ready,
-                                      BaseCampDeployCounts deploys,
-                                      int scen_num);
+// §9.12 (G5) lobby census over the replicated players: machines = distinct
+// machine keys (the HOST machine included, unlike BaseCampReadyCounts),
+// players = total seats.
+struct BaseCampSessionCensus {
+    int machines = 0;
+    int players = 0;
+};
+BaseCampSessionCensus count_base_camp_session_census(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The host machine's human identity for the joiner's "HOST:" display:
+// its company name (players carry machine-generated "net-<hex>" wire names),
+// falling back to the machine key when the company is empty — the
+// format_go_blockers naming convention. Clipped to the 16-char COMPANY
+// column budget. Empty until a host seat exists in the replicated state.
+std::string base_camp_host_display_name(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §9.12 header line B, networked HEALTHY shape — the G5 session status
+// (role + room code + census), clipped to the 42-char line-B band:
+//   host:   "HOSTING <ROOM> - <n> MACH / <p> PLYR"  (no room: the census
+//           alone after HOSTING)
+//   joiner: "IN <ROOM> - HOST: <name16>"  (no room: "JOINED - HOST: ...";
+//           host not yet known: the room half alone)
+// Room codes display-clip at 12 chars (relay codes are "GLAD-XXXX").
+std::string format_base_camp_session_status(
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The §2.5/§9.12 networked line-B priority stack: a degraded-link
+// connection_alert takes the slot (and the ORANGE color) over the healthy
+// session status. `alert` set => {alert text, alert=true}.
+struct BaseCampLineB {
+    std::string text;
+    bool alert = false;
+};
+BaseCampLineB compose_base_camp_line_b(
+    const std::optional<std::string>& alert,
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players);
 
 // --- §2.6 GO / READY slot (the base-camp dual-role button) ---
 

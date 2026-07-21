@@ -69,13 +69,22 @@ public:
         return {};
     }
     // A short degraded-link banner for the base camp's §2.5 line-B slot, or
-    // nullopt while the session is healthy (the READY/DEP header carries the
-    // healthy state). Local/solo clients never alert. Join clients report the
+    // nullopt while the session is healthy (the §9.12 session status carries
+    // the healthy state). Local/solo clients never alert. Join clients report the
     // transport link ("Status: connecting / connection failed / connection
     // lost"); the host reports a dead relay room ("Relay: connection lost").
     [[nodiscard]] virtual std::optional<std::string> connection_alert() const
     {
         return std::nullopt;
+    }
+    // §9.12 (G5) display-only: the relay room code this session advertises
+    // (host) or joined through (relay joiner). Empty for local sessions,
+    // direct (LAN) joins, and relay-less hosts. Returned raw even while the
+    // relay link is degraded — connection_alert() outranks the session
+    // status on the base camp, so a dead room never displays as healthy.
+    [[nodiscard]] virtual std::string session_room_code() const
+    {
+        return {};
     }
     [[nodiscard]] virtual bool host_controls_visible() const noexcept
     {
@@ -161,6 +170,7 @@ bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();
+std::string picker_lobby_session_room_code();
 bool picker_lobby_host_controls_visible();
 bool picker_lobby_request_team_change(short team);
 bool picker_lobby_set_ready(bool ready);

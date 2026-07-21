@@ -1344,6 +1344,12 @@ public:
             lines.push_back("Players: " + std::to_string(state_->players.size()));
             lines.push_back("Deployed: " + std::to_string(lobby_deployed) +
                             "/" + std::to_string(lobby_slots));
+            // §9.12 (G5) census parity: the same session-status line the
+            // SDL base camp header shows — role + machine/player census +
+            // the host machine's company for joiners (the curses lobby has
+            // no relay room code, so the room half stays empty).
+            lines.push_back(og::ui::format_base_camp_session_status(
+                role_ == LobbyRole::Host, {}, state_->players));
             // §2.7: every peer sees the mode that changes its own rights
             // (the SDL TEAMS row's shared label formatter).
             lines.push_back(

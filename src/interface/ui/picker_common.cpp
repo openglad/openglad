@@ -31,6 +31,7 @@
 #include <format>
 #include <functional>
 #include <map>
+#include <set>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -1093,14 +1094,78 @@ BaseCampReadyCounts count_base_camp_ready_machines(
     return counts;
 }
 
-std::string format_base_camp_net_line(BaseCampReadyCounts ready,
-                                      BaseCampDeployCounts deploys,
-                                      int scen_num)
+BaseCampSessionCensus count_base_camp_session_census(
+    const std::vector<og::sim::LobbyPlayer>& players)
 {
-    return clip_chars(std::format("READY {}/{}  DEP {}/{}  SCEN {}",
-                                  ready.ready, ready.machines,
-                                  deploys.deployed, deploys.total, scen_num),
-                      34);
+    std::set<std::string, std::less<>> machines;
+    for (const og::sim::LobbyPlayer& player : players)
+        machines.insert(std::string(lobby_player_machine_key(player.name)));
+    BaseCampSessionCensus census;
+    census.machines = static_cast<int>(machines.size());
+    census.players = static_cast<int>(players.size());
+    return census;
+}
+
+std::string base_camp_host_display_name(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    for (const og::sim::LobbyPlayer& player : players) {
+        if (!player.is_host)
+            continue;
+        if (!player.company.empty())
+            return clip_chars(player.company, 16);
+        return clip_chars(
+            std::string(lobby_player_machine_key(player.name)), 16);
+    }
+    return {};
+}
+
+std::string format_base_camp_session_status(
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    // Room codes display-clip at 12 (relay codes are 9-char "GLAD-XXXX";
+    // the NETWORKING screen keeps the authoritative full form).
+    const std::string room = clip_chars(std::string(room_code), 12);
+    std::string status;
+    if (is_host) {
+        // §9.12 budget note: "MACH / PLYR" is the recorded "shape like"
+        // latitude call — the spelled-out census overruns the 42-char band
+        // at double-digit counts ("HOSTING GLAD-XXXX - 16 MACHINES / 16
+        // PLAYERS" = 44); the abbreviated worst case is 37.
+        const BaseCampSessionCensus census =
+            count_base_camp_session_census(players);
+        const std::string census_part = std::format(
+            "{} MACH / {} PLYR", census.machines, census.players);
+        status = room.empty()
+            ? std::format("HOSTING {}", census_part)
+            : std::format("HOSTING {} - {}", room, census_part);
+    } else {
+        const std::string host_name = base_camp_host_display_name(players);
+        const std::string room_part =
+            room.empty() ? std::string("JOINED")
+                         : std::format("IN {}", room);
+        status = host_name.empty()
+            ? room_part
+            : std::format("{} - HOST: {}", room_part, host_name);
+    }
+    return clip_chars(std::move(status), 42);
+}
+
+BaseCampLineB compose_base_camp_line_b(
+    const std::optional<std::string>& alert,
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    // Degraded links outrank the healthy session status: the alert takes
+    // the §2.5 line-B slot (and the ORANGE color) until the link heals.
+    if (alert.has_value())
+        return {.text = *alert, .alert = true};
+    return {.text = format_base_camp_session_status(is_host, room_code,
+                                                    players),
+            .alert = false};
 }
 
 ReadyGoPresentation format_ready_go_button(bool networked,

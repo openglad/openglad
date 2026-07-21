@@ -838,6 +838,13 @@ std::optional<std::string> picker_lobby_connection_alert()
     return std::nullopt;
 }
 
+std::string picker_lobby_session_room_code()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->session_room_code();
+    return {};
+}
+
 bool picker_lobby_host_controls_visible()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
