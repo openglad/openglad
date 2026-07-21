@@ -561,27 +561,27 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 ### 2.3 Company List (Load) — unlimited, paged, delete, backups door
 
 Chassis: the classic `Gladiator: Load Game` grey panel and save-slot geometry
-(25,25+15i), with the company-only BK/X actions appended as a narrow rail and
-the VIEW-LEVEL pager precedent in the footer (final presentation: §9.17).
+(25,25+15i), with each original slot divided into company/BK/X buttons and
+the VIEW-LEVEL pager precedent inside the footer (final presentation: §9.18).
 
 ```
 |        GLADIATOR: LOAD GAME          |          red inset title (y=15)          |
-|  [IRON KETTLE BAND   12  2026-07-19]   [BK] [X]    row 0  (y=25)              |
+|  [       IRON KETTLE BAND       ][BK][X]      row 0  (y=25)                  |
 |  ... rows 1..9 (15px pitch)                                                    |
 |  [BACK]                     1/2         [PREV] [NEXT]                          |
 ```
 
 | id | rect | label | budget | action |
 |---|---|---|---|---|
-| company_row_0..9 | (25,25+15i,220,10) | "" (content-pass text) | — | click = OPEN (1-click primary) |
-| company_bak_0..9 | (259,25+15i,24,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
-| company_del_0..9 | (287,25+15i,24,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
+| company_row_0..9 | (25,25+15i,164,10) | centered company name | 18/27 | click = OPEN (1-click primary) |
+| company_bak_0..9 | (193,25+15i,24,10) | `BK` | 2/2 | Backups sub-view (§2.4) |
+| company_del_0..9 | (221,25+15i,24,10) | `X` | 1/2 | **`no_or_yes`** confirm: `DELETE COMPANY <name>?` / `BACKUPS ARE DELETED TOO.` (U3) |
 | back | (25,175,40,20) | `BACK` | 4/5 | to main menu; classic slot-menu placement |
-| company_page_prev/next | (220,175,40,20)/(270,175,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text centered at (135,181) |
+| company_page_prev/next | (160,175,40,20)/(205,175,40,20) | `PREV`/`NEXT` | 4/5 | real MenuSpecRow actions, keyboard-live; hidden when ≤ 1 page; `p/N` text centered at (135,181) |
 
-- Row text: name ≤ 18ch at x=27, roster count 2ch at x=141, `YYYY-MM-DD` at x=155..215.
-  The old menu had no column-header row; the recognizable date and compact count ride
-  inside the restored 220px slot face.
+- Row text: the name ≤ 18ch is centered on the first face, as the saved-game
+  name was in the old Load Game menu. Roster counts, dates, and column headers
+  stay off this intentionally spare screen.
   Sort: last-played DESC; row 0 == what CONTINUE opens. **The active company's row gets
   red `do_outline`** (U4). Corrupt files list as `CORRUPT` rows (§3.5) with BK (restore
   path) and X (delete; confirm names the backups) still available.
@@ -2376,7 +2376,7 @@ explicit column.
 - Pins: exact geometry, nav matrices, NAME and TEAM coordinate taps, and all
   six Base Camp visual captures move to the new grid.
 
-### 9.17 UX round 7 (2026-07-21) — classic Load Game chassis [FINAL]
+### 9.17 UX round 7 (2026-07-21) — classic Load Game chassis [SUPERSEDED BY §9.18]
 
 The Company List keeps unlimited named companies, backups, deletion, sorting,
 and paging, but once again reads visually as OpenGlad's old Load Game menu.
@@ -2398,3 +2398,23 @@ This supersedes §9.4's free-floating header treatment.
 - Behavior, row ordinals, active-company outline, keyboard graph, and all
   company/backups flows are unchanged. Exact-table pins carry the new rects;
   engine draw smoke covers the custom background and content passes.
+
+### 9.18 UX round 8 (2026-07-21) — three faces inside each old slot [FINAL]
+
+The §9.17 side rail made the screen wider than the original Load Game frame
+and defeated the restoration. Keep the old menu's complete footprint and
+divide its existing slot faces instead.
+
+- The panel, title, ten 15px-pitch slot wells, BACK well, and late repaint
+  order remain exact transcriptions of `create_load_menu`.
+- Each `(25,25+15r,220,10)` slot becomes three buttons within the same
+  x=25..245 footprint: company `(25,25+15r,164,10)`, BK
+  `(193,25+15r,24,10)`, and X `(221,25+15r,24,10)`. Four-pixel gutters show
+  the original inset well between the faces.
+- The company face centers only the company name, matching the old saved-name
+  button. Counts, dates, and headings are removed from the SDL list.
+- Multi-page controls stay inside the classic footer: PREV at x=160 and NEXT
+  at x=205, with the page indicator centered at x=135. On a single page both
+  hide, leaving the original BACK-only footer.
+- Actions, row ordinals, keyboard navigation, paging, active-company marker,
+  backups, deletion, and confirmation behavior are unchanged.

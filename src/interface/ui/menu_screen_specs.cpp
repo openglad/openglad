@@ -2702,8 +2702,9 @@ Sint32 name_entry_on_spec_row(int row, void* screen_state)
 // and pager hidden, BACK alone — what a bare engine sweep sees.
 CompanyListScreenState* g_company_list_state = nullptr;
 
-// §2.3 / §9.17 geometry: the old Load Game menu's 220px slot column and
-// 15px pitch, with the company-era BK/X actions appended as a slim side rail.
+// §2.3 / §9.18 geometry: the old Load Game menu's 220px slot column and
+// 15px pitch, now split into the company, BK, and X faces requested by the
+// company workflow. Nothing escapes the retired slot's x=25..245 footprint.
 // Table order groups by kind — rows 0-9, BK 10-19, X 20-29, then the chrome —
 // so the MenuSpecRow arg (== the spec ordinal, G3) decodes as arg/10 = kind,
 // arg%10 = visual row.
@@ -2714,21 +2715,21 @@ constexpr int kCompanyListBackIndex = 30;
 constexpr int kCompanyListPrevIndex = 31;
 constexpr int kCompanyListNextIndex = 32;
 
-// One visual row's (row, BK, X) triple: company_row restores the retired slot
-// rect (25,25+15i,220,10); BK/X sit just outside its classic x=15..255 frame.
+// One visual row's (row, BK, X) triple divides the retired 220px slot face:
+// 164px for the company name, then two 24px actions separated by 4px gutters.
 // Static nav is the full-page multi-page shape (rows chain vertically,
 // row.right -> BK -> X, row9.down -> BACK, X column bottoms out on PREV); the
 // per-frame rewire recomputes every link from the live state anyway.
 #define OG_COMPANY_LIST_ROW(i)                                               \
     {.id = "company_row_" #i, .label = "",                                   \
-     .x = 25, .y = 25 + 15 * (i), .w = 220, .h = 10,                          \
+     .x = 25, .y = 25 + 15 * (i), .w = 164, .h = 10,                          \
      .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
              .down = (i) < 9 ? (i) + 1 : kCompanyListBackIndex,               \
              .right = kCompanyListBakBase + (i)}}
 #define OG_COMPANY_LIST_BAK(i)                                               \
     {.id = "company_bak_" #i, .label = "BK",                                 \
-     .x = 259, .y = 25 + 15 * (i), .w = 24, .h = 10,                          \
+     .x = 193, .y = 25 + 15 * (i), .w = 24, .h = 10,                          \
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListBakBase + (i),  \
      .nav = {.up = (i) > 0 ? kCompanyListBakBase + (i) - 1 : -1,              \
              .down = (i) < 9 ? kCompanyListBakBase + (i) + 1                  \
@@ -2736,7 +2737,7 @@ constexpr int kCompanyListNextIndex = 32;
              .left = (i), .right = kCompanyListDelBase + (i)}}
 #define OG_COMPANY_LIST_DEL(i)                                               \
     {.id = "company_del_" #i, .label = "X",                                  \
-     .x = 287, .y = 25 + 15 * (i), .w = 24, .h = 10,                          \
+     .x = 221, .y = 25 + 15 * (i), .w = 24, .h = 10,                          \
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListDelBase + (i),  \
      .nav = {.up = (i) > 0 ? kCompanyListDelBase + (i) - 1 : -1,              \
              .down = (i) < 9 ? kCompanyListDelBase + (i) + 1                  \
@@ -2762,15 +2763,16 @@ constexpr MenuButtonSpec kCompanyListRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListBackIndex,
      .nav = {.up = 9, .right = kCompanyListPrevIndex}},
     // Real MenuSpecRow pager actions (keyboard-live, §2.3); statically
-    // hidden — the rewire shows them only when the list spans pages.
+    // hidden — the rewire shows them only when the list spans pages. They
+    // share the old footer instead of growing a second rail outside it.
     {.id = "company_page_prev", .label = "PREV",
-     .x = 220, .y = 175, .w = 40, .h = 20,
+     .x = 160, .y = 175, .w = 40, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListPrevIndex,
      .nav = {.up = 29, .left = kCompanyListBackIndex,
              .right = kCompanyListNextIndex},
      .hidden = true},
     {.id = "company_page_next", .label = "NEXT",
-     .x = 270, .y = 175, .w = 40, .h = 20,
+     .x = 205, .y = 175, .w = 40, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kCompanyListNextIndex,
      .nav = {.up = 29, .left = kCompanyListPrevIndex},
      .hidden = true},
@@ -2877,7 +2879,7 @@ void company_list_draw_content(void* screen_state)
 
     // Verbatim legacy draw order: the engine has already drawn every face;
     // cover the old menu's footprint with its inset panel, then repaint the
-    // faces that live inside it. BK/X sit beyond x=255 and remain untouched.
+    // three faces that divide each original slot.
     game->draw_button(15, 9, 255, 199, 1, 1);
     game->draw_text_bar(19, 13, 251, 21);
     constexpr char kClassicLoadTitle[] = "Gladiator: Load Game";
@@ -2905,27 +2907,27 @@ void company_list_draw_content(void* screen_state)
 
     const int first = st->page.first_index();
     const int end = st->page.end_index();
-    // §9.4 active-row legibility: the active company's row wears the red
-    // do_outline face (U4, stamped by the rewire), where DARK_BLUE text is
-    // the recorded contrast fail — its content columns draw WHITE instead.
-    // Content-pass row text is not a vdisplay button label, so the §8.4
-    // "labels stay DARK_BLUE" rejection does not apply here.
     const std::string& active_slot = og::data::active_company_slot();
     for (int r = 0; r < end - first; ++r) {
         const og::data::CompanyInfo& info =
             st->companies[static_cast<std::size_t>(first + r)];
         const CompanyRowText row = format_company_row(info);
-        const unsigned char row_color =
-            info.slot == active_slot ? WHITE : DARK_BLUE;
-        const int y = 27 + 15 * r;
         game->draw_text_bar(23, 23 + 15 * r, 246, 36 + 15 * r);
+        vbutton* company_face = og::runtime::current_session
+                                    ->allbuttons_[static_cast<std::size_t>(r)];
+        const bool active = info.slot == active_slot;
+        if (company_face != nullptr)
+            company_face->label = active ? "" : row.name;
         repaint_face(r);
-        game->text_normal.write_xy(27, y, row_color, "%s", row.name.c_str());
-        game->text_normal.write_xy(141, y, row_color, "%s",
-                                   row.roster.c_str());
-        game->text_normal.write_xy(155, y, row_color, "%s",
-                                   row.played.c_str());
-        // The old slot loop redrew this one-pixel box after each face.
+        // The active row keeps the established red marker; its label is
+        // repainted in white because DARK_BLUE fails on that special face.
+        if (active) {
+            game->text_normal.write_xy_center(107, 27 + 15 * r, WHITE, "%s",
+                                              row.name.c_str());
+        }
+        repaint_face(kCompanyListBakBase + r);
+        repaint_face(kCompanyListDelBase + r);
+        // The old slot loop redrew one box around the complete slot face.
         game->draw_box(24, 24 + 15 * r, 245, 35 + 15 * r, 0, 0, 1);
     }
 
@@ -2933,8 +2935,8 @@ void company_list_draw_content(void* screen_state)
     repaint_face(kCompanyListBackIndex);
     game->draw_box(24, 174, 65, 195, 0, 0, 1);
     if (st->page.multi_page()) {
-        // PREV overlaps the restored panel and must be repainted with BACK;
-        // NEXT is repainted too so the footer is a single late draw pass.
+        // Both pagers live inside the restored panel and therefore join BACK
+        // in this single late footer repaint.
         repaint_face(kCompanyListPrevIndex);
         repaint_face(kCompanyListNextIndex);
         game->text_normal.write_xy_center(135, 181, DARK_BLUE, "%s",
