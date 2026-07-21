@@ -65,12 +65,12 @@ static int train_injector(void* data)
 
     // Wait for team menu
     SDL_Delay(500);
-    wait_for_interactable("roster_train_0", 10000);
+    wait_for_interactable("roster_row_0", 10000);
     SDL_Delay(750);
 
-    // Click TRAIN TEAM
-    fprintf(stderr, "  [test] clicking roster_train_0 (§2.5 per-row TRAIN)\n");
-    interact("roster_train_0");
+    // Click the roster row body (§9.11: the row IS the train affordance)
+    fprintf(stderr, "  [test] clicking roster_row_0 (§9.11 row-click train)\n");
+    interact("roster_row_0");
 
     // Wait for train menu buttons
     SDL_Delay(500);

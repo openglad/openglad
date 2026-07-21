@@ -6978,12 +6978,12 @@ TEST(PickerNetworkClient,
         EXPECT_EQ("Host Front", state.slots[1].character.name);
 
         // Foreign row clicks are read-only popups (deploy hit zone + the
-        // guarded TRAIN ordinal).
+        // guarded §9.11 row-body ordinal).
         trace_clear();
         EXPECT_EQ(MENU_OK, spec->on_spec_row(1, &state));
         EXPECT_TRUE(trace_contains("popup", "OWNED BY: IRON HOST BAND"));
         EXPECT_EQ(MENU_OK,
-                  spec->on_spec_row(kBaseCampTrainBase + 1, &state));
+                  spec->on_spec_row(kBaseCampRowBodyBase + 1, &state));
         EXPECT_FALSE(trace_contains("basecamp", "train slot="));
         EXPECT_TRUE(join_client->local_ready())
             << "foreign clicks must not clear ready";

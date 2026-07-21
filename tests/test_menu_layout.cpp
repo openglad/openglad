@@ -254,15 +254,18 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 }
 } // namespace
 
-// §2.5 base camp (the reimagined team build) at the §9.10.1 round-2 grid: 9
-// deploy/TRAIN row pairs at 15px pitch from y=41 (the roster block gains
-// clear top/bottom margins — header bar y=31, full-page panel ends y=171,
-// 6px off the strip), the page cluster top-right at y=15 beside the
-// relocated line B, and the bottom command strip BACK | HIRE | SCENARIO |
-// NETWORK | GO at y=178. Spec ordinals group by kind (dep 0-8, train 9-17,
-// pagers 18/19, strip 20-24, ready twin 25) so MenuSpecRow args decode
-// positionally; the layout is identical for classic and CTF campaigns.
-// Static shape = full page (9 rows), pagers hidden, GO visible.
+// §2.5 base camp (the reimagined team build) at the §9.10.1 round-2 grid
+// with the §9.11 (G4) row-click-train shape: 9 deploy/row-body pairs at
+// 15px pitch from y=41 (the roster block gains clear top/bottom margins —
+// header bar y=31, full-page panel ends y=171, 6px off the strip), the page
+// cluster top-right at y=15 beside the relocated line B, and the bottom
+// command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
+// column is DELETED: the row body (26,y,208,10) is a label-less no_draw hit
+// zone that opens the train screen (Enter on the row highlight trains).
+// Spec ordinals group by kind (dep 0-8, row body 9-17, pagers 18/19, strip
+// 20-24, ready twin 25) so MenuSpecRow args decode positionally; the layout
+// is identical for classic and CTF campaigns. Static shape = full page (9
+// rows), pagers hidden, GO visible.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -275,6 +278,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         int x, y, w, h;
         MenuNav nav;
         bool hidden;
+        // §9.11: the row-body train zones are no_draw hit zones (the row
+        // text is the affordance; the keyboard highlight still draws).
+        bool no_draw = false;
     };
     static const ExpectedButton kExpected[] = {
         {"roster_dep_0", "", 8, 41, 14, 10, MenuNav{.down = 1, .right = 9}, false},
@@ -286,15 +292,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_dep_6", "", 8, 131, 14, 10, MenuNav{.up = 5, .down = 7, .right = 15}, false},
         {"roster_dep_7", "", 8, 146, 14, 10, MenuNav{.up = 6, .down = 8, .right = 16}, false},
         {"roster_dep_8", "", 8, 161, 14, 10, MenuNav{.up = 7, .down = 20, .right = 17}, false},
-        {"roster_train_0", "TRAIN", 266, 41, 46, 10, MenuNav{.down = 10, .left = 0}, false},
-        {"roster_train_1", "TRAIN", 266, 56, 46, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false},
-        {"roster_train_2", "TRAIN", 266, 71, 46, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false},
-        {"roster_train_3", "TRAIN", 266, 86, 46, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false},
-        {"roster_train_4", "TRAIN", 266, 101, 46, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false},
-        {"roster_train_5", "TRAIN", 266, 116, 46, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false},
-        {"roster_train_6", "TRAIN", 266, 131, 46, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false},
-        {"roster_train_7", "TRAIN", 266, 146, 46, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false},
-        {"roster_train_8", "TRAIN", 266, 161, 46, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false},
+        {"roster_row_0", "", 26, 41, 208, 10, MenuNav{.down = 10, .left = 0}, false, true},
+        {"roster_row_1", "", 26, 56, 208, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false, true},
+        {"roster_row_2", "", 26, 71, 208, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false, true},
+        {"roster_row_3", "", 26, 86, 208, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false, true},
+        {"roster_row_4", "", 26, 101, 208, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false, true},
+        {"roster_row_5", "", 26, 116, 208, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false, true},
+        {"roster_row_6", "", 26, 131, 208, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false, true},
+        {"roster_row_7", "", 26, 146, 208, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false, true},
+        {"roster_row_8", "", 26, 161, 208, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false, true},
         {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 9, .right = 19}, true},
         {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 9, .left = 18}, true},
         {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 8, .right = 21}, false},
@@ -316,8 +322,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
-            << "base camp: 18 roster cells + 2 pagers + 5 strip buttons + "
-               "the hidden READY twin";
+            << "base camp: 18 roster cells (9 dep + 9 row bodies) + 2 "
+               "pagers + 5 strip buttons + the hidden READY twin";
         ASSERT_EQ(26, count);
 
         for (int i = 0; i < count; ++i)
@@ -327,6 +333,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             EXPECT_EQ(want.id, got.id) << campaign << " index " << i;
             EXPECT_EQ(want.label, got.label) << got.id;
             EXPECT_EQ(want.hidden, got.hidden) << got.id;
+            EXPECT_EQ(want.no_draw, got.no_draw) << got.id;
             EXPECT_EQ(want.x, got.x) << got.id;
             EXPECT_EQ(want.y, got.y) << got.id;
             EXPECT_EQ(want.w, got.sizex) << got.id;
@@ -342,7 +349,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         }
 
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
-        EXPECT_EQ(kBaseCampTrainBase, 9);
+        EXPECT_EQ(kBaseCampRowBodyBase, 9);
         EXPECT_EQ(kBaseCampPagePrevIndex, 18);
         EXPECT_EQ(kBaseCampPageNextIndex, 19);
         EXPECT_EQ(kCreateMenuBackIndex, 20);
@@ -362,6 +369,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                   buttons[kCreateMenuReadyIndex].sizex);
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
+        // §9.11 (G4) touch rule: the deploy toggle and the row-body train
+        // zone must never overlap — a fat-finger deploy tap must not open
+        // the train screen. 4px gutter: dep ends at x=22, row starts at 26.
+        for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
+        {
+            EXPECT_LE(buttons[r].x + buttons[r].sizex,
+                      buttons[kBaseCampRowBodyBase + r].x)
+                << "deploy toggle overlaps the row-click zone on row " << r;
+        }
 
         check_no_overlaps(buttons, count, "createmenu_basecamp");
         check_bounds(buttons, count, "createmenu_basecamp");
@@ -431,9 +447,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                     buttons[kCreateMenuNetworkingIndex].nav.right = -1;
                     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
                     {
-                        button& train = buttons[kBaseCampTrainBase + r];
-                        if (train.nav.down == kCreateMenuGoIndex)
-                            train.nav.down = kCreateMenuNetworkingIndex;
+                        button& body = buttons[kBaseCampRowBodyBase + r];
+                        if (body.nav.down == kCreateMenuGoIndex)
+                            body.nav.down = kCreateMenuNetworkingIndex;
                     }
                     buttons[kBaseCampPagePrevIndex].nav.down =
                         buttons[kBaseCampPagePrevIndex].nav.down ==
@@ -464,7 +480,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                     if (!buttons[r].hidden)
                         ++visible_rows;
                     EXPECT_EQ(buttons[r].hidden,
-                              buttons[kBaseCampTrainBase + r].hidden)
+                              buttons[kBaseCampRowBodyBase + r].hidden)
                         << variant << " row " << r;
                 }
                 EXPECT_EQ(expected_visible, visible_rows) << variant;
@@ -476,11 +492,15 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
         }
 
         // Empty roster: the rewire seeds the highlight on HIRE (§2.5).
+        // §9.11: the spec default is roster_row_0 (Enter trains); hidden
+        // when empty, so the seed must still land on HIRE.
         if (roster_size == 0)
         {
             button* buttons = picker_createmenu_buttons();
             const int count = picker_createmenu_button_count();
-            int highlighted = 0;  // roster_dep_0, hidden when empty
+            int highlighted = spec.default_highlight;
+            EXPECT_EQ(kBaseCampRowBodyBase, highlighted)
+                << "§9.11: entry highlights row 0's body";
             spec.nav.rewire(buttons, count, highlighted);
             EXPECT_EQ(kCreateMenuHireIndex, highlighted)
                 << "empty roster seeds the highlight on HIRE";
@@ -499,9 +519,10 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
 // the production rewire over {own rows} x {foreign rows} x {host, joiner}
 // x every page, driven through an installed networked lobby client (the
 // rewire itself hides GO for joiners and shapes foreign rows into no_draw
-// hit zones with hidden TRAIN buttons). Includes the [NET-R9] spectator
-// machine shape (0 own rows, all-foreign roster) and the >24 display-slot
-// defensive paging pin (two 20-slot machines => 5 pages at 9/page).
+// hit zones with hidden §9.11 row-body zones — the widened dep zone IS the
+// foreign row click). Includes the [NET-R9] spectator machine shape (0 own
+// rows, all-foreign roster) and the >24 display-slot defensive paging pin
+// (two 20-slot machines => 5 pages at 9/page).
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -658,7 +679,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                     if (r >= visible)
                     {
                         EXPECT_TRUE(buttons[r].hidden) << variant;
-                        EXPECT_TRUE(buttons[kBaseCampTrainBase + r].hidden)
+                        EXPECT_TRUE(buttons[kBaseCampRowBodyBase + r].hidden)
                             << variant;
                         continue;
                     }
@@ -670,9 +691,11 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                     EXPECT_EQ(owned ? 14 : 212, buttons[r].sizex)
                         << variant << " row " << r;
                     EXPECT_EQ(owned,
-                              !buttons[kBaseCampTrainBase + r].hidden)
+                              !buttons[kBaseCampRowBodyBase + r].hidden)
                         << variant << " row " << r
-                        << ": TRAIN shows on own rows only";
+                        << ": the §9.11 row-body zone shows on own rows "
+                           "only (foreign rows train nowhere — the widened "
+                           "dep zone pops OWNED BY)";
                 }
             }
         }
@@ -690,6 +713,14 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
             spec.nav.rewire(buttons, count, highlighted);
             EXPECT_EQ(0, highlighted)
                 << "spectator machines keep the roster-first highlight";
+            // §9.11: the roster_row_0 entry default is hidden on an
+            // all-foreign page — the rewire's visibility fall lands on the
+            // first visible button (the foreign hit zone), never strands.
+            highlighted = spec.default_highlight;
+            spec.nav.rewire(buttons, count, highlighted);
+            EXPECT_EQ(0, highlighted)
+                << "spectator entry falls from the hidden row body to the "
+                   "foreign hit zone";
         }
 
         og::ui::install_base_camp_state_for_screen(nullptr);

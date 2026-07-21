@@ -256,7 +256,7 @@ static bool wait_for_base_camp_roster(int timeout_ms = 6000)
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
         if (has_interactable("roster_dep_0")
-            && has_interactable("roster_train_0")
+            && has_interactable("roster_row_0")
             && has_interactable_match("go", is_strip_button)
             && has_interactable_match("back", is_strip_button))
             return true;
@@ -519,9 +519,10 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
-// §2.5 per-row TRAIN: clicking a roster row's TRAIN button opens the train
-// screen seeded ON THAT CHARACTER (no more enter-then-cycle), and backing
-// out returns to the base camp with the roster intact.
+// §2.5 flow 4 via the §9.11 row-body affordance: clicking a roster row's
+// BODY (the name/class/level area — the TRAIN column is deleted) opens the
+// train screen seeded ON THAT CHARACTER (no more enter-then-cycle), and
+// backing out returns to the base camp with the roster intact.
 struct BaseCampRowTrainState {
     bool finished;
     bool saw_train_menu;
@@ -533,13 +534,13 @@ static int base_camp_row_train_injector(void* data)
     og::runtime::ensure_thread_session();
     auto* state = static_cast<BaseCampRowTrainState*>(data);
 
-    if (!wait_for_interactable("roster_train_1", 10000)) {
+    if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
     SDL_Delay(750);  // FadeAroundEntry eats early clicks
-    interact("roster_train_1");
+    interact("roster_row_1");
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
@@ -600,9 +601,9 @@ TEST(ViewTeam, base_camp_row_train_opens_seeded_on_that_character)
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_train_menu)
-        << "roster TRAIN should open the train screen";
+        << "a roster row-body click should open the train screen";
     EXPECT_EQ(1, state.seeded_slot)
-        << "row 1's TRAIN must seed the session on team_list slot 1 (§2.5)";
+        << "row 1's body must seed the session on team_list slot 1 (§9.11)";
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
 
@@ -1085,8 +1086,9 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
 
     // Stale window: the fold landed this frame; a click captured against
     // the OLD page-2 layout dispatches before the frame tick refreshes.
-    // Both the deploy toggle and the per-row TRAIN must no-op (the vacated
-    // slot guard), never crash or open a session on a dangling slot.
+    // Both the deploy toggle and the §9.11 row-body train zone must no-op
+    // (the vacated slot guard), never crash or open a session on a
+    // dangling slot.
     const og::ui::MenuScreenHost& host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
     ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
@@ -1095,10 +1097,10 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     ASSERT_NE(nullptr, spec.on_spec_row);
     EXPECT_EQ(0, spec.on_spec_row(0, &state))
         << "stale deploy click on a vacated slot must be guarded";
-    EXPECT_EQ(0, spec.on_spec_row(kBaseCampTrainBase + 0, &state))
-        << "stale TRAIN click on a vacated slot must be guarded";
+    EXPECT_EQ(0, spec.on_spec_row(kBaseCampRowBodyBase + 0, &state))
+        << "stale row-body click on a vacated slot must be guarded";
     EXPECT_FALSE(trace_contains("basecamp", "train slot="))
-        << "a stale TRAIN click must not seed a session";
+        << "a stale row-body click must not seed a session";
 
     // §3.3: the refresh re-derives the rows and clamps the page window.
     og::ui::base_camp_refresh_rows(state);
@@ -1399,7 +1401,7 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     const og::ui::MenuScreenSpec& spec = *host.spec;
 
     // The production rewire shapes the ownership row: foreign dep buttons
-    // widen into no_draw hit zones and their TRAIN buttons hide.
+    // widen into no_draw hit zones and their §9.11 row-body zones hide.
     og::ui::install_base_camp_state_for_screen(&state);
     button* buttons = picker_createmenu_buttons();
     const int count = picker_createmenu_button_count();
@@ -1408,11 +1410,11 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     spec.nav.rewire(buttons, count, highlighted);
     EXPECT_FALSE(buttons[0].no_draw);
     EXPECT_EQ(14, buttons[0].sizex);
-    EXPECT_FALSE(buttons[kBaseCampTrainBase + 0].hidden);
+    EXPECT_FALSE(buttons[kBaseCampRowBodyBase + 0].hidden);
     EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
     EXPECT_EQ(212, buttons[2].sizex) << "the §2.5 (8,y,212,10) hit zone";
-    EXPECT_TRUE(buttons[kBaseCampTrainBase + 2].hidden)
-        << "foreign rows have no TRAIN button";
+    EXPECT_TRUE(buttons[kBaseCampRowBodyBase + 2].hidden)
+        << "foreign rows have no row-body train zone";
     EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
         << "joiner machine: GO hidden by the production rewire";
 
@@ -1421,9 +1423,9 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_EQ(MENU_OK, spec.on_spec_row(2, &state));
     EXPECT_TRUE(trace_contains("popup", "OWNED BY: IRON HOST BAND"))
         << "foreign deploy hit zone names the owning company";
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTrainBase + 3, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampRowBodyBase + 3, &state));
     EXPECT_FALSE(trace_contains("basecamp", "train slot="))
-        << "foreign TRAIN must not seed a session";
+        << "a foreign row-body ordinal must not seed a session";
     EXPECT_TRUE(save.team_list[0]->deployed);
     EXPECT_FALSE(save.team_list[1]->deployed);
     EXPECT_TRUE(lobby.ready_calls.empty())
@@ -1866,8 +1868,8 @@ TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
 
 // ---------------------------------------------------------------------------
 // §2.5 flow 4 + rename: the train screen's RENAME button, reached through a
-// per-row TRAIN seed, renames THAT character (editguy_ follows the seeded
-// slot) and the rename accept autosaves the company (§3.8).
+// §9.11 row-body click's seed, renames THAT character (editguy_ follows the
+// seeded slot) and the rename accept autosaves the company (§3.8).
 // ---------------------------------------------------------------------------
 struct BaseCampRenameState {
     bool finished;
@@ -1880,13 +1882,13 @@ static int base_camp_train_rename_injector(void* data)
     og::runtime::ensure_thread_session();
     auto* state = static_cast<BaseCampRenameState*>(data);
 
-    if (!wait_for_interactable("roster_train_1", 10000)) {
+    if (!wait_for_interactable("roster_row_1", 10000)) {
         state->finished = true;
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
     SDL_Delay(750);  // FadeAroundEntry eats early clicks
-    interact("roster_train_1");
+    interact("roster_row_1");
 
     if (!wait_for_interactable("rename", 10000)) {
         state->finished = true;
@@ -1966,7 +1968,7 @@ TEST(ViewTeam, base_camp_row_train_rename_renames_seeded_character)
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_train_menu)
-        << "roster TRAIN should open the train screen";
+        << "a roster row-body click should open the train screen";
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 
     // The SEEDED character was renamed; its neighbor was not.

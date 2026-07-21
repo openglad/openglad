@@ -1389,9 +1389,11 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_EQ(MENU_EXIT, team_build->exit_value);
     EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
               team_build->remote_start);
-    // §2.5 roster-first: the default highlight is row 0's deploy toggle
-    // (the rewire seeds HIRE when the roster is empty).
-    EXPECT_EQ(0, team_build->default_highlight);
+    // §9.11 roster-first: the default highlight is row 0's BODY — entering
+    // the base camp highlights the first row and Enter trains, the curses
+    // roster grammar (the rewire seeds HIRE when the roster is empty and
+    // falls to the first visible button on all-foreign pages).
+    EXPECT_EQ(kBaseCampRowBodyBase, team_build->default_highlight);
     EXPECT_NE(nullptr, team_build->frame_tick);
     EXPECT_NE(nullptr, team_build->on_reset);
     EXPECT_NE(nullptr, team_build->on_spec_row)

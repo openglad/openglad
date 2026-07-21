@@ -2072,3 +2072,94 @@ TeamBuild item numbering is untouched.
 | page-window pins | test_view_team win-fold: page-2 first_index 10→9; 25-slot 3-page pin unchanged; test_picker_common display_slots_page_defensively_past_24: PageModel::make(40, **9**) ⇒ **5** pages |
 | draw geometry (header bar 31, headers y=32, line B 17, panel 39, line-A label) | no pixel-coordinate pins exist (empty-state smoke is coordinate-free — verified); screenshot-verified via the §9.8 probe workflow |
 | docs | menu-engine.md registry row (9 pairs, READY row 25); this subsection |
+
+### 9.11 UX round 2 (2026-07-21) — G4: row-click trains, TRAIN column deleted [stage row-click-train; FINAL geometry]
+
+USER-CHOSEN from a preview panel: the per-row TRAIN button column is
+DELETED; clicking a character's ROW (the name/class/level area) opens that
+character's Train screen — the same interaction grammar as the company
+list. Deploy stays the explicit left toggle. This subsection AMENDS
+§9.5.1/§9.5.3/§9.5.7 (and through them §2.5); G4 changes the train
+AFFORDANCE only — TrainSession, the U8 networked PREV/NEXT clamp,
+seek_slot, ownership/editability, GO/READY, deploy, and autosave semantics
+are all FROZEN and untouched.
+
+#### 9.11.1 Row-body hit zone (SDL) — FINAL geometry
+
+- The 9 `roster_train_r` rows become `roster_row_r`: rect
+  **(26, 41+15r, 208, 10)**, label **empty**, `ButtonAction::MenuSpecRow`,
+  **same ordinals 9..17** (`kBaseCampTrainBase` renamed
+  `kBaseCampRowBodyBase`, value 9 — pagers 18/19, strip 20..25, count 26
+  all UNCHANGED; the §9.10.1 ordinal table stands).
+- Edges: left **26** = the family chip's left edge, a 4px gutter from the
+  deploy toggle ending at x=22 (the G4 touch rule: the deploy hit zone and
+  the row-click zone MUST NOT overlap — pinned by an exact-table assert);
+  right **234** = the solo EXP ink end (231) + 3px, covering chip + name +
+  class + LV + EXP ink. MP values (name/company/LV, ink ≤ 226) sit inside
+  the same zone.
+- **Face decision (RECORDED): `no_draw = true`**, not a quiet bevel face.
+  The row text IS the affordance; a bevel would double-frame every row
+  against the §9.5.2 panel. The keyboard `draw_highlight` pulse draws from
+  the button RECT regardless of no_draw, so the row highlight reads as a
+  full-row outline — the §2.5 foreign-hit-zone grammar, now on own rows
+  too. (Mouse hover highlight is skipped for no_draw buttons — same as the
+  foreign zones; accepted.)
+- The TRAIN column header (x=274) is deleted from BOTH header arms (solo
+  and networked). No other column moves.
+
+#### 9.11.2 Dispatch, ownership, keyboard, touch
+
+- Dispatch: ordinals 9..17 open the train screen seeded on the row's save
+  slot (the §2.5 flow-4 path verbatim — `picker_set_train_seed_slot` +
+  nested `create_train_menu`; remote-start propagation and the
+  stale-click/vacated-slot guards unchanged).
+- Ownership maps over: FOREIGN rows hide their row-body zone (exactly as
+  they hid TRAIN); the §2.5 widened dep hit zone (8,y,212,10 — geometry
+  UNCHANGED) remains the foreign row click and pops OWNED BY. A directly
+  dispatched foreign row-body ordinal still resolves to the OWNED-BY popup
+  (the !owned branch is ordinal-agnostic — pinned). Empty rows are hidden
+  by the page window ⇒ inert.
+- Keyboard (the curses grammar, ported): `default_highlight` moves 0 →
+  **9** (`roster_row_0`) — entering the base camp highlights the first
+  ROW and Enter trains; the deploy toggle is one Left away. Empty roster:
+  the rewire still seeds HIRE; all-foreign pages: the visibility fall
+  lands on the first visible button (the foreign hit zone) — both pinned.
+  Nav keeps the §9.5.7 shape with the row-body column in the old train
+  column's role (dep_r.right → row_r; row chain over OWNED rows; row_r
+  .right → pagers; strip up-links prefer the row-body column).
+- Touch: **no new debounce for row clicks (RECORDED)** — the nested train
+  screen re-inits buttons and consumes a collapsed second tap in its own
+  loop, so the double-tap hazard class is unchanged from the deleted
+  TRAIN button; the U6 250 ms stamp stays on the deploy dispatch only.
+  The 4px dep/row gutter carries the non-overlap requirement.
+
+#### 9.11.3 Terminals + wasm ledger
+
+- Curses: NO change — the roster list's Enter-trains grammar was the
+  SOURCE of this design (`roster_enter_opens_train_seeded_on_that_row`
+  re-verified green, untouched).
+- Text: **`train N` subprompt KEPT (RECORDED decision)** — the typed
+  row-select IS the terminal's row-click; G4 changes only the SDL
+  affordance. `text_picker_roster_train_row_opens_seeded_member`
+  unchanged.
+- wasm §2.10 ledger: **UNCHANGED** — re-verified coordinate-by-coordinate
+  now that row rects are actions: GO (278,187) and networking (210,187)
+  sit in the y=178 strip; popup OK/YES taps ((160,140)/(95,140)) fire only
+  under a modal popup loop; the wasm-touch post-GO tap (160,100) sits in
+  the inter-row gap (row 3 ends y=96, row 4 starts y=101) and targets a
+  later screen anyway. No e2e tap lands in a row-body zone while the base
+  camp is interactive; dist rebuild stays with the branch's closeout
+  (WP8) per precedent.
+
+#### 9.11.4 Re-pin blast radius (landed in the SAME commit)
+
+| change | re-pins |
+|---|---|
+| ids/rects/labels rows 9..17 + no_draw | test_menu_layout exact table (roster_row_N, (26,y,208,10), empty label, no_draw column added) + the dep/row non-overlap assert |
+| constant rename (kBaseCampRowBodyBase) | compiler-enforced sweep: rewire/dispatch + test_menu_layout + test_view_team + test_picker_network_client |
+| default_highlight 0→9 | test_menu_engine exit-semantics pin; test_menu_layout empty-roster arm (drives spec.default_highlight) + spectator fall arm |
+| BFS matrices | joiner-variant + ownership-matrix train references renamed; hidden-pairing asserts unchanged in shape |
+| injector flows | roster_train_0/1 → roster_row_0/1 (test_train_team, test_view_team train-open + rename flows, wait_for_base_camp_roster) |
+| TRAIN header deletion | no header-string pin existed (verified) — screenshot-verified |
+| terminals | ZERO re-pins (no change; suites re-run green) |
+| wasm | ZERO ledger changes (verification recorded above) |

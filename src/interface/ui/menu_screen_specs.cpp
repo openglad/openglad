@@ -1692,13 +1692,14 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 };
 
 // ---------------------------------------------------------------------------
-// TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10): the
-// command roster. The roster IS the default view (the VIEW TEAM screen
-// retired into it): 9 rows/page at the 15px save-slot pitch (§9.10.1 —
-// round 2 trades the tenth row for clear margins around the block) — a
-// deploy toggle (8,41+15r,14,10) and a per-row TRAIN button
-// (266,41+15r,46,10) — the page cluster top-right (< p/N >), and the bottom
-// command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
+// TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10, row-click
+// train per §9.11): the command roster. The roster IS the default view (the
+// VIEW TEAM screen retired into it): 9 rows/page at the 15px save-slot pitch
+// (§9.10.1 — round 2 trades the tenth row for clear margins around the
+// block) — a deploy toggle (8,41+15r,14,10) and the §9.11 row-body train
+// zone (26,41+15r,208,10; the TRAIN column is deleted, clicking the row
+// trains) — the page cluster top-right (< p/N >), and the bottom command
+// strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
 // arg == spec ordinal); the strip keeps the legacy ButtonActions so do_call
@@ -1769,44 +1770,51 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
 
 // Static nav encodes the full-page shape (9 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
-// state anyway (§2.5 keyboard-nav pattern b). TRAIN widened to (266,y,46,10)
-// per §9.5.1 — the 5-char label finally has budget slack (6).
+// state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
+// is deleted — the row BODY (26,y,208,10) is a no_draw hit zone spanning
+// chip + name/class/level/exp ink (left edge 26 = the family chip, 4px
+// clear of the deploy toggle ending at x=22; right edge 234 = solo EXP ink
+// end 231 + 3px). no_draw, not a quiet face: the row text IS the affordance
+// (a bevel would double-frame every row against the §9.5.2 panel), and the
+// keyboard draw_highlight pulse draws regardless of no_draw, so the row
+// highlight reads — the §2.5 foreign-hit-zone precedent.
 #define OG_BASE_CAMP_DEP(i)                                                  \
     {.id = "roster_dep_" #i, .label = "",                                    \
      .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
              .down = (i) < 8 ? (i) + 1 : kCreateMenuBackIndex,                \
-             .right = kBaseCampTrainBase + (i)}}
-#define OG_BASE_CAMP_TRAIN(i)                                                \
-    {.id = "roster_train_" #i, .label = "TRAIN",                             \
-     .x = 266, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 46,        \
+             .right = kBaseCampRowBodyBase + (i)}}
+#define OG_BASE_CAMP_ROW(i)                                                  \
+    {.id = "roster_row_" #i, .label = "",                                    \
+     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 208,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
-     .arg = kBaseCampTrainBase + (i),                                        \
-     .nav = {.up = (i) > 0 ? kBaseCampTrainBase + (i) - 1 : -1,               \
-             .down = (i) < 8 ? kBaseCampTrainBase + (i) + 1                   \
+     .arg = kBaseCampRowBodyBase + (i),                                      \
+     .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
+             .down = (i) < 8 ? kBaseCampRowBodyBase + (i) + 1                 \
                              : kCreateMenuGoIndex,                            \
-             .left = (i)}}
+             .left = (i)},                                                    \
+     .no_draw = true}
 
 constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
     OG_BASE_CAMP_DEP(3), OG_BASE_CAMP_DEP(4), OG_BASE_CAMP_DEP(5),
     OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7), OG_BASE_CAMP_DEP(8),
-    OG_BASE_CAMP_TRAIN(0), OG_BASE_CAMP_TRAIN(1), OG_BASE_CAMP_TRAIN(2),
-    OG_BASE_CAMP_TRAIN(3), OG_BASE_CAMP_TRAIN(4), OG_BASE_CAMP_TRAIN(5),
-    OG_BASE_CAMP_TRAIN(6), OG_BASE_CAMP_TRAIN(7), OG_BASE_CAMP_TRAIN(8),
+    OG_BASE_CAMP_ROW(0), OG_BASE_CAMP_ROW(1), OG_BASE_CAMP_ROW(2),
+    OG_BASE_CAMP_ROW(3), OG_BASE_CAMP_ROW(4), OG_BASE_CAMP_ROW(5),
+    OG_BASE_CAMP_ROW(6), OG_BASE_CAMP_ROW(7), OG_BASE_CAMP_ROW(8),
     // Page cluster (§2.5 header line B right edge, §9.10.2 y=15 beside the
     // relocated line B); real MenuSpecRow pager actions (keyboard-live),
     // hidden until the roster spans pages.
     {.id = "roster_page_prev", .label = "<",
      .x = 263, .y = 15, .w = 14, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
-     .nav = {.down = kBaseCampTrainBase, .right = kBaseCampPageNextIndex},
+     .nav = {.down = kBaseCampRowBodyBase, .right = kBaseCampPageNextIndex},
      .hidden = true},
     {.id = "roster_page_next", .label = ">",
      .x = 302, .y = 15, .w = 14, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
-     .nav = {.down = kBaseCampTrainBase, .left = kBaseCampPagePrevIndex},
+     .nav = {.down = kBaseCampRowBodyBase, .left = kBaseCampPagePrevIndex},
      .hidden = true},
     // Bottom command strip (y=178, 18px tall). BACK keeps the Escape hotkey
     // (the shared cancel grammar).
@@ -1822,12 +1830,12 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "scenario", .label = "SCENARIO",
      .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 8, .left = kCreateMenuHireIndex,
+     .nav = {.up = kBaseCampRowBodyBase + 8, .left = kCreateMenuHireIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
      .x = 182, .y = 178, .w = 56, .h = 18,
      .action = ButtonAction::Networking, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 8, .left = kCreateMenuScenarioIndex,
+     .nav = {.up = kBaseCampRowBodyBase + 8, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
     // §2.6 GO half of the dual-role slot: solo/local keeps the plain grey
     // bevel and the exact legacy behavior (GoMenu -> go_menu / the
@@ -1836,7 +1844,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "go", .label = "GO",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 8,
+     .nav = {.up = kBaseCampRowBodyBase + 8,
              .left = kCreateMenuNetworkingIndex},
      .color = &base_camp_go_face_color},
     // §2.6 READY twin: the SAME rect, visible exactly when GO is not
@@ -1846,7 +1854,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "ready", .label = "READY",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
-     .nav = {.up = kBaseCampTrainBase + 8,
+     .nav = {.up = kBaseCampRowBodyBase + 8,
              .left = kCreateMenuNetworkingIndex},
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
@@ -1854,7 +1862,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
 };
 
 #undef OG_BASE_CAMP_DEP
-#undef OG_BASE_CAMP_TRAIN
+#undef OG_BASE_CAMP_ROW
 
 static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
@@ -1865,9 +1873,9 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
 // host-gate GO, close the strip/pager links, and seed the empty-roster
 // highlight on HIRE (§2.5). Networked ownership shape: a foreign row's
 // deploy button widens into the §2.5 no_draw hit zone (8,y,212,10) — click
-// anywhere on the row pops OWNED BY — and its TRAIN button hides; the nav
-// graph chains the train column over the OWNED rows only. Solo/local (all
-// rows owned) reproduces the stage-1 graph byte-for-byte.
+// anywhere on the row pops OWNED BY — and its §9.11 row-body zone hides
+// (the widened dep zone IS the foreign row click); the nav graph chains
+// the row-body column over the OWNED rows only.
 void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 {
     if (buttons == nullptr || count < kCreateMenuButtonCount)
@@ -1890,7 +1898,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         : (ready_visible ? kCreateMenuReadyIndex : -1);
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
-    // Ownership per visible row (own row => a real deploy toggle + TRAIN).
+    // Ownership per visible row (own row => a real deploy toggle + the
+    // §9.11 row-body train zone).
     std::array<bool, kBaseCampRosterRowsPerPage> owned_row{};
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         if (r >= visible)
@@ -1918,9 +1927,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         const bool on = r < visible;
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
         button& dep = buttons[r];
-        button& train = buttons[kBaseCampTrainBase + r];
+        button& body = buttons[kBaseCampRowBodyBase + r];
         dep.hidden = !on;
-        train.hidden = !own;
+        body.hidden = !own;
         if (!on)
             continue;
 
@@ -1947,22 +1956,22 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             live->xend = live->xloc + live->width;
         }
 
-        // Own rows step right into their TRAIN button (stage-1 shape); a
-        // foreign hit zone spans the whole row, so its right-link carries
-        // the train column's pager duty — without it an all-foreign page
+        // Own rows step right into their §9.11 row-body zone; a foreign
+        // hit zone spans the whole row, so its right-link carries the
+        // row-body column's pager duty — without it an all-foreign page
         // (spectator machine, [NET-R9]) strands the pagers.
         dep.nav = {.up = r > 0 ? r - 1 : -1,
                    .down = r + 1 < visible ? r + 1 : kCreateMenuBackIndex,
                    .left = -1,
-                   .right = own ? kBaseCampTrainBase + r
+                   .right = own ? kBaseCampRowBodyBase + r
                                 : (pagers ? kBaseCampPagePrevIndex : -1)};
         if (own) {
             const int up_owned = prev_owned(r - 1);
             const int down_owned = next_owned(r + 1);
-            train.nav = {
-                .up = up_owned >= 0 ? kBaseCampTrainBase + up_owned : -1,
+            body.nav = {
+                .up = up_owned >= 0 ? kBaseCampRowBodyBase + up_owned : -1,
                 .down = down_owned >= 0
-                    ? kBaseCampTrainBase + down_owned
+                    ? kBaseCampRowBodyBase + down_owned
                     : (strip_end >= 0 ? strip_end
                                       : kCreateMenuNetworkingIndex),
                 .left = r,
@@ -1972,10 +1981,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 
     buttons[kBaseCampPagePrevIndex].hidden = !pagers;
     buttons[kBaseCampPageNextIndex].hidden = !pagers;
-    // Pager down-links land on the train column's first OWNED row (the
-    // stage-1 target) and fall back to the dep column on all-foreign pages.
+    // Pager down-links land on the row-body column's first OWNED row and
+    // fall back to the dep column on all-foreign pages.
     const int pager_down = first_owned >= 0
-        ? kBaseCampTrainBase + first_owned
+        ? kBaseCampRowBodyBase + first_owned
         : (visible > 0
                ? 0
                : (strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex));
@@ -1997,11 +2006,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kCreateMenuReadyIndex].hidden = !ready_visible;
 
     const int dep_last = visible > 0 ? visible - 1 : -1;
-    // The strip's right-side up-links prefer the train column (stage-1
-    // shape) and fall back to the dep column when this page has no owned
-    // row (all-foreign page / spectator machine, [NET-R9]).
-    const int train_last =
-        last_owned >= 0 ? kBaseCampTrainBase + last_owned : dep_last;
+    // The strip's right-side up-links prefer the row-body column and fall
+    // back to the dep column when this page has no owned row (all-foreign
+    // page / spectator machine, [NET-R9]).
+    const int body_last =
+        last_owned >= 0 ? kBaseCampRowBodyBase + last_owned : dep_last;
     buttons[kCreateMenuBackIndex].nav = {
         .up = dep_last, .down = -1, .left = -1,
         .right = kCreateMenuHireIndex};
@@ -2009,16 +2018,16 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .up = dep_last, .down = -1, .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
     buttons[kCreateMenuScenarioIndex].nav = {
-        .up = train_last, .down = -1, .left = kCreateMenuHireIndex,
+        .up = body_last, .down = -1, .left = kCreateMenuHireIndex,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
-        .up = train_last, .down = -1, .left = kCreateMenuScenarioIndex,
+        .up = body_last, .down = -1, .left = kCreateMenuScenarioIndex,
         .right = strip_end};
     buttons[kCreateMenuGoIndex].nav = {
-        .up = train_last, .down = -1,
+        .up = body_last, .down = -1,
         .left = kCreateMenuNetworkingIndex, .right = -1};
     buttons[kCreateMenuReadyIndex].nav = {
-        .up = train_last, .down = -1,
+        .up = body_last, .down = -1,
         .left = kCreateMenuNetworkingIndex, .right = -1};
 
     // §2.6 per-frame presentation stamp on the visible half of the pair —
@@ -2174,18 +2183,18 @@ void base_camp_draw_content(void* screen_state)
     // chip). §9.5.3: NO HP column on any client — it was DERIVED max HP
     // (damage never persists to base camp), redundant with CLASS+LVL, and
     // it lives one click away in TRAIN. EXP stays (progress is actionable).
+    // §9.11 (G4): NO TRAIN header — the TRAIN column is deleted; clicking
+    // the row body opens the train screen on that character.
     if (networked) {
         mytext.write_xy(40, 32, "NAME", WHITE, 1);
         mytext.write_xy(106, 32, "COMPANY", WHITE, 1);
         mytext.write_xy(208, 32, "LV", WHITE, 1);
-        mytext.write_xy(274, 32, "TRAIN", WHITE, 1);
     } else {
         mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
         mytext.write_xy(40, 32, "NAME", WHITE, 1);
         mytext.write_xy(118, 32, "CLASS", WHITE, 1);
         mytext.write_xy(174, 32, "LV", WHITE, 1);
         mytext.write_xy(196, 32, "EXP", WHITE, 1);
-        mytext.write_xy(274, 32, "TRAIN", WHITE, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
@@ -2294,7 +2303,8 @@ void base_camp_on_reset(void* screen_state)
     base_camp_refresh_rows(*state);
 }
 
-// G3 row dispatch: deploy toggles, per-row TRAIN, and the pagers.
+// G3 row dispatch: deploy toggles, the §9.11 row-body train affordance, and
+// the pagers.
 Sint32 base_camp_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
@@ -2308,8 +2318,8 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     }
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    const bool is_train = row >= kBaseCampTrainBase;
-    const int visual_row = is_train ? row - kBaseCampTrainBase : row;
+    const bool is_row_body = row >= kBaseCampRowBodyBase;
+    const int visual_row = is_row_body ? row - kBaseCampRowBodyBase : row;
     const int idx = st->page.first_index() + visual_row;
     if (idx < 0 || idx >= static_cast<int>(st->slots.size()))
         return 0;  // stale click on a row hidden this frame
@@ -2332,7 +2342,7 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
         return 0;
 
-    if (!is_train) {
+    if (!is_row_body) {
         // §2.0 U6 roster-row tap debounce: a second toggle of the SAME row
         // (same display index resolving to the same save slot — a page flip
         // in between retargets the rect and is never debounced) within
@@ -2377,9 +2387,14 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         return MENU_OK;
     }
 
-    // §2.5 per-row TRAIN (flow 4): open the train screen directly on this
-    // character (the nested-engine-screen pattern). A remote start that
-    // unparked the train screen propagates; BACK re-inits our buttons.
+    // §2.5 flow 4 via the §9.11 row-body affordance: a click (or Enter on
+    // the row highlight) anywhere on the row's name/class/level area opens
+    // the train screen directly on this character (the nested-engine-screen
+    // pattern). A remote start that unparked the train screen propagates;
+    // BACK re-inits our buttons. No debounce here (recorded §9.11 decision):
+    // the nested screen re-inits buttons and consumes a collapsed second
+    // tap in its own loop — the hazard class is unchanged from the deleted
+    // TRAIN button; the U6 250 ms stamp stays deploy-only.
     picker_set_train_seed_slot(slot);
     TRACE("basecamp", "train slot=%d", slot);
     const Sint32 ret = create_train_menu(0);
@@ -2401,7 +2416,11 @@ const MenuScreenSpec& team_build_menu_screen_spec()
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .enter = EnterTransition::FadeAroundEntry,
-        .default_highlight = 0,  // roster-first: row 0's deploy toggle
+        // §9.11 (G4): roster-first on row 0's BODY — entering the base camp
+        // highlights the first row and Enter trains (the curses roster
+        // grammar); the deploy toggle sits one Left away. Empty roster:
+        // the rewire re-seeds the highlight on HIRE.
+        .default_highlight = kBaseCampRowBodyBase,
         .polls_lobby = true,
         .draw_background = &base_camp_draw_background,
         .draw_content = &base_camp_draw_content,

@@ -163,14 +163,18 @@ int picker_company_backups_button_count();
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
-// clear top/bottom margins): 9 roster rows/page (deploy toggle at x=8, TRAIN
-// at x=266, y=41+15r), the page cluster top-right, and the bottom command
-// strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. Spec ordinals group
-// by kind so the MenuSpecRow arg (== ordinal, G3) decodes as row/kind
-// directly. GO is the only host-gated button. Cap-24 roster = <=3 pages; the
-// 40-slot defensive shape pages to 5.
+// clear top/bottom margins): 9 roster rows/page (deploy toggle at x=8, the
+// §9.11 row-body train zone at x=26, y=41+15r), the page cluster top-right,
+// and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
+// y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
+// decodes as row/kind directly. GO is the only host-gated button. Cap-24
+// roster = <=3 pages; the 40-slot defensive shape pages to 5.
 inline constexpr int kBaseCampRosterRowsPerPage = 9; // roster_dep_r = 0..8
-inline constexpr int kBaseCampTrainBase = 9;         // roster_train_r = 9+r
+// §9.11 (G4): the per-row TRAIN column is deleted; the row BODY is the train
+// affordance — roster_row_r = 9+r, a no_draw hit zone over the row text that
+// opens the train screen seeded on that character (Enter trains from the
+// keyboard row highlight — the curses roster grammar).
+inline constexpr int kBaseCampRowBodyBase = 9;       // roster_row_r = 9+r
 inline constexpr int kBaseCampPagePrevIndex = 18;
 inline constexpr int kBaseCampPageNextIndex = 19;
 inline constexpr int kCreateMenuBackIndex = 20;
