@@ -9,6 +9,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/guy_create.h>
@@ -412,6 +413,17 @@ TEST(SaveLoadTeam, base_camp_deploy_toggle_autosaves_and_round_trips) {
         og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
         og::runtime::current_session->myscreen_->save_data.team_size = 2;
     }
+    // CONTINUE opens select_startup_company() = the newest last_played_unix_s
+    // on disk. Raw SaveData::save() serializes the field as-is and reset()
+    // keeps the stale in-memory value, so under --gtest_shuffle a predecessor
+    // can leave a stray company (a new-company flow's generated slot, or a
+    // raw slot that inherited a stamp) that outranks this save0 — CONTINUE
+    // then opens, and the deploy toggle autosaves into, the WRONG slot
+    // (battery seeds 59/83). Stamp real now: >= every predecessor stamp in
+    // this binary (nothing here pins the company clock), and a tie breaks
+    // toward save0, the default slot.
+    og::runtime::current_session->myscreen_->save_data.last_played_unix_s =
+        og::data::company_clock_now_s();
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     DeployToggleState state = { false, false, false };
