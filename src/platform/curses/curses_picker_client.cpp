@@ -926,8 +926,8 @@ bool CursesPickerClient::prepare_new_game()
     std::string company_name = og::ui::generate_company_name(rng);
     for (;;) {
         bool accepted = false;
-        const std::string label = std::format(
-            "Name ({}): ", og::ui::format_company_file_preview(company_name));
+        // §9.3/F2: a plain label — the slug preview is gone on every client.
+        const std::string label = "Name: ";
         std::string result =
             menu.prompt("Found Your Company", label, company_name, accepted);
         if (!accepted)

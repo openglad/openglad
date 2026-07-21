@@ -548,13 +548,9 @@ std::string format_permadeath_label(const SaveData& save);
 std::string format_generator_rate_label(const SaveData& save);
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
-
-// "file: <slug>.gtl" — the §2.2 name-entry preview line that teaches the
-// display-name/filename split. The slug is the one ACCEPT would write right
-// now: og::data::derive_company_slot (§3.4), including collision probing
-// against the existing save files. <= 6 + 40 + 4 = 50 chars by the slug
-// truncation rule; <= 28 for any generated (18-char) display name.
-std::string format_company_file_preview(const std::string& display_name);
+// (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
+// the filename teaches nothing; companies are fully managed in-game on
+// every client. Slug derivation itself stays og::data::derive_company_slot.)
 
 // "COMPANIES (N)" — the §2.3 Company List header line.
 std::string format_company_list_title(int count);

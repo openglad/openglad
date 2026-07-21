@@ -2740,23 +2740,7 @@ TEST(CompanyNameGen, seeded_sweep_stays_in_budget_and_covers_every_word)
 }
 
 // --- Company label formatters (design §2.2/§2.3) ---
-
-TEST(CompanyFormat, file_preview_derives_the_accept_slug)
-{
-    // The §2.2 example: display name -> the slug ACCEPT would write.
-    EXPECT_EQ("file: iron-kettle-band.gtl",
-              og::ui::format_company_file_preview("Iron Kettle Band"));
-    // Empty and all-dropped names fall back to the "company" slug (§3.4).
-    EXPECT_EQ("file: company.gtl", og::ui::format_company_file_preview(""));
-    EXPECT_EQ("file: company.gtl", og::ui::format_company_file_preview("!!!"));
-
-    // Budget: any generated (<= 18 char) name previews in <= 28 chars
-    // ("file: " + slug <= 18 + ".gtl").
-    const std::string longest =
-        og::ui::format_company_file_preview("STORM KETTLE GUILD");
-    EXPECT_EQ("file: storm-kettle-guild.gtl", longest);
-    EXPECT_LE(longest.size(), 28u);
-}
+// (The slug-preview formatter pin was deleted with the formatter — §9.3/F2.)
 
 TEST(CompanyFormat, list_title_and_row_columns)
 {

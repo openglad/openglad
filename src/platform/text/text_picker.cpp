@@ -129,11 +129,12 @@ public:
     }
 
     // §2.2 terminal name entry: the read_line projection of the SDL screen.
-    // Prints the generated suggestion + slug preview, then accepts a blank
-    // line (keep the suggestion), "reroll" (a fresh suggestion), or any typed
-    // text (the new name, clamped to the display cap). Exhausted input (EOF)
-    // keeps the suggestion — the headless internal-path checks call
-    // prepare_new_game with no stdin and still expect a founded company.
+    // Prints the generated suggestion, then accepts a blank line (keep the
+    // suggestion), "reroll" (a fresh suggestion), or any typed text (the new
+    // name, clamped to the display cap). Exhausted input (EOF) keeps the
+    // suggestion — the headless internal-path checks call prepare_new_game
+    // with no stdin and still expect a founded company. (§9.3/F2: the slug
+    // preview line is gone on every client.)
     std::string prompt_new_company_name()
     {
         SeededRandom rng(
@@ -142,8 +143,6 @@ public:
         for (;;) {
             std::printf("\n=== Found Your Company ===\n");
             std::printf("Name: %s\n", name.c_str());
-            std::printf("%s\n",
-                og::ui::format_company_file_preview(name).c_str());
             std::printf("Enter a name, blank to accept, "
                         "or 'reroll' for another suggestion: ");
             std::fflush(stdout);

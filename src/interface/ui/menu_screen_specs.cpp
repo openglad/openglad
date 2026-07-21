@@ -2434,6 +2434,15 @@ constexpr int kNameEntryAcceptIndex = 3;
 // 320-wide canvas center, which also centers the strip (48,78,224,16).
 constexpr int kNameEntryCenterX = 160;
 
+// §9.3 sunken input field: the name strip's face is stamped PURE_BLACK every
+// frame (the §2.6 color-binding mechanism — face only, the grey bevel edges
+// remain), reading as an inset DOS text field behind the WHITE name. Fixes
+// the recorded WHITE-on-face-13 contrast fail.
+unsigned char name_entry_value_face_color(const MenuLabelContext& /*context*/)
+{
+    return PURE_BLACK;
+}
+
 constexpr MenuButtonSpec kNameEntryRows[] = {
     // BACK cancels — nothing is written (§2.2). Escape hotkey.
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -2446,7 +2455,8 @@ constexpr MenuButtonSpec kNameEntryRows[] = {
     {.id = "company_name_value", .label = "",
      .x = 48, .y = 78, .w = 224, .h = 16,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryValueIndex,
-     .nav = {.down = kNameEntryRerollIndex}},
+     .nav = {.down = kNameEntryRerollIndex},
+     .color = &name_entry_value_face_color},
     {.id = "company_name_reroll", .label = "REROLL",
      .x = 86, .y = 102, .w = 68, .h = 14,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryRerollIndex,
@@ -2470,10 +2480,16 @@ void name_entry_draw_content(void* screen_state)
         name.resize(kCompanyNameMaxLen);
     game->text_normal.write_xy_center(kNameEntryCenterX, 82, WHITE, "%s",
                                       name.c_str());
-    // The slug preview teaches the display-name/filename split (§2.2, spec 2).
-    game->text_normal.write_xy_center(
-        kNameEntryCenterX, 126, GREY, "%s",
-        format_company_file_preview(name).c_str());
+    // §9.3: the slug preview is gone (F2 — the filename teaches nothing);
+    // the freed slot carries a GREY hint on a U2 black strip teaching the
+    // edit affordance instead (the secondary voice).
+    static constexpr const char kNameEntryHint[] = "CLICK THE NAME TO EDIT IT";
+    constexpr int kHintInk =
+        static_cast<int>(sizeof(kNameEntryHint) - 1) * 6 - 1;
+    game->draw_rect_filled(kNameEntryCenterX - kHintInk / 2 - 2, 125,
+                           kHintInk + 4, 8, PURE_BLACK, 150);
+    game->text_normal.write_xy_center(kNameEntryCenterX, 126, GREY, "%s",
+                                      kNameEntryHint);
 }
 
 Sint32 name_entry_on_spec_row(int row, void* screen_state)

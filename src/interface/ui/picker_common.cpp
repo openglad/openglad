@@ -1506,12 +1506,6 @@ std::string format_played_date_utc(std::int64_t unix_s)
 
 } // namespace
 
-std::string format_company_file_preview(const std::string& display_name)
-{
-    return std::format("file: {}.gtl",
-                       og::data::derive_company_slot(display_name));
-}
-
 std::string format_company_list_title(int count)
 {
     return std::format("COMPANIES ({})", count);
