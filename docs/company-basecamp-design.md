@@ -1728,3 +1728,14 @@ grafts from all six judges folded in; resolutions where they conflicted:
     persistent-connection resume; the three-client SaveData store unification;
     progress-menu keyboard-dead pagers (visible change, needs its own pin round);
     endianness of the i64 timestamp (matches format precedent).
+13. **Terminal-client [SAVE-R2] deviations (recorded, WP7)**: the text and curses
+    clients keep a single explicit slot authority (`config_.save_name`), so on those
+    surfaces (a) BEGIN NEW GAME persists **in place** to the client's own slot — the
+    §2.1 "always creates a fresh company / nothing is ever destroyed" guarantee is an
+    SDL/wasm behavior; the prior contents of the terminal slot are replaced (the
+    terminals therefore print NO `file: <slug>.gtl` preview — the SDL slug file is
+    never created there); and (b) CONTINUE opens the terminal's own slot, not the
+    most-recent company (equal only in the single-company case). Rationale: [SAVE-R2]
+    slot authority predates the company layer and terminal users address slots
+    explicitly; silently multiplying files under a fixed-slot CLI contract would be
+    the surprising behavior.

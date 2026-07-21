@@ -2090,6 +2090,67 @@ TEST(GameLoop, network_host_install_owner_locked_denies_death_rebind_steal)
         << "the level keeps running under the null seat";
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
+
+    // ---- WP7 must-fix regression: the owner-locked round must NOT leak its
+    // policy into the next LOCAL round of this same process. Teardown resets
+    // nothing on the process-lifetime display world (only level load does),
+    // so at this point the mirror still carries the networked policy —
+    // worsen its leaked map to the [NET-R9] spectator-host shape (entry[0]
+    // UNDEPLOYED) that used to deny every solo seat-0 claim and leave the
+    // player spectating their own game. ----
+    ASSERT_EQ(og::sim::kControlPolicyOwnerLocked,
+              game_screen->world().control_policy)
+        << "precondition: teardown alone does not reset the mirror's policy";
+    game_screen->world().player_machine[0] =
+        og::sim::encode_player_machine(0, false);
+
+    // A plain LOCAL install from save0 (the dense 3-hero company saved at
+    // the top of this test). The install must stamp the fresh authoritative
+    // world back to LEGACY control (§4.4 "policy off in every local
+    // session") even though its seed snapshot came from the poisoned
+    // display world.
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& local_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(local_session));
+    ASSERT_FALSE(local_session.networked_session_);
+
+    screen* const local_server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            local_session);
+    ASSERT_NE(nullptr, local_server_screen);
+    EXPECT_EQ(og::sim::kControlPolicyLegacy,
+              local_server_screen->world().control_policy)
+        << "the local authoritative world must run the legacy shared pool";
+    for (std::size_t i = 0;
+         i < local_server_screen->world().player_machine.size(); ++i)
+    {
+        EXPECT_EQ(og::sim::kPlayerMachineNone,
+                  local_server_screen->world().player_machine[i])
+            << "stale machine-map entry leaked into the local world at index "
+            << i;
+    }
+
+    // The display mirror heals from the legacy server's snapshots.
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(local_session);
+        return game_screen->world().control_policy ==
+            og::sim::kControlPolicyLegacy;
+    })) << "the display world's stale policy must heal from the local "
+           "install's snapshots";
+
+    // And a seat-0 claim on the local world succeeds (the leaked undeployed
+    // entry[0] used to fail this through the [NET-F3] troop-rule
+    // fall-through).
+    walker* const local_alpha =
+        find_named_team_member(local_server_screen->world(), "Alpha");
+    ASSERT_NE(nullptr, local_alpha);
+    EXPECT_TRUE(og::sim::control_claim_allowed(
+        local_server_screen->world(), local_alpha, 0))
+        << "solo seat 0 must be claimable again after a networked round";
+
+    og::runtime::clear_local_transport_shadow(local_session);
     game_screen->world().delete_objects();
 }
 

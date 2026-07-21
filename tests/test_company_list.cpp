@@ -10,6 +10,7 @@
 // order-independent under --gtest_shuffle.
 
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -34,6 +35,7 @@ extern int g_picker_max_mainmenu_calls;
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
+Sint32 change_respawn_mode();
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -88,6 +90,31 @@ bool seed_company(const std::string& slot, const std::string& name,
 std::filesystem::path company_path(const std::string& slot)
 {
     return std::filesystem::path(get_user_path()) / "save" / (slot + ".gtl");
+}
+
+// Loadable company with one named, deployed soldier on team 0 — the roster
+// shape the cross-company lobby re-seed flow asserts on (the roster is the
+// field the polled lobby cache used to clobber).
+bool seed_company_with_soldier(const std::string& slot, const std::string& name,
+                               const std::string& soldier,
+                               std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_levels[sd.current_campaign] = 1;
+    sd.scen_num = 1;
+    sd.numplayers = 1;
+    sd.my_team = 0;
+    sd.last_played_unix_s = last_played;
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = soldier;
+    member->teamnum = 0;
+    member->deployed = true;
+    sd.team_list[0] = std::move(member);
+    sd.team_size = 1;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
 }
 
 // Header-valid, body-torn fixture (the WP2 recipe): real writer bytes
@@ -165,6 +192,41 @@ int open_row_injector(void* data)
             state->saw_team_menu = true;
             SDL_Delay(750);
             fprintf(stderr, "  [test] clicking back from team menu\n");
+            interact("back");
+        }
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+// --- cross-company lobby re-seed flow (WP7 must-fix) -----------------------
+
+int open_other_company_and_toggle_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    FlowState* state = static_cast<FlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("load_company", 5000);
+    SDL_Delay(750);  // FadeWithInitialDraw settle
+    interact("load_company");
+
+    if (wait_for_interactable("company_row_0", 5000)) {
+        SDL_Delay(750);
+        fprintf(stderr, "  [test] opening row 0 (the NON-boot company)\n");
+        interact("company_row_0");
+
+        if (wait_for_team_menu()) {
+            state->saw_team_menu = true;
+            SDL_Delay(750);
+            // One §3.8 roster mutation: bench roster row 0. The autosave this
+            // triggers must write the OPENED company's roster into the OPENED
+            // company's file.
+            fprintf(stderr, "  [test] toggling deploy on roster row 0\n");
+            interact("roster_dep_0");
+            SDL_Delay(400);
+            fprintf(stderr, "  [test] clicking back from base camp\n");
             interact("back");
         }
     }
@@ -532,6 +594,147 @@ TEST(CompanyList, open_row_zero_repoints_active_company)
     ASSERT_EQ("BRAVO BAND",
               og::runtime::current_session->myscreen_->save_data.save_name)
         << "opening loads the company's save";
+}
+
+// WP7 must-fix (cross-company save corruption, §2.9 flow 2): opening a
+// company OTHER than the boot-loaded one must re-seed the local lobby cache
+// from the opened save. Without the re-seed the polled apply_state_to_save
+// keeps rebuilding the base-camp roster from the BOOT company's cached lobby
+// state, and the first §3.8 mutation autosave persists that stale roster
+// INTO the opened company's file (save_name is the one field the cache does
+// not overwrite — hence the roster + file-byte assertions here).
+TEST(CompanyList, open_other_company_reseeds_lobby_and_autosave_targets_it)
+{
+    trace_clear();
+    CompanySlotCleanup cleanup{{"wp7lobbya", "wp7lobbyb"}};
+    // The opened company must be row 0 (most recent) even if an unrelated
+    // test in this binary stamped a live wall-clock timestamp on save0.
+    const std::int64_t now_s = og::data::company_clock_now_s();
+    ASSERT_TRUE(seed_company_with_soldier(
+        "wp7lobbya", "BOOT BAND", "BootGuy", now_s + 500000));
+    ASSERT_TRUE(seed_company_with_soldier(
+        "wp7lobbyb", "OTHER BAND", "OpenGuy", now_s + 1000000));
+
+    // Boot on company A: picker_main's startup sequence loads the ACTIVE
+    // slot and seeds the lobby cache from it.
+    ASSERT_TRUE(og::data::set_active_company_slot("wp7lobbya"));
+
+    FlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        open_other_company_and_toggle_injector, "company_open_other", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_team_menu)
+        << "opening the other company should land on team build (base camp)";
+    ASSERT_TRUE(trace_contains("company_list", "open wp7lobbyb"))
+        << "row 0 must be the most-recent (non-boot) company";
+    ASSERT_EQ("wp7lobbyb", og::data::active_company_slot());
+
+    // The base camp must have served the OPENED company: save_name AND
+    // roster (the previously untested field).
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ("OTHER BAND", save.save_name);
+    bool memory_has_openguy = false;
+    bool memory_has_bootguy = false;
+    for (const auto& member : save.team_list) {
+        if (member == nullptr)
+            continue;
+        memory_has_openguy |= member->name == "OpenGuy";
+        memory_has_bootguy |= member->name == "BootGuy";
+    }
+    EXPECT_TRUE(memory_has_openguy)
+        << "base camp must serve the opened company's roster";
+    EXPECT_FALSE(memory_has_bootguy)
+        << "the boot company's cached roster must not leak into the base camp";
+
+    // The deploy-toggle autosave persisted the OPENED roster (with the
+    // toggled flag) into the OPENED company's file.
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wp7lobbyb"));
+    bool file_openguy_present = false;
+    bool file_openguy_benched = false;
+    bool file_has_bootguy = false;
+    for (const auto& member : reloaded.team_list) {
+        if (member == nullptr)
+            continue;
+        if (member->name == "OpenGuy") {
+            file_openguy_present = true;
+            file_openguy_benched = !member->deployed;
+        }
+        file_has_bootguy |= member->name == "BootGuy";
+    }
+    EXPECT_TRUE(file_openguy_present)
+        << "the opened company's file keeps its own roster";
+    EXPECT_TRUE(file_openguy_benched)
+        << "the deploy toggle must persist into the opened company's file";
+    EXPECT_FALSE(file_has_bootguy)
+        << "the boot company's roster must never be written into the opened "
+           "company's file";
+
+    // The boot company's own file is untouched by the whole flow.
+    SaveData boot_reloaded;
+    ASSERT_EQ(SaveDataIoError::None, boot_reloaded.load_with_error("wp7lobbya"));
+    EXPECT_EQ("BOOT BAND", boot_reloaded.save_name);
+    bool boot_still_has_bootguy = false;
+    for (const auto& member : boot_reloaded.team_list)
+        if (member != nullptr && member->name == "BootGuy")
+            boot_still_has_bootguy = true;
+    EXPECT_TRUE(boot_still_has_bootguy);
+}
+
+// E4 (WP7 must-fix): a persisted match-settings mutation autosaves the
+// active company — no explicit save, no quit hook (§0.3 "saving is
+// automatic"; §3.8 hook inventory: "difficulty/CTF setting callbacks").
+TEST(CompanyList, settings_mutation_autosaves_active_company)
+{
+    CompanySlotCleanup cleanup{{"wp7set"}};
+    ASSERT_TRUE(seed_company("wp7set", "SETTINGS BAND", 3000));
+    ASSERT_TRUE(og::data::set_active_company_slot("wp7set"));
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    ASSERT_EQ(SaveDataIoError::None, save.load_with_error("wp7set"));
+    const short before = save.respawn_mode;
+
+    ASSERT_EQ(4, static_cast<int>(change_respawn_mode()))
+        << "change_respawn_mode should return MENU_OK";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("wp7set"));
+    EXPECT_NE(before, reloaded.respawn_mode)
+        << "the settings toggle must reach the company file without an "
+           "explicit save";
+    EXPECT_EQ(save.respawn_mode, reloaded.respawn_mode);
+
+    // Undo the in-memory drift so this binary stays shuffle-stable (the
+    // fixture resets the SLOT, not the loaded save).
+    save.respawn_mode = before;
+}
+
+// The §3.8 settings-tail guard: with no active-company FILE on disk, a
+// settings toggle must NOT conjure a company — BEGIN NEW GAME's creation
+// write stays the only company creator (§2.2), and the empty-state main-menu
+// gating must not flip because someone cycled a difficulty row.
+TEST(CompanyList, settings_mutation_without_company_file_creates_nothing)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short before = save.respawn_mode;
+    ASSERT_TRUE(og::data::set_active_company_slot("wp7ghost"));
+    ASSERT_FALSE(user_file_exists("save/wp7ghost.gtl"));
+
+    ASSERT_EQ(4, static_cast<int>(change_respawn_mode()));
+
+    EXPECT_FALSE(user_file_exists("save/wp7ghost.gtl"))
+        << "a settings toggle must never create a company file";
+
+    save.respawn_mode = before;
 }
 
 // Delete: NO-first confirm (a queued NO leaves the file), YES deletes the

@@ -2750,6 +2750,13 @@ Sint32 company_list_on_spec_row(int row, void* screen_state)
         switch (result) {
         case ContinueResult::Opened:
             st->opened = true;
+            // §2.9 flow 2: re-seed the local lobby cache from the newly
+            // opened company (the BEGIN NEW GAME pattern). The polled
+            // apply_state_to_save otherwise keeps rebuilding roster/settings
+            // from the previously seeded company's cached state, and the
+            // next §3.8 autosave would persist that stale state into THIS
+            // company's file (cross-company corruption).
+            picker_lobby_initialize_from_save();
             TRACE("company_list", "open %s", info.slot.c_str());
             return MENU_EXIT;
         case ContinueResult::LoadFailed:
@@ -3025,6 +3032,12 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
         // may target a non-active company, e.g. a corrupt one being
         // recovered).
         (void)og::data::set_active_company_slot(st->slot);
+        // The restore loaded the rewound company into the in-memory save and
+        // it opens straight into base camp — re-seed the local lobby cache
+        // from it (the BEGIN NEW GAME pattern) so the polled
+        // apply_state_to_save serves the restored roster/settings instead of
+        // the previously seeded company's cached state (§2.9 flow 2).
+        picker_lobby_initialize_from_save();
         st->opened = true;
         TRACE("company_backups", "restored %s seq %d", st->slot.c_str(),
               info.seq);

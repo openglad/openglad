@@ -37,6 +37,7 @@
 
 Sint32 create_team_menu(Sint32 arg1);
 void picker_lobby_initialize_from_save();
+void popup_dialog(const char* title, const char* message);
 
 // Reset game data and go to create_team_menu()
 bool picker_prepare_new_game_setup()
@@ -72,8 +73,19 @@ bool picker_prepare_new_game_setup()
     game->save_data.save_name = company_name;
     const std::string slug = og::data::derive_company_slot(company_name);
     (void)og::data::set_active_company_slot(slug);
-    (void)og::data::company_autosave(game->save_data,
-                                     og::data::CompanyAutosaveKind::BaseCampMutation);
+    const SaveDataIoError create_error = og::data::company_autosave(
+        game->save_data, og::data::CompanyAutosaveKind::BaseCampMutation);
+    if (create_error != SaveDataIoError::None)
+    {
+        // §3.8 "callers surface but don't crash": a failed FIRST write leaves
+        // the active slot pointing at a file that does not exist (disk full;
+        // browser IndexedDB quota). Tell the user instead of failing
+        // silently — the in-memory company still plays, and any later
+        // successful autosave creates the file. (Under TESTING popup_dialog
+        // is trace-only, so no fault injection is forced on the flows.)
+        popup_dialog("NEW COMPANY",
+                     og::ui::save_error_string(create_error));
+    }
 
 	(void)og::ui::sync_campaign_mount_to_save(game->save_data);
 	og::runtime::current_session->current_guy_ = nullptr;

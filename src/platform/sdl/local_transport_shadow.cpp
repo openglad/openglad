@@ -1615,6 +1615,27 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        // §4.4 "policy off in every local session": the display-world seed
+        // snapshot above replays whatever the process-lifetime display world
+        // carries — after a networked owner-locked round that includes
+        // control_policy=1 plus a stale machine map (nothing else resets
+        // them: level loads rebuild the attached world through
+        // replace_loaded_world_state, which deliberately preserves both
+        // scalars for the dedicated server's in-session transitions). Stamp
+        // the legacy shared pool explicitly so no local round can ever run
+        // owner-locked; the install's initial snapshots then heal the
+        // display mirror too. A networked fallback through this install
+        // keeps the seeded values — the networked installs stamp the real
+        // policy themselves.
+        if (!runtime->networked)
+        {
+            std::array<std::uint8_t, og::sim::kPlayerMachineSlots>
+                no_machines;
+            no_machines.fill(og::sim::kPlayerMachineNone);
+            og::sim::set_control_policy(server_screen->world(),
+                                        og::sim::kControlPolicyLegacy,
+                                        no_machines);
+        }
         // Authoritative roll for this round's weather. AFTER the display-world
         // seed snapshot above (which carries the display's un-rolled None) so
         // it is not clobbered; the initial snapshots below sync it back to

@@ -285,6 +285,17 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
                     og::ui::PickerMenuCommand::LoadGame);
                 break;
             case og::ui::ContinueResult::Opened:
+                // §2.9 flow 2: the open replaced the in-memory save with the
+                // most-recent company — re-seed the local lobby cache from it
+                // (the BEGIN NEW GAME pattern). Without this the polled
+                // apply_state_to_save keeps rebuilding roster/settings from
+                // the BOOT company's cached lobby state and the next §3.8
+                // autosave persists that stale state into the opened file.
+                picker_lobby_initialize_from_save();
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::ContinueGame);
+                break;
             case og::ui::ContinueResult::NoCompany:
                 menu_item = og::ui::find_picker_menu_item(
                     og::ui::PickerMenuId::Main,
@@ -2643,6 +2654,25 @@ int matherr(struct exception *problem)
 }
 */
 
+// §3.8 settings tail (hook inventory: "difficulty/CTF setting callbacks —
+// picker_lobby_sync_settings_from_save() + company_autosave(BaseCampMutation)"):
+// persisted match settings autosave like any other base-camp mutation, so a
+// toggled setting survives QUIT (§0.3 "saving is automatic"). Gated on the
+// active company FILE existing: BEGIN NEW GAME's creation write is the only
+// company creator (§2.2), so a settings tweak from the pre-company main menu
+// never conjures an empty company. Networked lobbies take the [SAVE-F1]
+// owner-preserving merge write (session settings stay session-scoped there
+// by contract). Failures log inside company_autosave; settings cycling never
+// blocks on a failed autosave (§3.8 — callers surface but don't crash).
+static void picker_settings_autosave()
+{
+   if (!user_file_exists("save/" + og::data::active_company_slot() + ".gtl"))
+       return;
+   (void)og::ui::company_autosave_after_mutation(
+       og::runtime::current_session->myscreen_->save_data,
+       picker_lobby_is_networked());
+}
+
 // Refresh a DIFFICULTY-subscreen settings button's label in both the live
 // vbutton array and the mutable descriptor row that backs later redraws.
 static void refresh_difficulty_menu_button_label(int button_index,
@@ -2671,6 +2701,7 @@ Sint32 set_difficulty()
        og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2741,6 +2772,7 @@ Sint32 change_allied()
    // reshape.
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2768,6 +2800,7 @@ Sint32 change_ctf_teams()
                                   og::ui::format_ctf_teams_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2781,6 +2814,7 @@ Sint32 change_ctf_caps()
                                   og::ui::format_ctf_caps_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2794,6 +2828,7 @@ Sint32 change_ctf_troops()
                                   og::ui::format_ctf_troops_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2809,6 +2844,7 @@ Sint32 change_respawn_mode()
                                         og::ui::format_respawn_mode_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2822,6 +2858,7 @@ Sint32 change_respawn_delay()
                                         og::ui::format_respawn_delay_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2835,6 +2872,7 @@ Sint32 change_permadeath()
                                         og::ui::format_permadeath_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -2848,6 +2886,7 @@ Sint32 change_generator_rate()
                                         og::ui::format_generator_rate_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }

@@ -25,6 +25,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/win_shares.h>
 
 #include <gtest/gtest.h>
 
@@ -3583,6 +3584,128 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
                   find_named_team_member(server_screen->world(), "Bravo"))
             << "a character benched between levels must not enter level 2";
     }
+
+    // ---- [NET-R8] §4.6/§4.8: win LEVEL 2 as well and pin cross-machine
+    // capture determinism. Level-2 rosters derive from update_guys-pruned
+    // lists on BOTH sides, so an asymmetric prune would split the wallets
+    // differently per machine — the conservation unit test alone cannot
+    // catch that. Both displays latch their NetWinFoldCapture in
+    // screen::endgame; the captures must agree and each must conserve its
+    // per-team delta through the split table. ----
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *cleanup.host_session);
+        ASSERT_NE(nullptr, server_screen);
+        server_screen->world().m_score[0] = 450;
+        const unsigned char my_team =
+            static_cast<unsigned char>(server_screen->world().my_team);
+        for (auto& uptr : server_screen->world().oblist)
+        {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->is_friendly_to_team(my_team) == 0)
+            {
+                w->set_dead(1);
+            }
+        }
+    }
+    bool both_ended_level2 = false;
+    for (int round = 0; round < 80 && !both_ended_level2; ++round)
+    {
+        pump(5);
+        both_ended_level2 = peer_finished(*cleanup.host_session) &&
+            peer_finished(join_session);
+    }
+    ASSERT_TRUE(both_ended_level2)
+        << "both peers must finish the forced level-2 win";
+
+    og::progression::NetWinFoldCapture host_capture;
+    og::progression::NetWinFoldCapture join_capture;
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ASSERT_TRUE(cleanup.host_session->myscreen_->pending_net_win_capture_
+                        .has_value())
+            << "the host display must latch the level-2 win capture";
+        host_capture =
+            *cleanup.host_session->myscreen_->pending_net_win_capture_;
+    }
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(
+            join_session.myscreen_->pending_net_win_capture_.has_value())
+            << "the joiner display must latch the level-2 win capture";
+        join_capture = *join_session.myscreen_->pending_net_win_capture_;
+    }
+
+    // Deployed-roster equality (owner + money team, order-normalized so a
+    // benign mirror-rebuild ordering difference can never mask — or fake —
+    // an asymmetric prune).
+    const auto normalized_deployed =
+        [](const og::progression::NetWinFoldCapture& capture) {
+            std::vector<std::pair<int, int>> entries;
+            entries.reserve(capture.deployed.size());
+            for (const auto& contributor : capture.deployed)
+            {
+                entries.emplace_back(static_cast<int>(contributor.owner),
+                                     static_cast<int>(contributor.team));
+            }
+            std::sort(entries.begin(), entries.end());
+            return entries;
+        };
+    EXPECT_EQ(normalized_deployed(host_capture),
+              normalized_deployed(join_capture))
+        << "[NET-R8] host and joiner must capture the SAME deploy roster on "
+           "the post-prune level";
+    // Bravo was benched between levels: exactly Alpha (owner 0) and the
+    // joiner's hero (owner 1) contributed, both on the allied money team 0.
+    EXPECT_EQ((std::vector<std::pair<int, int>>{{0, 0}, {1, 0}}),
+              normalized_deployed(host_capture));
+
+    // The applied fold deltas agree (m_score is snapshot-synced and the
+    // fold math is pure).
+    EXPECT_EQ(host_capture.cash_delta, join_capture.cash_delta);
+    EXPECT_EQ(host_capture.score_delta, join_capture.score_delta);
+    EXPECT_GT(host_capture.cash_delta[0], 0u)
+        << "the seeded level-2 score must produce a nonzero team-0 pot";
+
+    // Conservation: for every team with >= 1 contributor the split table
+    // sums exactly to the captured delta — on BOTH captures.
+    const auto expect_conservation =
+        [](const og::progression::NetWinFoldCapture& capture,
+           const char* who) {
+            const og::progression::NetWinShareTable table =
+                og::progression::compute_networked_win_shares(capture);
+            for (std::size_t team = 0; team < capture.cash_delta.size();
+                 ++team)
+            {
+                bool has_contributor = false;
+                for (const auto& contributor : capture.deployed)
+                {
+                    if (static_cast<std::size_t>(contributor.team) == team)
+                        has_contributor = true;
+                }
+                if (!has_contributor)
+                    continue;
+                std::uint64_t cash_sum = 0;
+                std::uint64_t score_sum = 0;
+                for (std::size_t p = 0; p < og::sim::kMaxGlobalPlayers; ++p)
+                {
+                    cash_sum += table.cash[team][p];
+                    score_sum += table.score[team][p];
+                }
+                EXPECT_EQ(static_cast<std::uint64_t>(
+                              capture.cash_delta[team]),
+                          cash_sum)
+                    << who << ": cash shares must conserve team " << team;
+                EXPECT_EQ(static_cast<std::uint64_t>(
+                              capture.score_delta[team]),
+                          score_sum)
+                    << who << ": score shares must conserve team " << team;
+            }
+        };
+    expect_conservation(host_capture, "host");
+    expect_conservation(join_capture, "join");
 
     host_save.save_name = old_host_company;
 }

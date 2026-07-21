@@ -782,6 +782,10 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("PVP Mode",
                 {std::format("PVP mode set to {}.",
                     og::ui::is_allied_mode(save_data_) ? "Allied" : "Enemy")});
+            // §3.8 settings tail: persisted match settings autosave like any
+            // other base-camp mutation (E4 — a toggled setting must survive
+            // quit without an explicit save).
+            autosave_company_after_mutation(save_data_);
             break;
         case PickerMenuCommand::LevelEdit:
             menu.show_text("Level Edit",
@@ -807,27 +811,32 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Difficulty",
                 {std::format("Difficulty set to {}.",
                     og::ui::kDifficultyNames[difficulty_index])});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         }
         case PickerMenuCommand::CycleRespawnMode:
             og::ui::cycle_respawn_mode(save_data_);
             menu.show_text("Respawns",
                 {og::ui::format_respawn_mode_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnDelay:
             og::ui::cycle_respawn_delay(save_data_);
             menu.show_text("Respawn Delay",
                 {og::ui::format_respawn_delay_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::TogglePermadeath:
             og::ui::toggle_permadeath(save_data_);
             menu.show_text("Permadeath",
                 {og::ui::format_permadeath_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleGeneratorRate:
             og::ui::cycle_generator_rate(save_data_);
             menu.show_text("Generators",
                 {og::ui::format_generator_rate_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         default:
             break;
@@ -890,16 +899,19 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::CycleCtfTeamCount:
         og::ui::cycle_ctf_team_count(save_data_);
         menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::CycleCtfCaptureLimit:
         og::ui::cycle_ctf_capture_limit(save_data_);
         menu.show_text("Capture Limit",
             {og::ui::format_ctf_caps_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ToggleCtfScenarioTroops:
         og::ui::toggle_ctf_scenario_troops(save_data_);
         menu.show_text("Scenario Troops",
             {og::ui::format_ctf_troops_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ViewScenario:
         view_scenario(menu, save_data_);
@@ -926,8 +938,11 @@ bool CursesPickerClient::prepare_new_game()
     std::string company_name = og::ui::generate_company_name(rng);
     for (;;) {
         bool accepted = false;
-        const std::string label = std::format(
-            "Name ({}): ", og::ui::format_company_file_preview(company_name));
+        // Deliberately NO "file: <slug>.gtl" preview in the label: the curses
+        // client persists in place to its own slot (config_.save_name,
+        // [SAVE-R2]), so the SDL slug preview would name a file that is
+        // never created.
+        const std::string label = "Name: ";
         std::string result =
             menu.prompt("Found Your Company", label, company_name, accepted);
         if (!accepted)

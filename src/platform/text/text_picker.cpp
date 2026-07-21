@@ -129,11 +129,14 @@ public:
     }
 
     // §2.2 terminal name entry: the read_line projection of the SDL screen.
-    // Prints the generated suggestion + slug preview, then accepts a blank
-    // line (keep the suggestion), "reroll" (a fresh suggestion), or any typed
-    // text (the new name, clamped to the display cap). Exhausted input (EOF)
-    // keeps the suggestion — the headless internal-path checks call
-    // prepare_new_game with no stdin and still expect a founded company.
+    // Prints the generated suggestion, then accepts a blank line (keep the
+    // suggestion), "reroll" (a fresh suggestion), or any typed text (the new
+    // name, clamped to the display cap). Exhausted input (EOF) keeps the
+    // suggestion — the headless internal-path checks call prepare_new_game
+    // with no stdin and still expect a founded company. Deliberately NO
+    // "file: <slug>.gtl" preview here: the terminal clients persist in place
+    // to their own slot (config_.save_name, [SAVE-R2]), so the SDL slug
+    // preview would name a file that is never created.
     std::string prompt_new_company_name()
     {
         SeededRandom rng(
@@ -142,8 +145,6 @@ public:
         for (;;) {
             std::printf("\n=== Found Your Company ===\n");
             std::printf("Name: %s\n", name.c_str());
-            std::printf("%s\n",
-                og::ui::format_company_file_preview(name).c_str());
             std::printf("Enter a name, blank to accept, "
                         "or 'reroll' for another suggestion: ");
             std::fflush(stdout);
@@ -647,6 +648,10 @@ private:
             toggle_allied_mode(save_data_);
             std::printf("PVP mode set to %s.\n",
                 is_allied_mode(save_data_) ? "Allied" : "Enemy");
+            // §3.8 settings tail: persisted match settings autosave like any
+            // other base-camp mutation (E4 — a toggled setting must survive
+            // quit without an explicit save).
+            autosave_company_after_mutation();
             break;
         case PickerMenuCommand::LevelEdit:
             std::printf("Level Edit is not available in the headless text client.\n");
@@ -699,14 +704,17 @@ private:
         case PickerMenuCommand::CycleCtfTeamCount:
             cycle_ctf_team_count(save_data_);
             std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleCtfCaptureLimit:
             cycle_ctf_capture_limit(save_data_);
             std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::ToggleCtfScenarioTroops:
             toggle_ctf_scenario_troops(save_data_);
             std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::ViewScenario:
             view_scenario();
@@ -730,22 +738,27 @@ private:
             }
             std::printf("Difficulty set to %s.\n",
                 kDifficultyNames[og::runtime::current_session->current_difficulty_]);
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnMode:
             cycle_respawn_mode(save_data_);
             std::printf("%s\n", format_respawn_mode_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnDelay:
             cycle_respawn_delay(save_data_);
             std::printf("%s\n", format_respawn_delay_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::TogglePermadeath:
             toggle_permadeath(save_data_);
             std::printf("%s\n", format_permadeath_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleGeneratorRate:
             cycle_generator_rate(save_data_);
             std::printf("%s\n", format_generator_rate_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         default:
             break;
