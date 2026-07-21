@@ -3014,15 +3014,27 @@ TEST(BaseCampRoster, format_row_clips_every_column)
     member.level = 1234;
     member.exp = 32200;
 
-    const og::ui::BaseCampRowText row =
-        og::ui::format_base_camp_row(member, 12345);
+    // §9.5.3: no HP column (derived max HP was redundant with CLASS+LVL).
+    const og::ui::BaseCampRowText row = og::ui::format_base_camp_row(member);
     EXPECT_EQ("AVERYLONGNAM", row.name) << "name clips to 12";
     EXPECT_EQ("SOLDIER", row.cls) << "uppercased family display name";
     EXPECT_LE(row.cls.size(), 9u);
     EXPECT_EQ("123", row.level) << "level clips to 3";
-    EXPECT_EQ("1234", row.hp) << "hp clips to 4";
-    EXPECT_EQ("32200", row.exp);
+    EXPECT_EQ(" 32200", row.exp) << "exp left-pads to 6 (graft b)";
     EXPECT_LE(row.exp.size(), 6u);
+
+    // §9.9 graft (b): small numerics left-pad to fixed width so the digit
+    // columns right-align down the page on all three clients.
+    member.level = 7;
+    member.exp = 950;
+    const og::ui::BaseCampRowText padded =
+        og::ui::format_base_camp_row(member);
+    EXPECT_EQ(" 7", padded.level) << "level left-pads to 2";
+    EXPECT_EQ("   950", padded.exp) << "exp left-pads to 6";
+
+    // Over-wide exp still clips to the 6-char budget.
+    member.exp = 1234567;
+    EXPECT_EQ("123456", og::ui::format_base_camp_row(member).exp);
 }
 
 TEST(BaseCampRoster, header_lines_budget_and_content)
@@ -3287,12 +3299,15 @@ TEST(BaseCampMpDisplay, net_line_and_net_row_formats_hold_their_budgets)
         {.ready = 15, .machines = 15}, {.deployed = 48, .total = 48}, 9999);
     EXPECT_LE(wide.size(), 34u);
 
+    // §9.5.3: no HP column in the networked shape either.
     const og::ui::BaseCampNetRowText row = og::ui::format_base_camp_net_row(
-        "TWELVECHARSNAME", "A COMPANY NAME PAST SIXTEEN", 123, 14842);
+        "TWELVECHARSNAME", "A COMPANY NAME PAST SIXTEEN", 123);
     EXPECT_EQ("TWELVECHAR", row.name) << "MP name budget is 10 chars (U7)";
     EXPECT_EQ("A COMPANY NAME P", row.company) << "COMPANY column is 16 chars";
     EXPECT_EQ("123", row.level);
-    EXPECT_EQ("1484", row.hp);
+
+    // §9.9 graft (b): the MP level left-pads to 2 like the solo shape.
+    EXPECT_EQ(" 5", og::ui::format_base_camp_net_row("A", "B", 5).level);
 }
 
 TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)

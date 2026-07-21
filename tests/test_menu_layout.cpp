@@ -254,12 +254,13 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 }
 } // namespace
 
-// §2.5 base camp (the reimagined team build): 12 deploy/TRAIN row pairs at
-// 12px pitch from y=32, the page cluster top-right, and the bottom command
+// §2.5 base camp (the reimagined team build) at the §9.5.1 grid: 10
+// deploy/TRAIN row pairs at 15px pitch from y=31 (the §2.0 U6 pre-declared
+// save-slot fallback), the page cluster top-right, and the bottom command
 // strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. Spec ordinals group
-// by kind (dep 0-11, train 12-23, pagers 24/25, strip 26-30) so MenuSpecRow
+// by kind (dep 0-9, train 10-19, pagers 20/21, strip 22-26) so MenuSpecRow
 // args decode positionally; the layout is identical for classic and CTF
-// campaigns. Static shape = full page (12 rows), pagers hidden, GO visible.
+// campaigns. Static shape = full page (10 rows), pagers hidden, GO visible.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -274,41 +275,37 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         bool hidden;
     };
     static const ExpectedButton kExpected[] = {
-        {"roster_dep_0", "", 8, 32, 14, 10, MenuNav{.down = 1, .right = 12}, false},
-        {"roster_dep_1", "", 8, 44, 14, 10, MenuNav{.up = 0, .down = 2, .right = 13}, false},
-        {"roster_dep_2", "", 8, 56, 14, 10, MenuNav{.up = 1, .down = 3, .right = 14}, false},
-        {"roster_dep_3", "", 8, 68, 14, 10, MenuNav{.up = 2, .down = 4, .right = 15}, false},
-        {"roster_dep_4", "", 8, 80, 14, 10, MenuNav{.up = 3, .down = 5, .right = 16}, false},
-        {"roster_dep_5", "", 8, 92, 14, 10, MenuNav{.up = 4, .down = 6, .right = 17}, false},
-        {"roster_dep_6", "", 8, 104, 14, 10, MenuNav{.up = 5, .down = 7, .right = 18}, false},
-        {"roster_dep_7", "", 8, 116, 14, 10, MenuNav{.up = 6, .down = 8, .right = 19}, false},
-        {"roster_dep_8", "", 8, 128, 14, 10, MenuNav{.up = 7, .down = 9, .right = 20}, false},
-        {"roster_dep_9", "", 8, 140, 14, 10, MenuNav{.up = 8, .down = 10, .right = 21}, false},
-        {"roster_dep_10", "", 8, 152, 14, 10, MenuNav{.up = 9, .down = 11, .right = 22}, false},
-        {"roster_dep_11", "", 8, 164, 14, 10, MenuNav{.up = 10, .down = 26, .right = 23}, false},
-        {"roster_train_0", "TRAIN", 272, 32, 40, 10, MenuNav{.down = 13, .left = 0}, false},
-        {"roster_train_1", "TRAIN", 272, 44, 40, 10, MenuNav{.up = 12, .down = 14, .left = 1}, false},
-        {"roster_train_2", "TRAIN", 272, 56, 40, 10, MenuNav{.up = 13, .down = 15, .left = 2}, false},
-        {"roster_train_3", "TRAIN", 272, 68, 40, 10, MenuNav{.up = 14, .down = 16, .left = 3}, false},
-        {"roster_train_4", "TRAIN", 272, 80, 40, 10, MenuNav{.up = 15, .down = 17, .left = 4}, false},
-        {"roster_train_5", "TRAIN", 272, 92, 40, 10, MenuNav{.up = 16, .down = 18, .left = 5}, false},
-        {"roster_train_6", "TRAIN", 272, 104, 40, 10, MenuNav{.up = 17, .down = 19, .left = 6}, false},
-        {"roster_train_7", "TRAIN", 272, 116, 40, 10, MenuNav{.up = 18, .down = 20, .left = 7}, false},
-        {"roster_train_8", "TRAIN", 272, 128, 40, 10, MenuNav{.up = 19, .down = 21, .left = 8}, false},
-        {"roster_train_9", "TRAIN", 272, 140, 40, 10, MenuNav{.up = 20, .down = 22, .left = 9}, false},
-        {"roster_train_10", "TRAIN", 272, 152, 40, 10, MenuNav{.up = 21, .down = 23, .left = 10}, false},
-        {"roster_train_11", "TRAIN", 272, 164, 40, 10, MenuNav{.up = 22, .down = 30, .left = 11}, false},
-        {"roster_page_prev", "<", 263, 11, 14, 10, MenuNav{.down = 12, .right = 25}, true},
-        {"roster_page_next", ">", 302, 11, 14, 10, MenuNav{.down = 12, .left = 24}, true},
-        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 11, .right = 27}, false},
-        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 11, .left = 26, .right = 28}, false},
-        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 23, .left = 27, .right = 29}, false},
-        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 23, .left = 28, .right = 30}, false},
-        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 23, .left = 29}, false},
+        {"roster_dep_0", "", 8, 31, 14, 10, MenuNav{.down = 1, .right = 10}, false},
+        {"roster_dep_1", "", 8, 46, 14, 10, MenuNav{.up = 0, .down = 2, .right = 11}, false},
+        {"roster_dep_2", "", 8, 61, 14, 10, MenuNav{.up = 1, .down = 3, .right = 12}, false},
+        {"roster_dep_3", "", 8, 76, 14, 10, MenuNav{.up = 2, .down = 4, .right = 13}, false},
+        {"roster_dep_4", "", 8, 91, 14, 10, MenuNav{.up = 3, .down = 5, .right = 14}, false},
+        {"roster_dep_5", "", 8, 106, 14, 10, MenuNav{.up = 4, .down = 6, .right = 15}, false},
+        {"roster_dep_6", "", 8, 121, 14, 10, MenuNav{.up = 5, .down = 7, .right = 16}, false},
+        {"roster_dep_7", "", 8, 136, 14, 10, MenuNav{.up = 6, .down = 8, .right = 17}, false},
+        {"roster_dep_8", "", 8, 151, 14, 10, MenuNav{.up = 7, .down = 9, .right = 18}, false},
+        {"roster_dep_9", "", 8, 166, 14, 10, MenuNav{.up = 8, .down = 22, .right = 19}, false},
+        {"roster_train_0", "TRAIN", 266, 31, 46, 10, MenuNav{.down = 11, .left = 0}, false},
+        {"roster_train_1", "TRAIN", 266, 46, 46, 10, MenuNav{.up = 10, .down = 12, .left = 1}, false},
+        {"roster_train_2", "TRAIN", 266, 61, 46, 10, MenuNav{.up = 11, .down = 13, .left = 2}, false},
+        {"roster_train_3", "TRAIN", 266, 76, 46, 10, MenuNav{.up = 12, .down = 14, .left = 3}, false},
+        {"roster_train_4", "TRAIN", 266, 91, 46, 10, MenuNav{.up = 13, .down = 15, .left = 4}, false},
+        {"roster_train_5", "TRAIN", 266, 106, 46, 10, MenuNav{.up = 14, .down = 16, .left = 5}, false},
+        {"roster_train_6", "TRAIN", 266, 121, 46, 10, MenuNav{.up = 15, .down = 17, .left = 6}, false},
+        {"roster_train_7", "TRAIN", 266, 136, 46, 10, MenuNav{.up = 16, .down = 18, .left = 7}, false},
+        {"roster_train_8", "TRAIN", 266, 151, 46, 10, MenuNav{.up = 17, .down = 19, .left = 8}, false},
+        {"roster_train_9", "TRAIN", 266, 166, 46, 10, MenuNav{.up = 18, .down = 26, .left = 9}, false},
+        {"roster_page_prev", "<", 263, 11, 14, 10, MenuNav{.down = 10, .right = 21}, true},
+        {"roster_page_next", ">", 302, 11, 14, 10, MenuNav{.down = 10, .left = 20}, true},
+        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 9, .right = 23}, false},
+        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 9, .left = 22, .right = 24}, false},
+        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 19, .left = 23, .right = 25}, false},
+        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 19, .left = 24, .right = 26}, false},
+        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 19, .left = 25}, false},
         // §2.6: the READY twin shares GO's exact rect; statically hidden
         // (the rewire shows exactly one of the pair — GO for hosts, READY
         // for networked joiners).
-        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 23, .left = 29},
+        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 19, .left = 25},
          true},
     };
 
@@ -319,9 +316,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
-            << "base camp: 24 roster cells + 2 pagers + 5 strip buttons + "
+            << "base camp: 20 roster cells + 2 pagers + 5 strip buttons + "
                "the hidden READY twin";
-        ASSERT_EQ(32, count);
+        ASSERT_EQ(28, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -345,15 +342,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         }
 
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
-        EXPECT_EQ(kBaseCampTrainBase, 12);
-        EXPECT_EQ(kBaseCampPagePrevIndex, 24);
-        EXPECT_EQ(kBaseCampPageNextIndex, 25);
-        EXPECT_EQ(kCreateMenuBackIndex, 26);
-        EXPECT_EQ(kCreateMenuHireIndex, 27);
-        EXPECT_EQ(kCreateMenuScenarioIndex, 28);
-        EXPECT_EQ(kCreateMenuNetworkingIndex, 29);
-        EXPECT_EQ(kCreateMenuGoIndex, 30);
-        EXPECT_EQ(kCreateMenuReadyIndex, 31);
+        EXPECT_EQ(kBaseCampTrainBase, 10);
+        EXPECT_EQ(kBaseCampPagePrevIndex, 20);
+        EXPECT_EQ(kBaseCampPageNextIndex, 21);
+        EXPECT_EQ(kCreateMenuBackIndex, 22);
+        EXPECT_EQ(kCreateMenuHireIndex, 23);
+        EXPECT_EQ(kCreateMenuScenarioIndex, 24);
+        EXPECT_EQ(kCreateMenuNetworkingIndex, 25);
+        EXPECT_EQ(kCreateMenuGoIndex, 26);
+        EXPECT_EQ(kCreateMenuReadyIndex, 27);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -377,7 +374,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 }
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
-// over {page shapes: empty, partial, one full page, two pages (both pages)}
+// over {page shapes: empty, partial, one full page, two pages, three pages
+// — at the §9.5.1 10-row grid a 12-roster PAGES and cap-24 spans 3}
 // x {host, joiner (GO hidden)}. Every visible button reachable, no link at
 // a hidden one, empty roster seeds the highlight on HIRE.
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
@@ -609,7 +607,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
         og::ui::base_camp_refresh_rows(state);
         const int total = own_size + foreign_size;
         ASSERT_EQ(total, static_cast<int>(state.slots.size()));
-        const int expected_pages = std::max(1, (total + 11) / 12);
+        const int expected_pages =
+            std::max(1, (total + kBaseCampRosterRowsPerPage - 1)
+                            / kBaseCampRosterRowsPerPage);
         ASSERT_EQ(expected_pages, state.page.page_count())
             << "page window derives from the display size (>24 safe)";
         og::ui::install_base_camp_state_for_screen(&state);

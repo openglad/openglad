@@ -944,7 +944,7 @@ std::string clip_chars(std::string value, std::size_t max_chars)
 
 } // namespace
 
-BaseCampRowText format_base_camp_row(const guy& member, int derived_hp)
+BaseCampRowText format_base_camp_row(const guy& member)
 {
     BaseCampRowText row;
     row.name = clip_chars(member.name, 12);
@@ -952,9 +952,10 @@ BaseCampRowText format_base_camp_row(const guy& member, int derived_hp)
     for (char& c : cls)
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     row.cls = clip_chars(std::move(cls), 9);
-    row.level = clip_chars(std::format("{}", member.level), 3);
-    row.hp = clip_chars(std::format("{}", derived_hp), 4);
-    row.exp = clip_chars(std::format("{}", member.exp), 6);
+    // §9.9 graft (b): fixed-width left-padded numerics so the digit columns
+    // right-align down the page (the clip budgets are unchanged).
+    row.level = clip_chars(std::format("{:>2}", member.level), 3);
+    row.exp = clip_chars(std::format("{:>6}", member.exp), 6);
     return row;
 }
 
@@ -1209,14 +1210,13 @@ std::string format_cross_control_label(bool cross_control_enabled)
 
 BaseCampNetRowText format_base_camp_net_row(std::string_view name,
                                             std::string_view company,
-                                            int level,
-                                            int derived_hp)
+                                            int level)
 {
     BaseCampNetRowText row;
     row.name = clip_chars(std::string(name), 10);
     row.company = clip_chars(std::string(company), 16);
-    row.level = clip_chars(std::format("{}", level), 3);
-    row.hp = clip_chars(std::format("{}", derived_hp), 4);
+    // §9.9 graft (b): the level left-pads to 2 like the solo shape.
+    row.level = clip_chars(std::format("{:>2}", level), 3);
     return row;
 }
 

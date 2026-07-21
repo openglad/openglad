@@ -903,7 +903,7 @@ private:
             for (std::size_t i = 0; i < slots.size(); ++i) {
                 const guy& member =
                     *save_data_.team_list[static_cast<std::size_t>(slots[i])];
-                std::printf("%2zu. [%c] %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
+                std::printf("%2zu. [%c] %-14s Family=%-14s L=%2d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
                     i + 1,
                     member.deployed ? 'X' : ' ',
                     member.name.c_str(),

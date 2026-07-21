@@ -243,17 +243,19 @@ int count_deployed_members(const SaveData& save);
 // (a no-op in solo/local sessions).
 bool toggle_deploy_slot(SaveData& save, int slot);
 
-// One §2.5 roster row's text columns (solo shape). `derived_hp` is the
-// screen-side derived hitpoint value (loader-dependent, so it stays a
-// parameter and this helper stays headlessly testable).
+// One §2.5 roster row's text columns (solo shape, §9.5.3): the HP column is
+// GONE (it was DERIVED max HP — damage never persists to base camp — and
+// redundant with CLASS+LVL; HP lives one click away in TRAIN). Numeric
+// fields left-pad to fixed width (level 2, exp 6) so the digit columns
+// right-align down the page on all three clients (§9.9 graft b — a space
+// advances 6px like every glyph).
 struct BaseCampRowText {
     std::string name;  // <= 12 chars
     std::string cls;   // <= 9 chars, uppercased family display name
-    std::string level; // <= 3 chars
-    std::string hp;    // <= 4 chars
-    std::string exp;   // <= 6 chars
+    std::string level; // <= 3 chars, left-padded to 2
+    std::string exp;   // <= 6 chars, left-padded to 6
 };
-BaseCampRowText format_base_camp_row(const guy& member, int derived_hp);
+BaseCampRowText format_base_camp_row(const guy& member);
 
 // §2.5 header line A right block: "GOLD {n}" (clipped to the 11-char block).
 std::string format_base_camp_gold_label(const SaveData& save);
@@ -396,17 +398,16 @@ std::string format_go_blockers(
 std::string format_cross_control_label(bool cross_control_enabled);
 
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
-// carried by the family chip + family-colored name; 16-char COMPANY).
+// carried by the family chip; 16-char COMPANY). §9.5.3: no HP column, and
+// the level left-pads to 2 like the solo shape (§9.9 graft b).
 struct BaseCampNetRowText {
     std::string name;    // <= 10 chars
     std::string company; // <= 16 chars
-    std::string level;   // <= 3 chars
-    std::string hp;      // <= 4 chars
+    std::string level;   // <= 3 chars, left-padded to 2
 };
 BaseCampNetRowText format_base_camp_net_row(std::string_view name,
                                             std::string_view company,
-                                            int level,
-                                            int derived_hp);
+                                            int level);
 
 // Display-only guy copy of a replicated foreign character (derived-stat
 // input + family chip). NOT the roster-assembly builder — no id/teamnum

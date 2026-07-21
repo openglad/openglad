@@ -160,25 +160,27 @@ int picker_company_list_button_count();
 button* picker_company_backups_buttons();
 int picker_company_backups_button_count();
 
-// --- Base camp (team build) layout contract (design §2.5) ------------------
-// The command roster: 12 roster rows/page (deploy toggle at x=8, TRAIN at
-// x=272, y=32+12r), the page cluster top-right, and the bottom command strip
+// --- Base camp (team build) layout contract (design §2.5 as amended §9.5) --
+// The command roster at the §9.5.1 grid (the §2.0 U6 pre-declared 15px
+// save-slot fallback): 10 roster rows/page (deploy toggle at x=8, TRAIN at
+// x=266, y=31+15r), the page cluster top-right, and the bottom command strip
 // BACK | HIRE | SCENARIO | NETWORK | GO at y=178. Spec ordinals group by
 // kind so the MenuSpecRow arg (== ordinal, G3) decodes as row/kind directly.
-// GO is the only host-gated button.
-inline constexpr int kBaseCampRosterRowsPerPage = 12; // roster_dep_r = 0..11
-inline constexpr int kBaseCampTrainBase = 12;         // roster_train_r = 12+r
-inline constexpr int kBaseCampPagePrevIndex = 24;
-inline constexpr int kBaseCampPageNextIndex = 25;
-inline constexpr int kCreateMenuBackIndex = 26;
-inline constexpr int kCreateMenuHireIndex = 27;
-inline constexpr int kCreateMenuScenarioIndex = 28;
-inline constexpr int kCreateMenuNetworkingIndex = 29;
-inline constexpr int kCreateMenuGoIndex = 30;
+// GO is the only host-gated button. Cap-24 roster = <=3 pages; the 40-slot
+// defensive shape pages to 4.
+inline constexpr int kBaseCampRosterRowsPerPage = 10; // roster_dep_r = 0..9
+inline constexpr int kBaseCampTrainBase = 10;         // roster_train_r = 10+r
+inline constexpr int kBaseCampPagePrevIndex = 20;
+inline constexpr int kBaseCampPageNextIndex = 21;
+inline constexpr int kCreateMenuBackIndex = 22;
+inline constexpr int kCreateMenuHireIndex = 23;
+inline constexpr int kCreateMenuScenarioIndex = 24;
+inline constexpr int kCreateMenuNetworkingIndex = 25;
+inline constexpr int kCreateMenuGoIndex = 26;
 // §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
 // of the pair is visible per frame (host => GO, networked joiner => READY).
-inline constexpr int kCreateMenuReadyIndex = 31;
-inline constexpr int kCreateMenuButtonCount = 32;
+inline constexpr int kCreateMenuReadyIndex = 27;
+inline constexpr int kCreateMenuButtonCount = 28;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().

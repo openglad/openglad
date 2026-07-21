@@ -1052,7 +1052,8 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     save.current_campaign = "org.openglad.gladiator";
     save.scen_num = 1;
 
-    // 13 members so a second page exists (12 rows/page); M03 is held back.
+    // 13 members so a second page exists (10 rows/page, §9.5.1); M03 is
+    // held back.
     for (int i = 0; i < 13; ++i) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("M{:02}", i);
@@ -1066,7 +1067,7 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     ASSERT_EQ(13u, state.slots.size());
     ASSERT_EQ(2, state.page.page_count());
     ASSERT_TRUE(state.page.step(1)) << "page 2 should be reachable";
-    ASSERT_EQ(12, state.page.first_index());
+    ASSERT_EQ(10, state.page.first_index());
 
     // The win fold: only one deployed member survived; every other deployed
     // member died. Pass 2 appends the held-back M03 behind the survivor.

@@ -393,7 +393,7 @@ void view_team_roster(Menu& menu, SaveData& save)
             const guy& member =
                 *save.team_list[static_cast<std::size_t>(slots[i])];
             entries.push_back(ListEntry{std::format(
-                "[{}] {:<14} {:<14} L={} STR={} DEX={} CON={} INT={} ARM={}",
+                "[{}] {:<14} {:<14} L={:>2} STR={} DEX={} CON={} INT={} ARM={}",
                 member.deployed ? 'X' : ' ', member.name,
                 og::ui::family_display_name(member.family), member.level,
                 member.strength, member.dexterity, member.constitution,
