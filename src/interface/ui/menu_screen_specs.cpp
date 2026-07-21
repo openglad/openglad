@@ -909,6 +909,16 @@ bool main_menu_company_present(const MenuLabelContext& /*context*/)
     return g_main_menu_company_view.present;
 }
 
+// §9.2 note-row state: Hidden while any company exists; Disabled (the
+// engine's greyed-out inert-box grammar — GREY face, bevel intact,
+// keyboard-dead, click no-ops with the disabled_row_click TRACE) when none
+// does. Never Visible, so the MenuSpecRow action can never dispatch.
+RowState main_menu_no_company_note_state(const MenuLabelContext& /*context*/)
+{
+    return g_main_menu_company_view.present ? RowState::Hidden
+                                            : RowState::Disabled;
+}
+
 int main_menu_row_index(const button* buttons, int count, std::string_view id)
 {
     for (int i = 0; i < count; ++i) {
@@ -1038,6 +1048,17 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 4, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
+    // §9.2 (appended at the table END): the no-company note box — a greyed
+    // Disabled row filling the exact CONTINUE|LOAD envelope while no company
+    // exists, Hidden once one does. Inert chrome: MenuSpecRow arg = own
+    // materialized ordinal (never dispatched — the row is never Visible),
+    // no nav links in or out, statically hidden (companies present is the
+    // default view). Replaces the old no-company bottom caption.
+    {.id = "no_company_note", .label = "NO COMPANY YET",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 12,
+     .state_override = &main_menu_no_company_note_state,
+     .hidden = true},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1082,6 +1103,12 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
+    // §9.2 no-MP note box (see the MP table): materialized ordinal 7.
+    {.id = "no_company_note", .label = "NO COMPANY YET",
+     .x = 80, .y = 75, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 7,
+     .state_override = &main_menu_no_company_note_state,
+     .hidden = true},
 };
 
 void main_menu_draw_background(void* /*screen_state*/)
@@ -1125,21 +1152,17 @@ void main_menu_draw_content(void* /*screen_state*/)
     }
 
     // §2.1 company caption: a black strip (the SCEN-hint idiom) naming the
-    // active/most-recent company CONTINUE would open, or the new-game prompt
-    // when none exists yet. Drawn after the re-vdisplay so it wins the strip's
-    // own y-band.
-    {
-        std::string caption;
-        if (g_main_menu_company_view.present) {
-            std::string name = g_main_menu_company_view.display_name;
-            if (name.size() > kMainMenuCompanyNameClip)
-                name.resize(kMainMenuCompanyNameClip);
-            caption = "COMPANY: " + name;
-            if (caption.size() > 28)
-                caption.resize(28);
-        } else {
-            caption = "NO COMPANY YET - BEGIN A NEW GAME";
-        }
+    // active/most-recent company CONTINUE would open. Drawn after the
+    // re-vdisplay so it wins the strip's own y-band. No-company state: the
+    // §9.2 no_company_note Disabled row in the CONTINUE|LOAD envelope
+    // replaces the old bottom caption — nothing is drawn here.
+    if (g_main_menu_company_view.present) {
+        std::string name = g_main_menu_company_view.display_name;
+        if (name.size() > kMainMenuCompanyNameClip)
+            name.resize(kMainMenuCompanyNameClip);
+        std::string caption = "COMPANY: " + name;
+        if (caption.size() > 28)
+            caption.resize(28);
         const int width = static_cast<int>(caption.size()) * 6;
         const int caption_x = 160 - width / 2;
         game->draw_rect_filled(caption_x - 2, kMainMenuCaptionY - 1, width + 4, 8,

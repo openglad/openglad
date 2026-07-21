@@ -135,6 +135,12 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 4, .left = 1}},
+    // §9.2: the greyed no-company note box in the exact CONTINUE|LOAD
+    // envelope. Disabled chrome when no company exists, Hidden when one does;
+    // statically hidden (companies present is the default view); no nav links
+    // in or out.
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 12, MenuNav{}, true},
 };
 #else
 // Native + multiplayer: the variant CI compiles and pins.
@@ -175,6 +181,12 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 4, .left = 1}},
+    // §9.2: the greyed no-company note box in the exact CONTINUE|LOAD
+    // envelope. Disabled chrome when no company exists, Hidden when one does;
+    // statically hidden (companies present is the default view); no nav links
+    // in or out.
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 12, MenuNav{}, true},
 };
 #endif // __EMSCRIPTEN__
 
@@ -202,6 +214,9 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
+    // §9.2 no-MP note box: materialized ordinal 7.
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
 };
 #else
 // Native without multiplayer (also the USE_TOUCH_INPUT shape).
@@ -225,6 +240,9 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
+    // §9.2 no-MP note box: materialized ordinal 7.
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
 };
 #endif // __EMSCRIPTEN__
 
@@ -237,11 +255,12 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     check_exact_table(buttons, count, kExpectedMainMenu,
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
-    // §2.1: load_company is appended at the table END, so the options gear is
-    // now the second-to-last row (picker_mainmenu_options_index() finds it by
-    // id — it is no longer count-1).
-    ASSERT_EQ("load_company", buttons[count - 1].id);
-    ASSERT_EQ("options", buttons[count - 2].id);
+    // §2.1/§9.2 index contract: load_company then the no_company_note are
+    // appended at the table END, so the options gear is now the third-from-
+    // last row (picker_mainmenu_options_index() finds it by id).
+    ASSERT_EQ("no_company_note", buttons[count - 1].id);
+    ASSERT_EQ("load_company", buttons[count - 2].id);
+    ASSERT_EQ("options", buttons[count - 3].id);
 }
 
 // The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (design
