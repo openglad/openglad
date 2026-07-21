@@ -254,13 +254,15 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 }
 } // namespace
 
-// §2.5 base camp (the reimagined team build) at the §9.5.1 grid: 10
-// deploy/TRAIN row pairs at 15px pitch from y=31 (the §2.0 U6 pre-declared
-// save-slot fallback), the page cluster top-right, and the bottom command
-// strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. Spec ordinals group
-// by kind (dep 0-9, train 10-19, pagers 20/21, strip 22-26) so MenuSpecRow
-// args decode positionally; the layout is identical for classic and CTF
-// campaigns. Static shape = full page (10 rows), pagers hidden, GO visible.
+// §2.5 base camp (the reimagined team build) at the §9.10.1 round-2 grid: 9
+// deploy/TRAIN row pairs at 15px pitch from y=41 (the roster block gains
+// clear top/bottom margins — header bar y=31, full-page panel ends y=171,
+// 6px off the strip), the page cluster top-right at y=15 beside the
+// relocated line B, and the bottom command strip BACK | HIRE | SCENARIO |
+// NETWORK | GO at y=178. Spec ordinals group by kind (dep 0-8, train 9-17,
+// pagers 18/19, strip 20-24, ready twin 25) so MenuSpecRow args decode
+// positionally; the layout is identical for classic and CTF campaigns.
+// Static shape = full page (9 rows), pagers hidden, GO visible.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -275,37 +277,35 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         bool hidden;
     };
     static const ExpectedButton kExpected[] = {
-        {"roster_dep_0", "", 8, 31, 14, 10, MenuNav{.down = 1, .right = 10}, false},
-        {"roster_dep_1", "", 8, 46, 14, 10, MenuNav{.up = 0, .down = 2, .right = 11}, false},
-        {"roster_dep_2", "", 8, 61, 14, 10, MenuNav{.up = 1, .down = 3, .right = 12}, false},
-        {"roster_dep_3", "", 8, 76, 14, 10, MenuNav{.up = 2, .down = 4, .right = 13}, false},
-        {"roster_dep_4", "", 8, 91, 14, 10, MenuNav{.up = 3, .down = 5, .right = 14}, false},
-        {"roster_dep_5", "", 8, 106, 14, 10, MenuNav{.up = 4, .down = 6, .right = 15}, false},
-        {"roster_dep_6", "", 8, 121, 14, 10, MenuNav{.up = 5, .down = 7, .right = 16}, false},
-        {"roster_dep_7", "", 8, 136, 14, 10, MenuNav{.up = 6, .down = 8, .right = 17}, false},
-        {"roster_dep_8", "", 8, 151, 14, 10, MenuNav{.up = 7, .down = 9, .right = 18}, false},
-        {"roster_dep_9", "", 8, 166, 14, 10, MenuNav{.up = 8, .down = 22, .right = 19}, false},
-        {"roster_train_0", "TRAIN", 266, 31, 46, 10, MenuNav{.down = 11, .left = 0}, false},
-        {"roster_train_1", "TRAIN", 266, 46, 46, 10, MenuNav{.up = 10, .down = 12, .left = 1}, false},
-        {"roster_train_2", "TRAIN", 266, 61, 46, 10, MenuNav{.up = 11, .down = 13, .left = 2}, false},
-        {"roster_train_3", "TRAIN", 266, 76, 46, 10, MenuNav{.up = 12, .down = 14, .left = 3}, false},
-        {"roster_train_4", "TRAIN", 266, 91, 46, 10, MenuNav{.up = 13, .down = 15, .left = 4}, false},
-        {"roster_train_5", "TRAIN", 266, 106, 46, 10, MenuNav{.up = 14, .down = 16, .left = 5}, false},
-        {"roster_train_6", "TRAIN", 266, 121, 46, 10, MenuNav{.up = 15, .down = 17, .left = 6}, false},
-        {"roster_train_7", "TRAIN", 266, 136, 46, 10, MenuNav{.up = 16, .down = 18, .left = 7}, false},
-        {"roster_train_8", "TRAIN", 266, 151, 46, 10, MenuNav{.up = 17, .down = 19, .left = 8}, false},
-        {"roster_train_9", "TRAIN", 266, 166, 46, 10, MenuNav{.up = 18, .down = 26, .left = 9}, false},
-        {"roster_page_prev", "<", 263, 11, 14, 10, MenuNav{.down = 10, .right = 21}, true},
-        {"roster_page_next", ">", 302, 11, 14, 10, MenuNav{.down = 10, .left = 20}, true},
-        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 9, .right = 23}, false},
-        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 9, .left = 22, .right = 24}, false},
-        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 19, .left = 23, .right = 25}, false},
-        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 19, .left = 24, .right = 26}, false},
-        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 19, .left = 25}, false},
+        {"roster_dep_0", "", 8, 41, 14, 10, MenuNav{.down = 1, .right = 9}, false},
+        {"roster_dep_1", "", 8, 56, 14, 10, MenuNav{.up = 0, .down = 2, .right = 10}, false},
+        {"roster_dep_2", "", 8, 71, 14, 10, MenuNav{.up = 1, .down = 3, .right = 11}, false},
+        {"roster_dep_3", "", 8, 86, 14, 10, MenuNav{.up = 2, .down = 4, .right = 12}, false},
+        {"roster_dep_4", "", 8, 101, 14, 10, MenuNav{.up = 3, .down = 5, .right = 13}, false},
+        {"roster_dep_5", "", 8, 116, 14, 10, MenuNav{.up = 4, .down = 6, .right = 14}, false},
+        {"roster_dep_6", "", 8, 131, 14, 10, MenuNav{.up = 5, .down = 7, .right = 15}, false},
+        {"roster_dep_7", "", 8, 146, 14, 10, MenuNav{.up = 6, .down = 8, .right = 16}, false},
+        {"roster_dep_8", "", 8, 161, 14, 10, MenuNav{.up = 7, .down = 20, .right = 17}, false},
+        {"roster_train_0", "TRAIN", 266, 41, 46, 10, MenuNav{.down = 10, .left = 0}, false},
+        {"roster_train_1", "TRAIN", 266, 56, 46, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false},
+        {"roster_train_2", "TRAIN", 266, 71, 46, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false},
+        {"roster_train_3", "TRAIN", 266, 86, 46, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false},
+        {"roster_train_4", "TRAIN", 266, 101, 46, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false},
+        {"roster_train_5", "TRAIN", 266, 116, 46, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false},
+        {"roster_train_6", "TRAIN", 266, 131, 46, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false},
+        {"roster_train_7", "TRAIN", 266, 146, 46, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false},
+        {"roster_train_8", "TRAIN", 266, 161, 46, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false},
+        {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 9, .right = 19}, true},
+        {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 9, .left = 18}, true},
+        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 8, .right = 21}, false},
+        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 8, .left = 20, .right = 22}, false},
+        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 17, .left = 21, .right = 23}, false},
+        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 17, .left = 22, .right = 24}, false},
+        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 17, .left = 23}, false},
         // §2.6: the READY twin shares GO's exact rect; statically hidden
         // (the rewire shows exactly one of the pair — GO for hosts, READY
         // for networked joiners).
-        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 19, .left = 25},
+        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 17, .left = 23},
          true},
     };
 
@@ -316,9 +316,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
-            << "base camp: 20 roster cells + 2 pagers + 5 strip buttons + "
+            << "base camp: 18 roster cells + 2 pagers + 5 strip buttons + "
                "the hidden READY twin";
-        ASSERT_EQ(28, count);
+        ASSERT_EQ(26, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -342,15 +342,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         }
 
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
-        EXPECT_EQ(kBaseCampTrainBase, 10);
-        EXPECT_EQ(kBaseCampPagePrevIndex, 20);
-        EXPECT_EQ(kBaseCampPageNextIndex, 21);
-        EXPECT_EQ(kCreateMenuBackIndex, 22);
-        EXPECT_EQ(kCreateMenuHireIndex, 23);
-        EXPECT_EQ(kCreateMenuScenarioIndex, 24);
-        EXPECT_EQ(kCreateMenuNetworkingIndex, 25);
-        EXPECT_EQ(kCreateMenuGoIndex, 26);
-        EXPECT_EQ(kCreateMenuReadyIndex, 27);
+        EXPECT_EQ(kBaseCampTrainBase, 9);
+        EXPECT_EQ(kBaseCampPagePrevIndex, 18);
+        EXPECT_EQ(kBaseCampPageNextIndex, 19);
+        EXPECT_EQ(kCreateMenuBackIndex, 20);
+        EXPECT_EQ(kCreateMenuHireIndex, 21);
+        EXPECT_EQ(kCreateMenuScenarioIndex, 22);
+        EXPECT_EQ(kCreateMenuNetworkingIndex, 23);
+        EXPECT_EQ(kCreateMenuGoIndex, 24);
+        EXPECT_EQ(kCreateMenuReadyIndex, 25);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -375,7 +375,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
 // over {page shapes: empty, partial, one full page, two pages, three pages
-// — at the §9.5.1 10-row grid a 12-roster PAGES and cap-24 spans 3}
+// — at the §9.10.1 9-row grid a 12-roster PAGES and cap-24 spans 3}
 // x {host, joiner (GO hidden)}. Every visible button reachable, no link at
 // a hidden one, empty roster seeds the highlight on HIRE.
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
@@ -501,7 +501,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
 // rewire itself hides GO for joiners and shapes foreign rows into no_draw
 // hit zones with hidden TRAIN buttons). Includes the [NET-R9] spectator
 // machine shape (0 own rows, all-foreign roster) and the >24 display-slot
-// defensive paging pin (two 20-slot machines => 4 pages).
+// defensive paging pin (two 20-slot machines => 5 pages at 9/page).
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;

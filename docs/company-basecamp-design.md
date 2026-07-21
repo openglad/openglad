@@ -1990,3 +1990,85 @@ traps are recorded in the WPUX state file).
 8. Latitude recorded: panel alpha 200 floor 180; the §9.3 hint may be
    dropped; the Disabled note face stays engine GREY(23) — darkening it would
    need a new engine channel (not sanctioned).
+
+### 9.10 UX round 2 (2026-07-21) — G1–G3: header/roster regrid + company label [stage regrid-label; FINAL geometry]
+
+Round-2 playtest feedback on the §9.5 base camp: the screen still reads
+crowded (G1: the roster block needs clear margins above and below; the
+bottom strip is fine as-is), the company and scenario lines sit too close
+(G2), and the company name is unlabeled (G3 — label PREPENDED, chosen over
+appending "Company" because generated names often end in group nouns). This
+subsection AMENDS §9.5.1–§9.5.3 (and through them §2.5); everything it is
+silent on — row pitch, row heights, TRAIN/dep x-geometry, panel alphas,
+colors, columns, the §9.5.6 empty-state panel, the y=178 strip, all
+behavioral contracts — stands as previously specified.
+
+#### 9.10.1 Vertical rhythm (G1) — 9 rows/page, block margins
+
+With 10 rows at the (kept) 15px pitch the full-page panel ended at y=176,
+1px off the command strip, and no top margin existed either; margins are
+IMPOSSIBLE at 10 rows. Round 2 trades the tenth row for the air:
+
+| element | round 1 (§9.5) | round 2 (FINAL) |
+|---|---|---|
+| line A (company + GOLD) | y=3 | y=3 (unchanged; content per §9.10.3) |
+| line B (scen / READY-DEP) | y=13 | **y=17**; pager `<` **(263,15,14,10)**, indicator strip (283,**17**), `>` **(302,15,14,10)** |
+| header bar | (4,21,312,8) | **(4,31,312,8)** |
+| column headers | y=22 | **y=32** (ink 32..37, above the panel seam) |
+| roster rows | 10 @ y=31+15r | **9 @ y=41+15r** (rows 41..170; kBaseCampRowY0=41) |
+| roster panel | (4,29,312,15·v−2), full 29..176 | (4,**39**,312,15·v−2), full page **39..171** |
+| panel → strip gap | 1px | **6px** (172..177) |
+| command strip | y=178 (frozen) | unchanged |
+| §9.5.6 empty panel | (60,82,200,16) | unchanged (band 81..98 sits inside the roster region) |
+
+Margins achieved: pager-cluster bottom (24) → block top (31) = **6px** (was
+0–1px); full-page panel bottom (171) → strip (178) = **6px** (was 1px).
+
+Spec ordinals (append-only exception, sanctioned restructure — same class
+as §9.5.1): dep **0..8**, train **9..17**, pagers **18/19**, back **20**,
+hire **21**, scenario **22**, networking **23**, go **24**, ready **25**,
+count **26**. `roster_dep_9`/`roster_train_9` ids are RETIRED (no test or
+flow referenced them — verified). Capacity: cap-24 roster = **3 pages**
+(unchanged, ceil(24/9)); 13 members = 2 pages, page 2 first index **9**;
+the 40-slot defensive shape = **5 pages**; 25 display slots = 3 pages
+(unchanged).
+
+#### 9.10.2 Line spacing (G2)
+
+Line B moves y=13 → **y=17**: baseline delta A→B grows 10 → **14px** (ink
+gap 4 → 8px — doubled). The pager cluster rides along (y=15, ends y=24,
+feeding the 6px top margin above the header bar at 31).
+
+#### 9.10.3 Company label (G3)
+
+Line A becomes: grey `COMPANY:` at x=8 (GREY 23, the secondary voice) +
+WHITE name at x=**62** (8 label chars + 1 space at 6px/char), on ONE shared
+150-alpha backing strip `(6, 2, (9+len(name))·6+4, 8)` — two strip_text
+calls would leave a raw-backdrop seam between label and name. Budget
+(checked vs the GOLD block sharing the line): name keeps the 26-char clip →
+ink ends ≤ x=217, **27px clear** of the GOLD strip at x=244 (GOLD block
+(246,3) unchanged, 11-char clip). Terminals: NO change — G3 is SDL line-A
+chrome; the text/curses pickers carry their own context banners and the
+TeamBuild item numbering is untouched.
+
+#### 9.10.4 Frozen-contract + ledger check
+
+- wasm §2.10 ledger UNCHANGED: it carries only continue/GO/networking
+  coordinates; no roster-row or pager coordinate exists in
+  tests/e2e/wasm_helpers.js or wasm-touch.spec.js (verified by grep). The
+  moved row rects become ledger-relevant only when a row click becomes an
+  action (the G4 stage owns that re-check).
+- GO/READY/deploy/ownership semantics untouched; the READY twin still
+  shares GO's exact rect (ordinal 27 → **25**).
+- Text/curses 1-based TeamBuild numbering untouched (no model change).
+
+#### 9.10.5 Re-pin blast radius (landed in the SAME commit)
+
+| change | re-pins |
+|---|---|
+| picker_sdl_defs.h constants (9/9/18/19/20-25/26) | consumer sweep is automatic (all src+test dispatch sites use the constants — verified); test_menu_layout G13 drift pins re-pinned to the new ordinals |
+| static table reshape (drop row 9, pager y=15, strip nav .up 9→8 / +9→+8) | test_menu_layout createmenu_basecamp exact table (26 rows, y=41+15r, pagers (263/302,15)), count asserts 28→26 |
+| BFS matrices | shape-derived (roster {0,5,12,15,24} and (own,foreign) pairs recompute pages from the constant); comments re-pointed (12 still pages, 24 spans 3, 40 slots = 5 pages) |
+| page-window pins | test_view_team win-fold: page-2 first_index 10→9; 25-slot 3-page pin unchanged; test_picker_common display_slots_page_defensively_past_24: PageModel::make(40, **9**) ⇒ **5** pages |
+| draw geometry (header bar 31, headers y=32, line B 17, panel 39, line-A label) | no pixel-coordinate pins exist (empty-state smoke is coordinate-free — verified); screenshot-verified via the §9.8 probe workflow |
+| docs | menu-engine.md registry row (9 pairs, READY row 25); this subsection |

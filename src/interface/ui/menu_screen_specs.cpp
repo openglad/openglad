@@ -1692,11 +1692,12 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 };
 
 // ---------------------------------------------------------------------------
-// TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5): the command roster.
-// The roster IS the default view (the VIEW TEAM screen retired into it):
-// 10 rows/page at the 15px save-slot pitch (the §2.0 U6 pre-declared
-// fallback) — a deploy toggle (8,31+15r,14,10) and a per-row TRAIN button
-// (266,31+15r,46,10) — the page cluster top-right (< p/N >), and the bottom
+// TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10): the
+// command roster. The roster IS the default view (the VIEW TEAM screen
+// retired into it): 9 rows/page at the 15px save-slot pitch (§9.10.1 —
+// round 2 trades the tenth row for clear margins around the block) — a
+// deploy toggle (8,41+15r,14,10) and a per-row TRAIN button
+// (266,41+15r,46,10) — the page cluster top-right (< p/N >), and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
@@ -1711,7 +1712,10 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // pointer; run_menu_screen's screen_state points at the SAME object.
 BaseCampScreenState* g_base_camp_state = nullptr;
 
-constexpr int kBaseCampRowY0 = 31;
+// §9.10.1 round-2 vertical rhythm: rows start at y=41 so the roster block
+// (header bar 31..38 + panel 39..171) carries real air on both sides — 6px
+// below the pager cluster (ends 24) and 6px above the y=178 command strip.
+constexpr int kBaseCampRowY0 = 41;
 constexpr int kBaseCampRowPitch = 15;
 // §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
 // glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
@@ -1763,7 +1767,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
     return kReadyGoFaceUnready;
 }
 
-// Static nav encodes the full-page shape (10 visible rows, pagers hidden,
+// Static nav encodes the full-page shape (9 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). TRAIN widened to (266,y,46,10)
 // per §9.5.1 — the 5-char label finally has budget slack (6).
@@ -1772,7 +1776,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
      .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
-             .down = (i) < 9 ? (i) + 1 : kCreateMenuBackIndex,                \
+             .down = (i) < 8 ? (i) + 1 : kCreateMenuBackIndex,                \
              .right = kBaseCampTrainBase + (i)}}
 #define OG_BASE_CAMP_TRAIN(i)                                                \
     {.id = "roster_train_" #i, .label = "TRAIN",                             \
@@ -1780,7 +1784,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampTrainBase + (i),                                        \
      .nav = {.up = (i) > 0 ? kBaseCampTrainBase + (i) - 1 : -1,               \
-             .down = (i) < 9 ? kBaseCampTrainBase + (i) + 1                   \
+             .down = (i) < 8 ? kBaseCampTrainBase + (i) + 1                   \
                              : kCreateMenuGoIndex,                            \
              .left = (i)}}
 
@@ -1788,20 +1792,19 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
     OG_BASE_CAMP_DEP(3), OG_BASE_CAMP_DEP(4), OG_BASE_CAMP_DEP(5),
     OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7), OG_BASE_CAMP_DEP(8),
-    OG_BASE_CAMP_DEP(9),
     OG_BASE_CAMP_TRAIN(0), OG_BASE_CAMP_TRAIN(1), OG_BASE_CAMP_TRAIN(2),
     OG_BASE_CAMP_TRAIN(3), OG_BASE_CAMP_TRAIN(4), OG_BASE_CAMP_TRAIN(5),
     OG_BASE_CAMP_TRAIN(6), OG_BASE_CAMP_TRAIN(7), OG_BASE_CAMP_TRAIN(8),
-    OG_BASE_CAMP_TRAIN(9),
-    // Page cluster (§2.5 header line B right edge); real MenuSpecRow pager
-    // actions (keyboard-live), hidden until the roster spans pages.
+    // Page cluster (§2.5 header line B right edge, §9.10.2 y=15 beside the
+    // relocated line B); real MenuSpecRow pager actions (keyboard-live),
+    // hidden until the roster spans pages.
     {.id = "roster_page_prev", .label = "<",
-     .x = 263, .y = 11, .w = 14, .h = 10,
+     .x = 263, .y = 15, .w = 14, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
      .nav = {.down = kBaseCampTrainBase, .right = kBaseCampPageNextIndex},
      .hidden = true},
     {.id = "roster_page_next", .label = ">",
-     .x = 302, .y = 11, .w = 14, .h = 10,
+     .x = 302, .y = 15, .w = 14, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
      .nav = {.down = kBaseCampTrainBase, .left = kBaseCampPagePrevIndex},
      .hidden = true},
@@ -1810,21 +1813,21 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 8, .y = 178, .w = 44, .h = 18,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 9, .right = kCreateMenuHireIndex}},
+     .nav = {.up = 8, .right = kCreateMenuHireIndex}},
     {.id = "hire_troops", .label = "HIRE",
      .x = 58, .y = 178, .w = 50, .h = 18,
      .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.up = 9, .left = kCreateMenuBackIndex,
+     .nav = {.up = 8, .left = kCreateMenuBackIndex,
              .right = kCreateMenuScenarioIndex}},
     {.id = "scenario", .label = "SCENARIO",
      .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 9, .left = kCreateMenuHireIndex,
+     .nav = {.up = kBaseCampTrainBase + 8, .left = kCreateMenuHireIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
      .x = 182, .y = 178, .w = 56, .h = 18,
      .action = ButtonAction::Networking, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 9, .left = kCreateMenuScenarioIndex,
+     .nav = {.up = kBaseCampTrainBase + 8, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
     // §2.6 GO half of the dual-role slot: solo/local keeps the plain grey
     // bevel and the exact legacy behavior (GoMenu -> go_menu / the
@@ -1833,7 +1836,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "go", .label = "GO",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.up = kBaseCampTrainBase + 9,
+     .nav = {.up = kBaseCampTrainBase + 8,
              .left = kCreateMenuNetworkingIndex},
      .color = &base_camp_go_face_color},
     // §2.6 READY twin: the SAME rect, visible exactly when GO is not
@@ -1843,7 +1846,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "ready", .label = "READY",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
-     .nav = {.up = kBaseCampTrainBase + 9,
+     .nav = {.up = kBaseCampTrainBase + 8,
              .left = kCreateMenuNetworkingIndex},
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
@@ -2070,9 +2073,12 @@ void base_camp_draw_background(void* /*screen_state*/)
         st != nullptr ? std::max(0, st->page.end_index() -
                                         st->page.first_index())
                       : 0;
-    game->draw_rect_filled(4, 21, 312, 8, PURE_BLACK, 200);
+    // §9.10.1: the header bar tops the roster block at y=31 — 6px below the
+    // pager cluster (ends y=24) — and the full-page panel ends at y=171,
+    // 6px above the y=178 command strip (the round-2 breathing margins).
+    game->draw_rect_filled(4, 31, 312, 8, PURE_BLACK, 200);
     if (visible > 0) {
-        // Full page = y 29..176, ending 1px above the y=178 command strip.
+        // Full page (9 rows) = y 39..171.
         game->draw_rect_filled(4, kBaseCampRowY0 - 2, 312,
                                kBaseCampRowPitch * visible - 2, PURE_BLACK,
                                200);
@@ -2111,11 +2117,20 @@ void base_camp_draw_content(void* screen_state)
         game->text_normal.write_xy(x, y, color, "%s", value.c_str());
     };
 
-    // Line A: company name (the 40-byte save_name) + the gold block.
+    // Line A (§9.10.3, G3): grey "COMPANY:" label + WHITE name (the 40-byte
+    // save_name) on ONE shared backing strip — two strip_text calls would
+    // leave a raw-backdrop seam between label and name — plus the gold
+    // block. Budget: 8 label chars + space + 26-char name clip = ink ending
+    // x<=217, 27px clear of the GOLD strip at x=244.
     std::string company = save.save_name;
     if (company.size() > 26)
         company.resize(26);
-    strip_text(8, 3, company, WHITE);
+    {
+        const int width = (9 + static_cast<int>(company.size())) * 6;
+        game->draw_rect_filled(6, 2, width + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(8, 3, "COMPANY:", GREY, 1);
+        mytext.write_xy(62, 3, company.c_str(), WHITE, 1);
+    }
     strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
 
     // Line B: solo scenario/deploy header, or the §2.5 networked
@@ -2146,29 +2161,31 @@ void base_camp_draw_content(void* screen_state)
     } else {
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
-    strip_text(8, 13, line_b, line_b_color);
+    // §9.10.2 (G2): line B sits at y=17 — 14px below line A's y=3 baseline
+    // (round 1 had 10px) — with the pager cluster beside it at y=15.
+    strip_text(8, 17, line_b, line_b_color);
 
     if (st != nullptr && st->page.multi_page())
-        strip_text(283, 13, st->page.indicator(), WHITE);
+        strip_text(283, 17, st->page.indicator(), WHITE);
 
-    // Column headers over the pre-pass bar (y=22, ink 22..27 above the
-    // §9.5.2 panel seam): solo keeps CLASS/EXP; networked swaps in the
+    // Column headers over the pre-pass bar (§9.10.1 y=32, ink 32..37 above
+    // the panel seam at 39): solo keeps CLASS/EXP; networked swaps in the
     // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
     // chip). §9.5.3: NO HP column on any client — it was DERIVED max HP
     // (damage never persists to base camp), redundant with CLASS+LVL, and
     // it lives one click away in TRAIN. EXP stays (progress is actionable).
     if (networked) {
-        mytext.write_xy(40, 22, "NAME", WHITE, 1);
-        mytext.write_xy(106, 22, "COMPANY", WHITE, 1);
-        mytext.write_xy(208, 22, "LV", WHITE, 1);
-        mytext.write_xy(274, 22, "TRAIN", WHITE, 1);
+        mytext.write_xy(40, 32, "NAME", WHITE, 1);
+        mytext.write_xy(106, 32, "COMPANY", WHITE, 1);
+        mytext.write_xy(208, 32, "LV", WHITE, 1);
+        mytext.write_xy(274, 32, "TRAIN", WHITE, 1);
     } else {
-        mytext.write_xy(2, 22, "DEPLOY", WHITE, 1);
-        mytext.write_xy(40, 22, "NAME", WHITE, 1);
-        mytext.write_xy(118, 22, "CLASS", WHITE, 1);
-        mytext.write_xy(174, 22, "LV", WHITE, 1);
-        mytext.write_xy(196, 22, "EXP", WHITE, 1);
-        mytext.write_xy(274, 22, "TRAIN", WHITE, 1);
+        mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
+        mytext.write_xy(40, 32, "NAME", WHITE, 1);
+        mytext.write_xy(118, 32, "CLASS", WHITE, 1);
+        mytext.write_xy(174, 32, "LV", WHITE, 1);
+        mytext.write_xy(196, 32, "EXP", WHITE, 1);
+        mytext.write_xy(274, 32, "TRAIN", WHITE, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;

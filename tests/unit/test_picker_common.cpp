@@ -3341,7 +3341,8 @@ TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
 {
     // Two well-stocked machines: 20 own + 20 replicated = 40 display slots
     // (§4.2: full rosters always replicate for display). The page window
-    // derives from the display size — 4 pages, never a 24-row clamp.
+    // derives from the display size — 5 pages at the §9.10.1 9-row grid,
+    // never a 24-row clamp.
     SaveData save;
     save.save_name = "MY BAND";
     for (int i = 0; i < 20; ++i) {
@@ -3355,8 +3356,8 @@ TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
     ASSERT_EQ(40u, slots.size());
 
     const og::ui::PageModel page =
-        og::ui::PageModel::make(static_cast<int>(slots.size()), 12);
-    EXPECT_EQ(4, page.page_count());
+        og::ui::PageModel::make(static_cast<int>(slots.size()), 9);
+    EXPECT_EQ(5, page.page_count());
 }
 
 // ---------------------------------------------------------------------------
