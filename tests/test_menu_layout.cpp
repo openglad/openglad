@@ -254,18 +254,16 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 }
 } // namespace
 
-// §2.5 base camp (the reimagined team build) at the §9.10.1 round-2 grid
-// with the §9.11 (G4) row-click-train shape: 9 deploy/row-body pairs at
-// 15px pitch from y=41 (the roster block gains clear top/bottom margins —
-// header bar y=31, full-page panel ends y=171, 6px off the strip), the page
+// §2.5 base camp (the reimagined team build) at the §9.14 round-4 grid
+// with the §9.11 (G4) row-click-train shape: 8 deploy/team/row-body trios at
+// 15px pitch from y=44 (classic grey roster panel y=29..160), the page
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
-// column is DELETED: the row body (26,y,286,10) is a label-less no_draw hit
-// zone that opens the train screen (Enter on the row highlight trains).
-// Spec ordinals group by kind (dep 0-8, row body 9-17, pagers 18/19, strip
-// 20-24, ready twin 25) so MenuSpecRow args decode positionally; the layout
-// is identical for classic and CTF campaigns. Static shape = full page (9
-// rows), pagers hidden, GO visible.
+// column is DELETED: the team-colored chip (26,y,10,10) cycles team and the
+// row body (40,y,272,10) opens training. Spec ordinals group by kind (dep
+// 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
+// strip 27-31, ready twin 32) so MenuSpecRow args decode
+// positionally; the layout is identical for classic and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -283,35 +281,42 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         bool no_draw = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"roster_dep_0", "", 8, 41, 14, 10, MenuNav{.down = 1, .right = 9}, false},
-        {"roster_dep_1", "", 8, 56, 14, 10, MenuNav{.up = 0, .down = 2, .right = 10}, false},
-        {"roster_dep_2", "", 8, 71, 14, 10, MenuNav{.up = 1, .down = 3, .right = 11}, false},
-        {"roster_dep_3", "", 8, 86, 14, 10, MenuNav{.up = 2, .down = 4, .right = 12}, false},
-        {"roster_dep_4", "", 8, 101, 14, 10, MenuNav{.up = 3, .down = 5, .right = 13}, false},
-        {"roster_dep_5", "", 8, 116, 14, 10, MenuNav{.up = 4, .down = 6, .right = 14}, false},
-        {"roster_dep_6", "", 8, 131, 14, 10, MenuNav{.up = 5, .down = 7, .right = 15}, false},
-        {"roster_dep_7", "", 8, 146, 14, 10, MenuNav{.up = 6, .down = 8, .right = 16}, false},
-        {"roster_dep_8", "", 8, 161, 14, 10, MenuNav{.up = 7, .down = 20, .right = 17}, false},
-        {"roster_row_0", "", 26, 41, 286, 10, MenuNav{.down = 10, .left = 0}, false, true},
-        {"roster_row_1", "", 26, 56, 286, 10, MenuNav{.up = 9, .down = 11, .left = 1}, false, true},
-        {"roster_row_2", "", 26, 71, 286, 10, MenuNav{.up = 10, .down = 12, .left = 2}, false, true},
-        {"roster_row_3", "", 26, 86, 286, 10, MenuNav{.up = 11, .down = 13, .left = 3}, false, true},
-        {"roster_row_4", "", 26, 101, 286, 10, MenuNav{.up = 12, .down = 14, .left = 4}, false, true},
-        {"roster_row_5", "", 26, 116, 286, 10, MenuNav{.up = 13, .down = 15, .left = 5}, false, true},
-        {"roster_row_6", "", 26, 131, 286, 10, MenuNav{.up = 14, .down = 16, .left = 6}, false, true},
-        {"roster_row_7", "", 26, 146, 286, 10, MenuNav{.up = 15, .down = 17, .left = 7}, false, true},
-        {"roster_row_8", "", 26, 161, 286, 10, MenuNav{.up = 16, .down = 24, .left = 8}, false, true},
-        {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 9, .right = 19}, true},
-        {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 9, .left = 18}, true},
-        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 8, .right = 21}, false},
-        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 8, .left = 20, .right = 22}, false},
-        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 17, .left = 21, .right = 23}, false},
-        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 17, .left = 22, .right = 24}, false},
-        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 17, .left = 23}, false},
+        {"roster_dep_0", "", 8, 44, 14, 10, MenuNav{.down = 1, .right = 16}, false},
+        {"roster_dep_1", "", 8, 59, 14, 10, MenuNav{.up = 0, .down = 2, .right = 17}, false},
+        {"roster_dep_2", "", 8, 74, 14, 10, MenuNav{.up = 1, .down = 3, .right = 18}, false},
+        {"roster_dep_3", "", 8, 89, 14, 10, MenuNav{.up = 2, .down = 4, .right = 19}, false},
+        {"roster_dep_4", "", 8, 104, 14, 10, MenuNav{.up = 3, .down = 5, .right = 20}, false},
+        {"roster_dep_5", "", 8, 119, 14, 10, MenuNav{.up = 4, .down = 6, .right = 21}, false},
+        {"roster_dep_6", "", 8, 134, 14, 10, MenuNav{.up = 5, .down = 7, .right = 22}, false},
+        {"roster_dep_7", "", 8, 149, 14, 10, MenuNav{.up = 6, .down = 27, .right = 23}, false},
+        {"roster_row_0", "", 40, 44, 272, 10, MenuNav{.down = 9, .left = 16}, false, true},
+        {"roster_row_1", "", 40, 59, 272, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
+        {"roster_row_2", "", 40, 74, 272, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
+        {"roster_row_3", "", 40, 89, 272, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
+        {"roster_row_4", "", 40, 104, 272, 10, MenuNav{.up = 11, .down = 13, .left = 20}, false, true},
+        {"roster_row_5", "", 40, 119, 272, 10, MenuNav{.up = 12, .down = 14, .left = 21}, false, true},
+        {"roster_row_6", "", 40, 134, 272, 10, MenuNav{.up = 13, .down = 15, .left = 22}, false, true},
+        {"roster_row_7", "", 40, 149, 272, 10, MenuNav{.up = 14, .down = 31, .left = 23}, false, true},
+        {"roster_team_0", "", 26, 44, 10, 10, MenuNav{.down = 17, .left = 0, .right = 8}, false, true},
+        {"roster_team_1", "", 26, 59, 10, 10, MenuNav{.up = 16, .down = 18, .left = 1, .right = 9}, false, true},
+        {"roster_team_2", "", 26, 74, 10, 10, MenuNav{.up = 17, .down = 19, .left = 2, .right = 10}, false, true},
+        {"roster_team_3", "", 26, 89, 10, 10, MenuNav{.up = 18, .down = 20, .left = 3, .right = 11}, false, true},
+        {"roster_team_4", "", 26, 104, 10, 10, MenuNav{.up = 19, .down = 21, .left = 4, .right = 12}, false, true},
+        {"roster_team_5", "", 26, 119, 10, 10, MenuNav{.up = 20, .down = 22, .left = 5, .right = 13}, false, true},
+        {"roster_team_6", "", 26, 134, 10, 10, MenuNav{.up = 21, .down = 23, .left = 6, .right = 14}, false, true},
+        {"roster_team_7", "", 26, 149, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
+        {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
+        {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
+        {"scenario_line", "", 6, 14, 208, 12, MenuNav{.down = 29}, false, true},
+        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 28}, false},
+        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 7, .left = 27, .right = 29}, false},
+        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 26, .left = 28, .right = 30}, false},
+        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
+        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30}, false},
         // §2.6: the READY twin shares GO's exact rect; statically hidden
         // (the rewire shows exactly one of the pair — GO for hosts, READY
         // for networked joiners).
-        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 17, .left = 23},
+        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30},
          true},
     };
 
@@ -322,9 +327,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
-            << "base camp: 18 roster cells (9 dep + 9 row bodies) + 2 "
-               "pagers + 5 strip buttons + the hidden READY twin";
-        ASSERT_EQ(26, count);
+            << "base camp: 24 roster controls + 2 pagers + the SCEN line "
+               "hit zone + 5 strip buttons + the hidden READY twin";
+        ASSERT_EQ(33, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -349,15 +354,17 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         }
 
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
-        EXPECT_EQ(kBaseCampRowBodyBase, 9);
-        EXPECT_EQ(kBaseCampPagePrevIndex, 18);
-        EXPECT_EQ(kBaseCampPageNextIndex, 19);
-        EXPECT_EQ(kCreateMenuBackIndex, 20);
-        EXPECT_EQ(kCreateMenuHireIndex, 21);
-        EXPECT_EQ(kCreateMenuScenarioIndex, 22);
-        EXPECT_EQ(kCreateMenuNetworkingIndex, 23);
-        EXPECT_EQ(kCreateMenuGoIndex, 24);
-        EXPECT_EQ(kCreateMenuReadyIndex, 25);
+        EXPECT_EQ(kBaseCampRowBodyBase, 8);
+        EXPECT_EQ(kBaseCampTeamChipBase, 16);
+        EXPECT_EQ(kBaseCampPagePrevIndex, 24);
+        EXPECT_EQ(kBaseCampPageNextIndex, 25);
+        EXPECT_EQ(kBaseCampScenarioLineIndex, 26);
+        EXPECT_EQ(kCreateMenuBackIndex, 27);
+        EXPECT_EQ(kCreateMenuHireIndex, 28);
+        EXPECT_EQ(kCreateMenuScenarioIndex, 29);
+        EXPECT_EQ(kCreateMenuNetworkingIndex, 30);
+        EXPECT_EQ(kCreateMenuGoIndex, 31);
+        EXPECT_EQ(kCreateMenuReadyIndex, 32);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -369,14 +376,17 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                   buttons[kCreateMenuReadyIndex].sizex);
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
-        // §9.11 (G4) touch rule: the deploy toggle and the row-body train
-        // zone must never overlap — a fat-finger deploy tap must not open
-        // the train screen. 4px gutter: dep ends at x=22, row starts at 26.
+        // Each row's three actions have 4px gutters: deploy, team color,
+        // then name/train. A tap cannot dispatch two mutations.
         for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
         {
             EXPECT_LE(buttons[r].x + buttons[r].sizex,
+                      buttons[kBaseCampTeamChipBase + r].x)
+                << "deploy toggle overlaps the team chip on row " << r;
+            EXPECT_LE(buttons[kBaseCampTeamChipBase + r].x +
+                          buttons[kBaseCampTeamChipBase + r].sizex,
                       buttons[kBaseCampRowBodyBase + r].x)
-                << "deploy toggle overlaps the row-click zone on row " << r;
+                << "team chip overlaps the training zone on row " << r;
         }
 
         check_no_overlaps(buttons, count, "createmenu_basecamp");
@@ -391,7 +401,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
 // over {page shapes: empty, partial, one full page, two pages, three pages
-// — at the §9.10.1 9-row grid a 12-roster PAGES and cap-24 spans 3}
+// — at the §9.14 8-row grid a 12-roster PAGES and cap-24 spans 3}
 // x {host, joiner (GO hidden)}. Every visible button reachable, no link at
 // a hidden one, empty roster seeds the highlight on HIRE.
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
@@ -450,6 +460,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                         button& body = buttons[kBaseCampRowBodyBase + r];
                         if (body.nav.down == kCreateMenuGoIndex)
                             body.nav.down = kCreateMenuNetworkingIndex;
+                        button& chip = buttons[kBaseCampTeamChipBase + r];
+                        if (chip.nav.down == kCreateMenuGoIndex)
+                            chip.nav.down = kCreateMenuNetworkingIndex;
                     }
                     buttons[kBaseCampPagePrevIndex].nav.down =
                         buttons[kBaseCampPagePrevIndex].nav.down ==
@@ -482,6 +495,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                     EXPECT_EQ(buttons[r].hidden,
                               buttons[kBaseCampRowBodyBase + r].hidden)
                         << variant << " row " << r;
+                    EXPECT_EQ(buttons[r].hidden,
+                              buttons[kBaseCampTeamChipBase + r].hidden)
+                        << variant << " team chip row " << r;
                 }
                 EXPECT_EQ(expected_visible, visible_rows) << variant;
                 // Pagers show exactly when the roster spans pages.
@@ -522,7 +538,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
 // hit zones with hidden §9.11 row-body zones — the widened dep zone IS the
 // foreign row click). Includes the [NET-R9] spectator machine shape (0 own
 // rows, all-foreign roster) and the >24 display-slot defensive paging pin
-// (two 20-slot machines => 5 pages at 9/page).
+// (two 20-slot machines => 5 pages at 8/page).
 TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -650,6 +666,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                     "basecamp-mp own={} foreign={} page={} {}", own_size,
                     foreign_size, page,
                     host_visible ? "host" : "joiner");
+                EXPECT_TRUE(buttons[kBaseCampScenarioLineIndex].hidden)
+                    << variant
+                    << ": network status must not retain the solo SCEN action";
                 EXPECT_EQ(!host_visible,
                           buttons[kCreateMenuGoIndex].hidden)
                     << variant << ": the rewire host-gates GO itself";
@@ -681,6 +700,8 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                         EXPECT_TRUE(buttons[r].hidden) << variant;
                         EXPECT_TRUE(buttons[kBaseCampRowBodyBase + r].hidden)
                             << variant;
+                        EXPECT_TRUE(buttons[kBaseCampTeamChipBase + r].hidden)
+                            << variant;
                         continue;
                     }
                     const bool owned = (first + r) < own_size;
@@ -696,6 +717,9 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                         << ": the §9.11 row-body zone shows on own rows "
                            "only (foreign rows train nowhere — the widened "
                            "dep zone pops OWNED BY)";
+                    EXPECT_TRUE(buttons[kBaseCampTeamChipBase + r].hidden)
+                        << variant << " row " << r
+                        << ": lobby-assigned teams hide the solo cycler";
                 }
             }
         }

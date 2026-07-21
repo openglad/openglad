@@ -3453,7 +3453,7 @@ TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
 {
     // Two well-stocked machines: 20 own + 20 replicated = 40 display slots
     // (§4.2: full rosters always replicate for display). The page window
-    // derives from the display size — 5 pages at the §9.10.1 9-row grid,
+    // derives from the display size — 5 pages at the §9.14 8-row grid,
     // never a 24-row clamp.
     SaveData save;
     save.save_name = "MY BAND";

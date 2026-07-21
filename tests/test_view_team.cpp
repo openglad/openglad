@@ -542,9 +542,9 @@ static int base_camp_row_train_injector(void* data)
     }
     SDL_Delay(750);  // FadeAroundEntry eats early clicks
     // Tap the rendered name itself, not the center of the wide row hit zone.
-    // Round 3 places NAME at x=52; row 1 is y=56..65.
+    // Round 3 places NAME at x=52; round 4 places row 1 at y=59..68.
     const auto [mapped_x, mapped_y] =
-        ui_canvas_to_window(54.0f, 61.0f);
+        ui_canvas_to_window(54.0f, 64.0f);
     inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
 
     if (!wait_for_interactable("inc_str", 10000)) {
@@ -609,6 +609,150 @@ TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
         << "tapping a roster name should open the train screen";
     EXPECT_EQ(1, state.seeded_slot)
         << "row 1's body must seed the session on team_list slot 1 (§9.11)";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+// The visible team-color square is an independent click target immediately
+// left of NAME. Coordinate-level coverage keeps it from regressing into the
+// wider train zone.
+struct BaseCampTeamChipTapState {
+    bool finished;
+    bool saw_team_change;
+};
+
+static int base_camp_team_chip_tap_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampTeamChipTapState*>(data);
+
+    if (!wait_for_interactable("roster_team_0", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(31.0f, 49.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+    SDL_Delay(500);
+
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    state->saw_team_change = save.team_list[0] != nullptr &&
+        save.team_list[0]->teamnum == 1;
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
+{
+    trace_clear();
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "COLOR TAP";
+    soldier->teamnum = 0;
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+    save.save("save0");
+
+    BaseCampTeamChipTapState state = {false, false};
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_team_chip_tap_injector, "base_camp_team_chip", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "team-chip injector should complete";
+    ASSERT_TRUE(state.saw_team_change)
+        << "tapping the team color should advance that character's team";
+    EXPECT_TRUE(trace_contains("basecamp", "team slot=0 team=1"));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="));
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+// §9.14: the rendered solo SCEN status line is itself a click target for
+// the Scenario menu. Use an ink coordinate rather than interact(id), so the
+// test pins the player-facing affordance and not merely its hidden geometry.
+struct BaseCampScenarioLineState {
+    bool finished;
+    bool saw_scenario_menu;
+};
+
+static int base_camp_scenario_line_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampScenarioLineState*>(data);
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(30.0f, 19.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+
+    if (!wait_for_interactable("set_level", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_scenario_menu = true;
+    SDL_Delay(300);
+    interact("back");  // Scenario menu -> Base Camp
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // Base Camp -> main menu caller
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_scenario_line_tap_opens_scenario_menu)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "SCOUT";
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+
+    BaseCampScenarioLineState state = {false, false};
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_scenario_line_injector, "base_camp_scenario_line", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "scenario-line injector should complete";
+    ASSERT_TRUE(state.saw_scenario_menu)
+        << "tapping the visible SCEN line should open the Scenario menu";
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
 
@@ -1058,7 +1202,7 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     save.current_campaign = "org.openglad.gladiator";
     save.scen_num = 1;
 
-    // 13 members so a second page exists (9 rows/page, §9.10.1); M03 is
+    // 13 members so a second page exists (8 rows/page, §9.14); M03 is
     // held back.
     for (int i = 0; i < 13; ++i) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1073,7 +1217,7 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     ASSERT_EQ(13u, state.slots.size());
     ASSERT_EQ(2, state.page.page_count());
     ASSERT_TRUE(state.page.step(1)) << "page 2 should be reachable";
-    ASSERT_EQ(9, state.page.first_index());
+    ASSERT_EQ(8, state.page.first_index());
 
     // The win fold: only one deployed member survived; every other deployed
     // member died. Pass 2 appends the held-back M03 behind the survivor.
@@ -1232,6 +1376,49 @@ TEST(ViewTeam, teams_cycle_guy_team_autosaves_solo_team_change)
     EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
         << "the cycled team must persist via the mutation autosave";
 
+    save.reset();
+}
+
+// The Base Camp exposes that same mutation directly on each rendered team
+// color chip. Its MenuSpecRow ordinal must target the visible character,
+// cycle the team, and run the shared autosave tail without opening TRAIN.
+TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "CHIPPER";
+    member->teamnum = 0;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+
+    ASSERT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase, &state));
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_TRUE(trace_contains("basecamp", "team slot=0 team=1"));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="));
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, static_cast<int>(reloaded.team_list[0]->teamnum));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();
 }
 
@@ -1416,12 +1603,20 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_FALSE(buttons[0].no_draw);
     EXPECT_EQ(14, buttons[0].sizex);
     EXPECT_FALSE(buttons[kBaseCampRowBodyBase + 0].hidden);
+    EXPECT_TRUE(buttons[kBaseCampTeamChipBase + 0].hidden)
+        << "network team assignment makes the color chip read-only";
     EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
     EXPECT_EQ(212, buttons[2].sizex) << "the §2.5 (8,y,212,10) hit zone";
     EXPECT_TRUE(buttons[kBaseCampRowBodyBase + 2].hidden)
         << "foreign rows have no row-body train zone";
     EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
         << "joiner machine: GO hidden by the production rewire";
+
+    const short assigned_team = save.team_list[0]->teamnum;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 0, &state));
+    EXPECT_EQ(assigned_team, save.team_list[0]->teamnum)
+        << "even a stale network chip dispatch must not change team";
 
     // Foreign clicks are read-only: OWNED BY <full company name> (U9).
     trace_clear();
@@ -1444,8 +1639,8 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     og::ui::base_camp_refresh_rows(state);
     ASSERT_EQ(25u, state.slots.size())
         << ">24 display slots replicate (the §4.2 full-roster rule)";
-    EXPECT_EQ(3, state.page.page_count())
-        << "the page window grows defensively past 2 pages";
+    EXPECT_EQ(4, state.page.page_count())
+        << "the page window grows defensively past 3 pages";
     trace_clear();
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "deploy_cap_denied deployed=24"));
@@ -1482,11 +1677,10 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
 }
 
 // ---------------------------------------------------------------------------
-// §9.5.6 empty-state treatment (F4): with zero visible rows the background
-// pass draws the framed PURE_BLACK panel (PRE-draw_buttons — the draw-order-
-// safe home) and the content pass centers the ORANGE line inside it. The
-// null install renders the empty shape on both hooks; smoke + coverage (no
-// pixel pins — the panel is verified by capture).
+// Empty-state treatment: the fixed View Team-style grey roster panel remains
+// visible with zero rows and the content pass centers the ORANGE line inside
+// it. The null install renders the empty shape on both hooks; smoke + coverage
+// (the panel itself is verified by capture).
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
 {

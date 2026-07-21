@@ -2293,3 +2293,58 @@ dispatch are unchanged.
   the nav/ownership matrices remain green; the seeded-train flow now clicks
   the rendered NAME coordinate instead of the row rectangle's center; native
   visual smoke captures cover solo, host, joiner, and degraded-link layouts.
+
+### 9.14 UX round 4 (2026-07-21) — eight-row air and clickable scenario [FINAL]
+
+Follow-up playtesting found that the ninth row still forced the header, final
+row, training cue, and command strip into one visually continuous stack.
+Base Camp now spends one row of page density on explicit separation and makes
+the already-visible solo scenario status directly actionable.
+
+- Roster pages contain **8 rows** at `y=44+15r` (`r=0..7`). The header ink
+  remains at y=32..37, leaving six clear pixels before the first row. The full
+  roster panel is y=42..159.
+- `TAP NAME TO TRAIN` moves to `(109,165)`. Its black backing occupies
+  y=164..171, with four clear pixels after the roster panel and six clear
+  pixels before the y=178 command strip.
+- The solo `SCEN … DEP …` line gains a no-draw hit zone
+  `(6,14,208,12)`, covering the formatter's complete 34-character budget.
+  Clicking or activating it opens the same Scenario menu as the bottom
+  `SCENARIO` command. In multiplayer, line B contains connection status and
+  the hit zone is hidden on both host and joiner screens.
+- Ordinals become: deploy 0..7, row bodies 8..15, pagers 16/17, scenario-line
+  18, BACK/HIRE/SCENARIO/NETWORK/GO 19..23, READY 24; total 25. Cap-24
+  rosters still occupy exactly three pages.
+- Pins: the exact button table and solo/network nav matrices carry the new
+  shape; a coordinate-level test taps the visible scenario ink and observes
+  the Scenario menu; the existing NAME test now taps row 1 at its new y=64
+  center. Native visual probes cover the resulting solo and network spacing.
+
+### 9.15 UX round 5 (2026-07-21) — roster panel and team-color control [FINAL]
+
+The consolidated Base Camp roster restores the retired View Team menu's
+solid grey-panel treatment and turns its colored square into an actionable
+team control instead of a family marker.
+
+- One classic two-bevel grey button panel spans `(4,29)..(315,160)`. Its
+  inner face covers y=31..158 behind the header and all eight rows. Headers
+  and deployed-row text use BLACK; benched rows retain shade 21.
+- Each row keeps DEPLOY at `(8,y,14,10)`, gains a no-draw team-chip target at
+  `(26,y,10,10)`, and moves the NAME/TRAIN body target to `(40,y,272,10)`.
+  The two 4px gutters prevent one tap from dispatching adjacent actions.
+- The chip has a BLACK frame and uses the gameplay team ramp
+  `teamnum*16+40`. In solo play, tapping or keyboard-activating it advances
+  that character through teams 0..3 and runs the normal company autosave
+  tail. Networked team assignment remains authoritative: host and joiner
+  screens render the team color but hide the cycling target.
+- The discoverability cue becomes
+  `TAP COLOR FOR TEAM  TAP NAME TO TRAIN` at `(49,167)`, with its backing at
+  y=166..173 between the roster panel and command strip.
+- Ordinals become: deploy 0..7, row bodies 8..15, team chips 16..23, pagers
+  24/25, scenario-line 26, BACK/HIRE/SCENARIO/NETWORK/GO 27..31, READY 32;
+  total 33.
+- Pins: exact geometry and solo/network navigation cover the third row
+  control; a coordinate-level test taps the rendered color square and proves
+  it changes team without opening TRAIN; a direct mutation test proves the
+  change autosaves; native visual probes cover solo, empty, paged, host,
+  joiner, and degraded-link layouts.

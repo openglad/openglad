@@ -1694,11 +1694,11 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // ---------------------------------------------------------------------------
 // TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10, row-click
 // train per §9.11): the command roster. The roster IS the default view (the
-// VIEW TEAM screen retired into it): 9 rows/page at the 15px save-slot pitch
-// (§9.10.1 — round 2 trades the tenth row for clear margins around the
-// block) — a deploy toggle (8,41+15r,14,10) and the §9.11 row-body train
-// zone (26,41+15r,286,10; the TRAIN column is deleted, clicking the row
-// trains) — the page cluster top-right (< p/N >), and the bottom command
+// VIEW TEAM screen retired into it): 8 rows/page at the 15px save-slot pitch
+// (§9.14 — round 4 trades one row for clear header/hint margins) — a deploy
+// toggle (8,44+15r,14,10), team-color cycler (26,44+15r,10,10), and the
+// §9.11 row-body train zone (40,44+15r,272,10; the TRAIN column is deleted,
+// clicking the row trains) — the page cluster top-right (< p/N >), and the bottom command
 // strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
@@ -1713,10 +1713,10 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // pointer; run_menu_screen's screen_state points at the SAME object.
 BaseCampScreenState* g_base_camp_state = nullptr;
 
-// §9.10.1 round-2 vertical rhythm: rows start at y=41 so the roster block
-// (header bar 31..38 + panel 39..171) carries real air on both sides — 6px
-// below the pager cluster (ends 24) and 6px above the y=178 command strip.
-constexpr int kBaseCampRowY0 = 41;
+// §9.14 round-4 vertical rhythm: rows start at y=44, leaving 6 clear pixels
+// after the header ink. Eight rows end at y=158; the centered hint strip at
+// y=166..173 then has a 5px clear band after the panel and 4px before commands.
+constexpr int kBaseCampRowY0 = 44;
 constexpr int kBaseCampRowPitch = 15;
 // Round-3 horizontal grid: keep a real gutter after DEPLOY and use the
 // right-hand third that became vacant when the TRAIN button column retired.
@@ -1728,7 +1728,10 @@ constexpr int kBaseCampSoloLevelColumnX = 220;
 constexpr int kBaseCampSoloExpColumnX = 270;
 constexpr int kBaseCampNetCompanyColumnX = 128;
 constexpr int kBaseCampNetLevelColumnX = 278;
-constexpr char kBaseCampTrainHint[] = "TAP NAME TO TRAIN";
+constexpr char kBaseCampTrainHint[] =
+    "TAP COLOR FOR TEAM  TAP NAME TO TRAIN";
+constexpr int kBaseCampTrainHintX = 49;
+constexpr int kBaseCampTrainHintY = 167;
 // §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
 // glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
 // was nearly invisible; 21 restores a legible two-step drop while staying
@@ -1779,13 +1782,12 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
     return kReadyGoFaceUnready;
 }
 
-// Static nav encodes the full-page shape (9 visible rows, pagers hidden,
+// Static nav encodes the full-page shape (8 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
-// is deleted — the row BODY (26,y,286,10) is a no_draw hit zone spanning
-// chip + name/class/level/exp ink (left edge 26 = the family chip, 4px
-// clear of the deploy toggle ending at x=22; right edge 312 = solo EXP ink
-// end 306 + 6px). no_draw, not a quiet face: the row text IS the affordance
+// is deleted — the row BODY (40,y,272,10) is a no_draw hit zone spanning
+// name/class/level/exp ink. The separate color chip at x=26 cycles the
+// character's team in solo play. no_draw, not a quiet face: the row text IS the affordance
 // (a bevel would double-frame every row against the §9.5.2 panel), and the
 // keyboard draw_highlight pulse draws regardless of no_draw, so the row
 // highlight reads — the §2.5 foreign-hit-zone precedent.
@@ -1794,26 +1796,39 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
      .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
-             .down = (i) < 8 ? (i) + 1 : kCreateMenuBackIndex,                \
-             .right = kBaseCampRowBodyBase + (i)}}
+             .down = (i) < 7 ? (i) + 1 : kCreateMenuBackIndex,                \
+             .right = kBaseCampTeamChipBase + (i)}}
 #define OG_BASE_CAMP_ROW(i)                                                  \
     {.id = "roster_row_" #i, .label = "",                                    \
-     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 286,        \
+     .x = 40, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 272,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampRowBodyBase + (i),                                      \
      .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
-             .down = (i) < 8 ? kBaseCampRowBodyBase + (i) + 1                 \
+             .down = (i) < 7 ? kBaseCampRowBodyBase + (i) + 1                 \
                              : kCreateMenuGoIndex,                            \
-             .left = (i)},                                                    \
+             .left = kBaseCampTeamChipBase + (i)},                            \
+     .no_draw = true}
+#define OG_BASE_CAMP_TEAM(i)                                                 \
+    {.id = "roster_team_" #i, .label = "",                                   \
+     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 10,         \
+     .h = 10, .action = ButtonAction::MenuSpecRow,                           \
+     .arg = kBaseCampTeamChipBase + (i),                                     \
+     .nav = {.up = (i) > 0 ? kBaseCampTeamChipBase + (i) - 1 : -1,            \
+             .down = (i) < 7 ? kBaseCampTeamChipBase + (i) + 1                \
+                            : kCreateMenuGoIndex,                             \
+             .left = (i), .right = kBaseCampRowBodyBase + (i)},              \
      .no_draw = true}
 
 constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
     OG_BASE_CAMP_DEP(3), OG_BASE_CAMP_DEP(4), OG_BASE_CAMP_DEP(5),
-    OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7), OG_BASE_CAMP_DEP(8),
+    OG_BASE_CAMP_DEP(6), OG_BASE_CAMP_DEP(7),
     OG_BASE_CAMP_ROW(0), OG_BASE_CAMP_ROW(1), OG_BASE_CAMP_ROW(2),
     OG_BASE_CAMP_ROW(3), OG_BASE_CAMP_ROW(4), OG_BASE_CAMP_ROW(5),
-    OG_BASE_CAMP_ROW(6), OG_BASE_CAMP_ROW(7), OG_BASE_CAMP_ROW(8),
+    OG_BASE_CAMP_ROW(6), OG_BASE_CAMP_ROW(7),
+    OG_BASE_CAMP_TEAM(0), OG_BASE_CAMP_TEAM(1), OG_BASE_CAMP_TEAM(2),
+    OG_BASE_CAMP_TEAM(3), OG_BASE_CAMP_TEAM(4), OG_BASE_CAMP_TEAM(5),
+    OG_BASE_CAMP_TEAM(6), OG_BASE_CAMP_TEAM(7),
     // Page cluster (§2.5 header line B right edge, §9.10.2 y=15 beside the
     // relocated line B); real MenuSpecRow pager actions (keyboard-live),
     // hidden until the roster spans pages.
@@ -1827,26 +1842,35 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
      .nav = {.down = kBaseCampRowBodyBase, .left = kBaseCampPagePrevIndex},
      .hidden = true},
+    // The solo SCEN status is useful navigation, not just decoration. Its
+    // no-draw zone covers the full 34-char formatter budget and opens the
+    // same Scenario menu as the bottom command. Network status replaces
+    // this line in multiplayer, so the per-frame rewire hides the zone.
+    {.id = "scenario_line", .label = "",
+     .x = 6, .y = 14, .w = 208, .h = 12,
+     .action = ButtonAction::CreateScenarioMenu, .arg = -1,
+     .nav = {.down = kCreateMenuScenarioIndex},
+     .no_draw = true},
     // Bottom command strip (y=178, 18px tall). BACK keeps the Escape hotkey
     // (the shared cancel grammar).
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 8, .y = 178, .w = 44, .h = 18,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 8, .right = kCreateMenuHireIndex}},
+     .nav = {.up = 7, .right = kCreateMenuHireIndex}},
     {.id = "hire_troops", .label = "HIRE",
      .x = 58, .y = 178, .w = 50, .h = 18,
      .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.up = 8, .left = kCreateMenuBackIndex,
+     .nav = {.up = 7, .left = kCreateMenuBackIndex,
              .right = kCreateMenuScenarioIndex}},
     {.id = "scenario", .label = "SCENARIO",
      .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampRowBodyBase + 8, .left = kCreateMenuHireIndex,
+     .nav = {.up = kBaseCampScenarioLineIndex, .left = kCreateMenuHireIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
      .x = 182, .y = 178, .w = 56, .h = 18,
      .action = ButtonAction::Networking, .arg = -1,
-     .nav = {.up = kBaseCampRowBodyBase + 8, .left = kCreateMenuScenarioIndex,
+     .nav = {.up = kBaseCampRowBodyBase + 7, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
     // §2.6 GO half of the dual-role slot: solo/local keeps the plain grey
     // bevel and the exact legacy behavior (GoMenu -> go_menu / the
@@ -1855,7 +1879,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "go", .label = "GO",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::GoMenu, .arg = -1,
-     .nav = {.up = kBaseCampRowBodyBase + 8,
+     .nav = {.up = kBaseCampRowBodyBase + 7,
              .left = kCreateMenuNetworkingIndex},
      .color = &base_camp_go_face_color},
     // §2.6 READY twin: the SAME rect, visible exactly when GO is not
@@ -1865,7 +1889,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "ready", .label = "READY",
      .x = 244, .y = 178, .w = 68, .h = 18,
      .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
-     .nav = {.up = kBaseCampRowBodyBase + 8,
+     .nav = {.up = kBaseCampRowBodyBase + 7,
              .left = kCreateMenuNetworkingIndex},
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
@@ -1874,6 +1898,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
 
 #undef OG_BASE_CAMP_DEP
 #undef OG_BASE_CAMP_ROW
+#undef OG_BASE_CAMP_TEAM
 
 static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
@@ -1896,6 +1921,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const int end = st != nullptr ? st->page.end_index() : 0;
     const int visible = std::max(0, end - first);
     const bool pagers = st != nullptr && st->page.multi_page();
+    const bool networked = picker_lobby_is_networked();
     const bool host_visible = picker_lobby_host_controls_visible();
     // §2.6: the GO/READY pair shares one rect with mutually exclusive gates
     // — the host keeps GO, a networked joiner gets READY, never both. A
@@ -1910,7 +1936,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // Ownership per visible row (own row => a real deploy toggle + the
-    // §9.11 row-body train zone).
+    // §9.11 row-body train zone; solo adds the team-color cycler).
     std::array<bool, kBaseCampRosterRowsPerPage> owned_row{};
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         if (r >= visible)
@@ -1937,10 +1963,13 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         const bool on = r < visible;
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
+        const bool team_cycler = own && !networked;
         button& dep = buttons[r];
         button& body = buttons[kBaseCampRowBodyBase + r];
+        button& chip = buttons[kBaseCampTeamChipBase + r];
         dep.hidden = !on;
         body.hidden = !own;
+        chip.hidden = !team_cycler;
         if (!on)
             continue;
 
@@ -1967,14 +1996,17 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             live->xend = live->xloc + live->width;
         }
 
-        // Own rows step right into their §9.11 row-body zone; a foreign
+        // Own solo rows step through deploy -> team color -> name/train.
+        // Networked rows skip the team cycler because lobby teams are
+        // assigned. A foreign
         // hit zone spans the whole row, so its right-link carries the
         // row-body column's pager duty — without it an all-foreign page
         // (spectator machine, [NET-R9]) strands the pagers.
         dep.nav = {.up = r > 0 ? r - 1 : -1,
                    .down = r + 1 < visible ? r + 1 : kCreateMenuBackIndex,
                    .left = -1,
-                   .right = own ? kBaseCampRowBodyBase + r
+                   .right = own ? (team_cycler ? kBaseCampTeamChipBase + r
+                                               : kBaseCampRowBodyBase + r)
                                 : (pagers ? kBaseCampPagePrevIndex : -1)};
         if (own) {
             const int up_owned = prev_owned(r - 1);
@@ -1985,8 +2017,18 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                     ? kBaseCampRowBodyBase + down_owned
                     : (strip_end >= 0 ? strip_end
                                       : kCreateMenuNetworkingIndex),
-                .left = r,
+                .left = team_cycler ? kBaseCampTeamChipBase + r : r,
                 .right = pagers ? kBaseCampPagePrevIndex : -1};
+            if (team_cycler) {
+                chip.nav = {
+                    .up = r > 0 ? kBaseCampTeamChipBase + r - 1 : -1,
+                    .down = r + 1 < visible
+                        ? kBaseCampTeamChipBase + r + 1
+                        : (strip_end >= 0 ? strip_end
+                                          : kCreateMenuNetworkingIndex),
+                    .left = r,
+                    .right = kBaseCampRowBodyBase + r};
+            }
         }
     }
 
@@ -2010,6 +2052,16 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .left = kBaseCampPagePrevIndex,
         .right = -1};
 
+    // Solo line B is the current scenario and doubles as a generous click
+    // target for its menu. Multiplayer replaces line B with connection
+    // status, so it must never retain the scenario action there.
+    buttons[kBaseCampScenarioLineIndex].hidden = networked;
+    buttons[kBaseCampScenarioLineIndex].nav = {
+        .up = -1,
+        .down = kCreateMenuScenarioIndex,
+        .left = -1,
+        .right = -1};
+
     // §2.6: exactly one of the same-rect GO/READY pair shows — GO for the
     // host (the legacy host-gate, verbatim rule), READY for a networked
     // joiner (incl. the [NET-R9] spectator machine).
@@ -2029,7 +2081,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .up = dep_last, .down = -1, .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
     buttons[kCreateMenuScenarioIndex].nav = {
-        .up = body_last, .down = -1, .left = kCreateMenuHireIndex,
+        .up = networked ? body_last : kBaseCampScenarioLineIndex,
+        .down = -1, .left = kCreateMenuHireIndex,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
         .up = body_last, .down = -1, .left = kCreateMenuScenarioIndex,
@@ -2078,47 +2131,21 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
 
-// Pre-buttons pass (§2.0 draw-order rule): backdrop, then the readability
-// panel behind the roster (§9.5.2): a header bar plus ONE roster panel,
-// replacing the old per-row 150-alpha bars — the row-gap air stays INSIDE
-// the panel (the calm DOS-panel look; the backdrop art still ghosts
-// through at alpha 200). Lines A/B keep their own 150-alpha strips in the
+// Pre-buttons pass (§2.0 draw-order rule): backdrop, then one classic
+// two-bevel grey panel behind the complete roster, matching the retired
+// View Team menu. Lines A/B keep their own translucent black strips in the
 // content pass.
 void base_camp_draw_background(void* /*screen_state*/)
 {
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
-    const BaseCampScreenState* st = g_base_camp_state;
-    const int visible =
-        st != nullptr ? std::max(0, st->page.end_index() -
-                                        st->page.first_index())
-                      : 0;
-    // §9.10.1: the header bar tops the roster block at y=31 — 6px below the
-    // pager cluster (ends y=24) — and the full-page panel ends at y=171,
-    // 6px above the y=178 command strip (the round-2 breathing margins).
-    game->draw_rect_filled(4, 31, 312, 8, PURE_BLACK, 200);
-    if (visible > 0) {
-        // Full page (9 rows) = y 39..171.
-        game->draw_rect_filled(4, kBaseCampRowY0 - 2, 312,
-                               kBaseCampRowPitch * visible - 2, PURE_BLACK,
-                               200);
-    }
-    if (visible == 0) {
-        // §9.5.6 empty-state panel (F4): a framed PURE_BLACK backing behind
-        // the "NO SOLDIERS" line — zero row bars means nothing else darkens
-        // that band and the bare ORANGE text drowned in the backdrop art
-        // (U2). Drawn HERE, in the pre-draw_buttons pass, so the fill can
-        // never land on top of a button (the draw-order trap).
-        game->draw_rect_filled(60, 82, 200, 16, PURE_BLACK, 200);
-        game->fastbox(60, 81, 200, 1, GREY);
-        game->fastbox(60, 98, 200, 1, GREY);
-        game->fastbox(59, 82, 1, 16, GREY);
-        game->fastbox(260, 82, 1, 16, GREY);
-    }
+    // Outer bevel y=29..160; inner grey face y=31..158. Header ink begins
+    // at y=32 and the final roster row ends at y=158.
+    game->draw_button(4, 29, 315, 160, 2, 1);
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
-// indicator, the column headers, the roster row text/family chips, and the
+// indicator, the column headers, the roster row text/team chips, and the
 // empty state.
 void base_camp_draw_content(void* screen_state)
 {
@@ -2195,16 +2222,16 @@ void base_camp_draw_content(void* screen_state)
     // the row body opens the train screen on that character. Round 3 spreads
     // the columns across the full panel and restores a clear DEPLOY/NAME gap.
     if (networked) {
-        mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", WHITE, 1);
-        mytext.write_xy(kBaseCampNetCompanyColumnX, 32, "COMPANY", WHITE, 1);
-        mytext.write_xy(kBaseCampNetLevelColumnX, 32, "LV", WHITE, 1);
+        mytext.write_xy(2, 32, "DEPLOY", BLACK, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampNetCompanyColumnX, 32, "COMPANY", BLACK, 1);
+        mytext.write_xy(kBaseCampNetLevelColumnX, 32, "LV", BLACK, 1);
     } else {
-        mytext.write_xy(2, 32, "DEPLOY", WHITE, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", WHITE, 1);
-        mytext.write_xy(kBaseCampSoloClassColumnX, 32, "CLASS", WHITE, 1);
-        mytext.write_xy(kBaseCampSoloLevelColumnX, 32, "LV", WHITE, 1);
-        mytext.write_xy(kBaseCampSoloExpColumnX, 32, "EXP", WHITE, 1);
+        mytext.write_xy(2, 32, "DEPLOY", BLACK, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloClassColumnX, 32, "CLASS", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloLevelColumnX, 32, "LV", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloExpColumnX, 32, "EXP", BLACK, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
@@ -2241,14 +2268,16 @@ void base_camp_draw_content(void* screen_state)
             member = foreign_guy.get();
         }
 
-        // §9.5.5 framed family chip: a 1px GREY frame around the view_team
-        // color fill ((family+1)<<4) — the soldier run's pure-black fill
-        // and the near-black slime runs read as deliberate dark chips
-        // instead of holes in the panel. Same chip deployed and benched.
-        const unsigned char family_color =
-            static_cast<unsigned char>(((member->family + 1) << 4) & 255);
-        game->fastbox(26, y, 10, 10, GREY);
-        game->fastbox(27, y + 1, 8, 8, family_color);
+        // The chip now communicates and changes the character's team. Match
+        // the in-game team ramp (team*16+40), clamping defensive save input
+        // to the four persisted score teams. Solo players can click it to
+        // cycle; network lobby assignment keeps the same indicator read-only.
+        const int team = std::clamp(static_cast<int>(member->teamnum), 0,
+                                    static_cast<int>(SCORE_TEAM_COUNT) - 1);
+        const unsigned char team_color =
+            static_cast<unsigned char>(team * 16 + 40);
+        game->fastbox(26, y, 10, 10, BLACK);
+        game->fastbox(27, y + 1, 8, 8, team_color);
 
         // §9.5.4 uniform row color (F6/F7/F8): every column — name, class,
         // stats — draws WHITE when deployed and shade 21 when benched.
@@ -2257,7 +2286,7 @@ void base_camp_draw_content(void* screen_state)
         // black) and inverted the benched-dimming cue; deploy state is
         // signaled by benched-grey dimming ONLY.
         const unsigned char row_color =
-            deployed ? static_cast<unsigned char>(WHITE) : kBenchedTextShade;
+            deployed ? static_cast<unsigned char>(BLACK) : kBenchedTextShade;
 
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
@@ -2287,9 +2316,10 @@ void base_camp_draw_content(void* screen_state)
         }
     }
 
-    // The full-page roster ends at y=170 and the command buttons start at
-    // y=178, leaving one readable 6px line for the discoverability cue.
-    strip_text(109, 171, kBaseCampTrainHint, YELLOW);
+    // The roster panel ends at y=160. Center the cue in its own band:
+    // backing y=166..173, then four clear pixels before commands.
+    strip_text(kBaseCampTrainHintX, kBaseCampTrainHintY,
+               kBaseCampTrainHint, YELLOW);
 }
 
 // The team-build family's frame obligations: the level-reload guard (a SET
@@ -2324,8 +2354,8 @@ void base_camp_on_reset(void* screen_state)
     base_camp_refresh_rows(*state);
 }
 
-// G3 row dispatch: deploy toggles, the §9.11 row-body train affordance, and
-// the pagers.
+// G3 row dispatch: deploy toggles, team-color cyclers, the §9.11 row-body
+// train affordance, and the pagers.
 Sint32 base_camp_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
@@ -2339,8 +2369,18 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     }
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    const bool is_row_body = row >= kBaseCampRowBodyBase;
-    const int visual_row = is_row_body ? row - kBaseCampRowBodyBase : row;
+    const bool is_deploy = row >= 0 && row < kBaseCampRosterRowsPerPage;
+    const bool is_row_body =
+        row >= kBaseCampRowBodyBase &&
+        row < kBaseCampRowBodyBase + kBaseCampRosterRowsPerPage;
+    const bool is_team_chip =
+        row >= kBaseCampTeamChipBase &&
+        row < kBaseCampTeamChipBase + kBaseCampRosterRowsPerPage;
+    if (!is_deploy && !is_row_body && !is_team_chip)
+        return 0;
+    const int visual_row = is_row_body
+        ? row - kBaseCampRowBodyBase
+        : (is_team_chip ? row - kBaseCampTeamChipBase : row);
     const int idx = st->page.first_index() + visual_row;
     if (idx < 0 || idx >= static_cast<int>(st->slots.size()))
         return 0;  // stale click on a row hidden this frame
@@ -2363,7 +2403,25 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
         return 0;
 
-    if (!is_row_body) {
+    if (is_team_chip) {
+        // Multiplayer assigns teams through lobby seats, so this solo-only
+        // control is hidden there and stale dispatches remain inert.
+        if (picker_lobby_is_networked())
+            return MENU_OK;
+        if (!picker_lobby_save_slot_editable(slot)) {
+            popup_dialog("TEAMS", "LOCKED");
+            return MENU_OK;
+        }
+        const short team = cycle_guy_team(save, slot, 1);
+        if (team >= 0) {
+            TRACE("basecamp", "team slot=%d team=%d", slot,
+                  static_cast<int>(team));
+            picker_base_camp_after_roster_mutation();
+        }
+        return MENU_OK;
+    }
+
+    if (is_deploy) {
         // §2.0 U6 roster-row tap debounce: a second toggle of the SAME row
         // (same display index resolving to the same save slot — a page flip
         // in between retargets the rect and is never debounced) within

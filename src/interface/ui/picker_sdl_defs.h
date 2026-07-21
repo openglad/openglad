@@ -163,29 +163,35 @@ int picker_company_backups_button_count();
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
-// clear top/bottom margins): 9 roster rows/page (deploy toggle at x=8, the
-// row-body train zone at x=26..311, y=41+15r), the page cluster top-right,
+// clear top/bottom margins): 8 roster rows/page (deploy toggle at x=8, team
+// color/cycler at x=26, row-body train zone at x=40..311, y=44+15r), the
+// page cluster top-right,
 // and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
 // y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24
-// roster = <=3 pages; the 40-slot defensive shape pages to 5.
-inline constexpr int kBaseCampRosterRowsPerPage = 9; // roster_dep_r = 0..8
+// roster = 3 pages; the 40-slot defensive shape pages to 5.
+inline constexpr int kBaseCampRosterRowsPerPage = 8; // roster_dep_r = 0..7
 // §9.11 (G4): the per-row TRAIN column is deleted; the row BODY is the train
-// affordance — roster_row_r = 9+r, a no_draw hit zone across the row text that
+// affordance — roster_row_r = 8+r, a no_draw hit zone across the row text that
 // opens the train screen seeded on that character (Enter trains from the
 // keyboard row highlight — the curses roster grammar).
-inline constexpr int kBaseCampRowBodyBase = 9;       // roster_row_r = 9+r
-inline constexpr int kBaseCampPagePrevIndex = 18;
-inline constexpr int kBaseCampPageNextIndex = 19;
-inline constexpr int kCreateMenuBackIndex = 20;
-inline constexpr int kCreateMenuHireIndex = 21;
-inline constexpr int kCreateMenuScenarioIndex = 22;
-inline constexpr int kCreateMenuNetworkingIndex = 23;
-inline constexpr int kCreateMenuGoIndex = 24;
+inline constexpr int kBaseCampRowBodyBase = 8;       // roster_row_r = 8+r
+// The team-colored chip is a solo-only cycler. Multiplayer still renders
+// the color but hides its mutation target because lobby teams are assigned.
+inline constexpr int kBaseCampTeamChipBase = 16;     // roster_team_r = 16+r
+inline constexpr int kBaseCampPagePrevIndex = 24;
+inline constexpr int kBaseCampPageNextIndex = 25;
+// Solo-only no-draw hit zone over the visible SCEN status line.
+inline constexpr int kBaseCampScenarioLineIndex = 26;
+inline constexpr int kCreateMenuBackIndex = 27;
+inline constexpr int kCreateMenuHireIndex = 28;
+inline constexpr int kCreateMenuScenarioIndex = 29;
+inline constexpr int kCreateMenuNetworkingIndex = 30;
+inline constexpr int kCreateMenuGoIndex = 31;
 // §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
 // of the pair is visible per frame (host => GO, networked joiner => READY).
-inline constexpr int kCreateMenuReadyIndex = 25;
-inline constexpr int kCreateMenuButtonCount = 26;
+inline constexpr int kCreateMenuReadyIndex = 32;
+inline constexpr int kCreateMenuButtonCount = 33;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
