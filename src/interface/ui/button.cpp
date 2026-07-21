@@ -170,6 +170,12 @@ void vbutton::set_graphic(char family)
     //vdisplay();
 }
 
+// Label centering (all five write_xy copies below, §9.1): the true ink width
+// of an N-char label is N*(w+1)-1 pixels (each glyph advances w+1; the final
+// pen advance never lands), so start_x subtracts (N*(w+1)-1)/2 from the face
+// midpoint. The historical (N-1)*(w+1)/2 undercounted one cell and drew every
+// label ~2-3px right of center — a 1-char "X" hugged the right half of its
+// 14px face (F5).
 void vbutton::vdisplay()
 {
     if(hidden || no_draw)
@@ -185,7 +191,7 @@ void vbutton::vdisplay()
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -196,7 +202,7 @@ void vbutton::vdisplay()
         og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
         og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
 }
@@ -216,7 +222,7 @@ void vbutton::vdisplay(Sint32 status)
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -229,7 +235,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_LEFT,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_TOP,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             og::runtime::current_session->myscreen_->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         }
@@ -241,7 +247,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT+32,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM+32,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
         }
     }
