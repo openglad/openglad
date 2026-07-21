@@ -1848,6 +1848,9 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 
     const Uint32 current_cost =
         pks().train_session ? pks().train_session->current_cost() : 0;
+    // The 2013 loop left this breadcrumb in its draw pass after moving the
+    // live calculation elsewhere; TrainSession now performs that calculation:
+    //current_cost = calculate_train_cost(here);
 
 		show_guy(query_timer()-state->start_time, 1); // 1 means ourteam[editguy]
 

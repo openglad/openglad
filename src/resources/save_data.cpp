@@ -1037,8 +1037,9 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_th, 4, 1);
         WRITE_OR_FAIL(&temp_ts, 4, 1);
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
-        // Former 8-byte guy filler: v14+ stores the mission-deploy flag in
-        // the first byte (guy offset +50) and zero-fills the other 7.
+        // And the filler: v14+ stores the mission-deploy flag in the first
+        // byte of the former 8-byte guy filler (offset +50), then zero-fills
+        // the other 7.
         std::uint8_t temp_deployed = temp_guy->deployed ? 1 : 0;
         WRITE_OR_FAIL(&temp_deployed, 1, 1);
         std::array<char, 7> reserved_guy{};

@@ -1139,6 +1139,8 @@ void main_menu_draw_content(void* /*screen_state*/)
         pks().main_columns_pix->drawMix(12, 40, game->viewob[0].get());
         pks().main_columns_pix->set_frame(1);
         pks().main_columns_pix->drawMix(242, 40, game->viewob[0].get());
+        // The columns pixie has carried this dormant animation hook since 2013:
+        //pks().main_columns_pix->next_frame();
     }
 
     // G14: re-vdisplay EVERY button after the title drawMix (the title
@@ -1708,6 +1710,11 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // screen state. The §2.6 dual-role slot: GO (host) and its same-rect READY
 // twin (networked joiner) are the two host/joiner-gated buttons — exactly
 // one is visible per frame.
+
+// The retired View Team table carried these two little promises from 2013;
+// Base Camp finally cashes them as name-tap training and the HIRE command:
+//  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
+//  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
 
 // The company-list seam pattern: the per-frame rewire reads this file-static
 // pointer; run_menu_screen's screen_state points at the SAME object.
