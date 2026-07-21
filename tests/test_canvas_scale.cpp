@@ -1727,3 +1727,134 @@ TEST(CanvasScale, deepest_zoom_preserves_smoothing_choice_but_skips_huge_scratch
     EXPECT_EQ(og::WorldScaleMode::Sai, E_Screen->world_scale().mode)
         << "resource fallback must not rewrite the selected smoothing mode";
 }
+
+// The web 'webglcontextrestored' path: request_render_backend_recreate()
+// only flags the recreate; the next Screen::swap() rebuilds the renderer
+// and every texture with constructor parity, keeps the CPU canvases, and
+// forces a full repaint (redrawme). These native tests exercise exactly
+// that consume-at-present machinery.
+TEST(RenderBackendRecreate, request_is_consumed_at_present_on_shared_pair)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    const std::string old_zoom = cfg.get_setting("graphics", "zoom");
+    const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    cfg.apply_setting("graphics", "smoothing", "off");
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    // The classic shared pair survives a UI-canvas pixel across the rebuild:
+    // only GPU objects are recreated, the CPU surface keeps its content.
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+    s->pointb(11, 13, 47);
+    s->redrawme = 0;
+
+    trace_clear();
+    ASSERT_FALSE(render_backend_recreate_pending());
+    request_render_backend_recreate();
+    ASSERT_TRUE(render_backend_recreate_pending());
+    E_Screen->swap(0, 0, E_Screen->canvas_w(), E_Screen->canvas_h());
+
+    EXPECT_FALSE(render_backend_recreate_pending())
+        << "a successful recreate must consume the pending request";
+    ASSERT_TRUE(trace_contains("video", "render backend recreated"));
+    ASSERT_NE(nullptr, E_Screen->renderer);
+    ASSERT_NE(nullptr, E_Screen->render_tex);
+    EXPECT_EQ(1, s->redrawme)
+        << "the recreate must force a full repaint on the next frame";
+
+    // Constructor parity on the rebuilt UI texture: opaque nearest present.
+    SDL_BlendMode blend = SDL_BLENDMODE_INVALID;
+    ASSERT_TRUE(SDL_GetTextureBlendMode(E_Screen->render_tex, &blend));
+    EXPECT_EQ(SDL_BLENDMODE_NONE, blend);
+    SDL_ScaleMode scale = SDL_SCALEMODE_INVALID;
+    ASSERT_TRUE(SDL_GetTextureScaleMode(E_Screen->render_tex, &scale));
+    EXPECT_EQ(SDL_SCALEMODE_NEAREST, scale);
+    int tw = 0, th = 0;
+    query_texture_dims(E_Screen->render_tex, &tw, &th);
+    EXPECT_EQ(320, tw);
+    EXPECT_EQ(200, th);
+
+    // Shared classic dims keep the byte-identity world/UI texture aliasing.
+    SDL_Texture* const ui_tex = E_Screen->render_tex;
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    EXPECT_EQ(ui_tex, E_Screen->render_tex);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    int idx = 0;
+    s->get_pixel(11, 13, &idx);
+    EXPECT_EQ(47, idx) << "CPU canvas content must survive the rebuild";
+    // A follow-up present through the new renderer must succeed.
+    E_Screen->swap(0, 0, E_Screen->canvas_w(), E_Screen->canvas_h());
+
+    cfg.apply_setting("graphics", "zoom", old_zoom);
+    cfg.apply_setting("graphics", "smoothing", old_smoothing);
+}
+
+TEST(RenderBackendRecreate, split_world_canvas_is_rebuilt_at_live_dimensions)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    const std::string old_zoom = cfg.get_setting("graphics", "zoom");
+    const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
+    // Live state and cfg must agree, exactly like the production DISPLAY
+    // path: swap()'s post-recreate apply_world_scale_from_cfg() re-derives
+    // the split canvas from these keys.
+    cfg.apply_setting("graphics", "zoom", "0.5");
+    cfg.apply_setting("graphics", "smoothing", "off");
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    apply_world_scale_from_cfg();
+    ASSERT_EQ(640, E_Screen->world_w());
+    ASSERT_EQ(400, E_Screen->world_h());
+
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    ASSERT_NE(E_Screen->render_tex, nullptr);
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+    s->pointb(s->canvas_w() - 1, s->canvas_h() - 1, 47);
+
+    trace_clear();
+    request_render_backend_recreate();
+    E_Screen->swap(0, 0, E_Screen->canvas_w(), E_Screen->canvas_h());
+
+    EXPECT_FALSE(render_backend_recreate_pending());
+    ASSERT_TRUE(trace_contains("video", "render backend recreated"));
+    ASSERT_NE(nullptr, E_Screen->renderer);
+
+    // The split world texture is rebuilt at the live zoom dimensions and
+    // stays split from the fixed 320x200 UI pair.
+    ASSERT_NE(nullptr, E_Screen->render_tex);
+    int tw = 0, th = 0;
+    query_texture_dims(E_Screen->render_tex, &tw, &th);
+    EXPECT_EQ(640, tw);
+    EXPECT_EQ(400, th);
+    SDL_Texture* const world_tex = E_Screen->render_tex;
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    ASSERT_NE(nullptr, E_Screen->render_tex);
+    EXPECT_NE(world_tex, E_Screen->render_tex);
+    query_texture_dims(E_Screen->render_tex, &tw, &th);
+    EXPECT_EQ(320, tw);
+    EXPECT_EQ(200, th);
+
+    // World surface pixels survive (only the GPU objects were lost), and a
+    // follow-up world present succeeds on the new renderer.
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    int idx = 0;
+    s->get_pixel(s->canvas_w() - 1, s->canvas_h() - 1, &idx);
+    EXPECT_EQ(47, idx);
+    E_Screen->swap(0, 0, E_Screen->canvas_w(), E_Screen->canvas_h());
+
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    cfg.apply_setting("graphics", "zoom", old_zoom);
+    cfg.apply_setting("graphics", "smoothing", old_smoothing);
+}

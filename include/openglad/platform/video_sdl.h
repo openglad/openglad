@@ -306,3 +306,14 @@ void apply_world_scale_from_cfg();
 // backing while a fullscreen exit is still in flight. Reassert the fitted CSS
 // logical size (and its HiDPI physical backing) after browser events.
 void restore_web_canvas_backing_size(int logical_w, int logical_h);
+
+// Flag that the rendering device was lost and restored (the browser
+// 'webglcontextrestored' event) and the renderer plus all GPU textures must
+// be rebuilt. Only sets a pending flag: browser callbacks can run while the
+// ASYNCIFY'd C stack is suspended inside a blocking menu loop, so no GL work
+// may happen at the notification site. Screen::swap() consumes the flag and
+// performs the recreate at the next present.
+void request_render_backend_recreate();
+
+// True while a requested render-backend recreate has not completed yet.
+bool render_backend_recreate_pending();
