@@ -542,9 +542,9 @@ static int base_camp_row_train_injector(void* data)
     }
     SDL_Delay(750);  // FadeAroundEntry eats early clicks
     // Tap the rendered name itself, not the center of the wide row hit zone.
-    // Round 3 places NAME at x=52; round 4 places row 1 at y=59..68.
+    // Round 6 places NAME at x=88; row 1 remains y=59..68.
     const auto [mapped_x, mapped_y] =
-        ui_canvas_to_window(54.0f, 64.0f);
+        ui_canvas_to_window(90.0f, 64.0f);
     inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
 
     if (!wait_for_interactable("inc_str", 10000)) {
@@ -612,9 +612,8 @@ TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
     ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
 
-// The visible team-color square is an independent click target immediately
-// left of NAME. Coordinate-level coverage keeps it from regressing into the
-// wider train zone.
+// The visible TEAM-color square is an independent column before NAME.
+// Coordinate-level coverage keeps it from regressing into the train zone.
 struct BaseCampTeamChipTapState {
     bool finished;
     bool saw_team_change;
@@ -632,7 +631,7 @@ static int base_camp_team_chip_tap_injector(void* data)
     }
     SDL_Delay(750);
     const auto [mapped_x, mapped_y] =
-        ui_canvas_to_window(31.0f, 49.0f);
+        ui_canvas_to_window(66.0f, 49.0f);
     inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
     SDL_Delay(500);
 
@@ -1606,7 +1605,9 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_TRUE(buttons[kBaseCampTeamChipBase + 0].hidden)
         << "network team assignment makes the color chip read-only";
     EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
-    EXPECT_EQ(212, buttons[2].sizex) << "the §2.5 (8,y,212,10) hit zone";
+    EXPECT_EQ(12, buttons[2].x);
+    EXPECT_EQ(300, buttons[2].sizex)
+        << "foreign rows use the full padded roster width";
     EXPECT_TRUE(buttons[kBaseCampRowBodyBase + 2].hidden)
         << "foreign rows have no row-body train zone";
     EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)

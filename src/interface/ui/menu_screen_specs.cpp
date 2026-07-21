@@ -1694,10 +1694,10 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // ---------------------------------------------------------------------------
 // TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10, row-click
 // train per §9.11): the command roster. The roster IS the default view (the
-// VIEW TEAM screen retired into it): 8 rows/page at the 15px save-slot pitch
+// VIEW TEAM screen retired into it): 8 rows/page at the round-6 14px pitch
 // (§9.14 — round 4 trades one row for clear header/hint margins) — a deploy
-// toggle (8,44+15r,14,10), team-color cycler (26,44+15r,10,10), and the
-// §9.11 row-body train zone (40,44+15r,272,10; the TRAIN column is deleted,
+// toggle (23,45+14r,14,10), team-color cycler (61,45+14r,10,10), and the
+// §9.11 row-body train zone (84,45+14r,228,10; the TRAIN column is deleted,
 // clicking the row trains) — the page cluster top-right (< p/N >), and the bottom command
 // strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
@@ -1713,24 +1713,25 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // pointer; run_menu_screen's screen_state points at the SAME object.
 BaseCampScreenState* g_base_camp_state = nullptr;
 
-// §9.14 round-4 vertical rhythm: rows start at y=44, leaving 6 clear pixels
-// after the header ink. Eight rows end at y=158; the centered hint strip at
-// y=166..173 then has a 5px clear band after the panel and 4px before commands.
-constexpr int kBaseCampRowY0 = 44;
-constexpr int kBaseCampRowPitch = 15;
-// Round-3 horizontal grid: keep a real gutter after DEPLOY and use the
-// right-hand third that became vacant when the TRAIN button column retired.
-// The row hit zone spans every text column, so the visible name remains the
-// affordance while taps anywhere on the body keep working.
-constexpr int kBaseCampNameColumnX = 52;
-constexpr int kBaseCampSoloClassColumnX = 136;
-constexpr int kBaseCampSoloLevelColumnX = 220;
-constexpr int kBaseCampSoloExpColumnX = 270;
-constexpr int kBaseCampNetCompanyColumnX = 128;
-constexpr int kBaseCampNetLevelColumnX = 278;
+// Round-6 vertical rhythm: the panel's inner face is y=30..158. Header ink
+// is y=33..38; rows at y=45+14r leave six clear pixels after the header and
+// six below the final row. The hint then owns the y=166..173 band.
+constexpr int kBaseCampRowY0 = 45;
+constexpr int kBaseCampRowPitch = 14;
+// Round-6 horizontal grid: the panel's inner face is x=8..311, with explicit
+// DEPLOY and TEAM columns before the trainable NAME body. Maximum-width solo
+// and network strings end at x=310/304 respectively.
+constexpr int kBaseCampDeployHeaderX = 12;
+constexpr int kBaseCampTeamHeaderX = 54;
+constexpr int kBaseCampNameColumnX = 88;
+constexpr int kBaseCampSoloClassColumnX = 164;
+constexpr int kBaseCampSoloLevelColumnX = 236;
+constexpr int kBaseCampSoloExpColumnX = 274;
+constexpr int kBaseCampNetCompanyColumnX = 160;
+constexpr int kBaseCampNetLevelColumnX = 292;
 constexpr char kBaseCampTrainHint[] =
-    "TAP COLOR FOR TEAM  TAP NAME TO TRAIN";
-constexpr int kBaseCampTrainHintX = 49;
+    "TAP TEAM COLOR TO CYCLE  TAP NAME TO TRAIN";
+constexpr int kBaseCampTrainHintX = 34;
 constexpr int kBaseCampTrainHintY = 167;
 // §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
 // glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
@@ -1785,22 +1786,22 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
 // Static nav encodes the full-page shape (8 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
-// is deleted — the row BODY (40,y,272,10) is a no_draw hit zone spanning
-// name/class/level/exp ink. The separate color chip at x=26 cycles the
+// is deleted — the row BODY (84,y,228,10) is a no_draw hit zone spanning
+// name/class/level/exp ink. The separate TEAM color chip at x=61 cycles the
 // character's team in solo play. no_draw, not a quiet face: the row text IS the affordance
 // (a bevel would double-frame every row against the §9.5.2 panel), and the
 // keyboard draw_highlight pulse draws regardless of no_draw, so the row
 // highlight reads — the §2.5 foreign-hit-zone precedent.
 #define OG_BASE_CAMP_DEP(i)                                                  \
     {.id = "roster_dep_" #i, .label = "",                                    \
-     .x = 8, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,          \
+     .x = 23, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,         \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
              .down = (i) < 7 ? (i) + 1 : kCreateMenuBackIndex,                \
              .right = kBaseCampTeamChipBase + (i)}}
 #define OG_BASE_CAMP_ROW(i)                                                  \
     {.id = "roster_row_" #i, .label = "",                                    \
-     .x = 40, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 272,        \
+     .x = 84, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 228,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampRowBodyBase + (i),                                      \
      .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
@@ -1810,7 +1811,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
      .no_draw = true}
 #define OG_BASE_CAMP_TEAM(i)                                                 \
     {.id = "roster_team_" #i, .label = "",                                   \
-     .x = 26, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 10,         \
+     .x = 61, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 10,         \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampTeamChipBase + (i),                                     \
      .nav = {.up = (i) > 0 ? kBaseCampTeamChipBase + (i) - 1 : -1,            \
@@ -1908,7 +1909,7 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
 // b): page-window the rows, stamp the deploy glyphs on BOTH label surfaces,
 // host-gate GO, close the strip/pager links, and seed the empty-roster
 // highlight on HIRE (§2.5). Networked ownership shape: a foreign row's
-// deploy button widens into the §2.5 no_draw hit zone (8,y,212,10) — click
+// deploy button widens into the full-panel no_draw hit zone (12,y,300,10) — click
 // anywhere on the row pops OWNED BY — and its §9.11 row-body zone hides
 // (the widened dep zone IS the foreign row click); the nav graph chains
 // the row-body column over the OWNED rows only.
@@ -1985,8 +1986,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         // vbutton), so a toggle shows this frame.
         dep.label = (member != nullptr && member->deployed) ? "X" : "";
         dep.no_draw = !own;
-        dep.x = 8;
-        dep.sizex = own ? 14 : 212;
+        dep.x = own ? 23 : 12;
+        dep.sizex = own ? 14 : 300;
         vbutton* live = og::runtime::current_session->allbuttons_[r];
         if (live != nullptr) {
             live->label = dep.label;
@@ -2139,9 +2140,9 @@ void base_camp_draw_background(void* /*screen_state*/)
 {
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
-    // Outer bevel y=29..160; inner grey face y=31..158. Header ink begins
-    // at y=32 and the final roster row ends at y=158.
-    game->draw_button(4, 29, 315, 160, 2, 1);
+    // Outer bevel (6,28)..(313,160); inner grey face (8,30)..(311,158).
+    // Content keeps a real inset on every edge instead of touching bevels.
+    game->draw_button(6, 28, 313, 160, 2, 1);
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
@@ -2212,34 +2213,34 @@ void base_camp_draw_content(void* screen_state)
     if (st != nullptr && st->page.multi_page())
         strip_text(283, 17, st->page.indicator(), WHITE);
 
-    // Column headers over the pre-pass bar (§9.10.1 y=32, ink 32..37 above
-    // the panel seam at 39): solo keeps CLASS/EXP; networked swaps in the
+    // Column headers at y=33: solo keeps CLASS/EXP; networked swaps in the
     // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
     // chip). §9.5.3: NO HP column on any client — it was DERIVED max HP
     // (damage never persists to base camp), redundant with CLASS+LVL, and
     // it lives one click away in TRAIN. EXP stays (progress is actionable).
     // §9.11 (G4): NO TRAIN header — the TRAIN column is deleted; clicking
-    // the row body opens the train screen on that character. Round 3 spreads
-    // the columns across the full panel and restores a clear DEPLOY/NAME gap.
+    // the row body opens the train screen on that character. Round 6 gives
+    // DEPLOY and TEAM explicit columns and pads the complete grid.
     if (networked) {
-        mytext.write_xy(2, 32, "DEPLOY", BLACK, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", BLACK, 1);
-        mytext.write_xy(kBaseCampNetCompanyColumnX, 32, "COMPANY", BLACK, 1);
-        mytext.write_xy(kBaseCampNetLevelColumnX, 32, "LV", BLACK, 1);
+        mytext.write_xy(kBaseCampDeployHeaderX, 33, "DEPLOY", BLACK, 1);
+        mytext.write_xy(kBaseCampTeamHeaderX, 33, "TEAM", BLACK, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampNetCompanyColumnX, 33, "COMPANY", BLACK, 1);
+        mytext.write_xy(kBaseCampNetLevelColumnX, 33, "LV", BLACK, 1);
     } else {
-        mytext.write_xy(2, 32, "DEPLOY", BLACK, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 32, "NAME", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloClassColumnX, 32, "CLASS", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloLevelColumnX, 32, "LV", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloExpColumnX, 32, "EXP", BLACK, 1);
+        mytext.write_xy(kBaseCampDeployHeaderX, 33, "DEPLOY", BLACK, 1);
+        mytext.write_xy(kBaseCampTeamHeaderX, 33, "TEAM", BLACK, 1);
+        mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloClassColumnX, 33, "CLASS", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloLevelColumnX, 33, "LV", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloExpColumnX, 33, "EXP", BLACK, 1);
     }
 
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
     if (end - first <= 0) {
-        // §9.5.6: centered inside the framed panel the background pass drew
-        // (ink 74..247 in the 60..259 band; U2 satisfied by the panel).
-        mytext.write_xy_center(160, 87,
+        // Center the empty-state line in the padded grey roster face.
+        mytext.write_xy_center(160, 92,
                                static_cast<unsigned char>(ORANGE_START), "%s",
                                "NO SOLDIERS - HIRE YOUR FIRST");
         return;
@@ -2276,8 +2277,8 @@ void base_camp_draw_content(void* screen_state)
                                     static_cast<int>(SCORE_TEAM_COUNT) - 1);
         const unsigned char team_color =
             static_cast<unsigned char>(team * 16 + 40);
-        game->fastbox(26, y, 10, 10, BLACK);
-        game->fastbox(27, y + 1, 8, 8, team_color);
+        game->fastbox(61, y, 10, 10, BLACK);
+        game->fastbox(62, y + 1, 8, 8, team_color);
 
         // §9.5.4 uniform row color (F6/F7/F8): every column — name, class,
         // stats — draws WHITE when deployed and shade 21 when benched.
@@ -2291,9 +2292,9 @@ void base_camp_draw_content(void* screen_state)
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
-            // deploy state draws as the §2.5 X/- glyph at x=11.
+            // deploy state draws as the §2.5 X/- glyph at x=27.
             if (!display.owned)
-                mytext.write_xy(11, y + 2, deployed ? "X" : "-", row_color,
+                mytext.write_xy(27, y + 2, deployed ? "X" : "-", row_color,
                                 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);

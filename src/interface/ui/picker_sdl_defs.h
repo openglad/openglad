@@ -163,8 +163,8 @@ int picker_company_backups_button_count();
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
-// clear top/bottom margins): 8 roster rows/page (deploy toggle at x=8, team
-// color/cycler at x=26, row-body train zone at x=40..311, y=44+15r), the
+// clear top/bottom margins): 8 roster rows/page (deploy toggle at x=23, team
+// color/cycler at x=61, row-body train zone at x=84..311, y=45+14r), the
 // page cluster top-right,
 // and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
 // y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)

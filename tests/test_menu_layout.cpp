@@ -256,11 +256,11 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 
 // §2.5 base camp (the reimagined team build) at the §9.14 round-4 grid
 // with the §9.11 (G4) row-click-train shape: 8 deploy/team/row-body trios at
-// 15px pitch from y=44 (classic grey roster panel y=29..160), the page
+// 14px pitch from y=45 (padded grey roster panel (6,28)..(313,160)), the page
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
-// column is DELETED: the team-colored chip (26,y,10,10) cycles team and the
-// row body (40,y,272,10) opens training. Spec ordinals group by kind (dep
+// column is DELETED: the TEAM chip (61,y,10,10) cycles team and the row body
+// (84,y,228,10) opens training. Spec ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode
 // positionally; the layout is identical for classic and CTF campaigns.
@@ -281,30 +281,30 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         bool no_draw = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"roster_dep_0", "", 8, 44, 14, 10, MenuNav{.down = 1, .right = 16}, false},
-        {"roster_dep_1", "", 8, 59, 14, 10, MenuNav{.up = 0, .down = 2, .right = 17}, false},
-        {"roster_dep_2", "", 8, 74, 14, 10, MenuNav{.up = 1, .down = 3, .right = 18}, false},
-        {"roster_dep_3", "", 8, 89, 14, 10, MenuNav{.up = 2, .down = 4, .right = 19}, false},
-        {"roster_dep_4", "", 8, 104, 14, 10, MenuNav{.up = 3, .down = 5, .right = 20}, false},
-        {"roster_dep_5", "", 8, 119, 14, 10, MenuNav{.up = 4, .down = 6, .right = 21}, false},
-        {"roster_dep_6", "", 8, 134, 14, 10, MenuNav{.up = 5, .down = 7, .right = 22}, false},
-        {"roster_dep_7", "", 8, 149, 14, 10, MenuNav{.up = 6, .down = 27, .right = 23}, false},
-        {"roster_row_0", "", 40, 44, 272, 10, MenuNav{.down = 9, .left = 16}, false, true},
-        {"roster_row_1", "", 40, 59, 272, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
-        {"roster_row_2", "", 40, 74, 272, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
-        {"roster_row_3", "", 40, 89, 272, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
-        {"roster_row_4", "", 40, 104, 272, 10, MenuNav{.up = 11, .down = 13, .left = 20}, false, true},
-        {"roster_row_5", "", 40, 119, 272, 10, MenuNav{.up = 12, .down = 14, .left = 21}, false, true},
-        {"roster_row_6", "", 40, 134, 272, 10, MenuNav{.up = 13, .down = 15, .left = 22}, false, true},
-        {"roster_row_7", "", 40, 149, 272, 10, MenuNav{.up = 14, .down = 31, .left = 23}, false, true},
-        {"roster_team_0", "", 26, 44, 10, 10, MenuNav{.down = 17, .left = 0, .right = 8}, false, true},
-        {"roster_team_1", "", 26, 59, 10, 10, MenuNav{.up = 16, .down = 18, .left = 1, .right = 9}, false, true},
-        {"roster_team_2", "", 26, 74, 10, 10, MenuNav{.up = 17, .down = 19, .left = 2, .right = 10}, false, true},
-        {"roster_team_3", "", 26, 89, 10, 10, MenuNav{.up = 18, .down = 20, .left = 3, .right = 11}, false, true},
-        {"roster_team_4", "", 26, 104, 10, 10, MenuNav{.up = 19, .down = 21, .left = 4, .right = 12}, false, true},
-        {"roster_team_5", "", 26, 119, 10, 10, MenuNav{.up = 20, .down = 22, .left = 5, .right = 13}, false, true},
-        {"roster_team_6", "", 26, 134, 10, 10, MenuNav{.up = 21, .down = 23, .left = 6, .right = 14}, false, true},
-        {"roster_team_7", "", 26, 149, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
+        {"roster_dep_0", "", 23, 45, 14, 10, MenuNav{.down = 1, .right = 16}, false},
+        {"roster_dep_1", "", 23, 59, 14, 10, MenuNav{.up = 0, .down = 2, .right = 17}, false},
+        {"roster_dep_2", "", 23, 73, 14, 10, MenuNav{.up = 1, .down = 3, .right = 18}, false},
+        {"roster_dep_3", "", 23, 87, 14, 10, MenuNav{.up = 2, .down = 4, .right = 19}, false},
+        {"roster_dep_4", "", 23, 101, 14, 10, MenuNav{.up = 3, .down = 5, .right = 20}, false},
+        {"roster_dep_5", "", 23, 115, 14, 10, MenuNav{.up = 4, .down = 6, .right = 21}, false},
+        {"roster_dep_6", "", 23, 129, 14, 10, MenuNav{.up = 5, .down = 7, .right = 22}, false},
+        {"roster_dep_7", "", 23, 143, 14, 10, MenuNav{.up = 6, .down = 27, .right = 23}, false},
+        {"roster_row_0", "", 84, 45, 228, 10, MenuNav{.down = 9, .left = 16}, false, true},
+        {"roster_row_1", "", 84, 59, 228, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
+        {"roster_row_2", "", 84, 73, 228, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
+        {"roster_row_3", "", 84, 87, 228, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
+        {"roster_row_4", "", 84, 101, 228, 10, MenuNav{.up = 11, .down = 13, .left = 20}, false, true},
+        {"roster_row_5", "", 84, 115, 228, 10, MenuNav{.up = 12, .down = 14, .left = 21}, false, true},
+        {"roster_row_6", "", 84, 129, 228, 10, MenuNav{.up = 13, .down = 15, .left = 22}, false, true},
+        {"roster_row_7", "", 84, 143, 228, 10, MenuNav{.up = 14, .down = 31, .left = 23}, false, true},
+        {"roster_team_0", "", 61, 45, 10, 10, MenuNav{.down = 17, .left = 0, .right = 8}, false, true},
+        {"roster_team_1", "", 61, 59, 10, 10, MenuNav{.up = 16, .down = 18, .left = 1, .right = 9}, false, true},
+        {"roster_team_2", "", 61, 73, 10, 10, MenuNav{.up = 17, .down = 19, .left = 2, .right = 10}, false, true},
+        {"roster_team_3", "", 61, 87, 10, 10, MenuNav{.up = 18, .down = 20, .left = 3, .right = 11}, false, true},
+        {"roster_team_4", "", 61, 101, 10, 10, MenuNav{.up = 19, .down = 21, .left = 4, .right = 12}, false, true},
+        {"roster_team_5", "", 61, 115, 10, 10, MenuNav{.up = 20, .down = 22, .left = 5, .right = 13}, false, true},
+        {"roster_team_6", "", 61, 129, 10, 10, MenuNav{.up = 21, .down = 23, .left = 6, .right = 14}, false, true},
+        {"roster_team_7", "", 61, 143, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
         {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
         {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
         {"scenario_line", "", 6, 14, 208, 12, MenuNav{.down = 29}, false, true},
@@ -376,8 +376,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                   buttons[kCreateMenuReadyIndex].sizex);
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
-        // Each row's three actions have 4px gutters: deploy, team color,
-        // then name/train. A tap cannot dispatch two mutations.
+        // Each row's three actions have deliberate non-overlapping gutters:
+        // deploy, TEAM color, then name/train.
         for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
         {
             EXPECT_LE(buttons[r].x + buttons[r].sizex,
@@ -709,7 +709,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
                     EXPECT_EQ(!owned, buttons[r].no_draw)
                         << variant << " row " << r
                         << ": foreign rows are no_draw hit zones";
-                    EXPECT_EQ(owned ? 14 : 212, buttons[r].sizex)
+                    EXPECT_EQ(owned ? 14 : 300, buttons[r].sizex)
                         << variant << " row " << r;
                     EXPECT_EQ(owned,
                               !buttons[kBaseCampRowBodyBase + r].hidden)

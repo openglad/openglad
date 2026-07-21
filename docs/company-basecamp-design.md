@@ -2348,3 +2348,27 @@ team control instead of a family marker.
   it changes team without opening TRAIN; a direct mutation test proves the
   change autosaves; native visual probes cover solo, empty, paged, host,
   joiner, and degraded-link layouts.
+
+### 9.16 UX round 6 (2026-07-21) — padded roster grid and TEAM column [FINAL]
+
+The grey-panel direction is retained, but its content no longer crowds the
+bevel and the team control is promoted from an unexplained square to an
+explicit column.
+
+- The panel moves to `(6,28)..(313,160)`, with an inner face at
+  `(8,30)..(311,158)`. Header ink sits at y=33..38; rows use
+  `y=45+14r` (`r=0..7`), leaving six clear pixels both after the header and
+  below the final row.
+- Solo headers/values use: DEPLOY x=12 / control x=23; TEAM x=54 / chip
+  x=61; NAME x=88; CLASS x=164; LV x=236; EXP x=274. Maximum EXP ink ends
+  at x=310, inside the panel face.
+- Network headers/values keep DEPLOY/TEAM/NAME, put COMPANY at x=160, and
+  LV at x=292. Maximum network ink ends at x=304.
+- The NAME/TRAIN hit zone is `(84,y,228,10)`. Foreign network rows use a
+  read-only `(12,y,300,10)` zone spanning the padded roster width, so any
+  row click consistently reports its owning company.
+- The discoverability cue becomes
+  `TAP TEAM COLOR TO CYCLE  TAP NAME TO TRAIN` at `(34,167)`; the row/control
+  ordinals and scenario click behavior are unchanged from §9.15.
+- Pins: exact geometry, nav matrices, NAME and TEAM coordinate taps, and all
+  six Base Camp visual captures move to the new grid.
