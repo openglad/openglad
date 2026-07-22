@@ -150,6 +150,60 @@ TEST(WalkerCombat, walker_attack_friendly_fails)
 }
 
 
+TEST(WalkerCombat, same_team_scenario_npcs_can_never_damage_roster_heroes)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_allied_mode = world.allied_mode;
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        world.allied_mode = allied_mode;
+        for (unsigned char team = 0; team < 4; ++team)
+        {
+            walker* hero = make_guy(FAMILY_SOLDIER, team);
+            walker* npc = make_guy(FAMILY_ARCHER, team);
+            ASSERT_NE(nullptr, hero);
+            ASSERT_NE(nullptr, npc);
+            npc->clear_myguy();
+            hero->stats()->set_hitpoints(1);
+            npc->stats()->set_hitpoints(1);
+            hero->set_damage(500.0f);
+            npc->set_damage(500.0f);
+
+            ASSERT_TRUE(hero->is_friendly(npc))
+                << "allied=" << allied_mode << " team=" << static_cast<int>(team);
+            ASSERT_TRUE(npc->is_friendly(hero))
+                << "allied=" << allied_mode << " team=" << static_cast<int>(team);
+
+            const float hero_hp = hero->stats()->hitpoints();
+            const float npc_hp = npc->stats()->hitpoints();
+            EXPECT_FALSE(npc->attack(hero));
+            EXPECT_FALSE(hero->attack(npc));
+            EXPECT_EQ(hero_hp, hero->stats()->hitpoints());
+            EXPECT_EQ(npc_hp, npc->stats()->hitpoints());
+            EXPECT_FALSE(hero->dead());
+            EXPECT_FALSE(npc->dead());
+
+            walker* projectile =
+                world.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+            ASSERT_NE(nullptr, projectile);
+            projectile->set_owner(npc);
+            projectile->set_team_num(team);
+            projectile->set_damage(500.0f);
+            EXPECT_FALSE(projectile->attack(hero));
+            EXPECT_EQ(hero_hp, hero->stats()->hitpoints());
+            EXPECT_FALSE(hero->dead());
+
+            ASSERT_TRUE(world.remove_ob(projectile));
+            delete hero;
+            delete npc;
+        }
+    }
+
+    world.allied_mode = saved_allied_mode;
+}
+
+
 TEST(WalkerCombat, walker_attack_slime_magic_bonus)
 {
     walker* attacker = make_guy(FAMILY_MAGE, 0);

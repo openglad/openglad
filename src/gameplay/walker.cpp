@@ -2267,8 +2267,12 @@ std::int32_t walker::is_friendly(const walker *target) const
     {
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
-        // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == nullptr && headtarget->team_num() == 0) ||
+        // Authored team 0 (red) remains the legacy allied scenario faction,
+        // but an authored NPC on the player's selected roster team is just as
+        // friendly. Without the team-equality guard, a yellow player and a
+        // yellow NPC attacked each other in allied mode.
+        return headus->team_num() == headtarget->team_num() ||
+               (headtarget->myguy == nullptr && headtarget->team_num() == 0) ||
                (headus->myguy == nullptr && headus->team_num() == 0);
     }
 
