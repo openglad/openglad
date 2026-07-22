@@ -35,9 +35,9 @@ namespace og::ui {
 // Build-variant row filter (§1.6): rows are dropped at materialization when
 // they do not apply to the compiled platform. NOTE: until id-keyed nav (G9)
 // lands, a spec whose variants actually filter rows must keep nav indices
-// valid for every variant it compiles into (the main-menu quit/help fork
-// satisfies this by construction: exactly one of the pair survives, at the
-// same materialized index, with identical nav links).
+// valid for every variant it compiles into (the main-menu enabled/disabled
+// QUIT fork satisfies this by construction: exactly one QUIT row survives,
+// at the same materialized index, with identical nav links).
 enum class MenuBuildGate : std::uint8_t {
     Always,
     NativeOnly,
@@ -282,8 +282,9 @@ const MenuScreenSpec& view_scenario_menu_screen_spec();
 // now sharing the reflowed main geometry; their nested PLAYER SETTINGS specs
 // carry the actual multiplayer shape difference. DISABLE_MULTIPLAYER selects
 // both compiled variants (including the USE_TOUCH_INPUT mapping). The
-// web/native fork inside each main spec is the build-gated quit/help row pair.
-// Both specs exist on every build so uncompiled shapes stay unit-pinnable (G9).
+// web/native fork inside each main spec is the build-gated enabled/disabled
+// QUIT row; HELP is present in both. Both specs exist on every build so
+// uncompiled shapes stay unit-pinnable (G9).
 const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
@@ -295,9 +296,9 @@ const MenuScreenSpec& player_settings_menu_screen_spec();
 const MenuScreenSpec& player_settings_menu_screen_spec_mp();
 const MenuScreenSpec& player_settings_menu_screen_spec_nomp();
 
-// §2.1 Company & Base Camp: CONTINUE/LOAD gate and the company caption read a
-// cached view of the company set, refreshed once per mainmenu() entry (never
-// per frame — list_companies() touches the filesystem). Tests pin the view.
+// §2.1 Company & Base Camp: the CONTINUE/LOAD gate reads a cached view of the
+// company set, refreshed once per mainmenu() entry (never per frame —
+// list_companies() touches the filesystem). Tests pin the view.
 void refresh_main_menu_company_view();
 void set_main_menu_company_view_for_tests(bool present, std::string display_name);
 

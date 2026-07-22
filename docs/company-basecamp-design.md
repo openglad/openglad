@@ -184,7 +184,7 @@ re-pins). Anything in Layer E that cannot be made invisibly identical gets a nam
   MUST include this sweep in the same commit as its re-pin, or shifted indices silently
   relabel the wrong button.
 - **G9** (id-keyed nav for new/materialized rows): NEW screens and the build-gated
-  quit/help fork use id-keyed nav references resolved to indices at materialization —
+  main-menu row forks use id-keyed nav references resolved to indices at materialization —
   eliminates the index-remap-compiler bug class. Add unit pins for the noMP and web
   shapes of the materialized main-menu spec (the touch variant has no other oracle).
 - **G10** (test placement): generator sweeps and spec pins go in fast groups
@@ -372,10 +372,11 @@ escape hatch for anything not expressible.
 One `kMainMenuSpecMP` + one `kMainMenuSpecNoMP` (the no-MP variant genuinely repositions
 rows), selected at registry init by `DISABLE_MULTIPLAYER` (with the existing
 `USE_TOUCH_INPUT ⇒ DISABLE_MULTIPLAYER` mapping kept where it is defined today,
-picker.cpp:1485-1487). The web/native fork is a row pair
-`{"quit", NativeOnly}` / `{"help", WebOnly}` — geometry identical, hotkey differs —
-filtered at materialization with **id-keyed nav** (G9; nav indices are identical across
-the quit/help forks, so 2 static nav columns cover all 4 variants). Both
+picker.cpp:1485-1487). The current web/native fork is a row pair
+`{"quit", NativeOnly}` / `{"quit", WebOnly, Disabled}` — geometry identical,
+hotkey and row state differ — while HELP is always present. It is filtered at
+materialization with **id-keyed nav** (G9; nav indices are identical across the
+QUIT-state fork, so 2 static nav columns cover all 4 variants). Both
 `OPTIONS_BUTTON_INDEX` `#define`s die (picker.cpp ×4 + picker_main_menu.cpp:31-35) —
 replaced by `picker_mainmenu_options_index()`. `redraw_mainmenu`'s raw
 `allbuttons_[2..5]/[7]/[0]` writes become `OutlineBinding::PlayerCountEquals` +
@@ -387,8 +388,9 @@ pins for the compiled variant's materialized table plus noMP/web shapes (G9).
 Later UI reflow note: the MP/no-MP main specs now share one centered geometry. Player
 count, Allied/Spectator, CONTROLS, and its scoped RESET CONTROLS moved together into
 nested PLAYER SETTINGS specs; that nested pair now carries the genuine MP/no-MP row
-difference. The four historical table shapes and binding migration above remain the
-provenance for the engine contract.
+difference. The wrench face was subsequently replaced by a labeled GAME SETTINGS
+button, and the active-company caption was removed. The four historical table shapes
+and binding migration above remain the provenance for the engine contract.
 
 ### 1.7 New-screen machinery (Layer F)
 
@@ -486,7 +488,7 @@ normative.**
   ready) (U6). Fallback if device testing fails the 12px pitch: 15px save-slot pitch,
   10 rows/page (pre-declared contingency).
 - Art assets: **zero new pixel art.** Reused byte-identical: normal1.png (Begin New Game
-  face + re-apply-after-reset dance), wrench.png, title.png, columns.png,
+  face + re-apply-after-reset dance), title.png, columns.png,
   mainul/ur/ll/lr.png, butplus/butminus.png. Family chip = draw_box with the view_team
   color convention `((family+1)<<4)`.
 
@@ -494,39 +496,44 @@ normative.**
 
 Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side-by-side
 68×20 pair (the established player-button grammar). `begin_new_game` keeps its rect
-(80,50,140,20), empty label, and the normal1.png face — byte-identical art.
+(now y=52), empty label, and the normal1.png face — byte-identical art.
 
 ```
 +--------------------------------------------------------------------------------+
 |   [title.png]                                          [title.png]             |
-|  col |        [##### BEGIN NEW GAME (pixel art) #####]  (80,50)      | col     |
-|      |        [ CONTINUE ]           [   LOAD   ]       (y=75)       |         |
-|      |        [ 1 PLAYER ]           [ 2 PLAYER ]       (y=100)      |         |
-|      |        [ 3 PLAYER ]           [ 4 PLAYER ]       (y=125)      |         |
-|      |        [------------ DIFFICULTY ----------]      (y=148)      |         |
-|      |        [PVP: Allied]          [Level Edit ]      (y=160)      |         |
-|                 ~COMPANY: IRON KETTLE BAND~     (y=171, black strip)           |
-|                    [gear]  [   QUIT    ]        (y=182)                        |
+|  col |        [##### BEGIN NEW GAME (pixel art) #####]  (y=52)      | col     |
+|      |        [ CONTINUE ]           [   LOAD   ]       (y=78)      |         |
+|      |                       SETTINGS                (y=104)         |         |
+|      |        [  PLAYER  ]           [DIFFICULTY]      (y=113)      |         |
+|      |        [---------- GAME SETTINGS -----------]   (y=134)      |         |
+|      |        [------------- LEVEL EDIT -----------]   (y=158)      |         |
+|      |        [   HELP   ]           [   QUIT   ]      (y=181)      |         |
 +--------------------------------------------------------------------------------+
 ```
 
 | idx | id | rect | label | budget | notes |
 |---|---|---|---|---|---|
-| 0 | begin_new_game | (80,50,140,20) | "" (art) | — | UNCHANGED; routes to §2.2 |
-| 1 | continue_game | (80,75,68,20) | `CONTINUE` | 8/10 | opens most-recent company |
-| 2–5 | 4/3/2/1_player | unchanged | | | |
-| 6–10 | difficulty, pvp_allied, level_edit, quit/help, options | unchanged | | | options index stays 10 |
-| 11 (appended) | load_company | (152,75,68,20) | `LOAD` | 4/10 | opens Company List (§2.3). Appended at table END per the index-contract rule so the raw `allbuttons_` writes stay valid until the G8 sweep |
+| 0 | begin_new_game | (80,52,140,20) | "" (art) | — | routes to §2.2 |
+| 1 | continue_game | (80,78,68,20) | `CONTINUE` | 8/10 | opens most-recent company |
+| 2 | player_settings | (80,113,68,15) | `PLAYER` | 6/10 | opens PLAYER SETTINGS |
+| 3 | difficulty | (152,113,68,15) | `DIFFICULTY` | 10/10 | opens DIFFICULTY |
+| 4 | options | (80,134,140,15) | `GAME SETTINGS` | 13/22 | opens GAME SETTINGS; legacy internal id retained |
+| 5 | level_edit | (80,158,140,15) | `LEVEL EDIT` | 10/22 | separate from the settings group |
+| 6 | help | (80,181,68,15) | `HELP` | 4/10 | present on native and web |
+| 7 | quit | (152,181,68,15) | `QUIT` | 4/10 | native enabled; web visible but Disabled |
+| 8 (appended) | load_company | (152,78,68,20) | `LOAD` | 4/10 | opens Company List (§2.3) |
 
-- Company caption: black strip (U2) at y=171, WHITE text `COMPANY: <name ≤ 18ch>`,
-  clipped 28 chars total; no company → `NO COMPANY YET - BEGIN A NEW GAME`.
-  DISABLE_MULTIPLAYER variants: same split at y=75; strip at y=166.
+- The active company name is intentionally absent: CONTINUE/LOAD already convey the
+  company state, and the reclaimed band gives the three settings one clear hierarchy.
 - Gating: `continue_game` + `load_company` hidden when zero company files exist;
-  per-frame visibility sync + rewire; `begin(0).down→5` (→2 in no-MP) when hidden.
-- **Nav (the judge-verified reference graph)**: begin.down→1; continue{up 0, down 5,
-  right 11}; **load{up 0, down 4, left 1}** (4 = 2_player at (152,100) — both losing
-  proposals mis-wired this to 2 = 4_player; do not repeat); 1_player(5).up→1;
-  2_player(4).up→11.
+  `NO COMPANY YET` occupies their shared envelope; per-frame visibility sync rewires
+  both top-row settings buttons around the hidden pair.
+- **Nav (materialized indices)**: begin.down→continue(1); continue{up begin,
+  down player(2), right load(8)}; load{up begin, down player, left continue};
+  player↔difficulty across the compact row and both down→game-settings(4);
+  game-settings→level-edit(5)→help(6); help↔quit(7); either footer action
+  down→begin. With no company, begin.down→player and both compact settings
+  buttons route up→begin around the hidden CONTINUE/LOAD pair.
 - Continue failure: popup with `save_error_string`, then open Company List. Corrupt
   most-recent company: see §3.5 — Continue never silently opens a different company.
 - Hotkeys unchanged. Begin New Game ALWAYS creates a fresh company — the old "restart?"
@@ -552,8 +559,8 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 
 - Generator: pure `og::ui::generate_company_name(IRandom&)` in picker_common,
   `<ADJ> <NOUN> <GROUP>` word banks, **hard cap 18 chars** (never truncates on any later
-  surface: 18ch fits the Load list name column, the main-menu strip, and the base-camp
-  header). Screen opens pre-filled. The box matches character naming/renaming:
+  surface: 18ch fits the Load list name column and the base-camp header). Screen opens
+  pre-filled. The box matches character naming/renaming:
   stock-grey 132×22 face, DARK_BLUE prompt at (96,74), and DARK_BLUE editable
   value at (96,82). Click it → `input_string_value(96,82,19,current)`; empty →
   re-generate. Field at y=70+22=92 ≤ 100 — soft-keyboard compliant (U5).
@@ -1813,7 +1820,7 @@ under the corrected formula. Recapture every screen.
 ### 9.2 Main menu (F1, F10) [amends §2.1]
 
 1. NEW row appended at the END of BOTH variant tables (append-only rule):
-   - id `no_company_note`, rect **(80,75,140,20)** — the exact envelope of the
+   - id `no_company_note`, rect **(80,78,140,20)** — the exact envelope of the
      CONTINUE|LOAD pair, same x/w as `begin_new_game` above it.
    - label `NO COMPANY YET` (14 ≤ budget 22), engine-drawn DARK_BLUE on the
      Disabled face — the requested greyed-out disabled-button look.
@@ -1823,15 +1830,13 @@ under the corrected formula. Recapture every screen.
      myfun/myfunc zeroed = keyboard-dead, click no-ops with the
      `menu_engine/disabled_row_click` TRACE).
    - nav: all links −1; NOTHING links into it in either variant — keyboard
-     flows keep today's hidden-variant routing (begin.down→5 MP / →2 no-MP).
+     flows route from Begin directly to PLAYER when CONTINUE/LOAD are hidden.
      The note is inert chrome: it is EXEMPT from any every-visible-button-
      reachable assertion (add a Disabled-exemption arm to the helper if one
      asserts it).
-   - Ordinals: MP variant **12**, no-MP variant **7**.
-2. Caption strip: with-company state UNCHANGED (`COMPANY: <name ≤18>` strip at
-   y=171 MP / y=166 no-MP). No-company state: the bottom caption
-   `NO COMPANY YET - BEGIN A NEW GAME` is REMOVED (draw nothing) — the note
-   box replaces it.
+   - Materialized index: **9** in every MP/no-MP and native/web variant.
+2. Caption strip: REMOVED in both company states. CONTINUE/LOAD carry the company
+   affordance when one exists; the disabled note box replaces them when none exists.
 3. Terminals: NO change (no menu-model item; the note is SDL-only chrome).
 4. wasm ledger UNCHANGED — (114,85) taps the note only in the no-company
    state, where it is a no-op by design; specs seed a company first.

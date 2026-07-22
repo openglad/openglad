@@ -386,9 +386,9 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(12u, main_def.items.size())
-        << "main menu gained load_company (§2.1), appended so 1-based text-"
-           "drive positions 1-11 stay put";
+    ASSERT_EQ(13u, main_def.items.size())
+        << "main menu exposes both Help and Quit plus the appended company "
+           "loader";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -540,10 +540,9 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
         }
     }
 
-    // §2.1: Main gains load_company (LOAD), appended at the END so positions
-    // 1-11 (the text 1-based contract) are untouched; TeamBuild/Scenario/
-    // Difficulty shapes are unchanged.
-    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::Main).items.size());
+    // §2.1: load_company remains at the end; Main now exposes both stable
+    // Help and Quit actions. TeamBuild/Scenario/Difficulty are unchanged.
+    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());

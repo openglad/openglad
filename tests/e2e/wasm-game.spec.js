@@ -266,15 +266,14 @@ async function openWebDisplayOptions(page) {
   await clickCanvasGameCoord(page, 10, 10);
 
   // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
-  // arrow keys and Enter. From CONTINUE, five downs and one left reach the
-  // OPTIONS wrench in the multiplayer web layout.
-  for (let i = 0; i < 5; ++i) {
+  // arrow keys and Enter. From CONTINUE, PLAYER then GAME SETTINGS are two
+  // downward steps in the multiplayer web layout.
+  for (let i = 0; i < 2; ++i) {
     await pressPickerKey(page, 's');
   }
-  await pressPickerKey(page, 'a');
   await pressPickerKey(page, 'Control', 300);
 
-  // Main OPTIONS starts on BACK; DISPLAY is two rows below it. On web the
+  // GAME SETTINGS starts on BACK; DISPLAY is two rows below it. On web the
   // mode/resolution rows are hidden, so DISPLAY jumps BACK -> overscan -> Zoom.
   await pressPickerKey(page, 's');
   await pressPickerKey(page, 's');

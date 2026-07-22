@@ -36,6 +36,7 @@
 #include <SDL3/SDL.h>
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -667,7 +668,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
             const int count = spec.count_accessor();
             ASSERT_GT(count, 0) << spec.name;
             ASSERT_LE(count, MAX_BUTTONS) << spec.name;
-            // Build-gated rows (the main-menu quit/help fork) drop at
+            // Build-gated rows (the main-menu QUIT-state fork) drop at
             // materialization; index spec rows through the same mapping the
             // runner uses so buttons[i] pairs with its materialized spec row.
             const std::vector<const og::ui::MenuButtonSpec*> spec_rows =
@@ -1736,62 +1737,66 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
     EXPECT_EQ("load_company", rows[rows.size() - 2].id) << shape_name;
 }
 
-// The centered main chassis shared by every build; native/web supply the
-// footer fork after these five rows.
+// The centered main chassis shared by every build. HELP is permanent;
+// native/web supply enabled/disabled QUIT variants at the same index.
 constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
-     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
-    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
-     ButtonAction::MenuSpecRow, 2, MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 125, 140, 15,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 146, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 3, .down = 6}},
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 8}},
+    {"player_settings", "PLAYER", KEYSTATE_UNKNOWN, 80, 113, 68, 15,
+     ButtonAction::MenuSpecRow, 2,
+     MenuNav{.up = 1, .down = 4, .right = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 113, 68, 15,
+     ButtonAction::OpenDifficultyMenu, -1,
+     MenuNav{.up = 1, .down = 4, .left = 2}},
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 134, 140, 15,
+     ButtonAction::MainOptions, -1, MenuNav{.up = 2, .down = 5}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 158, 140, 15,
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 4, .down = 6}},
+    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 181, 68, 15,
+     ButtonAction::ShowHelp, -1,
+     MenuNav{.up = 5, .down = 0, .right = 7}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
-constexpr ExpectedSpecRow kMainMenuMPQuit = {
-    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 181, 60, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .left = 6}};
-constexpr ExpectedSpecRow kMainMenuMPHelp = {
-    "help", "HELP", KEYSTATE_UNKNOWN, 120, 181, 60, 15,
-    ButtonAction::ShowHelp, -1, MenuNav{.up = 4, .left = 6}};
-constexpr ExpectedSpecRow kMainMenuMPOptions = {
-    "options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
-    ButtonAction::MainOptions, -1, MenuNav{.up = 4, .right = 5}};
+constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 181, 68, 15,
+    ButtonAction::QuitMenu, 0,
+    MenuNav{.up = 5, .down = 0, .left = 6}};
+constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
+    "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 181, 68, 15,
+    ButtonAction::QuitMenu, 0,
+    MenuNav{.up = 5, .down = 0, .left = 6}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
 constexpr ExpectedSpecRow kMainMenuMPNote = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
-    ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
+    ButtonAction::MenuSpecRow, 9, MenuNav{}, true};
 
 // Main geometry no longer changes with multiplayer support; the nested
 // PLAYER SETTINGS spec owns that build difference.
 constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
     kMainMenuMPCommon[0], kMainMenuMPCommon[1], kMainMenuMPCommon[2],
-    kMainMenuMPCommon[3], kMainMenuMPCommon[4],
+    kMainMenuMPCommon[3], kMainMenuMPCommon[4], kMainMenuMPCommon[5],
+    kMainMenuMPCommon[6],
 };
 
-constexpr ExpectedSpecRow kMainMenuNoMPQuit = kMainMenuMPQuit;
-constexpr ExpectedSpecRow kMainMenuNoMPHelp = kMainMenuMPHelp;
-constexpr ExpectedSpecRow kMainMenuNoMPOptions = kMainMenuMPOptions;
+constexpr ExpectedSpecRow kMainMenuNoMPQuitNative = kMainMenuMPQuitNative;
+constexpr ExpectedSpecRow kMainMenuNoMPQuitWeb = kMainMenuMPQuitWeb;
 constexpr ExpectedSpecRow kMainMenuNoMPLoad = kMainMenuMPLoad;
 constexpr ExpectedSpecRow kMainMenuNoMPNote = kMainMenuMPNote;
 
-// Materialized order: common chassis, then the quit/help fork survivor, then
-// options, then the appended load_company and no_company_note (§2.1/§9.2
-// index-contract END).
+// Materialized order: common chassis, the platform's QUIT row, then the
+// appended load_company and no_company_note (§2.1/§9.2 index-contract END).
 std::vector<ExpectedSpecRow> build_expected_shape(
     const ExpectedSpecRow* common, int common_count,
-    const ExpectedSpecRow& fork, const ExpectedSpecRow& options,
+    const ExpectedSpecRow& quit,
     const ExpectedSpecRow& load, const ExpectedSpecRow& note)
 {
     std::vector<ExpectedSpecRow> shape(common, common + common_count);
-    shape.push_back(fork);
-    shape.push_back(options);
+    shape.push_back(quit);
     shape.push_back(load);
     shape.push_back(note);
     return shape;
@@ -1820,14 +1825,12 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ(1, spec.default_highlight);  // continue_game, as the legacy loop
     EXPECT_EQ(MENU_EXIT, spec.exit_value);
 
-    // The options-index helper that retired both OPTIONS_BUTTON_INDEX
-    // #defines: §2.1/§9.2 append load_company then the no_company_note at
-    // the END, so options is now the third-from-last materialized row and
-    // the helper finds it by id.
+    // The legacy-named options-index helper now finds the visible GAME
+    // SETTINGS row by id; load_company and no_company_note remain the tail.
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     ASSERT_GT(count, 2);
-    EXPECT_EQ(count - 3, picker_mainmenu_options_index());
+    EXPECT_EQ(4, picker_mainmenu_options_index());
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
     EXPECT_EQ("load_company", buttons[count - 2].id);
     EXPECT_EQ("no_company_note", buttons[count - 1].id);
@@ -1886,7 +1889,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_native = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuit, kMainMenuMPOptions, kMainMenuMPLoad, kMainMenuMPNote);
+        kMainMenuMPQuitNative, kMainMenuMPLoad, kMainMenuMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Native, mp_native.data(),
                              static_cast<int>(mp_native.size()),
@@ -1894,7 +1897,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_web = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPHelp, kMainMenuMPOptions, kMainMenuMPLoad, kMainMenuMPNote);
+        kMainMenuMPQuitWeb, kMainMenuMPLoad, kMainMenuMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Web, mp_web.data(),
                              static_cast<int>(mp_web.size()),
@@ -1902,7 +1905,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> nomp_native = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPQuit, kMainMenuNoMPOptions, kMainMenuNoMPLoad,
+        kMainMenuNoMPQuitNative, kMainMenuNoMPLoad,
         kMainMenuNoMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Native, nomp_native.data(),
@@ -1911,7 +1914,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> nomp_web = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
-        kMainMenuNoMPHelp, kMainMenuNoMPOptions, kMainMenuNoMPLoad,
+        kMainMenuNoMPQuitWeb, kMainMenuNoMPLoad,
         kMainMenuNoMPNote);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Web, nomp_web.data(),
@@ -1920,7 +1923,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 }
 
 // The player-count/PVP bindings moved intact to PLAYER SETTINGS; the main
-// screen retains only its two pixie art faces.
+// screen retains only the BEGIN NEW GAME pixie art face.
 TEST(MenuEngine, main_menu_binding_pins)
 {
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
@@ -1928,17 +1931,32 @@ TEST(MenuEngine, main_menu_binding_pins)
     const og::ui::MenuScreenSpec& players =
         og::ui::player_settings_menu_screen_spec_mp();
 
-    // Art faces, both variants: row 0 begin_new_game; options is the third-
-    // from-last SPEC row (load_company and the §9.2 no_company_note, both
-    // art-free, are the appended tail).
+    // The wrench face is gone: GAME SETTINGS is a normal labeled button.
     EXPECT_EQ(FAMILY_NORMAL1, mp.rows[0].art_family);
-    EXPECT_EQ(FAMILY_WRENCH, mp.rows[mp.row_count - 3].art_family);
-    EXPECT_EQ(-1, mp.rows[mp.row_count - 2].art_family);  // load_company
-    EXPECT_EQ(-1, mp.rows[mp.row_count - 1].art_family);  // no_company_note
     EXPECT_EQ(FAMILY_NORMAL1, nomp.rows[0].art_family);
-    EXPECT_EQ(FAMILY_WRENCH, nomp.rows[nomp.row_count - 3].art_family);
-    EXPECT_EQ(-1, nomp.rows[nomp.row_count - 2].art_family);  // load_company
-    EXPECT_EQ(-1, nomp.rows[nomp.row_count - 1].art_family);  // no_company_note
+    for (const og::ui::MenuScreenSpec* spec : {&mp, &nomp})
+        for (int i = 1; i < spec->row_count; ++i)
+            EXPECT_EQ(-1, spec->rows[i].art_family)
+                << spec->name << " " << spec->rows[i].id;
+
+    // Web QUIT keeps the stable footer slot but is explicitly Disabled;
+    // native QUIT remains enabled and carries Escape.
+    const og::ui::MenuButtonSpec* native_quit = nullptr;
+    const og::ui::MenuButtonSpec* web_quit = nullptr;
+    for (int i = 0; i < mp.row_count; ++i) {
+        if (std::string_view(mp.rows[i].id) != "quit")
+            continue;
+        if (mp.rows[i].build == og::ui::MenuBuildGate::NativeOnly)
+            native_quit = &mp.rows[i];
+        else if (mp.rows[i].build == og::ui::MenuBuildGate::WebOnly)
+            web_quit = &mp.rows[i];
+    }
+    ASSERT_NE(nullptr, native_quit);
+    ASSERT_NE(nullptr, web_quit);
+    EXPECT_EQ(nullptr, native_quit->state_override);
+    ASSERT_NE(nullptr, web_quit->state_override);
+    EXPECT_EQ(og::ui::RowState::Disabled,
+              web_quit->state_override(og::ui::MenuLabelContext{}));
 
     // Player-count outlines: spec rows 1..4 are 1/2/3/4 PLAYER.
     for (int i = 1; i <= 4; ++i) {
@@ -2221,24 +2239,41 @@ TEST(MenuEngine, networking_stays_legacy_v2_decision)
     }
 }
 
-// §2.1 caption strip, the >18-char clip arm: a company name longer than
-// kMainMenuCompanyNameClip must be truncated before the "COMPANY: " strip
-// renders (the injector flows all run short names, so the clip line had no
-// live coverage — WP7 coverage pass). Direct draw-hook call, the
-// runner-only-surface convention.
-TEST(MenuEngine, main_menu_caption_clips_overlong_company_names)
+// The active company name no longer appears on the main menu. Its cached
+// value still participates in company-list flows, but changing that value
+// must not change a main-menu frame.
+TEST(MenuEngine, main_menu_draw_does_not_depend_on_company_name)
 {
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
     ASSERT_NE(nullptr, mp.draw_content);
 
-    og::ui::set_main_menu_company_view_for_tests(
-        true, "AN OVERLONG COMPANY NAME WELL PAST THE CLIP");
-    mp.draw_content(nullptr);
+    auto frame_hash = [] {
+        std::uint64_t hash = 1469598103934665603ULL;
+        screen* scr = og::runtime::current_session->myscreen_;
+        for (int y = 0; y < 200; ++y) {
+            for (int x = 0; x < 320; ++x) {
+                Uint8 r = 0, g = 0, b = 0;
+                scr->get_pixel(x, y, &r, &g, &b);
+                for (const Uint8 channel : {r, g, b}) {
+                    hash ^= channel;
+                    hash *= 1099511628211ULL;
+                }
+            }
+        }
+        return hash;
+    };
 
-    // The absent shape too (the LIVE "NO COMPANY YET" strip): the injector
-    // flows always run with a company present.
-    og::ui::set_main_menu_company_view_for_tests(false, "");
+    screen* scr = og::runtime::current_session->myscreen_;
+    scr->clearbuffer();
+    og::ui::set_main_menu_company_view_for_tests(true, "FIRST COMPANY");
     mp.draw_content(nullptr);
+    const std::uint64_t first = frame_hash();
+
+    scr->clearbuffer();
+    og::ui::set_main_menu_company_view_for_tests(
+        true, "AN ENTIRELY DIFFERENT OVERLONG COMPANY NAME");
+    mp.draw_content(nullptr);
+    EXPECT_EQ(first, frame_hash());
 
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");

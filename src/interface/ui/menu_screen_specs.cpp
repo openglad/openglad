@@ -841,7 +841,7 @@ const MenuScreenSpec& main_options_menu_screen_spec()
 // ---------------------------------------------------------------------------
 // PLAYER SETTINGS: the local seat count and PVP relationship used to consume
 // three disconnected bands on the main menu, while keymaps lived behind the
-// options gear. They now form one centered setup screen. The four seat faces
+// old options wrench. They now form one centered setup screen. The four seat faces
 // read as a segmented selector; PVP and CONTROLS share the same full-width
 // column below it, followed by the controls-only reset. Multiplayer-disabled
 // builds retain CONTROLS and RESET CONTROLS without unavailable seat/PVP.
@@ -968,18 +968,16 @@ const MenuScreenSpec& player_settings_menu_screen_spec_impl()
 // ---------------------------------------------------------------------------
 // MAIN MENU (§1.8 step 4, historically the heaviest 10a screen). The MP and
 // no-MP specs now share one centered primary stack; their only behavioral
-// difference is the contents of the nested PLAYER SETTINGS screen. Each
-// still carries the web/native fork as a build-gated quit/help row pair:
-// identical geometry and nav, different id/label/hotkey/action, exactly one
-// surviving materialization. Nav links are written in MATERIALIZED index
-// space and are identical across the fork (§1.6: 2 static nav columns cover
-// all 4 variants).
+// difference is the contents of the nested PLAYER SETTINGS screen. HELP and
+// QUIT are a stable footer on both platforms. QUIT is build-gated as an
+// enabled native row or a disabled web row at the same materialized index,
+// so geometry and nav stay identical across all four variants.
 //
 // redraw_mainmenu's raw allbuttons_[N] writes became bindings (§1.6):
-//   [0]/[options] pixie faces    -> art_family rows (FAMILY_NORMAL1 /
-//       FAMILY_WRENCH — the normal1.png Begin New Game face is preserved by
-//       construction: same empty label, same set_graphic path, re-applied
-//       after init_buttons and after every reset_buttons).
+//   [0] pixie face               -> art_family row (FAMILY_NORMAL1 — the
+//       normal1.png Begin New Game face is preserved by construction: same
+//       empty label, same set_graphic path, re-applied after init_buttons
+//       and after every reset_buttons).
 // The player-count outlines and live SPECTATOR/PVP label moved intact to
 // PLAYER SETTINGS, where their bindings still derive from the live save.
 // Its title/columns drawMix + the FULL re-vdisplay-after-title pass + the
@@ -994,26 +992,18 @@ const MenuScreenSpec& player_settings_menu_screen_spec_impl()
 // derives the index from the materialized spec.
 
 // Company & Base Camp (design §2.1): CONTINUE and LOAD are gated on the
-// existence of at least one company file, and the main menu shows the
-// active/most-recent company name in a black caption strip. list_companies()
-// touches the filesystem, so the view is cached and refreshed exactly once
-// per mainmenu() entry — the company set is stable while the blocking loop
-// runs (Begin New Game and the Load list both exit the loop first). The gate,
-// nav rewire, and caption all read this cache; the default (companies
-// present) keeps the headless engine sweeps deterministic without any
-// filesystem, and a test seam pins the no-company shape.
+// existence of at least one company file. list_companies() touches the
+// filesystem, so the view is cached and refreshed exactly once per
+// mainmenu() entry — the company set is stable while the blocking loop runs
+// (Begin New Game and the Load list both exit the loop first). The main menu
+// deliberately does not repeat the active company name; CONTINUE and LOAD
+// already communicate that state, and removing the caption makes room for a
+// stable settings group and Help/Quit footer.
 struct MainMenuCompanyView {
     bool present = true;
     std::string display_name;
 };
 MainMenuCompanyView g_main_menu_company_view;
-
-// The generator's hard cap (design §2.2): a real display name never exceeds
-// this, so the caption clip never truncates one.
-constexpr std::size_t kMainMenuCompanyNameClip = 18;
-
-// Caption strip between the centered primary stack and compact footer.
-constexpr int kMainMenuCaptionY = 169;
 
 // §2.1 gate: CONTINUE and LOAD are hidden when no company file exists.
 bool main_menu_company_present(const MenuLabelContext& /*context*/)
@@ -1031,6 +1021,15 @@ RowState main_menu_no_company_note_state(const MenuLabelContext& /*context*/)
                                             : RowState::Disabled;
 }
 
+// Browsers do not have a meaningful application quit operation. Keep the
+// footer shape and wording identical to native, but make the web QUIT face
+// visibly unavailable and inert through the menu engine's disabled-row
+// grammar.
+RowState main_menu_web_quit_state(const MenuLabelContext& /*context*/)
+{
+    return RowState::Disabled;
+}
+
 int main_menu_row_index(const button* buttons, int count, std::string_view id)
 {
     for (int i = 0; i < count; ++i) {
@@ -1043,20 +1042,23 @@ int main_menu_row_index(const button* buttons, int count, std::string_view id)
 // §2.1 nav rewire: CONTINUE (index 1) and LOAD (the appended row) share the
 // company gate, so the graph routes around them when no company exists. The
 // static graph is re-asserted when they are present, keeping the rewire
-// idempotent regardless of a prior frame's state. PLAYER SETTINGS is the row
-// immediately below the pair in both build variants.
+// idempotent regardless of a prior frame's state. PLAYER and DIFFICULTY are
+// the two top-row settings buttons immediately below the pair.
 void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
 {
     const int i_begin = main_menu_row_index(buttons, count, "begin_new_game");
     const int i_continue = main_menu_row_index(buttons, count, "continue_game");
     const int i_player = main_menu_row_index(buttons, count, "player_settings");
+    const int i_difficulty = main_menu_row_index(buttons, count, "difficulty");
 
     if (g_main_menu_company_view.present) {
         if (i_begin >= 0) buttons[i_begin].nav.down = i_continue;
         if (i_player >= 0) buttons[i_player].nav.up = i_continue;
+        if (i_difficulty >= 0) buttons[i_difficulty].nav.up = i_continue;
     } else {
         if (i_begin >= 0) buttons[i_begin].nav.down = i_player;
         if (i_player >= 0) buttons[i_player].nav.up = i_begin;
+        if (i_difficulty >= 0) buttons[i_difficulty].nav.up = i_begin;
     }
 }
 
@@ -1070,38 +1072,44 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "continue_game", .label = "CONTINUE",
      .x = 80, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 7},
+     .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "player_settings", .label = "PLAYER SETTINGS",
-     .x = 80, .y = 104, .w = 140, .h = 15,
+    // SETTINGS is a deliberate two-row group: the two compact session
+    // categories share the first row, while the broader game/presentation
+    // category gets the full-width second row.
+    {.id = "player_settings", .label = "PLAYER",
+     .x = 80, .y = 113, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 2,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4, .right = 3}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 125, .w = 140, .h = 15,
+     .x = 152, .y = 113, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "level_edit", .label = "Level Edit",
-     .x = 80, .y = 146, .w = 140, .h = 15,
-     .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 3, .down = 6}},
-    // The web/native fork (§1.6): one of this pair survives materialization,
-    // always at index 5 with identical geometry and nav. The trailing space
-    // in "QUIT " is part of the shipped label.
-    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 120, .y = 181, .w = 60, .h = 15,
-     .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .left = 6},
-     .build = MenuBuildGate::NativeOnly},
-    {.id = "help", .label = "HELP",
-     .x = 120, .y = 181, .w = 60, .h = 15,
-     .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .left = 6},
-     .build = MenuBuildGate::WebOnly},
-    {.id = "options", .label = "",
-     .x = 90, .y = 181, .w = 20, .h = 15,
+     .nav = {.up = 1, .down = 4, .left = 2}},
+    {.id = "options", .label = "GAME SETTINGS",
+     .x = 80, .y = 134, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 4, .right = 5},
-     .art_family = FAMILY_WRENCH},
+     .nav = {.up = 2, .down = 5}},
+    {.id = "level_edit", .label = "Level Edit",
+     .x = 80, .y = 158, .w = 140, .h = 15,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 4, .down = 6}},
+    {.id = "help", .label = "HELP",
+     .x = 80, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::ShowHelp, .arg = -1,
+     .nav = {.up = 5, .down = 0, .right = 7}},
+    // The web/native fork (§1.6): exactly one QUIT row survives at
+    // materialized index 7. Native activation quits; web is visibly disabled.
+    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
+     .x = 152, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 5, .down = 0, .left = 6},
+     .build = MenuBuildGate::NativeOnly},
+    {.id = "quit", .label = "QUIT ",
+     .x = 152, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 5, .down = 0, .left = 6},
+     .state_override = &main_menu_web_quit_state,
+     .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
     {.id = "load_company", .label = "LOAD",
      .x = 152, .y = 78, .w = 68, .h = 20,
@@ -1110,7 +1118,7 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
      .x = 80, .y = 78, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .action = ButtonAction::MenuSpecRow, .arg = 9,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
 };
@@ -1124,35 +1132,39 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "continue_game", .label = "CONTINUE",
      .x = 80, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 7},
+     .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "player_settings", .label = "PLAYER SETTINGS",
-     .x = 80, .y = 104, .w = 140, .h = 15,
+    {.id = "player_settings", .label = "PLAYER",
+     .x = 80, .y = 113, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 2,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4, .right = 3}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 125, .w = 140, .h = 15,
+     .x = 152, .y = 113, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "level_edit", .label = "Level Edit",
-     .x = 80, .y = 146, .w = 140, .h = 15,
-     .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 3, .down = 6}},
-    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 120, .y = 181, .w = 60, .h = 15,
-     .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .left = 6},
-     .build = MenuBuildGate::NativeOnly},
-    {.id = "help", .label = "HELP",
-     .x = 120, .y = 181, .w = 60, .h = 15,
-     .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .left = 6},
-     .build = MenuBuildGate::WebOnly},
-    {.id = "options", .label = "",
-     .x = 90, .y = 181, .w = 20, .h = 15,
+     .nav = {.up = 1, .down = 4, .left = 2}},
+    {.id = "options", .label = "GAME SETTINGS",
+     .x = 80, .y = 134, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 4, .right = 5},
-     .art_family = FAMILY_WRENCH},
+     .nav = {.up = 2, .down = 5}},
+    {.id = "level_edit", .label = "Level Edit",
+     .x = 80, .y = 158, .w = 140, .h = 15,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 4, .down = 6}},
+    {.id = "help", .label = "HELP",
+     .x = 80, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::ShowHelp, .arg = -1,
+     .nav = {.up = 5, .down = 0, .right = 7}},
+    {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
+     .x = 152, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 5, .down = 0, .left = 6},
+     .build = MenuBuildGate::NativeOnly},
+    {.id = "quit", .label = "QUIT ",
+     .x = 152, .y = 181, .w = 68, .h = 15,
+     .action = ButtonAction::QuitMenu, .arg = 0,
+     .nav = {.up = 5, .down = 0, .left = 6},
+     .state_override = &main_menu_web_quit_state,
+     .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
      .x = 152, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
@@ -1160,7 +1172,7 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
      .x = 80, .y = 78, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .action = ButtonAction::MenuSpecRow, .arg = 9,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
 };
@@ -1207,25 +1219,9 @@ void main_menu_draw_content(void* /*screen_state*/)
         count++;
     }
 
-    // §2.1 company caption: a black strip (the SCEN-hint idiom) naming the
-    // active/most-recent company CONTINUE would open. Drawn after the
-    // re-vdisplay so it wins the strip's own y-band. No-company state: the
-    // §9.2 no_company_note Disabled row in the CONTINUE|LOAD envelope
-    // replaces the old bottom caption — nothing is drawn here.
-    if (g_main_menu_company_view.present) {
-        std::string name = g_main_menu_company_view.display_name;
-        if (name.size() > kMainMenuCompanyNameClip)
-            name.resize(kMainMenuCompanyNameClip);
-        std::string caption = "COMPANY: " + name;
-        if (caption.size() > 28)
-            caption.resize(28);
-        const int width = static_cast<int>(caption.size()) * 6;
-        const int caption_x = 160 - width / 2;
-        game->draw_rect_filled(caption_x - 2, kMainMenuCaptionY - 1, width + 4, 8,
-                               PURE_BLACK, 150);
-        game->text_normal.write_xy(caption_x, kMainMenuCaptionY, WHITE, "%s",
-                                   caption.c_str());
-    }
+    // The category heading makes the asymmetric two-row settings group read
+    // as one unit instead of three unrelated main-menu actions.
+    game->text_normal.write_xy_center(160, 104, GREY, "%s", "SETTINGS");
 
     // On native builds, show the version number on the main menu. On
     // Emscripten/web builds the version is displayed elsewhere (the help UI).
@@ -3860,8 +3856,8 @@ int picker_player_settings_button_count()
 }
 
 // Replaces both OPTIONS_BUTTON_INDEX #defines (10 with multiplayer, 5
-// without): the options gear's materialized index, derived from the spec
-// instead of hand-tracked per variant.
+// without): GAME SETTINGS' materialized index, derived from the spec instead
+// of hand-tracked per variant. The legacy helper name remains internal.
 int picker_mainmenu_options_index()
 {
     const std::vector<const og::ui::MenuButtonSpec*> rows =

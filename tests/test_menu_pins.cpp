@@ -95,64 +95,43 @@ void check_exact_table(button* buttons, int count,
 #endif
 #endif
 
-#ifdef __EMSCRIPTEN__
-// Web: QUIT is replaced by HELP (same rect, no hotkey).
+// HELP and QUIT are a stable footer. Native QUIT keeps Escape; web QUIT is
+// materialized without a hotkey and disabled by its row-state binding.
 static const ExpectedButton kExpectedMainMenu[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 7}},
-    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
+     MenuNav{.up = 0, .down = 2, .right = 8}},
+    {"player_settings", "PLAYER", KEYSTATE_UNKNOWN, 80, 113, 68, 15,
      button_action_id(ButtonAction::MenuSpecRow), 2,
-     MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 125, 140, 15,
+     MenuNav{.up = 1, .down = 4, .right = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 113, 68, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 2, .down = 4}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 146, 140, 15,
+     MenuNav{.up = 1, .down = 4, .left = 2}},
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 134, 140, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 2, .down = 5}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 158, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 3, .down = 6}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 181, 60, 15,
+     MenuNav{.up = 4, .down = 6}},
+    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 181, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
-     MenuNav{.up = 4, .left = 6}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
-     button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 4, .right = 5}},
-    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
-     button_action_id(ButtonAction::CreateLoadMenu), 0,
-     MenuNav{.up = 0, .down = 2, .left = 1}},
-    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
-};
+     MenuNav{.up = 5, .down = 0, .right = 7}},
+    {"quit", "QUIT ",
+#ifdef __EMSCRIPTEN__
+     KEYSTATE_UNKNOWN,
 #else
-// Native: the compact footer carries QUIT.
-static const ExpectedButton kExpectedMainMenu[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
-     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
-     button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 7}},
-    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
-     button_action_id(ButtonAction::MenuSpecRow), 2,
-     MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 125, 140, 15,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 2, .down = 4}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 146, 140, 15,
-     button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 3, .down = 6}},
-    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 181, 60, 15,
-     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 4, .left = 6}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
-     button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 4, .right = 5}},
+     KEYSTATE_ESCAPE,
+#endif
+     152, 181, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
+     MenuNav{.up = 5, .down = 0, .left = 6}},
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
     {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
+     button_action_id(ButtonAction::MenuSpecRow), 9, MenuNav{}, true},
 };
-#endif // __EMSCRIPTEN__
 
 TEST(MenuEnginePins, mainmenu_exact_table)
 {
@@ -161,12 +140,13 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     check_exact_table(buttons, count, kExpectedMainMenu,
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
-    // §2.1/§9.2 index contract: load_company then the no_company_note are
-    // appended at the table END, so the options gear is now the third-from-
-    // last row (picker_mainmenu_options_index() finds it by id).
+    // §2.1/§9.2 index contract: load_company then no_company_note remain the
+    // appended tail; GAME SETTINGS is the full-width settings-group row.
     ASSERT_EQ("no_company_note", buttons[count - 1].id);
     ASSERT_EQ("load_company", buttons[count - 2].id);
-    ASSERT_EQ("options", buttons[count - 3].id);
+    ASSERT_EQ("options", buttons[4].id);
+    ASSERT_EQ("help", buttons[6].id);
+    ASSERT_EQ("quit", buttons[7].id);
 }
 
 TEST(MenuEnginePins, player_settings_exact_table)

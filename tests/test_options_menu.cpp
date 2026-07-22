@@ -401,7 +401,7 @@ static int options_injector(void* data)
                 get_player_control_mode(0) == state->initial_control_mode;
         }
 
-        // Change the mode once more. RESTORE SETTINGS in the wrench menu
+        // Change the mode once more. RESTORE SETTINGS in GAME SETTINGS
         // must preserve this second change.
         if (click_until_interactable(
                 "player_controls", "player1_mode", 5000)) {
@@ -544,7 +544,7 @@ static int options_injector(void* data)
             SDL_Delay(300);
         }
 
-        // Restore wrench-owned settings last, undoing the presentation and
+        // Restore game settings last, undoing the presentation and
         // FX flips without touching the player-control mode changed above.
         fprintf(stderr, "  [test] restoring settings\n");
         interact("restore_defaults");
@@ -770,7 +770,7 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.changed_control_mode)
         << "controls screen should change the P1 direction mode";
     ASSERT_TRUE(state.settings_restore_preserved_controls)
-        << "wrench RESTORE SETTINGS must not reset player controls";
+        << "GAME SETTINGS restore must not reset player controls";
     ASSERT_TRUE(state.reset_controls_from_player_settings)
         << "PLAYER SETTINGS RESET CONTROLS should restore the default mode";
     for (int s = 0; s < kFxScreenCount; ++s) {

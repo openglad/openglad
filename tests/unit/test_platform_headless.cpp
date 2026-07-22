@@ -619,7 +619,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -667,7 +667,7 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         "\n"        //   name entry: blank accepts the generated company name
         "\n"        //   campaign select: blank keeps current (= default reset)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -745,7 +745,7 @@ bool seed_headless_company(const std::string& slot, const std::string& name,
 
 } // namespace
 
-// The main-menu LOAD door (position 12) presents the company list: open by
+// The main-menu LOAD door (position 13) presents the company list: open by
 // row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
 // row refuses to switch, deleting the ACTIVE company refuses with
 // switch-first, deleting another company needs the explicit "y" (NO-first),
@@ -766,13 +766,13 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 
     // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
     const std::string input =
-        "12\n"      // main: load company -> the company list
+        "13\n"      // main: load company -> the company list
         "1\n"       //   list: open company...
         "3\n"       //     #3 = corrupt -> damaged message, never switches
         "1\n"       //   list: open company...
         "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
         "7\n"       // team build: back -> main
-        "12\n"      // main: load company again (active is now wp3hlb)
+        "13\n"      // main: load company again (active is now wp3hlb)
         "3\n"       //   list: delete company...
         "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
         "3\n"       //   list: delete company...
@@ -784,7 +784,7 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -837,7 +837,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
     // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
     // 3 = seq 1 (OLD).
     const std::string input =
-        "12\n"      // main: load company -> the company list
+        "13\n"      // main: load company -> the company list
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlr (the only company)
         "1\n"       //     backups: restore...
@@ -855,7 +855,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
         "2\n"       //       #2 = seq 1 (OLD)...
         "y\n"       //       explicit yes -> rewound -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -963,7 +963,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "1\n"       //   entry 1 is always the default campaign
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1002,7 +1002,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1051,7 +1051,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "5\n"       // scenario: progress
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1094,7 +1094,7 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
         "b\n"        //   train: back to the roster
         "\n"         //   roster: blank exits
         "7\n"        // base camp: back -> main
-        "11\n";      // main: quit
+        "12\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1151,7 +1151,7 @@ TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
         "\n"            //   blank exits teams
         "6\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
-        "11\n";         // main: quit
+        "12\n";         // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;

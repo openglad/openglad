@@ -750,7 +750,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         cfg.load_settings();
-        // The wrench menu owns presentation/effects settings, not player
+        // GAME SETTINGS owns presentation/effects settings, not player
         // controls. Put the live modes and both keymaps back into the freshly
         // restored config before it reaches disk.
         save_player_control_settings_to_cfg(cfg);

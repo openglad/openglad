@@ -194,10 +194,30 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
-    ASSERT_GE(count, 5);
-    for (int i = 0; i < 4; ++i)
-        EXPECT_EQ(6, buttons[i + 1].y - (buttons[i].y + buttons[i].sizey))
-            << "main stack gap after " << buttons[i].id;
+    ASSERT_GE(count, 10);
+
+    // Primary actions retain the established 6px gap.
+    EXPECT_EQ(6, buttons[1].y - (buttons[0].y + buttons[0].sizey));
+
+    // SETTINGS: equal compact top-row faces, a 4px gutter, then a centered
+    // full-width GAME SETTINGS face with the normal 6px vertical gap.
+    EXPECT_EQ("player_settings", buttons[2].id);
+    EXPECT_EQ("difficulty", buttons[3].id);
+    EXPECT_EQ(buttons[2].y, buttons[3].y);
+    EXPECT_EQ(buttons[2].sizex, buttons[3].sizex);
+    EXPECT_EQ(4, buttons[3].x - (buttons[2].x + buttons[2].sizex));
+    EXPECT_EQ("options", buttons[4].id);
+    EXPECT_EQ(buttons[2].x, buttons[4].x);
+    EXPECT_EQ(buttons[3].x + buttons[3].sizex,
+              buttons[4].x + buttons[4].sizex);
+    EXPECT_EQ(6, buttons[4].y - (buttons[2].y + buttons[2].sizey));
+
+    // HELP and QUIT are a stable, aligned footer pair.
+    EXPECT_EQ("help", buttons[6].id);
+    EXPECT_EQ("quit", buttons[7].id);
+    EXPECT_EQ(buttons[6].y, buttons[7].y);
+    EXPECT_EQ(buttons[6].sizex, buttons[7].sizex);
+    EXPECT_EQ(4, buttons[7].x - (buttons[6].x + buttons[6].sizex));
 }
 
 TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)

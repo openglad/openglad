@@ -13,7 +13,7 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 13> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
     {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
@@ -25,14 +25,14 @@ constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     {"pvp_allied", "PVP Mode", PickerMenuCommand::ToggleAlliedMode},
     {"level_edit", "Level Edit", PickerMenuCommand::LevelEdit},
-    {"options", "Options", PickerMenuCommand::Options},
-#ifdef __EMSCRIPTEN__
+    {"options", "Game Settings", PickerMenuCommand::Options},
+    // HELP and QUIT are separate, stable footer actions on the graphical
+    // menu. Text clients expose both too; the browser's disabled QUIT face
+    // is an SDL presentation concern.
     {"help", "Help", PickerMenuCommand::Help},
-#else
     {"quit", "Quit", PickerMenuCommand::Quit},
-#endif
-    // §2.1: the LOAD half of the CONTINUE|LOAD split, appended at the END so
-    // the legacy 1-based positions 1-11 are untouched.
+    // §2.1: the LOAD half of the CONTINUE|LOAD split remains at the end of
+    // the terminal model; the SDL surface positions it beside CONTINUE.
     {"load_company", "Load Company", PickerMenuCommand::LoadGame},
 }};
 

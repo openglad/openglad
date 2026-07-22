@@ -300,7 +300,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
                          "engine screen exceeds MAX_BUTTONS");
     // The materialized spec-row view: buttons[i] <-> *spec_rows[i]. Raw
     // spec ordinals diverge from materialized indices past a build-gated row
-    // (the main-menu quit/help fork), so every per-row pass uses this.
+    // (the main-menu enabled/disabled-QUIT fork), so every per-row pass uses this.
     const SpecRowView spec_rows = materialized_spec_rows(spec);
     OG_MENU_ENGINE_CHECK(static_cast<int>(spec_rows.size()) == num_buttons,
                          "accessor row count diverges from the spec's "

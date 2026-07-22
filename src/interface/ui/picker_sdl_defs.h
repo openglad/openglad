@@ -117,8 +117,9 @@ button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();
 button* picker_player_settings_buttons();
 int picker_player_settings_button_count();
-// The options gear's materialized main-menu index, derived from the spec
-// (replaces the retired OPTIONS_BUTTON_INDEX #defines).
+// GAME SETTINGS' materialized main-menu index, derived from the spec
+// (replaces the retired OPTIONS_BUTTON_INDEX #defines). The legacy function
+// name remains as an internal compatibility seam.
 int picker_mainmenu_options_index();
 button* picker_createmenu_buttons();
 int picker_createmenu_button_count();
