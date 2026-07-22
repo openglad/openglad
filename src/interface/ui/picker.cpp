@@ -2786,11 +2786,10 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
 
-   // G8 sweep (design §1.2): the raw allbuttons_[7] click-side label write is
-   // gone — the engine main menu's pvp_allied LabelBinding re-derives BOTH
-   // surfaces every frame, so the write was redundant. Deleted atomically
-   // with its test_picker_funcs re-pin, as G8 assigns to the Layer-F main-menu
-   // reshape.
+   // G8 sweep (design §1.2): the old raw allbuttons_[7] click-side label
+   // write is gone. PLAYER SETTINGS owns the pvp_allied LabelBinding and
+   // re-derives both label surfaces every frame, so the write stays
+   // redundant after the row's move off the main menu.
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();

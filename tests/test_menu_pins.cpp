@@ -95,158 +95,64 @@ void check_exact_table(button* buttons, int count,
 #endif
 #endif
 
-#ifndef DISABLE_MULTIPLAYER
-
 #ifdef __EMSCRIPTEN__
-// Web + multiplayer: QUIT is replaced by HELP (same rect, no hotkey).
+// Web: QUIT is replaced by HELP (same rect, no hotkey).
 static const ExpectedButton kExpectedMainMenu[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 5, .right = 11}},
-    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 4,
-     MenuNav{.up = 4, .down = 6, .left = 3}},
-    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 3,
-     MenuNav{.up = 5, .down = 6, .right = 2}},
-    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 2,
-     MenuNav{.up = 11, .down = 2, .left = 5}},
-    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 1,
-     MenuNav{.up = 1, .down = 3, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
+     MenuNav{.up = 0, .down = 2, .right = 7}},
+    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 106, 140, 15,
+     button_action_id(ButtonAction::MenuSpecRow), 2,
+     MenuNav{.up = 1, .down = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 127, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 3, .down = 7}},
-    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
-     button_action_id(ButtonAction::AlliedMode), -1,
-     MenuNav{.up = 6, .down = 9, .right = 8}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
+     MenuNav{.up = 2, .down = 4}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 148, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 6, .down = 10, .left = 7}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15,
+     MenuNav{.up = 3, .down = 6}},
+    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 181, 60, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
-     MenuNav{.up = 7, .left = 10}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
+     MenuNav{.up = 4, .left = 6}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 8, .right = 9}},
-    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
-     button_action_id(ButtonAction::CreateLoadMenu), 0,
-     MenuNav{.up = 0, .down = 4, .left = 1}},
-    // §9.2: the greyed no-company note box in the exact CONTINUE|LOAD
-    // envelope. Disabled chrome when no company exists, Hidden when one does;
-    // statically hidden (companies present is the default view); no nav links
-    // in or out.
-    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 12, MenuNav{}, true},
-};
-#else
-// Native + multiplayer: the variant CI compiles and pins.
-static const ExpectedButton kExpectedMainMenu[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
-     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
-     button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 5, .right = 11}},
-    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 4,
-     MenuNav{.up = 4, .down = 6, .left = 3}},
-    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 3,
-     MenuNav{.up = 5, .down = 6, .right = 2}},
-    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 2,
-     MenuNav{.up = 11, .down = 2, .left = 5}},
-    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
-     button_action_id(ButtonAction::SetPlayerMode), 1,
-     MenuNav{.up = 1, .down = 3, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 3, .down = 7}},
-    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
-     button_action_id(ButtonAction::AlliedMode), -1,
-     MenuNav{.up = 6, .down = 9, .right = 8}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
-     button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 6, .down = 10, .left = 7}},
-    // The trailing space in "QUIT " is part of the shipped label.
-    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15,
-     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 7, .left = 10}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
-     button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 8, .right = 9}},
-    // §2.1 index 11: the appended LOAD half of the CONTINUE|LOAD split.
-    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
-     button_action_id(ButtonAction::CreateLoadMenu), 0,
-     MenuNav{.up = 0, .down = 4, .left = 1}},
-    // §9.2: the greyed no-company note box in the exact CONTINUE|LOAD
-    // envelope. Disabled chrome when no company exists, Hidden when one does;
-    // statically hidden (companies present is the default view); no nav links
-    // in or out.
-    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 12, MenuNav{}, true},
-};
-#endif // __EMSCRIPTEN__
-
-#else // DISABLE_MULTIPLAYER
-
-#ifdef __EMSCRIPTEN__
-// Web without multiplayer: single-column stack, HELP instead of QUIT.
-static const ExpectedButton kExpectedMainMenu[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
-     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
-     button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 6}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 1, .down = 3}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
-     button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 2, .down = 4}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15,
-     button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up = 3, .left = 5}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
-     button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 3, .right = 4}},
-    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     MenuNav{.up = 4, .right = 5}},
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
-    // §9.2 no-MP note box: materialized ordinal 7.
-    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
 };
 #else
-// Native without multiplayer (also the USE_TOUCH_INPUT shape).
+// Native: the compact footer carries QUIT.
 static const ExpectedButton kExpectedMainMenu[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 6}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 0, .down = 2, .right = 7}},
+    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 106, 140, 15,
+     button_action_id(ButtonAction::MenuSpecRow), 2,
      MenuNav{.up = 1, .down = 3}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
-     button_action_id(ButtonAction::DoLevelEdit), -1,
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 127, 140, 15,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
      MenuNav{.up = 2, .down = 4}},
-    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15,
-     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 3, .left = 5}},
-    {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 148, 140, 15,
+     button_action_id(ButtonAction::DoLevelEdit), -1,
+     MenuNav{.up = 3, .down = 6}},
+    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 181, 60, 15,
+     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 4, .left = 6}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
      button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 3, .right = 4}},
-    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
+     MenuNav{.up = 4, .right = 5}},
+    {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
-    // §9.2 no-MP note box: materialized ordinal 7.
-    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
+    {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
+     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
 };
 #endif // __EMSCRIPTEN__
-
-#endif // DISABLE_MULTIPLAYER
 
 TEST(MenuEnginePins, mainmenu_exact_table)
 {
@@ -261,6 +167,49 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     ASSERT_EQ("no_company_note", buttons[count - 1].id);
     ASSERT_EQ("load_company", buttons[count - 2].id);
     ASSERT_EQ("options", buttons[count - 3].id);
+}
+
+TEST(MenuEnginePins, player_settings_exact_table)
+{
+#ifndef DISABLE_MULTIPLAYER
+    static const ExpectedButton kExpected[] = {
+        {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
+         button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
+         MenuNav{.up = 6, .down = 1}},
+        {"1_player", "1 PLAYER", KEYSTATE_1, 27, 70, 62, 20,
+         button_action_id(ButtonAction::SetPlayerMode), 1,
+         MenuNav{.up = 0, .down = 5, .right = 2}},
+        {"2_player", "2 PLAYER", KEYSTATE_2, 95, 70, 62, 20,
+         button_action_id(ButtonAction::SetPlayerMode), 2,
+         MenuNav{.up = 0, .down = 5, .left = 1, .right = 3}},
+        {"3_player", "3 PLAYER", KEYSTATE_3, 163, 70, 62, 20,
+         button_action_id(ButtonAction::SetPlayerMode), 3,
+         MenuNav{.up = 0, .down = 5, .left = 2, .right = 4}},
+        {"4_player", "4 PLAYER", KEYSTATE_4, 231, 70, 62, 20,
+         button_action_id(ButtonAction::SetPlayerMode), 4,
+         MenuNav{.up = 0, .down = 5, .left = 3}},
+        {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 90, 105, 140, 18,
+         button_action_id(ButtonAction::AlliedMode), -1,
+         MenuNav{.up = 1, .down = 6}},
+        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 132, 140, 18,
+         button_action_id(ButtonAction::OpenControlSettings), -1,
+         MenuNav{.up = 5, .down = 0}},
+    };
+#else
+    static const ExpectedButton kExpected[] = {
+        {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
+         button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
+         MenuNav{.up = 1, .down = 1}},
+        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 88, 140, 20,
+         button_action_id(ButtonAction::OpenControlSettings), -1,
+         MenuNav{.up = 0, .down = 0}},
+    };
+#endif
+    button* buttons = picker_player_settings_buttons();
+    const int count = picker_player_settings_button_count();
+    check_exact_table(buttons, count, kExpected,
+                      static_cast<int>(std::size(kExpected)),
+                      "player_settings");
 }
 
 // The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (design

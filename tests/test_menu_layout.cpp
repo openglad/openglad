@@ -165,6 +165,12 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
     }
 }
 
+namespace
+{
+void check_nav_closed_and_reachable(button* buttons, int count,
+                                    int start_index, const char* variant);
+}
+
 TEST(MenuLayout, main_options_buttons_no_overlap)
 {
     button* buttons = picker_main_options_buttons();
@@ -188,6 +194,25 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
+}
+
+TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)
+{
+    button* buttons = picker_player_settings_buttons();
+    const int count = picker_player_settings_button_count();
+    check_no_overlaps(buttons, count, "player_settings");
+    check_bounds(buttons, count, "player_settings");
+    check_nav_in_range(buttons, count, "player_settings");
+    check_nav_closed_and_reachable(buttons, count, 1, "player_settings");
+#ifndef DISABLE_MULTIPLAYER
+    ASSERT_EQ(7, count);
+    EXPECT_EQ(27, buttons[1].x);
+    EXPECT_EQ(293, buttons[4].x + buttons[4].sizex);
+    for (int i = 1; i <= 4; ++i)
+        EXPECT_EQ(70, buttons[i].y);
+    EXPECT_EQ(160, buttons[5].x + buttons[5].sizex / 2);
+    EXPECT_EQ(160, buttons[6].x + buttons[6].sizex / 2);
+#endif
 }
 
 TEST(MenuLayout, createmenu_buttons_no_overlap)
@@ -1142,16 +1167,15 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
 }
 
 // The per-effect toggles live in the three FX subscreens; main options keeps
-// the sound/graphics settings plus the CONTROLS door and the three stacked
-// FX doors. Pin the index contract (main_options() writes labels by index)
-// and the nav graph.
+// the sound/graphics settings plus the three stacked FX doors. CONTROLS moved
+// to PLAYER SETTINGS. Pin the draw-hook index contract and nav graph.
 TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(9, count)
-        << "main options is BACK + Sound + DISPLAY door + CONTROLS door + "
-           "sprite sheet + 3 FX doors + RESTORE DEFAULTS";
+    ASSERT_EQ(8, count)
+        << "main options is BACK + Sound + DISPLAY + sprite sheet + "
+           "3 FX doors + RESTORE DEFAULTS";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1159,10 +1183,9 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "display_settings",   // 2: opens the DISPLAY subscreen
         "gameplay_fx",        // 3: opens the GAMEPLAY FX subscreen
         "restore_defaults",   // 4
-        "player_controls",    // 5
-        "pick_sprite_sheet",  // 6: label synced by index each frame
-        "ui_fx",              // 7: opens the UI FX subscreen
-        "graphics_fx",        // 8: opens the GRAPHICS FX subscreen
+        "pick_sprite_sheet",  // 5: label synced by index each frame
+        "ui_fx",              // 6: opens the UI FX subscreen
+        "graphics_fx",        // 7: opens the GRAPHICS FX subscreen
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1177,11 +1200,11 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     // The settings/door column stacks at one x at 23px pitch.
     EXPECT_EQ("DISPLAY", buttons[2].label);
     EXPECT_EQ(buttons[2].x, buttons[3].x);
+    EXPECT_EQ(buttons[3].x, buttons[6].x);
     EXPECT_EQ(buttons[3].x, buttons[7].x);
-    EXPECT_EQ(buttons[3].x, buttons[8].x);
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
-    EXPECT_EQ(buttons[3].y + 23, buttons[7].y);
-    EXPECT_EQ(buttons[7].y + 23, buttons[8].y);
+    EXPECT_EQ(buttons[3].y + 23, buttons[6].y);
+    EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
     EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
 
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");

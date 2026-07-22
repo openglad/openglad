@@ -239,6 +239,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // valve; docs/menu-engine.md "V2 decision record").
 enum class MenuScreenId : std::uint8_t {
     MainMenu,
+    PlayerSettings,
     TeamBuild,
     MainOptions,
     DisplaySettings,
@@ -277,15 +278,22 @@ const MenuScreenSpec& train_menu_screen_spec();
 const MenuScreenSpec& progress_menu_screen_spec();
 const MenuScreenSpec& view_scenario_menu_screen_spec();
 
-// The main menu (§1.8 step 4). §1.6: ONE MP spec + ONE no-MP spec (the no-MP
-// variant genuinely repositions rows), selected at registry init by
-// DISABLE_MULTIPLAYER (with the USE_TOUCH_INPUT => DISABLE_MULTIPLAYER
-// mapping). The web/native fork inside each is the build-gated quit/help row
-// pair. Both specs exist on every build so the un-compiled shapes stay
-// unit-pinnable (G9).
+// The main menu (§1.8 step 4). §1.6 retains one MP spec and one no-MP spec,
+// now sharing the reflowed main geometry; their nested PLAYER SETTINGS specs
+// carry the actual multiplayer shape difference. DISABLE_MULTIPLAYER selects
+// both compiled variants (including the USE_TOUCH_INPUT mapping). The
+// web/native fork inside each main spec is the build-gated quit/help row pair.
+// Both specs exist on every build so uncompiled shapes stay unit-pinnable (G9).
 const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
+
+// PLAYER SETTINGS: local player count, PVP relationship, and the door into
+// per-player control modes/keymaps. Multiplayer-disabled builds keep the
+// same door but expose only CONTROLS inside it.
+const MenuScreenSpec& player_settings_menu_screen_spec();
+const MenuScreenSpec& player_settings_menu_screen_spec_mp();
+const MenuScreenSpec& player_settings_menu_screen_spec_nomp();
 
 // §2.1 Company & Base Camp: CONTINUE/LOAD gate and the company caption read a
 // cached view of the company set, refreshed once per mainmenu() entry (never

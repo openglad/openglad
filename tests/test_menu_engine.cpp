@@ -1596,14 +1596,14 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(9, count);
+    ASSERT_EQ(8, count);
     EXPECT_EQ("toggle_sound", buttons[1].id);
     EXPECT_EQ("display_settings", buttons[2].id);
     EXPECT_EQ("gameplay_fx", buttons[3].id);
-    EXPECT_EQ("pick_sprite_sheet", buttons[6].id);
+    EXPECT_EQ("pick_sprite_sheet", buttons[5].id);
 
     const og::ui::LabelFormatter sprite_formatter =
-        spec.rows[6].label_binding.formatter;
+        spec.rows[5].label_binding.formatter;
     ASSERT_NE(nullptr, sprite_formatter)
         << "the sprite-sheet dual-surface label restore must be a binding";
     og::ui::MenuLabelContext context;
@@ -1736,77 +1736,50 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
     EXPECT_EQ("load_company", rows[rows.size() - 2].id) << shape_name;
 }
 
-// The MP chassis shared by the native/web fork (rows 0-8); row 9 is the fork.
+// The centered main chassis shared by every build; native/web supply the
+// footer fork after these five rows.
 constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
-     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 5, .right = 11}},
-    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
-     ButtonAction::SetPlayerMode, 4, MenuNav{.up = 4, .down = 6, .left = 3}},
-    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
-     ButtonAction::SetPlayerMode, 3, MenuNav{.up = 5, .down = 6, .right = 2}},
-    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
-     ButtonAction::SetPlayerMode, 2, MenuNav{.up = 11, .down = 2, .left = 5}},
-    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
-     ButtonAction::SetPlayerMode, 1, MenuNav{.up = 1, .down = 3, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 3, .down = 7}},
-    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
-     ButtonAction::AlliedMode, -1, MenuNav{.up = 6, .down = 9, .right = 8}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 6, .down = 10, .left = 7}},
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
+    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 106, 140, 15,
+     ButtonAction::MenuSpecRow, 2, MenuNav{.up = 1, .down = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 127, 140, 15,
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 148, 140, 15,
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 3, .down = 6}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuit = {
-    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 7, .left = 10}};
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 181, 60, 15,
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .left = 6}};
 constexpr ExpectedSpecRow kMainMenuMPHelp = {
-    "help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15,
-    ButtonAction::ShowHelp, -1, MenuNav{.up = 7, .left = 10}};
+    "help", "HELP", KEYSTATE_UNKNOWN, 120, 181, 60, 15,
+    ButtonAction::ShowHelp, -1, MenuNav{.up = 4, .left = 6}};
 constexpr ExpectedSpecRow kMainMenuMPOptions = {
-    "options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
-    ButtonAction::MainOptions, -1, MenuNav{.up = 8, .right = 9}};
-// §2.1 index 11: the appended LOAD half of the CONTINUE|LOAD split.
+    "options", "", KEYSTATE_UNKNOWN, 90, 181, 20, 15,
+    ButtonAction::MainOptions, -1, MenuNav{.up = 4, .right = 5}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
-    "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
-    ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 4, .left = 1}};
-// §9.2 index 12: the no-company note box (Disabled chrome; statically
-// hidden, no nav links in or out).
+    "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
+    ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
 constexpr ExpectedSpecRow kMainMenuMPNote = {
-    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-    ButtonAction::MenuSpecRow, 12, MenuNav{}, true};
+    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
+    ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
 
-// The no-MP chassis (single column, bottom row at y=175); row 4 is the fork.
+// Main geometry no longer changes with multiplayer support; the nested
+// PLAYER SETTINGS spec owns that build difference.
 constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
-     ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 75, 68, 20,
-     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 6}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 1, .down = 3}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 2, .down = 4}},
+    kMainMenuMPCommon[0], kMainMenuMPCommon[1], kMainMenuMPCommon[2],
+    kMainMenuMPCommon[3], kMainMenuMPCommon[4],
 };
 
-constexpr ExpectedSpecRow kMainMenuNoMPQuit = {
-    "quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 3, .left = 5}};
-constexpr ExpectedSpecRow kMainMenuNoMPHelp = {
-    "help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15,
-    ButtonAction::ShowHelp, -1, MenuNav{.up = 3, .left = 5}};
-constexpr ExpectedSpecRow kMainMenuNoMPOptions = {
-    "options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
-    ButtonAction::MainOptions, -1, MenuNav{.up = 3, .right = 4}};
-// §2.1 index 6: the appended no-MP LOAD half.
-constexpr ExpectedSpecRow kMainMenuNoMPLoad = {
-    "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 75, 68, 20,
-    ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
-// §9.2 index 7: the no-MP note box.
-constexpr ExpectedSpecRow kMainMenuNoMPNote = {
-    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
-    ButtonAction::MenuSpecRow, 7, MenuNav{}, true};
+constexpr ExpectedSpecRow kMainMenuNoMPQuit = kMainMenuMPQuit;
+constexpr ExpectedSpecRow kMainMenuNoMPHelp = kMainMenuMPHelp;
+constexpr ExpectedSpecRow kMainMenuNoMPOptions = kMainMenuMPOptions;
+constexpr ExpectedSpecRow kMainMenuNoMPLoad = kMainMenuMPLoad;
+constexpr ExpectedSpecRow kMainMenuNoMPNote = kMainMenuMPNote;
 
 // Materialized order: common chassis, then the quit/help fork survivor, then
 // options, then the appended load_company and no_company_note (§2.1/§9.2
@@ -1826,10 +1799,9 @@ std::vector<ExpectedSpecRow> build_expected_shape(
 
 } // namespace
 
-// Registry + spec-shape pins. The main menu is the heaviest 10a screen: its
-// legacy loop HAD a remote-start check (MainScope, break-with-selection), a
-// fade-bracketed entry, live right-click (spectator deselect), and returns
-// an exit-bearing value every caller ignores.
+// Registry + spec-shape pins. The main menu keeps the legacy remote-start
+// check (MainScope, break-with-selection), fade-bracketed entry, and
+// exit-bearing return. Player-count right-click moved to PLAYER SETTINGS.
 TEST(MenuEngine, main_menu_registry_and_spec_shape)
 {
     const og::ui::MenuScreenHost& host =
@@ -1844,7 +1816,7 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
               spec.remote_start_exit);
     EXPECT_EQ(og::ui::EnterTransition::FadeWithInitialDraw, spec.enter);
     EXPECT_TRUE(spec.polls_lobby);
-    EXPECT_TRUE(spec.right_click_enabled);
+    EXPECT_FALSE(spec.right_click_enabled);
     EXPECT_EQ(1, spec.default_highlight);  // continue_game, as the legacy loop
     EXPECT_EQ(MENU_EXIT, spec.exit_value);
 
@@ -1859,6 +1831,46 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
     EXPECT_EQ("load_company", buttons[count - 2].id);
     EXPECT_EQ("no_company_note", buttons[count - 1].id);
+}
+
+TEST(MenuEngine, player_settings_registry_and_variant_shapes)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::PlayerSettings);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    ASSERT_EQ(&og::ui::player_settings_menu_screen_spec(), host.spec);
+    EXPECT_STREQ("player_settings", host.spec->name);
+    EXPECT_EQ(og::ui::RemoteStartScope::MainScope,
+              host.spec->remote_start);
+    EXPECT_TRUE(host.spec->polls_lobby);
+    EXPECT_TRUE(host.spec->right_click_enabled);
+    EXPECT_EQ(MENU_REDRAW, host.spec->exit_value);
+
+    const og::ui::MenuScreenSpec& mp =
+        og::ui::player_settings_menu_screen_spec_mp();
+    ASSERT_EQ(7, mp.row_count);
+    EXPECT_STREQ("player_settings_back", mp.rows[0].id);
+    for (int i = 1; i <= 4; ++i) {
+        EXPECT_EQ(ButtonAction::SetPlayerMode, mp.rows[i].action);
+        EXPECT_EQ(i, mp.rows[i].arg);
+    }
+    EXPECT_STREQ("pvp_allied", mp.rows[5].id);
+    EXPECT_EQ(ButtonAction::AlliedMode, mp.rows[5].action);
+    EXPECT_STREQ("player_controls", mp.rows[6].id);
+    EXPECT_EQ(ButtonAction::OpenControlSettings, mp.rows[6].action);
+
+    const og::ui::MenuScreenSpec& nomp =
+        og::ui::player_settings_menu_screen_spec_nomp();
+    ASSERT_EQ(2, nomp.row_count);
+    EXPECT_STREQ("player_settings_back", nomp.rows[0].id);
+    EXPECT_STREQ("player_controls", nomp.rows[1].id);
+
+    // The main surface opens the nested screen through the engine's one
+    // generic row action instead of burning another ButtonAction value.
+    const og::ui::MenuScreenSpec& main = og::ui::main_menu_screen_spec_mp();
+    EXPECT_STREQ("player_settings", main.rows[2].id);
+    EXPECT_EQ(ButtonAction::MenuSpecRow, main.rows[2].action);
+    EXPECT_NE(nullptr, main.on_spec_row);
 }
 
 // G9: the four materialized shapes, re-derived from the two specs. The
@@ -1903,14 +1915,14 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
                              "mainmenu_nomp_web");
 }
 
-// The bindings that replaced redraw_mainmenu's raw allbuttons_[N] writes
-// (§1.6): the player-count outlines, the SPECTATOR/PVP label, and the two
-// pixie art faces (normal1.png Begin New Game, wrench Options) — the art is
-// re-applied by the runner after init_buttons and after every reset.
+// The player-count/PVP bindings moved intact to PLAYER SETTINGS; the main
+// screen retains only its two pixie art faces.
 TEST(MenuEngine, main_menu_binding_pins)
 {
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& nomp = og::ui::main_menu_screen_spec_nomp();
+    const og::ui::MenuScreenSpec& players =
+        og::ui::player_settings_menu_screen_spec_mp();
 
     // Art faces, both variants: row 0 begin_new_game; options is the third-
     // from-last SPEC row (load_company and the §9.2 no_company_note, both
@@ -1924,18 +1936,18 @@ TEST(MenuEngine, main_menu_binding_pins)
     EXPECT_EQ(-1, nomp.rows[nomp.row_count - 2].art_family);  // load_company
     EXPECT_EQ(-1, nomp.rows[nomp.row_count - 1].art_family);  // no_company_note
 
-    // Player-count outlines: spec rows 2..5 are 4/3/2/1 PLAYER.
-    for (int i = 2; i <= 5; ++i) {
+    // Player-count outlines: spec rows 1..4 are 1/2/3/4 PLAYER.
+    for (int i = 1; i <= 4; ++i) {
         EXPECT_EQ(og::ui::MenuOutlineBinding::PlayerCountEquals,
-                  mp.rows[i].outline)
-            << mp.rows[i].id;
-        EXPECT_EQ(mp.rows[i].arg, mp.rows[i].outline_arg) << mp.rows[i].id;
+                  players.rows[i].outline)
+            << players.rows[i].id;
+        EXPECT_EQ(players.rows[i].arg, players.rows[i].outline_arg)
+            << players.rows[i].id;
     }
 
-    // The pvp_allied live label: SPECTATOR at numplayers==0, else the
-    // shared allied-mode formatter (redraw_mainmenu's write, verbatim).
+    // PVP remains SPECTATOR at numplayers==0, otherwise the shared formatter.
     const og::ui::LabelFormatter pvp_formatter =
-        mp.rows[7].label_binding.formatter;
+        players.rows[5].label_binding.formatter;
     ASSERT_NE(nullptr, pvp_formatter);
     SaveData save;
     og::ui::MenuLabelContext context;
@@ -1948,13 +1960,15 @@ TEST(MenuEngine, main_menu_binding_pins)
     save.allied_mode = 0;
     EXPECT_EQ("PVP: Enemy", pvp_formatter(context));
 
-    // The no-MP variant carries none of the MP-only bindings.
-    for (int i = 0; i < nomp.row_count; ++i) {
-        EXPECT_EQ(og::ui::MenuOutlineBinding::None, nomp.rows[i].outline)
-            << nomp.rows[i].id;
-        EXPECT_EQ(nullptr, nomp.rows[i].label_binding.formatter)
-            << nomp.rows[i].id;
-    }
+    // Main menu and no-MP player settings carry no player-specific bindings.
+    for (const og::ui::MenuScreenSpec* spec :
+         {&mp, &nomp, &og::ui::player_settings_menu_screen_spec_nomp()})
+        for (int i = 0; i < spec->row_count; ++i) {
+            EXPECT_EQ(og::ui::MenuOutlineBinding::None, spec->rows[i].outline)
+                << spec->name << " " << spec->rows[i].id;
+            EXPECT_EQ(nullptr, spec->rows[i].label_binding.formatter)
+                << spec->name << " " << spec->rows[i].id;
+        }
 }
 
 // §2.1: CONTINUE and LOAD gate on company existence, and the nav rewire
@@ -2007,14 +2021,14 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
     };
     const int i_begin = index_of("begin_new_game");
     const int i_continue = index_of("continue_game");
-    const int i_1p = index_of("1_player");
+    const int i_player_settings = index_of("player_settings");
 
     // Absent: mimic the gate pass (mark the pair hidden), then rewire.
     for (auto& b : buttons)
         if (std::string_view(b.id) == "continue_game"
             || std::string_view(b.id) == "load_company")
             b.hidden = true;
-    int highlighted = i_1p;
+    int highlighted = i_player_settings;
     mp.nav.rewire(buttons.data(), count, highlighted);
     for (int i = 0; i < count; ++i) {
         if (buttons[i].hidden)
@@ -2027,8 +2041,8 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
                 << buttons[i].id << " must not nav into a hidden row";
         }
     }
-    EXPECT_EQ(i_1p, buttons[i_begin].nav.down)
-        << "begin.down routes past the hidden pair to 1_player";
+    EXPECT_EQ(i_player_settings, buttons[i_begin].nav.down)
+        << "begin.down routes past the hidden pair to PLAYER SETTINGS";
 
     // Present again: the rewire re-asserts begin.down -> continue_game.
     og::ui::set_main_menu_company_view_for_tests(true, "");

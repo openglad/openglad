@@ -739,8 +739,9 @@ const MenuScreenSpec& control_options_menu_screen_spec()
 
 // ---------------------------------------------------------------------------
 // MAIN OPTIONS (§1.8 step 3, last slice): sound/graphics settings plus doors
-// into the CONTROLS screen and the three FX subscreens (GAMEPLAY FX / UI FX /
-// GRAPHICS FX). Rows transcribed VERBATIM from the deleted
+// into the three FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX). Player
+// controls now live with player count and PVP in PLAYER SETTINGS. Rows
+// otherwise retain the deleted
 // k_main_options_buttons table: the settings/door column stacks at the
 // classic 23px pitch (BUTTON_HEIGHT 15 + 8 padding). The sound face and the
 // sprite-sheet face are content-pass state draws over the bevels (green per
@@ -769,29 +770,25 @@ constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "options_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 8, .down = 1, .right = 5}},
+     .nav = {.up = 7, .down = 1, .right = 4}},
     {.id = "toggle_sound", .label = "Sound",
      .x = 135, .y = options_col_y(1), .w = 50, .h = 15,
      .action = ButtonAction::ToggleSound, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 6}},
+     .nav = {.up = 0, .down = 2, .right = 5}},
     // Door into the DISPLAY subscreen (mode / resolution / overscan /
     // scaling / filter live there).
     {.id = "display_settings", .label = "DISPLAY",
      .x = 130, .y = options_col_y(2), .w = 90, .h = 15,
      .action = ButtonAction::OpenDisplaySettings, .arg = -1,
-     .nav = {.up = 1, .down = 3, .right = 6}},
+     .nav = {.up = 1, .down = 3, .right = 5}},
     {.id = "gameplay_fx", .label = "GAMEPLAY FX",
      .x = 130, .y = options_col_y(3), .w = 90, .h = 15,
      .action = ButtonAction::OpenGameplayFxSettings, .arg = -1,
-     .nav = {.up = 2, .down = 7}},
+     .nav = {.up = 2, .down = 6}},
     {.id = "restore_defaults", .label = "RESTORE DEFAULTS",
      .x = 210, .y = 10, .w = 100, .h = 15,
      .action = ButtonAction::RestoreDefaultSettings, .arg = -1,
-     .nav = {.up = 8, .down = 6, .left = 5}},
-    {.id = "player_controls", .label = "CONTROLS",
-     .x = 100, .y = 10, .w = 80, .h = 15,
-     .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 8, .down = 1, .left = 0, .right = 4}},
+     .nav = {.up = 7, .down = 5, .left = 0}},
     {.id = "pick_sprite_sheet", .label = "Sprite Sheet",
      .x = 210, .y = options_col_y(1), .w = 90, .h = 15,
      .action = ButtonAction::PickSpriteSheet, .arg = 0,
@@ -800,11 +797,11 @@ constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "ui_fx", .label = "UI FX",
      .x = 130, .y = options_col_y(4), .w = 90, .h = 15,
      .action = ButtonAction::OpenUiFxSettings, .arg = -1,
-     .nav = {.up = 3, .down = 8}},
+     .nav = {.up = 3, .down = 7}},
     {.id = "graphics_fx", .label = "GRAPHICS FX",
      .x = 130, .y = options_col_y(5), .w = 90, .h = 15,
      .action = ButtonAction::OpenGraphicsFxSettings, .arg = -1,
-     .nav = {.up = 7, .down = 0}},
+     .nav = {.up = 6, .down = 0}},
 };
 
 void main_options_draw_content(void* /*screen_state*/)
@@ -817,7 +814,7 @@ void main_options_draw_content(void* /*screen_state*/)
     scr->hor_line(60, rows[2].y - kOptionsButtonPadding / 2, 200, PURE_WHITE);
     scr->text_normal.write_xy(20, rows[2].y + 3, DARK_BLUE, "Display:");
     scr->text_normal.write_xy(20, rows[3].y + 3, DARK_BLUE, "Effects:");
-    draw_sprite_sheet_button(rows[6]);
+    draw_sprite_sheet_button(rows[5]);
 }
 
 const MenuScreenSpec& main_options_menu_screen_spec()
@@ -836,43 +833,161 @@ const MenuScreenSpec& main_options_menu_screen_spec()
     return spec;
 }
 
+// The legacy USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping lived beside the
+// main-menu tables in picker.cpp. Keep it ahead of PLAYER SETTINGS as well as
+// main-menu variant selection so touch-only builds choose both no-MP specs.
+#ifdef USE_TOUCH_INPUT
+#ifndef DISABLE_MULTIPLAYER
+#define DISABLE_MULTIPLAYER
+#endif
+#endif
+
 // ---------------------------------------------------------------------------
-// MAIN MENU (§1.8 step 4, the heaviest 10a screen). The four legacy
-// k_mainmenu_buttons build variants (picker.cpp, deleted with this
-// migration) unify into TWO specs — MP and no-MP (the no-MP variant
-// genuinely repositions rows into a single column and moves the bottom row
-// to y=175) — each carrying the web/native fork as the build-gated
-// quit/help row pair: identical geometry and nav, different id/label/
-// hotkey/action, exactly one surviving materialization. Nav links are
-// written in MATERIALIZED index space and are identical across the fork
-// (§1.6: 2 static nav columns cover all 4 variants).
+// PLAYER SETTINGS: the local seat count and PVP relationship used to consume
+// three disconnected bands on the main menu, while keymaps lived behind the
+// options gear. They now form one centered setup screen. The four seat faces
+// read as a segmented selector; PVP and CONTROLS share the same full-width
+// column below it. Multiplayer-disabled builds retain the door for CONTROLS
+// without exposing unavailable seat/PVP choices.
+
+std::string pvp_allied_row_label(const MenuLabelContext& context)
+{
+    if (context.save == nullptr)
+        return "PVP: Allied";
+    if (context.save->numplayers == 0)
+        return "SPECTATOR";
+    return format_allied_mode_label(*context.save);
+}
+
+constexpr MenuButtonSpec kPlayerSettingsRowsMP[] = {
+    {.id = "player_settings_back", .label = "BACK",
+     .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 6, .down = 1}},
+    {.id = "1_player", .label = "1 PLAYER", .hotkey = KEYSTATE_1,
+     .x = 27, .y = 70, .w = 62, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 1,
+     .nav = {.up = 0, .down = 5, .right = 2},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 1},
+    {.id = "2_player", .label = "2 PLAYER", .hotkey = KEYSTATE_2,
+     .x = 95, .y = 70, .w = 62, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 2,
+     .nav = {.up = 0, .down = 5, .left = 1, .right = 3},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 2},
+    {.id = "3_player", .label = "3 PLAYER", .hotkey = KEYSTATE_3,
+     .x = 163, .y = 70, .w = 62, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 3,
+     .nav = {.up = 0, .down = 5, .left = 2, .right = 4},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 3},
+    {.id = "4_player", .label = "4 PLAYER", .hotkey = KEYSTATE_4,
+     .x = 231, .y = 70, .w = 62, .h = 20,
+     .action = ButtonAction::SetPlayerMode, .arg = 4,
+     .nav = {.up = 0, .down = 5, .left = 3},
+     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 4},
+    {.id = "pvp_allied", .label = "PVP: Allied",
+     .x = 90, .y = 105, .w = 140, .h = 18,
+     .action = ButtonAction::AlliedMode, .arg = -1,
+     .nav = {.up = 1, .down = 6},
+     .label_binding = {.formatter = &pvp_allied_row_label}},
+    {.id = "player_controls", .label = "CONTROLS",
+     .x = 90, .y = 132, .w = 140, .h = 18,
+     .action = ButtonAction::OpenControlSettings, .arg = -1,
+     .nav = {.up = 5, .down = 0}},
+};
+
+constexpr MenuButtonSpec kPlayerSettingsRowsNoMP[] = {
+    {.id = "player_settings_back", .label = "BACK",
+     .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 10, .w = 50, .h = 15,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+     .nav = {.up = 1, .down = 1}},
+    {.id = "player_controls", .label = "CONTROLS",
+     .x = 90, .y = 88, .w = 140, .h = 20,
+     .action = ButtonAction::OpenControlSettings, .arg = -1,
+     .nav = {.up = 0, .down = 0}},
+};
+
+void player_settings_draw_content(void* /*screen_state*/)
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    mytext.write_xy_center(160, 32, DARK_BLUE, "%s", "PLAYER SETTINGS");
+#ifndef DISABLE_MULTIPLAYER
+    mytext.write_xy_center(160, 55, DARK_BLUE, "%s", "LOCAL PLAYERS");
+#endif
+}
+
+constexpr MenuScreenSpec make_player_settings_spec(
+    const MenuButtonSpec* rows, int row_count)
+{
+    MenuScreenSpec spec{};
+    spec.name = "player_settings";
+    spec.rows = rows;
+    spec.row_count = row_count;
+    spec.buttons_accessor = &picker_player_settings_buttons;
+    spec.count_accessor = &picker_player_settings_button_count;
+    spec.remote_start = RemoteStartScope::MainScope;
+    spec.default_highlight = 1;
+    spec.right_click_enabled = true;
+    spec.polls_lobby = true;
+    spec.draw_background = &options_panel_draw_background;
+    spec.draw_content = &player_settings_draw_content;
+    spec.exit_value = MENU_REDRAW;
+    return spec;
+}
+
+const MenuScreenSpec& player_settings_menu_screen_spec_mp_impl()
+{
+    static constexpr MenuScreenSpec spec = make_player_settings_spec(
+        kPlayerSettingsRowsMP,
+        static_cast<int>(std::size(kPlayerSettingsRowsMP)));
+    return spec;
+}
+
+const MenuScreenSpec& player_settings_menu_screen_spec_nomp_impl()
+{
+    static constexpr MenuScreenSpec spec = make_player_settings_spec(
+        kPlayerSettingsRowsNoMP,
+        static_cast<int>(std::size(kPlayerSettingsRowsNoMP)));
+    return spec;
+}
+
+const MenuScreenSpec& player_settings_menu_screen_spec_impl()
+{
+#ifndef DISABLE_MULTIPLAYER
+    return player_settings_menu_screen_spec_mp_impl();
+#else
+    return player_settings_menu_screen_spec_nomp_impl();
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// MAIN MENU (§1.8 step 4, historically the heaviest 10a screen). The MP and
+// no-MP specs now share one centered primary stack; their only behavioral
+// difference is the contents of the nested PLAYER SETTINGS screen. Each
+// still carries the web/native fork as a build-gated quit/help row pair:
+// identical geometry and nav, different id/label/hotkey/action, exactly one
+// surviving materialization. Nav links are written in MATERIALIZED index
+// space and are identical across the fork (§1.6: 2 static nav columns cover
+// all 4 variants).
 //
 // redraw_mainmenu's raw allbuttons_[N] writes became bindings (§1.6):
-//   [2..5] player-count outlines -> OutlineBinding::PlayerCountEquals,
-//   [7] SPECTATOR/PVP label      -> the pvp_allied LabelBinding,
 //   [0]/[options] pixie faces    -> art_family rows (FAMILY_NORMAL1 /
 //       FAMILY_WRENCH — the normal1.png Begin New Game face is preserved by
 //       construction: same empty label, same set_graphic path, re-applied
 //       after init_buttons and after every reset_buttons).
+// The player-count outlines and live SPECTATOR/PVP label moved intact to
+// PLAYER SETTINGS, where their bindings still derive from the live save.
 // Its title/columns drawMix + the FULL re-vdisplay-after-title pass + the
 // native version stamp survive as the draw_content hook (G14): the 136x58
-// title frames at (15,8)/(151,8) overlap begin_new_game (80,50,140,20) in
-// y=50-66, and legacy re-vdisplayed EVERY button after the title drawMix —
+// title frames at (15,8)/(151,8) overlap begin_new_game (80,52,140,20) in
+// y=52-66, and legacy re-vdisplayed EVERY button after the title drawMix —
 // the runner's draw_buttons -> content order would invert that overlap
 // without the full re-vdisplay here.
 //
 // Both OPTIONS_BUTTON_INDEX #defines (picker.cpp x4 and the
 // picker_main_menu.cpp pair) are gone — picker_mainmenu_options_index()
 // derives the index from the materialized spec.
-
-// The legacy USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping, kept at the
-// variant-selection point (it lived beside the k_mainmenu tables in
-// picker.cpp:1484-1486 until they were deleted with this migration).
-#ifdef USE_TOUCH_INPUT
-#ifndef DISABLE_MULTIPLAYER
-#define DISABLE_MULTIPLAYER
-#endif
-#endif
 
 // Company & Base Camp (design §2.1): CONTINUE and LOAD are gated on the
 // existence of at least one company file, and the main menu shows the
@@ -893,14 +1008,8 @@ MainMenuCompanyView g_main_menu_company_view;
 // this, so the caption clip never truncates one.
 constexpr std::size_t kMainMenuCompanyNameClip = 18;
 
-// Caption strip Y per §2.1: y=171 with the MP split, y=166 without (the no-MP
-// variant's bottom row sits one notch higher). The compiled build selects the
-// variant, so the constant follows it.
-#ifdef DISABLE_MULTIPLAYER
-constexpr int kMainMenuCaptionY = 166;
-#else
-constexpr int kMainMenuCaptionY = 171;
-#endif
+// Caption strip between the centered primary stack and compact footer.
+constexpr int kMainMenuCaptionY = 169;
 
 // §2.1 gate: CONTINUE and LOAD are hidden when no company file exists.
 bool main_menu_company_present(const MenuLabelContext& /*context*/)
@@ -930,182 +1039,124 @@ int main_menu_row_index(const button* buttons, int count, std::string_view id)
 // §2.1 nav rewire: CONTINUE (index 1) and LOAD (the appended row) share the
 // company gate, so the graph routes around them when no company exists. The
 // static graph is re-asserted when they are present, keeping the rewire
-// idempotent regardless of a prior frame's state. Links are resolved by id so
-// the one function serves both the MP and no-MP variants (no 2_player /
-// player row in the no-MP graph). Verbatim design links: begin.down -> the
-// row below the pair (1_player in MP, difficulty in no-MP); the player/
-// difficulty up-links point back at begin while the pair is hidden.
+// idempotent regardless of a prior frame's state. PLAYER SETTINGS is the row
+// immediately below the pair in both build variants.
 void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
 {
     const int i_begin = main_menu_row_index(buttons, count, "begin_new_game");
     const int i_continue = main_menu_row_index(buttons, count, "continue_game");
-    const int i_load = main_menu_row_index(buttons, count, "load_company");
-    const int i_1p = main_menu_row_index(buttons, count, "1_player");
-    const int i_2p = main_menu_row_index(buttons, count, "2_player");
-    const int i_diff = main_menu_row_index(buttons, count, "difficulty");
-    const bool nomp = (i_2p < 0);              // no player grid => no-MP variant
-    const int i_below = nomp ? i_diff : i_1p;  // the row beneath the split pair
+    const int i_player = main_menu_row_index(buttons, count, "player_settings");
 
     if (g_main_menu_company_view.present) {
         if (i_begin >= 0) buttons[i_begin].nav.down = i_continue;
-        if (i_1p >= 0) buttons[i_1p].nav.up = i_continue;
-        if (i_2p >= 0) buttons[i_2p].nav.up = i_load;
-        if (nomp && i_diff >= 0) buttons[i_diff].nav.up = i_continue;
+        if (i_player >= 0) buttons[i_player].nav.up = i_continue;
     } else {
-        if (i_begin >= 0) buttons[i_begin].nav.down = i_below;
-        if (i_1p >= 0) buttons[i_1p].nav.up = i_begin;
-        if (i_2p >= 0) buttons[i_2p].nav.up = i_begin;
-        if (nomp && i_diff >= 0) buttons[i_diff].nav.up = i_begin;
+        if (i_begin >= 0) buttons[i_begin].nav.down = i_player;
+        if (i_player >= 0) buttons[i_player].nav.up = i_begin;
     }
-}
-
-// Live label for the pvp_allied row: redraw_mainmenu's per-frame write,
-// verbatim (SPECTATOR when no local player count is selected).
-std::string pvp_allied_row_label(const MenuLabelContext& context)
-{
-    if (context.save == nullptr)
-        return "PVP: Allied";
-    if (context.save->numplayers == 0)
-        return "SPECTATOR";
-    return format_allied_mode_label(*context.save);
 }
 
 constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "begin_new_game", .label = "",
-     .x = 80, .y = 50, .w = 140, .h = 20,
+     .x = 80, .y = 52, .w = 140, .h = 20,
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
-    // §2.1: CONTINUE and LOAD split the old full-width continue_game into the
-    // established side-by-side 68x20 player-button grammar. Both are gated on
-    // company existence and appear/vanish together; load_company is appended
-    // at the table END (index 11) so indices 0-10 — and the raw allbuttons_[N]
-    // writes keyed off them — stay valid.
+    // §2.1: CONTINUE and LOAD share one centered row and gate together.
     {.id = "continue_game", .label = "CONTINUE",
-     .x = 80, .y = 75, .w = 68, .h = 20,
+     .x = 80, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 5, .right = 11},
+     .nav = {.up = 0, .down = 2, .right = 7},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "4_player", .label = "4 PLAYER", .hotkey = KEYSTATE_4,
-     .x = 152, .y = 125, .w = 68, .h = 20,
-     .action = ButtonAction::SetPlayerMode, .arg = 4,
-     .nav = {.up = 4, .down = 6, .left = 3},
-     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 4},
-    {.id = "3_player", .label = "3 PLAYER", .hotkey = KEYSTATE_3,
-     .x = 80, .y = 125, .w = 68, .h = 20,
-     .action = ButtonAction::SetPlayerMode, .arg = 3,
-     .nav = {.up = 5, .down = 6, .right = 2},
-     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 3},
-    // up -> load_company (index 11), the right-column row directly above.
-    {.id = "2_player", .label = "2 PLAYER", .hotkey = KEYSTATE_2,
-     .x = 152, .y = 100, .w = 68, .h = 20,
-     .action = ButtonAction::SetPlayerMode, .arg = 2,
-     .nav = {.up = 11, .down = 2, .left = 5},
-     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 2},
-    {.id = "1_player", .label = "1 PLAYER", .hotkey = KEYSTATE_1,
-     .x = 80, .y = 100, .w = 68, .h = 20,
-     .action = ButtonAction::SetPlayerMode, .arg = 1,
-     .nav = {.up = 1, .down = 3, .right = 4},
-     .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 1},
+    {.id = "player_settings", .label = "PLAYER SETTINGS",
+     .x = 80, .y = 106, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 2,
+     .nav = {.up = 1, .down = 3}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 148, .w = 140, .h = 10,
+     .x = 80, .y = 127, .w = 140, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 3, .down = 7}},
-    {.id = "pvp_allied", .label = "PVP: Allied",
-     .x = 80, .y = 160, .w = 68, .h = 10,
-     .action = ButtonAction::AlliedMode, .arg = -1,
-     .nav = {.up = 6, .down = 9, .right = 8},
-     .label_binding = {.formatter = &pvp_allied_row_label}},
+     .nav = {.up = 2, .down = 4}},
     {.id = "level_edit", .label = "Level Edit",
-     .x = 152, .y = 160, .w = 68, .h = 10,
+     .x = 80, .y = 148, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 6, .down = 10, .left = 7}},
+     .nav = {.up = 3, .down = 6}},
     // The web/native fork (§1.6): one of this pair survives materialization,
-    // always at index 9 with identical geometry and nav. The trailing space
+    // always at index 5 with identical geometry and nav. The trailing space
     // in "QUIT " is part of the shipped label.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 120, .y = 182, .w = 60, .h = 15,
+     .x = 120, .y = 181, .w = 60, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 7, .left = 10},
+     .nav = {.up = 4, .left = 6},
      .build = MenuBuildGate::NativeOnly},
     {.id = "help", .label = "HELP",
-     .x = 120, .y = 182, .w = 60, .h = 15,
+     .x = 120, .y = 181, .w = 60, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 7, .left = 10},
+     .nav = {.up = 4, .left = 6},
      .build = MenuBuildGate::WebOnly},
     {.id = "options", .label = "",
-     .x = 90, .y = 182, .w = 20, .h = 15,
+     .x = 90, .y = 181, .w = 20, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 8, .right = 9},
+     .nav = {.up = 4, .right = 5},
      .art_family = FAMILY_WRENCH},
-    // §2.1 index 11 (appended at the table END): the LOAD half of the split.
-    // Opens the §2.3 Company List engine screen (CreateLoadMenu intercept ->
-    // LoadGame -> show_company_list). Gated on company existence with
-    // CONTINUE.
+    // Appended tail: LOAD then the mutually exclusive no-company note.
     {.id = "load_company", .label = "LOAD",
-     .x = 152, .y = 75, .w = 68, .h = 20,
+     .x = 152, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
-     .nav = {.up = 0, .down = 4, .left = 1},
+     .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    // §9.2 (appended at the table END): the no-company note box — a greyed
-    // Disabled row filling the exact CONTINUE|LOAD envelope while no company
-    // exists, Hidden once one does. Inert chrome: MenuSpecRow arg = own
-    // materialized ordinal (never dispatched — the row is never Visible),
-    // no nav links in or out, statically hidden (companies present is the
-    // default view). Replaces the old no-company bottom caption.
     {.id = "no_company_note", .label = "NO COMPANY YET",
-     .x = 80, .y = 75, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 12,
+     .x = 80, .y = 78, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 8,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "begin_new_game", .label = "",
-     .x = 80, .y = 50, .w = 140, .h = 20,
+     .x = 80, .y = 52, .w = 140, .h = 20,
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
-    // §2.1 no-MP split: same 68x20 CONTINUE | LOAD pair at y=75.
     {.id = "continue_game", .label = "CONTINUE",
-     .x = 80, .y = 75, .w = 68, .h = 20,
+     .x = 80, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 6},
+     .nav = {.up = 0, .down = 2, .right = 7},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 100, .w = 140, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+    {.id = "player_settings", .label = "PLAYER SETTINGS",
+     .x = 80, .y = 106, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 2,
      .nav = {.up = 1, .down = 3}},
-    {.id = "level_edit", .label = "Level Edit",
-     .x = 80, .y = 118, .w = 140, .h = 15,
-     .action = ButtonAction::DoLevelEdit, .arg = -1,
+    {.id = "difficulty", .label = "DIFFICULTY",
+     .x = 80, .y = 127, .w = 140, .h = 15,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
      .nav = {.up = 2, .down = 4}},
-    // The web/native fork — always index 4 here.
+    {.id = "level_edit", .label = "Level Edit",
+     .x = 80, .y = 148, .w = 140, .h = 15,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 3, .down = 6}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 120, .y = 175, .w = 60, .h = 15,
+     .x = 120, .y = 181, .w = 60, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 3, .left = 5},
+     .nav = {.up = 4, .left = 6},
      .build = MenuBuildGate::NativeOnly},
     {.id = "help", .label = "HELP",
-     .x = 120, .y = 175, .w = 60, .h = 15,
+     .x = 120, .y = 181, .w = 60, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 3, .left = 5},
+     .nav = {.up = 4, .left = 6},
      .build = MenuBuildGate::WebOnly},
     {.id = "options", .label = "",
-     .x = 90, .y = 175, .w = 20, .h = 15,
+     .x = 90, .y = 181, .w = 20, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 3, .right = 4},
+     .nav = {.up = 4, .right = 5},
      .art_family = FAMILY_WRENCH},
-    // §2.1 index 6 (appended at the table END): the no-MP LOAD half.
     {.id = "load_company", .label = "LOAD",
-     .x = 152, .y = 75, .w = 68, .h = 20,
+     .x = 152, .y = 78, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    // §9.2 no-MP note box (see the MP table): materialized ordinal 7.
     {.id = "no_company_note", .label = "NO COMPANY YET",
-     .x = 80, .y = 75, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 7,
+     .x = 80, .y = 78, .w = 140, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = 8,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
 };
@@ -2521,6 +2572,13 @@ const MenuScreenSpec& team_build_menu_screen_spec()
     return spec;
 }
 
+Sint32 main_menu_on_spec_row(int row, void* /*screen_state*/)
+{
+    if (row == 2)
+        return run_menu_screen(player_settings_menu_screen_spec_impl());
+    return 0;
+}
+
 constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
                                              int row_count)
 {
@@ -2542,12 +2600,13 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
     // Legacy entry: fade the previous menu out, first draw, fade in.
     spec.enter = EnterTransition::FadeWithInitialDraw;
     spec.default_highlight = 1;  // continue_game
-    // Right-click is live here: deselecting the current player count enters
-    // spectator mode (do_call_right, SetPlayerMode).
-    spec.right_click_enabled = true;
+    // Player-count right-click/spectator behavior moved with those rows to
+    // PLAYER SETTINGS; no remaining main-menu row has a right-click action.
+    spec.right_click_enabled = false;
     spec.polls_lobby = true;
     spec.draw_background = &main_menu_draw_background;
     spec.draw_content = &main_menu_draw_content;
+    spec.on_spec_row = &main_menu_on_spec_row;
     // Every caller ignores mainmenu()'s return value; MENU_EXIT mirrors the
     // legacy loop's exit-bearing retvalue.
     spec.exit_value = MENU_EXIT;
@@ -3360,6 +3419,21 @@ const MenuScreenSpec& main_menu_screen_spec()
 #endif
 }
 
+const MenuScreenSpec& player_settings_menu_screen_spec_mp()
+{
+    return player_settings_menu_screen_spec_mp_impl();
+}
+
+const MenuScreenSpec& player_settings_menu_screen_spec_nomp()
+{
+    return player_settings_menu_screen_spec_nomp_impl();
+}
+
+const MenuScreenSpec& player_settings_menu_screen_spec()
+{
+    return player_settings_menu_screen_spec_impl();
+}
+
 const MenuScreenSpec& difficulty_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
@@ -3703,6 +3777,9 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             using Kind = MenuScreenHost::Kind;
             set(MenuScreenId::MainMenu,
                 {.kind = Kind::Engine, .spec = &main_menu_screen_spec()});
+            set(MenuScreenId::PlayerSettings,
+                {.kind = Kind::Engine,
+                 .spec = &player_settings_menu_screen_spec()});
             set(MenuScreenId::TeamBuild,
                 {.kind = Kind::Engine, .spec = &team_build_menu_screen_spec()});
             set(MenuScreenId::MainOptions,
@@ -3763,6 +3840,19 @@ button* picker_mainmenu_buttons()
 int picker_mainmenu_button_count()
 {
     return static_cast<int>(pks().mainmenu_buttons.size());
+}
+
+button* picker_player_settings_buttons()
+{
+    og::ui::materialize_menu_buttons(
+        og::ui::player_settings_menu_screen_spec(),
+        pks().player_settings_buttons);
+    return pks().player_settings_buttons.data();
+}
+
+int picker_player_settings_button_count()
+{
+    return static_cast<int>(pks().player_settings_buttons.size());
 }
 
 // Replaces both OPTIONS_BUTTON_INDEX #defines (10 with multiplayer, 5
@@ -4084,7 +4174,13 @@ Sint32 display_settings_options()
 
 Sint32 main_controls_options()
 {
-    return og::ui::run_menu_screen(og::ui::control_options_menu_screen_spec());
+    const Sint32 result =
+        og::ui::run_menu_screen(og::ui::control_options_menu_screen_spec());
+    // CONTROLS is entered from PLAYER SETTINGS now, so it no longer passes
+    // through main_options()'s family-wide persistence epilogue.
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+    return result;
 }
 
 button* picker_main_options_buttons()

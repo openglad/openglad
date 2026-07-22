@@ -669,10 +669,10 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
 
-    // G8 (design §1.2): change_allied no longer writes allbuttons_[7] — the
-    // engine main menu's pvp_allied LabelBinding re-derives both label
-    // surfaces every frame, so the raw click-side write was deleted with this
-    // reshape. change_allied now only toggles the save flag + syncs the lobby.
+    // G8 (design §1.2): change_allied no longer writes allbuttons_[7]. The
+    // pvp_allied LabelBinding moved to PLAYER SETTINGS and re-derives both
+    // label surfaces every frame, so change_allied only toggles the save flag
+    // and syncs the lobby.
     ASSERT_EQ(4, (int)change_allied()) << "change_allied should return OK";
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle on";
     ASSERT_EQ(4, (int)change_allied()) << "change_allied second toggle should return OK";

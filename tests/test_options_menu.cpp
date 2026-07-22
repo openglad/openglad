@@ -58,9 +58,11 @@ static bool click_until_interactable(const std::string& click_id, const std::str
     return has_interactable(next_id);
 }
 
-// Test: Open options menu, toggle some settings, then exit.
+// Test: Open PLAYER SETTINGS and its CONTROLS door, then open MAIN OPTIONS,
+// toggle its settings, and exit.
 //
-// Flow: Main Menu -> Options -> toggle some settings -> Back -> (main menu exits)
+// Flow: Main Menu -> Player Settings -> Controls -> Back -> Back -> Options
+// -> toggle settings -> Back -> (main menu exits)
 //
 // Verifies:
 //   1. Options menu opens
@@ -359,35 +361,42 @@ static int options_injector(void* data)
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
-    // Wait for main menu
-    if (!wait_for_interactable("options", 5000)) {
+    // Wait for main menu, then visit the controls through PLAYER SETTINGS.
+    if (!wait_for_interactable("player_settings", 5000)) {
         state->finished = true;
         return 0;
     }
     SDL_Delay(750);
 
-    fprintf(stderr, "  [test] clicking options\n");
-    bool in_options = click_until_interactable("options", "gameplay_fx", 10000);
-
-    // Options menu buttons
-    SDL_Delay(150);
-    if (in_options || wait_for_interactable("gameplay_fx", 10000)) {
-        state->saw_options = true;
-        SDL_Delay(150);
-
+    fprintf(stderr, "  [test] entering player settings\n");
+    if (click_until_interactable("player_settings", "player_controls", 5000)) {
         fprintf(stderr, "  [test] entering player controls\n");
-        bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
+        bool in_controls =
+            click_until_interactable("player_controls", "player1_mode", 5000);
         SDL_Delay(150);
         if (in_controls || wait_for_interactable("player1_mode", 5000)) {
             state->entered_controls = true;
             interact("player1_mode");
             if (wait_for_interactable("controls_back", 5000)) {
                 SDL_Delay(200);
-                state->exited_controls = click_until_interactable("controls_back", "gameplay_fx", 5000);
+                state->exited_controls = click_until_interactable(
+                    "controls_back", "player_controls", 5000);
             }
-            wait_for_interactable("gameplay_fx", 10000);
-            SDL_Delay(150);
+            wait_for_interactable("player_controls", 5000);
         }
+        interact("player_settings_back");
+        wait_for_interactable("options", 5000);
+    }
+
+    fprintf(stderr, "  [test] clicking options\n");
+    bool in_options =
+        click_until_interactable("options", "gameplay_fx", 10000);
+
+    // Options menu buttons
+    SDL_Delay(150);
+    if (in_options || wait_for_interactable("gameplay_fx", 10000)) {
+        state->saw_options = true;
+        SDL_Delay(150);
 
         fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
@@ -845,15 +854,15 @@ void capture_quit_main_menu(CaptureState* state)
     }
 }
 
-// menu_tour: main menu (keyboard-nav highlight walk) -> SETTINGS -> CONTROLS
-// (flip P1 mode twice: 4-DIRECTION <-> 8-DIRECTION) -> back -> back -> quit.
+// menu_tour: main menu highlight walk -> PLAYER SETTINGS -> CONTROLS (flip
+// P1 mode twice) -> back -> back -> quit.
 int menu_tour_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     CaptureState* state = static_cast<CaptureState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("options", 10000)) {
+    if (!wait_for_interactable("player_settings", 10000)) {
         state->finished = true;
         return 0;
     }
@@ -867,12 +876,13 @@ int menu_tour_injector(void* data)
     g_test_menu_nav_key = KEY_UP;
     SDL_Delay(480);
 
-    bool in_options = click_until_interactable("options", "player_controls", 10000);
+    bool in_player_settings = click_until_interactable(
+        "player_settings", "player_controls", 10000);
     SDL_Delay(900);
-    if (in_options || wait_for_interactable("player_controls", 10000)) {
+    if (in_player_settings || wait_for_interactable("player_controls", 10000)) {
         state->saw_options = true;
 
-        // Two nav steps inside SETTINGS so the highlight is seen moving.
+        // Two nav steps inside PLAYER SETTINGS so the highlight is seen moving.
         g_test_menu_nav_key = KEY_DOWN;
         SDL_Delay(480);
         g_test_menu_nav_key = KEY_RIGHT;
@@ -892,9 +902,9 @@ int menu_tour_injector(void* data)
             SDL_Delay(700);
         }
 
-        if (wait_for_interactable("options_back", 5000)) {
+        if (wait_for_interactable("player_settings_back", 5000)) {
             SDL_Delay(300);
-            interact("options_back");
+            interact("player_settings_back");
             state->used_options_back = true;
             SDL_Delay(700);
         }
@@ -1119,7 +1129,7 @@ TEST(OptionsMenu, zz_capture_menu_tour)
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished);
-    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.saw_options) << "should have entered player settings";
     ASSERT_TRUE(state.entered_controls) << "should have entered controls";
     ASSERT_TRUE(state.exited_controls) << "should have returned from controls";
     ASSERT_TRUE(state.used_options_back) << "should have exited settings";
