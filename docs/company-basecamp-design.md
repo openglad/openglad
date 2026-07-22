@@ -2513,7 +2513,8 @@ The restored roster colors stay, with two small legibility refinements.
   other menus retain the original shaded font rendering.
 - Every TEAM square overlays its player-facing number, `1` through `4`, in
   flat PURE_BLACK. The square keeps the gameplay ramp and its existing solo
-  cycle/network read-only behavior.
+  cycle/network read-only behavior. Its 4×6 glyph cell is offset to `(64,
+  row_y + 3)`, visually centering it in the 8×8 colored face.
 - Pixel-level coverage proves that every opaque flat-text glyph pixel uses the
   requested color and that all four team squares contain the correct digit on
   the correct team-color face. The five populated Base Camp captures carry

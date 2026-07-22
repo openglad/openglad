@@ -2337,7 +2337,9 @@ void base_camp_draw_content(void* screen_state)
         game->fastbox(62, y + 1, 8, 8, team_color);
         const char team_number[] = {
             static_cast<char>('1' + team), '\0'};
-        mytext.write_xy_flat(63, y + 2, team_number, PURE_BLACK, 1);
+        // The 4x6 digit cell sits at (64,y+3), visually centered in the
+        // chip's 8x8 colored face rather than leaning into its top-left.
+        mytext.write_xy_flat(64, y + 3, team_number, PURE_BLACK, 1);
 
         // Restore the original View Team identity treatment: NAME and CLASS
         // use ((family + 1) << 4) & 255. Flatten the font's internal shade
