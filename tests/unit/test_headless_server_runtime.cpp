@@ -83,6 +83,27 @@ walker* find_team_member(GameWorld& world, std::int32_t guy_id)
     return nullptr;
 }
 
+std::vector<short> start_marker_teams_at(const GameWorld& world,
+                                         const walker& hero)
+{
+    std::vector<short> teams;
+    for (const auto& entry : world.oblist)
+    {
+        const walker* const marker = entry.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        if (marker->floor() == hero.floor() &&
+            marker->xpos() == hero.xpos() && marker->ypos() == hero.ypos())
+        {
+            teams.push_back(marker->team_num());
+        }
+    }
+    return teams;
+}
+
 class HeadlessServerRuntimeTest : public ::testing::Test
 {
 protected:
@@ -196,6 +217,18 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_EQ(1, guest->team_num());
     EXPECT_FALSE(host->has_render());
     EXPECT_FALSE(guest->has_render());
+
+    const std::vector<short> host_marker_teams =
+        start_marker_teams_at(level_data_->world(), *host);
+    ASSERT_FALSE(host_marker_teams.empty());
+    for (const short marker_team : host_marker_teams)
+        EXPECT_EQ(0, marker_team);
+
+    const std::vector<short> guest_marker_teams =
+        start_marker_teams_at(level_data_->world(), *guest);
+    for (const short marker_team : guest_marker_teams)
+        EXPECT_EQ(1, marker_team)
+            << "the authoritative guest must not borrow a red start marker";
 }
 
 // §4.2 LOCAL assembly filter: a benched (deployed == false) save member is

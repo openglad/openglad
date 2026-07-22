@@ -374,6 +374,27 @@ static walker* find_named_team_member(GameWorld& world,
     return nullptr;
 }
 
+static std::vector<short> start_marker_teams_at(const GameWorld& world,
+                                                const walker& hero)
+{
+    std::vector<short> teams;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const marker = uptr.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        if (marker->floor() == hero.floor() &&
+            marker->xpos() == hero.xpos() && marker->ypos() == hero.ypos())
+        {
+            teams.push_back(marker->team_num());
+        }
+    }
+    return teams;
+}
+
 static std::set<std::uint32_t> non_zero_controlled_entity_ids(
     const og::sim::GameClient& client)
 {
@@ -968,6 +989,16 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
                 game_screen->world(), "Color Guard", team);
             ASSERT_NE(nullptr, hero)
                 << "allied=" << allied_mode << " team=" << team;
+            const std::vector<short> spawn_marker_teams =
+                start_marker_teams_at(game_screen->world(), *hero);
+            if (team == 0)
+            {
+                ASSERT_FALSE(spawn_marker_teams.empty());
+            }
+            for (const short marker_team : spawn_marker_teams)
+                EXPECT_EQ(team, marker_team)
+                    << "a hero must never borrow another team's start marker; "
+                    << "allied=" << allied_mode << " team=" << team;
             ASSERT_NE(nullptr, game_screen->viewob[0]->control);
             EXPECT_EQ(team, game_screen->viewob[0]->control->team_num())
                 << "allied=" << allied_mode << " team=" << team;

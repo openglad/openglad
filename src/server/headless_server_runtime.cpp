@@ -174,18 +174,13 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
 
         clear_battle_stats(*created->myguy);
 
+        // Start markers are team-owned. A missing/exhausted exact marker
+        // falls back to a neutral teleport, never another team's start.
         walker* marker = find_first_of(
             world,
             Order::Special,
             static_cast<unsigned char>(FAMILY_RESERVED_TEAM),
             static_cast<int>(member->teamnum));
-        if (marker == nullptr)
-        {
-            marker = find_first_of(
-                world,
-                Order::Special,
-                static_cast<unsigned char>(FAMILY_RESERVED_TEAM));
-        }
 
         if (marker != nullptr)
         {

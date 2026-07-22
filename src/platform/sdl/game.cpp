@@ -159,13 +159,14 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	    temp_walker->myguy->scen_shots = 0;
 	    temp_walker->myguy->scen_hits = 0;
 
-		// First, try to find a marker that's the correct team number ..
+		// A start marker belongs to exactly one team. Never fall through to a
+		// foreign marker: selectable roster teams made the old "grab any marker"
+		// fallback visibly deploy yellow/green/blue heroes from red starts. If a
+		// map has no marker for this team (or its markers are exhausted), use the
+		// neutral teleport fallback below.
 			replace_walker = screenp->first_of(Order::Special,
 			                                    FAMILY_RESERVED_TEAM,
 			                                    static_cast<int>(temp_guy->teamnum));
-		// If that doesn't work, though, grab any marker we can ..
-			if (!replace_walker)
-				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
 			// Inherit the start marker's floor so the player spawns on the
