@@ -2584,8 +2584,9 @@ constexpr int kNameEntryValueIndex = 1;
 constexpr int kNameEntryRerollIndex = 2;
 constexpr int kNameEntryAcceptIndex = 3;
 
-// 320-wide canvas center. The name face mirrors name_guy's 132x22 character
-// naming box, centered here instead of living in the train screen's right rail.
+// 320-wide canvas center. The name face keeps name_guy's 22px-high character
+// naming style, but widens to the combined REROLL/ACCEPT outer edges so the
+// prompt and value have comfortable side padding.
 constexpr int kNameEntryCenterX = 160;
 
 constexpr MenuButtonSpec kNameEntryRows[] = {
@@ -2594,12 +2595,12 @@ constexpr MenuButtonSpec kNameEntryRows[] = {
      .x = 10, .y = 170, .w = 44, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryBackIndex,
      .nav = {.up = kNameEntryRerollIndex}},
-    // The editable name box uses the same stock-grey face and dimensions as
-    // name_guy's "NAME THIS CHARACTER" box. Its two text lines are drawn in
-    // the content pass. y+h = 92 <= 100, so a web soft keyboard never covers
-    // it (§2.0 U5).
+    // The editable name box uses the same stock-grey face and height as
+    // name_guy's "NAME THIS CHARACTER" box. Its wider edges align with the
+    // action pair below, leaving 10px of left padding for the content-pass
+    // text. y+h = 92 <= 100, so a web soft keyboard never covers it (§2.0 U5).
     {.id = "company_name_value", .label = "",
-     .x = 94, .y = 70, .w = 132, .h = 22,
+     .x = 86, .y = 70, .w = 148, .h = 22,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryValueIndex,
      .nav = {.down = kNameEntryRerollIndex}},
     {.id = "company_name_reroll", .label = "REROLL",

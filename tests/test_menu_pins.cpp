@@ -279,7 +279,7 @@ TEST(MenuEnginePins, name_entry_exact_table)
     static const ExpectedButton kExpected[] = {
         {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20,
          button_action_id(ButtonAction::MenuSpecRow), 0, MenuNav{.up = 2}},
-        {"company_name_value", "", KEYSTATE_UNKNOWN, 94, 70, 132, 22,
+        {"company_name_value", "", KEYSTATE_UNKNOWN, 86, 70, 148, 22,
          button_action_id(ButtonAction::MenuSpecRow), 1, MenuNav{.down = 2}},
         {"company_name_reroll", "REROLL", KEYSTATE_UNKNOWN, 86, 102, 68, 14,
          button_action_id(ButtonAction::MenuSpecRow), 2,

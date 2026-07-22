@@ -863,6 +863,12 @@ TEST(MenuEngine, name_entry_spec_shape_and_nav)
         EXPECT_EQ(nullptr, spec_rows[static_cast<std::size_t>(i)]->color)
             << spec_rows[static_cast<std::size_t>(i)]->id;
 
+    // The field frames the action pair below instead of looking pinched
+    // between their outer edges.
+    EXPECT_EQ(buttons[2].x, buttons[1].x);
+    EXPECT_EQ(buttons[3].x + buttons[3].sizex,
+              buttons[1].x + buttons[1].sizex);
+
     for (int i = 0; i < count; ++i)
         for (int j = i + 1; j < count; ++j)
             EXPECT_FALSE(sweep_rows_overlap(buttons[i], buttons[j]))
