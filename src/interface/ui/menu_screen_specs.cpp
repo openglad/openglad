@@ -982,8 +982,8 @@ const MenuScreenSpec& player_settings_menu_screen_spec_impl()
 // PLAYER SETTINGS, where their bindings still derive from the live save.
 // Its title/columns drawMix + the FULL re-vdisplay-after-title pass + the
 // native version stamp survive as the draw_content hook (G14): the 136x58
-// title frames at (15,8)/(151,8) overlap begin_new_game (80,52,140,20) in
-// y=52-66, and legacy re-vdisplayed EVERY button after the title drawMix —
+// title frames at (15,8)/(151,8) overlap begin_new_game (80,55,140,20) in
+// y=55-66, and legacy re-vdisplayed EVERY button after the title drawMix —
 // the runner's draw_buttons -> content order would invert that overlap
 // without the full re-vdisplay here.
 //
@@ -1061,60 +1061,60 @@ void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
 
 constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "begin_new_game", .label = "",
-     .x = 80, .y = 52, .w = 140, .h = 20,
+     .x = 80, .y = 55, .w = 140, .h = 20,
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
     // §2.1: CONTINUE and LOAD share one centered row and gate together.
     {.id = "continue_game", .label = "CONTINUE",
-     .x = 80, .y = 78, .w = 68, .h = 20,
+     .x = 80, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
-     .x = 80, .y = 104, .w = 140, .h = 15,
+     .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     // SETTINGS is a deliberate two-row group: the two compact session
     // categories share the first row, while the broader game/presentation
     // category gets the full-width second row.
     {.id = "player_settings", .label = "PLAYERS",
-     .x = 80, .y = 136, .w = 68, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 2,
      .nav = {.up = 2, .down = 5, .right = 4}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 152, .y = 136, .w = 68, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
      .nav = {.up = 2, .down = 5, .left = 3}},
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 157, .w = 140, .h = 15,
+     .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 3, .down = 6}},
     {.id = "help", .label = "HELP",
-     .x = 80, .y = 181, .w = 68, .h = 15,
+     .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
      .nav = {.up = 5, .down = 0, .right = 7}},
     // The web/native fork (§1.6): exactly one QUIT row survives at
     // materialized index 7. Native activation quits; web is visibly disabled.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 152, .y = 181, .w = 68, .h = 15,
+     .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 5, .down = 0, .left = 6},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
-     .x = 152, .y = 181, .w = 68, .h = 15,
+     .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 5, .down = 0, .left = 6},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
     {.id = "load_company", .label = "LOAD",
-     .x = 152, .y = 78, .w = 68, .h = 20,
+     .x = 152, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
-     .x = 80, .y = 78, .w = 140, .h = 20,
+     .x = 80, .y = 79, .w = 140, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
@@ -1122,53 +1122,53 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "begin_new_game", .label = "",
-     .x = 80, .y = 52, .w = 140, .h = 20,
+     .x = 80, .y = 55, .w = 140, .h = 20,
      .action = ButtonAction::BeginMenu, .arg = 1,
      .nav = {.down = 1},
      .art_family = FAMILY_NORMAL1},
     {.id = "continue_game", .label = "CONTINUE",
-     .x = 80, .y = 78, .w = 68, .h = 20,
+     .x = 80, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
-     .x = 80, .y = 104, .w = 140, .h = 15,
+     .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     {.id = "player_settings", .label = "PLAYERS",
-     .x = 80, .y = 136, .w = 68, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 2,
      .nav = {.up = 2, .down = 5, .right = 4}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 152, .y = 136, .w = 68, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
      .nav = {.up = 2, .down = 5, .left = 3}},
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 157, .w = 140, .h = 15,
+     .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 3, .down = 6}},
     {.id = "help", .label = "HELP",
-     .x = 80, .y = 181, .w = 68, .h = 15,
+     .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
      .nav = {.up = 5, .down = 0, .right = 7}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
-     .x = 152, .y = 181, .w = 68, .h = 15,
+     .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 5, .down = 0, .left = 6},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
-     .x = 152, .y = 181, .w = 68, .h = 15,
+     .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
      .nav = {.up = 5, .down = 0, .left = 6},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
-     .x = 152, .y = 78, .w = 68, .h = 20,
+     .x = 152, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateLoadMenu, .arg = 0,
      .nav = {.up = 0, .down = 2, .left = 1},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
-     .x = 80, .y = 78, .w = 140, .h = 20,
+     .x = 80, .y = 79, .w = 140, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
@@ -1218,7 +1218,7 @@ void main_menu_draw_content(void* /*screen_state*/)
 
     // Center the category heading on the 140px menu column (x=80..220), not
     // on the 320px canvas; the classic column art shifts this stack left.
-    game->text_normal.write_xy_center(150, 126, GREY, "%s", "SETTINGS");
+    game->text_normal.write_xy_center(150, 125, GREY, "%s", "SETTINGS");
 
     // On native builds, show the version number on the main menu. On
     // Emscripten/web builds the version is displayed elsewhere (the help UI).

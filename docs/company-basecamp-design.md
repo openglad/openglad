@@ -495,33 +495,35 @@ normative.**
 ### 2.1 Main menu (native+MP variant; other 3 variants noted)
 
 Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side-by-side
-68×20 pair (the established player-button grammar). `begin_new_game` keeps its rect
-(now y=52), empty label, and the normal1.png face — byte-identical art.
+68×20 pair (the established player-button grammar). `begin_new_game` keeps its empty
+label and the normal1.png face — byte-identical art. Within each button category, the
+4px vertical gutter matches the 4px horizontal gutter between half-column buttons;
+the 17px and 9px category breaks remain unchanged.
 
 ```
 +--------------------------------------------------------------------------------+
 |   [title.png]                                          [title.png]             |
-|  col |        [##### BEGIN NEW GAME (pixel art) #####]  (y=52)      | col     |
-|      |        [ CONTINUE ]           [   LOAD   ]       (y=78)      |         |
-|      |        [------------ LEVEL EDITOR ----------]   (y=104)      |         |
-|      |                      SETTINGS                 (y=126)         |         |
-|      |        [ PLAYERS  ]           [DIFFICULTY]      (y=136)      |         |
-|      |        [---------- GAME SETTINGS -----------]   (y=157)      |         |
-|      |        [   HELP   ]           [   QUIT   ]      (y=181)      |         |
+|  col |        [##### BEGIN NEW GAME (pixel art) #####]  (y=55)      | col     |
+|      |        [ CONTINUE ]           [   LOAD   ]       (y=79)      |         |
+|      |        [------------ LEVEL EDITOR ----------]   (y=103)      |         |
+|      |                      SETTINGS                 (y=125)         |         |
+|      |        [ PLAYERS  ]           [DIFFICULTY]      (y=135)      |         |
+|      |        [---------- GAME SETTINGS -----------]   (y=154)      |         |
+|      |        [   HELP   ]           [   QUIT   ]      (y=178)      |         |
 +--------------------------------------------------------------------------------+
 ```
 
 | idx | id | rect | label | budget | notes |
 |---|---|---|---|---|---|
-| 0 | begin_new_game | (80,52,140,20) | "" (art) | — | routes to §2.2 |
-| 1 | continue_game | (80,78,68,20) | `CONTINUE` | 8/10 | opens most-recent company |
-| 2 | level_edit | (80,104,140,15) | `LEVEL EDITOR` | 12/22 | separate from the settings group |
-| 3 | player_settings | (80,136,68,15) | `PLAYERS` | 7/10 | opens PLAYER SETTINGS |
-| 4 | difficulty | (152,136,68,15) | `DIFFICULTY` | 10/10 | opens DIFFICULTY |
-| 5 | options | (80,157,140,15) | `GAME SETTINGS` | 13/22 | opens GAME SETTINGS; legacy internal id retained |
-| 6 | help | (80,181,68,15) | `HELP` | 4/10 | present on native and web |
-| 7 | quit | (152,181,68,15) | `QUIT` | 4/10 | native enabled; web visible but Disabled |
-| 8 (appended) | load_company | (152,78,68,20) | `LOAD` | 4/10 | opens Company List (§2.3) |
+| 0 | begin_new_game | (80,55,140,20) | "" (art) | — | routes to §2.2 |
+| 1 | continue_game | (80,79,68,20) | `CONTINUE` | 8/10 | opens most-recent company |
+| 2 | level_edit | (80,103,140,15) | `LEVEL EDITOR` | 12/22 | separate from the settings group |
+| 3 | player_settings | (80,135,68,15) | `PLAYERS` | 7/10 | opens PLAYER SETTINGS |
+| 4 | difficulty | (152,135,68,15) | `DIFFICULTY` | 10/10 | opens DIFFICULTY |
+| 5 | options | (80,154,140,15) | `GAME SETTINGS` | 13/22 | opens GAME SETTINGS; legacy internal id retained |
+| 6 | help | (80,178,68,15) | `HELP` | 4/10 | present on native and web |
+| 7 | quit | (152,178,68,15) | `QUIT` | 4/10 | native enabled; web visible but Disabled |
+| 8 (appended) | load_company | (152,79,68,20) | `LOAD` | 4/10 | opens Company List (§2.3) |
 
 - The active company name is intentionally absent: CONTINUE/LOAD already convey the
   company state, and the reclaimed band gives the three settings one clear hierarchy.

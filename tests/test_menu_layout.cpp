@@ -196,25 +196,35 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_nav_in_range(buttons, count, "mainmenu");
     ASSERT_GE(count, 10);
 
-    // Primary actions retain the established 6px gap.
-    EXPECT_EQ(6, buttons[1].y - (buttons[0].y + buttons[0].sizey));
+    // Within-group vertical gutters match the 4px horizontal split-row gutter.
+    const int split_row_gutter =
+        buttons[4].x - (buttons[3].x + buttons[3].sizex);
+    EXPECT_EQ(4, split_row_gutter);
+    EXPECT_EQ(split_row_gutter,
+              buttons[1].y - (buttons[0].y + buttons[0].sizey));
 
-    // LEVEL EDITOR is the next primary action at the standard 6px gap.
+    // LEVEL EDITOR completes the primary-action group at the same 4px gap.
     EXPECT_EQ("level_edit", buttons[2].id);
-    EXPECT_EQ(6, buttons[2].y - (buttons[1].y + buttons[1].sizey));
+    EXPECT_EQ(split_row_gutter,
+              buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
     // SETTINGS: equal compact top-row faces, a 4px gutter, then a centered
-    // full-width GAME SETTINGS face with the normal 6px vertical gap.
+    // full-width GAME SETTINGS face with the same 4px vertical gutter.
     EXPECT_EQ("player_settings", buttons[3].id);
     EXPECT_EQ("difficulty", buttons[4].id);
     EXPECT_EQ(buttons[3].y, buttons[4].y);
     EXPECT_EQ(buttons[3].sizex, buttons[4].sizex);
-    EXPECT_EQ(4, buttons[4].x - (buttons[3].x + buttons[3].sizex));
+    EXPECT_EQ(split_row_gutter,
+              buttons[4].x - (buttons[3].x + buttons[3].sizex));
     EXPECT_EQ("options", buttons[5].id);
     EXPECT_EQ(buttons[3].x, buttons[5].x);
     EXPECT_EQ(buttons[4].x + buttons[4].sizex,
               buttons[5].x + buttons[5].sizex);
-    EXPECT_EQ(6, buttons[5].y - (buttons[3].y + buttons[3].sizey));
+    EXPECT_EQ(split_row_gutter,
+              buttons[5].y - (buttons[3].y + buttons[3].sizey));
+
+    // Tightening within groups does not collapse the category breaks.
+    EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
     EXPECT_EQ("help", buttons[6].id);

@@ -1740,39 +1740,39 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
 // The centered main chassis shared by every build. HELP is permanent;
 // native/web supply enabled/disabled QUIT variants at the same index.
 constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
-    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 52, 140, 20,
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 55, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
-    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
+    {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 8}},
-    {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
+    {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
-    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 136, 68, 15,
+    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
      ButtonAction::MenuSpecRow, 2,
      MenuNav{.up = 2, .down = 5, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 136, 68, 15,
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
      ButtonAction::OpenDifficultyMenu, -1,
      MenuNav{.up = 2, .down = 5, .left = 3}},
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 157, 140, 15,
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 6}},
-    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 181, 68, 15,
+    {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
      ButtonAction::ShowHelp, -1,
      MenuNav{.up = 5, .down = 0, .right = 7}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
-    "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 181, 68, 15,
+    "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 178, 68, 15,
     ButtonAction::QuitMenu, 0,
     MenuNav{.up = 5, .down = 0, .left = 6}};
 constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
-    "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 181, 68, 15,
+    "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 178, 68, 15,
     ButtonAction::QuitMenu, 0,
     MenuNav{.up = 5, .down = 0, .left = 6}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
-    "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 78, 68, 20,
+    "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
 constexpr ExpectedSpecRow kMainMenuMPNote = {
-    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 78, 140, 20,
+    "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
     ButtonAction::MenuSpecRow, 9, MenuNav{}, true};
 
 // Main geometry no longer changes with multiplayer support; the nested
