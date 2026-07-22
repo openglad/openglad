@@ -1444,6 +1444,9 @@ short screen::endgame(short ending, short nextlevel)
 	
 	const bool networked = og::runtime::current_session != nullptr &&
 		og::runtime::current_session->networked_session_;
+	const bool isolated_company =
+		og::runtime::current_session != nullptr &&
+		og::runtime::current_session->isolated_company_session_;
 
 	// Non-win exits route the mode's run-end policy (Classic: no-op) BEFORE
 	// the results screen, so mode popups/summaries read post-reset save
@@ -1524,10 +1527,11 @@ short screen::endgame(short ending, short nextlevel)
 		// (every player's characters). Autosaving it here would clobber this
 		// player's save0 with everyone's gladiators — the networked per-player
 		// save path persists only this player's own characters (owner-filtered),
-		// so the display must not touch save0. Local/single-player still
-		// autosaves — unless the mode's persistence policy says otherwise.
+		// so the display must not touch save0. A local lobby's active-team
+		// subset uses that same owner-aware merge; only legacy full-roster local
+		// sessions autosave here (subject to the mode's persistence policy).
 		// (The fold already ran update_guys; this is the save-only tail.)
-		if (!networked &&
+		if (!networked && !isolated_company &&
 		    og::mode::current_progression().persist_after_win())
 		{
 			// Autosave because we won: the §3.8 choke point stamps

@@ -80,6 +80,10 @@ struct LocalTransportRuntime {
     // off each player's real save0 and each player persists only its own
     // characters' progress. False for plain local single-player / splitscreen.
     bool networked = false;
+    // True for a local lobby game whose mission roster is only a subset of
+    // the private company. It uses the transient session seed and owner-aware
+    // merge persistence without enabling network gameplay semantics.
+    bool isolated_company = false;
     // This machine's local seats. Player indices filter owned characters;
     // gameplay teams select the corresponding cash/score totals.
     std::vector<LocalSeatBinding> own_seats;
@@ -556,6 +560,7 @@ bool finalize_level_and_advance_cursor(
     screen& gameplay_screen,
     int next_level,
     bool networked,
+    bool isolated_company,
     std::span<const og::runtime::LocalSeatBinding> own_seats)
 {
     gameplay_screen.sync_save_data_from_world();
@@ -599,11 +604,11 @@ bool finalize_level_and_advance_cursor(
     if (!og::mode::current_progression().persist_after_win())
         return true;
 
-    // For a networked session the combined roster goes to the transient slot,
-    // never the player's real save0. Each completed level we also merge every
-    // one of this machine's own seats' characters back into save0 (as if the
-    // machine played solo).
-    if (networked)
+    // Mission-only rosters go to the transient slot, never the private company:
+    // a network game holds the combined roster, while a local lobby game holds
+    // only the active seat teams. Merge this machine's owned characters and
+    // rewards back into the untouched full-company baseline.
+    if (networked || isolated_company)
     {
         if (!save_shadow_save_data(gameplay_screen, "complete_level",
                                    "netsession"))
@@ -637,7 +642,8 @@ bool finalize_level_and_advance_cursor(
 // failure.
 bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
                                           int destination_level,
-                                          bool networked)
+                                          bool networked,
+                                          bool isolated_company)
 {
     // Withdraw/quit-mission is a run-ending, non-win exit: route the mode's
     // run-end policy (Classic: no-op) before the roster reload discards the
@@ -652,7 +658,7 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
             gameplay_screen.save_data, gameplay_screen.world(), run_outcome);
     }
 
-    const std::string slot = networked
+    const std::string slot = networked || isolated_company
         ? std::string("netsession")
         : og::data::active_company_slot();
     const SaveDataIoError load_error =
@@ -670,14 +676,14 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
     if (!save_shadow_save_data(gameplay_screen, "withdraw", slot))
         return false;
 
-    if (!networked)
+    if (!networked && !isolated_company)
         return true;
 
-    // The transient netsession write above restores the combined pre-level
-    // roster. Independently advance this machine's private save0 cursor so the
-    // post-game menu does not re-advertise its stale pre-round level. This is
-    // deliberately ownership-agnostic (spectator hosts have zero seats) and
-    // cursor-only (withdraw awards no roster, cash, score, or completion gain).
+    // The transient write above restores the mission's pre-level roster.
+    // Independently advance the private company's cursor so the post-game menu
+    // does not re-advertise its stale pre-round level. This is deliberately
+    // ownership-agnostic (spectator hosts have zero seats) and cursor-only
+    // (withdraw awards no roster, cash, score, or completion gain).
     return og::runtime::detail::persist_private_campaign_cursor_to_save0(
         gameplay_screen, destination_level);
 }
@@ -1397,6 +1403,7 @@ bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
         gameplay_screen,
         next_level,
         networked,
+        /*isolated_company=*/false,
         own_player_index == guy::kNoOwner
             ? std::span<const LocalSeatBinding>()
             : std::span<const LocalSeatBinding>(seats));
@@ -1423,6 +1430,7 @@ bool local_transport_shadow_testing_finalize_win(
         gameplay_screen,
         next_level,
         networked,
+        /*isolated_company=*/false,
         std::span<const LocalSeatBinding>(seats));
 }
 
@@ -1431,7 +1439,8 @@ bool local_transport_shadow_testing_finalize_withdraw(screen& gameplay_screen,
                                                       bool networked)
 {
     return finalize_withdraw_and_advance_cursor(
-        gameplay_screen, destination_level, networked);
+        gameplay_screen, destination_level, networked,
+        /*isolated_company=*/false);
 }
 
 bool local_transport_shadow_testing_display_transition(screen& gameplay_screen,
@@ -1551,6 +1560,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->networked = session.networked_session_;
+    runtime->isolated_company = session.isolated_company_session_;
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
     std::array<short, MAX_PLAYERS> player_teams = {};
@@ -1584,6 +1594,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     server_cfg.create_display = false;
     server_cfg.install_legacy_globals = false;
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
+    runtime->server_session->isolated_company_session_ =
+        runtime->isolated_company;
     runtime->server_transport = og::sim::InProcessTransport::create_server();
     runtime->server_transport->accept_connections();
     const auto inprocess_server_transport =
@@ -1598,7 +1610,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
-            load_saved_game(runtime->networked
+            load_saved_game(runtime->networked || runtime->isolated_company
                                 ? "netsession"
                                 : og::data::active_company_slot().c_str(),
                             server_screen) == 0)
@@ -1681,6 +1693,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
+         isolated_company = runtime->isolated_company,
          own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int level_id) {
@@ -1694,12 +1707,14 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             // shows the menu (the next level is started fresh from there). The
             // game NEVER auto-advances the next level in-session, in any mode.
             return finalize_level_and_advance_cursor(
-                *server_screen, level_id, networked, own_seats);
+                *server_screen, level_id, networked, isolated_company,
+                own_seats);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
+         isolated_company = runtime->isolated_company,
          own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int destination) {
@@ -1711,11 +1726,13 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             // display returns to the team-build menu. NEVER auto-advance the next
             // level in-session — in any mode (see on_level_transition).
             return finalize_level_and_advance_cursor(
-                *server_screen, destination, networked, own_seats);
+                *server_screen, destination, networked, isolated_company,
+                own_seats);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
          networked = runtime->networked,
+         isolated_company = runtime->isolated_company,
          server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
@@ -1724,7 +1741,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             // every display to the team-build menu (which loads it fresh). Never
             // load the destination level in-session — in any mode.
             return finalize_withdraw_and_advance_cursor(
-                *server_screen, destination, networked);
+                *server_screen, destination, networked, isolated_company);
         };
 
     runtime->clients.reserve(player_count);
@@ -1946,7 +1963,8 @@ void reset_network_host_transport_shadow(
             // shows the menu (the next level is started fresh from there). The
             // game NEVER auto-advances the next level in-session, in any mode.
             return finalize_level_and_advance_cursor(
-                *server_screen, level_id, networked, own_seats);
+                *server_screen, level_id, networked,
+                /*isolated_company=*/false, own_seats);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
@@ -1963,7 +1981,8 @@ void reset_network_host_transport_shadow(
             // display returns to the team-build menu. NEVER auto-advance the next
             // level in-session — in any mode (see on_level_transition).
             return finalize_level_and_advance_cursor(
-                *server_screen, destination, networked, own_seats);
+                *server_screen, destination, networked,
+                /*isolated_company=*/false, own_seats);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
@@ -1976,7 +1995,8 @@ void reset_network_host_transport_shadow(
             // every display to the team-build menu (which loads it fresh). Never
             // load the destination level in-session — in any mode.
             return finalize_withdraw_and_advance_cursor(
-                *server_screen, destination, networked);
+                *server_screen, destination, networked,
+                /*isolated_company=*/false);
         };
 
     for (const og::sim::LobbyPlayerBinding& binding : player_bindings)
@@ -2118,6 +2138,7 @@ void clear_local_transport_shadow(GameSession& session) noexcept
     session.relay_transport_active_ = false;
     session.relay_speed_warning_shown_ = false;
     session.networked_session_ = false;
+    session.isolated_company_session_ = false;
     session.own_player_indices_.clear();
 }
 

@@ -130,6 +130,7 @@ void apply_lobby_game_start_config(
 
         save.team_list[slot.slot_index] =
             make_guy_from_lobby_character(slot.character);
+        save.team_list[slot.slot_index]->deployed = slot.deployed;
         save.team_list[slot.slot_index]->owner_player_index =
             slot.owner_player_index;
         save.team_list[slot.slot_index]->owner_save_slot = slot.owner_save_slot;
@@ -143,6 +144,8 @@ void apply_lobby_game_start_config(
             static_cast<std::int32_t>(lobby_config.difficulty);
         og::runtime::current_session->networked_session_ =
             lobby_config.is_networked;
+        og::runtime::current_session->isolated_company_session_ =
+            !lobby_config.is_networked;
         og::runtime::current_session->own_player_indices_ =
             lobby_config.local_player_indices;
         if (og::runtime::current_session->own_player_indices_.empty() &&
@@ -155,13 +158,12 @@ void apply_lobby_game_start_config(
         }
     }
 
-    // For a networked session, keep the live combined roster (which holds every
-    // player's characters) off this player's real save0. It is seeded into a
-    // transient slot the server loads from; each player later merges only its
-    // own characters' progress back into save0. Local games still seed save0.
-    const std::string seed_slot = lobby_config.is_networked
-        ? std::string("netsession")
-        : og::data::active_company_slot();
+    // A lobby start config is a mission roster, not the private company. For
+    // network play it is the combined roster; for local play it contains only
+    // the teams assigned to active seats. Seed both into the transient slot so
+    // launching or aborting a mission can never replace the full company with
+    // that subset. Wins merge owned progress back into the private save.
+    const std::string seed_slot = "netsession";
     if (!save.save(seed_slot))
         LogError("glad_init_lobby_save_failed slot={} reason=write_failed\n",
                  seed_slot);
@@ -201,6 +203,8 @@ void glad_init(bool preserve_frame_timing,
 
     if (lobby_config != nullptr)
         apply_lobby_game_start_config(*current_screen, *lobby_config);
+    else
+        og::runtime::current_session->isolated_company_session_ = false;
 
     // Load the default saved-game, or the lobby-supplied in-memory config.
     const std::string default_slot = lobby_config != nullptr

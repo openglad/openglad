@@ -940,6 +940,99 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, local_lobby_launch_and_abort_preserve_every_inactive_team)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Four Teams";
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    constexpr std::array<std::string_view, 8> names = {
+        "Red Active", "Red Benched", "Yellow One", "Yellow Two",
+        "Green One", "Green Two", "Blue One", "Blue Two",
+    };
+    constexpr std::array<short, 8> teams = {0, 0, 1, 1, 2, 2, 3, 3};
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        save.team_list[index] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[index]->name = names[index];
+        save.team_list[index]->teamnum = teams[index];
+        save.team_list[index]->deployed = index != 1;
+    }
+    save.team_size = static_cast<unsigned char>(names.size());
+    ASSERT_TRUE(save.save(og::data::active_company_slot()));
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(2u, config->save_data.team_list.size());
+    EXPECT_EQ("Red Active", config->save_data.team_list[0].character.name);
+    EXPECT_TRUE(config->save_data.team_list[0].deployed);
+    EXPECT_EQ("Red Benched", config->save_data.team_list[1].character.name);
+    EXPECT_FALSE(config->save_data.team_list[1].deployed);
+    picker_lobby_shutdown();
+
+    ready_screen_for_game_start(*game_screen, &*config);
+    glad_init(false, &*config);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_TRUE(og::runtime::current_session->isolated_company_session_);
+
+    int launched_company_members = 0;
+    for (const auto& entity : game_screen->world().oblist)
+    {
+        if (entity != nullptr && entity->myguy != nullptr)
+        {
+            ++launched_company_members;
+            EXPECT_EQ("Red Active", entity->myguy->name);
+        }
+    }
+    EXPECT_EQ(1, launched_company_members)
+        << "only the active seat's deployed characters enter the mission";
+
+    SaveData still_private_after_launch;
+    ASSERT_EQ(SaveDataIoError::None,
+              still_private_after_launch.load_with_error(
+                  og::data::active_company_slot()));
+    ASSERT_EQ(names.size(), still_private_after_launch.team_size);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        ASSERT_NE(nullptr, still_private_after_launch.team_list[index]);
+        EXPECT_EQ(names[index], still_private_after_launch.team_list[index]->name);
+        EXPECT_EQ(teams[index], still_private_after_launch.team_list[index]->teamnum);
+        EXPECT_EQ(index != 1,
+                  still_private_after_launch.team_list[index]->deployed);
+    }
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_abort_level(
+        *og::runtime::current_game_session));
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    ASSERT_EQ(SaveDataIoError::None,
+              game_screen->save_data.load_with_error(
+                  og::data::active_company_slot()));
+    ASSERT_EQ(names.size(), game_screen->save_data.team_size);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        ASSERT_NE(nullptr, game_screen->save_data.team_list[index]);
+        EXPECT_EQ(names[index], game_screen->save_data.team_list[index]->name);
+        EXPECT_EQ(teams[index], game_screen->save_data.team_list[index]->teamnum);
+        EXPECT_EQ(index != 1, game_screen->save_data.team_list[index]->deployed);
+    }
+    EXPECT_FALSE(og::runtime::current_session->isolated_company_session_);
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

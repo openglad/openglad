@@ -35,12 +35,13 @@ void autosave_active_screen(screen& s, const char* event_name)
     if (og::runtime::current_session != nullptr &&
         og::runtime::current_session->gameplay_active_)
     {
-        // [SAVE-F2] Never write the company file during a NETWORKED level:
-        // the display save holds the combined netsession-shaped state
-        // (screen.cpp's endgame documents this), and the per-player win/
-        // withdraw paths persist this machine's own progress. Skipping also
-        // leaves the company timestamp un-promoted.
-        if (og::runtime::current_session->networked_session_)
+        // [SAVE-F2] Never write the company file from a mission-only roster.
+        // Network games hold the combined roster; local lobby games hold only
+        // the active seat teams. Their explicit win/withdraw paths merge back
+        // into the private company. Skipping also leaves an abandoned mission
+        // unable to promote the company timestamp or erase inactive teams.
+        if (og::runtime::current_session->networked_session_ ||
+            og::runtime::current_session->isolated_company_session_)
             return;
         s.sync_save_data_from_world();
     }
