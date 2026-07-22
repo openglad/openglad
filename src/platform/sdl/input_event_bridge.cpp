@@ -36,10 +36,11 @@ void autosave_active_screen(screen& s, const char* event_name)
         og::runtime::current_session->gameplay_active_)
     {
         // [SAVE-F2] Never write the company file from a mission-only roster.
-        // Network games hold the combined roster; local lobby games hold only
-        // the active seat teams. Their explicit win/withdraw paths merge back
-        // into the private company. Skipping also leaves an abandoned mission
-        // unable to promote the company timestamp or erase inactive teams.
+        // Network games hold the combined roster; local lobby games hold an
+        // isolated mission copy of the company. Their explicit win/withdraw
+        // paths merge back into the private company. Skipping also leaves an
+        // abandoned mission unable to promote the company timestamp or erase
+        // private roster state.
         if (og::runtime::current_session->networked_session_ ||
             og::runtime::current_session->isolated_company_session_)
             return;

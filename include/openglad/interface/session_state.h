@@ -91,10 +91,11 @@ struct SessionState {
     // persists only the characters owned by one of its own seats
     // (owner_player_index in own_player_indices_).
     bool networked_session_ = false;
-    // A local lobby launch also assembles a mission-only roster: only the
-    // teams assigned to the active local seats enter the level. Keep that
-    // subset isolated from the active company exactly as we do for a genuine
-    // network session, while retaining local gameplay/control semantics.
+    // A local lobby launch also assembles a mission-only roster. Keep that
+    // transient copy isolated from the active company exactly as we do for a
+    // genuine network session, while retaining local gameplay/control
+    // semantics. The copy contains the full company; player-seat teams only
+    // select controls and never filter who enters the mission.
     bool isolated_company_session_ = false;
     // This machine's own GLOBAL player slots for the active networked session,
     // one entry per local seat in seat order (seat 0 first). Empty if none.

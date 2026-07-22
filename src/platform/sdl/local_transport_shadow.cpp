@@ -80,9 +80,9 @@ struct LocalTransportRuntime {
     // off each player's real save0 and each player persists only its own
     // characters' progress. False for plain local single-player / splitscreen.
     bool networked = false;
-    // True for a local lobby game whose mission roster is only a subset of
-    // the private company. It uses the transient session seed and owner-aware
-    // merge persistence without enabling network gameplay semantics.
+    // True for a local lobby game using a mission-isolated copy of the private
+    // company. It uses the transient session seed and owner-aware merge
+    // persistence without enabling network gameplay semantics.
     bool isolated_company = false;
     // This machine's local seats. Player indices filter owned characters;
     // gameplay teams select the corresponding cash/score totals.
@@ -606,8 +606,8 @@ bool finalize_level_and_advance_cursor(
 
     // Mission-only rosters go to the transient slot, never the private company:
     // a network game holds the combined roster, while a local lobby game holds
-    // only the active seat teams. Merge this machine's owned characters and
-    // rewards back into the untouched full-company baseline.
+    // an isolated mission copy. Merge this machine's owned characters and
+    // rewards back into the untouched private-company baseline.
     if (networked || isolated_company)
     {
         if (!save_shadow_save_data(gameplay_screen, "complete_level",

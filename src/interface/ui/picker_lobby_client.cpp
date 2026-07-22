@@ -310,6 +310,35 @@ public:
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data = server_->build_save_data_equivalent();
+        // Local player seats decide who CONTROLS which gameplay team; they
+        // are not a mission-roster filter. Every deployed company member
+        // enters the level even when no local view controls that member's
+        // color (for example, a yellow company member in a one-player game).
+        // Keep benched members in the transient seed as well so the mission
+        // round-trip cannot lose private save slots; the loader filters them
+        // at spawn time.
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        config.save_data.team_list.clear();
+        for (std::size_t slot_index = 0;
+             slot_index < save.team_list.size(); ++slot_index)
+        {
+            const auto& member = save.team_list[slot_index];
+            if (!member)
+                continue;
+
+            config.save_data.team_list.push_back(
+                og::sim::LobbyCharacterSlot{
+                    .slot_index = static_cast<std::uint8_t>(slot_index),
+                    .character = make_lobby_character_data(*member),
+                    .deployed = member->deployed,
+                    // Every local seat belongs to this same company. Owner 0
+                    // therefore makes every mission member eligible for the
+                    // existing owner-aware merge back into the private save.
+                    .owner_player_index = 0u,
+                    .owner_save_slot = static_cast<std::uint8_t>(slot_index),
+                });
+        }
         // The lobby always has at least a connected host peer, even for spectator
         // starts. Preserve the picker's zero-player mode so gameplay stays in
         // spectator/autoplay instead of being coerced into a 1-player start.
@@ -317,8 +346,9 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        config.my_team = local_gameplay_start_team(
+        const short shared_local_team = local_gameplay_start_team(
             !peers_.empty() ? peers_.front().team : 0);
+        config.my_team = shared_local_team;
         // Symmetry with the networked clients: one seat per local in-process
         // peer, in seat/view order. The local (is_networked == false) start
         // path ignores these — reset_local_transport_shadow binds seats 1:1
@@ -330,7 +360,9 @@ public:
                 config.local_player_indices.push_back(
                     static_cast<std::uint8_t>(index));
                 config.local_seat_teams.push_back(
-                    local_gameplay_start_team(peers_[index].team));
+                    config.save_data.allied_mode != 0
+                        ? shared_local_team
+                        : local_gameplay_start_team(peers_[index].team));
             }
         }
         return config;

@@ -2513,8 +2513,9 @@ The restored roster colors stay, with two small legibility refinements.
   other menus retain the original shaded font rendering.
 - Every TEAM square overlays its player-facing number, `1` through `4`, in
   flat PURE_BLACK. The square keeps the gameplay ramp and its existing solo
-  cycle/network read-only behavior. Its 4×6 glyph cell is offset to `(64,
-  row_y + 3)`, visually centering it in the 8×8 colored face.
+  cycle/network read-only behavior. Digits `2` through `4` start at `x=64`;
+  the font's narrower three-column `1` starts at `x=65` so it does not sit
+  visibly left of center. All four use `row_y + 3`.
 - Pixel-level coverage proves that every opaque flat-text glyph pixel uses the
   requested color and that all four team squares contain the correct digit on
   the correct team-color face. The five populated Base Camp captures carry
@@ -2541,3 +2542,20 @@ out of the primary text into a compact homage to View Team's palette.
 - A click-level regression test cycles a middle roster row and pins both live
   and reloaded save-slot order. Pixel coverage pins deployed/benched identity
   ink and every shade in multiple family swatches.
+
+### 9.24 Runtime correction (2026-07-22) — roster colors are not player seats [FINAL]
+
+Local mission assembly treats company membership and player control as two
+separate decisions.
+
+- The isolated local start seed carries every company slot and preserves each
+  member's team and deploy flag. Every deployed member spawns even when no
+  player view is assigned to that color; benched members remain in the seed
+  but do not spawn.
+- In Ally mode, every local view uses Player 1's preferred team and claims a
+  different unclaimed hero from that team. Roster order cannot assign Player 2
+  to a differently colored member. Enemy mode retains its distinct per-color
+  view assignment.
+- End-to-end regressions cover a one-player company spanning all four colors,
+  abort preservation, and the ordered `Team 1 / Team 2 / Team 1` two-player
+  Ally case.

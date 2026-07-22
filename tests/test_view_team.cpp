@@ -1520,7 +1520,7 @@ TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
     ASSERT_TRUE(font.letters->valid());
     const std::size_t stride = static_cast<std::size_t>(font.sizex) *
                                static_cast<std::size_t>(font.sizey);
-    constexpr int label_x = 64;
+    constexpr std::array<int, SCORE_TEAM_COUNT> label_x = {65, 64, 64, 64};
     constexpr int first_label_y = 48;
     constexpr int row_pitch = 14;
     for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
@@ -1531,7 +1531,7 @@ TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
         for (Sint32 row = 0; row < font.sizey; ++row) {
             for (Sint32 col = 0; col < font.sizex; ++col) {
                 int actual = -1;
-                output->get_pixel(label_x + col,
+                output->get_pixel(label_x[static_cast<std::size_t>(team)] + col,
                                   first_label_y + row_pitch * team + row,
                                   &actual);
                 const unsigned char source =

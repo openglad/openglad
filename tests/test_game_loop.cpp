@@ -940,7 +940,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, local_lobby_launch_and_abort_preserve_every_inactive_team)
+TEST(GameLoop, local_lobby_spawns_every_deployed_team_and_abort_preserves_company)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, game_screen);
@@ -976,11 +976,18 @@ TEST(GameLoop, local_lobby_launch_and_abort_preserve_every_inactive_team)
     std::optional<og::ui::PickerLobbyGameStartConfig> config =
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(config.has_value());
-    ASSERT_EQ(2u, config->save_data.team_list.size());
+    ASSERT_EQ(names.size(), config->save_data.team_list.size());
     EXPECT_EQ("Red Active", config->save_data.team_list[0].character.name);
     EXPECT_TRUE(config->save_data.team_list[0].deployed);
     EXPECT_EQ("Red Benched", config->save_data.team_list[1].character.name);
     EXPECT_FALSE(config->save_data.team_list[1].deployed);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        EXPECT_EQ(names[index],
+                  config->save_data.team_list[index].character.name);
+        EXPECT_EQ(teams[index],
+                  config->save_data.team_list[index].character.teamnum);
+    }
     picker_lobby_shutdown();
 
     ready_screen_for_game_start(*game_screen, &*config);
@@ -988,17 +995,18 @@ TEST(GameLoop, local_lobby_launch_and_abort_preserve_every_inactive_team)
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     EXPECT_TRUE(og::runtime::current_session->isolated_company_session_);
 
-    int launched_company_members = 0;
+    std::set<std::string> launched_company_members;
     for (const auto& entity : game_screen->world().oblist)
     {
         if (entity != nullptr && entity->myguy != nullptr)
-        {
-            ++launched_company_members;
-            EXPECT_EQ("Red Active", entity->myguy->name);
-        }
+            launched_company_members.insert(entity->myguy->name);
     }
-    EXPECT_EQ(1, launched_company_members)
-        << "only the active seat's deployed characters enter the mission";
+    EXPECT_EQ(7u, launched_company_members.size());
+    EXPECT_TRUE(launched_company_members.contains("Red Active"));
+    EXPECT_FALSE(launched_company_members.contains("Red Benched"));
+    for (std::size_t index = 2; index < names.size(); ++index)
+        EXPECT_TRUE(launched_company_members.contains(std::string(names[index])))
+            << names[index] << " must spawn even without a player seat on its team";
 
     SaveData still_private_after_launch;
     ASSERT_EQ(SaveDataIoError::None,
@@ -1030,6 +1038,67 @@ TEST(GameLoop, local_lobby_launch_and_abort_preserve_every_inactive_team)
         EXPECT_EQ(index != 1, game_screen->save_data.team_list[index]->deployed);
     }
     EXPECT_FALSE(og::runtime::current_session->isolated_company_session_);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Ally Seats";
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    // The hostile-color hero is deliberately between the two Team 1 heroes.
+    // Roster order must never make Player 2 claim it.
+    save.team_list[0] = make_named_soldier("Red One", 0);
+    save.team_list[1] = make_named_soldier("Yellow Middle", 1);
+    save.team_list[2] = make_named_soldier("Red Two", 0);
+    save.team_size = 3;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(3u, config->save_data.team_list.size());
+    EXPECT_EQ((std::vector<short>{0, 0}), config->local_seat_teams);
+    picker_lobby_shutdown();
+
+    ready_screen_for_game_start(*game_screen, &*config);
+    glad_init(false, &*config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    ASSERT_NE(nullptr, find_named_team_member(
+                           game_screen->world(), "Yellow Middle", 1))
+        << "the non-player color still belongs in the mission";
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    ASSERT_NE(nullptr, game_screen->viewob[1]);
+    EXPECT_EQ(0, game_screen->viewob[0]->my_team);
+    EXPECT_EQ(0, game_screen->viewob[1]->my_team);
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+    ASSERT_NE(nullptr, game_screen->viewob[1]->control);
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control->myguy);
+    ASSERT_NE(nullptr, game_screen->viewob[1]->control->myguy);
+    EXPECT_NE(game_screen->viewob[0]->control,
+              game_screen->viewob[1]->control);
+    EXPECT_EQ("Red One", game_screen->viewob[0]->control->myguy->name);
+    EXPECT_EQ("Red Two", game_screen->viewob[1]->control->myguy->name);
+    EXPECT_NE("Yellow Middle",
+              game_screen->viewob[1]->control->myguy->name);
+
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 

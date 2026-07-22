@@ -159,14 +159,72 @@ void apply_lobby_game_start_config(
     }
 
     // A lobby start config is a mission roster, not the private company. For
-    // network play it is the combined roster; for local play it contains only
-    // the teams assigned to active seats. Seed both into the transient slot so
-    // launching or aborting a mission can never replace the full company with
-    // that subset. Wins merge owned progress back into the private save.
+    // network play it is the combined roster; for local play it is an isolated
+    // full-company copy whose deployed members enter regardless of player-seat
+    // color. Seed both into the transient slot so launching or aborting a
+    // mission can never replace the private company. Wins merge owned progress
+    // back into the private save.
     const std::string seed_slot = "netsession";
     if (!save.save(seed_slot))
         LogError("glad_init_lobby_save_failed slot={} reason=write_failed\n",
                  seed_slot);
+}
+
+void apply_lobby_seat_assignments(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig& lobby_config)
+{
+    const short numviews = std::min<short>(
+        current_screen.numviews,
+        static_cast<short>(std::size(current_screen.viewob)));
+    if (numviews <= 0 ||
+        lobby_config.local_seat_teams.size() <
+            static_cast<std::size_t>(numviews))
+    {
+        return;
+    }
+
+    // load_saved_game performs the legacy distinct-color assignment first.
+    // A lobby has an explicit seat map, so release those provisional claims
+    // before applying it. In local Ally mode every entry is Player 1's
+    // preferred team; sequential find_next_control calls then claim distinct
+    // unclaimed heroes from that shared pool.
+    for (short view_index = 0; view_index < numviews; ++view_index)
+    {
+        viewscreen* const view = current_screen.viewob[view_index].get();
+        if (view == nullptr || view->control == nullptr)
+            continue;
+        if (view->control->user() == view_index)
+        {
+            view->control->set_user(-1);
+            view->control->restore_act_type();
+        }
+        view->control = nullptr;
+    }
+
+    const bool spectator = current_screen.save_data.numplayers == 0;
+    for (short view_index = 0; view_index < numviews; ++view_index)
+    {
+        viewscreen* const view = current_screen.viewob[view_index].get();
+        if (view == nullptr)
+            continue;
+
+        view->my_team = lobby_config.local_seat_teams[
+            static_cast<std::size_t>(view_index)];
+        view->control = view->find_next_control();
+        if (spectator || view->control == nullptr)
+            continue;
+
+        if (view->control->user() == -1)
+        {
+            view->control->set_user(static_cast<signed char>(view_index));
+            view->control->set_act_type(ACT_CONTROL);
+            view->control->stats()->clear_command();
+        }
+        if (view_index == 0)
+            current_screen.world().control_hp =
+                view->control->stats()->hitpoints();
+    }
 }
 
 } // namespace
@@ -211,6 +269,8 @@ void glad_init(bool preserve_frame_timing,
         ? std::string()
         : og::data::active_company_slot();
     load_saved_game(default_slot.c_str(), current_screen);
+    if (lobby_config != nullptr)
+        apply_lobby_seat_assignments(*current_screen, *lobby_config);
 #ifdef __EMSCRIPTEN__
     og::platform::web::finalize_jitter_capture_profile_after_load(
         *current_screen);

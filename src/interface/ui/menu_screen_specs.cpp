@@ -2354,9 +2354,13 @@ void base_camp_draw_content(void* screen_state)
         game->fastbox(62, y + 1, 8, 8, team_color);
         const char team_number[] = {
             static_cast<char>('1' + team), '\0'};
-        // The 4x6 digit cell sits at (64,y+3), visually centered in the
-        // chip's 8x8 colored face rather than leaning into its top-left.
-        mytext.write_xy_flat(64, y + 3, team_number, PURE_BLACK, 1);
+        // Digits 2-4 have four opaque columns and center exactly at x=64.
+        // The old font's "1" has only three; an even-width face has no exact
+        // integer center for it, so bias that lone glyph one pixel right
+        // instead of leaving it visibly left-heavy.
+        const int team_number_x = team == 0 ? 65 : 64;
+        mytext.write_xy_flat(team_number_x, y + 3, team_number,
+                             PURE_BLACK, 1);
 
         // NAME and CLASS are high-contrast flat ink: true black when
         // deployed, grey when benched. Family identity moves into a compact
