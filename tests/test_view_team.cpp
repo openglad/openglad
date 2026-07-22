@@ -1421,6 +1421,70 @@ TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
     save.reset();
 }
 
+// Team chips retain the four gameplay ramps and overlay their one-based team
+// number. Pin every glyph pixel so 1-4 cannot disappear into the colored face
+// or regress to the shaded font treatment used elsewhere.
+TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("TEAM{}", team + 1);
+        member->teamnum = static_cast<short>(team);
+        save.team_list[team] = std::move(member);
+    }
+    save.team_size = SCORE_TEAM_COUNT;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    constexpr int label_x = 63;
+    constexpr int first_label_y = 47;
+    constexpr int row_pitch = 14;
+    for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
+        const unsigned char label = static_cast<unsigned char>('1' + team);
+        const unsigned char* const glyph =
+            font.letters->data.get() + static_cast<std::size_t>(label) * stride;
+        const int team_color = team * 16 + 40;
+        for (Sint32 row = 0; row < font.sizey; ++row) {
+            for (Sint32 col = 0; col < font.sizex; ++col) {
+                int actual = -1;
+                output->get_pixel(label_x + col,
+                                  first_label_y + row_pitch * team + row,
+                                  &actual);
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                EXPECT_EQ(source == 0 ? team_color : PURE_BLACK, actual)
+                    << "team " << team + 1 << " chip pixel " << col << ","
+                    << row;
+            }
+        }
+    }
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
 // ---------------------------------------------------------------------------
 // §2.5 MP presentation (stage mp-columns): the merged display list splits
 // into own rows (private-save authority, editable) and foreign rows

@@ -2503,3 +2503,18 @@ retired View Team screen without changing its newer team and deploy controls.
   independently legible.
 - Unit coverage pins all playable families to the original formula; the solo,
   paged, host, joiner, and degraded-link captures carry the rendered result.
+
+### 9.22 UX round 12 (2026-07-22) — crisp identity text and numbered teams [FINAL]
+
+The restored roster colors stay, with two small legibility refinements.
+
+- Base Camp draws family-colored `NAME` and `CLASS` glyphs in one flat palette
+  color. This removes the font asset's dark shade ramp from the top pixel row;
+  other menus retain the original shaded font rendering.
+- Every TEAM square overlays its player-facing number, `1` through `4`, in
+  flat PURE_BLACK. The square keeps the gameplay ramp and its existing solo
+  cycle/network read-only behavior.
+- Pixel-level coverage proves that every opaque flat-text glyph pixel uses the
+  requested color and that all four team squares contain the correct digit on
+  the correct team-color face. The five populated Base Camp captures carry
+  the rendered result.

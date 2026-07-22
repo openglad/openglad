@@ -54,6 +54,37 @@ TEST(TextRender, text_write_xy_color_to_buffer)
 }
 
 
+TEST(TextRender, text_write_xy_flat_recolors_every_opaque_glyph_pixel)
+{
+    screen* const output = og::runtime::current_session->myscreen_;
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+
+    constexpr Sint32 x = 10;
+    constexpr Sint32 y = 40;
+    constexpr unsigned char background = 13;
+    constexpr unsigned char ink = 64;
+    output->fastbox(x, y, font.sizex, font.sizey, background);
+    ASSERT_EQ(1, font.write_xy_flat(x, y, "M", ink, 1));
+
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    const unsigned char* const glyph =
+        font.letters->data.get() + static_cast<std::size_t>('M') * stride;
+    for (Sint32 row = 0; row < font.sizey; ++row) {
+        for (Sint32 col = 0; col < font.sizex; ++col) {
+            int actual = -1;
+            output->get_pixel(x + col, y + row, &actual);
+            const unsigned char source =
+                glyph[static_cast<std::size_t>(row * font.sizex + col)];
+            EXPECT_EQ(source == 0 ? background : ink, actual)
+                << "glyph pixel " << col << "," << row;
+        }
+    }
+}
+
+
 TEST(TextRender, text_write_xy_no_color)
 {
     og::runtime::current_session->myscreen_->text_normal.write_xy(10, 30, "No color text");
@@ -216,4 +247,3 @@ TEST(TextRender, text_big_write_y)
 {
     og::runtime::current_session->myscreen_->text_big.write_y(160, "Big centered");
 }
-

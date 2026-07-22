@@ -145,8 +145,9 @@ bool seed_company(const std::string &slot, const std::string &name,
   return seed_company_with_roster(slot, name, last_played, {});
 }
 
-// The user's playtest shape: soldiers in rows 0-1 (the F6 black-top repro),
-// vivid families later, mixed benched rows (F7 inconsistency repro).
+// The user's playtest shape: soldiers in rows 0-1 (the former F6 black-top
+// regression case), vivid families later, mixed benched rows (F7
+// inconsistency repro).
 std::vector<RosterSeed> playtest_roster() {
   return {
       {"GORT", FAMILY_SOLDIER, 3, true},   {"HALDOR", FAMILY_SOLDIER, 2, true},

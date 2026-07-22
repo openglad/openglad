@@ -2326,21 +2326,26 @@ void base_camp_draw_content(void* screen_state)
 
         // The chip now communicates and changes the character's team. Match
         // the in-game team ramp (team*16+40), clamping defensive save input
-        // to the four persisted score teams. Solo players can click it to
-        // cycle; network lobby assignment keeps the same indicator read-only.
+        // to the four persisted score teams, and label the four saved values
+        // as the player-facing teams 1..4. Solo players can click it to cycle;
+        // network lobby assignment keeps the same indicator read-only.
         const int team = std::clamp(static_cast<int>(member->teamnum), 0,
                                     static_cast<int>(SCORE_TEAM_COUNT) - 1);
         const unsigned char team_color =
             static_cast<unsigned char>(team * 16 + 40);
         game->fastbox(61, y, 10, 10, BLACK);
         game->fastbox(62, y + 1, 8, 8, team_color);
+        const char team_number[] = {
+            static_cast<char>('1' + team), '\0'};
+        mytext.write_xy_flat(63, y + 2, team_number, PURE_BLACK, 1);
 
-        // Restore the original View Team identity treatment exactly: NAME
-        // and CLASS use ((family + 1) << 4) & 255. The family color remains
-        // visible when benched, while non-identity metadata keeps Base Camp's
-        // deployed/benched contrast. TEAM remains the separate gameplay-team
-        // ramp above; these two colors intentionally communicate different
-        // facts.
+        // Restore the original View Team identity treatment: NAME and CLASS
+        // use ((family + 1) << 4) & 255. Flatten the font's internal shade
+        // ramp here so its darkest top pixels do not roughen the colored
+        // letters. The family color remains visible when benched, while
+        // non-identity metadata keeps Base Camp's deployed/benched contrast.
+        // TEAM remains the separate gameplay-team ramp above; these two
+        // colors intentionally communicate different facts.
         const unsigned char family_color =
             base_camp_family_text_color(member->family);
         const unsigned char status_color =
@@ -2355,18 +2360,18 @@ void base_camp_draw_content(void* screen_state)
                                 status_color, 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
-            mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
-                            family_color, 1);
+            mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
+                                 row.name.c_str(), family_color, 1);
             mytext.write_xy(kBaseCampNetCompanyColumnX, y + 2,
                             row.company.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampNetLevelColumnX, y + 2,
                             row.level.c_str(), status_color, 1);
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
-            mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
-                            family_color, 1);
-            mytext.write_xy(kBaseCampSoloClassColumnX, y + 2, row.cls.c_str(),
-                            family_color, 1);
+            mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
+                                 row.name.c_str(), family_color, 1);
+            mytext.write_xy_flat(kBaseCampSoloClassColumnX, y + 2,
+                                 row.cls.c_str(), family_color, 1);
             mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
                             row.level.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, row.exp.c_str(),

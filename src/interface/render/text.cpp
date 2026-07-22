@@ -27,6 +27,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 static PixieData letters1;
 static PixieData letters_big;
@@ -307,6 +308,42 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 		x, y, sizex, sizey, 0, 0,
 		output->canvas_w(), output->canvas_h(), char_span, color);
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
+	return 1;
+}
+
+Sint32 text::write_xy_flat(Sint32 x, Sint32 y, std::string_view string,
+                           unsigned char color, short to_buffer)
+{
+	if (sizex <= 0 || sizey <= 0)
+		return 0;
+
+	screen* const output = og::runtime::current_session->myscreen_;
+	std::vector<unsigned char> flat_glyph(
+		static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey));
+	for (std::size_t i = 0; i < string.size(); ++i)
+	{
+		auto char_span = safe_glyph_span(
+			letters, static_cast<unsigned char>(string[i]));
+		if (char_span.empty())
+			continue;
+		std::transform(char_span.begin(), char_span.end(), flat_glyph.begin(),
+		               [](unsigned char pixel) {
+			               return pixel == 0 ? 0 : 255;
+		               });
+
+		const Sint32 xi = x + static_cast<Sint32>(i) *
+			static_cast<Sint32>(sizex + 1);
+		if (to_buffer)
+		{
+			output->walkputbuffertext(
+				xi, y, sizex, sizey, 0, 0,
+				output->canvas_w(), output->canvas_h(), flat_glyph, color);
+		}
+		else
+		{
+			output->putdatatext(xi, y, sizex, sizey, flat_glyph, color);
+		}
+	}
 	return 1;
 }
 
