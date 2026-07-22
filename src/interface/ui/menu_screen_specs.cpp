@@ -2584,17 +2584,9 @@ constexpr int kNameEntryValueIndex = 1;
 constexpr int kNameEntryRerollIndex = 2;
 constexpr int kNameEntryAcceptIndex = 3;
 
-// 320-wide canvas center, which also centers the strip (48,78,224,16).
+// 320-wide canvas center. The name face mirrors name_guy's 132x22 character
+// naming box, centered here instead of living in the train screen's right rail.
 constexpr int kNameEntryCenterX = 160;
-
-// §9.3 sunken input field: the name strip's face is stamped PURE_BLACK every
-// frame (the §2.6 color-binding mechanism — face only, the grey bevel edges
-// remain), reading as an inset DOS text field behind the WHITE name. Fixes
-// the recorded WHITE-on-face-13 contrast fail.
-unsigned char name_entry_value_face_color(const MenuLabelContext& /*context*/)
-{
-    return PURE_BLACK;
-}
 
 constexpr MenuButtonSpec kNameEntryRows[] = {
     // BACK cancels — nothing is written (§2.2). Escape hotkey.
@@ -2602,14 +2594,14 @@ constexpr MenuButtonSpec kNameEntryRows[] = {
      .x = 10, .y = 170, .w = 44, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryBackIndex,
      .nav = {.up = kNameEntryRerollIndex}},
-    // The editable name strip. Empty label: the current name is drawn centered
-    // over it in the content pass (like the begin_new_game art face). y+h = 94
-    // <= 100, so a web soft keyboard never covers it (§2.0 U5).
+    // The editable name box uses the same stock-grey face and dimensions as
+    // name_guy's "NAME THIS CHARACTER" box. Its two text lines are drawn in
+    // the content pass. y+h = 92 <= 100, so a web soft keyboard never covers
+    // it (§2.0 U5).
     {.id = "company_name_value", .label = "",
-     .x = 48, .y = 78, .w = 224, .h = 16,
+     .x = 94, .y = 70, .w = 132, .h = 22,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryValueIndex,
-     .nav = {.down = kNameEntryRerollIndex},
-     .color = &name_entry_value_face_color},
+     .nav = {.down = kNameEntryRerollIndex}},
     {.id = "company_name_reroll", .label = "REROLL",
      .x = 86, .y = 102, .w = 68, .h = 14,
      .action = ButtonAction::MenuSpecRow, .arg = kNameEntryRerollIndex,
@@ -2626,13 +2618,13 @@ void name_entry_draw_content(void* screen_state)
 {
     const NameEntryState* st = static_cast<const NameEntryState*>(screen_state);
     screen* game = og::runtime::current_session->myscreen_;
-    game->text_normal.write_xy_center(kNameEntryCenterX, 30, YELLOW, "%s",
-                                      "FOUND YOUR COMPANY");
+    // Match name_guy's classic modal exactly: prompt at face+2,+4 and the
+    // editable value eight pixels below it, both left-aligned DARK_BLUE.
+    game->text_normal.write_xy(96, 74, "FOUND YOUR COMPANY:", DARK_BLUE, 1);
     std::string name = st != nullptr ? st->name : std::string();
     if (name.size() > kCompanyNameMaxLen)
         name.resize(kCompanyNameMaxLen);
-    game->text_normal.write_xy_center(kNameEntryCenterX, 82, WHITE, "%s",
-                                      name.c_str());
+    game->text_normal.write_xy(96, 82, name.c_str(), DARK_BLUE, 1);
     // §9.3: the slug preview is gone (F2 — the filename teaches nothing);
     // the freed slot carries a GREY hint on a U2 black strip teaching the
     // edit affordance instead (the secondary voice).
@@ -2661,7 +2653,7 @@ Sint32 name_entry_on_spec_row(int row, void* screen_state)
         release_mouse();
         std::optional<std::string> edited =
             game->text_normal.input_string_value(
-                52, 82, static_cast<short>(kCompanyNameMaxLen + 1),
+                96, 82, static_cast<short>(kCompanyNameMaxLen + 1),
                 st->name.c_str());
         grab_mouse();
         if (edited.has_value()) {

@@ -162,8 +162,8 @@ void picker_set_train_seed_slot(int slot)
 // machine's ready server-side — §4.3), optimistically drop the local ready
 // flag (a no-op for solo/local lobby clients), and autosave the company
 // (networked lobbies take the [SAVE-F1] owner-preserving merge write).
-// Called from every roster-mutation site: the deploy toggle, hire, train
-// accept, and rename.
+// Called from every roster-mutation site: deploy toggle, hire, train accept,
+// TRAIN/Base Camp team change, and rename.
 void picker_base_camp_after_roster_mutation()
 {
     picker_lobby_sync_roster_from_save();

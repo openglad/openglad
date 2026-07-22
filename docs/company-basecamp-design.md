@@ -530,30 +530,30 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 ### 2.2 New-Company name entry (new screen)
 
 ```
-|                 FOUND YOUR COMPANY               (text, y=30, YELLOW, centered)  |
-|      [        IRON KETTLE BAND               ]   name strip (48,78,224,16)      |
+|               [ FOUND YOUR COMPANY: ]          classic name box (94,70..226,92) |
+|               [ IRON KETTLE BAND   ]          DARK_BLUE, left-aligned           |
 |            [ REROLL ]        [ ACCEPT ]          (y=102)                        |
-|               file: iron-kettle-band.gtl         (text, y=126, GREY)            |
+|               CLICK THE NAME TO EDIT IT          (text, y=126, GREY)            |
 |  [BACK]                                          (10,170,44,20)                 |
 ```
 
 | idx | id | rect | label | budget |
 |---|---|---|---|---|
 | 0 | back | (10,170,44,20) | `BACK` | 4/6 — cancel, nothing written |
-| 1 | company_name_value | (48,78,224,16) | current name ≤ 18ch | 18/36 |
+| 1 | company_name_value | (94,70,132,22) | prompt + current name ≤ 18ch | 18/21 |
 | 2 | company_name_reroll | (86,102,68,14) | `REROLL` | 6/10 |
 | 3 | company_name_accept | (166,102,68,14) | `ACCEPT` | 6/10 |
 
 - Generator: pure `og::ui::generate_company_name(IRandom&)` in picker_common,
   `<ADJ> <NOUN> <GROUP>` word banks, **hard cap 18 chars** (never truncates on any later
   surface: 18ch fits the Load list name column, the main-menu strip, and the base-camp
-  header). Screen opens pre-filled. Click strip → `input_string_value(52,82,18,current)`;
-  empty → re-generate. Field at y=78+16=94 ≤ 100 — soft-keyboard compliant (U5).
-- Slug preview `file: <slug>.gtl` teaches the display-name/filename split (spec 2); slug
-  via §3.4's `derive_company_slot`.
+  header). Screen opens pre-filled. The box matches character naming/renaming:
+  stock-grey 132×22 face, DARK_BLUE prompt at (96,74), and DARK_BLUE editable
+  value at (96,82). Click it → `input_string_value(96,82,19,current)`; empty →
+  re-generate. Field at y=70+22=92 ≤ 100 — soft-keyboard compliant (U5).
 - ACCEPT: writes the company file immediately (creation IS the first autosave), stamps
   `save_name`, then existing flow: campaign intro → base camp. BACK: nothing created.
-- Nav: strip{down 2}; reroll{up 1, right 3, down 0}; accept{up 1, left 2, down 0};
+- Nav: name box{down 2}; reroll{up 1, right 3, down 0}; accept{up 1, left 2, down 0};
   back{up 2}. Initial highlight: ACCEPT. Escape = back.
 - Terminals: same screen via TerminalMenuModel prompts (curses `Menu::prompt`, text
   `read_line`) over the same generator + slug helpers.
@@ -2452,3 +2452,24 @@ content no longer crowd one another.
 - Pins cover the new exact table, 8/7 two-page visibility split, placeholder
   bevels, keyboard reachability, and a full flow that flips an 11-company list
   and opens the ninth company from page 2 row 0.
+
+### 9.20 UX round 10 (2026-07-22) — shared naming and team-setting grammar [FINAL]
+
+Two controls that edit the same kind of data now use the same visual and state
+grammar instead of presenting independent conventions.
+
+- The New Company name input replaces the §9.3 black centered strip and
+  floating yellow title with the character naming/renaming modal's exact
+  stock-grey **132×22** face. Centered at `(94,70)..(226,92)`, it draws
+  `FOUND YOUR COMPANY:` at `(96,74)` and the editable value at `(96,82)`,
+  both left-aligned DARK_BLUE. The 18-character company cap fits the face;
+  REROLL, ACCEPT, BACK, hint, navigation, and generator behavior are unchanged.
+- Base Camp's TEAM chip and TRAIN's `Playing on Team N` now cycle the same
+  saved roster `guy::teamnum` through `cycle_guy_team`. A TRAIN click updates
+  both its working copy and the roster immediately, then runs the shared
+  lobby-sync/ready-clear/autosave mutation tail. Consequently BACK no longer
+  makes an already-displayed team choice disappear; stat edits remain pending
+  until ACCEPT as before.
+- Pins cover the new name-box geometry and stock face, plus immediate
+  TRAIN-to-roster synchronization before ACCEPT. The existing Base Camp team
+  chip and autosave tests continue to cover the opposite entry point.

@@ -1755,7 +1755,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
     g_start_game_requested = false;
 }
 
-TEST(PickerFuncs, train_team_change_persists_after_accept)
+TEST(PickerFuncs, train_team_change_immediately_syncs_saved_roster)
 {
     picker_lobby_shutdown();
 
@@ -1779,7 +1779,7 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
     save.m_totalcash[0] = 10000;
     save.m_totalcash[1] = 10000;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->teamnum = 2;
     save.team_list[0]->name = "Trainer";
 
     og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] =
@@ -1788,17 +1788,24 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
 
     og::ui::TrainSession session(save);
     pks().train_session = &session;
+    EXPECT_EQ(2, static_cast<int>(session.working_copy().teamnum))
+        << "TRAIN must start from Base Camp's saved TEAM value";
     og::runtime::current_session->current_guy_ =
         std::make_unique<guy>(session.working_copy());
     og::runtime::current_session->current_team_num_ = session.working_copy().teamnum;
 
     ASSERT_EQ(4, static_cast<int>(change_teamnum(1)));
-    EXPECT_EQ(1, static_cast<int>(session.working_copy().teamnum));
-    EXPECT_EQ(1, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+    EXPECT_EQ(3, static_cast<int>(session.working_copy().teamnum));
+    EXPECT_EQ(3, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum))
+        << "Base Camp's TEAM column must see the TRAIN choice immediately";
+    EXPECT_TRUE(trace_contains("train", "team slot=0 team=3"));
 
+    // ACCEPT remains harmless for the already-synchronized team setting;
+    // stat changes still use the TrainSession's transactional path.
     ASSERT_TRUE(session.accept(true));
     picker_lobby_sync_from_save();
-    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum));
 
     picker_lobby_shutdown();
     pks().train_session = old_train_session;

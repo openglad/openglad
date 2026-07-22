@@ -2708,25 +2708,44 @@ Sint32 set_difficulty()
 
 Sint32 change_teamnum(Sint32 arg)
 {
-   // Change the team number of the current guy
+   // Change the team number of the current guy. TRAIN and Base Camp share the
+   // saved roster member as their source of truth: the Base Camp TEAM chip
+   // already cycles that member directly, so TRAIN must not leave its visible
+   // "Playing on Team" choice stranded in the session's temporary stat copy.
    Sint32 current_team;
 
    // What is our current team number?
    if (!og::runtime::current_session->current_guy_)
        return 0;
-   if (!picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
-       return 0;
-   current_team = og::runtime::current_session->current_guy_->teamnum;
 
-   // We can be from team 0 (default) to team 3 .. make sure
-   // we don't exceed this range.
-   current_team += arg;
-   current_team = (current_team % 4 + 4) % 4;
+   bool roster_changed = false;
+   if (pks().train_session && !pks().train_session->empty()) {
+       const int slot = pks().train_session->current_slot();
+       if (!picker_lobby_save_slot_editable(slot))
+           return 0;
+       SaveData& save = og::runtime::current_session->myscreen_->save_data;
+       const short old_team =
+           save.team_list[static_cast<std::size_t>(slot)]->teamnum;
+       const short cycled = og::ui::cycle_guy_team(save, slot, arg);
+       if (cycled < 0)
+           return 0;
+       current_team = cycled;
+       roster_changed = cycled != old_team;
+       pks().train_session->set_team(current_team);
+       TRACE("train", "team slot=%d team=%d", slot, current_team);
+   } else {
+       if (!picker_lobby_save_slot_editable(
+               og::runtime::current_session->editguy_))
+           return 0;
+       current_team = og::runtime::current_session->current_guy_->teamnum;
+
+       // We can be from team 0 (default) to team 3 .. make sure
+       // we don't exceed this range.
+       current_team += arg;
+       current_team = (current_team % 4 + 4) % 4;
+   }
 
    og::runtime::current_session->current_team_num_ = static_cast<short>(current_team);
-
-   if (pks().train_session && !pks().train_session->empty())
-       pks().train_session->set_team(current_team);
 
    // Set our team number ..
    og::runtime::current_session->current_guy_->teamnum = static_cast<short>(current_team);
@@ -2734,6 +2753,8 @@ Sint32 change_teamnum(Sint32 arg)
    // Update our button display
    if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] != nullptr)
        og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = std::format("Playing on Team {}", current_team + 1);
+   if (roster_changed)
+       picker_base_camp_after_roster_mutation();
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);

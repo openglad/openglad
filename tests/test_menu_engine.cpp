@@ -826,17 +826,11 @@ TEST(MenuEngine, name_entry_spec_shape_and_nav)
     EXPECT_EQ("company_name_accept", buttons[highlighted].id)
         << "initial highlight should be ACCEPT (§2.2)";
 
-    // §9.3 sunken input field: the name strip (row 1) carries the PURE_BLACK
-    // face binding (face only — the engine stamps the live surface every
-    // frame; the grey bevel edges remain). The other rows keep stock faces.
-    {
-        og::ui::MenuLabelContext face_context;
-        ASSERT_NE(nullptr, spec_rows[1]->color);
-        EXPECT_EQ(PURE_BLACK, spec_rows[1]->color(face_context));
-        for (const int plain : {0, 2, 3})
-            EXPECT_EQ(nullptr, spec_rows[static_cast<std::size_t>(plain)]->color)
-                << "only the name strip is a sunken field";
-    }
+    // §9.20: the name box uses the stock grey button face, matching the
+    // character naming/renaming modal. No row carries a color override.
+    for (int i = 0; i < count; ++i)
+        EXPECT_EQ(nullptr, spec_rows[static_cast<std::size_t>(i)]->color)
+            << spec_rows[static_cast<std::size_t>(i)]->id;
 
     for (int i = 0; i < count; ++i)
         for (int j = i + 1; j < count; ++j)

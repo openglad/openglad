@@ -270,8 +270,8 @@ TEST(MenuEnginePins, mainmenu_exact_table)
 // ---------------------------------------------------------------------------
 // §2.2 new-company name entry: a Layer-F engine screen. All four rows dispatch
 // through the single generic ButtonAction::MenuSpecRow (arg = row ordinal).
-// BACK carries the Escape hotkey; the strip label is empty (the current name
-// is drawn in the content pass); nav is the §2.2 reference graph.
+// BACK carries the Escape hotkey; the name-box label is empty (its prompt and
+// value are drawn in the content pass); nav is the §2.2 reference graph.
 // ---------------------------------------------------------------------------
 
 TEST(MenuEnginePins, name_entry_exact_table)
@@ -279,7 +279,7 @@ TEST(MenuEnginePins, name_entry_exact_table)
     static const ExpectedButton kExpected[] = {
         {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20,
          button_action_id(ButtonAction::MenuSpecRow), 0, MenuNav{.up = 2}},
-        {"company_name_value", "", KEYSTATE_UNKNOWN, 48, 78, 224, 16,
+        {"company_name_value", "", KEYSTATE_UNKNOWN, 94, 70, 132, 22,
          button_action_id(ButtonAction::MenuSpecRow), 1, MenuNav{.down = 2}},
         {"company_name_reroll", "REROLL", KEYSTATE_UNKNOWN, 86, 102, 68, 14,
          button_action_id(ButtonAction::MenuSpecRow), 2,
@@ -294,10 +294,10 @@ TEST(MenuEnginePins, name_entry_exact_table)
                       static_cast<int>(std::size(kExpected)), "name_entry");
 
     // §2.0 U5 soft-keyboard lint: an in-place-editable field must sit with
-    // y+h <= 100 so a web soft keyboard never covers it. The strip (row 1) is
+    // y+h <= 100 so a web soft keyboard never covers it. The box (row 1) is
     // the editable field; the in-place editor opens at y=82 inside it.
     EXPECT_LE(buttons[1].y + buttons[1].sizey, 100)
-        << "name strip must satisfy the soft-keyboard lint (y+h <= 100)";
+        << "name box must satisfy the soft-keyboard lint (y+h <= 100)";
 }
 
 // ---------------------------------------------------------------------------
