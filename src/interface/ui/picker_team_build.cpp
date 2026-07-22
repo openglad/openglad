@@ -1704,7 +1704,7 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     Sint32 linesdown = 0;
     int line_height = 10;
 
-    unsigned char showcolor = STAT_COLOR;
+    unsigned char showcolor = STAT_COLOR; // normally STAT_COLOR or STAT_CHANGED
 
     struct { const char* label; short value; } hire_stats[] = {
         {"STR:",  og::runtime::current_session->current_guy_->strength},
@@ -1981,7 +1981,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 	        else
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
-        // Display our team setting ..
+        // Update our team-number display ..
         og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = og::runtime::current_session->message_;
         og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->vdisplay();

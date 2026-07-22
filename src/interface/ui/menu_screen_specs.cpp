@@ -1763,6 +1763,9 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // Base Camp finally cashes them as name-tap training and the HIRE command:
 //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
 //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
+// Its 2002 header captions survive here too: "View team members", "Load a
+// team", and "Save a team." View became this roster, Load became the Company
+// List, and Save became automatic.
 
 // The company-list seam pattern: the per-frame rewire reads this file-static
 // pointer; run_menu_screen's screen_state points at the SAME object.

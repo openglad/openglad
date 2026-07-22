@@ -188,6 +188,8 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
         // The permadeath rule is a lobby-negotiated MATCH setting: read it from
         // the session save (which carries the negotiated flag), never from
         // whatever the on-disk copy last stored.
+        // Deliberately persisted below with the rest of the merged save (like
+        // the campaign cursor), so the company reflects the last session's rules.
         merged.keep_fallen_heroes = session.keep_fallen_heroes;
         merged.merge_owned_guys_from(world.oblist, own_player_indices);
 

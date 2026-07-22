@@ -390,7 +390,8 @@ bool SaveData::load(const std::string& filename)
 		READ_OR_FAIL(&temp_ts, 4, 1); // total shots
 		READ_OR_FAIL(&temp_teamnum, 2, 1); // team number
 
-		// And the filler. Version 14+ reinterprets the first byte as the
+		// "And the filler," as the 2002 reader put it. Version 14+
+		// reinterprets the first byte as the
 		// mission-deploy flag (guy offset +50); older files hold filler.
 		temp_deployed = 1;
 		if (temp_version >= 14)
@@ -811,8 +812,9 @@ bool SaveData::save(const std::string& filename)
         last_io_error_ = SaveDataIoError::OpenWriteFailed;
         return false;
     }
-	// (v14 dropped the 'GTL' filler array: both former RESERVED ranges are
-	// now written as real fields + zero-filled reserved bytes; see §3.1)
+	// The 2002 writer filled RESERVED with literal "GTLGTLGTL..." bytes and
+	// labeled the array simply "for RESERVED." v14 writes real fields plus
+	// zero-filled reserved bytes instead (see §3.1).
 	std::array<char, 41> savedgame;
 	std::fill_n(savedgame.data(), savedgame.size(), '\0');
 	std::array<char, 41> temp_campaign;

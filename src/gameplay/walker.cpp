@@ -1709,6 +1709,8 @@ bool walker::death()
 			// does, the legacy rule applies (any named team-0 living).
 			// (The charm exemption lives in the legacy branch only: a
 			// protected walker stays mission-critical even while charmed.)
+			// The 2002 inline gloss was simply "our team"; selectable roster
+			// colors make that world.my_team, never hardcoded red or myguy.
 			if (   (current_game->world->type & SCEN_TYPE_SAVE_ALL)
 			        && !summoned()               // conjured ammunition
 			        && (current_game->world->has_save_all_protected()
@@ -2232,6 +2234,12 @@ std::int32_t walker::is_friendly(const walker *target) const
 		headguy = headguy->owner();
 	headtarget = headguy;
 
+	// The 2002 code narrated its old split as "Now, if we or the target don't
+	// contain a 'myguy' pointer, then we don't care about allied_mode," then
+	// concluded that in friendly mode "everyone with a 'myguy' pointer ... is
+	// friendly to each other." Those lines remain as history; Company Base Camp
+	// made the saved-character test an invalid alliance rule.
+	//
 	// Team color is the single combat-alliance authority. `myguy` means that
 	// a walker persists in a company save; it must never make different colors
 	// friendly. Likewise, PVP Ally/Enemy controls how player seats are assigned

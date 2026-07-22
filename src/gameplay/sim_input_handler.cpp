@@ -55,8 +55,10 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         }
     }
 
-    // A seat may never fall through to another team. A foreign company hero
-    // is an enemy in the mission, not an emergency replacement body.
+    // The 2002 third pass announced itself with the wonderfully blunt
+    // "Now try for ANYONE who's left alive." Keep the line as history, not
+    // behavior: a seat may never fall through to another team. A foreign
+    // company hero is an enemy, not an emergency replacement body.
     TRACE("sim_input", "found no one");
     return nullptr;
 }
