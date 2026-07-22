@@ -1320,14 +1320,14 @@ void classic_run_death_scan(GameWorld& world)
 // The classic-effective team of a corpse / queue entry (schedule_respawn's
 // charm-break rule), tested for hostility the way the completion check's
 // is_friendly_to_team does: AI friendliness is a strict team match; heroes
-// are additionally friendly to team 0 in allied mode.
+// are friendly to every player roster color in allied mode.
 [[nodiscard]] bool classic_team_hostile(const GameWorld& world,
                                         std::uint8_t team, bool is_hero)
 {
     if (static_cast<short>(team) == world.my_team)
         return false;
     if (is_hero && world.allied_mode != 0)
-        return world.my_team != 0;
+        return false;
     return true;
 }
 

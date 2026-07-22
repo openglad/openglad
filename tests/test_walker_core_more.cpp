@@ -900,14 +900,23 @@ TEST(WalkerCoreMore, walker_round7a_death_guard_and_friendliness_team_paths)
 
     world.allied_mode = 1;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    ASSERT_EQ(1, (int)w->is_friendly_to_team(0)) << "hired unit in allied mode should be friendly to team 0";
-    ASSERT_EQ(0, (int)w->is_friendly_to_team(3)) << "hired unit in allied mode should reject non-zero teams";
+    for (unsigned char team = 0; team < 4; ++team)
+        ASSERT_EQ(1, (int)w->is_friendly_to_team(team))
+            << "hired allied unit must stay friendly on roster color "
+            << static_cast<int>(team);
+    w->clear_myguy();
+    w->set_team_num(0);
+    for (unsigned char team = 0; team < 4; ++team)
+        ASSERT_EQ(1, (int)w->is_friendly_to_team(team))
+            << "authored red allies must stay friendly to roster color "
+            << static_cast<int>(team);
 
     // Explicit has_myguy==0 path in is_friendly.
     walker* other = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(other != nullptr) << "other created";
     if (other)
     {
+        w->set_team_num(2);
         other->set_team_num(2);
         other->clear_myguy();
         w->clear_myguy();
@@ -1054,8 +1063,10 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
     // is_friendly_to_team owner-chain + hired/allied branch.
     actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     actor_root->set_team_num(3);
-    ASSERT_EQ(1, (int)actor->is_friendly_to_team(0)) << "hired allied unit should be friendly to team 0";
-    ASSERT_EQ(0, (int)actor->is_friendly_to_team(2)) << "hired allied unit should reject non-zero teams";
+    for (unsigned char team = 0; team < 4; ++team)
+        ASSERT_EQ(1, (int)actor->is_friendly_to_team(team))
+            << "owner-chain allied unit must stay friendly on roster color "
+            << static_cast<int>(team);
 
     // set_difficulty default branch path for non-generator orders.
     actor->set_team_num(1);

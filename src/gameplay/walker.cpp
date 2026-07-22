@@ -2312,15 +2312,16 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	else
 		has_myguy = 1;
 
-	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
-	// If so, then our team number must match.
-	if (query_allied_mode() == 0 || has_myguy == 0)
+	// Enemy mode is a strict team match. In allied mode, every hired hero is
+	// friendly regardless of its selected roster color, and authored team 0
+	// remains the friendly scenario faction. This keeps changing a hero from
+	// red to green/blue/yellow from turning allies into level-completion foes.
+	if (query_allied_mode() == 0)
 	{
 		return headus->team_num() == team;
 	}
-	
-	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
-	return (has_myguy == 1 && team == 0);
+
+	return has_myguy == 1 || headus->team_num() == 0;
 }
 
 std::string_view entity_display_name(const walker* w, std::string_view fallback)

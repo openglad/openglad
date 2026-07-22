@@ -107,7 +107,7 @@ void apply_lobby_game_start_config(
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.cross_control = static_cast<short>(config_save.cross_control);
-    if (save.allied_mode != 0)
+    if (lobby_config.is_networked && save.allied_mode != 0)
     {
         save.my_team = 0;
     }

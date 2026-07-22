@@ -125,9 +125,12 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
 }
 
 std::int16_t gameplay_team_for_mode(std::int16_t allied_mode,
-                                    std::int16_t team) noexcept
+                                    std::int16_t team,
+                                    bool preserve_roster_team) noexcept
 {
-    return allied_mode != 0 ? kSharedAlliedGameplayTeam : team;
+    return allied_mode != 0 && !preserve_roster_team
+        ? kSharedAlliedGameplayTeam
+        : team;
 }
 
 std::string default_player_name(std::size_t ordinal)
@@ -1132,7 +1135,8 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
             LobbyCharacterSlot gameplay_slot = *slot.slot;
             gameplay_slot.character.teamnum = gameplay_team_for_mode(
                 equivalent.allied_mode,
-                gameplay_slot.character.teamnum);
+                gameplay_slot.character.teamnum,
+                local_session_);
             gameplay_slot.owner_player_index =
                 state_.players[slot.player_order].player_index;
             gameplay_slot.owner_save_slot = slot.slot_index;
@@ -1147,7 +1151,8 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         compacted.slot_index = static_cast<std::uint8_t>(index);
         compacted.character.teamnum = gameplay_team_for_mode(
             equivalent.allied_mode,
-            compacted.character.teamnum);
+            compacted.character.teamnum,
+            local_session_);
         compacted.owner_player_index =
             state_.players[ordered_slots[index].player_order].player_index;
         compacted.owner_save_slot = ordered_slots[index].slot_index;
@@ -1173,7 +1178,8 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
                 .local_slot = static_cast<std::uint8_t>(seat_order),
                 .player_index = seat.player_index,
                 .team = gameplay_team_for_mode(state_.settings.allied_mode,
-                                               seat.team),
+                                               seat.team,
+                                               local_session_),
             });
         }
     }

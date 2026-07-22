@@ -105,10 +105,10 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
             // Viewer-relative mirror of the engine's classic_team_hostile
             // rule: entry.team is the corpse's true (charm-broken) team
             // recorded at schedule time; a hero corpse (kind 0) is
-            // additionally friendly to a team-0 viewer in allied mode.
+            // friendly to every player roster color in allied mode.
             if (entry.team == viewer_team)
                 continue;
-            if (entry.kind == 0 && world.allied_mode != 0 && viewer_team == 0)
+            if (entry.kind == 0 && world.allied_mode != 0)
                 continue;
             pending_respawn = static_cast<short>(pending_respawn + 1);
             fold_min(entry.ticks_left);

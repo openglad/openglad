@@ -325,10 +325,12 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 
     if (spec.enter == EnterTransition::FadeAroundEntry) {
         // The legacy team-build entry, verbatim: fade the previous screen
-        // out, compose the cold first frame — background and buttons only,
-        // no content pass and no highlight — and fade it in (fadeblack
-        // presents the buffer itself; the first full frame follows in the
-        // loop, after the level-reload guard).
+        // out, compose the cold first frame, and fade it in (fadeblack
+        // presents the buffer itself; the first highlighted frame follows in
+        // the loop, after the level-reload guard). Content must be present in
+        // this compose: Base Camp's roster ink is a content hook while its
+        // deploy X is a button, and splitting them across the fade makes the
+        // control pop in as the first full frame replaces the partial one.
         screen* scr = og::runtime::current_session->myscreen_;
         scr->fadeblack(0);
         if (spec.backdrop)
@@ -336,6 +338,8 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_background != nullptr)
             spec.draw_background(screen_state);
         draw_buttons(buttons, num_buttons);
+        if (spec.draw_content != nullptr)
+            spec.draw_content(screen_state);
         scr->fadeblack(1);
     }
 

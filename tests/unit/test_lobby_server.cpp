@@ -1042,6 +1042,52 @@ TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
     EXPECT_EQ(0, bindings[1].team);
 }
 
+TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
+{
+    for (const std::int16_t allied_mode : {std::int16_t{0}, std::int16_t{1}})
+    {
+        for (std::int16_t team = 0; team < 4; ++team)
+        {
+            MockLobbyTransport transport(true);
+            og::sim::LobbyServer server(transport, /*local_session=*/true);
+            server.connect_client(11u);
+            transport.clear_sent_messages();
+
+            transport.queue_lobby_message(
+                11u,
+                make_join_message(
+                    "Local", team,
+                    {make_slot(0u, 100, "Local Guy", FAMILY_SOLDIER)}));
+            server.poll_incoming_messages();
+
+            og::sim::LobbySettings settings;
+            settings.campaign_id = "org.openglad.gladiator";
+            settings.scenario_id = 1;
+            settings.difficulty = 1;
+            settings.allied_mode = allied_mode;
+            og::sim::LobbyMessage settings_message;
+            settings_message.payload = og::sim::LobbySettingsChangeMessage{
+                .player_index = 0u,
+                .settings = std::move(settings),
+            };
+            transport.queue_lobby_message(11u, settings_message);
+            server.poll_incoming_messages();
+
+            const og::sim::LobbySaveDataEquivalent equivalent =
+                server.build_save_data_equivalent();
+            ASSERT_EQ(1u, equivalent.team_list.size());
+            EXPECT_EQ(team, equivalent.team_list[0].character.teamnum)
+                << "allied=" << allied_mode << " team=" << team;
+
+            const std::vector<og::sim::LobbyPlayerBinding> bindings =
+                server.build_player_bindings();
+            ASSERT_EQ(1u, bindings.size());
+            EXPECT_EQ(team, bindings[0].team)
+                << "allied=" << allied_mode << " team=" << team;
+        }
+    }
+}
+
 namespace {
 
 og::sim::LobbyMessage make_settings_change_message(

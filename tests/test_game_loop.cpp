@@ -919,6 +919,67 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        for (short team = 0; team < 4; ++team)
+        {
+            if (og::runtime::current_game_session != nullptr)
+                og::runtime::clear_local_transport_shadow(
+                    *og::runtime::current_game_session);
+            game_screen->world().delete_objects();
+
+            SaveData& save = game_screen->save_data;
+            save.reset();
+            save.current_campaign = "org.openglad.gladiator";
+            save.current_levels[save.current_campaign] = 1;
+            save.scen_num = 1;
+            save.numplayers = 1;
+            save.allied_mode = allied_mode;
+            save.my_team = team;
+            save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[0]->name = "Color Guard";
+            save.team_list[0]->teamnum = team;
+            save.team_size = 1;
+
+            og::ui::PickerLobbyGameStartConfig config =
+                make_one_view_lobby_start_config(save);
+            config.my_team = team;
+            config.is_networked = false;
+
+            ready_screen_for_game_start(*game_screen, &config);
+            glad_init(false, &config);
+
+            ASSERT_NE(nullptr, og::runtime::current_game_session);
+            ASSERT_NE(nullptr, game_screen->save_data.team_list[0]);
+            ASSERT_NE(nullptr, game_screen->viewob[0]);
+            EXPECT_EQ(team, game_screen->save_data.my_team)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, game_screen->save_data.team_list[0]->teamnum)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, game_screen->viewob[0]->my_team)
+                << "allied=" << allied_mode << " team=" << team;
+
+            walker* const hero = find_named_team_member(
+                game_screen->world(), "Color Guard", team);
+            ASSERT_NE(nullptr, hero)
+                << "allied=" << allied_mode << " team=" << team;
+            ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+            EXPECT_EQ(team, game_screen->viewob[0]->control->team_num())
+                << "allied=" << allied_mode << " team=" << team;
+        }
+    }
+
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, ready_screen_for_game_start_uses_lobby_player_count_for_numviews)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

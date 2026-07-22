@@ -2124,6 +2124,58 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
     save.allied_mode = orig_allied;
 }
 
+TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        for (short team = 0; team < 4; ++team)
+        {
+            for (auto& member : save.team_list)
+                member.reset();
+            save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[0]->name = "Color Guard";
+            save.team_list[0]->teamnum = team;
+            save.team_size = 1;
+            save.my_team = team;
+            save.numplayers = 1;
+            save.allied_mode = allied_mode;
+
+            auto client = og::ui::create_local_picker_lobby_client();
+            client->initialize_from_save();
+            const auto config = client->build_game_start_config();
+            ASSERT_TRUE(config.has_value());
+            ASSERT_EQ(1u, config->save_data.team_list.size());
+            EXPECT_FALSE(config->is_networked);
+            EXPECT_EQ(team, config->my_team)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, config->save_data.team_list[0].character.teamnum)
+                << "allied=" << allied_mode << " team=" << team;
+            ASSERT_EQ(1u, config->local_seat_teams.size());
+            EXPECT_EQ(team, config->local_seat_teams[0])
+                << "allied=" << allied_mode << " team=" << team;
+            client->shutdown();
+        }
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
 // §4.2: the LOCAL lobby round-trips the machine's own roster through the
 // lobby state on every sync. A benched member must survive that round-trip
 // (flag intact, never force-redeployed, never dropped) and must still ride

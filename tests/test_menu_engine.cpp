@@ -141,6 +141,12 @@ void synth_draw_background(void* /*state*/)
 
 int g_spec_row_hits = 0;
 int g_spec_row_last = -1;
+int g_synth_content_draws = 0;
+
+void synth_draw_content(void* /*state*/)
+{
+    ++g_synth_content_draws;
+}
 
 Sint32 synth_on_spec_row(int row, void* /*state*/)
 {
@@ -264,6 +270,31 @@ TEST(MenuEngine, remote_start_team_build_scope_returns_exit)
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
+}
+
+TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "fade_content");
+    spec.enter = og::ui::EnterTransition::FadeAroundEntry;
+    spec.draw_content = &synth_draw_content;
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_synth_content_draws = 0;
+    g_start_game_requested = true;
+
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(1, g_synth_content_draws)
+        << "the cold fade frame must include content before the loop's first "
+           "full draw";
 }
 
 // ---------------------------------------------------------------------------

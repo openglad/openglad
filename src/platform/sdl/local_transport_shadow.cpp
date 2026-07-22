@@ -1807,8 +1807,9 @@ void reset_network_host_transport_shadow(
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
 
     // This machine's local seats are the lobby bindings on the loopback peer,
-    // in local_slot order. Each seat's view renders its GAMEPLAY team (allied
-    // mode folds every seat to team 0, matching apply_lobby_game_start_config).
+    // in local_slot order. The lobby has already applied the session policy:
+    // network allied seats are shared team 0, while local seats retain each
+    // roster member's selected display/gameplay team.
     const og::sim::PeerId loopback_peer_id =
         local_client_transport->local_peer_id();
     std::vector<LocalSeatBinding> host_seats;
@@ -1825,13 +1826,11 @@ void reset_network_host_transport_shadow(
                      const og::sim::LobbyPlayerBinding* rhs) {
                       return lhs->local_slot < rhs->local_slot;
                   });
-        const bool allied = gameplay_screen.save_data.allied_mode != 0;
         for (const og::sim::LobbyPlayerBinding* binding : local_bindings)
         {
             host_seats.push_back(LocalSeatBinding{
                 .player_index = binding->player_index,
-                .team = allied ? static_cast<short>(0)
-                               : static_cast<short>(binding->team),
+                .team = static_cast<short>(binding->team),
             });
         }
     }

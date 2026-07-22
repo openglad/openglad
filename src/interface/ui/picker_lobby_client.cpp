@@ -40,9 +40,9 @@ struct PreservedSaveSlot {
     std::unique_ptr<guy> member;
 };
 
-short gameplay_start_team(short allied_mode, short requested_team) noexcept
+short local_gameplay_start_team(short requested_team) noexcept
 {
-    return allied_mode != 0 ? 0 : requested_team;
+    return requested_team;
 }
 
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
@@ -317,8 +317,7 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        config.my_team = gameplay_start_team(
-            config.save_data.allied_mode,
+        config.my_team = local_gameplay_start_team(
             !peers_.empty() ? peers_.front().team : 0);
         // Symmetry with the networked clients: one seat per local in-process
         // peer, in seat/view order. The local (is_networked == false) start
@@ -330,8 +329,8 @@ public:
             {
                 config.local_player_indices.push_back(
                     static_cast<std::uint8_t>(index));
-                config.local_seat_teams.push_back(gameplay_start_team(
-                    config.save_data.allied_mode, peers_[index].team));
+                config.local_seat_teams.push_back(
+                    local_gameplay_start_team(peers_[index].team));
             }
         }
         return config;

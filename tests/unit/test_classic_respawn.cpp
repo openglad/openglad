@@ -649,8 +649,9 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "an enemy player's pending hero is still a foe";
     w.allied_mode = 1;
+    w.my_team = 3;
     EXPECT_FALSE(og::sim::classic_respawn_pending_hostile_foe(w))
-        << "allied heroes are friendly to team 0";
+        << "allied heroes are friendly to every roster color";
 }
 
 TEST(ClassicRespawn, timeout_end_shape_flushes_pending_heroes)
