@@ -960,6 +960,13 @@ BaseCampRowText format_base_camp_row(const guy& member)
     return row;
 }
 
+unsigned char base_camp_family_text_color(short family)
+{
+    // Pick a nice dark color based on family type — the exact View Team
+    // formula from master, now shared by every Base Camp roster row.
+    return static_cast<unsigned char>(((family + 1) << 4) & 255);
+}
+
 std::string format_base_camp_gold_label(const SaveData& save)
 {
     const int team =

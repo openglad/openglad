@@ -1788,10 +1788,10 @@ constexpr char kBaseCampTrainHint[] =
     "TAP TEAM COLOR TO CYCLE  TAP NAME TO TRAIN";
 constexpr int kBaseCampTrainHintX = 34;
 constexpr int kBaseCampTrainHintY = 167;
-// §9.5.4 + graft (a): benched rows dim to palette shade 21 — GREY(23)'s
-// glyph ramp overlaps WHITE(24) by all but one step, so 23-vs-24 dimming
-// was nearly invisible; 21 restores a legible two-step drop while staying
-// "benched-grey dimming only".
+// §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
+// shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
+// so 23-vs-24 dimming was nearly invisible. §9.21 restores View Team's
+// family colors on NAME/CLASS while DEPLOY/COMPANY/LV/EXP retain this cue.
 constexpr unsigned char kBenchedTextShade = 21;
 
 // §2.6 per-frame face/label bindings for the GO/READY slot: the engine's
@@ -2335,13 +2335,15 @@ void base_camp_draw_content(void* screen_state)
         game->fastbox(61, y, 10, 10, BLACK);
         game->fastbox(62, y + 1, 8, 8, team_color);
 
-        // §9.5.4 uniform row color (F6/F7/F8): every column — name, class,
-        // stats — draws WHITE when deployed and shade 21 when benched.
-        // The old family-colored names are GONE: the palette made them look
-        // random (soldier 16 = black-topped dark grey, slime runs near
-        // black) and inverted the benched-dimming cue; deploy state is
-        // signaled by benched-grey dimming ONLY.
-        const unsigned char row_color =
+        // Restore the original View Team identity treatment exactly: NAME
+        // and CLASS use ((family + 1) << 4) & 255. The family color remains
+        // visible when benched, while non-identity metadata keeps Base Camp's
+        // deployed/benched contrast. TEAM remains the separate gameplay-team
+        // ramp above; these two colors intentionally communicate different
+        // facts.
+        const unsigned char family_color =
+            base_camp_family_text_color(member->family);
+        const unsigned char status_color =
             deployed ? static_cast<unsigned char>(BLACK) : kBenchedTextShade;
 
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
@@ -2349,26 +2351,26 @@ void base_camp_draw_content(void* screen_state)
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
             // deploy state draws as the §2.5 X/- glyph at x=27.
             if (!display.owned)
-                mytext.write_xy(27, y + 2, deployed ? "X" : "-", row_color,
-                                1);
+                mytext.write_xy(27, y + 2, deployed ? "X" : "-",
+                                status_color, 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
-                            row_color, 1);
+                            family_color, 1);
             mytext.write_xy(kBaseCampNetCompanyColumnX, y + 2,
-                            row.company.c_str(), row_color, 1);
+                            row.company.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampNetLevelColumnX, y + 2,
-                            row.level.c_str(), row_color, 1);
+                            row.level.c_str(), status_color, 1);
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
             mytext.write_xy(kBaseCampNameColumnX, y + 2, row.name.c_str(),
-                            row_color, 1);
+                            family_color, 1);
             mytext.write_xy(kBaseCampSoloClassColumnX, y + 2, row.cls.c_str(),
-                            row_color, 1);
+                            family_color, 1);
             mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
-                            row.level.c_str(), row_color, 1);
+                            row.level.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, row.exp.c_str(),
-                            row_color, 1);
+                            status_color, 1);
         }
     }
 

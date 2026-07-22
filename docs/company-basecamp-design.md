@@ -1928,7 +1928,7 @@ under the corrected formula. Recapture every screen.
   one click away in TRAIN. Text/curses roster views drop the HP field from
   their row joins.
 
-#### 9.5.4 Uniform name color — F6/F7/F8 + graft (a)
+#### 9.5.4 Uniform name color — F6/F7/F8 + graft (a) [SUPERSEDED BY §9.21]
 - DELETE the family-color branch (menu_screen_specs.cpp ~:2158-2167 + the
   networked arm): `name_color = deployed ? WHITE : 21`; the CLASS column and
   stats use the same deployed/benched pair (WHITE 24 / **shade 21**). MP
@@ -2486,3 +2486,20 @@ grammar instead of presenting independent conventions.
 - Pins cover the new name-box geometry and stock face, plus immediate
   TRAIN-to-roster synchronization before ACCEPT. The existing Base Camp team
   chip and autosave tests continue to cover the opposite entry point.
+
+### 9.21 UX round 11 (2026-07-22) — restore View Team family colors [FINAL]
+
+Base Camp's roster restores the identity colors from the `master` branch's
+retired View Team screen without changing its newer team and deploy controls.
+
+- `NAME` and `CLASS` use View Team's exact palette formula:
+  `((family + 1) << 4) & 255`. The color identifies character class and stays
+  visible on both deployed and benched rows.
+- Network rosters apply the same family color to every own and foreign `NAME`;
+  their `COMPANY` and `LV` fields keep the deployed/benched status color.
+- `DEPLOY`, `LV`, and `EXP` retain BLACK for deployed rows and shade 21 for
+  benched rows. The TEAM square remains the separate gameplay-team ramp
+  (`teamnum * 16 + 40`), so family identity and team allegiance remain
+  independently legible.
+- Unit coverage pins all playable families to the original formula; the solo,
+  paged, host, joiner, and degraded-link captures carry the rendered result.
