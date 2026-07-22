@@ -616,17 +616,17 @@ TEST(SimInputHandler, sim_input_special_and_fire_paths)
 }
 
 
-TEST(SimInputHandler, sim_find_next_control_fallback_any_team_player)
+TEST(SimInputHandler, sim_find_next_control_never_claims_another_team)
 {
     teardown();
     auto other_team_player = make_living(1);
     ASSERT_TRUE(other_team_player != nullptr) << "other-team player should be created";
     other_team_player->myguy = reinterpret_cast<guy*>(1);
-    walker* expected = other_team_player.get();
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(other_team_player));
 
     walker* found = sim_find_next_control(og::runtime::current_session->myscreen_->world(), 0);
-    ASSERT_TRUE(found == expected) << "fallback pass should find any alive player character";
+    ASSERT_EQ(nullptr, found)
+        << "a wiped seat must never take control of an enemy-color character";
 
     teardown();
 }
@@ -644,7 +644,7 @@ TEST(SimInputHandler, sim_find_next_control_skips_claimed_fallback_player)
     walker* found = sim_find_next_control(
         og::runtime::current_session->myscreen_->world(), 0);
     ASSERT_TRUE(found == nullptr)
-        << "claimed fallback characters should not be reassigned";
+        << "claimed characters should not be reassigned";
 
     teardown();
 }

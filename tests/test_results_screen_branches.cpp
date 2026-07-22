@@ -12,10 +12,12 @@
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 
+#include <list>
 #include <map>
 #include <memory>
 
 Uint32 get_time_bonus(int playernum);
+int get_num_foes(LevelRuntimeData& level, short viewer_team);
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -118,6 +120,42 @@ TEST(ResultsScreenBranches, time_bonus_uses_authoritative_level_tick)
     current_screen.world().time_bonus_limit = old_limit;
     current_screen.world().par_value = old_par;
     current_screen.save_data.m_score[0] = old_score;
+}
+
+TEST(ResultsScreenBranches, foe_count_uses_team_color_not_company_ownership)
+{
+    LevelRuntimeData& level =
+        og::runtime::current_session->myscreen_->level_runtime_data();
+    struct ObListGuard
+    {
+        std::list<std::unique_ptr<walker>> saved;
+        GameWorld& world;
+        explicit ObListGuard(GameWorld& source) : world(source)
+        {
+            world.oblist.splice_into(saved);
+        }
+        ~ObListGuard()
+        {
+            world.oblist.clear();
+            world.oblist.splice(world.oblist.end(), saved);
+        }
+    } guard(level.world());
+
+    walker* red = level.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* yellow = level.world().add_ob(Order::Living, FAMILY_ARCHER);
+    walker* green = level.world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, red);
+    ASSERT_NE(nullptr, yellow);
+    ASSERT_NE(nullptr, green);
+    red->set_team_num(0);
+    yellow->set_team_num(1);
+    green->set_team_num(2);
+    red->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    yellow->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+
+    EXPECT_EQ(2, get_num_foes(level, 0));
+    EXPECT_EQ(2, get_num_foes(level, 1));
+    EXPECT_EQ(2, get_num_foes(level, 2));
 }
 
 // Gap 4 ("hit play for next level") + Bug B regression: in a networked game the

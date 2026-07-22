@@ -1924,37 +1924,43 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_requested_limit_overrides_map_and_allied_collapses)
+TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
     ReportWorld fx(true);
     fx.spawn_flag(0, /*level=*/7);
     fx.spawn_flag(1);
+    fx.spawn_flag(3);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+    fx.spawn_living_named(FAMILY_ARCHER, 3, 5, nullptr);
 
     SaveData save;
     save.current_campaign = std::string(og::kCtfCampaignId);
     save.allied_mode = 1;
-    save.my_team = 2; // ignored when allied
+    save.my_team = 2;
     save.ctf_capture_limit = 5;
     save.ctf_strip_scenario_troops = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 3; // allied collapses roster teams to {0}
+    save.team_list[0]->teamnum = 3;
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
     EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
-    EXPECT_EQ(0, report.your_team) << "allied mode plays as team 0";
+    EXPECT_EQ(2, report.your_team)
+        << "local Ally mode keeps the selected playing team";
 
     const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team0->strip_reason)
-        << "allied roster-team predicate collapses to team 0";
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, team0->strip_reason);
     const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(team1 != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, team1->strip_reason);
+    const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
+    ASSERT_TRUE(team3 != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team3->strip_reason)
+        << "the report must mirror the roster's actual color";
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)

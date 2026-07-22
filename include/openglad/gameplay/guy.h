@@ -24,7 +24,8 @@ class walker;
 
 // Holds attributes for characters.
 // Used to store character data in SaveData's team_list.
-// Used as walker::myguy in-game for various attribute-dependent effects for walkers who are on the player team.
+// Used as walker::myguy for company persistence and character attributes.
+// Presence of a guy does not imply team membership or combat friendliness.
 class guy
 {
 	public:

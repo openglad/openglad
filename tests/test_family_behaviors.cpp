@@ -2219,15 +2219,20 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     mage->stats()->set_magicpoints(1);
     ASSERT_TRUE(fd->do_special(mage)) << "mage starburst should still execute with low mana";
 
-    // Enemy freeze-time path (team!=0 and no myguy).
+    // A company-owned Mage on another color must use its own team's
+    // bonus-round path, never the active team's global enemy-freeze bank.
     mage->set_current_special(3);
     mage->set_team_num(1);
-    mage->set_owned_myguy(nullptr);
+    mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    og::runtime::current_session->myscreen_->world().my_team = 0;
+    og::runtime::current_session->myscreen_->world().enemy_freeze = 0;
     walker* ally = add_living_to_level(FAMILY_ORC, 1, 110, 100);
     ASSERT_TRUE(ally != nullptr) << "ally for freeze-time created";
     short bonus_before = ally->bonus_rounds();
     ASSERT_TRUE(fd->do_special(mage)) << "enemy freeze-time should succeed";
     ASSERT_TRUE(ally->bonus_rounds() >= bonus_before) << "enemy freeze-time should add ally bonus rounds";
+    ASSERT_EQ(0, og::runtime::current_session->myscreen_->world().enemy_freeze)
+        << "the foreign-color caster must not freeze its own side";
 
     // Energy wave guard: fire() returns null when weapon_cost > magicpoints.
     mage->set_current_special(4);

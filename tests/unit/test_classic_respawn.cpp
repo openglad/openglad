@@ -637,7 +637,7 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
         << "pending hostile AI";
     w.allied_mode = 1;
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
-        << "allied mode does not befriend AI";
+        << "PVP seating mode does not change AI hostility";
     w.allied_mode = 0;
 
     w.ctf.respawn_queue.clear();
@@ -650,8 +650,8 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
         << "an enemy player's pending hero is still a foe";
     w.allied_mode = 1;
     w.my_team = 3;
-    EXPECT_FALSE(og::sim::classic_respawn_pending_hostile_foe(w))
-        << "allied heroes are friendly to every roster color";
+    EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
+        << "different-color company heroes stay hostile in every PVP mode";
 }
 
 TEST(ClassicRespawn, timeout_end_shape_flushes_pending_heroes)

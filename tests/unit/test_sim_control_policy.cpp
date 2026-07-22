@@ -207,7 +207,7 @@ TEST(SimControlPolicy, policy_off_matches_legacy_across_the_four_shapes)
         << "worlds must default to the legacy policy";
 
     // Classic: own-team hero, claimed hero, troop, corpse, dormant spawn,
-    // and an off-team hero for the pass-3 fallback.
+    // and an off-team hero that must never be used as a fallback.
     fx.add({.team = 0, .user = -1, .hero = true, .owner = 0});
     fx.add({.team = 0, .user = 1, .hero = true, .owner = 1});
     fx.add({.team = 0, .user = -1, .hero = false});
@@ -259,10 +259,9 @@ TEST(SimControlPolicy, policy_off_matches_legacy_over_random_worlds)
     }
 }
 
-// The reimplemented owner-locked 3-pass scan must reduce to the legacy scan
+// The reimplemented owner-locked same-team scan must reduce to the base scan
 // when the machine map permits everything (all owners on one deployed
-// machine): this pins the pass structure — including pass 3's deliberate
-// lack of a dormant() check — against sim_find_next_control itself.
+// machine), including the rule that foreign teams are never candidates.
 TEST(SimControlPolicy, owner_locked_permissive_map_matches_legacy_over_random_worlds)
 {
     ControlPolicyFixture fx;

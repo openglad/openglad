@@ -55,20 +55,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         }
     }
 
-    // Now try for ANYONE who's left alive
-    for (auto& uptr : level.oblist)
-    {
-        walker* w = uptr.get();
-        if (w && !w->dead() &&
-            w->query_order() == Order::Living &&
-            w->user() == -1 &&
-            w->myguy)
-        {
-            TRACE("sim_input", "found fallback character '%s'", w->stats()->name.c_str());
-            return w;
-        }
-    }
-
+    // A seat may never fall through to another team. A foreign company hero
+    // is an enemy in the mission, not an emergency replacement body.
     TRACE("sim_input", "found no one");
     return nullptr;
 }

@@ -1079,8 +1079,9 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     ready_screen_for_game_start(*game_screen, &*config);
     glad_init(false, &*config);
     ASSERT_NE(nullptr, og::runtime::current_game_session);
-    ASSERT_NE(nullptr, find_named_team_member(
-                           game_screen->world(), "Yellow Middle", 1))
+    walker* const yellow = find_named_team_member(
+        game_screen->world(), "Yellow Middle", 1);
+    ASSERT_NE(nullptr, yellow)
         << "the non-player color still belongs in the mission";
     ASSERT_NE(nullptr, game_screen->viewob[0]);
     ASSERT_NE(nullptr, game_screen->viewob[1]);
@@ -1096,6 +1097,13 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     EXPECT_EQ("Red Two", game_screen->viewob[1]->control->myguy->name);
     EXPECT_NE("Yellow Middle",
               game_screen->viewob[1]->control->myguy->name);
+    EXPECT_FALSE(game_screen->viewob[0]->control->is_friendly(yellow))
+        << "a yellow company hero must remain attackable by red in Ally mode";
+    EXPECT_FALSE(yellow->is_friendly(game_screen->viewob[0]->control))
+        << "hostility must be symmetric";
+    EXPECT_TRUE(game_screen->viewob[0]->control->is_friendly(
+        game_screen->viewob[1]->control))
+        << "the two red player heroes must remain friendly";
 
     og::runtime::clear_local_transport_shadow(
         *og::runtime::current_game_session);

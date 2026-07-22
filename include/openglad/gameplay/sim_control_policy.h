@@ -134,9 +134,9 @@ void install_control_policy(GameWorld& world,
 [[nodiscard]] bool seat_is_follow_only(const GameWorld& world,
                                        short player_index) noexcept;
 
-// The legacy sim_find_next_control 3-pass scan with control_claim_allowed
+// The sim_find_next_control same-team scan with control_claim_allowed
 // conjoined per candidate. Policy-off delegates to sim_find_next_control
-// itself, so legacy decisions are byte-identical by construction.
+// itself. Neither path may ever claim a walker from another team.
 [[nodiscard]] walker* sim_find_next_control_owned(GameWorld& level,
                                                   short my_team,
                                                   short player_index);

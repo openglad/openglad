@@ -1318,17 +1318,12 @@ void classic_run_death_scan(GameWorld& world)
 }
 
 // The classic-effective team of a corpse / queue entry (schedule_respawn's
-// charm-break rule), tested for hostility the way the completion check's
-// is_friendly_to_team does: AI friendliness is a strict team match; heroes
-// are friendly to every player roster color in allied mode.
+// charm-break rule), tested with the same strict team-color rule used by
+// targeting, damage, and level completion.
 [[nodiscard]] bool classic_team_hostile(const GameWorld& world,
-                                        std::uint8_t team, bool is_hero)
+                                        std::uint8_t team)
 {
-    if (static_cast<short>(team) == world.my_team)
-        return false;
-    if (is_hero && world.allied_mode != 0)
-        return false;
-    return true;
+    return static_cast<short>(team) != world.my_team;
 }
 
 } // namespace
@@ -1397,9 +1392,9 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
     for (const CtfRespawnEntry& entry : world.ctf.respawn_queue)
     {
         if (entry.kind == 1 && world.respawn_mode >= 2 &&
-            classic_team_hostile(world, entry.team, false))
+            classic_team_hostile(world, entry.team))
             return true;
-        if (entry.kind == 0 && classic_team_hostile(world, entry.team, true))
+        if (entry.kind == 0 && classic_team_hostile(world, entry.team))
             return true;
     }
     // Corpses that died this very tick: the death scan runs AFTER the
@@ -1412,7 +1407,7 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
         const std::uint8_t team = (w->real_team_num() != 255)
                                       ? w->real_team_num()
                                       : w->team_num();
-        if (classic_team_hostile(world, team, w->myguy != nullptr))
+        if (classic_team_hostile(world, team))
             return true;
     }
     return false;

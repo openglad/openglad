@@ -849,8 +849,8 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     same_team.kind = 1;
     same_team.team = 0;
     same_team.ticks_left = 5;
-    og::sim::CtfRespawnEntry hero; // hero corpse: friendly to a team-0
-    hero.kind = 0;                 // viewer while allied mode is on
+    og::sim::CtfRespawnEntry hero; // different-color company hero: hostile
+    hero.kind = 0;
     hero.team = 2;
     hero.ticks_left = 3;
     world.ctf.respawn_queue.push_back(ai_foe);
@@ -862,11 +862,11 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     std::uint32_t ticks = 0;
     pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
     EXPECT_EQ(1, static_cast<int>(pending)) << "the dormant foe";
-    EXPECT_EQ(1, static_cast<int>(respawn)) << "only the hostile AI entry";
-    EXPECT_EQ(30u, ticks) << "queue timer beats the dormant wake (89)";
+    EXPECT_EQ(2, static_cast<int>(respawn))
+        << "both different-color entries are hostile";
+    EXPECT_EQ(3u, ticks) << "the hostile hero has the shortest timer";
 
-    // Competitive (allied off): the enemy hero corpse turns hostile and its
-    // shorter timer wins the countdown.
+    // PVP seating mode cannot change the hostility result.
     world.allied_mode = 0;
     pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
     EXPECT_EQ(2, static_cast<int>(respawn));

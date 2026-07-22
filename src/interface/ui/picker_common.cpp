@@ -2283,8 +2283,6 @@ bool is_score_team_index(int team)
 
 std::vector<short> roster_teams_for_strip(const SaveData& save)
 {
-    if (is_allied_mode(save))
-        return {0};
     std::vector<short> teams;
     for (const auto& member : save.team_list)
     {
@@ -2324,7 +2322,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
 {
     ScenarioRosterReport report;
     report.is_ctf = (world.type & GameWorld::TYPE_CTF) != 0;
-    report.your_team = is_allied_mode(save) ? 0 : save.my_team;
+    report.your_team = save.my_team;
 
     int map_capture_limit = 0;
     if (report.is_ctf)

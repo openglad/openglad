@@ -173,6 +173,9 @@ TEST(WalkerUnit, walker_friendliness_and_distance_paths)
     ASSERT_TRUE(a->is_friendly_to_team(0));
 
     fx.level.world().allied_mode = 1;
+    ASSERT_FALSE(a->is_friendly(b))
+        << "PVP seating mode must not befriend different colors";
+    b->set_team_num(0);
     ASSERT_TRUE(a->is_friendly(b));
 }
 
@@ -184,6 +187,7 @@ TEST(WalkerUnit, walker_death_save_all_and_misc_paths)
     w->stats()->name = "Named";
     w->set_dead(1);
     fx.level.world().type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
+    fx.level.world().my_team = 0;
 
     ASSERT_TRUE(w->death());
     ASSERT_TRUE(fx.events.size() >= 1);

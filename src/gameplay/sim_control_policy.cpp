@@ -200,9 +200,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         return control_claim_allowed(level, w, player_index);
     };
 
-    // The three passes mirror sim_find_next_control (sim_input_handler.cpp)
-    // exactly — including pass 3's deliberate lack of a dormant() check —
-    // with the ownership conjunction appended to each. The policy-on
+    // The two passes mirror sim_find_next_control (sim_input_handler.cpp)
+    // exactly, with the ownership conjunction appended to each. The policy-on
     // equivalence suite pins this scan against the legacy one under a fully
     // permissive machine map.
 
@@ -232,21 +231,6 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
             w->team_num() == my_team && allowed(w))
         {
             TRACE("sim_control", "found team member '%s'",
-                  w->stats()->name.c_str());
-            return w;
-        }
-    }
-
-    // Now try for ANYONE who's left alive
-    for (auto& uptr : level.oblist)
-    {
-        walker* w = uptr.get();
-        if (w && !w->dead() &&
-            w->query_order() == Order::Living &&
-            w->user() == -1 &&
-            w->myguy && allowed(w))
-        {
-            TRACE("sim_control", "found fallback character '%s'",
                   w->stats()->name.c_str());
             return w;
         }

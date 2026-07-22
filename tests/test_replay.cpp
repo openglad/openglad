@@ -93,7 +93,7 @@ void configure_replay_team(SaveData& save, int player_count)
     save.current_campaign = "org.openglad.gladiator";
     save.current_levels[save.current_campaign] = kReplayLevel;
     save.scen_num = kReplayLevel;
-    save.my_team = 1;
+    save.my_team = 0;
     save.numplayers = static_cast<unsigned char>(player_count);
     save.allied_mode = 1;
     save.team_size = 0;
@@ -105,7 +105,9 @@ void configure_replay_team(SaveData& save, int player_count)
         FAMILY_CLERIC,
     };
     constexpr std::array<short, 4> levels = {10, 10, 10, 10};
-    constexpr std::array<short, 4> teams = {1, 2, 3, 4};
+    // Include red explicitly: the old replay view reconstruction skipped team
+    // 0 and shifted every mixed-team controller onto the next roster color.
+    constexpr std::array<short, 4> teams = {0, 1, 2, 3};
     constexpr std::array<std::string_view, 4> names = {
         "REPLAY_ARCHMAGE",
         "REPLAY_ARCHER",
@@ -415,6 +417,8 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(0, game_screen.save_data.team_size);
     EXPECT_EQ(expected_control_ids,
               capture_view_control_ids(game_screen, player_count));
+    EXPECT_EQ(player_teams, capture_view_teams(game_screen, player_count))
+        << "replay views must use the recorded controllers' actual teams";
 
     const og::sim::WorldSnapshot actual_initial_snapshot =
         og::sim::peek_keyframe_snapshot(replay_screen_world);

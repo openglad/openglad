@@ -11,6 +11,8 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <list>
 #include <memory>
 #include <vector>
 
@@ -200,6 +202,226 @@ TEST(WalkerCombat, same_team_scenario_npcs_can_never_damage_roster_heroes)
         }
     }
 
+    world.allied_mode = saved_allied_mode;
+}
+
+TEST(WalkerCombat, team_color_hostility_matrix_ignores_company_ownership_and_pvp_mode)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_allied_mode = world.allied_mode;
+
+    // Cover every ordered color pair, both PVP seating modes, and every
+    // ownership shape: scenario/scenario, company/scenario,
+    // scenario/company, and company/company.
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        world.allied_mode = allied_mode;
+        for (unsigned char attacker_team = 0; attacker_team < 4;
+             ++attacker_team)
+        {
+            for (unsigned char target_team = 0; target_team < 4;
+                 ++target_team)
+            {
+                for (unsigned ownership = 0; ownership < 4; ++ownership)
+                {
+                    std::unique_ptr<walker> attacker(
+                        make_guy(FAMILY_SOLDIER, attacker_team));
+                    std::unique_ptr<walker> target(
+                        make_guy(FAMILY_ARCHER, target_team));
+                    ASSERT_NE(nullptr, attacker);
+                    ASSERT_NE(nullptr, target);
+                    if ((ownership & 1u) == 0)
+                        attacker->clear_myguy();
+                    if ((ownership & 2u) == 0)
+                        target->clear_myguy();
+
+                    const bool same_team = attacker_team == target_team;
+                    SCOPED_TRACE(::testing::Message()
+                        << "allied=" << allied_mode
+                        << " attacker_team=" << static_cast<int>(attacker_team)
+                        << " target_team=" << static_cast<int>(target_team)
+                        << " ownership=" << ownership);
+                    EXPECT_EQ(same_team, attacker->is_friendly(target.get()) != 0);
+                    EXPECT_EQ(same_team, target->is_friendly(attacker.get()) != 0);
+                    EXPECT_EQ(same_team,
+                              attacker->is_friendly_to_team(target_team) != 0);
+
+                    target->stats()->set_armor(0);
+                    target->stats()->set_max_hitpoints(5000.0f);
+                    target->stats()->set_hitpoints(5000.0f);
+                    attacker->set_damage(12.0f);
+                    const float hp_before = target->stats()->hitpoints();
+                    EXPECT_EQ(!same_team, attacker->attack(target.get()));
+                    if (same_team)
+                        EXPECT_EQ(hp_before, target->stats()->hitpoints());
+                    else
+                        EXPECT_LT(target->stats()->hitpoints(), hp_before);
+                }
+            }
+        }
+    }
+
+    world.allied_mode = saved_allied_mode;
+}
+
+TEST(WalkerCombat, owned_projectiles_use_team_color_not_company_ownership)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_allied_mode = world.allied_mode;
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        world.allied_mode = allied_mode;
+        for (unsigned char owner_team = 0; owner_team < 4; ++owner_team)
+        {
+            for (unsigned char target_team = 0; target_team < 4;
+                 ++target_team)
+            {
+                std::unique_ptr<walker> owner(
+                    make_guy(FAMILY_ARCHER, owner_team));
+                std::unique_ptr<walker> target(
+                    make_guy(FAMILY_SOLDIER, target_team));
+                ASSERT_NE(nullptr, owner);
+                ASSERT_NE(nullptr, target);
+                walker* projectile =
+                    world.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+                ASSERT_NE(nullptr, projectile);
+                projectile->set_owner(owner.get());
+                projectile->set_team_num(owner_team);
+                projectile->set_damage(12.0f);
+                target->stats()->set_armor(0);
+                target->stats()->set_max_hitpoints(5000.0f);
+                target->stats()->set_hitpoints(5000.0f);
+                world.m_score[owner_team] = 0;
+
+                const bool same_team = owner_team == target_team;
+                const float hp_before = target->stats()->hitpoints();
+                const Uint32 score_before = world.m_score[owner_team];
+                SCOPED_TRACE(::testing::Message()
+                    << "allied=" << allied_mode
+                    << " owner_team=" << static_cast<int>(owner_team)
+                    << " target_team=" << static_cast<int>(target_team));
+                EXPECT_EQ(!same_team, projectile->attack(target.get()));
+                if (same_team)
+                    EXPECT_EQ(hp_before, target->stats()->hitpoints());
+                else
+                {
+                    EXPECT_LT(target->stats()->hitpoints(), hp_before);
+                    EXPECT_GT(world.m_score[owner_team], score_before)
+                        << "every company color must receive projectile score";
+                }
+
+                EXPECT_TRUE(world.remove_ob(projectile));
+            }
+        }
+    }
+
+    world.allied_mode = saved_allied_mode;
+}
+
+TEST(WalkerCombat, company_kill_credit_is_directional_for_every_team_pair)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_allied_mode = world.allied_mode;
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        world.allied_mode = allied_mode;
+        for (unsigned char attacker_team = 0; attacker_team < 4;
+             ++attacker_team)
+        {
+            for (unsigned char target_team = 0; target_team < 4;
+                 ++target_team)
+            {
+                if (attacker_team == target_team)
+                    continue;
+
+                std::unique_ptr<walker> attacker(
+                    make_guy(FAMILY_SOLDIER, attacker_team));
+                std::unique_ptr<walker> target(
+                    make_guy(FAMILY_ARCHER, target_team));
+                ASSERT_NE(nullptr, attacker);
+                ASSERT_NE(nullptr, target);
+                ASSERT_NE(nullptr, attacker->myguy);
+
+                attacker->set_damage(500.0f);
+                target->stats()->set_armor(0);
+                target->stats()->set_max_hitpoints(1.0f);
+                target->stats()->set_hitpoints(1.0f);
+                const short kills_before = attacker->myguy->scen_kills;
+                const int level_kills_before = attacker->myguy->level_kills;
+                world.m_score[attacker_team] = 0;
+
+                SCOPED_TRACE(::testing::Message()
+                    << "allied=" << allied_mode
+                    << " attacker_team=" << static_cast<int>(attacker_team)
+                    << " target_team=" << static_cast<int>(target_team));
+                EXPECT_TRUE(attacker->attack(target.get()));
+                EXPECT_TRUE(target->dead());
+                EXPECT_EQ(kills_before + 1, attacker->myguy->scen_kills);
+                EXPECT_EQ(level_kills_before + target->stats()->level(),
+                          attacker->myguy->level_kills);
+                EXPECT_GT(world.m_score[attacker_team], 0u);
+            }
+        }
+    }
+
+    world.allied_mode = saved_allied_mode;
+}
+
+TEST(WalkerCombat, ai_targeting_range_queries_and_victory_use_the_same_team_rule)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short saved_allied_mode = world.allied_mode;
+    world.delete_objects();
+
+    const auto add_company_hero = [&world](unsigned char team, short x) {
+        guy member(FAMILY_SOLDIER);
+        member.teamnum = team;
+        auto entity = guy_create_walker_owned(
+            member, og::runtime::current_session->myscreen_);
+        if (entity == nullptr)
+            return static_cast<walker*>(nullptr);
+        entity->setxy(x, static_cast<short>(100));
+        walker* const raw = entity.get();
+        world.oblist.push_back(std::move(entity));
+        return raw;
+    };
+
+    walker* const red = add_company_hero(0, 100);
+    walker* const red_friend = add_company_hero(0, 108);
+    walker* const yellow = add_company_hero(1, 120);
+    walker* const green = add_company_hero(2, 140);
+    ASSERT_NE(nullptr, red);
+    ASSERT_NE(nullptr, red_friend);
+    ASSERT_NE(nullptr, yellow);
+    ASSERT_NE(nullptr, green);
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        world.allied_mode = allied_mode;
+        SCOPED_TRACE(::testing::Message() << "allied=" << allied_mode);
+        EXPECT_EQ(yellow, world.find_far_foe(red))
+            << "AI must skip a nearer same-team hero and acquire yellow";
+
+        std::int32_t foe_count = 0;
+        const std::list<walker*> foes = world.find_foes_in_range(
+            world.oblist, 1000, &foe_count, red);
+        EXPECT_EQ(2, foe_count);
+        EXPECT_NE(foes.end(), std::find(foes.begin(), foes.end(), yellow));
+        EXPECT_NE(foes.end(), std::find(foes.begin(), foes.end(), green));
+
+        std::int32_t friend_count = 0;
+        const std::list<walker*> friends = world.find_friends_in_range(
+            world.oblist, 1000, &friend_count, red);
+        EXPECT_EQ(2, friend_count);
+        EXPECT_NE(friends.end(),
+                  std::find(friends.begin(), friends.end(), red_friend));
+        EXPECT_EQ(2, world.remaining_foes(red))
+            << "different-color company heroes must block extermination";
+    }
+
+    world.delete_objects();
     world.allied_mode = saved_allied_mode;
 }
 
@@ -1027,7 +1249,7 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     const short saved_allied_mode = og::runtime::current_session->myscreen_->world_.allied_mode;
     og::runtime::current_session->myscreen_->world_.allied_mode = 1;
 
-    // Build an attacker that is not considered friendly to team 0 even when allied mode is on.
+    // Team 1 stays hostile to team 0 regardless of the player seating mode.
     walker* attacker = make_guy(FAMILY_SOLDIER, 1);
     ASSERT_TRUE(attacker != nullptr) << "attacker created";
     if (!attacker)

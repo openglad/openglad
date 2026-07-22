@@ -683,14 +683,15 @@ TEST(WalkerCoreMore, walker_round6_fire_and_friendliness_paths)
     walker* diagonal_weapon = actor->create_weapon();
     ASSERT_TRUE(diagonal_weapon != nullptr) << "create_weapon should succeed for living actor";
 
-    // is_friendly / is_friendly_to_team paths with allied mode and myguy combinations.
+    // Company ownership must not override the team-color alliance rule.
     GameWorld& world = og::runtime::current_session->myscreen_->world_;
     world.allied_mode = 1;
     actor->set_team_num(0);
     target->set_team_num(2);
     actor->clear_myguy();
     target->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
-    ASSERT_TRUE(actor->is_friendly(target) != 0) << "allied mode with one myguy and team0 other should be friendly";
+    ASSERT_EQ(0, actor->is_friendly(target))
+        << "different teams stay hostile even when one side is company-owned";
 
     actor->set_dead(1);
     ASSERT_TRUE(actor->is_friendly_to_team(2) == 0) << "dead walker should not be friendly to any team";
@@ -808,7 +809,7 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
     ASSERT_EQ(0, (int)subject->is_friendly(viewer)) << "is_friendly should reject dead target";
     viewer->set_dead(0);
 
-    // Owner-loop traversal with one side missing myguy (has_myguy==2 path).
+    // Owner-loop traversal still resolves friendliness from the roots' teams.
     walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     ASSERT_TRUE(owner != nullptr) << "owner created";
     if (owner)
@@ -819,7 +820,8 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
         viewer->set_owner(nullptr);
         viewer->set_team_num(0);
         viewer->clear_myguy();
-        ASSERT_TRUE(subject->is_friendly(viewer) != 0) << "allied mode has_myguy==2 branch should allow red-team friendliness";
+        ASSERT_TRUE(subject->is_friendly(viewer) != 0)
+            << "same-team owner roots must be friendly";
     }
 }
 
@@ -888,7 +890,7 @@ TEST(WalkerCoreMore, walker_round7a_death_guard_and_friendliness_team_paths)
     ASSERT_TRUE(w->death()) << "first death call should run";
     ASSERT_EQ(0, (int)w->death()) << "second death call should hit death_called guard";
 
-    // is_friendly_to_team paths for no myguy and hired allied modes.
+    // is_friendly_to_team is strict team equality for every ownership/mode.
     GameWorld& world = og::runtime::current_session->myscreen_->world_;
     w->set_dead(0);
     w->set_team_num(2);
@@ -901,17 +903,17 @@ TEST(WalkerCoreMore, walker_round7a_death_guard_and_friendliness_team_paths)
     world.allied_mode = 1;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     for (unsigned char team = 0; team < 4; ++team)
-        ASSERT_EQ(1, (int)w->is_friendly_to_team(team))
-            << "hired allied unit must stay friendly on roster color "
+        ASSERT_EQ(team == 2, w->is_friendly_to_team(team) != 0)
+            << "company ownership must not override roster color "
             << static_cast<int>(team);
     w->clear_myguy();
     w->set_team_num(0);
     for (unsigned char team = 0; team < 4; ++team)
-        ASSERT_EQ(1, (int)w->is_friendly_to_team(team))
-            << "authored red allies must stay friendly to roster color "
+        ASSERT_EQ(team == 0, w->is_friendly_to_team(team) != 0)
+            << "authored units must use their own color against team "
             << static_cast<int>(team);
 
-    // Explicit has_myguy==0 path in is_friendly.
+    // Two scenario-owned walkers still use strict team equality.
     walker* other = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(other != nullptr) << "other created";
     if (other)
@@ -1049,7 +1051,8 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
     target_owner->set_team_num(0);
     actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     target_owner->clear_myguy();
-    ASSERT_TRUE(actor->is_friendly(target) != 0) << "owner-chain has_myguy==2 path should treat team-0 side as friendly";
+    ASSERT_TRUE(actor->is_friendly(target) != 0)
+        << "same-team owner roots should be friendly regardless of ownership";
 
     // Both roots without myguy: allied mode should compare teams only.
     actor_root->clear_myguy();
@@ -1060,12 +1063,12 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
     target_owner->set_team_num(3);
     ASSERT_EQ(0, (int)actor->is_friendly(target)) << "both roots without myguy and different team should be unfriendly";
 
-    // is_friendly_to_team owner-chain + hired/allied branch.
+    // is_friendly_to_team follows the owner chain but still compares color.
     actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     actor_root->set_team_num(3);
     for (unsigned char team = 0; team < 4; ++team)
-        ASSERT_EQ(1, (int)actor->is_friendly_to_team(team))
-            << "owner-chain allied unit must stay friendly on roster color "
+        ASSERT_EQ(team == 3, actor->is_friendly_to_team(team) != 0)
+            << "owner-chain unit must use its root's roster color "
             << static_cast<int>(team);
 
     // set_difficulty default branch path for non-generator orders.
@@ -1197,13 +1200,14 @@ TEST(WalkerCoreMore, walker_round14_distance_color_and_friendliness_modes_1480_1
     ASSERT_EQ(1, (int)a->is_friendly_to_team(1)) << "enemy mode should match own team";
     ASSERT_EQ(0, (int)a->is_friendly_to_team(0)) << "enemy mode should reject other teams";
 
-    // Allied mode with both myguy pointers should return friendly.
+    // PVP mode and company ownership never override different team colors.
     world.allied_mode = 1;
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
-    ASSERT_EQ(1, (int)a->is_friendly(b)) << "allied mode with both myguy pointers should be friendly";
+    ASSERT_EQ(0, (int)a->is_friendly(b))
+        << "different-color company heroes must be hostile";
 
-    // Allied mode has_myguy==2 false side: target without myguy and non-red team.
+    // Removing company ownership still leaves different colors hostile.
     b->clear_myguy();
     b->set_team_num(3);
     ASSERT_EQ(0, (int)a->is_friendly(b)) << "one-sided myguy should reject non-red team target";

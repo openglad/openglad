@@ -102,13 +102,10 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
         const unsigned char viewer_team = viewer->team_num();
         for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
         {
-            // Viewer-relative mirror of the engine's classic_team_hostile
-            // rule: entry.team is the corpse's true (charm-broken) team
-            // recorded at schedule time; a hero corpse (kind 0) is
-            // friendly to every player roster color in allied mode.
+            // Viewer-relative mirror of the engine's strict team-color rule.
+            // entry.team is the corpse's true (charm-broken) team recorded
+            // at schedule time; company ownership never changes hostility.
             if (entry.team == viewer_team)
-                continue;
-            if (entry.kind == 0 && world.allied_mode != 0)
                 continue;
             pending_respawn = static_cast<short>(pending_respawn + 1);
             fold_min(entry.ticks_left);
