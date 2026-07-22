@@ -266,9 +266,9 @@ async function openWebDisplayOptions(page) {
   await clickCanvasGameCoord(page, 10, 10);
 
   // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
-  // arrow keys and Enter. From CONTINUE, PLAYER then GAME SETTINGS are two
-  // downward steps in the multiplayer web layout.
-  for (let i = 0; i < 2; ++i) {
+  // arrow keys and Enter. From CONTINUE, LEVEL EDITOR, PLAYERS, then GAME
+  // SETTINGS are three downward steps in the multiplayer web layout.
+  for (let i = 0; i < 3; ++i) {
     await pressPickerKey(page, 's');
   }
   await pressPickerKey(page, 'Control', 300);

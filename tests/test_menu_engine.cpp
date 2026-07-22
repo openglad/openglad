@@ -1744,16 +1744,16 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 8}},
-    {"player_settings", "PLAYER", KEYSTATE_UNKNOWN, 80, 113, 68, 15,
+    {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
+    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 136, 68, 15,
      ButtonAction::MenuSpecRow, 2,
-     MenuNav{.up = 1, .down = 4, .right = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 113, 68, 15,
+     MenuNav{.up = 2, .down = 5, .right = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 136, 68, 15,
      ButtonAction::OpenDifficultyMenu, -1,
-     MenuNav{.up = 1, .down = 4, .left = 2}},
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 134, 140, 15,
-     ButtonAction::MainOptions, -1, MenuNav{.up = 2, .down = 5}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 158, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 4, .down = 6}},
+     MenuNav{.up = 2, .down = 5, .left = 3}},
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 157, 140, 15,
+     ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 6}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 181, 68, 15,
      ButtonAction::ShowHelp, -1,
      MenuNav{.up = 5, .down = 0, .right = 7}},
@@ -1830,7 +1830,7 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     ASSERT_GT(count, 2);
-    EXPECT_EQ(4, picker_mainmenu_options_index());
+    EXPECT_EQ(5, picker_mainmenu_options_index());
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
     EXPECT_EQ("load_company", buttons[count - 2].id);
     EXPECT_EQ("no_company_note", buttons[count - 1].id);
@@ -1875,8 +1875,8 @@ TEST(MenuEngine, player_settings_registry_and_variant_shapes)
     // The main surface opens the nested screen through the engine's one
     // generic row action instead of burning another ButtonAction value.
     const og::ui::MenuScreenSpec& main = og::ui::main_menu_screen_spec_mp();
-    EXPECT_STREQ("player_settings", main.rows[2].id);
-    EXPECT_EQ(ButtonAction::MenuSpecRow, main.rows[2].action);
+    EXPECT_STREQ("player_settings", main.rows[3].id);
+    EXPECT_EQ(ButtonAction::MenuSpecRow, main.rows[3].action);
     EXPECT_NE(nullptr, main.on_spec_row);
 }
 
@@ -2043,14 +2043,14 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
     };
     const int i_begin = index_of("begin_new_game");
     const int i_continue = index_of("continue_game");
-    const int i_player_settings = index_of("player_settings");
+    const int i_level_editor = index_of("level_edit");
 
     // Absent: mimic the gate pass (mark the pair hidden), then rewire.
     for (auto& b : buttons)
         if (std::string_view(b.id) == "continue_game"
             || std::string_view(b.id) == "load_company")
             b.hidden = true;
-    int highlighted = i_player_settings;
+    int highlighted = i_level_editor;
     mp.nav.rewire(buttons.data(), count, highlighted);
     for (int i = 0; i < count; ++i) {
         if (buttons[i].hidden)
@@ -2063,8 +2063,8 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
                 << buttons[i].id << " must not nav into a hidden row";
         }
     }
-    EXPECT_EQ(i_player_settings, buttons[i_begin].nav.down)
-        << "begin.down routes past the hidden pair to PLAYER SETTINGS";
+    EXPECT_EQ(i_level_editor, buttons[i_begin].nav.down)
+        << "begin.down routes past the hidden pair to LEVEL EDITOR";
 
     // Present again: the rewire re-asserts begin.down -> continue_game.
     og::ui::set_main_menu_company_view_for_tests(true, "");

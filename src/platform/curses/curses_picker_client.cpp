@@ -788,7 +788,7 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             autosave_company_after_mutation(save_data_);
             break;
         case PickerMenuCommand::LevelEdit:
-            menu.show_text("Level Edit",
+            menu.show_text("Level Editor",
                 {"The level editor is not available in the curses client.",
                  "Use the standalone 'openscen' tool instead."});
             break;

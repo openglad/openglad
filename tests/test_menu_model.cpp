@@ -32,6 +32,11 @@ TEST(MenuModel, main_definition_and_lookup)
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command)) << "begin_new_game should map to BeginNewGame command";
 
+    const PickerMenuItem* level_editor =
+        find_picker_menu_item(PickerMenuId::Main, "level_edit");
+    ASSERT_NE(nullptr, level_editor);
+    EXPECT_EQ("Level Editor", level_editor->label);
+
     const PickerMenuItem* networking = find_picker_menu_item(PickerMenuId::Main, "networking");
     ASSERT_TRUE(networking == nullptr) << "networking should now live in the team build menu";
 

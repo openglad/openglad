@@ -1042,23 +1042,20 @@ int main_menu_row_index(const button* buttons, int count, std::string_view id)
 // §2.1 nav rewire: CONTINUE (index 1) and LOAD (the appended row) share the
 // company gate, so the graph routes around them when no company exists. The
 // static graph is re-asserted when they are present, keeping the rewire
-// idempotent regardless of a prior frame's state. PLAYER and DIFFICULTY are
-// the two top-row settings buttons immediately below the pair.
+// idempotent regardless of a prior frame's state. LEVEL EDITOR is the first
+// stable row below the pair, so the absent-company shape routes through it.
 void main_menu_nav_rewire(button* buttons, int count, int& /*highlighted*/)
 {
     const int i_begin = main_menu_row_index(buttons, count, "begin_new_game");
     const int i_continue = main_menu_row_index(buttons, count, "continue_game");
-    const int i_player = main_menu_row_index(buttons, count, "player_settings");
-    const int i_difficulty = main_menu_row_index(buttons, count, "difficulty");
+    const int i_level_editor = main_menu_row_index(buttons, count, "level_edit");
 
     if (g_main_menu_company_view.present) {
         if (i_begin >= 0) buttons[i_begin].nav.down = i_continue;
-        if (i_player >= 0) buttons[i_player].nav.up = i_continue;
-        if (i_difficulty >= 0) buttons[i_difficulty].nav.up = i_continue;
+        if (i_level_editor >= 0) buttons[i_level_editor].nav.up = i_continue;
     } else {
-        if (i_begin >= 0) buttons[i_begin].nav.down = i_player;
-        if (i_player >= 0) buttons[i_player].nav.up = i_begin;
-        if (i_difficulty >= 0) buttons[i_difficulty].nav.up = i_begin;
+        if (i_begin >= 0) buttons[i_begin].nav.down = i_level_editor;
+        if (i_level_editor >= 0) buttons[i_level_editor].nav.up = i_begin;
     }
 }
 
@@ -1074,25 +1071,25 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
+    {.id = "level_edit", .label = "Level Editor",
+     .x = 80, .y = 104, .w = 140, .h = 15,
+     .action = ButtonAction::DoLevelEdit, .arg = -1,
+     .nav = {.up = 1, .down = 3}},
     // SETTINGS is a deliberate two-row group: the two compact session
     // categories share the first row, while the broader game/presentation
     // category gets the full-width second row.
-    {.id = "player_settings", .label = "PLAYER",
-     .x = 80, .y = 113, .w = 68, .h = 15,
+    {.id = "player_settings", .label = "PLAYERS",
+     .x = 80, .y = 136, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 2,
-     .nav = {.up = 1, .down = 4, .right = 3}},
+     .nav = {.up = 2, .down = 5, .right = 4}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 152, .y = 113, .w = 68, .h = 15,
+     .x = 152, .y = 136, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 1, .down = 4, .left = 2}},
+     .nav = {.up = 2, .down = 5, .left = 3}},
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 134, .w = 140, .h = 15,
+     .x = 80, .y = 157, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 2, .down = 5}},
-    {.id = "level_edit", .label = "Level Edit",
-     .x = 80, .y = 158, .w = 140, .h = 15,
-     .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 4, .down = 6}},
+     .nav = {.up = 3, .down = 6}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 181, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
@@ -1134,22 +1131,22 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 8},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
-    {.id = "player_settings", .label = "PLAYER",
-     .x = 80, .y = 113, .w = 68, .h = 15,
-     .action = ButtonAction::MenuSpecRow, .arg = 2,
-     .nav = {.up = 1, .down = 4, .right = 3}},
-    {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 152, .y = 113, .w = 68, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 1, .down = 4, .left = 2}},
-    {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 134, .w = 140, .h = 15,
-     .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 2, .down = 5}},
-    {.id = "level_edit", .label = "Level Edit",
-     .x = 80, .y = 158, .w = 140, .h = 15,
+    {.id = "level_edit", .label = "Level Editor",
+     .x = 80, .y = 104, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 4, .down = 6}},
+     .nav = {.up = 1, .down = 3}},
+    {.id = "player_settings", .label = "PLAYERS",
+     .x = 80, .y = 136, .w = 68, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 2,
+     .nav = {.up = 2, .down = 5, .right = 4}},
+    {.id = "difficulty", .label = "DIFFICULTY",
+     .x = 152, .y = 136, .w = 68, .h = 15,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 2, .down = 5, .left = 3}},
+    {.id = "options", .label = "GAME SETTINGS",
+     .x = 80, .y = 157, .w = 140, .h = 15,
+     .action = ButtonAction::MainOptions, .arg = -1,
+     .nav = {.up = 3, .down = 6}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 181, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
@@ -1219,9 +1216,9 @@ void main_menu_draw_content(void* /*screen_state*/)
         count++;
     }
 
-    // The category heading makes the asymmetric two-row settings group read
-    // as one unit instead of three unrelated main-menu actions.
-    game->text_normal.write_xy_center(160, 104, GREY, "%s", "SETTINGS");
+    // Center the category heading on the 140px menu column (x=80..220), not
+    // on the 320px canvas; the classic column art shifts this stack left.
+    game->text_normal.write_xy_center(150, 126, GREY, "%s", "SETTINGS");
 
     // On native builds, show the version number on the main menu. On
     // Emscripten/web builds the version is displayed elsewhere (the help UI).

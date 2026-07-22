@@ -503,10 +503,10 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 |   [title.png]                                          [title.png]             |
 |  col |        [##### BEGIN NEW GAME (pixel art) #####]  (y=52)      | col     |
 |      |        [ CONTINUE ]           [   LOAD   ]       (y=78)      |         |
-|      |                       SETTINGS                (y=104)         |         |
-|      |        [  PLAYER  ]           [DIFFICULTY]      (y=113)      |         |
-|      |        [---------- GAME SETTINGS -----------]   (y=134)      |         |
-|      |        [------------- LEVEL EDIT -----------]   (y=158)      |         |
+|      |        [------------ LEVEL EDITOR ----------]   (y=104)      |         |
+|      |                      SETTINGS                 (y=126)         |         |
+|      |        [ PLAYERS  ]           [DIFFICULTY]      (y=136)      |         |
+|      |        [---------- GAME SETTINGS -----------]   (y=157)      |         |
 |      |        [   HELP   ]           [   QUIT   ]      (y=181)      |         |
 +--------------------------------------------------------------------------------+
 ```
@@ -515,10 +515,10 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
 |---|---|---|---|---|---|
 | 0 | begin_new_game | (80,52,140,20) | "" (art) | — | routes to §2.2 |
 | 1 | continue_game | (80,78,68,20) | `CONTINUE` | 8/10 | opens most-recent company |
-| 2 | player_settings | (80,113,68,15) | `PLAYER` | 6/10 | opens PLAYER SETTINGS |
-| 3 | difficulty | (152,113,68,15) | `DIFFICULTY` | 10/10 | opens DIFFICULTY |
-| 4 | options | (80,134,140,15) | `GAME SETTINGS` | 13/22 | opens GAME SETTINGS; legacy internal id retained |
-| 5 | level_edit | (80,158,140,15) | `LEVEL EDIT` | 10/22 | separate from the settings group |
+| 2 | level_edit | (80,104,140,15) | `LEVEL EDITOR` | 12/22 | separate from the settings group |
+| 3 | player_settings | (80,136,68,15) | `PLAYERS` | 7/10 | opens PLAYER SETTINGS |
+| 4 | difficulty | (152,136,68,15) | `DIFFICULTY` | 10/10 | opens DIFFICULTY |
+| 5 | options | (80,157,140,15) | `GAME SETTINGS` | 13/22 | opens GAME SETTINGS; legacy internal id retained |
 | 6 | help | (80,181,68,15) | `HELP` | 4/10 | present on native and web |
 | 7 | quit | (152,181,68,15) | `QUIT` | 4/10 | native enabled; web visible but Disabled |
 | 8 (appended) | load_company | (152,78,68,20) | `LOAD` | 4/10 | opens Company List (§2.3) |
@@ -527,13 +527,13 @@ Change vs picker.cpp:1516-1534: split `continue_game` (80,75,140,20) into a side
   company state, and the reclaimed band gives the three settings one clear hierarchy.
 - Gating: `continue_game` + `load_company` hidden when zero company files exist;
   `NO COMPANY YET` occupies their shared envelope; per-frame visibility sync rewires
-  both top-row settings buttons around the hidden pair.
+  Begin and Level Editor around the hidden pair.
 - **Nav (materialized indices)**: begin.down→continue(1); continue{up begin,
-  down player(2), right load(8)}; load{up begin, down player, left continue};
-  player↔difficulty across the compact row and both down→game-settings(4);
-  game-settings→level-edit(5)→help(6); help↔quit(7); either footer action
-  down→begin. With no company, begin.down→player and both compact settings
-  buttons route up→begin around the hidden CONTINUE/LOAD pair.
+  down level-editor(2), right load(8)}; load{up begin, down level-editor,
+  left continue}; level-editor→players(3); players↔difficulty(4) across the
+  compact row and both down→game-settings(5); game-settings→help(6);
+  help↔quit(7); either footer action down→begin. With no company,
+  begin.down→level-editor and level-editor.up→begin around the hidden pair.
 - Continue failure: popup with `save_error_string`, then open Company List. Corrupt
   most-recent company: see §3.5 — Continue never silently opens a different company.
 - Hotkeys unchanged. Begin New Game ALWAYS creates a fresh company — the old "restart?"
@@ -1830,7 +1830,7 @@ under the corrected formula. Recapture every screen.
      myfun/myfunc zeroed = keyboard-dead, click no-ops with the
      `menu_engine/disabled_row_click` TRACE).
    - nav: all links −1; NOTHING links into it in either variant — keyboard
-     flows route from Begin directly to PLAYER when CONTINUE/LOAD are hidden.
+     flows route from Begin directly to LEVEL EDITOR when CONTINUE/LOAD are hidden.
      The note is inert chrome: it is EXEMPT from any every-visible-button-
      reachable assertion (add a Disabled-exemption arm to the helper if one
      asserts it).

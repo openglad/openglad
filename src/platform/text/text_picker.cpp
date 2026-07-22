@@ -655,7 +655,7 @@ private:
             autosave_company_after_mutation();
             break;
         case PickerMenuCommand::LevelEdit:
-            std::printf("Level Edit is not available in the headless text client.\n");
+            std::printf("Level Editor is not available in the headless text client.\n");
             break;
         default:
             break;

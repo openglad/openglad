@@ -103,18 +103,18 @@ static const ExpectedButton kExpectedMainMenu[] = {
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
      MenuNav{.up = 0, .down = 2, .right = 8}},
-    {"player_settings", "PLAYER", KEYSTATE_UNKNOWN, 80, 113, 68, 15,
-     button_action_id(ButtonAction::MenuSpecRow), 2,
-     MenuNav{.up = 1, .down = 4, .right = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 113, 68, 15,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 1, .down = 4, .left = 2}},
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 134, 140, 15,
-     button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 2, .down = 5}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 158, 140, 15,
+    {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 4, .down = 6}},
+     MenuNav{.up = 1, .down = 3}},
+    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 136, 68, 15,
+     button_action_id(ButtonAction::MenuSpecRow), 2,
+     MenuNav{.up = 2, .down = 5, .right = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 136, 68, 15,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 2, .down = 5, .left = 3}},
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 157, 140, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 3, .down = 6}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 181, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
      MenuNav{.up = 5, .down = 0, .right = 7}},
@@ -144,7 +144,8 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     // appended tail; GAME SETTINGS is the full-width settings-group row.
     ASSERT_EQ("no_company_note", buttons[count - 1].id);
     ASSERT_EQ("load_company", buttons[count - 2].id);
-    ASSERT_EQ("options", buttons[4].id);
+    ASSERT_EQ("level_edit", buttons[2].id);
+    ASSERT_EQ("options", buttons[5].id);
     ASSERT_EQ("help", buttons[6].id);
     ASSERT_EQ("quit", buttons[7].id);
 }
