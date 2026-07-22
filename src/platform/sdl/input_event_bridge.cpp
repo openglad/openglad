@@ -187,8 +187,8 @@ void handle_key_event(const void* native_event)
             {
                 const int old_w = s->world_canvas_w();
                 const int old_h = s->world_canvas_h();
-                // Match the in-menu RESTORE DEFAULTS path: mode, window
-                // size, zoom and smoothing all take effect immediately.
+                // Ctrl-F12 remains the full emergency reset (including
+                // controls); mode, size, zoom and smoothing apply immediately.
                 s->apply_display_settings_from_cfg();
                 if (s->world_canvas_w() != old_w || s->world_canvas_h() != old_h)
                     s->relayout_views();

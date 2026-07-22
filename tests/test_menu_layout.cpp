@@ -209,13 +209,14 @@ TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)
     check_nav_in_range(buttons, count, "player_settings");
     check_nav_closed_and_reachable(buttons, count, 1, "player_settings");
 #ifndef DISABLE_MULTIPLAYER
-    ASSERT_EQ(7, count);
+    ASSERT_EQ(8, count);
     EXPECT_EQ(27, buttons[1].x);
     EXPECT_EQ(293, buttons[4].x + buttons[4].sizex);
     for (int i = 1; i <= 4; ++i)
         EXPECT_EQ(70, buttons[i].y);
     EXPECT_EQ(160, buttons[5].x + buttons[5].sizex / 2);
     EXPECT_EQ(160, buttons[6].x + buttons[6].sizex / 2);
+    EXPECT_EQ(160, buttons[7].x + buttons[7].sizex / 2);
 #endif
 }
 
@@ -1168,6 +1169,7 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
     button* buttons = picker_control_options_buttons();
     const int count = picker_control_options_button_count();
     check_nav_in_range(buttons, count, "control_options");
+    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
 }
 
 // The per-effect toggles live in the three FX subscreens; main options keeps
@@ -1179,7 +1181,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     const int count = picker_main_options_button_count();
     ASSERT_EQ(8, count)
         << "main options is BACK + Sound + DISPLAY + sprite sheet + "
-           "3 FX doors + RESTORE DEFAULTS";
+           "3 FX doors + RESTORE SETTINGS";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1201,6 +1203,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
             << buttons[i].id << " label '" << buttons[i].label
             << "' escapes its face";
     }
+    EXPECT_EQ("RESTORE SETTINGS", buttons[4].label);
     // The settings/door column stacks at one x at 23px pitch.
     EXPECT_EQ("DISPLAY", buttons[2].label);
     EXPECT_EQ(buttons[2].x, buttons[3].x);

@@ -385,9 +385,10 @@ set_graphic path, engine re-applies after every reset; `options` FAMILY_WRENCH).
 pins for the compiled variant's materialized table plus noMP/web shapes (G9).
 
 Later UI reflow note: the MP/no-MP main specs now share one centered geometry. Player
-count, Allied/Spectator, and CONTROLS moved together into nested PLAYER SETTINGS specs;
-that nested pair now carries the genuine MP/no-MP row difference. The four historical
-table shapes and binding migration above remain the provenance for the engine contract.
+count, Allied/Spectator, CONTROLS, and its scoped RESET CONTROLS moved together into
+nested PLAYER SETTINGS specs; that nested pair now carries the genuine MP/no-MP row
+difference. The four historical table shapes and binding migration above remain the
+provenance for the engine contract.
 
 ### 1.7 New-screen machinery (Layer F)
 

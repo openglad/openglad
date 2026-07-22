@@ -125,7 +125,7 @@ struct FullControlSnapshotGuard
         }
     }
 
-    ~FullControlSnapshotGuard()
+    void restore()
     {
         for (int p = 0; p < 4; ++p)
         {
@@ -138,6 +138,8 @@ struct FullControlSnapshotGuard
             set_player_control_mode(p, modes[p]);
         }
     }
+
+    ~FullControlSnapshotGuard() { restore(); }
 };
 } // namespace
 
@@ -809,7 +811,60 @@ TEST(InputKeybinds, controls_reset_defaults_action_resets_controls_only)
 
     ASSERT_STREQ("CONTROL_RESET_TEST", cfg.get_setting("graphics", "render").c_str()) << "controls reset should not modify non-controls settings";
 
+    // The PLAYER SETTINGS action persists immediately: dirty runtime again,
+    // reload cfg, and prove the defaults return from disk.
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F12);
+    cfg.load_settings();
+    load_player_control_settings_from_cfg(cfg);
+    ASSERT_EQ(expected_mode[0], get_player_control_mode(0));
+    ASSERT_EQ(expected_mode8[0][KEY_UP_RIGHT],
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::EightDirection),
+                  KEY_UP_RIGHT));
+
+    guard.restore();
     cfg.apply_setting("graphics", "render", old_render);
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+}
+
+
+TEST(InputKeybinds, settings_reset_preserves_runtime_and_saved_controls)
+{
+    FullControlSnapshotGuard guard;
+
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F9);
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+
+    vbutton b;
+    ASSERT_EQ(2, static_cast<int>(b.do_call(
+        button_action_id(ButtonAction::RestoreDefaultSettings), -1)));
+    EXPECT_EQ(static_cast<int>(ControlDirectionMode::EightDirection),
+              get_player_control_mode(0));
+    EXPECT_EQ(static_cast<int>(SDLK_F9),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::EightDirection),
+                  KEY_UP_RIGHT));
+
+    // Prove the preserved controls were written back over the freshly copied
+    // default config, not merely left alive in this process.
+    reset_default_player_controls();
+    cfg.load_settings();
+    load_player_control_settings_from_cfg(cfg);
+    EXPECT_EQ(static_cast<int>(ControlDirectionMode::EightDirection),
+              get_player_control_mode(0));
+    EXPECT_EQ(static_cast<int>(SDLK_F9),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::EightDirection),
+                  KEY_UP_RIGHT));
+
+    guard.restore();
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
 }
 
 

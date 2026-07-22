@@ -253,8 +253,8 @@ enum class ButtonAction : Sint32
     ToggleDamageNumbers = 41,
     ToggleHealNumbers = 42,
     ToggleGore = 43,
-    RestoreDefaultSettings = 44,
-    RestoreDefaultControls = 45,
+    RestoreDefaultSettings = 44, // Wrench-owned cfg; preserves controls.
+    RestoreDefaultControls = 45, // Player modes + both keymaps only.
     ShowHelp = 46,
     CreateProgressMenu = 47,
     OpenControlSettings = 48,

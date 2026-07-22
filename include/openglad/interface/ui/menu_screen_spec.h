@@ -289,8 +289,8 @@ const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
 
 // PLAYER SETTINGS: local player count, PVP relationship, and the door into
-// per-player control modes/keymaps. Multiplayer-disabled builds keep the
-// same door but expose only CONTROLS inside it.
+// per-player control modes/keymaps, plus their scoped reset. Multiplayer-
+// disabled builds keep the same door and RESET CONTROLS, but omit seat/PVP.
 const MenuScreenSpec& player_settings_menu_screen_spec();
 const MenuScreenSpec& player_settings_menu_screen_spec_mp();
 const MenuScreenSpec& player_settings_menu_screen_spec_nomp();

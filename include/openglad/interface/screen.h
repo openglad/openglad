@@ -239,7 +239,7 @@ public:
     void begin_gameplay_frame() override { video_impl_->begin_gameplay_frame(); }
     void prepare_ui_canvas_from_world() override { video_impl_->prepare_ui_canvas_from_world(); }
     // Re-reads cfg graphics/zoom + graphics/smoothing into the live world
-    // canvas (the DISPLAY selectors / RESTORE DEFAULTS live-apply path).
+    // canvas (the DISPLAY selectors / RESTORE SETTINGS live-apply path).
     void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
     int minimum_world_zoom_steps() const override
     {

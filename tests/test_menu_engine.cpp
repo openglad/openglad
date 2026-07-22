@@ -1848,7 +1848,7 @@ TEST(MenuEngine, player_settings_registry_and_variant_shapes)
 
     const og::ui::MenuScreenSpec& mp =
         og::ui::player_settings_menu_screen_spec_mp();
-    ASSERT_EQ(7, mp.row_count);
+    ASSERT_EQ(8, mp.row_count);
     EXPECT_STREQ("player_settings_back", mp.rows[0].id);
     for (int i = 1; i <= 4; ++i) {
         EXPECT_EQ(ButtonAction::SetPlayerMode, mp.rows[i].action);
@@ -1858,12 +1858,16 @@ TEST(MenuEngine, player_settings_registry_and_variant_shapes)
     EXPECT_EQ(ButtonAction::AlliedMode, mp.rows[5].action);
     EXPECT_STREQ("player_controls", mp.rows[6].id);
     EXPECT_EQ(ButtonAction::OpenControlSettings, mp.rows[6].action);
+    EXPECT_STREQ("reset_controls", mp.rows[7].id);
+    EXPECT_EQ(ButtonAction::RestoreDefaultControls, mp.rows[7].action);
 
     const og::ui::MenuScreenSpec& nomp =
         og::ui::player_settings_menu_screen_spec_nomp();
-    ASSERT_EQ(2, nomp.row_count);
+    ASSERT_EQ(3, nomp.row_count);
     EXPECT_STREQ("player_settings_back", nomp.rows[0].id);
     EXPECT_STREQ("player_controls", nomp.rows[1].id);
+    EXPECT_STREQ("reset_controls", nomp.rows[2].id);
+    EXPECT_EQ(ButtonAction::RestoreDefaultControls, nomp.rows[2].action);
 
     // The main surface opens the nested screen through the engine's one
     // generic row action instead of burning another ButtonAction value.
@@ -2125,7 +2129,7 @@ TEST(MenuEngine, control_options_mode_label_bindings_follow_the_mode)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(10, count);
+    ASSERT_EQ(9, count);
 
     og::ui::MenuLabelContext context;
     for (int player = 0; player < 4; ++player) {

@@ -491,7 +491,7 @@ const MenuScreenSpec& graphics_fx_menu_screen_spec()
 // budget) so "Mode: Borderless" and "Res: 2560x1440" fit. Rows on the
 // effects grid. Every face is cfg-derived: the LabelBindings re-derive all
 // four each frame on both surfaces (the click callbacks used to write them
-// too — those tails are gone, G8 — and RESTORE DEFAULTS or a lobby-applied
+// too — those tails are gone, G8 — and RESTORE SETTINGS or a lobby-applied
 // cfg must reflect here regardless). cfg persists when main_options()
 // exits, which is the only path back out.
 
@@ -656,7 +656,7 @@ constexpr MenuButtonSpec kControlOptionsRows[] = {
     {.id = "controls_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 8, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "player1_mode", .label = "4-DIRECTION",
      .x = 30, .y = ctrl_player_y(0), .w = 100, .h = 15,
      .action = ButtonAction::ToggleControlMode, .arg = 0,
@@ -687,16 +687,12 @@ constexpr MenuButtonSpec kControlOptionsRows[] = {
     {.id = "player4_mode", .label = "4-DIRECTION",
      .x = 30, .y = ctrl_player_y(3), .w = 100, .h = 15,
      .action = ButtonAction::ToggleControlMode, .arg = 3,
-     .nav = {.up = 5, .down = 9, .right = 8},
+     .nav = {.up = 5, .down = 0, .right = 8},
      .label_binding = {.formatter = &player_mode_row_label<3>}},
     {.id = "player4_remap", .label = "REMAP P4",
      .x = 170, .y = ctrl_player_y(3), .w = 100, .h = 15,
      .action = ButtonAction::EditPlayerKeymap, .arg = 3,
-     .nav = {.up = 6, .down = 9, .left = 7}},
-    {.id = "controls_restore_defaults", .label = "RESET DEFAULTS",
-     .x = 80, .y = 170, .w = 160, .h = 15,
-     .action = ButtonAction::RestoreDefaultControls, .arg = -1,
-     .nav = {.up = 7}},
+     .nav = {.up = 6, .down = 0, .left = 7}},
 };
 
 void control_options_draw_content(void* /*screen_state*/)
@@ -785,7 +781,7 @@ constexpr MenuButtonSpec kMainOptionsRows[] = {
      .x = 130, .y = options_col_y(3), .w = 90, .h = 15,
      .action = ButtonAction::OpenGameplayFxSettings, .arg = -1,
      .nav = {.up = 2, .down = 6}},
-    {.id = "restore_defaults", .label = "RESTORE DEFAULTS",
+    {.id = "restore_defaults", .label = "RESTORE SETTINGS",
      .x = 210, .y = 10, .w = 100, .h = 15,
      .action = ButtonAction::RestoreDefaultSettings, .arg = -1,
      .nav = {.up = 7, .down = 5, .left = 0}},
@@ -847,8 +843,8 @@ const MenuScreenSpec& main_options_menu_screen_spec()
 // three disconnected bands on the main menu, while keymaps lived behind the
 // options gear. They now form one centered setup screen. The four seat faces
 // read as a segmented selector; PVP and CONTROLS share the same full-width
-// column below it. Multiplayer-disabled builds retain the door for CONTROLS
-// without exposing unavailable seat/PVP choices.
+// column below it, followed by the controls-only reset. Multiplayer-disabled
+// builds retain CONTROLS and RESET CONTROLS without unavailable seat/PVP.
 
 std::string pvp_allied_row_label(const MenuLabelContext& context)
 {
@@ -864,7 +860,7 @@ constexpr MenuButtonSpec kPlayerSettingsRowsMP[] = {
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 6, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "1_player", .label = "1 PLAYER", .hotkey = KEYSTATE_1,
      .x = 27, .y = 70, .w = 62, .h = 20,
      .action = ButtonAction::SetPlayerMode, .arg = 1,
@@ -893,7 +889,11 @@ constexpr MenuButtonSpec kPlayerSettingsRowsMP[] = {
     {.id = "player_controls", .label = "CONTROLS",
      .x = 90, .y = 132, .w = 140, .h = 18,
      .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 5, .down = 0}},
+     .nav = {.up = 5, .down = 7}},
+    {.id = "reset_controls", .label = "RESET CONTROLS",
+     .x = 90, .y = 159, .w = 140, .h = 18,
+     .action = ButtonAction::RestoreDefaultControls, .arg = -1,
+     .nav = {.up = 6, .down = 0}},
 };
 
 constexpr MenuButtonSpec kPlayerSettingsRowsNoMP[] = {
@@ -901,11 +901,15 @@ constexpr MenuButtonSpec kPlayerSettingsRowsNoMP[] = {
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 1, .down = 1}},
+     .nav = {.up = 2, .down = 1}},
     {.id = "player_controls", .label = "CONTROLS",
-     .x = 90, .y = 88, .w = 140, .h = 20,
+     .x = 90, .y = 76, .w = 140, .h = 20,
      .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 0, .down = 0}},
+     .nav = {.up = 0, .down = 2}},
+    {.id = "reset_controls", .label = "RESET CONTROLS",
+     .x = 90, .y = 105, .w = 140, .h = 20,
+     .action = ButtonAction::RestoreDefaultControls, .arg = -1,
+     .nav = {.up = 1, .down = 0}},
 };
 
 void player_settings_draw_content(void* /*screen_state*/)

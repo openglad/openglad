@@ -750,7 +750,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         cfg.load_settings();
-        load_player_control_settings_from_cfg(cfg);
+        // The wrench menu owns presentation/effects settings, not player
+        // controls. Put the live modes and both keymaps back into the freshly
+        // restored config before it reaches disk.
+        save_player_control_settings_to_cfg(cfg);
+        cfg.save_settings();
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
             parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
@@ -769,6 +773,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();
+        save_player_control_settings_to_cfg(cfg);
+        cfg.save_settings();
         return REDRAW;
     default:
         return OK;

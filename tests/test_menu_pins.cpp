@@ -175,7 +175,7 @@ TEST(MenuEnginePins, player_settings_exact_table)
     static const ExpectedButton kExpected[] = {
         {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 6, .down = 1}},
+         MenuNav{.up = 7, .down = 1}},
         {"1_player", "1 PLAYER", KEYSTATE_1, 27, 70, 62, 20,
          button_action_id(ButtonAction::SetPlayerMode), 1,
          MenuNav{.up = 0, .down = 5, .right = 2}},
@@ -193,16 +193,22 @@ TEST(MenuEnginePins, player_settings_exact_table)
          MenuNav{.up = 1, .down = 6}},
         {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 132, 140, 18,
          button_action_id(ButtonAction::OpenControlSettings), -1,
-         MenuNav{.up = 5, .down = 0}},
+         MenuNav{.up = 5, .down = 7}},
+        {"reset_controls", "RESET CONTROLS", KEYSTATE_UNKNOWN, 90, 159, 140, 18,
+         button_action_id(ButtonAction::RestoreDefaultControls), -1,
+         MenuNav{.up = 6, .down = 0}},
     };
 #else
     static const ExpectedButton kExpected[] = {
         {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 1, .down = 1}},
-        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 88, 140, 20,
+         MenuNav{.up = 2, .down = 1}},
+        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 76, 140, 20,
          button_action_id(ButtonAction::OpenControlSettings), -1,
-         MenuNav{.up = 0, .down = 0}},
+         MenuNav{.up = 0, .down = 2}},
+        {"reset_controls", "RESET CONTROLS", KEYSTATE_UNKNOWN, 90, 105, 140, 20,
+         button_action_id(ButtonAction::RestoreDefaultControls), -1,
+         MenuNav{.up = 1, .down = 0}},
     };
 #endif
     button* buttons = picker_player_settings_buttons();
