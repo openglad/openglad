@@ -2487,7 +2487,7 @@ grammar instead of presenting independent conventions.
   TRAIN-to-roster synchronization before ACCEPT. The existing Base Camp team
   chip and autosave tests continue to cover the opposite entry point.
 
-### 9.21 UX round 11 (2026-07-22) — restore View Team family colors [FINAL]
+### 9.21 UX round 11 (2026-07-22) — restore View Team family colors [SUPERSEDED BY §9.23]
 
 Base Camp's roster restores the identity colors from the `master` branch's
 retired View Team screen without changing its newer team and deploy controls.
@@ -2504,7 +2504,7 @@ retired View Team screen without changing its newer team and deploy controls.
 - Unit coverage pins all playable families to the original formula; the solo,
   paged, host, joiner, and degraded-link captures carry the rendered result.
 
-### 9.22 UX round 12 (2026-07-22) — crisp identity text and numbered teams [FINAL]
+### 9.22 UX round 12 (2026-07-22) — crisp identity text and numbered teams [SUPERSEDED IN PART BY §9.23]
 
 The restored roster colors stay, with two small legibility refinements.
 
@@ -2519,3 +2519,25 @@ The restored roster colors stay, with two small legibility refinements.
   requested color and that all four team squares contain the correct digit on
   the correct team-color face. The five populated Base Camp captures carry
   the rendered result.
+
+### 9.23 UX round 13 (2026-07-22) — stable team cycling and family-ramp swatches [FINAL]
+
+Team selection no longer disturbs roster position, and family identity moves
+out of the primary text into a compact homage to View Team's palette.
+
+- The local lobby echo treats every `LobbyCharacterSlot::slot_index` as the
+  original private save slot even when only a subset of roster teams is
+  represented by active local seats. It never compacts that subset before
+  restoring inactive-team members. Cycling a middle Base Camp TEAM chip now
+  changes only that member's `teamnum`; the visible and autosaved roster order
+  remains unchanged.
+- Deployed `NAME` and `CLASS` text uses flat PURE_BLACK; benched identity text
+  uses flat shade 21. The font's rough internal top-row shading remains
+  disabled.
+- Solo rows draw a bordered family swatch immediately after `CLASS`. Network
+  rows, whose COMPANY column replaces CLASS, draw it immediately after NAME.
+  The swatch contains the first eight entries of the family's original
+  16-color View Team ramp, from `((family + 1) << 4) & 255` through `+7`.
+- A click-level regression test cycles a middle roster row and pins both live
+  and reloaded save-slot order. Pixel coverage pins deployed/benched identity
+  ink and every shade in multiple family swatches.

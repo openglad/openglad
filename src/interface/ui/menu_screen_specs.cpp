@@ -1784,15 +1784,32 @@ constexpr int kBaseCampSoloLevelColumnX = 236;
 constexpr int kBaseCampSoloExpColumnX = 274;
 constexpr int kBaseCampNetCompanyColumnX = 160;
 constexpr int kBaseCampNetLevelColumnX = 292;
+constexpr int kBaseCampFamilySwatchGap = 1;
+constexpr int kBaseCampFamilySwatchRampWidth = 8;
+constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
+constexpr int kBaseCampFamilySwatchHeight = 8;
 constexpr char kBaseCampTrainHint[] =
     "TAP TEAM COLOR TO CYCLE  TAP NAME TO TRAIN";
 constexpr int kBaseCampTrainHintX = 34;
 constexpr int kBaseCampTrainHintY = 167;
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
 // shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
-// so 23-vs-24 dimming was nearly invisible. §9.21 restores View Team's
-// family colors on NAME/CLASS while DEPLOY/COMPANY/LV/EXP retain this cue.
+// so 23-vs-24 dimming was nearly invisible. §9.23 uses it for benched
+// NAME/CLASS too, while deployed identity text uses true black.
 constexpr unsigned char kBenchedTextShade = 21;
+
+void draw_base_camp_family_swatch(screen& game, int x, int row_y,
+                                  short family)
+{
+    game.fastbox(x, row_y + 1, kBaseCampFamilySwatchWidth,
+                 kBaseCampFamilySwatchHeight, PURE_BLACK);
+    const unsigned char ramp_start = base_camp_family_ramp_start(family);
+    for (int shade = 0; shade < kBaseCampFamilySwatchRampWidth; ++shade) {
+        game.fastbox(x + 1 + shade, row_y + 2, 1,
+                     kBaseCampFamilySwatchHeight - 2,
+                     static_cast<unsigned char>(ramp_start + shade));
+    }
+}
 
 // §2.6 per-frame face/label bindings for the GO/READY slot: the engine's
 // label-sync pass re-derives BOTH surfaces from the lobby state every frame
@@ -2341,17 +2358,16 @@ void base_camp_draw_content(void* screen_state)
         // chip's 8x8 colored face rather than leaning into its top-left.
         mytext.write_xy_flat(64, y + 3, team_number, PURE_BLACK, 1);
 
-        // Restore the original View Team identity treatment: NAME and CLASS
-        // use ((family + 1) << 4) & 255. Flatten the font's internal shade
-        // ramp here so its darkest top pixels do not roughen the colored
-        // letters. The family color remains visible when benched, while
-        // non-identity metadata keeps Base Camp's deployed/benched contrast.
-        // TEAM remains the separate gameplay-team ramp above; these two
-        // colors intentionally communicate different facts.
-        const unsigned char family_color =
-            base_camp_family_text_color(member->family);
+        // NAME and CLASS are high-contrast flat ink: true black when
+        // deployed, grey when benched. Family identity moves into a compact
+        // swatch immediately after CLASS (or NAME in the network layout),
+        // using the first eight shades of View Team's original family ramp.
+        // TEAM remains the separate gameplay-team ramp above.
         const unsigned char status_color =
             deployed ? static_cast<unsigned char>(BLACK) : kBenchedTextShade;
+        const unsigned char identity_color =
+            deployed ? static_cast<unsigned char>(PURE_BLACK)
+                     : kBenchedTextShade;
 
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
@@ -2363,7 +2379,12 @@ void base_camp_draw_content(void* screen_state)
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), family_color, 1);
+                                 row.name.c_str(), identity_color, 1);
+            draw_base_camp_family_swatch(
+                *game,
+                kBaseCampNameColumnX + mytext.query_width(row.name) +
+                    kBaseCampFamilySwatchGap,
+                y, member->family);
             mytext.write_xy(kBaseCampNetCompanyColumnX, y + 2,
                             row.company.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampNetLevelColumnX, y + 2,
@@ -2371,9 +2392,14 @@ void base_camp_draw_content(void* screen_state)
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), family_color, 1);
+                                 row.name.c_str(), identity_color, 1);
             mytext.write_xy_flat(kBaseCampSoloClassColumnX, y + 2,
-                                 row.cls.c_str(), family_color, 1);
+                                 row.cls.c_str(), identity_color, 1);
+            draw_base_camp_family_swatch(
+                *game,
+                kBaseCampSoloClassColumnX + mytext.query_width(row.cls) +
+                    kBaseCampFamilySwatchGap,
+                y, member->family);
             mytext.write_xy(kBaseCampSoloLevelColumnX, y + 2,
                             row.level.c_str(), status_color, 1);
             mytext.write_xy(kBaseCampSoloExpColumnX, y + 2, row.exp.c_str(),

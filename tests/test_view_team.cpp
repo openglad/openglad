@@ -25,6 +25,7 @@
 #include <format>
 #include <functional>
 #include <list>
+#include <string_view>
 
 namespace {
 constexpr int kViewMenuTransitionTimeoutMs = 15000;
@@ -1421,6 +1422,67 @@ TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
     save.reset();
 }
 
+// A team click must mutate only the selected guy's teamnum. The local lobby
+// echo addresses characters by their private save slot; compacting the one
+// newly active team ahead of the preserved slots used to rotate the roster
+// when a middle row changed teams.
+TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    constexpr std::array<std::string_view, 4> names = {
+        "ALPHA", "BRAVO", "CHARLIE", "DELTA"};
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = names[static_cast<std::size_t>(slot)];
+        member->teamnum = 0;
+        save.team_list[slot] = std::move(member);
+    }
+    save.team_size = static_cast<unsigned char>(names.size());
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+
+    ASSERT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 2, &state));
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        ASSERT_NE(nullptr, save.team_list[slot]) << "slot " << slot;
+        EXPECT_EQ(names[static_cast<std::size_t>(slot)],
+                  save.team_list[slot]->name)
+            << "a team click must not reorder private save slots";
+        EXPECT_EQ(slot == 2 ? 1 : 0,
+                  static_cast<int>(save.team_list[slot]->teamnum));
+    }
+
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(names.size(), state.slots.size());
+    for (int row = 0; row < static_cast<int>(names.size()); ++row)
+        EXPECT_EQ(row, state.slots[static_cast<std::size_t>(row)].save_slot);
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        ASSERT_NE(nullptr, reloaded.team_list[slot]);
+        EXPECT_EQ(names[static_cast<std::size_t>(slot)],
+                  reloaded.team_list[slot]->name);
+    }
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
 // Team chips retain the four gameplay ramps and overlay their one-based team
 // number. Pin every glyph pixel so 1-4 cannot disappear into the colored face
 // or regress to the shaded font treatment used elsewhere.
@@ -1480,6 +1542,97 @@ TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
             }
         }
     }
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// Identity text stays readable while the old View Team palette survives as
+// a real eight-shade family ramp immediately after the class label.
+TEST(ViewTeam, base_camp_draws_crisp_identity_text_and_family_ramp_swatches)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+
+    auto deployed = std::make_unique<guy>(FAMILY_ELF);
+    deployed->name = "ELENA";
+    deployed->deployed = true;
+    save.team_list[0] = std::move(deployed);
+    auto benched = std::make_unique<guy>(FAMILY_MAGE);
+    benched->name = "MIRA";
+    benched->deployed = false;
+    save.team_list[1] = std::move(benched);
+    save.team_size = 2;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    const auto expect_flat_glyph = [&](char label, int x, int y,
+                                       int expected_color) {
+        const unsigned char* const glyph =
+            font.letters->data.get() +
+            static_cast<std::size_t>(static_cast<unsigned char>(label)) *
+                stride;
+        int opaque_pixels = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row) {
+            for (Sint32 col = 0; col < font.sizex; ++col) {
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                if (source == 0)
+                    continue;
+                ++opaque_pixels;
+                int actual = -1;
+                output->get_pixel(x + col, y + row, &actual);
+                EXPECT_EQ(expected_color, actual)
+                    << label << " pixel " << col << "," << row;
+            }
+        }
+        EXPECT_GT(opaque_pixels, 0);
+    };
+
+    constexpr int name_x = 88;
+    constexpr int class_x = 164;
+    constexpr int first_text_y = 47;
+    constexpr int row_pitch = 14;
+    expect_flat_glyph('E', name_x, first_text_y, PURE_BLACK);
+    expect_flat_glyph('E', class_x, first_text_y, PURE_BLACK);
+    expect_flat_glyph('M', name_x, first_text_y + row_pitch, 21);
+    expect_flat_glyph('M', class_x, first_text_y + row_pitch, 21);
+
+    const auto expect_swatch = [&](std::string_view cls, int row_y,
+                                   int ramp_start) {
+        const int swatch_x = class_x + font.query_width(cls) + 1;
+        int actual = -1;
+        output->get_pixel(swatch_x, row_y + 1, &actual);
+        EXPECT_EQ(PURE_BLACK, actual) << "swatch border";
+        for (int shade = 0; shade < 8; ++shade) {
+            output->get_pixel(swatch_x + 1 + shade, row_y + 2, &actual);
+            EXPECT_EQ(ramp_start + shade, actual) << "shade " << shade;
+        }
+        output->get_pixel(swatch_x + 9, row_y + 8, &actual);
+        EXPECT_EQ(PURE_BLACK, actual) << "swatch lower-right border";
+    };
+    expect_swatch("ELF", 45, 32);
+    expect_swatch("MAGE", 45 + row_pitch, 64);
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();

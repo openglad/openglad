@@ -258,10 +258,9 @@ struct BaseCampRowText {
 };
 BaseCampRowText format_base_camp_row(const guy& member);
 
-// The original View Team identity color: NAME and family/class text used the
-// family-numbered 16-color palette ramp. Base Camp deliberately preserves
-// that exact mapping rather than inventing a new roster palette.
-unsigned char base_camp_family_text_color(short family);
+// Start of the original View Team family's 16-color palette ramp. Base Camp
+// uses its first eight shades for the compact identity swatch.
+unsigned char base_camp_family_ramp_start(short family);
 
 // §2.5 header line A right block: "GOLD {n}" (clipped to the 11-char block).
 std::string format_base_camp_gold_label(const SaveData& save);
@@ -453,7 +452,7 @@ BaseCampNetRowText format_base_camp_net_row(std::string_view name,
                                             int level);
 
 // Display-only guy copy of a replicated foreign character (derived-stat
-// input + family chip). NOT the roster-assembly builder — no id/teamnum
+// input + family swatch). NOT the roster-assembly builder — no id/teamnum
 // semantics, never enters a save or a level.
 std::unique_ptr<guy> make_base_camp_display_guy(
     const og::sim::LobbyCharacterData& character);

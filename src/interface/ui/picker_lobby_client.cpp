@@ -628,33 +628,30 @@ private:
                       return lhs.slot_order < rhs.slot_order;
                   });
 
-        const bool slots_are_dense = std::all_of(
-            ordered_slots.begin(), ordered_slots.end(),
-            [&ordered_slots](const OrderedLobbySlot& slot) {
-                return static_cast<std::size_t>(slot.slot_index) ==
-                    static_cast<std::size_t>(&slot - ordered_slots.data());
-            });
-
         for (auto& member : save.team_list)
             member.reset();
         save.team_size = 0;
 
-        for (std::size_t index = 0; index < ordered_slots.size(); ++index)
+        for (const OrderedLobbySlot& ordered_slot : ordered_slots)
         {
-            std::uint8_t slot_index = ordered_slots[index].slot_index;
-            if (!slots_are_dense)
-                slot_index = static_cast<std::uint8_t>(index);
+            // LobbyCharacterSlot::slot_index is the machine's PRIVATE save
+            // slot. Keep it authoritative even when only one of several
+            // teams is currently represented by a synthetic local peer.
+            // Compacting that subset to 0..N made a Base Camp team click
+            // collide with preserved inactive-team members, reshuffling the
+            // visible roster and then persisting the shuffle.
+            const std::uint8_t slot_index = ordered_slot.slot_index;
             if (slot_index >= save.team_list.size())
                 continue;
 
             save.team_list[slot_index] =
-                make_guy_from_lobby_character(ordered_slots[index].slot->character);
+                make_guy_from_lobby_character(ordered_slot.slot->character);
             // §4.2: preserve the slot's deploy flag through the round-trip —
             // the local lobby state carries the machine's WHOLE roster
             // (benched included) and this rebuild writes back into the real
             // save, so re-deploying here would wipe a benched selection.
             save.team_list[slot_index]->deployed =
-                ordered_slots[index].slot->deployed;
+                ordered_slot.slot->deployed;
             save.team_size++;
         }
 

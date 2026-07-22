@@ -3037,22 +3037,22 @@ TEST(BaseCampRoster, format_row_clips_every_column)
     EXPECT_EQ("123456", og::ui::format_base_camp_row(member).exp);
 }
 
-TEST(BaseCampRoster, family_text_colors_match_master_view_team)
+TEST(BaseCampRoster, family_ramp_starts_match_master_view_team)
 {
     // Master's View Team applied this exact palette-ramp formula to both the
-    // character name and its family label. Pin every playable family so the
-    // nostalgic mapping cannot quietly collapse into a uniform row color.
+    // character name and its family label. Base Camp now carries the same
+    // ramps in compact swatches; pin every playable family.
     for (short family = FAMILY_SOLDIER; family <= FAMILY_TOWER1; ++family) {
         const unsigned char expected =
             static_cast<unsigned char>(((family + 1) << 4) & 255);
-        EXPECT_EQ(expected, og::ui::base_camp_family_text_color(family))
+        EXPECT_EQ(expected, og::ui::base_camp_family_ramp_start(family))
             << "family " << family;
     }
 
-    EXPECT_EQ(16, og::ui::base_camp_family_text_color(FAMILY_SOLDIER));
-    EXPECT_EQ(32, og::ui::base_camp_family_text_color(FAMILY_ELF));
-    EXPECT_EQ(48, og::ui::base_camp_family_text_color(FAMILY_ARCHER));
-    EXPECT_EQ(64, og::ui::base_camp_family_text_color(FAMILY_MAGE));
+    EXPECT_EQ(16, og::ui::base_camp_family_ramp_start(FAMILY_SOLDIER));
+    EXPECT_EQ(32, og::ui::base_camp_family_ramp_start(FAMILY_ELF));
+    EXPECT_EQ(48, og::ui::base_camp_family_ramp_start(FAMILY_ARCHER));
+    EXPECT_EQ(64, og::ui::base_camp_family_ramp_start(FAMILY_MAGE));
 }
 
 TEST(BaseCampRoster, header_lines_budget_and_content)
