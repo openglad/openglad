@@ -194,6 +194,10 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
+    ASSERT_GE(count, 5);
+    for (int i = 0; i < 4; ++i)
+        EXPECT_EQ(6, buttons[i + 1].y - (buttons[i].y + buttons[i].sizey))
+            << "main stack gap after " << buttons[i].id;
 }
 
 TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)

@@ -1743,11 +1743,11 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 78, 68, 20,
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
-    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 106, 140, 15,
+    {"player_settings", "PLAYER SETTINGS", KEYSTATE_UNKNOWN, 80, 104, 140, 15,
      ButtonAction::MenuSpecRow, 2, MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 127, 140, 15,
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 125, 140, 15,
      ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
-    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 148, 140, 15,
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 146, 140, 15,
      ButtonAction::DoLevelEdit, -1, MenuNav{.up = 3, .down = 6}},
 };
 
