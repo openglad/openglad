@@ -383,19 +383,19 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         // for networked joiners).
         {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30},
          true},
-        {"seats", "SEATS", 4, 164, 34, 10,
+        {"seats", "SEATS", 8, 164, 34, 10,
          MenuNav{.down = 27, .right = 34}, false},
-        {"seat_page_prev", "<", 40, 164, 10, 10,
+        {"seat_page_prev", "<", 44, 164, 10, 10,
          MenuNav{.left = 33, .right = 35}, true},
-        {"seat_card_0", "", 52, 164, 60, 10,
+        {"seat_card_0", "", 56, 164, 60, 10,
          MenuNav{.left = 34, .right = 36}, false},
-        {"seat_card_1", "", 113, 164, 60, 10,
+        {"seat_card_1", "", 117, 164, 60, 10,
          MenuNav{.left = 35, .right = 37}, false},
-        {"seat_card_2", "", 174, 164, 60, 10,
+        {"seat_card_2", "", 178, 164, 60, 10,
          MenuNav{.left = 36, .right = 38}, false},
-        {"seat_card_3", "", 235, 164, 60, 10,
+        {"seat_card_3", "", 239, 164, 60, 10,
          MenuNav{.left = 37, .right = 39}, false},
-        {"seat_page_next", ">", 297, 164, 10, 10,
+        {"seat_page_next", ">", 301, 164, 10, 10,
          MenuNav{.down = 31, .left = 38}, true},
     };
 
@@ -465,6 +465,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                   buttons[kCreateMenuReadyIndex].sizex);
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
+        EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
+                  buttons[kBaseCampSeatsLabelIndex].x)
+            << "SEATS and BACK share the base-camp left alignment line";
         // Each row's three actions have deliberate non-overlapping gutters:
         // deploy, TEAM color, then name/train.
         for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)

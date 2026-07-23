@@ -1613,13 +1613,13 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
 
     constexpr int kCanvasWidth = 320;
     constexpr int kCanvasHeight = 200;
-    constexpr int kRailLeft = 38;
+    constexpr int kRailLeft = 42;
     constexpr int kRailTop = 162;
-    constexpr int kRailRight = 309;
+    constexpr int kRailRight = 313;
     constexpr int kRailBottom = 176;
     constexpr int kRailWidth = kRailRight - kRailLeft + 1;
     constexpr int kRailHeight = kRailBottom - kRailTop + 1;
-    constexpr int kSelectedCardX = 113;
+    constexpr int kSelectedCardX = 117;
     constexpr int kSelectedCardY = 164;
     constexpr int kLabelFocusRight = kSelectedCardX + 50;
     constexpr int kFocusBottom = kSelectedCardY + 10;

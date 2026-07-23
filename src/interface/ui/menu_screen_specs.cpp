@@ -1803,7 +1803,7 @@ constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
 constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
-    52, 113, 174, 235};
+    56, 117, 178, 239};
 constexpr int kBaseCampSeatCardWidth = 60;
 constexpr int kBaseCampSeatRailY = 164;
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
@@ -1985,37 +1985,37 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // of the character-roster pager above; the rewire fills authoritative P#
     // labels, ownership, visibility, and navigation every frame.
     {.id = "seats", .label = "SEATS",
-     .x = 4, .y = kBaseCampSeatRailY, .w = 34, .h = 10,
+     .x = 8, .y = kBaseCampSeatRailY, .w = 34, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatsLabelIndex,
      .nav = {.down = kCreateMenuBackIndex, .right = kBaseCampSeatPagePrevIndex}},
     {.id = "seat_page_prev", .label = "<",
-     .x = 40, .y = kBaseCampSeatRailY, .w = 10, .h = 10,
+     .x = 44, .y = kBaseCampSeatRailY, .w = 10, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPagePrevIndex,
      .nav = {.left = kBaseCampSeatsLabelIndex,
              .right = kBaseCampSeatCardBase},
      .hidden = true},
     {.id = "seat_card_0", .label = "",
-     .x = 52, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = 56, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase,
      .nav = {.left = kBaseCampSeatPagePrevIndex,
              .right = kBaseCampSeatCardBase + 1}},
     {.id = "seat_card_1", .label = "",
-     .x = 113, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = 117, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 1,
      .nav = {.left = kBaseCampSeatCardBase,
              .right = kBaseCampSeatCardBase + 2}},
     {.id = "seat_card_2", .label = "",
-     .x = 174, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = 178, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 2,
      .nav = {.left = kBaseCampSeatCardBase + 1,
              .right = kBaseCampSeatCardBase + 3}},
     {.id = "seat_card_3", .label = "",
-     .x = 235, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = 239, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 3,
      .nav = {.left = kBaseCampSeatCardBase + 2,
              .right = kBaseCampSeatPageNextIndex}},
     {.id = "seat_page_next", .label = ">",
-     .x = 297, .y = kBaseCampSeatRailY, .w = 10, .h = 10,
+     .x = 301, .y = kBaseCampSeatRailY, .w = 10, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPageNextIndex,
      .nav = {.down = kCreateMenuGoIndex,
              .left = kBaseCampSeatCardBase + 3},
