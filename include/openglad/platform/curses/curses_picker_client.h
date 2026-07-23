@@ -16,6 +16,10 @@
 #include <memory>
 #include <string>
 
+namespace og::data {
+struct CompanyInfo;
+}
+
 namespace og::curses {
 
 class CursesLobby;
@@ -53,6 +57,7 @@ public:
     void run_game() override;
     bool load_game() override;
     bool save_game() override;
+    bool show_company_list() override;
     og::ui::PickerScreen screen_after_game() const override;
 
     // Accessors for tests.
@@ -66,6 +71,16 @@ private:
     og::ui::TextPickerConfig& config_;
     CursesPickerOptions options_;
     SaveData save_data_;
+
+    // [SAVE-R2] Re-points the process-wide active-company slot at this
+    // client's configured slot (default "curses_quicksave" via CursesApp).
+    void assert_company_slot_authority() const;
+
+    // §2.4 Backups sub-view for one company (entered from the company list's
+    // Backups chrome). Returns true when a restore rewound — and repointed
+    // this client's slot to — the company, so the caller proceeds to team
+    // build.
+    bool show_company_backups(const og::data::CompanyInfo& company);
 
     // Drive a host/join lobby to a started game, then run the networked level.
     void run_network_lobby(std::unique_ptr<CursesLobby> lobby);

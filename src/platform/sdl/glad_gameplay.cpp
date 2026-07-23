@@ -14,6 +14,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
@@ -76,6 +77,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
+    // assembly only materializes deployed slots, so mark the guy explicitly.
+    result->deployed = true;
     return result;
 }
 
@@ -102,7 +106,8 @@ void apply_lobby_game_start_config(
     save.respawn_mode = static_cast<short>(config_save.respawn_mode);
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
-    if (save.allied_mode != 0)
+    save.cross_control = static_cast<short>(config_save.cross_control);
+    if (lobby_config.is_networked && save.allied_mode != 0)
     {
         save.my_team = 0;
     }
@@ -125,6 +130,7 @@ void apply_lobby_game_start_config(
 
         save.team_list[slot.slot_index] =
             make_guy_from_lobby_character(slot.character);
+        save.team_list[slot.slot_index]->deployed = slot.deployed;
         save.team_list[slot.slot_index]->owner_player_index =
             slot.owner_player_index;
         save.team_list[slot.slot_index]->owner_save_slot = slot.owner_save_slot;
@@ -138,6 +144,8 @@ void apply_lobby_game_start_config(
             static_cast<std::int32_t>(lobby_config.difficulty);
         og::runtime::current_session->networked_session_ =
             lobby_config.is_networked;
+        og::runtime::current_session->isolated_company_session_ =
+            !lobby_config.is_networked;
         og::runtime::current_session->own_player_indices_ =
             lobby_config.local_player_indices;
         if (og::runtime::current_session->own_player_indices_.empty() &&
@@ -150,15 +158,73 @@ void apply_lobby_game_start_config(
         }
     }
 
-    // For a networked session, keep the live combined roster (which holds every
-    // player's characters) off this player's real save0. It is seeded into a
-    // transient slot the server loads from; each player later merges only its
-    // own characters' progress back into save0. Local games still seed save0.
-    const char* const seed_slot =
-        lobby_config.is_networked ? "netsession" : "save0";
+    // A lobby start config is a mission roster, not the private company. For
+    // network play it is the combined roster; for local play it is an isolated
+    // full-company copy whose deployed members enter regardless of player-seat
+    // color. Seed both into the transient slot so launching or aborting a
+    // mission can never replace the private company. Wins merge owned progress
+    // back into the private save.
+    const std::string seed_slot = "netsession";
     if (!save.save(seed_slot))
         LogError("glad_init_lobby_save_failed slot={} reason=write_failed\n",
                  seed_slot);
+}
+
+void apply_lobby_seat_assignments(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig& lobby_config)
+{
+    const short numviews = std::min<short>(
+        current_screen.numviews,
+        static_cast<short>(std::size(current_screen.viewob)));
+    if (numviews <= 0 ||
+        lobby_config.local_seat_teams.size() <
+            static_cast<std::size_t>(numviews))
+    {
+        return;
+    }
+
+    // load_saved_game performs the legacy distinct-color assignment first.
+    // A lobby has an explicit seat map, so release those provisional claims
+    // before applying it. In local Together mode every entry is Player 1's
+    // preferred team; sequential find_next_control calls then claim distinct
+    // unclaimed heroes from that shared pool.
+    for (short view_index = 0; view_index < numviews; ++view_index)
+    {
+        viewscreen* const view = current_screen.viewob[view_index].get();
+        if (view == nullptr || view->control == nullptr)
+            continue;
+        if (view->control->user() == view_index)
+        {
+            view->control->set_user(-1);
+            view->control->restore_act_type();
+        }
+        view->control = nullptr;
+    }
+
+    const bool spectator = current_screen.save_data.numplayers == 0;
+    for (short view_index = 0; view_index < numviews; ++view_index)
+    {
+        viewscreen* const view = current_screen.viewob[view_index].get();
+        if (view == nullptr)
+            continue;
+
+        view->my_team = lobby_config.local_seat_teams[
+            static_cast<std::size_t>(view_index)];
+        view->control = view->find_next_control();
+        if (spectator || view->control == nullptr)
+            continue;
+
+        if (view->control->user() == -1)
+        {
+            view->control->set_user(static_cast<signed char>(view_index));
+            view->control->set_act_type(ACT_CONTROL);
+            view->control->stats()->clear_command();
+        }
+        if (view_index == 0)
+            current_screen.world().control_hp =
+                view->control->stats()->hitpoints();
+    }
 }
 
 } // namespace
@@ -195,9 +261,16 @@ void glad_init(bool preserve_frame_timing,
 
     if (lobby_config != nullptr)
         apply_lobby_game_start_config(*current_screen, *lobby_config);
+    else
+        og::runtime::current_session->isolated_company_session_ = false;
 
     // Load the default saved-game, or the lobby-supplied in-memory config.
-    load_saved_game(lobby_config != nullptr ? "" : "save0", current_screen);
+    const std::string default_slot = lobby_config != nullptr
+        ? std::string()
+        : og::data::active_company_slot();
+    load_saved_game(default_slot.c_str(), current_screen);
+    if (lobby_config != nullptr)
+        apply_lobby_seat_assignments(*current_screen, *lobby_config);
 #ifdef __EMSCRIPTEN__
     og::platform::web::finalize_jitter_capture_profile_after_load(
         *current_screen);

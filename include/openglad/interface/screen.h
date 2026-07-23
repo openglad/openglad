@@ -27,11 +27,13 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/win_shares.h>
 
 #include <array>
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -237,7 +239,7 @@ public:
     void begin_gameplay_frame() override { video_impl_->begin_gameplay_frame(); }
     void prepare_ui_canvas_from_world() override { video_impl_->prepare_ui_canvas_from_world(); }
     // Re-reads cfg graphics/zoom + graphics/smoothing into the live world
-    // canvas (the DISPLAY selectors / RESTORE DEFAULTS live-apply path).
+    // canvas (the DISPLAY selectors / RESTORE SETTINGS live-apply path).
     void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
     int minimum_world_zoom_steps() const override
     {
@@ -388,6 +390,13 @@ public:
     short way_clear_last_level_done_ = -1;
     bool way_clear_announced_ = false;
     void announce_way_clear_if_needed();
+
+    // §4.6 networked money split: screen::endgame folds the display screen's
+    // save inside event dispatch and latches the win capture (pre-fold deploy
+    // roster + the fold's applied per-team deltas) here; the client's
+    // out-of-dispatch persist reads it to size this machine's share. Re-armed
+    // (overwritten) on every networked win; unused on local/solo play.
+    std::optional<og::progression::NetWinFoldCapture> pending_net_win_capture_;
 
 private:
     void init_common(short howmany, bool has_display);

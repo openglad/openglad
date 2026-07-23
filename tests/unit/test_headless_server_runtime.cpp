@@ -83,6 +83,27 @@ walker* find_team_member(GameWorld& world, std::int32_t guy_id)
     return nullptr;
 }
 
+std::vector<short> start_marker_teams_at(const GameWorld& world,
+                                         const walker& hero)
+{
+    std::vector<short> teams;
+    for (const auto& entry : world.oblist)
+    {
+        const walker* const marker = entry.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        if (marker->floor() == hero.floor() &&
+            marker->xpos() == hero.xpos() && marker->ypos() == hero.ypos())
+        {
+            teams.push_back(marker->team_num());
+        }
+    }
+    return teams;
+}
+
 class HeadlessServerRuntimeTest : public ::testing::Test
 {
 protected:
@@ -196,6 +217,65 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_EQ(1, guest->team_num());
     EXPECT_FALSE(host->has_render());
     EXPECT_FALSE(guest->has_render());
+
+    const std::vector<short> host_marker_teams =
+        start_marker_teams_at(level_data_->world(), *host);
+    ASSERT_FALSE(host_marker_teams.empty());
+    for (const short marker_team : host_marker_teams)
+        EXPECT_EQ(0, marker_team);
+
+    const std::vector<short> guest_marker_teams =
+        start_marker_teams_at(level_data_->world(), *guest);
+    for (const short marker_team : guest_marker_teams)
+        EXPECT_EQ(1, marker_team)
+            << "the authoritative guest must not borrow a red start marker";
+}
+
+// §4.2 LOCAL assembly filter: a benched (deployed == false) save member is
+// SKIPPED at spawn time but stays in the save's roster untouched. This is
+// the local-session half of the deploy rule — networked rosters arrive
+// pre-filtered by the lobby equivalent, local saves keep benched members on
+// disk and rely on this spawn guard to keep them out of the level.
+TEST_F(HeadlessServerRuntimeTest, spawn_skips_benched_members_but_save_keeps_them)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Front", FAMILY_SOLDIER, 0),
+        make_slot(1u, 200, "Reserve", FAMILY_ARCHER, 0),
+    };
+
+    og::server::apply_headless_lobby_game_start_config(active_save_, lobby_save);
+    // Bench the second member directly in the save — the LOCAL shape (the
+    // local equivalent deliberately keeps benched members so the company
+    // seed never loses them; spawn is where they are filtered).
+    ASSERT_NE(nullptr, active_save_.team_list[1]);
+    active_save_.team_list[1]->deployed = false;
+    og::server::copy_headless_server_save_data(checkpoint_save_, active_save_);
+    create_level_runtime_data(active_save_.scen_num);
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            /*difficulty_setting=*/1,
+            events_,
+            /*authoritative=*/true);
+    }));
+
+    EXPECT_NE(nullptr, find_team_member(level_data_->world(), 100))
+        << "the deployed member spawns";
+    EXPECT_EQ(nullptr, find_team_member(level_data_->world(), 200))
+        << "the benched member must never enter the level";
+
+    // The save's roster is untouched: both members present, flag intact.
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    ASSERT_NE(nullptr, active_save_.team_list[1]);
+    EXPECT_TRUE(active_save_.team_list[0]->deployed);
+    EXPECT_FALSE(active_save_.team_list[1]->deployed);
+    EXPECT_EQ("Reserve", active_save_.team_list[1]->name);
 }
 
 TEST_F(HeadlessServerRuntimeTest,
@@ -484,6 +564,45 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
     }));
     EXPECT_EQ(WeatherKind::None, level_data_->world().weather())
         << "level load must reset the kind; only snapshots set it on mirrors";
+}
+
+// §3.4 dropped-field bug class: the server/checkpoint copies must carry the
+// GTL v14 company fields — the last-played timestamp explicitly, the per-guy
+// deploy flag via the guy deep copies. (The tower fields were the previous
+// instance of this bug class; the copy is an explicit field list, so every
+// new SaveData member needs a line there AND a pin here.)
+TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
+{
+    SaveData source;
+    source.last_played_unix_s = 0x0A0B0C0D0E0F1011LL;
+    source.cross_control = 1; // session-only v8 setting must ride the copy
+    source.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    source.team_list[0]->name = "BROUGHT";
+    source.team_list[0]->deployed = true;
+    source.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    source.team_list[1]->name = "HELDBACK";
+    source.team_list[1]->deployed = false;
+    source.team_size = 2;
+
+    SaveData destination;
+    destination.last_played_unix_s = 42; // must be overwritten, not merged
+    destination.cross_control = 0;
+
+    og::server::copy_headless_server_save_data(destination, source);
+
+    EXPECT_EQ(0x0A0B0C0D0E0F1011LL, destination.last_played_unix_s)
+        << "timestamp must survive the server/checkpoint copy";
+    EXPECT_EQ(1, (int)destination.cross_control)
+        << "cross_control must survive the server/checkpoint copy";
+    ASSERT_TRUE(destination.team_list[0] != nullptr);
+    ASSERT_TRUE(destination.team_list[1] != nullptr);
+    EXPECT_NE(destination.team_list[0].get(), source.team_list[0].get())
+        << "guys are deep copies, not shared pointers";
+    EXPECT_TRUE(destination.team_list[0]->deployed);
+    EXPECT_FALSE(destination.team_list[1]->deployed)
+        << "the deploy flag rides the guy copy";
+    EXPECT_TRUE(destination.team_list[1]->name == "HELDBACK");
+    EXPECT_EQ(2, (int)destination.team_size);
 }
 
 } // namespace

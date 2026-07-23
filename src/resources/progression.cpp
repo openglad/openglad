@@ -56,12 +56,17 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
     const bool already_completed = save.is_level_completed(finished);
 
     // 2. Fold the level score into the running totals (cash pays 2x score).
+    //    The added amount is recorded in the fold's OUT-params (§4.6 Edit 1)
+    //    so the networked money split can size each machine's share without
+    //    changing the additions themselves.
     // Update all the money!
     for (std::size_t team_index = 0; team_index < std::size(save.m_score);
          ++team_index)
     {
         save.m_totalscore[team_index] += save.m_score[team_index];
         save.m_totalcash[team_index] += save.m_score[team_index] * 2u;
+        ctx.applied_score_delta[team_index] = save.m_score[team_index];
+        ctx.applied_cash_delta[team_index] = save.m_score[team_index] * 2u;
     }
 
     // 3. Award the caller-computed time bonus on a first win, then zero the
@@ -70,7 +75,10 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
          ++team_index)
     {
         if (!already_completed && on_finished)
+        {
             save.m_totalcash[team_index] += ctx.time_bonus[team_index];
+            ctx.applied_cash_delta[team_index] += ctx.time_bonus[team_index];
+        }
         save.m_score[team_index] = 0;
     }
 
@@ -98,6 +106,32 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
     //    unless keep_fallen_heroes).
     // Grab our team out of the level
     save.update_guys(world.oblist);
+}
+
+std::uint32_t calculate_win_time_bonus(const GameWorld& world,
+                                       const SaveData& save, int player_index)
+{
+    // Transcribed from headless_server_runtime's calculate_headless_time_bonus
+    // (the same math get_time_bonus applies on a live SDL session). Only the
+    // primary team scores a bonus; frames beyond the par window score zero.
+    if (player_index < 0 || player_index > 0)
+        return 0;
+
+    const std::uint32_t frames = world.level_tick_count();
+    const std::uint32_t time_limit =
+        world.time_bonus_limit > 0
+            ? static_cast<std::uint32_t>(world.time_bonus_limit)
+            : 0U;
+    if (time_limit == 0 || frames >= time_limit)
+        return 0;
+
+    const float multiplier =
+        (1.0f + static_cast<float>(world.par_value) / 10.0f) *
+        (static_cast<float>(time_limit - frames) /
+         static_cast<float>(time_limit));
+    return static_cast<std::uint32_t>(
+        static_cast<float>(save.m_score[static_cast<std::size_t>(player_index)]) *
+        multiplier);
 }
 
 } // namespace og::progression

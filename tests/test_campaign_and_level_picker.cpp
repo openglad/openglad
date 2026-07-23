@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_interact.h"
 
 #include <map>
 #include <string>
@@ -433,7 +434,12 @@ int new_game_intro_dismisser(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    // picker_prepare_new_game_setup() blocks inside read_campaign_intro()
+    // §2.2: picker_prepare_new_game_setup() now opens the name-entry screen
+    // first. Accept the generated company name BEFORE tapping Escape — on the
+    // name screen Escape is the BACK (cancel) hotkey, so an early Escape would
+    // abort the new game instead of dismissing the intro.
+    accept_generated_company_name(10000);
+    // Then picker_prepare_new_game_setup() blocks inside read_campaign_intro()
     // until input_continue (Escape keydown). scroll_text_view() clears the
     // keyboard on entry, so a single early press can be eaten — keep tapping
     // until the flow under test reports completion.

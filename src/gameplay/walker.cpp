@@ -76,13 +76,6 @@ std::int32_t scale_los_circular(std::int32_t value)
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())));
 }
 
-short query_allied_mode()
-{
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 0;
-    return current_game->world->allied_mode;
-}
-
 std::uint32_t query_difficulty_percent()
 {
     if (current_game == nullptr || current_game->world == nullptr)
@@ -1716,12 +1709,15 @@ bool walker::death()
 			// does, the legacy rule applies (any named team-0 living).
 			// (The charm exemption lives in the legacy branch only: a
 			// protected walker stays mission-critical even while charmed.)
+			// The 2002 inline gloss was simply "our team"; selectable roster
+			// colors make that world.my_team, never hardcoded red or myguy.
 			if (   (current_game->world->type & SCEN_TYPE_SAVE_ALL)
 			        && !summoned()               // conjured ammunition
 			        && (current_game->world->has_save_all_protected()
 			                ? save_all_protected()
-			                : ((team_num() == 0 || myguy) // our team
-			                   && real_team_num() == 255  // not a charmed foe
+				                : (team_num() == static_cast<unsigned char>(
+				                       current_game->world->my_team) // protected side
+				                   && real_team_num() == 255  // not a charmed foe
 			                   && stats_->name.size()))   // we were named
 			   )
 			{
@@ -2215,8 +2211,6 @@ std::int32_t walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
-	//short allied_mode;
-	short has_myguy;
 	const walker *headguy;
 	const walker *headus, *headtarget;
 
@@ -2240,52 +2234,25 @@ std::int32_t walker::is_friendly(const walker *target) const
 		headguy = headguy->owner();
 	headtarget = headguy;
 
-	// First, get our allied setting from screen ..
-	// 0 is "enemy," and non-zero is "friendly"
-	//allied_mode = myscreen->allied_mode;
-
-	// Now, if we or the target don't contain a "myguy" pointer,
-	// then we don't care about allied_mode, and we'll
-	// treat our state as always in 'enemy' mode
-	if (headtarget->myguy == nullptr && headus->myguy == nullptr)
-		has_myguy = 0;
-    else if(headtarget->myguy == nullptr || headus->myguy == nullptr)
-        has_myguy = 2;
-	else
-		has_myguy = 1;
-
-	// Is allied mode set to zero (enemy)?
-	// If so, then if our team numbers don't match,
-	// we are not friendly
-	if (query_allied_mode() == 0 || has_myguy == 0)
-	{
-		return headus->team_num() == headtarget->team_num();
-	}
-	
-	// Allied
-	if(has_myguy == 2)
-    {
-        // One person is missing a myguy pointer.
-        // The one with a myguy pointer is owned by a player.
-        // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == nullptr && headtarget->team_num() == 0) ||
-               (headus->myguy == nullptr && headus->team_num() == 0);
-    }
-
-	// If we're in 'friendly' mode, then everyone with
-	// a "myguy" pointer (a real, saved character)
-	// is friendly to each other ..
-	// By now we know that both us and the target have
-	// myguy's, so we're friendly
-	return 1;
+	// The 2002 code narrated its old split as "Now, if we or the target don't
+	// contain a 'myguy' pointer, then we don't care about allied_mode," then
+	// concluded that in friendly mode "everyone with a 'myguy' pointer ... is
+	// friendly to each other." Those lines remain as history; Company Base Camp
+	// made the saved-character test an invalid alliance rule.
+	//
+	// Team color is the single combat-alliance authority. `myguy` means that
+	// a walker persists in a company save; it must never make different colors
+	// friendly. Likewise, Together/Split controls how player seats are assigned
+	// before a mission, not whether a red walker can attack a yellow walker once
+	// both are in the world. Following owner chains keeps weapons, summons, and
+	// effects on their living owner's current team (including charm changes).
+	return headus->team_num() == headtarget->team_num();
 }
 
 std::int32_t walker::is_friendly_to_team(unsigned char team) const
 {
 	// is_friendly_to_team determines if _team_ is "friendly"
 	// towards this walker.
-	//short allied_mode;
-	short has_myguy;
 	const walker *headguy;
 	const walker *headus;
 	
@@ -2300,27 +2267,9 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 		headguy = headguy->owner();
 	headus = headguy;
 	
-	// First, get our allied setting from screen ..
-	// 0 is "enemy," and non-zero is "friendly"
-	//allied_mode = myscreen->allied_mode;
-
-	// Now, if we or the target don't contain a "myguy" pointer,
-	// then we don't care about allied_mode, and we'll
-	// treat our state as always in 'enemy' mode
-	if (headus->myguy == nullptr)
-		has_myguy = 0;
-	else
-		has_myguy = 1;
-
-	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
-	// If so, then our team number must match.
-	if (query_allied_mode() == 0 || has_myguy == 0)
-	{
-		return headus->team_num() == team;
-	}
-	
-	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
-	return (has_myguy == 1 && team == 0);
+	// Keep completion, enemy-freeze, and respawn decisions on exactly the same
+	// alliance rule as targeting and damage.
+	return headus->team_num() == team;
 }
 
 std::string_view entity_display_name(const walker* w, std::string_view fallback)

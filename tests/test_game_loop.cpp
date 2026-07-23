@@ -13,9 +13,12 @@
 
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/sim_control_policy.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
@@ -369,6 +372,27 @@ static walker* find_named_team_member(GameWorld& world,
     }
 
     return nullptr;
+}
+
+static std::vector<short> start_marker_teams_at(const GameWorld& world,
+                                                const walker& hero)
+{
+    std::vector<short> teams;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const marker = uptr.get();
+        if (marker == nullptr || marker->query_order() != Order::Special ||
+            marker->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        if (marker->floor() == hero.floor() &&
+            marker->xpos() == hero.xpos() && marker->ypos() == hero.ypos())
+        {
+            teams.push_back(marker->team_num());
+        }
+    }
+    return teams;
 }
 
 static std::set<std::uint32_t> non_zero_controlled_entity_ids(
@@ -913,6 +937,247 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     EXPECT_EQ(1, static_cast<int>(game_screen->viewob[1]->my_team));
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_lobby_spawns_every_deployed_team_and_abort_preserves_company)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Four Teams";
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    constexpr std::array<std::string_view, 8> names = {
+        "Red Active", "Red Benched", "Yellow One", "Yellow Two",
+        "Green One", "Green Two", "Blue One", "Blue Two",
+    };
+    constexpr std::array<short, 8> teams = {0, 0, 1, 1, 2, 2, 3, 3};
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        save.team_list[index] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[index]->name = names[index];
+        save.team_list[index]->teamnum = teams[index];
+        save.team_list[index]->deployed = index != 1;
+    }
+    save.team_size = static_cast<unsigned char>(names.size());
+    ASSERT_TRUE(save.save(og::data::active_company_slot()));
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(names.size(), config->save_data.team_list.size());
+    EXPECT_EQ("Red Active", config->save_data.team_list[0].character.name);
+    EXPECT_TRUE(config->save_data.team_list[0].deployed);
+    EXPECT_EQ("Red Benched", config->save_data.team_list[1].character.name);
+    EXPECT_FALSE(config->save_data.team_list[1].deployed);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        EXPECT_EQ(names[index],
+                  config->save_data.team_list[index].character.name);
+        EXPECT_EQ(teams[index],
+                  config->save_data.team_list[index].character.teamnum);
+    }
+    picker_lobby_shutdown();
+
+    ready_screen_for_game_start(*game_screen, &*config);
+    glad_init(false, &*config);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_TRUE(og::runtime::current_session->isolated_company_session_);
+
+    std::set<std::string> launched_company_members;
+    for (const auto& entity : game_screen->world().oblist)
+    {
+        if (entity != nullptr && entity->myguy != nullptr)
+            launched_company_members.insert(entity->myguy->name);
+    }
+    EXPECT_EQ(7u, launched_company_members.size());
+    EXPECT_TRUE(launched_company_members.contains("Red Active"));
+    EXPECT_FALSE(launched_company_members.contains("Red Benched"));
+    for (std::size_t index = 2; index < names.size(); ++index)
+        EXPECT_TRUE(launched_company_members.contains(std::string(names[index])))
+            << names[index] << " must spawn even without a player seat on its team";
+
+    SaveData still_private_after_launch;
+    ASSERT_EQ(SaveDataIoError::None,
+              still_private_after_launch.load_with_error(
+                  og::data::active_company_slot()));
+    ASSERT_EQ(names.size(), still_private_after_launch.team_size);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        ASSERT_NE(nullptr, still_private_after_launch.team_list[index]);
+        EXPECT_EQ(names[index], still_private_after_launch.team_list[index]->name);
+        EXPECT_EQ(teams[index], still_private_after_launch.team_list[index]->teamnum);
+        EXPECT_EQ(index != 1,
+                  still_private_after_launch.team_list[index]->deployed);
+    }
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_abort_level(
+        *og::runtime::current_game_session));
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    ASSERT_EQ(SaveDataIoError::None,
+              game_screen->save_data.load_with_error(
+                  og::data::active_company_slot()));
+    ASSERT_EQ(names.size(), game_screen->save_data.team_size);
+    for (std::size_t index = 0; index < names.size(); ++index)
+    {
+        ASSERT_NE(nullptr, game_screen->save_data.team_list[index]);
+        EXPECT_EQ(names[index], game_screen->save_data.team_list[index]->name);
+        EXPECT_EQ(teams[index], game_screen->save_data.team_list[index]->teamnum);
+        EXPECT_EQ(index != 1, game_screen->save_data.team_list[index]->deployed);
+    }
+    EXPECT_FALSE(og::runtime::current_session->isolated_company_session_);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Ally Seats";
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    // The hostile-color hero is deliberately between the two Team 1 heroes.
+    // Roster order must never make Player 2 claim it.
+    save.team_list[0] = make_named_soldier("Red One", 0);
+    save.team_list[1] = make_named_soldier("Yellow Middle", 1);
+    save.team_list[2] = make_named_soldier("Red Two", 0);
+    save.team_size = 3;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(3u, config->save_data.team_list.size());
+    EXPECT_EQ((std::vector<short>{0, 0}), config->local_seat_teams);
+    picker_lobby_shutdown();
+
+    ready_screen_for_game_start(*game_screen, &*config);
+    glad_init(false, &*config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    walker* const yellow = find_named_team_member(
+        game_screen->world(), "Yellow Middle", 1);
+    ASSERT_NE(nullptr, yellow)
+        << "the non-player color still belongs in the mission";
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    ASSERT_NE(nullptr, game_screen->viewob[1]);
+    EXPECT_EQ(0, game_screen->viewob[0]->my_team);
+    EXPECT_EQ(0, game_screen->viewob[1]->my_team);
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+    ASSERT_NE(nullptr, game_screen->viewob[1]->control);
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control->myguy);
+    ASSERT_NE(nullptr, game_screen->viewob[1]->control->myguy);
+    EXPECT_NE(game_screen->viewob[0]->control,
+              game_screen->viewob[1]->control);
+    EXPECT_EQ("Red One", game_screen->viewob[0]->control->myguy->name);
+    EXPECT_EQ("Red Two", game_screen->viewob[1]->control->myguy->name);
+    EXPECT_NE("Yellow Middle",
+              game_screen->viewob[1]->control->myguy->name);
+    EXPECT_FALSE(game_screen->viewob[0]->control->is_friendly(yellow))
+        << "a yellow company hero must remain attackable by red in Together mode";
+    EXPECT_FALSE(yellow->is_friendly(game_screen->viewob[0]->control))
+        << "hostility must be symmetric";
+    EXPECT_TRUE(game_screen->viewob[0]->control->is_friendly(
+        game_screen->viewob[1]->control))
+        << "the two red player heroes must remain friendly";
+
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        for (short team = 0; team < 4; ++team)
+        {
+            if (og::runtime::current_game_session != nullptr)
+                og::runtime::clear_local_transport_shadow(
+                    *og::runtime::current_game_session);
+            game_screen->world().delete_objects();
+
+            SaveData& save = game_screen->save_data;
+            save.reset();
+            save.current_campaign = "org.openglad.gladiator";
+            save.current_levels[save.current_campaign] = 1;
+            save.scen_num = 1;
+            save.numplayers = 1;
+            save.allied_mode = allied_mode;
+            save.my_team = team;
+            save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[0]->name = "Color Guard";
+            save.team_list[0]->teamnum = team;
+            save.team_size = 1;
+
+            og::ui::PickerLobbyGameStartConfig config =
+                make_one_view_lobby_start_config(save);
+            config.my_team = team;
+            config.is_networked = false;
+
+            ready_screen_for_game_start(*game_screen, &config);
+            glad_init(false, &config);
+
+            ASSERT_NE(nullptr, og::runtime::current_game_session);
+            ASSERT_NE(nullptr, game_screen->save_data.team_list[0]);
+            ASSERT_NE(nullptr, game_screen->viewob[0]);
+            EXPECT_EQ(team, game_screen->save_data.my_team)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, game_screen->save_data.team_list[0]->teamnum)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, game_screen->viewob[0]->my_team)
+                << "allied=" << allied_mode << " team=" << team;
+
+            walker* const hero = find_named_team_member(
+                game_screen->world(), "Color Guard", team);
+            ASSERT_NE(nullptr, hero)
+                << "allied=" << allied_mode << " team=" << team;
+            const std::vector<short> spawn_marker_teams =
+                start_marker_teams_at(game_screen->world(), *hero);
+            if (team == 0)
+            {
+                ASSERT_FALSE(spawn_marker_teams.empty());
+            }
+            for (const short marker_team : spawn_marker_teams)
+                EXPECT_EQ(team, marker_team)
+                    << "a hero must never borrow another team's start marker; "
+                    << "allied=" << allied_mode << " team=" << team;
+            ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+            EXPECT_EQ(team, game_screen->viewob[0]->control->team_num())
+                << "allied=" << allied_mode << " team=" << team;
+        }
+    }
+
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
@@ -1482,6 +1747,860 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
     world.ctf = og::sim::CtfState{};
     world.type = saved_type;
     world.delete_objects();
+}
+
+// §4.5 follow camera, detail level: engagement when the seat maps to entity
+// 0, the lowest-player default target, cycling through the shared og::sim
+// selectors (preferred targets first, any-living fallback), dead-target
+// auto-advance, live-mapped disengage — and the [NET-R6] rule that an
+// engaged view NEVER stamps user tags locally (select_control_for_view
+// returns the target before the mapped-entity stamp).
+TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+    const char saved_type = world.type;
+
+    auto make_hero = [&world](int family, short team, int user) {
+        walker* const actor = world.add_ob(Order::Living, family);
+        actor->set_owned_myguy(std::make_unique<guy>(family));
+        actor->myguy->teamnum = team;
+        actor->set_team_num(static_cast<unsigned char>(team));
+        actor->set_real_team_num(255);
+        actor->set_user(static_cast<signed char>(user));
+        return actor;
+    };
+
+    walker* const hero_a = make_hero(FAMILY_SOLDIER, 0, 0);
+    walker* const hero_b = make_hero(FAMILY_ARCHER, 0, 1);
+    walker* const hero_c = make_hero(FAMILY_ELF, 0, -1); // roster-owned, unclaimed
+    walker* const troop = world.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, hero_a);
+    ASSERT_NE(nullptr, hero_b);
+    ASSERT_NE(nullptr, hero_c);
+    ASSERT_NE(nullptr, troop);
+    troop->set_team_num(1);
+    troop->set_user(-1);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    walker* const saved_control = view->control;
+    view->my_team = 0;
+    view->control = nullptr;
+
+    og::sim::ControlledEntityIds ids = {};
+    ids[0] = hero_a->entity_id();
+    ids[1] = hero_b->entity_id();
+
+    // Seat = global player 3, mapped to entity 0: engagement + the
+    // lowest-player-index default target.
+    og::runtime::DisplayFollowState follow;
+    og::runtime::detail::update_display_view_follow(follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(hero_a,
+              og::runtime::detail::select_control_for_view(
+                  view, ids, &world, 3u, &follow));
+    EXPECT_EQ(0, static_cast<int>(hero_a->user()))
+        << "[NET-R6] the follow path must not restamp the watched hero with "
+           "the follower's player tag";
+
+    // SwitchChar cycling: preferred targets (user tag or roster-owned) in
+    // oblist order, both directions; the anonymous troop is skipped.
+    EXPECT_EQ(hero_b->entity_id(),
+              og::sim::next_follow_target_id(world, hero_a, false));
+    EXPECT_EQ(hero_c->entity_id(),
+              og::sim::next_follow_target_id(world, hero_b, false));
+    EXPECT_EQ(hero_a->entity_id(),
+              og::sim::next_follow_target_id(world, hero_c, false));
+    EXPECT_EQ(hero_c->entity_id(),
+              og::sim::next_follow_target_id(world, hero_a, true));
+
+    // A selected foreign hero stays selected through its respawn window.
+    // The view points at the watched body, but that must not be mistaken for
+    // this spectator seat's own retained corpse and clear follow state.
+    world.type |= GameWorld::TYPE_CTF;
+    world.ctf.active = true;
+    view->control = hero_a;
+    hero_a->set_dead(1);
+    og::sim::CtfRespawnEntry respawn;
+    respawn.kind = 0;
+    respawn.team = 0;
+    respawn.ticks_left = 30;
+    respawn.walker_entity_id = hero_a->entity_id();
+    world.ctf.respawn_queue.push_back(respawn);
+    og::runtime::detail::update_display_view_follow(
+        follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(nullptr, og::runtime::detail::select_control_for_view(
+                           view, ids, &world, 3u, &follow));
+    hero_a->set_dead(0);
+    world.ctf.respawn_queue.clear();
+    og::runtime::detail::update_display_view_follow(
+        follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(hero_a, og::runtime::detail::select_control_for_view(
+                          view, ids, &world, 3u, &follow));
+    view->control = hero_a;
+
+    // Dead-target auto-advance: the maintenance pass re-targets the next
+    // preferred walker.
+    follow.target_entity_id = hero_c->entity_id();
+    hero_c->set_dead(1);
+    og::runtime::detail::update_display_view_follow(follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+
+    // Every preferred target dead: the any-living fallback reaches the
+    // anonymous troop, still with no user-tag stamp.
+    hero_a->set_dead(1);
+    hero_b->set_dead(1);
+    ids[0] = 0;
+    ids[1] = 0;
+    og::runtime::detail::update_display_view_follow(follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(troop->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(troop,
+              og::runtime::detail::select_control_for_view(
+                  view, ids, &world, 3u, &follow));
+    EXPECT_EQ(-1, static_cast<int>(troop->user()))
+        << "[NET-R6] an AI follow target keeps user() == -1";
+
+    // A live mapped walker disengages, and the normal mapped path (with its
+    // deliberate one-tick tag stamp) resumes.
+    ids[3] = troop->entity_id();
+    og::runtime::detail::update_display_view_follow(follow, view, 3u, ids, &world);
+    EXPECT_FALSE(follow.engaged);
+    EXPECT_EQ(troop,
+              og::runtime::detail::select_control_for_view(
+                  view, ids, &world, 3u, &follow));
+    EXPECT_EQ(3, static_cast<int>(troop->user()))
+        << "a genuinely mapped seat keeps today's authoritative tag stamp";
+
+    view->control = saved_control;
+    world.ctf = og::sim::CtfState{};
+    world.type = saved_type;
+    world.delete_objects();
+}
+
+// §4.5 [NET-F1] + stomp survival: a networked numplayers==0 (spectator)
+// machine's view engages the follow camera, SwitchChar cycles the watched
+// target CROSS-TEAM through the networked follow branch (the legacy
+// spectator block is my_team-filtered, so this outcome proves the gate), and
+// the choice survives a forced full snapshot resync. Without the networked
+// shadow the legacy spectator block still owns the key (demo/local
+// unchanged).
+TEST(GameLoop, networked_spectator_follow_cycles_and_survives_full_resync)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_follow_spectator"));
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    og::runtime::clear_local_transport_shadow(session);
+
+    game_screen->save_data.numplayers = 0; // spectator machine
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+
+    auto make_hero = [&world](int family, short team) {
+        walker* const actor = world.add_ob(Order::Living, family);
+        actor->set_owned_myguy(std::make_unique<guy>(family));
+        actor->myguy->teamnum = team;
+        actor->set_team_num(static_cast<unsigned char>(team));
+        actor->set_real_team_num(255);
+        actor->set_user(-1);
+        return actor;
+    };
+    walker* const home_hero = make_hero(FAMILY_SOLDIER, 0);
+    walker* const foreign_hero = make_hero(FAMILY_ARCHER, 1);
+    walker* const home_troop = world.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, home_hero);
+    ASSERT_NE(nullptr, foreign_hero);
+    ASSERT_NE(nullptr, home_troop);
+    home_troop->set_team_num(0);
+    home_troop->set_user(-1);
+    const std::uint32_t home_hero_id = home_hero->entity_id();
+    const std::uint32_t foreign_hero_id = foreign_hero->entity_id();
+    const std::uint32_t home_troop_id = home_troop->entity_id();
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    view->my_team = 0;
+    view->control = nullptr;
+    reset_viewscreen_input_debounce();
+
+    // Networked client shadow over an in-process pair; the test plays the
+    // server side by pushing keyframes captured from the display world (the
+    // controlled-ids table stays all-zero: a spectator machine).
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto client_transport = server_transport->create_client_transport();
+    const og::sim::PeerId peer_id = client_transport->local_peer_id();
+    session.networked_session_ = true;
+    og::runtime::reset_network_client_transport_shadow(
+        session, *game_screen, client_transport, peer_id, std::size_t{3});
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session))
+        << "the view input path must see the same session as the shadow";
+
+    const auto push_keyframe = [&] {
+        server_transport->send_snapshot(
+            peer_id,
+            std::make_shared<og::sim::WorldSnapshot>(
+                og::sim::capture_keyframe_snapshot(game_screen->world())));
+        og::runtime::local_transport_shadow_finish_tick(session);
+    };
+
+    // First control re-sync: the follow camera engages on the first
+    // preferred walker, with no local user-tag stamp.
+    push_keyframe();
+    ASSERT_TRUE(view->following_);
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_EQ(home_hero_id, view->control->entity_id());
+    EXPECT_EQ(-1, static_cast<int>(view->control->user()));
+
+    // [NET-F1] positive: the networked follow branch owns SwitchChar and
+    // cycles CROSS-TEAM to the foreign hero — the legacy spectator block
+    // (team-filtered) could never produce this. gameplay_active_ mirrors the
+    // production game loop (glad.cpp) so the shadow guard keeps the local
+    // sim input path off, exactly as during networked gameplay.
+    const bool saved_gameplay_active = session.gameplay_active_;
+    session.gameplay_active_ = true;
+    view->process_input(make_switch_char_input(0u));
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_EQ(foreign_hero_id, view->control->entity_id());
+    EXPECT_EQ(-1, static_cast<int>(view->control->user()));
+
+    // Stomp survival: a forced full snapshot resync re-runs the control
+    // sync; the runtime-held follow choice survives it.
+    push_keyframe();
+    ASSERT_TRUE(view->following_);
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_EQ(foreign_hero_id, view->control->entity_id());
+    walker* const foreign_after = game_screen->world().find_by_id(foreign_hero_id);
+    ASSERT_NE(nullptr, foreign_after);
+    EXPECT_EQ(-1, static_cast<int>(foreign_after->user()))
+        << "[NET-R6] the resync must not stamp the watched foreign hero";
+
+    // [NET-F1] negative: without the networked shadow the legacy spectator
+    // block owns the key again and cycles within my_team only (demo/local
+    // behavior unchanged).
+    og::runtime::clear_local_transport_shadow(session);
+    ASSERT_FALSE(session.networked_session_);
+    view->following_ = false;
+    view->follow_company_.clear();
+    walker* const legacy_start = game_screen->world().find_by_id(home_hero_id);
+    ASSERT_NE(nullptr, legacy_start);
+    view->control = legacy_start;
+    reset_viewscreen_input_debounce();
+    view->process_input(make_switch_char_input(0u));
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_EQ(home_troop_id, view->control->entity_id())
+        << "the legacy spectator cycle stays on the view's own team";
+
+    session.gameplay_active_ = saved_gameplay_active;
+    game_screen->save_data.numplayers = 1;
+    game_screen->world().delete_objects();
+}
+
+// §4.5 all-dead auto-enter, end to end over the real networked host shadow:
+// when every walker a machine's seat can claim is gone (its heroes dead, the
+// only survivor claimed by another player — the [NET-R1] allied suppression
+// shape), the seat stays null, the level keeps running, and the machine's
+// view auto-enters follow mode on the teammate's hero WITHOUT stamping its
+// user tag; the §2.8 caption company resolves through the stamped
+// player-company table.
+TEST(GameLoop, networked_host_view_auto_enters_follow_when_all_its_heroes_die)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    // A genuine networked start config: glad_init stamps the owner tags onto
+    // the live roster, marks the session networked, and seeds the transient
+    // "netsession" slot the host shadow's server loads from. The host
+    // machine (player 0) owns Alpha + Charlie; the remote machine (player 1)
+    // owns Bravo — the §2.8 caption resolves the followed hero's owning
+    // company through these tags.
+    og::ui::PickerLobbyGameStartConfig start_config =
+        make_one_view_lobby_start_config(save);
+    start_config.is_networked = true;
+    start_config.local_player_index = 0;
+    start_config.local_player_indices = {0};
+    start_config.local_seat_teams = {0};
+    ASSERT_EQ(3u, start_config.save_data.team_list.size());
+    start_config.save_data.team_list[0].owner_player_index = 0; // Alpha
+    start_config.save_data.team_list[1].owner_player_index = 1; // Bravo
+    start_config.save_data.team_list[2].owner_player_index = 0; // Charlie
+    ready_screen_for_game_start(*game_screen, &start_config);
+    glad_init(false, &start_config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    ASSERT_TRUE(gameplay_session.networked_session_);
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    auto host_local_client_transport =
+        server_transport->create_client_transport();
+    auto remote_player_transport =
+        server_transport->create_client_transport();
+    std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = host_local_client_transport->local_peer_id(),
+        .player_index = 0u,
+        .team = 0,
+    });
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = remote_player_transport->local_peer_id(),
+        .player_index = 1u,
+        .team = 0,
+    });
+
+    og::sim::GameClient remote_client(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
+
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        server_transport,
+        host_local_client_transport,
+        player_bindings);
+    og::runtime::local_transport_shadow_set_player_companies(
+        gameplay_session,
+        std::array<std::pair<std::uint8_t, std::string>, 2>{
+            std::pair<std::uint8_t, std::string>{0u, "Home Co"},
+            std::pair<std::uint8_t, std::string>{1u, "Wolfpack"},
+        });
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_client.poll_messages();
+        const og::sim::GameClient* const display_client =
+            game_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->initial_setup().has_value() &&
+            display_client->baseline().has_value() &&
+            remote_client.initial_setup().has_value() &&
+            remote_client.baseline().has_value();
+    })) << "host display and remote client should receive the initial handoff";
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    std::uint32_t next_tick = std::max(display_client->last_seen_server_tick(),
+                                       remote_client.last_seen_server_tick()) +
+        1u;
+    const auto pump_neutral_ticks = [&](int ticks) {
+        const InputState neutral{};
+        for (int i = 0; i < ticks; ++i)
+        {
+            if (!drive_host_and_remote_tick(
+                    gameplay_session, remote_client, neutral, neutral,
+                    next_tick++))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    ASSERT_TRUE(pump_neutral_ticks(2));
+
+    // Sanity: the host seat (player 0) claimed Alpha; not following.
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    EXPECT_FALSE(view->following_);
+    ASSERT_NE(nullptr, view->control);
+
+    // Isolate the bound team: any scenario troop on team 0 would be claimed
+    // by the reacquire (the [NET-F3] troop rule for this deployed machine —
+    // same outcome the shared pool gave) and keep the seat alive forever.
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            entity->team_num() == 0 && entity->myguy == nullptr)
+        {
+            entity->set_dead(1);
+        }
+    }
+    ASSERT_TRUE(pump_neutral_ticks(2));
+
+    // Kill the host's claimed hero: the reacquire claims the unclaimed
+    // Charlie (same-machine under the owner-locked policy the install now
+    // derives from this cross-control-OFF config) — still a live seat,
+    // still not following.
+    walker* const server_alpha =
+        find_named_team_member(server_screen->world(), "Alpha");
+    ASSERT_NE(nullptr, server_alpha);
+    server_alpha->set_dead(1);
+    ASSERT_TRUE(wait_until([&] {
+        const InputState neutral{};
+        if (!drive_host_and_remote_tick(
+                gameplay_session, remote_client, neutral, neutral, next_tick++))
+            return false;
+        const auto& ids = display_client->controlled_entity_ids();
+        return ids[0] != 0u &&
+            controlled_entity_name(*display_client, ids[0]) == "Charlie";
+    })) << "the shared-pool reacquire should claim Charlie for the host seat";
+    EXPECT_FALSE(view->following_);
+
+    // Kill Charlie too: the only survivor is the remote player's claimed
+    // Bravo — unclaimable, the seat goes null (the [NET-R1] suppression
+    // keeps the level running) and the view auto-enters follow on Bravo.
+    walker* const server_charlie =
+        find_named_team_member(server_screen->world(), "Charlie");
+    ASSERT_NE(nullptr, server_charlie);
+    server_charlie->set_dead(1);
+    ASSERT_TRUE(wait_until([&] {
+        const InputState neutral{};
+        if (!drive_host_and_remote_tick(
+                gameplay_session, remote_client, neutral, neutral, next_tick++))
+            return false;
+        return display_client->controlled_entity_ids()[0] == 0u &&
+            view->following_;
+    })) << "the null host seat should auto-enter follow mode";
+
+    ASSERT_NE(nullptr, view->control);
+    walker* const mirror_bravo =
+        find_named_team_member(game_screen->world(), "Bravo");
+    ASSERT_NE(nullptr, mirror_bravo);
+    EXPECT_EQ(mirror_bravo, view->control)
+        << "default follow target = the lowest player index with a live "
+           "controlled walker (the remote player's Bravo)";
+    EXPECT_EQ(1, static_cast<int>(mirror_bravo->user()))
+        << "[NET-R6] the followed teammate keeps its OWNER's snapshot-synced "
+           "tag; the follower's seat never restamps it";
+    EXPECT_EQ("Wolfpack", view->follow_company_)
+        << "the caption resolves the owner machine's company";
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the [NET-R1] suppression keeps the level running under follow";
+
+    // The follow view survives further ticks (per-delta control re-syncs).
+    ASSERT_TRUE(pump_neutral_ticks(3));
+    EXPECT_TRUE(view->following_);
+    EXPECT_EQ(mirror_bravo, view->control);
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+}
+
+// §4.4 install e2e over the real network-host shadow, cross-control OFF:
+// the install derives the OWNER-LOCKED policy from the game-start config,
+// the machine map reaches the display mirror through snapshot v9, a
+// deployed machine whose hero dies claims a scenario troop ([NET-F3])
+// instead of a foreign hero, and once only foreign heroes remain its seat
+// goes null — the joiner cannot steal the host's walker via death-rebind.
+TEST(GameLoop, network_host_install_owner_locked_denies_death_rebind_steal)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    og::ui::PickerLobbyGameStartConfig start_config =
+        make_one_view_lobby_start_config(save);
+    start_config.is_networked = true;
+    start_config.local_player_index = 0;
+    start_config.local_player_indices = {0};
+    start_config.local_seat_teams = {0};
+    ASSERT_EQ(3u, start_config.save_data.team_list.size());
+    start_config.save_data.team_list[0].owner_player_index = 0; // Alpha
+    start_config.save_data.team_list[1].owner_player_index = 1; // Bravo
+    start_config.save_data.team_list[2].owner_player_index = 0; // Charlie
+    ASSERT_EQ(0, static_cast<int>(start_config.save_data.cross_control))
+        << "cross-control defaults OFF: the install must derive owner-locked";
+    ready_screen_for_game_start(*game_screen, &start_config);
+    glad_init(false, &start_config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    ASSERT_TRUE(gameplay_session.networked_session_);
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    auto host_local_client_transport =
+        server_transport->create_client_transport();
+    auto remote_player_transport =
+        server_transport->create_client_transport();
+    std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = host_local_client_transport->local_peer_id(),
+        .player_index = 0u,
+        .team = 0,
+    });
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = remote_player_transport->local_peer_id(),
+        .player_index = 1u,
+        .team = 0,
+    });
+
+    og::sim::GameClient remote_client(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
+
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        server_transport,
+        host_local_client_transport,
+        player_bindings);
+
+    // The install derived owner-locked and stamped the machine map on the
+    // authoritative world (both machines deployed: owner tags 0 and 1).
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+              server_screen->world().control_policy);
+    EXPECT_EQ(og::sim::encode_player_machine(0, true),
+              server_screen->world().player_machine[0]);
+    EXPECT_EQ(og::sim::encode_player_machine(1, true),
+              server_screen->world().player_machine[1]);
+    EXPECT_EQ(og::sim::kPlayerMachineNone,
+              server_screen->world().player_machine[2]);
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_client.poll_messages();
+        const og::sim::GameClient* const display_client =
+            game_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->initial_setup().has_value() &&
+            display_client->baseline().has_value() &&
+            remote_client.initial_setup().has_value() &&
+            remote_client.baseline().has_value();
+    })) << "host display and remote client should receive the initial handoff";
+
+    // Snapshot v9 consumption: the display mirror renders the policy the
+    // wire carried, scalar for scalar.
+    EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+              game_screen->world().control_policy);
+    EXPECT_EQ(server_screen->world().player_machine,
+              game_screen->world().player_machine);
+
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    std::uint32_t next_tick = std::max(display_client->last_seen_server_tick(),
+                                       remote_client.last_seen_server_tick()) +
+        1u;
+    const auto pump_neutral_ticks = [&](int ticks) {
+        const InputState neutral{};
+        for (int i = 0; i < ticks; ++i)
+        {
+            if (!drive_host_and_remote_tick(
+                    gameplay_session, remote_client, neutral, neutral,
+                    next_tick++))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    ASSERT_TRUE(pump_neutral_ticks(2));
+
+    // Same bind outcome as legacy for this roster: each machine's seat
+    // claimed its own hero.
+    walker* const server_alpha =
+        find_named_team_member(server_screen->world(), "Alpha");
+    walker* const server_bravo =
+        find_named_team_member(server_screen->world(), "Bravo");
+    walker* const server_charlie =
+        find_named_team_member(server_screen->world(), "Charlie");
+    ASSERT_NE(nullptr, server_alpha);
+    ASSERT_NE(nullptr, server_bravo);
+    ASSERT_NE(nullptr, server_charlie);
+    const std::uint32_t alpha_id = server_alpha->entity_id();
+    const std::uint32_t bravo_id = server_bravo->entity_id();
+    const std::uint32_t charlie_id = server_charlie->entity_id();
+    EXPECT_EQ(alpha_id, display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, display_client->controlled_entity_ids()[1]);
+
+    // [NET-F3] through the real install: Bravo dies; machine 1 deployed, so
+    // its reacquire claims an unowned scenario troop — never Alpha/Charlie.
+    server_bravo->set_dead(1);
+    ASSERT_TRUE(wait_until([&] {
+        const InputState neutral{};
+        if (!drive_host_and_remote_tick(
+                gameplay_session, remote_client, neutral, neutral, next_tick++))
+            return false;
+        const std::uint32_t id = display_client->controlled_entity_ids()[1];
+        return id != 0u && id != bravo_id;
+    })) << "the deployed joiner machine should reacquire a scenario troop";
+    const std::uint32_t troop_id = display_client->controlled_entity_ids()[1];
+    EXPECT_NE(alpha_id, troop_id);
+    EXPECT_NE(charlie_id, troop_id);
+    walker* const claimed_troop = server_screen->world().find_by_id(troop_id);
+    ASSERT_NE(nullptr, claimed_troop);
+    EXPECT_EQ(nullptr, claimed_troop->myguy)
+        << "[NET-F3]: the reacquired walker is an unowned scenario troop";
+
+    // Remove every unowned team-0 troop: only foreign heroes remain for
+    // machine 1 — the death-rebind steal is DENIED and the seat goes null
+    // while the level keeps running.
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            entity->team_num() == 0 && entity->myguy == nullptr)
+        {
+            entity->set_dead(1);
+        }
+    }
+    ASSERT_TRUE(wait_until([&] {
+        const InputState neutral{};
+        if (!drive_host_and_remote_tick(
+                gameplay_session, remote_client, neutral, neutral, next_tick++))
+            return false;
+        return display_client->controlled_entity_ids()[1] == 0u;
+    })) << "with only foreign heroes left the joiner's seat must go null";
+    ASSERT_TRUE(pump_neutral_ticks(2));
+    EXPECT_EQ(0u, display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ(alpha_id, display_client->controlled_entity_ids()[0])
+        << "the host seat is untouched by the joiner's denial";
+    EXPECT_EQ(-1, static_cast<int>(server_charlie->user()))
+        << "the host's unclaimed Charlie is never stolen";
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the level keeps running under the null seat";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+
+    // ---- WP7 must-fix regression: the owner-locked round must NOT leak its
+    // policy into the next LOCAL round of this same process. Teardown resets
+    // nothing on the process-lifetime display world (only level load does),
+    // so at this point the mirror still carries the networked policy —
+    // worsen its leaked map to the [NET-R9] spectator-host shape (entry[0]
+    // UNDEPLOYED) that used to deny every solo seat-0 claim and leave the
+    // player spectating their own game. ----
+    ASSERT_EQ(og::sim::kControlPolicyOwnerLocked,
+              game_screen->world().control_policy)
+        << "precondition: teardown alone does not reset the mirror's policy";
+    game_screen->world().player_machine[0] =
+        og::sim::encode_player_machine(0, false);
+
+    // A plain LOCAL install from save0 (the dense 3-hero company saved at
+    // the top of this test). The install must stamp the fresh authoritative
+    // world back to LEGACY control (§4.4 "policy off in every local
+    // session") even though its seed snapshot came from the poisoned
+    // display world.
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& local_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(local_session));
+    ASSERT_FALSE(local_session.networked_session_);
+
+    screen* const local_server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            local_session);
+    ASSERT_NE(nullptr, local_server_screen);
+    EXPECT_EQ(og::sim::kControlPolicyLegacy,
+              local_server_screen->world().control_policy)
+        << "the local authoritative world must run the legacy shared pool";
+    for (std::size_t i = 0;
+         i < local_server_screen->world().player_machine.size(); ++i)
+    {
+        EXPECT_EQ(og::sim::kPlayerMachineNone,
+                  local_server_screen->world().player_machine[i])
+            << "stale machine-map entry leaked into the local world at index "
+            << i;
+    }
+
+    // The display mirror heals from the legacy server's snapshots.
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(local_session);
+        return game_screen->world().control_policy ==
+            og::sim::kControlPolicyLegacy;
+    })) << "the display world's stale policy must heal from the local "
+           "install's snapshots";
+
+    // And a seat-0 claim on the local world succeeds (the leaked undeployed
+    // entry[0] used to fail this through the [NET-F3] troop-rule
+    // fall-through).
+    walker* const local_alpha =
+        find_named_team_member(local_server_screen->world(), "Alpha");
+    ASSERT_NE(nullptr, local_alpha);
+    EXPECT_TRUE(og::sim::control_claim_allowed(
+        local_server_screen->world(), local_alpha, 0))
+        << "solo seat 0 must be claimable again after a networked round";
+
+    og::runtime::clear_local_transport_shadow(local_session);
+    game_screen->world().delete_objects();
+}
+
+// §4.4 install e2e, cross-control ON twin: the identical staging derives
+// the LEGACY policy (control_policy 0, machine map still stamped and
+// replicated), and the v7 shared pool is preserved — after its hero dies
+// the joiner's machine CAN take the host's unclaimed hero.
+TEST(GameLoop, network_host_install_cross_control_on_keeps_shared_pool_steal)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    og::ui::PickerLobbyGameStartConfig start_config =
+        make_one_view_lobby_start_config(save);
+    start_config.is_networked = true;
+    start_config.local_player_index = 0;
+    start_config.local_player_indices = {0};
+    start_config.local_seat_teams = {0};
+    ASSERT_EQ(3u, start_config.save_data.team_list.size());
+    start_config.save_data.team_list[0].owner_player_index = 0; // Alpha
+    start_config.save_data.team_list[1].owner_player_index = 1; // Bravo
+    start_config.save_data.team_list[2].owner_player_index = 0; // Charlie
+    start_config.save_data.cross_control = 1;
+    ready_screen_for_game_start(*game_screen, &start_config);
+    glad_init(false, &start_config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    ASSERT_TRUE(gameplay_session.networked_session_);
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    auto host_local_client_transport =
+        server_transport->create_client_transport();
+    auto remote_player_transport =
+        server_transport->create_client_transport();
+    std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = host_local_client_transport->local_peer_id(),
+        .player_index = 0u,
+        .team = 0,
+    });
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = remote_player_transport->local_peer_id(),
+        .player_index = 1u,
+        .team = 0,
+    });
+
+    og::sim::GameClient remote_client(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
+
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        server_transport,
+        host_local_client_transport,
+        player_bindings);
+
+    // Cross-control ON derives the legacy policy; the machine map is still
+    // stamped (legacy claims ignore it) and replicated.
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(og::sim::kControlPolicyLegacy,
+              server_screen->world().control_policy);
+    EXPECT_EQ(og::sim::encode_player_machine(0, true),
+              server_screen->world().player_machine[0]);
+    EXPECT_EQ(og::sim::encode_player_machine(1, true),
+              server_screen->world().player_machine[1]);
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_client.poll_messages();
+        const og::sim::GameClient* const display_client =
+            game_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->initial_setup().has_value() &&
+            display_client->baseline().has_value() &&
+            remote_client.initial_setup().has_value() &&
+            remote_client.baseline().has_value();
+    })) << "host display and remote client should receive the initial handoff";
+    EXPECT_EQ(og::sim::kControlPolicyLegacy,
+              game_screen->world().control_policy);
+    EXPECT_EQ(server_screen->world().player_machine,
+              game_screen->world().player_machine);
+
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    std::uint32_t next_tick = std::max(display_client->last_seen_server_tick(),
+                                       remote_client.last_seen_server_tick()) +
+        1u;
+    const auto pump_neutral_ticks = [&](int ticks) {
+        const InputState neutral{};
+        for (int i = 0; i < ticks; ++i)
+        {
+            if (!drive_host_and_remote_tick(
+                    gameplay_session, remote_client, neutral, neutral,
+                    next_tick++))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    ASSERT_TRUE(pump_neutral_ticks(2));
+
+    walker* const server_alpha =
+        find_named_team_member(server_screen->world(), "Alpha");
+    walker* const server_bravo =
+        find_named_team_member(server_screen->world(), "Bravo");
+    walker* const server_charlie =
+        find_named_team_member(server_screen->world(), "Charlie");
+    ASSERT_NE(nullptr, server_alpha);
+    ASSERT_NE(nullptr, server_bravo);
+    ASSERT_NE(nullptr, server_charlie);
+    const std::uint32_t alpha_id = server_alpha->entity_id();
+    const std::uint32_t bravo_id = server_bravo->entity_id();
+    const std::uint32_t charlie_id = server_charlie->entity_id();
+    EXPECT_EQ(alpha_id, display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, display_client->controlled_entity_ids()[1]);
+
+    // Isolate the bound team so the pool reacquire lands on a hero, then
+    // kill Bravo: under cross-control the joiner's machine takes the host's
+    // unclaimed Charlie (deliberate v7 shared-pool stealing preserved).
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            entity->team_num() == 0 && entity->myguy == nullptr)
+        {
+            entity->set_dead(1);
+        }
+    }
+    ASSERT_TRUE(pump_neutral_ticks(2));
+    server_bravo->set_dead(1);
+    ASSERT_TRUE(wait_until([&] {
+        const InputState neutral{};
+        if (!drive_host_and_remote_tick(
+                gameplay_session, remote_client, neutral, neutral, next_tick++))
+            return false;
+        return display_client->controlled_entity_ids()[1] == charlie_id;
+    })) << "cross-control ON must let the joiner steal the host's Charlie";
+    EXPECT_EQ(1, static_cast<int>(server_charlie->user()))
+        << "the stolen hero carries the joiner's seat tag";
+    EXPECT_EQ(alpha_id, display_client->controlled_entity_ids()[0]);
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
 }
 
 TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_paths)

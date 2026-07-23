@@ -1,3 +1,4 @@
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <gtest/gtest.h>
@@ -30,6 +31,11 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command)) << "begin_new_game should map to BeginNewGame command";
+
+    const PickerMenuItem* level_editor =
+        find_picker_menu_item(PickerMenuId::Main, "level_edit");
+    ASSERT_NE(nullptr, level_editor);
+    EXPECT_EQ("Level Editor", level_editor->label);
 
     const PickerMenuItem* networking = find_picker_menu_item(PickerMenuId::Main, "networking");
     ASSERT_TRUE(networking == nullptr) << "networking should now live in the team build menu";
@@ -110,13 +116,45 @@ TEST(MenuModel, team_build_lookup)
               static_cast<int>(scenario->command))
         << "scenario should map to the Scenario submenu command";
 
-    // The scenario-shaped commands moved OUT of the team-build menu.
+    // §2.5 base camp: the 12-item IN-PLACE substitution — roster (was
+    // view_team) leads, deploy (was load_team) and ready (was save_team)
+    // hold the 1-based positions 4 and 5, and the retired ids are gone.
+    const PickerMenuItem* roster =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "roster");
+    ASSERT_TRUE(roster != nullptr) << "roster id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ViewTeam),
+              static_cast<int>(roster->command))
+        << "roster keeps the ViewTeam command (the roster IS the team view)";
+    ASSERT_TRUE(&def.items[0] == roster)
+        << "roster leads the base camp (1-based position 1)";
+
+    const PickerMenuItem* deploy =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "deploy");
+    ASSERT_TRUE(deploy != nullptr) << "deploy id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleDeploy),
+              static_cast<int>(deploy->command))
+        << "deploy should map to ToggleDeploy";
+    ASSERT_TRUE(&def.items[3] == deploy)
+        << "deploy holds load_team's old 1-based position 4";
+
+    const PickerMenuItem* ready =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ready");
+    ASSERT_TRUE(ready != nullptr) << "ready id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleReady),
+              static_cast<int>(ready->command))
+        << "ready should map to ToggleReady";
+    ASSERT_TRUE(&def.items[4] == ready)
+        << "ready holds save_team's old 1-based position 5";
+
+    // The scenario-shaped commands moved OUT of the team-build menu, and
+    // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
-         {"teams", "view_scenario", "set_level", "set_campaign", "progress"})
+         {"teams", "view_scenario", "set_level", "set_campaign", "progress",
+          "view_team", "load_team", "save_team"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, moved_id) ==
                     nullptr)
-            << moved_id << " should live in the Scenario submenu now";
+            << moved_id << " must not resolve in the base camp";
     }
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)
@@ -353,8 +391,9 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(11u, main_def.items.size())
-        << "main menu shape must not change (1-based text-drive numbers)";
+    ASSERT_EQ(13u, main_def.items.size())
+        << "main menu exposes both Help and Quit plus the appended company "
+           "loader";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -406,4 +445,119 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, submenu_id) == nullptr)
             << submenu_id << " should not appear in team build";
     }
+}
+
+TEST(MenuModel, company_screen_menu_definitions_resolve)
+{
+    using namespace og::ui;
+
+    // §2.3 Company List (LOAD): dynamic company rows come from disk at
+    // runtime; the model carries the fixed command chrome.
+    const PickerMenuDefinition& load_def =
+        picker_menu_definition(PickerMenuId::LoadCompany);
+    ASSERT_EQ(static_cast<int>(PickerMenuId::LoadCompany),
+              static_cast<int>(load_def.id))
+        << "load-company definition should report its own id";
+    ASSERT_TRUE(load_def.title == "Companies");
+    ASSERT_EQ(4u, load_def.items.size())
+        << "company list chrome: open/backups/delete + back";
+
+    // §2.4 Backups sub-view.
+    const PickerMenuDefinition& backups_def =
+        picker_menu_definition(PickerMenuId::Backups);
+    ASSERT_EQ(static_cast<int>(PickerMenuId::Backups),
+              static_cast<int>(backups_def.id))
+        << "backups definition should report its own id";
+    ASSERT_TRUE(backups_def.title == "Backups");
+    ASSERT_EQ(3u, backups_def.items.size())
+        << "backups chrome: restore/delete + back";
+
+    // §2.2 new-company name entry.
+    const PickerMenuDefinition& name_def =
+        picker_menu_definition(PickerMenuId::NameEntry);
+    ASSERT_EQ(static_cast<int>(PickerMenuId::NameEntry),
+              static_cast<int>(name_def.id))
+        << "name-entry definition should report its own id";
+    ASSERT_TRUE(name_def.title == "Found Your Company");
+    ASSERT_EQ(4u, name_def.items.size())
+        << "name entry: value/reroll/accept + back";
+
+    const struct
+    {
+        PickerMenuId menu;
+        const char* id;
+        PickerMenuCommand command;
+    } kExpected[] = {
+        {PickerMenuId::LoadCompany, "open_company", PickerMenuCommand::OpenCompany},
+        {PickerMenuId::LoadCompany, "company_backups", PickerMenuCommand::OpenCompanyBackups},
+        {PickerMenuId::LoadCompany, "delete_company", PickerMenuCommand::DeleteCompany},
+        {PickerMenuId::LoadCompany, "back", PickerMenuCommand::Back},
+        {PickerMenuId::Backups, "restore_backup", PickerMenuCommand::RestoreBackup},
+        {PickerMenuId::Backups, "delete_backup", PickerMenuCommand::DeleteBackup},
+        {PickerMenuId::Backups, "back", PickerMenuCommand::Back},
+        {PickerMenuId::NameEntry, "company_name_value", PickerMenuCommand::EditCompanyName},
+        {PickerMenuId::NameEntry, "company_name_reroll", PickerMenuCommand::RerollCompanyName},
+        {PickerMenuId::NameEntry, "company_name_accept", PickerMenuCommand::AcceptCompanyName},
+        {PickerMenuId::NameEntry, "back", PickerMenuCommand::Back},
+    };
+    for (const auto& want : kExpected)
+    {
+        const PickerMenuItem* item = find_picker_menu_item(want.menu, want.id);
+        ASSERT_TRUE(item != nullptr) << want.id << " should resolve";
+        ASSERT_EQ(static_cast<int>(want.command), static_cast<int>(item->command))
+            << want.id;
+        const PickerMenuItem* by_command =
+            find_picker_menu_item(want.menu, want.command);
+        ASSERT_TRUE(by_command == item)
+            << want.id << " should also resolve by command";
+    }
+}
+
+TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
+{
+    using namespace og::ui;
+
+    // Shared cancel semantics: Back on every non-Main screen.
+    for (const PickerMenuId menu :
+         {PickerMenuId::LoadCompany, PickerMenuId::Backups, PickerMenuId::NameEntry})
+    {
+        const PickerMenuItem* cancel = menu_cancel_item(menu);
+        ASSERT_TRUE(cancel != nullptr)
+            << "company screens must have a cancel item";
+        ASSERT_TRUE(cancel->id == "back");
+        ASSERT_EQ(static_cast<int>(PickerMenuCommand::Back),
+                  static_cast<int>(cancel->command));
+    }
+
+    // The new ids never leak into the legacy menus, whose 1-based shapes
+    // are pinned by the text-drive consumers.
+    for (const char* new_id :
+         {"open_company", "company_backups", "delete_company", "restore_backup",
+          "delete_backup", "company_name_value", "company_name_reroll",
+          "company_name_accept"})
+    {
+        for (const PickerMenuId legacy_menu :
+             {PickerMenuId::Main, PickerMenuId::TeamBuild, PickerMenuId::Scenario,
+              PickerMenuId::Difficulty})
+        {
+            ASSERT_TRUE(find_picker_menu_item(legacy_menu, new_id) == nullptr)
+                << new_id << " must not appear in a legacy menu yet";
+        }
+    }
+
+    // §2.1: load_company remains at the end; Main now exposes both stable
+    // Help and Quit actions. TeamBuild/Scenario/Difficulty are unchanged.
+    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::Main).items.size());
+    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
+    ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
+
+    // load_company resolves by id and by command, and is the last Main item.
+    const PickerMenuItem* load_company =
+        find_picker_menu_item(PickerMenuId::Main, "load_company");
+    ASSERT_TRUE(load_company != nullptr);
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::LoadGame),
+              static_cast<int>(load_company->command));
+    ASSERT_EQ(load_company,
+              &picker_menu_definition(PickerMenuId::Main).items.back());
 }

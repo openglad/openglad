@@ -11,6 +11,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/resources/company.h>
 
 #include <SDL3/SDL.h>
 #include <emscripten.h>
@@ -503,7 +504,11 @@ void seed_test_save_if_requested()
         soldier->name = requested_player_count == 1
             ? "Web Soldier"
             : std::format("Web Soldier {}", index + 1);
-        soldier->teamnum = static_cast<short>(index);
+        // SaveData defaults to Together mode, so every requested local view
+        // controls the same combat team. Seed one distinct red hero per view;
+        // assigning colors by index would create hostile fighters and the
+        // picker's start gate would correctly reject the unstaffed views.
+        soldier->teamnum = 0;
         soldier->strength = 200;
         soldier->dexterity = 200;
         soldier->constitution = 200;
@@ -512,7 +517,9 @@ void seed_test_save_if_requested()
         save.team_list[index] = std::move(soldier);
     }
     save.team_size = static_cast<unsigned char>(requested_player_count);
-    save.save("save0");
+    // wasm-e2e seeding writes the default slot; startup selection finds
+    // exactly that file (§3.9).
+    save.save(og::data::active_company_slot());
 }
 
 void prepare_runtime_diagnostics_for_boot()

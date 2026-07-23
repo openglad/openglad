@@ -1527,6 +1527,20 @@ void GameWorld::clear()
     paused = false;
     pause_player_index = 0xff;
     completed_levels.clear();
+    // Networked control policy (design §4.4): reset both scalars to the
+    // legacy defaults whenever a world is cleared. Snapshot v9 stamps them
+    // onto mirror worlds during networked play and nothing else ever writes
+    // them back, so a cleared-and-reused world must not keep an owner-locked
+    // policy or a stale machine map. NOTE this alone does not cover the SDL
+    // display world (its level loads rebuild state via
+    // replace_loaded_world_state, which deliberately preserves the scalars
+    // for the dedicated server's in-session transitions) — the local install
+    // in reset_local_transport_shadow additionally stamps legacy on the
+    // authoritative world. The networked installs stamp AFTER clear/load
+    // (install_control_policy) and replay playback re-stamps from every
+    // applied recorded snapshot, so both remain correct.
+    control_policy = 0;
+    player_machine.fill(0xff);
 }
 
 char GameWorld::damage_tile(short xloc, short yloc)

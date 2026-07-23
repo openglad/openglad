@@ -30,6 +30,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -332,7 +333,8 @@ bool dispatch_game_flow_screen_events(screen& self,
                         static_cast<std::int32_t>(first_withdraw_request->a));
                 }
 
-                const SaveDataIoError load_error = self.save_data.load_with_error("save0");
+                const SaveDataIoError load_error = self.save_data.load_with_error(
+                    og::data::active_company_slot());
                 if (load_error != SaveDataIoError::None)
                 {
                     LogError("withdraw_load_failed target_level={} error={}\n",
@@ -346,7 +348,8 @@ bool dispatch_game_flow_screen_events(screen& self,
 
                 self.save_data.scen_num = withdraw_level;
                 const SaveDataIoError save_error =
-                    self.save_data.save_with_error("save0");
+                    self.save_data.save_with_error(
+                        og::data::active_company_slot());
                 if (save_error != SaveDataIoError::None)
                 {
                     LogError("withdraw_save_failed target_level={} error={}\n",
@@ -1441,6 +1444,9 @@ short screen::endgame(short ending, short nextlevel)
 	
 	const bool networked = og::runtime::current_session != nullptr &&
 		og::runtime::current_session->networked_session_;
+	const bool isolated_company =
+		og::runtime::current_session != nullptr &&
+		og::runtime::current_session->isolated_company_session_;
 
 	// Non-win exits route the mode's run-end policy (Classic: no-op) BEFORE
 	// the results screen, so mode popups/summaries read post-reset save
@@ -1498,20 +1504,46 @@ short screen::endgame(short ending, short nextlevel)
 		fold_ctx.outcome.ending = 0;
 		fold_ctx.outcome.next_level = nextlevel;
 		fold_ctx.outcome.networked = networked;
+
+		// §4.6 money split: on a networked win latch the capture — the pre-fold
+		// deploy roster (dead heroes still ride the oblist here) plus the fold's
+		// applied per-team deltas — onto this screen so the client's
+		// out-of-dispatch persist can size this machine's deploy-ratio share.
+		og::progression::NetWinFoldCapture net_win_capture;
+		if (networked)
+			net_win_capture.deployed =
+				og::progression::collect_deployed_contributors(world_);
+
 		og::progression::apply_win_fold(save_data, world_, fold_ctx);
+
+		if (networked)
+		{
+			net_win_capture.cash_delta = fold_ctx.applied_cash_delta;
+			net_win_capture.score_delta = fold_ctx.applied_score_delta;
+			pending_net_win_capture_ = std::move(net_win_capture);
+		}
 
 		// In a networked session this display screen holds the COMBINED roster
 		// (every player's characters). Autosaving it here would clobber this
 		// player's save0 with everyone's gladiators — the networked per-player
 		// save path persists only this player's own characters (owner-filtered),
-		// so the display must not touch save0. Local/single-player still
-		// autosaves — unless the mode's persistence policy says otherwise.
+		// so the display must not touch save0. A local lobby's active-team
+		// subset uses that same owner-aware merge; only legacy full-roster local
+		// sessions autosave here (subject to the mode's persistence policy).
 		// (The fold already ran update_guys; this is the save-only tail.)
-		if (!networked &&
+		if (!networked && !isolated_company &&
 		    og::mode::current_progression().persist_after_win())
 		{
-			// Autosave because we won
-			save_data.save("save0");
+			// Autosave because we won: the §3.8 choke point stamps
+			// last_played, atomic-writes the active company, and
+			// (LevelWin) snapshots the freshly-saved file into
+			// save/backups/ exactly once (§3.7 retention-pruned byte
+			// copy). The netsession scratch can never reach here: the
+			// networked branch is excluded above and the active slot
+			// can never be "netsession", so the server economy never
+			// leaves snapshots behind.
+			(void)og::data::company_autosave(
+			    save_data, og::data::CompanyAutosaveKind::LevelWin);
 		}
 
 		// Every win ends this display session. Single-player and local play

@@ -119,6 +119,69 @@ TEST(WinFold, bonus_awarded_only_on_first_completion)
 }
 
 // ---------------------------------------------------------------------------
+// Fold out-params (§4.6 Edit 1): the money split sizes each machine's share
+// from the per-team deltas the fold applied — additions themselves unchanged.
+
+TEST(WinFold, records_applied_deltas_for_the_money_split)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 3);
+    save.m_score[0] = 100;
+    save.m_score[2] = 7;
+
+    WinFoldContext ctx = make_ctx(4, {50, 0, 0, 0});
+    ctx.finished_level = 3;
+    apply_win_fold(save, fx.world(), ctx);
+
+    // Cash delta = score*2 + first-win bonus; score delta = the raw score.
+    EXPECT_EQ(250u, ctx.applied_cash_delta[0]) << "200 cash + 50 bonus";
+    EXPECT_EQ(100u, ctx.applied_score_delta[0]);
+    EXPECT_EQ(14u, ctx.applied_cash_delta[2]);
+    EXPECT_EQ(7u, ctx.applied_score_delta[2]);
+    EXPECT_EQ(0u, ctx.applied_cash_delta[1]);
+    EXPECT_EQ(0u, ctx.applied_score_delta[1]);
+}
+
+TEST(WinFold, already_completed_replay_reports_no_bonus_in_delta)
+{
+    TestGameWorld fx;
+    SaveData replay;
+    init_save(replay, 3);
+    replay.add_level_completed(kCampaign, 3);
+    replay.m_score[0] = 100;
+
+    WinFoldContext ctx = make_ctx(4, {50, 0, 0, 0});
+    ctx.finished_level = 3;
+    apply_win_fold(replay, fx.world(), ctx);
+    EXPECT_EQ(200u, ctx.applied_cash_delta[0]) << "no bonus in the delta on replay";
+    EXPECT_EQ(100u, ctx.applied_score_delta[0]);
+}
+
+TEST(WinFold, second_pass_reports_zero_applied_delta)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 3);
+    save.m_score[0] = 100;
+
+    WinFoldContext ctx = make_ctx(4, {50, 0, 0, 0});
+    ctx.finished_level = 3;
+    apply_win_fold(save, fx.world(), ctx);
+    ASSERT_EQ(250u, ctx.applied_cash_delta[0]);
+
+    // A re-entrant second pass on the same object applies nothing (m_score is
+    // already zero and on_finished is false), so the reported delta is 0 — a
+    // money split off the second pass banks nothing.
+    apply_win_fold(save, fx.world(), ctx);
+    for (int t = 0; t < 4; ++t)
+    {
+        EXPECT_EQ(0u, ctx.applied_cash_delta[t]) << "team " << t;
+        EXPECT_EQ(0u, ctx.applied_score_delta[t]) << "team " << t;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Idempotence — the double-finalize contract (screen::endgame + the shadow
 // finalize both fold in local play).
 

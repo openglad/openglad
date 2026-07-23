@@ -101,6 +101,14 @@ struct CtfScreenWorld
 
     CtfScreenWorld()
     {
+        // Mount-in-test: under --gtest_shuffle a predecessor can leave a
+        // non-gladiator campaign mounted (e.g. the CTF package, which ships
+        // no scen1) — pre-existing order dependence surfaced by seed 23.
+        // Level 1 lives in the gladiator package; remount it if needed.
+        if (get_mounted_campaign() != "org.openglad.gladiator") {
+            (void)unmount_campaign_package_with_error(get_mounted_campaign());
+            (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        }
         s->world().id = 1;
         EXPECT_TRUE(s->load_level()) << "level 1 should load for the CTF stamp";
         GameWorld& world = s->world();

@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -16,8 +18,11 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <list>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1274,10 +1279,10 @@ TEST(PickerCommon, format_allied_mode_label)
 {
     SaveData save;
     save.allied_mode = 0;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Enemy");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: SPLIT");
 
     save.allied_mode = 1;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Ally");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: TOGETHER");
 }
 
 // --- collect_team_families ---
@@ -1495,6 +1500,103 @@ TEST(PickerCommon, derive_local_seat_teams_excludes_team_zero_unless_hoisted)
 
     save.my_team = 0;
     ASSERT_EQ((std::vector<short>{0, 1}), og::ui::derive_local_seat_teams(save));
+}
+
+TEST(PickerCommon, local_seat_derivation_ignores_benched_only_teams)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 1;
+
+    EXPECT_EQ((std::vector<short>{1}), og::ui::derive_local_seat_teams(save));
+
+    save.my_team = 2;
+    EXPECT_EQ((std::vector<short>{1}), og::ui::derive_local_seat_teams(save))
+        << "a preferred but benched-only color must not create an empty view";
+}
+
+TEST(PickerCommon, local_gameplay_seat_matrix_requires_one_deployed_control_per_view)
+{
+    // Exhaust every deployment subset, roster-color assignment, player count,
+    // preferred team, and Together/Split setting for a four-character company.
+    // The expected verdict is calculated only from the returned seat teams and
+    // independently counted deployed characters, so repeated Together seats
+    // and padded Split seats are both covered.
+    for (int encoded_teams = 0; encoded_teams < 256; ++encoded_teams)
+    {
+        for (int deployed_mask = 0; deployed_mask < 16; ++deployed_mask)
+        {
+            for (short preferred = 0; preferred < 4; ++preferred)
+            {
+                for (short allied : {short{0}, short{1}})
+                {
+                    for (int player_count = 1; player_count <= 4; ++player_count)
+                    {
+                        SaveData save;
+                        std::array<int, 4> available{};
+                        int encoded = encoded_teams;
+                        for (int slot = 0; slot < 4; ++slot)
+                        {
+                            const short team = static_cast<short>(encoded & 3);
+                            encoded >>= 2;
+                            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+                            member->teamnum = team;
+                            member->deployed = (deployed_mask & (1 << slot)) != 0;
+                            if (member->deployed)
+                                ++available[static_cast<std::size_t>(team)];
+                            save.team_list[static_cast<std::size_t>(slot)] =
+                                std::move(member);
+                        }
+                        save.team_size = 4;
+                        save.my_team = preferred;
+                        save.allied_mode = allied;
+                        save.numplayers = static_cast<unsigned char>(player_count);
+
+                        const std::vector<short> seats =
+                            og::ui::derive_local_gameplay_seat_teams(save);
+                        ASSERT_EQ(static_cast<std::size_t>(player_count), seats.size());
+                        if (allied != 0)
+                        {
+                            EXPECT_TRUE(std::all_of(
+                                seats.begin(), seats.end(),
+                                [first = seats.front()](short team) {
+                                    return team == first;
+                                }));
+                        }
+                        else
+                        {
+                            std::set<short> distinct(seats.begin(), seats.end());
+                            EXPECT_EQ(seats.size(), distinct.size());
+                        }
+
+                        bool expected = true;
+                        for (const short team : seats)
+                        {
+                            if (team < 0 || team >= 4 ||
+                                available[static_cast<std::size_t>(team)]-- <= 0)
+                            {
+                                expected = false;
+                                break;
+                            }
+                        }
+                        EXPECT_EQ(expected,
+                                  og::ui::local_seat_teams_have_controls(save, seats))
+                            << "teams=" << encoded_teams
+                            << " deployed=" << deployed_mask
+                            << " preferred=" << preferred
+                            << " allied=" << allied
+                            << " players=" << player_count;
+                    }
+                }
+            }
+        }
+    }
 }
 
 TEST(PickerCommon, format_team_row_label_variants_fit_budget)
@@ -1919,37 +2021,43 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_requested_limit_overrides_map_and_allied_collapses)
+TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
     ReportWorld fx(true);
     fx.spawn_flag(0, /*level=*/7);
     fx.spawn_flag(1);
+    fx.spawn_flag(3);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+    fx.spawn_living_named(FAMILY_ARCHER, 3, 5, nullptr);
 
     SaveData save;
     save.current_campaign = std::string(og::kCtfCampaignId);
     save.allied_mode = 1;
-    save.my_team = 2; // ignored when allied
+    save.my_team = 2;
     save.ctf_capture_limit = 5;
     save.ctf_strip_scenario_troops = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 3; // allied collapses roster teams to {0}
+    save.team_list[0]->teamnum = 3;
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
     EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
-    EXPECT_EQ(0, report.your_team) << "allied mode plays as team 0";
+    EXPECT_EQ(2, report.your_team)
+        << "local Together mode keeps the selected playing team";
 
     const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team0->strip_reason)
-        << "allied roster-team predicate collapses to team 0";
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, team0->strip_reason);
     const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(team1 != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, team1->strip_reason);
+    const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
+    ASSERT_TRUE(team3 != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team3->strip_reason)
+        << "the report must mirror the roster's actual color";
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
@@ -2518,4 +2626,1172 @@ TEST(PickerCommon, zoom_and_smoothing_labels_fit_the_button_face)
         smoothing = og::ui::cycle_smoothing(smoothing);
     }
     ASSERT_EQ("off", smoothing) << "three steps must complete the lap";
+}
+
+// --- Company autosave context (design §3.8 [SAVE-F1] / §1.2 G12) ----------
+
+TEST(PickerCommon, company_autosave_context_local_is_plain)
+{
+    SaveData save;
+    save.my_team = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 2;
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/false);
+    EXPECT_FALSE(context.networked_lobby)
+        << "without a networked lobby the write stays a plain save";
+    for (const bool owned : context.owned_teams)
+        EXPECT_FALSE(owned) << "owned teams are meaningless off the merge path";
+}
+
+TEST(PickerCommon, company_autosave_context_owned_teams_from_roster_and_seat)
+{
+    SaveData save;
+    save.my_team = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 3;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[2]->teamnum = 9; // out of wallet range: ignored
+    save.team_size = 3;
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    ASSERT_TRUE(context.networked_lobby);
+    EXPECT_FALSE(context.owned_teams[0]);
+    EXPECT_TRUE(context.owned_teams[1]) << "my_team + roster team";
+    EXPECT_FALSE(context.owned_teams[2]);
+    EXPECT_TRUE(context.owned_teams[3]) << "second seat's roster team";
+}
+
+TEST(PickerCommon, company_autosave_context_empty_roster_uses_my_team)
+{
+    SaveData save;
+    save.my_team = 0; // team 0 is a REAL wallet index (unlike seat labels)
+
+    const og::data::CompanyAutosaveContext context =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    ASSERT_TRUE(context.networked_lobby);
+    EXPECT_TRUE(context.owned_teams[0])
+        << "hiring into an empty roster spends from my_team's wallet";
+    EXPECT_FALSE(context.owned_teams[1]);
+    EXPECT_FALSE(context.owned_teams[2]);
+    EXPECT_FALSE(context.owned_teams[3]);
+
+    save.my_team = 7; // out of wallet range: no team marked
+    const og::data::CompanyAutosaveContext clamped =
+        og::ui::company_autosave_context(save, /*networked_lobby=*/true);
+    for (const bool owned : clamped.owned_teams)
+        EXPECT_FALSE(owned);
+}
+
+// --- Company name generator (design §2.2) ---
+
+namespace {
+
+// EXPECT-only bank sweep (helpers that return values cannot use ASSERT_*);
+// returns the longest word so the combined-budget pin can sum the maxima.
+std::size_t check_company_bank(std::span<const char* const> bank,
+                               std::size_t per_word_budget,
+                               const char* what)
+{
+    std::size_t longest = 0;
+    std::set<std::string> unique;
+    for (const char* word : bank)
+    {
+        if (word == nullptr)
+        {
+            ADD_FAILURE() << what << " contains a null word";
+            continue;
+        }
+        const std::string text(word);
+        EXPECT_FALSE(text.empty()) << what << " contains an empty word";
+        EXPECT_LE(text.size(), per_word_budget) << what << ": " << text;
+        longest = std::max(longest, text.size());
+        for (const char c : text)
+            EXPECT_TRUE(c >= 'A' && c <= 'Z')
+                << what << " word has a non-A-Z character: " << text;
+        unique.insert(text);
+    }
+    EXPECT_EQ(unique.size(), bank.size()) << what << " has duplicate words";
+    return longest;
+}
+
+std::vector<std::string> split_words(const std::string& text)
+{
+    std::vector<std::string> words;
+    std::string current;
+    for (const char c : text)
+    {
+        if (c == ' ')
+        {
+            words.push_back(current);
+            current.clear();
+        }
+        else
+        {
+            current += c;
+        }
+    }
+    words.push_back(current);
+    return words;
+}
+
+bool bank_contains(std::span<const char* const> bank, const std::string& word)
+{
+    for (const char* entry : bank)
+    {
+        if (word == entry)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+TEST(CompanyNameGen, banks_respect_the_18_char_budget_and_charset)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    ASSERT_FALSE(banks.adjectives.empty());
+    ASSERT_FALSE(banks.nouns.empty());
+    ASSERT_FALSE(banks.groups.empty());
+
+    // Per-bank word budgets: 5 + 6 + 5 (+ two spaces) == the 18-char cap.
+    const std::size_t adj = check_company_bank(banks.adjectives, 5, "adjectives");
+    const std::size_t noun = check_company_bank(banks.nouns, 6, "nouns");
+    const std::size_t group = check_company_bank(banks.groups, 5, "groups");
+    EXPECT_LE(adj + noun + group + 2, og::ui::kCompanyNameMaxLen)
+        << "the longest <ADJ> <NOUN> <GROUP> combination must fit the cap "
+           "(the generator never truncates)";
+
+    // The design's own example must stay generatable.
+    EXPECT_TRUE(bank_contains(banks.adjectives, "IRON"));
+    EXPECT_TRUE(bank_contains(banks.nouns, "KETTLE"));
+    EXPECT_TRUE(bank_contains(banks.groups, "BAND"));
+}
+
+TEST(CompanyNameGen, deterministic_under_seed_and_reroll_advances)
+{
+    SeededRandom first_rng(42u);
+    SeededRandom second_rng(42u);
+    std::vector<std::string> first;
+    std::vector<std::string> second;
+    for (int i = 0; i < 12; ++i)
+    {
+        first.push_back(og::ui::generate_company_name(first_rng));
+        second.push_back(og::ui::generate_company_name(second_rng));
+    }
+    EXPECT_EQ(first, second)
+        << "same seed, same call sequence => byte-identical names";
+
+    // Reroll support: repeated calls on the ADVANCING rng vary the name.
+    const std::set<std::string> distinct(first.begin(), first.end());
+    EXPECT_GE(distinct.size(), 2u) << "reroll must be able to change the name";
+}
+
+TEST(CompanyNameGen, fixed_rng_picks_the_indexed_words)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+
+    FixedRandom zero(0u);
+    EXPECT_EQ(std::format("{} {} {}", banks.adjectives[0], banks.nouns[0],
+                          banks.groups[0]),
+              og::ui::generate_company_name(zero));
+
+    FixedRandom three(3u);
+    EXPECT_EQ(std::format("{} {} {}",
+                          banks.adjectives[3u % banks.adjectives.size()],
+                          banks.nouns[3u % banks.nouns.size()],
+                          banks.groups[3u % banks.groups.size()]),
+              og::ui::generate_company_name(three));
+}
+
+TEST(CompanyNameGen, seeded_sweep_stays_in_budget_and_covers_every_word)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    SeededRandom rng(1234u);
+    std::set<std::string> seen_adjectives;
+    std::set<std::string> seen_nouns;
+    std::set<std::string> seen_groups;
+    std::set<std::string> distinct_names;
+    for (int i = 0; i < 2000; ++i)
+    {
+        const std::string name = og::ui::generate_company_name(rng);
+        ASSERT_LE(name.size(), og::ui::kCompanyNameMaxLen) << name;
+        ASSERT_FALSE(name.empty());
+
+        const std::vector<std::string> words = split_words(name);
+        ASSERT_EQ(3u, words.size()) << "shape is <ADJ> <NOUN> <GROUP>: " << name;
+        ASSERT_TRUE(bank_contains(banks.adjectives, words[0])) << name;
+        ASSERT_TRUE(bank_contains(banks.nouns, words[1])) << name;
+        ASSERT_TRUE(bank_contains(banks.groups, words[2])) << name;
+
+        seen_adjectives.insert(words[0]);
+        seen_nouns.insert(words[1]);
+        seen_groups.insert(words[2]);
+        distinct_names.insert(name);
+    }
+    EXPECT_EQ(seen_adjectives.size(), banks.adjectives.size())
+        << "every adjective must be reachable";
+    EXPECT_EQ(seen_nouns.size(), banks.nouns.size())
+        << "every noun must be reachable";
+    EXPECT_EQ(seen_groups.size(), banks.groups.size())
+        << "every group word must be reachable";
+    EXPECT_GE(distinct_names.size(), 100u) << "the space must have variety";
+}
+
+// --- Company label formatters (design §2.2/§2.3) ---
+// (The slug-preview formatter pin was deleted with the formatter — §9.3/F2.)
+
+TEST(CompanyFormat, list_title_and_row_columns)
+{
+    EXPECT_EQ("COMPANIES (12)", og::ui::format_company_list_title(12));
+    EXPECT_EQ("COMPANIES (0)", og::ui::format_company_list_title(0));
+
+    og::data::CompanyInfo info;
+    info.slot = "iron-kettle-band";
+    info.display_name = "IRON KETTLE BAND";
+    info.roster_size = 12;
+    info.last_played_unix_s = 1000000000; // 2001-09-09 01:46:40 UTC
+    info.valid = true;
+
+    const og::ui::CompanyRowText row = og::ui::format_company_row(info);
+    EXPECT_FALSE(row.corrupt);
+    EXPECT_EQ("IRON KETTLE BAND", row.name);
+    EXPECT_EQ("12", row.roster);
+    EXPECT_EQ("2001-09-09", row.played) << "dates are UTC, never local time";
+
+    // Column budgets (§2.3): name <= 18 chars, roster exactly 2, date <= 10.
+    EXPECT_LE(row.name.size(), og::ui::kCompanyNameMaxLen);
+    EXPECT_EQ(2u, row.roster.size());
+    EXPECT_LE(row.played.size(), 10u);
+}
+
+TEST(CompanyFormat, row_edges_clip_pad_and_mark_corruption)
+{
+    og::data::CompanyInfo info;
+    info.slot = "long";
+    info.display_name = "AN EXTREMELY LONG COMPANY NAME"; // 30 chars
+    info.roster_size = 3;
+    info.last_played_unix_s = 0; // never played
+    info.valid = true;
+
+    og::ui::CompanyRowText row = og::ui::format_company_row(info);
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, row.name.size())
+        << "over-budget names clip to the column";
+    EXPECT_EQ(0u, row.name.find("AN EXTREMELY LONG"));
+    EXPECT_EQ(" 3", row.roster) << "single digits right-align to 2 chars";
+    EXPECT_EQ("", row.played) << "never-played rows draw no date";
+
+    info.roster_size = 250; // out-of-range header value
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("99", row.roster) << "roster clamps to the 2-char column";
+
+    info.roster_size = -1;
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ(" 0", row.roster);
+
+    // Absurd timestamps (beyond year 9999) blank rather than widen the
+    // 10-char date column.
+    info.roster_size = 3;
+    info.last_played_unix_s = INT64_C(400000000000000);
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("", row.played);
+    info.last_played_unix_s = -5;
+    row = og::ui::format_company_row(info);
+    EXPECT_EQ("", row.played);
+
+    // Corrupt rows: keep the parsed name, mark CORRUPT in the date column.
+    info.valid = false;
+    info.last_played_unix_s = 0;
+    row = og::ui::format_company_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ(0u, row.name.find("AN EXTREMELY LONG"));
+    EXPECT_EQ("--", row.roster);
+    EXPECT_EQ("CORRUPT", row.played);
+
+    // Corrupt before the name parsed: fall back to the slot.
+    info.display_name.clear();
+    info.slot = "damaged-company";
+    row = og::ui::format_company_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ("damaged-company", row.name);
+
+    // A valid save with an empty stored name also identifies by slot.
+    og::data::CompanyInfo unnamed;
+    unnamed.slot = "save0";
+    unnamed.roster_size = 1;
+    unnamed.valid = true;
+    row = og::ui::format_company_row(unnamed);
+    EXPECT_FALSE(row.corrupt);
+    EXPECT_EQ("save0", row.name);
+}
+
+// §2.3 terminal projection: both terminal clients print the SAME joined row
+// line (name padded to the 18-char column, 2-char roster, date; '*' marks
+// the active company — the terminal projection of the SDL red outline, U4).
+TEST(CompanyFormat, row_line_joins_columns_for_terminals)
+{
+    og::data::CompanyInfo info;
+    info.slot = "iron-kettle-band";
+    info.display_name = "IRON KETTLE BAND";
+    info.roster_size = 12;
+    info.last_played_unix_s = 1000000000; // 2001-09-09 UTC
+    info.valid = true;
+
+    EXPECT_EQ("* IRON KETTLE BAND   12 2001-09-09",
+              og::ui::format_company_row_line(info, true));
+    EXPECT_EQ("  IRON KETTLE BAND   12 2001-09-09",
+              og::ui::format_company_row_line(info, false));
+
+    // Never played: the date column is omitted entirely (no trailing pad).
+    info.last_played_unix_s = 0;
+    info.roster_size = 3;
+    EXPECT_EQ("  IRON KETTLE BAND    3",
+              og::ui::format_company_row_line(info, false));
+
+    // Corrupt rows join the "--"/"CORRUPT" markers.
+    info.valid = false;
+    EXPECT_EQ("  IRON KETTLE BAND   -- CORRUPT",
+              og::ui::format_company_row_line(info, false));
+}
+
+// --- §2.4 Backups sub-view formatters --------------------------------------
+
+TEST(BackupFormat, list_title_carries_the_retention_display)
+{
+    // The "/20" IS the §2.4 retention display.
+    static_assert(og::data::kCompanyBackupRetention == 20);
+    EXPECT_EQ("BACKUPS: IRON KETTLE BAND (3/20)",
+              og::ui::format_backup_list_title("IRON KETTLE BAND", 3));
+    EXPECT_EQ("BACKUPS:  (0/20)", og::ui::format_backup_list_title("", 0));
+    // Over-long names clip to the 18-char cap like every other surface.
+    EXPECT_EQ("BACKUPS: ABCDEFGHIJKLMNOPQR (20/20)",
+              og::ui::format_backup_list_title("ABCDEFGHIJKLMNOPQRSTU", 20));
+}
+
+TEST(BackupFormat, row_columns_level_tag_and_utc_datetime)
+{
+    og::data::CompanyBackupInfo info;
+    info.slot = "iron-kettle-band";
+    info.seq = 7;
+    info.filename = "iron-kettle-band.007.gtl";
+    info.header.slot = "iron-kettle-band";
+    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.scen_num = 7;
+    info.header.valid = true;
+    // 1970-01-01T23:59:59Z: pins BOTH that the format is "MM-DD HH:MM" and
+    // that it is UTC (any timezone offset would move the day or the hour).
+    info.header.last_played_unix_s = 86399;
+
+    og::ui::BackupRowText row = og::ui::format_backup_row(info);
+    EXPECT_FALSE(row.corrupt);
+    // No mounted-campaign match (the level_display_guarded rule): bare tag.
+    // (The mounted-title branch is pinned in og_test_basecamp where a real
+    // mount exists.)
+    EXPECT_EQ("L7", row.level);
+    EXPECT_EQ("01-01 23:59", row.saved);
+
+    // Unstamped snapshots (a pre-v14 company backed up before any stamp)
+    // carry no saved column at all.
+    info.header.last_played_unix_s = 0;
+    EXPECT_EQ("", og::ui::format_backup_row(info).saved);
+    // Out-of-calendar values never wrap into a bogus in-range datetime.
+    info.header.last_played_unix_s = 999999999999999;
+    EXPECT_EQ("", og::ui::format_backup_row(info).saved);
+
+    // Corrupt snapshots mark themselves instead of level context they never
+    // parsed (§2.4 corrupt-backup rows).
+    info.header.valid = false;
+    row = og::ui::format_backup_row(info);
+    EXPECT_TRUE(row.corrupt);
+    EXPECT_EQ("CORRUPT", row.level);
+    EXPECT_EQ("--", row.saved);
+}
+
+// §2.4 terminal projection: both terminal clients print the SAME joined
+// backup line (level tag padded to a 20-char column, then the saved
+// datetime).
+TEST(BackupFormat, row_line_joins_columns_for_terminals)
+{
+    og::data::CompanyBackupInfo info;
+    info.slot = "iron-kettle-band";
+    info.seq = 3;
+    info.filename = "iron-kettle-band.003.gtl";
+    info.header.slot = "iron-kettle-band";
+    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.scen_num = 12;
+    info.header.valid = true;
+    info.header.last_played_unix_s = 86399;
+
+    EXPECT_EQ("L12                  01-01 23:59",
+              og::ui::format_backup_row_line(info));
+
+    // Unstamped: the saved column is omitted entirely (no trailing pad).
+    info.header.last_played_unix_s = 0;
+    EXPECT_EQ("L12", og::ui::format_backup_row_line(info));
+
+    // Corrupt rows join the "CORRUPT"/"--" markers.
+    info.header.valid = false;
+    EXPECT_EQ("CORRUPT              --",
+              og::ui::format_backup_row_line(info));
+}
+
+TEST(BackupFormat, restore_error_strings)
+{
+    using E = og::data::CompanyRestoreError;
+    EXPECT_STREQ("", og::ui::company_restore_error_string(E::None));
+    EXPECT_STREQ("BACKUP FILE DAMAGED",
+                 og::ui::company_restore_error_string(E::InvalidBackup));
+    EXPECT_STREQ("COULD NOT BACK UP CURRENT STATE",
+                 og::ui::company_restore_error_string(
+                     E::PreRestoreBackupFailed));
+    EXPECT_STREQ("COPY FAILED - COMPANY UNCHANGED",
+                 og::ui::company_restore_error_string(E::CopyFailed));
+    EXPECT_STREQ("RELOAD FAILED - REWIND UNDONE",
+                 og::ui::company_restore_error_string(E::ReloadFailed));
+    EXPECT_STREQ("REWOUND, BUT THE TIMESTAMP WRITE FAILED",
+                 og::ui::company_restore_error_string(E::RestampFailed));
+}
+
+// --- §2.5 base camp roster helpers (WP4) -----------------------------------
+
+namespace {
+
+std::unique_ptr<guy> make_base_camp_member(const char* name, int family)
+{
+    auto member = std::make_unique<guy>(family);
+    member->name = name;
+    return member;
+}
+
+} // namespace
+
+TEST(BaseCampRoster, collect_slots_and_deploy_counts_follow_the_save)
+{
+    SaveData save;
+    EXPECT_TRUE(og::ui::collect_base_camp_slots(save).empty());
+    EXPECT_EQ(0, og::ui::count_deployed_members(save));
+
+    // Sparse occupancy: display order is slot order, holes skipped.
+    save.team_list[1] = make_base_camp_member("ONE", FAMILY_SOLDIER);
+    save.team_list[4] = make_base_camp_member("FOUR", FAMILY_MAGE);
+    save.team_list[7] = make_base_camp_member("SEVEN", FAMILY_ARCHER);
+    save.team_size = 3;
+
+    const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+    ASSERT_EQ(3u, slots.size());
+    EXPECT_EQ(1, slots[0]);
+    EXPECT_EQ(4, slots[1]);
+    EXPECT_EQ(7, slots[2]);
+
+    // New members default deployed (v14 default; §2.5 hires deploy).
+    EXPECT_EQ(3, og::ui::count_deployed_members(save));
+}
+
+TEST(BaseCampRoster, toggle_deploy_slot_flips_and_guards)
+{
+    SaveData save;
+    save.team_list[2] = make_base_camp_member("GORT", FAMILY_SOLDIER);
+    save.team_size = 1;
+
+    // Empty / out-of-range slots: no flip, false.
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, 0));
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, -1));
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, MAX_TEAM_SIZE));
+
+    ASSERT_TRUE(save.team_list[2]->deployed);
+    EXPECT_FALSE(og::ui::toggle_deploy_slot(save, 2)) << "flip to benched";
+    EXPECT_FALSE(save.team_list[2]->deployed);
+    EXPECT_EQ(0, og::ui::count_deployed_members(save));
+    EXPECT_TRUE(og::ui::toggle_deploy_slot(save, 2)) << "flip back";
+    EXPECT_TRUE(save.team_list[2]->deployed);
+}
+
+TEST(BaseCampRoster, format_row_clips_every_column)
+{
+    guy member(FAMILY_SOLDIER);
+    member.name = "AVERYLONGNAMEINDEED";
+    member.level = 1234;
+    member.exp = 32200;
+
+    // §9.5.3: no HP column (derived max HP was redundant with CLASS+LVL).
+    const og::ui::BaseCampRowText row = og::ui::format_base_camp_row(member);
+    EXPECT_EQ("AVERYLONGNAM", row.name) << "name clips to 12";
+    EXPECT_EQ("SOLDIER", row.cls) << "uppercased family display name";
+    EXPECT_LE(row.cls.size(), 9u);
+    EXPECT_EQ("123", row.level) << "level clips to 3";
+    EXPECT_EQ(" 32200", row.exp) << "exp left-pads to 6 (graft b)";
+    EXPECT_LE(row.exp.size(), 6u);
+
+    // §9.9 graft (b): small numerics left-pad to fixed width so the digit
+    // columns right-align down the page on all three clients.
+    member.level = 7;
+    member.exp = 950;
+    const og::ui::BaseCampRowText padded =
+        og::ui::format_base_camp_row(member);
+    EXPECT_EQ(" 7", padded.level) << "level left-pads to 2";
+    EXPECT_EQ("   950", padded.exp) << "exp left-pads to 6";
+
+    // Over-wide exp still clips to the 6-char budget.
+    member.exp = 1234567;
+    EXPECT_EQ("123456", og::ui::format_base_camp_row(member).exp);
+}
+
+TEST(BaseCampRoster, family_ramp_starts_match_master_view_team)
+{
+    // Master's View Team applied this exact palette-ramp formula to both the
+    // character name and its family label. Base Camp now carries the same
+    // ramps in compact swatches; pin every playable family.
+    for (short family = FAMILY_SOLDIER; family <= FAMILY_TOWER1; ++family) {
+        const unsigned char expected =
+            static_cast<unsigned char>(((family + 1) << 4) & 255);
+        EXPECT_EQ(expected, og::ui::base_camp_family_ramp_start(family))
+            << "family " << family;
+    }
+
+    EXPECT_EQ(16, og::ui::base_camp_family_ramp_start(FAMILY_SOLDIER));
+    EXPECT_EQ(32, og::ui::base_camp_family_ramp_start(FAMILY_ELF));
+    EXPECT_EQ(48, og::ui::base_camp_family_ramp_start(FAMILY_ARCHER));
+    EXPECT_EQ(64, og::ui::base_camp_family_ramp_start(FAMILY_MAGE));
+}
+
+TEST(BaseCampRoster, header_lines_budget_and_content)
+{
+    SaveData save;
+    save.m_totalcash[0] = 12345;
+    EXPECT_EQ("GOLD 12345", og::ui::format_base_camp_gold_label(save));
+    save.m_totalcash[0] = 4000000000u;
+    EXPECT_LE(og::ui::format_base_camp_gold_label(save).size(), 11u)
+        << "the gold block clips to the 11-char right column";
+
+    // An empty roster falls back to the player's seat wallet.
+    save.my_team = 2;
+    save.m_totalcash[2] = 777;
+    EXPECT_EQ("GOLD 777", og::ui::format_base_camp_gold_label(save));
+
+    // Network Together seats can be red while the private company is yellow;
+    // the label follows the banked company wallet, not the remapped seat.
+    save.team_list[0] = make_base_camp_member("Yellow", FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.my_team = 0;
+    save.m_totalcash[1] = 888;
+    EXPECT_EQ("GOLD 888", og::ui::format_base_camp_gold_label(save));
+
+    save.team_list[0] = make_base_camp_member("A", FAMILY_SOLDIER);
+    save.team_list[1] = make_base_camp_member("B", FAMILY_MAGE);
+    save.team_size = 2;
+    save.team_list[1]->deployed = false;
+    save.scen_num = 7;
+
+    const std::string line =
+        og::ui::format_base_camp_scen_line(save, "THE FORTRESS");
+    EXPECT_EQ("SCEN 7: THE FORTRESS  DEP 1/2", line);
+    EXPECT_LE(line.size(), 34u);
+
+    // An over-long title clips so the DEP block always fits the budget.
+    const std::string clipped = og::ui::format_base_camp_scen_line(
+        save, "AN ABSURDLY LONG SCENARIO TITLE THAT CANNOT FIT");
+    EXPECT_LE(clipped.size(), 34u);
+    EXPECT_NE(std::string::npos, clipped.find("  DEP 1/2"))
+        << "the DEP block survives the clip: " << clipped;
+}
+
+TEST(BaseCampRoster, train_session_seek_slot_seats_directly)
+{
+    SaveData save;
+    save.team_list[0] = make_base_camp_member("FRONT", FAMILY_SOLDIER);
+    save.team_list[3] = make_base_camp_member("PICKED", FAMILY_MAGE);
+    save.team_size = 2;
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+    EXPECT_EQ(0, session.current_slot());
+
+    // §2.5 per-row TRAIN: seek lands exactly on the clicked slot.
+    EXPECT_TRUE(session.seek_slot(3));
+    EXPECT_EQ(3, session.current_slot());
+    EXPECT_EQ("PICKED", session.working_copy().name);
+
+    // Empty / out-of-range seeks refuse and keep the position.
+    EXPECT_FALSE(session.seek_slot(1));
+    EXPECT_FALSE(session.seek_slot(-1));
+    EXPECT_FALSE(session.seek_slot(MAX_TEAM_SIZE));
+    EXPECT_EQ(3, session.current_slot());
+}
+
+// §3.3 positional-refresh rule: update_guys' held-back pass REORDERS the
+// roster (survivors first, held-back members appended), so display rows must
+// be re-collected — never held — across a win fold. collect_base_camp_slots
+// re-derives from the save by construction; this pins the reorder it must
+// absorb.
+TEST(BaseCampRoster, positional_rows_refresh_after_update_guys_reorder)
+{
+    SaveData save;
+    save.team_list[0] = make_base_camp_member("BENCHED", FAMILY_SOLDIER);
+    save.team_list[0]->deployed = false;
+    save.team_list[1] = make_base_camp_member("FIGHTER", FAMILY_MAGE);
+    save.team_size = 2;
+
+    // Pre-fold display order: slot order (BENCHED leads).
+    {
+        const std::vector<int> before = og::ui::collect_base_camp_slots(save);
+        ASSERT_EQ(2u, before.size());
+        EXPECT_EQ("BENCHED", save.team_list[before[0]]->name);
+    }
+
+    // The win fold: only FIGHTER deployed into the level and survived.
+    std::list<std::unique_ptr<walker>> oblist;
+    {
+        auto w = std::make_unique<walker>();
+        auto g = std::make_unique<guy>(FAMILY_MAGE);
+        g->name = "FIGHTER";
+        w->set_dead(0);
+        w->set_owned_myguy(std::move(g));
+        oblist.push_back(std::move(w));
+    }
+    save.update_guys(oblist);
+
+    // Post-fold: pass 1 copies the survivor into slot 0, pass 2 appends the
+    // held-back member — the display order FLIPPED; a stale pre-fold row
+    // index would now point at the wrong character.
+    const std::vector<int> after = og::ui::collect_base_camp_slots(save);
+    ASSERT_EQ(2u, after.size());
+    EXPECT_EQ("FIGHTER", save.team_list[after[0]]->name);
+    EXPECT_TRUE(save.team_list[after[0]]->deployed);
+    EXPECT_EQ("BENCHED", save.team_list[after[1]]->name);
+    EXPECT_FALSE(save.team_list[after[1]]->deployed)
+        << "the held-back flag survives the fold (§3.3 [SAVE-R4])";
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 MP display model (stage mp-columns): the merged lobby roster, the
+// machine-grouped READY counts, the networked header line, and the U7
+// COMPANY-column row shape.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+og::sim::LobbyPlayer make_lobby_seat(std::uint8_t player_index,
+                                     const char* name,
+                                     const char* company,
+                                     bool is_host,
+                                     bool ready,
+                                     int deployed_slots,
+                                     int benched_slots)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = player_index;
+    player.name = name;
+    player.company = company;
+    player.is_host = is_host;
+    player.ready = ready;
+    for (int i = 0; i < deployed_slots + benched_slots; ++i) {
+        og::sim::LobbyCharacterSlot slot;
+        slot.slot_index = static_cast<std::uint8_t>(i);
+        slot.deployed = i < deployed_slots;
+        slot.character.name = std::format("{}-{}", name, i);
+        slot.character.family = FAMILY_ELF;
+        slot.character.level = 3;
+        player.character_slots.push_back(std::move(slot));
+    }
+    return player;
+}
+
+} // namespace
+
+TEST(BaseCampMpDisplay, solo_collect_is_an_owned_passthrough)
+{
+    SaveData save;
+    save.team_list[2] = make_base_camp_member("TWO", FAMILY_SOLDIER);
+    save.team_list[5] = make_base_camp_member("FIVE", FAMILY_MAGE);
+    save.team_list[5]->deployed = false;
+    save.team_size = 2;
+
+    // players would be a foreign roster — ignored when not networked.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(9, "other", "OTHER CO", false, false, 2, 0)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/false);
+    ASSERT_EQ(2u, slots.size());
+    EXPECT_TRUE(slots[0].owned);
+    EXPECT_EQ(2, slots[0].save_slot);
+    EXPECT_TRUE(slots[0].deployed);
+    EXPECT_TRUE(slots[1].owned);
+    EXPECT_EQ(5, slots[1].save_slot);
+    EXPECT_FALSE(slots[1].deployed);
+    EXPECT_TRUE(slots[0].company.empty()) << "solo rows carry no company";
+}
+
+TEST(BaseCampMpDisplay, networked_collect_merges_own_first_then_owner_index)
+{
+    SaveData save;
+    save.save_name = "MY BAND";
+    save.team_list[0] = make_base_camp_member("MINE", FAMILY_SOLDIER);
+    save.team_size = 1;
+
+    // Foreign machines arrive out of order; the local seat (index 4) must
+    // be skipped — the private save is the authority for own rows.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(9, "net-b", "BRAVO BAND", false, false, 1, 1),
+        make_lobby_seat(4, "net-me", "MY BAND", false, false, 1, 0),
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 1, 0),
+    };
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {4}, /*networked=*/true);
+    ASSERT_EQ(4u, slots.size());
+    EXPECT_TRUE(slots[0].owned);
+    EXPECT_EQ(0, slots[0].save_slot);
+    EXPECT_EQ("MY BAND", slots[0].company)
+        << "networked own rows carry the own company for the column";
+    EXPECT_FALSE(slots[1].owned);
+    EXPECT_EQ(2, slots[1].owner_player_index)
+        << "foreign rows sort by owner player index";
+    EXPECT_EQ("ALPHA BAND", slots[1].company);
+    EXPECT_EQ("net-a-0", slots[1].character.name)
+        << "foreign display data rides the wire copy";
+    EXPECT_EQ(9, slots[2].owner_player_index);
+    EXPECT_TRUE(slots[2].deployed);
+    EXPECT_EQ(9, slots[3].owner_player_index);
+    EXPECT_FALSE(slots[3].deployed)
+        << "the wire deploy flag reaches the display slot";
+}
+
+TEST(BaseCampMpDisplay, deploy_counts_read_the_live_save_flag_for_own_rows)
+{
+    SaveData save;
+    save.save_name = "MY BAND";
+    save.team_list[0] = make_base_camp_member("MINE", FAMILY_SOLDIER);
+    save.team_size = 1;
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 2, 1)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/true);
+    ASSERT_EQ(4u, slots.size());
+
+    og::ui::BaseCampDeployCounts counts =
+        og::ui::count_base_camp_display_deploys(slots, save);
+    EXPECT_EQ(3, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+
+    // A toggle (or a §4.2 deploy_reconcile adoption) flips the SAVE flag;
+    // the count follows it without re-collecting — own rows are live.
+    save.team_list[0]->deployed = false;
+    counts = og::ui::count_base_camp_display_deploys(slots, save);
+    EXPECT_EQ(2, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+}
+
+TEST(BaseCampMpDisplay, ready_counts_group_seats_into_machines)
+{
+    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a"));
+    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a#3"));
+    EXPECT_EQ("x", og::ui::lobby_player_machine_key("x#1#2"));
+
+    // Host machine has 2 seats (seat 1 is is_host=false but must NOT count
+    // as a gating machine — the §4.3 multi-seat-host rule). Machine "net-b"
+    // has 2 seats and counts ready only when BOTH are. Machine "net-c" is a
+    // single ready seat; "net-d" is an unready spectator (0 slots).
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
+        make_lobby_seat(5, "net-d", "D CO", false, false, 0, 0),
+    };
+    og::ui::BaseCampReadyCounts counts =
+        og::ui::count_base_camp_ready_machines(players);
+    EXPECT_EQ(3, counts.machines) << "net-b, net-c, net-d (host excluded)";
+    EXPECT_EQ(1, counts.ready) << "only net-c has every seat ready";
+
+    // Both net-b seats ready => the machine counts.
+    std::vector<og::sim::LobbyPlayer> all = players;
+    all[3].ready = true;
+    counts = og::ui::count_base_camp_ready_machines(all);
+    EXPECT_EQ(2, counts.ready);
+    EXPECT_EQ(3, counts.machines);
+}
+
+TEST(BaseCampMpDisplay, session_census_counts_machines_and_players)
+{
+    // Empty lobby (pre-first-state): 0/0.
+    const og::ui::BaseCampSessionCensus none =
+        og::ui::count_base_camp_session_census({});
+    EXPECT_EQ(0, none.machines);
+    EXPECT_EQ(0, none.players);
+
+    // §9.12: machines = distinct machine keys with the HOST machine
+    // INCLUDED (unlike the §4.3 ready counts); players = total seats.
+    // net-host has 2 seats, net-b has 2 seats, net-c one — 3 machines,
+    // 5 players.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
+    };
+    const og::ui::BaseCampSessionCensus census =
+        og::ui::count_base_camp_session_census(players);
+    EXPECT_EQ(3, census.machines);
+    EXPECT_EQ(5, census.players);
+}
+
+TEST(BaseCampMpDisplay, host_display_name_prefers_company_over_wire_name)
+{
+    // §9.12: player names are machine-generated "net-<hex>" wire ids, so
+    // the joiner's HOST: display uses the host machine's company (the
+    // format_go_blockers naming convention), 16-char COMPANY clip.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "A COMPANY NAME PAST SIXTEEN", true,
+                        false, 1, 0),
+        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0),
+    };
+    EXPECT_EQ("A COMPANY NAME P",
+              og::ui::base_camp_host_display_name(players));
+
+    // Empty company falls back to the machine key (seat suffix stripped).
+    const std::vector<og::sim::LobbyPlayer> bare = {
+        make_lobby_seat(0, "net-h#2", "", true, false, 1, 0)};
+    EXPECT_EQ("net-h", og::ui::base_camp_host_display_name(bare));
+
+    // No host seat yet (pre-election): empty.
+    const std::vector<og::sim::LobbyPlayer> unelected = {
+        make_lobby_seat(1, "net-j", "JOIN CO", false, false, 1, 0)};
+    EXPECT_EQ("", og::ui::base_camp_host_display_name(unelected));
+}
+
+TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 2, 0),
+        make_lobby_seat(1, "net-j", "JOIN RIVER BAND", false, false, 1, 0),
+        make_lobby_seat(2, "net-j#1", "JOIN RIVER BAND", false, false, 1, 0),
+    };
+
+    // §9.12 host shape: role + room + census. "MACH / PLYR" is the
+    // recorded budget latitude (spelled-out overruns 42 at double digits).
+    const std::string host = og::ui::format_base_camp_session_status(
+        true, "GLAD-7Q2F", players);
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR", host);
+    // Relay-less (LAN) host: the census alone.
+    EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
+              og::ui::format_base_camp_session_status(true, "", players));
+
+    // §9.12 joiner shape: room + the host machine's company.
+    EXPECT_EQ("IN GLAD-7Q2F - HOST: IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      players));
+    // Direct (LAN) joiner: no room code.
+    EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "", players));
+    // Host not yet known (pre-election on a dedicated server).
+    EXPECT_EQ("IN GLAD-7Q2F",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      {}));
+    EXPECT_EQ("JOINED",
+              og::ui::format_base_camp_session_status(false, "", {}));
+
+    // Budget pins: the absolute worst shapes fit the 42-char line-B band
+    // (x=8 text, pager wall at x=263 => 42 chars) — host at the 16-seat
+    // global cap, joiner at the full 16-char company clip; a pathological
+    // room code display-clips at 12 and the whole line at 42.
+    std::vector<og::sim::LobbyPlayer> sixteen;
+    for (int i = 0; i < 16; ++i) {
+        sixteen.push_back(make_lobby_seat(
+            static_cast<std::uint8_t>(i),
+            std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0));
+    }
+    const std::string worst_host = og::ui::format_base_camp_session_status(
+        true, "GLAD-XXXX", sixteen);
+    EXPECT_EQ("HOSTING GLAD-XXXX - 16 MACH / 16 PLYR", worst_host);
+    EXPECT_LE(worst_host.size(), 42u);
+    const std::string worst_join = og::ui::format_base_camp_session_status(
+        false, "GLAD-XXXX", players);
+    EXPECT_LE(worst_join.size(), 42u);
+    EXPECT_LE(og::ui::format_base_camp_session_status(
+                  true, "GLAD-TOO-LONG-CODE", sixteen)
+                  .size(),
+              42u);
+}
+
+TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0)};
+
+    // Healthy: the session status, plain color.
+    const og::ui::BaseCampLineB healthy = og::ui::compose_base_camp_line_b(
+        std::nullopt, true, "GLAD-7Q2F", players);
+    EXPECT_FALSE(healthy.alert);
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 1 MACH / 1 PLYR", healthy.text);
+
+    // Degraded: the alert takes the slot AND the color (§9.12 precedence —
+    // the ORANGE mapping rides the alert flag).
+    const og::ui::BaseCampLineB degraded = og::ui::compose_base_camp_line_b(
+        std::optional<std::string>("Status: connection lost"), true,
+        "GLAD-7Q2F", players);
+    EXPECT_TRUE(degraded.alert);
+    EXPECT_EQ("Status: connection lost", degraded.text);
+}
+
+TEST(BaseCampMpDisplay, net_row_formats_hold_their_budgets)
+{
+    // §9.5.3: no HP column in the networked shape either.
+    const og::ui::BaseCampNetRowText row = og::ui::format_base_camp_net_row(
+        "TWELVECHARSNAME", "A COMPANY NAME PAST SIXTEEN", 123);
+    EXPECT_EQ("TWELVECHAR", row.name) << "MP name budget is 10 chars (U7)";
+    EXPECT_EQ("A COMPANY NAME P", row.company) << "COMPANY column is 16 chars";
+    EXPECT_EQ("123", row.level);
+
+    // §9.9 graft (b): the MP level left-pads to 2 like the solo shape.
+    EXPECT_EQ(" 5", og::ui::format_base_camp_net_row("A", "B", 5).level);
+}
+
+TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)
+{
+    og::sim::LobbyCharacterData character;
+    character.name = "Wire Elf";
+    character.family = FAMILY_ELF;
+    character.strength = 11;
+    character.dexterity = 12;
+    character.constitution = 13;
+    character.intelligence = 14;
+    character.armor = 15;
+    character.exp = 777;
+    character.level = 6;
+
+    const std::unique_ptr<guy> display =
+        og::ui::make_base_camp_display_guy(character);
+    ASSERT_NE(nullptr, display);
+    EXPECT_EQ("Wire Elf", display->name);
+    EXPECT_EQ(FAMILY_ELF, static_cast<int>(display->family));
+    EXPECT_EQ(11, display->strength);
+    EXPECT_EQ(12, display->dexterity);
+    EXPECT_EQ(13, display->constitution);
+    EXPECT_EQ(14, display->intelligence);
+    EXPECT_EQ(15, display->armor);
+    EXPECT_EQ(777u, display->exp);
+    EXPECT_EQ(6, display->level);
+}
+
+TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
+{
+    // Two well-stocked machines: 20 own + 20 replicated = 40 display slots
+    // (§4.2: full rosters always replicate for display). The page window
+    // derives from the display size — 5 pages at the §9.14 8-row grid,
+    // never a 24-row clamp.
+    SaveData save;
+    save.save_name = "MY BAND";
+    for (int i = 0; i < 20; ++i) {
+        save.team_list[i] = make_base_camp_member("M", FAMILY_SOLDIER);
+    }
+    save.team_size = 20;
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(2, "net-a", "ALPHA BAND", true, false, 20, 0)};
+    const auto slots = og::ui::collect_base_camp_display_slots(
+        save, players, {}, /*networked=*/true);
+    ASSERT_EQ(40u, slots.size());
+
+    const og::ui::PageModel page =
+        og::ui::PageModel::make(static_cast<int>(slots.size()), 9);
+    EXPECT_EQ(5, page.page_count());
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 GO/READY slot (stage ready-go-slot): the full pure state table (U10),
+// the blocked-GO popup body, and the §2.7 cross-control label.
+//
+// Face-color decision record (§2.0 U1, verified by the mandated one-frame
+// TESTING capture): 61 (green run) and 93 (yellow run) PASSED the DARK_BLUE
+// contrast check and ship as designed; 45 (the dark special red) FAILED
+// (1.23:1 vs DARK_BLUE) and its state takes the sanctioned fallback
+// grammar's shipped RED=40. These pins are the table's oracle.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+og::ui::ReadyGoPresentation ready_go(bool networked,
+                                     bool is_host,
+                                     bool my_ready,
+                                     bool all_other_machines_ready,
+                                     int global_deployed,
+                                     int own_deployed,
+                                     bool cross_control,
+                                     bool spectator)
+{
+    return og::ui::format_ready_go_button(networked, is_host, my_ready,
+                                          all_other_machines_ready,
+                                          global_deployed, own_deployed,
+                                          cross_control, spectator);
+}
+
+} // namespace
+
+TEST(ReadyGoSlot, state_1_solo_go_stays_grey_and_uncaptioned)
+{
+    // §2.6 state 1 (pinned byte-identical): solo/local multi never consults
+    // ready — my_ready/all_ready/cross/spectator are ignored.
+    for (const bool noise : {false, true}) {
+        const og::ui::ReadyGoPresentation p =
+            ready_go(false, noise, noise, noise, 3, 3, noise, noise);
+        EXPECT_EQ(og::ui::ReadyGoState::LocalGo, p.state);
+        EXPECT_EQ("GO", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGrey, p.face_color);
+        EXPECT_EQ(13, og::ui::kReadyGoFaceGrey) << "BUTTON_FACING";
+        EXPECT_TRUE(p.caption.empty());
+    }
+}
+
+TEST(ReadyGoSlot, state_2_solo_no_deploy_keeps_grey_and_captions)
+{
+    const og::ui::ReadyGoPresentation p =
+        ready_go(false, true, false, true, 0, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::LocalGoNoDeploy, p.state);
+    EXPECT_EQ("GO", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGrey, p.face_color)
+        << "state 2 keeps the grey face; only the click popups";
+    EXPECT_EQ("DEPLOY AT LEAST ONE", p.caption);
+}
+
+TEST(ReadyGoSlot, state_3_host_gated_yellow_rule3_outranks_rule4)
+{
+    // Machines not ready (even with deploys) => WAITING caption.
+    const og::ui::ReadyGoPresentation waiting =
+        ready_go(true, true, false, false, 5, 2, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGated, waiting.state);
+    EXPECT_EQ("GO", waiting.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGated, waiting.face_color);
+    EXPECT_EQ(93, og::ui::kReadyGoFaceGated) << "yellow run (passed U1)";
+    EXPECT_EQ("WAITING FOR OTHERS", waiting.caption);
+
+    // All ready but nobody deployed => the rule-4 caption.
+    const og::ui::ReadyGoPresentation undeployed =
+        ready_go(true, true, false, true, 0, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGated, undeployed.state);
+    EXPECT_EQ(og::ui::kReadyGoFaceGated, undeployed.face_color);
+    EXPECT_EQ("NO ONE IS DEPLOYED", undeployed.caption);
+
+    // Both unmet => rule 3 outranks rule 4 (the server's start_allowed
+    // order).
+    const og::ui::ReadyGoPresentation both =
+        ready_go(true, true, false, false, 0, 0, false, false);
+    EXPECT_EQ("WAITING FOR OTHERS", both.caption);
+}
+
+TEST(ReadyGoSlot, state_4_host_go_green)
+{
+    const og::ui::ReadyGoPresentation p =
+        ready_go(true, true, false, true, 1, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::HostGo, p.state);
+    EXPECT_EQ("GO", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+    EXPECT_EQ(61, og::ui::kReadyGoFaceGo) << "green run (passed U1)";
+    EXPECT_TRUE(p.caption.empty());
+}
+
+TEST(ReadyGoSlot, state_5_client_unready_red_with_deploy_gate)
+{
+    // Deployed characters: the click acts directly (no caption).
+    const og::ui::ReadyGoPresentation free =
+        ready_go(true, false, false, false, 3, 1, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, free.state);
+    EXPECT_EQ("READY", free.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, free.face_color);
+    EXPECT_EQ(40, og::ui::kReadyGoFaceUnready)
+        << "the U1 fallback RED (45 failed the contrast capture)";
+    EXPECT_TRUE(free.caption.empty());
+
+    // Brought characters, none deployed, cross-control OFF => gated click.
+    const og::ui::ReadyGoPresentation gated =
+        ready_go(true, false, false, false, 3, 0, false, false);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, gated.state);
+    EXPECT_EQ("DEPLOY AT LEAST ONE", gated.caption);
+
+    // Cross-control ON removes the per-machine minimum (§0.6).
+    const og::ui::ReadyGoPresentation cross =
+        ready_go(true, false, false, false, 3, 0, true, false);
+    EXPECT_TRUE(cross.caption.empty());
+}
+
+TEST(ReadyGoSlot, state_5_spectator_machines_ready_freely)
+{
+    // [NET-R9]: the spectator machine (zero contributed character slots)
+    // gets the READY button and may ready with nothing deployed.
+    const og::ui::ReadyGoPresentation p =
+        ready_go(true, false, false, false, 3, 0, false, true);
+    EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
+    EXPECT_EQ("READY", p.label);
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
+    EXPECT_TRUE(p.caption.empty()) << "spectators ready freely";
+}
+
+TEST(ReadyGoSlot, state_6_client_ready_green_unready_action)
+{
+    // Label = the action, color = the state: a ready client shows the
+    // UNREADY action on the green face — including while everyone waits.
+    for (const bool all_ready : {false, true}) {
+        const og::ui::ReadyGoPresentation p =
+            ready_go(true, false, true, all_ready, 3, 0, false, false);
+        EXPECT_EQ(og::ui::ReadyGoState::ClientReady, p.state);
+        EXPECT_EQ("UNREADY", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+        EXPECT_TRUE(p.caption.empty());
+    }
+}
+
+TEST(ReadyGoSlot, labels_fit_the_68px_face_budget)
+{
+    // floor((68-8)/6) = 10 chars.
+    for (const char* label : {"GO", "READY", "UNREADY"})
+        EXPECT_LE(std::string_view(label).size(), 10u) << label;
+}
+
+TEST(ReadyGoSlot, go_blockers_lists_unready_machines_only)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
+        make_lobby_seat(2, "net-b", "BRAVO BAND", false, true, 1, 0),
+        make_lobby_seat(3, "net-b#1", "BRAVO BAND", false, false, 0, 1),
+        make_lobby_seat(4, "net-c", "CHARLIE BAND", false, true, 1, 0),
+        make_lobby_seat(5, "net-d", "", false, false, 0, 0),
+    };
+    const std::string body = og::ui::format_go_blockers(players);
+    // Host machine excluded even with unready seats; BRAVO gates because
+    // seat #1 is unready (all-seats rule); CHARLIE is ready; net-d falls
+    // back to its machine key when the company is empty.
+    EXPECT_EQ("BRAVO BAND\nnet-d", body);
+}
+
+TEST(ReadyGoSlot, go_blockers_clips_and_caps_the_popup)
+{
+    std::vector<og::sim::LobbyPlayer> players;
+    players.push_back(make_lobby_seat(0, "net-host", "HOST CO", true, false,
+                                      1, 0));
+    for (int i = 0; i < 6; ++i) {
+        players.push_back(make_lobby_seat(
+            static_cast<std::uint8_t>(1 + i),
+            std::format("net-m{}", i).c_str(),
+            "A VERY LONG COMPANY NAME INDEED", false, false, 1, 0));
+    }
+    const std::string body = og::ui::format_go_blockers(players);
+    // Six blockers: 4 named lines (each clipped to 26 chars) + the tail.
+    std::size_t lines = 1;
+    for (const char c : body)
+        lines += (c == '\n') ? 1u : 0u;
+    EXPECT_EQ(5u, lines);
+    EXPECT_NE(std::string::npos, body.find("AND 2 MORE"));
+    EXPECT_NE(std::string::npos, body.find("A VERY LONG COMPANY NAME I"))
+        << "26-char clip";
+    EXPECT_EQ(std::string::npos, body.find("INDEED"));
+}
+
+TEST(ReadyGoSlot, cross_control_label_states)
+{
+    EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
+    EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
 }

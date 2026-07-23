@@ -497,6 +497,12 @@ the authoritative state that it receives as snapshots. Up to 4 players. The same
 machinery also runs single-player and local split-screen — see
 [Local Transport Shadow](#local-transport-shadow).
 
+The current network compatibility line is lobby/gameplay protocol **v8**, world
+snapshot format **v9**, and replay format **v10**. Protocol v8 is a hard cut for the
+Company/Base Camp multiplayer state (deployment, ready state, ownership, and
+cross-control); peers reject incompatible versions during the handshake, while
+snapshot and replay readers independently reject unsupported payload formats.
+
 ### Core components (`og_gameplay`, SDL-free)
 
 | Component | File | Role |
@@ -571,9 +577,10 @@ the next level fresh.
 
 ### Per-player save isolation
 
-A networked session must not let one player's `save0` gain or lose another
+A networked session must not let one player's active company gain or lose another
 player's characters. The combined live roster is written to a transient
-`"netsession"` slot; each player's real `save0` only ever receives **its own**
+`"netsession"` slot; each player's private company slot (`save0` by default) only
+ever receives **its own**
 characters (matched by transient `guy::owner_player_index` / `owner_save_slot`
 tags carried on the snapshot wire), advanced as if it had played solo — see
 `SaveData::merge_owned_guys_from` and `persist_owned_characters_to_save0`.

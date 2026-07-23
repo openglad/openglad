@@ -484,6 +484,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_restore_canvas_backing(
 {
     restore_web_canvas_backing_size(logical_w, logical_h);
 }
+
+extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_notify_context_restored()
+{
+    // Browser 'webglcontextrestored' notification. Under ASYNCIFY this can
+    // run while the C stack is suspended inside a blocking menu loop, so no
+    // GL or renderer work may happen here: only flag the recreate, which
+    // Screen::swap() performs at the next present.
+    request_render_backend_recreate();
+}
 #endif
 
 int main(int argc, char *argv[])

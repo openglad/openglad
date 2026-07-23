@@ -6,18 +6,22 @@
  */
 
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
+#include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/interface/ui/text_protocol.h>
 
 #include <algorithm>
@@ -74,36 +78,40 @@ public:
         : config_(config), error_(error)
     {
         ensure_team_initialized();
+        // Terminal slot authority ([SAVE-R2]): company-level writes must
+        // target this client's chosen slot (default "text_quicksave"), never
+        // save0. An unsafe name is rejected by the setter and simply leaves
+        // the previous active slot in place (the save itself would fail the
+        // same validation).
+        assert_company_slot_authority();
     }
 
     const PickerMenuItem* present_menu(PickerMenuId menu_id) override
     {
-        const PickerMenuDefinition& menu = picker_menu_definition(menu_id);
         for (;;) {
             ensure_team_initialized();
-            print_menu_context(menu_id);
+            const TerminalMenuModel menu =
+                build_terminal_menu_model(menu_id, label_context());
+            print_menu_context(menu);
 
-            std::printf("\n=== %s ===\n", std::string(menu.title).c_str());
-            for (size_t i = 0; i < menu.items.size(); ++i) {
-                std::printf("  %2zu. %s\n", i + 1, menu_item_label(menu.items[i]).c_str());
+            std::printf("\n=== %s ===\n", menu.title.c_str());
+            for (size_t i = 0; i < menu.entries.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1, menu.entries[i].label.c_str());
             }
             std::printf("Choice: ");
             std::fflush(stdout);
 
             std::string line;
-            if (!read_line(line)) {
-                if (menu_id == PickerMenuId::Main)
-                    return find_picker_menu_item(menu_id, PickerMenuCommand::Quit);
-                return find_picker_menu_item(menu_id, PickerMenuCommand::Back);
-            }
+            if (!read_line(line))
+                return menu.cancel_item;
 
             const auto choice = parse_int_strict(line);
-            if (!choice || *choice < 1 || static_cast<size_t>(*choice) > menu.items.size()) {
+            if (!choice || *choice < 1 || static_cast<size_t>(*choice) > menu.entries.size()) {
                 std::printf("Invalid choice.\n");
                 continue;
             }
 
-            return &menu.items[static_cast<size_t>(*choice - 1)];
+            return menu.entries[static_cast<size_t>(*choice - 1)].item;
         }
     }
 
@@ -120,10 +128,51 @@ public:
         handle_team_build_item(item);
     }
 
+    // §2.2 terminal name entry: the read_line projection of the SDL screen.
+    // Prints the generated suggestion, then accepts a blank line (keep the
+    // suggestion), "reroll" (a fresh suggestion), or any typed text (the new
+    // name, clamped to the display cap). Exhausted input (EOF) keeps the
+    // suggestion — the headless internal-path checks call prepare_new_game
+    // with no stdin and still expect a founded company. Deliberately NO
+    // "file: <slug>.gtl" preview here (§9.3/F2 removed it on every client;
+    // for terminals it was also simply false: they persist in place to their
+    // own slot (config_.save_name, [SAVE-R2]), so the SDL slug preview would
+    // name a file that is never created).
+    std::string prompt_new_company_name()
+    {
+        SeededRandom rng(
+            static_cast<std::uint32_t>(og::data::company_clock_now_s()));
+        std::string name = og::ui::generate_company_name(rng);
+        for (;;) {
+            std::printf("\n=== Found Your Company ===\n");
+            std::printf("Name: %s\n", name.c_str());
+            std::printf("Enter a name, blank to accept, "
+                        "or 'reroll' for another suggestion: ");
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return name;
+            if (line == "reroll") {
+                name = og::ui::generate_company_name(rng);
+                continue;
+            }
+            if (line.size() > og::ui::kCompanyNameMaxLen)
+                line.resize(og::ui::kCompanyNameMaxLen);
+            return line;
+        }
+    }
+
     bool prepare_new_game() override
     {
+        // §2.2: found the company FIRST (generated name, reroll, editable).
+        std::string company_name = prompt_new_company_name();
+
         reset_for_new_game(save_data_);
         ensure_team_populated(save_data_);
+        // The display name lives in the 40-byte save_name; the filename stays
+        // this terminal client's own slot (config_.save_name, [SAVE-R2]).
+        save_data_.save_name = company_name;
+        assert_company_slot_authority(); // [SAVE-R2]
 
         // A new game always starts on the default campaign: pull the session
         // config and the mounted package back from whatever campaign a
@@ -203,7 +252,10 @@ public:
         if (!read_line(line))
             return;
         if (!line.empty())
+        {
             config_.save_name = line;
+            assert_company_slot_authority(); // [SAVE-R2] slot command
+        }
 
         std::printf("Current seed: %u. New seed (blank keeps current): ",
             static_cast<unsigned>(config_.seed));
@@ -256,6 +308,7 @@ public:
 
     bool load_game() override
     {
+        assert_company_slot_authority(); // [SAVE-R2]
         const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
         if (io != SaveDataIoError::None) {
             set_error(TextPickerErrorCode::LoadIoError,
@@ -282,8 +335,109 @@ public:
         return true;
     }
 
+    // §2.3 Company List, terminal projection: the numbered company rows
+    // (shared row formatter — byte-identical with curses) print above the
+    // LoadCompany chrome menu (open / backups / delete / back); open and
+    // delete then prompt for a row number. Opening repoints this client's
+    // slot ([SAVE-R2]: config_.save_name IS the terminal's file authority)
+    // and returns true so the state machine proceeds to team build.
+    bool show_company_list() override
+    {
+        for (;;) {
+            const std::vector<og::data::CompanyInfo> companies =
+                og::data::list_companies();
+            if (companies.empty()) {
+                std::printf("No companies yet.\n");
+                return false;
+            }
+            std::printf("\n--- %s ---\n",
+                format_company_list_title(
+                    static_cast<int>(companies.size())).c_str());
+            for (std::size_t i = 0; i < companies.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1,
+                    format_company_row_line(companies[i],
+                        companies[i].slot ==
+                            og::data::active_company_slot()).c_str());
+            }
+
+            const PickerMenuItem* item =
+                present_menu(PickerMenuId::LoadCompany);
+            if (!item || item->command == PickerMenuCommand::Back)
+                return false;
+
+            switch (item->command) {
+            case PickerMenuCommand::OpenCompany: {
+                const int idx = prompt_company_index(companies.size(), "Open");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyInfo& info =
+                    companies[static_cast<std::size_t>(idx)];
+                if (!info.valid) {
+                    // Never silently switch to a corrupt company ([SAVE-R6]).
+                    std::printf("Company file '%s' is damaged; restore a "
+                                "backup or delete it.\n", info.slot.c_str());
+                    break;
+                }
+                const std::string previous_slot = config_.save_name;
+                config_.save_name = info.slot;
+                if (load_game())
+                    return true; // -> team build (base camp)
+                // load_game printed the error; restore the slot authority.
+                config_.save_name = previous_slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                break;
+            }
+            case PickerMenuCommand::OpenCompanyBackups: {
+                // §2.4 Backups sub-view for one company (corrupt rows keep
+                // the door — restore-from-backup IS their recovery path).
+                const int idx =
+                    prompt_company_index(companies.size(), "Backups for");
+                if (idx < 0)
+                    break;
+                if (show_company_backups(
+                        companies[static_cast<std::size_t>(idx)]))
+                    return true; // restored -> team build (base camp)
+                break;
+            }
+            case PickerMenuCommand::DeleteCompany: {
+                const int idx =
+                    prompt_company_index(companies.size(), "Delete");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyInfo& info =
+                    companies[static_cast<std::size_t>(idx)];
+                if (info.slot == og::data::active_company_slot()) {
+                    // §3.7: delete_company refuses the active slot.
+                    std::printf("Cannot delete the open company; "
+                                "switch first.\n");
+                    break;
+                }
+                const CompanyRowText row = format_company_row(info);
+                // NO-first confirm (U3): only an explicit yes deletes.
+                std::printf("Delete company '%s'? Backups are deleted too. "
+                            "[y/N]: ", row.name.c_str());
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not deleted.\n");
+                    break;
+                }
+                if (og::data::delete_company(info.slot))
+                    std::printf("Deleted '%s'.\n", info.slot.c_str());
+                else
+                    std::printf("Delete failed for '%s'.\n",
+                                info.slot.c_str());
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+
     bool save_game() override
     {
+        assert_company_slot_authority(); // [SAVE-R2]
         ensure_team_initialized();
         save_data_.current_campaign = config_.campaign;
         save_data_.scen_num = static_cast<short>(config_.level);
@@ -304,67 +458,188 @@ public:
     }
 
 private:
-    void print_menu_context(PickerMenuId menu_id)
+    // [SAVE-R2] Re-points the process-wide active-company slot at this
+    // client's configured slot so shared company-level code (autosave and the
+    // slot-authoritative save paths) always writes the user's chosen file.
+    void assert_company_slot_authority() const
     {
-        if (menu_id != PickerMenuId::TeamBuild)
+        (void)og::data::set_active_company_slot(config_.save_name);
+    }
+
+    // §2.3: prompt for a 1-based company row number; -1 on cancel/invalid.
+    int prompt_company_index(std::size_t count, const char* verb)
+    {
+        std::printf("%s which company [1-%zu]: ", verb, count);
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line))
+            return -1;
+        const auto choice = parse_int_strict(line);
+        if (!choice || *choice < 1
+            || static_cast<std::size_t>(*choice) > count) {
+            std::printf("Invalid company selection.\n");
+            return -1;
+        }
+        return *choice - 1;
+    }
+
+    // §2.4: prompt for a 1-based backup row number; -1 on cancel/invalid.
+    int prompt_backup_index(std::size_t count, const char* verb)
+    {
+        std::printf("%s which backup [1-%zu]: ", verb, count);
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line))
+            return -1;
+        const auto choice = parse_int_strict(line);
+        if (!choice || *choice < 1
+            || static_cast<std::size_t>(*choice) > count) {
+            std::printf("Invalid backup selection.\n");
+            return -1;
+        }
+        return *choice - 1;
+    }
+
+    // §2.4 Backups sub-view, terminal projection: the numbered snapshot rows
+    // (shared row formatter — byte-identical with curses) print above the
+    // Backups chrome menu (restore / delete / back); restore and delete then
+    // prompt for a row number. A successful restore repoints this client's
+    // slot ([SAVE-R2]) and reloads the rewound company, so the caller
+    // proceeds to team build (base camp). An empty snapshot list backs out
+    // (backups are level-win products, §3.7).
+    bool show_company_backups(const og::data::CompanyInfo& company)
+    {
+        const CompanyRowText company_row = format_company_row(company);
+        for (;;) {
+            const std::vector<og::data::CompanyBackupInfo> backups =
+                og::data::list_company_backups(company.slot);
+            std::printf("\n--- %s ---\n",
+                format_backup_list_title(company_row.name,
+                    static_cast<int>(backups.size())).c_str());
+            if (backups.empty()) {
+                std::printf("No backups yet - backups snapshot on "
+                            "level wins.\n");
+                return false;
+            }
+            for (std::size_t i = 0; i < backups.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1,
+                    format_backup_row_line(backups[i]).c_str());
+            }
+
+            const PickerMenuItem* item = present_menu(PickerMenuId::Backups);
+            if (!item || item->command == PickerMenuCommand::Back)
+                return false;
+
+            switch (item->command) {
+            case PickerMenuCommand::RestoreBackup: {
+                const int idx =
+                    prompt_backup_index(backups.size(), "Restore");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyBackupInfo& backup =
+                    backups[static_cast<std::size_t>(idx)];
+                if (!backup.header.valid) {
+                    // The §3.7 step-0 validation is the real guard; refuse
+                    // up front to spare a confirm that can only fail.
+                    std::printf("Backup file '%s' is damaged.\n",
+                                backup.filename.c_str());
+                    break;
+                }
+                // NO-first confirm (U3): only an explicit yes rewinds.
+                std::printf("Rewind to this backup? The current state is "
+                            "backed up first. [y/N]: ");
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not restored.\n");
+                    break;
+                }
+                const std::string previous_slot = config_.save_name;
+                config_.save_name = company.slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                const og::data::CompanyRestoreError error =
+                    og::data::restore_company_backup(save_data_,
+                                                     company.slot,
+                                                     backup.seq);
+                // RestampFailed included: the rewind itself finished (the
+                // next autosave re-stamps).
+                if (error == og::data::CompanyRestoreError::None
+                    || error == og::data::CompanyRestoreError::RestampFailed) {
+                    std::printf("Restored backup %d of '%s'.\n", backup.seq,
+                                company.slot.c_str());
+                    if (load_game())
+                        return true; // -> team build (base camp)
+                } else {
+                    std::printf("Restore failed (%s).\n",
+                                company_restore_error_string(error));
+                }
+                // Not rewound: restore the slot authority (the open-flow
+                // discipline).
+                config_.save_name = previous_slot;
+                assert_company_slot_authority(); // [SAVE-R2]
+                break;
+            }
+            case PickerMenuCommand::DeleteBackup: {
+                const int idx = prompt_backup_index(backups.size(), "Delete");
+                if (idx < 0)
+                    break;
+                const og::data::CompanyBackupInfo& backup =
+                    backups[static_cast<std::size_t>(idx)];
+                // NO-first confirm (U3): only an explicit yes deletes.
+                std::printf("Delete backup %d of '%s'? [y/N]: ", backup.seq,
+                            company.slot.c_str());
+                std::fflush(stdout);
+                std::string line;
+                if (!read_line(line) || (line != "y" && line != "yes")) {
+                    std::printf("Not deleted.\n");
+                    break;
+                }
+                if (og::data::delete_company_backup(company.slot, backup.seq))
+                    std::printf("Deleted backup %d.\n", backup.seq);
+                else
+                    std::printf("Delete failed for backup %d.\n", backup.seq);
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+
+    // Borrow bundle for the shared label/gate layer (menu_binding.h).
+    MenuLabelContext label_context() const
+    {
+        MenuLabelContext context;
+        context.save = &save_data_;
+        context.session_difficulty =
+            og::runtime::current_session->current_difficulty_;
+        context.spectator = is_spectator_mode(save_data_);
+        context.campaign = config_.campaign;
+        context.level = config_.level;
+        return context;
+    }
+
+    void print_menu_context(const TerminalMenuModel& menu)
+    {
+        if (menu.context_lines.empty())
             return;
 
-        std::printf("\nTeam: ");
-        if (save_data_.team_size == 0) {
-            std::printf("(empty)\n");
-        } else {
-            bool first = true;
-            for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
-                if (!first)
-                    std::printf(", ");
-                std::printf("%s (%s)", member.name.c_str(),
-                    family_display_name(member.family));
-                first = false;
-            });
-            std::printf("\n");
-        }
-
-        std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
+        std::printf("\n");
+        for (const std::string& line : menu.context_lines)
+            std::printf("%s\n", line.c_str());
         if (show_new_game_team_build_notice_) {
             std::printf("[New game: build your team before GO!]\n");
             show_new_game_team_build_notice_ = false;
         }
     }
 
-    std::string menu_item_label(const PickerMenuItem& item) const
-    {
-        if (item.command == PickerMenuCommand::SetDifficulty)
-            return format_difficulty_label(og::runtime::current_session->current_difficulty_);
-        if (item.command == PickerMenuCommand::SetLevel)
-            return std::format("{} ({})", item.label,
-                level_display(config_.level));
-        if (item.command == PickerMenuCommand::SetCampaign)
-            return std::format("{} ({})", item.label,
-                og::data::campaign_display_title(config_.campaign));
-        if (item.command == PickerMenuCommand::ToggleAlliedMode)
-            return format_allied_mode_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleCtfTeamCount)
-            return format_ctf_teams_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
-            return format_ctf_caps_label(save_data_);
-        if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
-            return format_ctf_troops_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleRespawnMode)
-            return format_respawn_mode_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleRespawnDelay)
-            return format_respawn_delay_label(save_data_);
-        if (item.command == PickerMenuCommand::TogglePermadeath)
-            return format_permadeath_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleGeneratorRate)
-            return format_generator_rate_label(save_data_);
-        return std::string(item.label);
-    }
-
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
         case PickerMenuCommand::OpenDifficultyMenu:
-            show_difficulty_menu();
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back.
+            show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
             set_player_count(save_data_, item.arg);
@@ -372,11 +647,15 @@ private:
             break;
         case PickerMenuCommand::ToggleAlliedMode:
             toggle_allied_mode(save_data_);
-            std::printf("PVP mode set to %s.\n",
-                is_allied_mode(save_data_) ? "Allied" : "Enemy");
+            std::printf("Seat mode set to %s.\n",
+                is_allied_mode(save_data_) ? "Together" : "Split");
+            // §3.8 settings tail: persisted match settings autosave like any
+            // other base-camp mutation (E4 — a toggled setting must survive
+            // quit without an explicit save).
+            autosave_company_after_mutation();
             break;
         case PickerMenuCommand::LevelEdit:
-            std::printf("Level Edit is not available in the headless text client.\n");
+            std::printf("Level Editor is not available in the headless text client.\n");
             break;
         default:
             break;
@@ -385,6 +664,15 @@ private:
 
     void handle_team_build_item(const PickerMenuItem& item)
     {
+        // Gated items (the CTF match settings outside the CTF campaign)
+        // print their shared guard message instead of acting.
+        const std::string_view guard =
+            terminal_gate_message(item, label_context());
+        if (!guard.empty()) {
+            std::printf("%s\n", std::string(guard).c_str());
+            return;
+        }
+
         switch (item.command) {
         case PickerMenuCommand::ViewTeam:
             view_team_roster();
@@ -395,12 +683,11 @@ private:
         case PickerMenuCommand::HireTroops:
             hire_troops();
             break;
-        case PickerMenuCommand::LoadTeam:
-            (void)load_game();
+        case PickerMenuCommand::ToggleDeploy:
+            deploy_prompt();
             break;
-        case PickerMenuCommand::SaveTeam:
-            (void)save_game();
-            break;
+        // ToggleReady is gated NetworkedOnly: the guard above already
+        // printed its message (the text picker holds no networked lobby).
         case PickerMenuCommand::ShowProgress:
             std::printf("Current campaign progress: campaign=%s level=%s.\n",
                 og::data::campaign_display_title(config_.campaign).c_str(),
@@ -416,28 +703,19 @@ private:
             (void)show_campaign_select();
             break;
         case PickerMenuCommand::CycleCtfTeamCount:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             cycle_ctf_team_count(save_data_);
             std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleCtfCaptureLimit:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             cycle_ctf_capture_limit(save_data_);
             std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::ToggleCtfScenarioTroops:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             toggle_ctf_scenario_troops(save_data_);
             std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::ViewScenario:
             view_scenario();
@@ -447,18 +725,6 @@ private:
             break;
         default:
             break;
-        }
-    }
-
-    // The DIFFICULTY submenu: a nested presentation loop until Back,
-    // mirroring the shared show_scenario_menu precedent.
-    void show_difficulty_menu()
-    {
-        for (;;) {
-            const PickerMenuItem* item = present_menu(PickerMenuId::Difficulty);
-            if (!item || item->command == PickerMenuCommand::Back)
-                return;
-            handle_difficulty_menu_item(*item);
         }
     }
 
@@ -473,22 +739,27 @@ private:
             }
             std::printf("Difficulty set to %s.\n",
                 kDifficultyNames[og::runtime::current_session->current_difficulty_]);
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnMode:
             cycle_respawn_mode(save_data_);
             std::printf("%s\n", format_respawn_mode_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnDelay:
             cycle_respawn_delay(save_data_);
             std::printf("%s\n", format_respawn_delay_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::TogglePermadeath:
             toggle_permadeath(save_data_);
             std::printf("%s\n", format_permadeath_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleGeneratorRate:
             cycle_generator_rate(save_data_);
             std::printf("%s\n", format_generator_rate_label(save_data_).c_str());
+            autosave_company_after_mutation(); // §3.8 settings tail
             break;
         default:
             break;
@@ -560,11 +831,13 @@ private:
                     save_data_.team_list[slot - 1]->teamnum;
                 const short moved = cycle_guy_team(save_data_, slot - 1,
                     (value - 1) - static_cast<int>(current));
-                if (moved < 0)
+                if (moved < 0) {
                     std::printf("Invalid slot or team.\n");
-                else
+                } else {
                     std::printf("Moved slot %d to %s.\n", slot,
                         og::sim::ctf_team_color_name(value - 1));
+                    autosave_company_after_mutation();  // §3.8 team cycle
+                }
                 continue;
             }
             std::printf("Unrecognized command.\n");
@@ -620,49 +893,124 @@ private:
         config_.team_families = collect_team_families(save_data_);
     }
 
-    // Scenario titles are read from the MOUNTED package; when the session
-    // campaign isn't the mounted one (e.g. a loaded save points elsewhere)
-    // the title would describe the wrong campaign, so show the bare number.
+    // Mount-guarded level display over the session campaign (the shared
+    // level_display_guarded helper carries the guard rule).
     std::string level_display(int level) const
     {
-        if (get_mounted_campaign() == config_.campaign)
-            return og::data::scenario_display_name(level);
-        return std::to_string(level);
+        return level_display_guarded(config_.campaign, level);
     }
 
+    // §2.5 command roster (text shape): the deploy flags lead each row;
+    // 'deploy N' toggles, 'train N' opens the train flow directly on that
+    // character, a blank line exits (so legacy "1 then Enter" drives still
+    // work).
     void view_team_roster()
     {
-        std::printf("\n--- Team Roster ---\n");
-        if (save_data_.team_size == 0) {
-            std::printf("(empty)\n");
-            wait_for_enter();
-            return;
+        for (;;) {
+            std::printf("\n--- Team Roster ---\n");
+            const std::vector<int> slots = collect_base_camp_slots(save_data_);
+            if (slots.empty()) {
+                std::printf("(empty)\n");
+                wait_for_enter();
+                return;
+            }
+
+            for (std::size_t i = 0; i < slots.size(); ++i) {
+                const guy& member =
+                    *save_data_.team_list[static_cast<std::size_t>(slots[i])];
+                std::printf("%2zu. [%c] %-14s Family=%-14s L=%2d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
+                    i + 1,
+                    member.deployed ? 'X' : ' ',
+                    member.name.c_str(),
+                    family_display_name(member.family),
+                    member.level,
+                    member.strength,
+                    member.dexterity,
+                    member.constitution,
+                    member.intelligence,
+                    member.armor);
+            }
+            std::printf("DEP %d/%d\n", count_deployed_members(save_data_),
+                static_cast<int>(slots.size()));
+            std::printf("Roster: 'deploy N' | 'train N' | blank line exits: ");
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+
+            int value = 0;
+            if (std::sscanf(line.c_str(), "deploy %d", &value) == 1) {
+                toggle_deploy_display_row(slots, value);
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "train %d", &value) == 1) {
+                if (value < 1 || static_cast<std::size_t>(value) > slots.size())
+                    std::printf("Invalid roster row.\n");
+                else
+                    train_team(slots[static_cast<std::size_t>(value - 1)]);
+                continue;
+            }
+            std::printf("Unrecognized command.\n");
         }
-
-        int idx = 1;
-        for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
-            std::printf("%2d. %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
-                idx++,
-                member.name.c_str(),
-                family_display_name(member.family),
-                member.level,
-                member.strength,
-                member.dexterity,
-                member.constitution,
-                member.intelligence,
-                member.armor);
-        });
-
-        wait_for_enter();
     }
 
-    void train_team()
+    // Toggle deploy for 1-based display row `value` of `slots`; §3.8
+    // autosave rides every flip (the §4.3 ready-clear is a no-op here — the
+    // text picker holds no networked lobby).
+    void toggle_deploy_display_row(const std::vector<int>& slots, int value)
+    {
+        if (value < 1 || static_cast<std::size_t>(value) > slots.size()) {
+            std::printf("Invalid roster row.\n");
+            return;
+        }
+        const int slot = slots[static_cast<std::size_t>(value - 1)];
+        const bool deployed = toggle_deploy_slot(save_data_, slot);
+        std::printf("%s %s.\n", save_data_.team_list[slot]->name.c_str(),
+            deployed ? "deployed" : "benched");
+        autosave_company_after_mutation();
+    }
+
+    // The §2.5 'deploy' item (was Load Team): prompt for a roster row and
+    // flip its mission-deploy flag.
+    void deploy_prompt()
+    {
+        const std::vector<int> slots = collect_base_camp_slots(save_data_);
+        if (slots.empty()) {
+            std::printf("(empty roster - hire someone first)\n");
+            return;
+        }
+        std::printf("Toggle deploy for roster row [1-%d]: ",
+            static_cast<int>(slots.size()));
+        std::fflush(stdout);
+        std::string line;
+        if (!read_line(line) || line.empty())
+            return;
+        const auto value = parse_int_strict(line);
+        if (!value) {
+            std::printf("Invalid roster row.\n");
+            return;
+        }
+        toggle_deploy_display_row(slots, *value);
+    }
+
+    // §3.8: every base-camp mutation autosaves the active company slot
+    // ([SAVE-R2]: the text client's slot authority points it at the user's
+    // chosen quicksave slot, never save0).
+    void autosave_company_after_mutation()
+    {
+        (void)company_autosave_after_mutation(save_data_, false);
+    }
+
+    void train_team(int seed_slot = -1)
     {
         TrainSession session(save_data_);
         if (session.empty()) {
             std::printf("No team members available to train.\n");
             return;
         }
+        if (seed_slot >= 0)
+            (void)session.seek_slot(seed_slot);  // §2.5 'train N' direct-open
 
         using S = TrainSession::Stat;
         std::string line;
@@ -701,10 +1049,12 @@ private:
             if (c == 'n' || c == 'N') { session.next_member(); continue; }
             if (c == 'p' || c == 'P') { session.prev_member(); continue; }
             if (c == 'a' || c == 'A') {
-                if (session.accept())
+                if (session.accept()) {
                     std::printf("Training accepted.\n");
-                else
+                    autosave_company_after_mutation();  // §3.8
+                } else {
                     std::printf("Can't afford training.\n");
+                }
                 continue;
             }
 
@@ -766,6 +1116,7 @@ private:
                 }
                 std::printf("Hired %s!\n", save_data_.team_list[slot]->name.c_str());
                 sync_config_from_save();
+                autosave_company_after_mutation();  // §3.8
                 if (session.team_full()) {
                     std::printf("Team is now full.\n");
                     return;
@@ -861,6 +1212,10 @@ int text_picker_testing_exercise_internal_paths()
                 failed_check = check_index;
         }
     };
+
+    // [SAVE-R2] Client construction asserts terminal slot authority: the
+    // process-wide active company must already be this client's slot.
+    check(og::data::active_company_slot() == "missing-text-picker-save");
 
     client.show_help();
     const bool networking = client.configure_networking();
@@ -1048,9 +1403,13 @@ int text_picker_testing_exercise_internal_paths()
         return save.team_size == previous_team_size &&
                save.numplayers == 0;
     });
+    // [SAVE-R2] A stale process-wide slot must not survive a new game: the
+    // client re-asserts its own slot in prepare_new_game.
+    (void)og::data::set_active_company_slot("save0");
     check(client.prepare_new_game() &&
           save.team_size >= 1 &&
           !config.team_families.empty());
+    check(og::data::active_company_slot() == "missing-text-picker-save");
 
     {
         const std::uint32_t previous_seed = config.seed;
@@ -1058,6 +1417,8 @@ int text_picker_testing_exercise_internal_paths()
         client.show_options();
         check(config.save_name == "helper-slot" &&
               config.seed == previous_seed);
+        // [SAVE-R2] The slot command repoints the active company too.
+        check(og::data::active_company_slot() == "helper-slot");
     }
     {
         ScopedCinRedirect input("\n123\n");
@@ -1065,6 +1426,7 @@ int text_picker_testing_exercise_internal_paths()
         check(config.save_name == "helper-slot" && config.seed == 123u);
     }
     check(client.save_game() && error.code == TextPickerErrorCode::None);
+    check(og::data::active_company_slot() == "helper-slot");
     check(client.load_game() &&
           error.code == TextPickerErrorCode::None &&
           !config.team_families.empty());

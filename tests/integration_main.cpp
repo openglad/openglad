@@ -3,10 +3,12 @@
 #include <SDL3/SDL.h>
 
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <unistd.h>
 
@@ -33,6 +35,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 
@@ -54,6 +57,10 @@ void reset_integration_ui_state()
     clear_keyboard();
     clear_key_press_event();
     set_game_speed(1.0f);
+    // [SAVE-R8] Structural active-company reset: a test that repoints the
+    // process-wide slot (directly or via ScopedActiveCompany misuse) must not
+    // leak it into later tests under --gtest_shuffle.
+    (void)og::data::set_active_company_slot("save0");
 
     if (og::runtime::current_session == nullptr)
         return;
@@ -183,6 +190,53 @@ public:
 
 std::mutex s_allbuttons_mutex;
 
+// [SAVE-R5](c) stray-slot sweeps: opt-in pre-seeding of stray company slots
+// into the fresh per-PID config dir BEFORE any test boots the picker.
+// OPENGLAD_TEST_SEED_STRAY_SLOTS holds comma-separated slot names; each
+// becomes a loadable v14 company with an old last-played stamp (any save0 a
+// test writes with a real-now stamp outranks it — the design's contract that
+// legitimate flows MUST stamp). The first seeded slot carries a one-soldier
+// roster so roster-adjacent leaks are observable too.
+void seed_stray_company_slots_from_env()
+{
+    const char* raw = std::getenv("OPENGLAD_TEST_SEED_STRAY_SLOTS");
+    if (raw == nullptr || raw[0] == '\0')
+        return;
+    std::int64_t stamp = 1000000000; // 2001 — older than any real-now stamp
+    bool with_soldier = true;
+    const std::string list(raw);
+    for (std::size_t start = 0; start < list.size();)
+    {
+        std::size_t end = list.find(',', start);
+        if (end == std::string::npos)
+            end = list.size();
+        const std::string slot = list.substr(start, end - start);
+        start = end + 1;
+        if (slot.empty())
+            continue;
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "STRAY " + slot;
+        sd.current_campaign = "org.openglad.gladiator";
+        sd.last_played_unix_s = stamp++;
+        if (with_soldier)
+        {
+            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+            member->name = "STRAYGUY";
+            member->teamnum = 0;
+            member->deployed = true;
+            sd.team_list[0] = std::move(member);
+            sd.team_size = 1;
+            with_soldier = false;
+        }
+        if (sd.save_with_error(slot) != SaveDataIoError::None)
+            std::fprintf(stderr, "stray-slot seed FAILED for '%s'\n",
+                         slot.c_str());
+        else
+            std::fprintf(stderr, "stray-slot seeded: '%s'\n", slot.c_str());
+    }
+}
+
 } // namespace
 
 std::mutex& get_allbuttons_mutex()
@@ -226,6 +280,7 @@ int main(int argc, char** argv)
     init_logging();
     SDL_Init(SDL_INIT_VIDEO);
     io_init(argc, argv);
+    seed_stray_company_slots_from_env();
     cfg.apply_setting("graphics", "overscan_percentage", "0");
 
     create_global_screen(1);

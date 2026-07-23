@@ -91,10 +91,8 @@ struct PickerState {
 
     // Mutable menu descriptor arrays (Phase 12).
     std::vector<button> mainmenu_buttons;
+    std::vector<button> player_settings_buttons;
     std::vector<button> createmenu_buttons;
-    std::vector<button> viewteam_buttons;
-    std::vector<button> saveteam_buttons;
-    std::vector<button> loadteam_buttons;
     std::vector<button> main_options_buttons;
     std::vector<button> display_settings_buttons;
     std::vector<button> control_options_buttons;
@@ -107,8 +105,15 @@ struct PickerState {
     std::vector<button> networking_buttons;
     std::vector<button> teamsmenu_buttons;
     std::vector<button> viewscenario_buttons;
+    std::vector<button> progressmenu_buttons;
     std::vector<button> scenariomenu_buttons;
     std::vector<button> difficulty_menu_buttons;
+    // §2.2 new-company name entry (Layer F engine screen).
+    std::vector<button> name_entry_buttons;
+    // §2.3 Company List (Load) — Layer F engine screen.
+    std::vector<button> company_list_buttons;
+    // §2.4 Backups sub-view (per company) — Layer F engine screen.
+    std::vector<button> company_backups_buttons;
 
     // TEAMS subscreen: roster slot selected by the local guy-cycling row.
     int teams_menu_guy_slot = 0;
@@ -118,11 +123,17 @@ struct PickerState {
     std::array<int, 4> teams_menu_team_page{};
 
     // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
-    // (-1/+1), consumed by create_view_scenario_menu's frame loop.
+    // (-1/+1), consumed by the engine screen's consume_click hook
+    // (picker_view_scenario_engine_consume_click).
     int view_scenario_page_step = 0;
 
     // NETWORKING subscreen: ACTIVE GAMES row clicked by the last
     // JoinRelayRoomListEntry dispatch (-1 = none). Set in vbutton::do_call,
     // consumed by configure_networking's menu loop.
     int networking_clicked_room_slot = -1;
+
+    // Engine screens: spec row activated by the last ButtonAction::MenuSpecRow
+    // dispatch (-1 = none). Set in vbutton::do_call; run_menu_screen MUST
+    // consume it every frame (TESTING-enforced retvalue-zero discipline).
+    int menu_spec_clicked_row = -1;
 };

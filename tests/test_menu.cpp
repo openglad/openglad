@@ -33,8 +33,16 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_Event event{};
     event.type = SDL_EVENT_MOUSE_MOTION;
     event.motion.type = SDL_EVENT_MOUSE_MOTION;
-    event.motion.x = og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f);
-    event.motion.y = og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f);
+    // Use the UI-canvas-pinned forward map (like test_interact.h does)
+    // instead of hand-rolled session viewport math: a preceding
+    // zoom/resolution/display-mode test can leave a non-16:10 window, and
+    // this injector thread races the main thread's per-frame World<->UI
+    // canvas flip — active_canvas_to_window sampled mid-flip mismaps the
+    // coordinates. Menus live on the fixed UI canvas.
+    const auto [win_x, win_y] = ui_canvas_to_window(
+        static_cast<float>(game_x), static_cast<float>(game_y));
+    event.motion.x = win_x;
+    event.motion.y = win_y;
     SDL_PushEvent(&event);
 }
 

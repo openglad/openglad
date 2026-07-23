@@ -31,6 +31,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -43,6 +44,7 @@
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -56,7 +58,6 @@
 #include <format>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <set>
 #include <vector>
@@ -238,9 +239,13 @@ static void picker_initialize_shared_menu_state()
 
 static void picker_load_default_save_if_present()
 {
-    auto loadgame = og::io::og_open_read("save/", "save0.gtl");
+    // The active-company slot defaults to "save0" (§3.4), so legacy flows are
+    // byte-identical; only an explicit company selection repoints this.
+    const std::string slot_file = og::data::active_company_slot() + ".gtl";
+    auto loadgame = og::io::og_open_read("save/", slot_file.c_str());
     if (loadgame)
-        og::runtime::current_session->myscreen_->save_data.load("save0");
+        og::runtime::current_session->myscreen_->save_data.load(
+            og::data::active_company_slot());
 }
 
 bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue)
@@ -254,9 +259,57 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::BeginNewGame);
             break;
-        case ButtonAction::CreateTeamMenu:
+        case ButtonAction::CreateTeamMenu: {
+            // §2.1 CONTINUE opens the most-recent company (WP2 startup
+            // selection). A corrupt/failed most-recent keeps the loaded save
+            // rather than silently switching (§3.5), surfaces a popup, and
+            // routes through the LOAD door so the Company List presents the
+            // CORRUPT row (restore/delete live there — §2.9 flow 2).
+            SaveDataIoError continue_io = SaveDataIoError::None;
+            const og::ui::ContinueResult continue_result =
+                og::ui::open_most_recent_company(
+                    og::runtime::current_session->myscreen_->save_data,
+                    &continue_io);
+            switch (continue_result) {
+            case og::ui::ContinueResult::Corrupt:
+                popup_dialog("CONTINUE", "COMPANY FILE DAMAGED");
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::LoadGame);
+                break;
+            case og::ui::ContinueResult::LoadFailed:
+                popup_dialog("CONTINUE",
+                             og::ui::save_error_string(continue_io));
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::LoadGame);
+                break;
+            case og::ui::ContinueResult::Opened:
+                // §2.9 flow 2: the open replaced the in-memory save with the
+                // most-recent company — re-seed the local lobby cache from it
+                // (the BEGIN NEW GAME pattern). Without this the polled
+                // apply_state_to_save keeps rebuilding roster/settings from
+                // the BOOT company's cached lobby state and the next §3.8
+                // autosave persists that stale state into the opened file.
+                picker_lobby_initialize_from_save();
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::ContinueGame);
+                break;
+            case og::ui::ContinueResult::NoCompany:
+                menu_item = og::ui::find_picker_menu_item(
+                    og::ui::PickerMenuId::Main,
+                    og::ui::PickerMenuCommand::ContinueGame);
+                break;
+            }
+            break;
+        }
+        case ButtonAction::CreateLoadMenu:
+            // §2.1 LOAD door: routes through the shared LoadGame command —
+            // show_main_menu presents the §2.3 Company List engine screen
+            // via show_company_list().
             menu_item = og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::LoadGame);
             break;
         case ButtonAction::MainOptions:
             menu_item = og::ui::find_picker_menu_item(
@@ -473,11 +526,17 @@ bool picker_replace_lobby_client(
         // Establish a durable private baseline before network initialization
         // applies shared campaign/team settings. The lobby keeps the roster
         // private in memory; its combined roster lives only in LobbyState and
-        // the gameplay handoff.
+        // the gameplay handoff. The write goes through the §3.8 choke point
+        // (WindowEvent: stamp + atomic, no backup; the save is still fully
+        // private here, so the plain default context is correct), and
+        // [SAVE-R7] keeps the hard gate: a failed baseline write REFUSES to
+        // enter the networked session.
         if (og::runtime::current_session == nullptr ||
             og::runtime::current_session->myscreen_ == nullptr ||
-            og::runtime::current_session->myscreen_->save_data
-                    .save_with_error("save0") != SaveDataIoError::None)
+            og::data::company_autosave(
+                og::runtime::current_session->myscreen_->save_data,
+                og::data::CompanyAutosaveKind::WindowEvent) !=
+                SaveDataIoError::None)
         {
             popup_dialog(popup_title,
                          "Could not preserve your local team save.");
@@ -635,7 +694,7 @@ public:
             // show_team_build never selects the Scenario item here. The
             // TeamBuild fall-through below would re-enter create_team_menu
             // and nest a second team-build screen — answer the inherited
-            // show_scenario_menu() loop with a safe no-op Back instead.
+            // show_submenu(Scenario) loop with a safe no-op Back instead.
             return og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Scenario,
                 og::ui::PickerMenuCommand::Back);
@@ -1027,14 +1086,29 @@ public:
 
     bool load_game() override
     {
-        create_load_menu(0);
-        return true;
+        // §2.3: the slot menu is retired — loading IS the Company List.
+        // (Reached only via run_picker's legacy LoadGame transition; the
+        // main-menu LOAD door routes through show_company_list directly.)
+        return og::ui::run_company_list_screen();
     }
 
     bool save_game() override
     {
-        create_save_menu(0);
-        return true;
+        // §3.8: the manual save UI is retired — the company autosaves on
+        // every base-camp mutation; a legacy SaveGame transition just runs
+        // one autosave against the active slot.
+        return og::ui::company_autosave_after_mutation(
+                   og::runtime::current_session->myscreen_->save_data,
+                   picker_lobby_is_networked()) == SaveDataIoError::None;
+    }
+
+    bool show_company_list() override
+    {
+        // §2.3: the LOAD door opens the Company List engine screen. True
+        // (a company opened: active slot + save + mount switched) proceeds
+        // to team build; false (BACK / list emptied) re-presents the main
+        // menu, whose entry refresh re-derives the CONTINUE/LOAD gate.
+        return og::ui::run_company_list_screen();
     }
 
     og::ui::PickerScreen screen_after_game() const override
@@ -1457,9 +1531,6 @@ void picker_cleanup_resources()
     pks().main_title_logo_data.free();
     pks().mainmenu_buttons.clear();
     pks().createmenu_buttons.clear();
-    pks().viewteam_buttons.clear();
-    pks().saveteam_buttons.clear();
-    pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
     pks().display_settings_buttons.clear();
@@ -1472,8 +1543,12 @@ void picker_cleanup_resources()
     pks().networking_buttons.clear();
     pks().teamsmenu_buttons.clear();
     pks().viewscenario_buttons.clear();
+    pks().progressmenu_buttons.clear();
     pks().scenariomenu_buttons.clear();
     pks().difficulty_menu_buttons.clear();
+    pks().name_entry_buttons.clear();
+    pks().company_list_buttons.clear();
+    pks().company_backups_buttons.clear();
 }
 
 void picker_quit()
@@ -1482,246 +1557,29 @@ void picker_quit()
     destroy_global_screen();
 }
 
-#ifdef USE_TOUCH_INPUT
-#define DISABLE_MULTIPLAYER
-#endif
+// MAIN MENU: engine-hosted — the four k_mainmenu_buttons build variants
+// unified into the MP/no-MP spec pair (web/native = the build-gated
+// enabled/disabled-QUIT fork), the USE_TOUCH_INPUT => DISABLE_MULTIPLAYER variant
+// selection, the accessor shims, picker_mainmenu_options_index() (which
+// retired both OPTIONS_BUTTON_INDEX #defines), and mainmenu() itself all
+// live in menu_screen_specs.cpp (docs/menu-engine.md).
 
-// mainmenu
+// MAIN OPTIONS: engine-hosted — spec, accessor shims, and the entry
+// function (which keeps the family-wide cfg-persist epilogue) live in
+// menu_screen_specs.cpp (docs/menu-engine.md).
 
-#ifndef DISABLE_MULTIPLAYER
+// DISPLAY and CONTROLS subscreens: engine-hosted — specs, accessor shims,
+// and the entry functions live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
-#ifdef __EMSCRIPTEN__
-// Web build: Replace QUIT with HELP (QUIT doesn't make sense in browser)
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
+// FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX): engine-hosted — specs,
+// accessor shims, and the entry functions live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
-        button("4_player", "4 PLAYER", KEYSTATE_4, 152,125,68,20, button_action_id(ButtonAction::SetPlayerMode), 4 , MenuNav{.up=4, .down=6, .left=3}),
-        button("3_player", "3 PLAYER", KEYSTATE_3, 80,125,68,20, button_action_id(ButtonAction::SetPlayerMode),3 , MenuNav{.up=5, .down=6, .right=2}),
-        button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
-        button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
-
-        button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
-    };
-#define OPTIONS_BUTTON_INDEX 10
-
-#else // Native build
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
-
-        button("4_player", "4 PLAYER", KEYSTATE_4, 152,125,68,20, button_action_id(ButtonAction::SetPlayerMode), 4 , MenuNav{.up=4, .down=6, .left=3}),
-        button("3_player", "3 PLAYER", KEYSTATE_3, 80,125,68,20, button_action_id(ButtonAction::SetPlayerMode),3 , MenuNav{.up=5, .down=6, .right=2}),
-        button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
-        button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
-
-        button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
-    };
-#define OPTIONS_BUTTON_INDEX 10
-#endif // __EMSCRIPTEN__
-
-#else // DISABLE_MULTIPLAYER
-
-#ifdef __EMSCRIPTEN__
-// Web build without multiplayer: Replace QUIT with HELP
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
-    };
-#define OPTIONS_BUTTON_INDEX 5
-
-#else // Native build without multiplayer
-static const button k_mainmenu_buttons[] =
-    {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
-
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
-    };
-#define OPTIONS_BUTTON_INDEX 5
-#endif // __EMSCRIPTEN__
-
-#endif // DISABLE_MULTIPLAYER
-
-
-inline constexpr Sint32 BUTTON_PADDING = 8;
-inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
-
-// Main options: sound/graphics settings plus doors into the CONTROLS screen
-// and the three FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX), whose
-// toggles live in the k_*_fx_options_buttons tables below.
-static const button k_main_options_buttons[] =
-{
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=8, .down=1, .right=5}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=6}),
-    // Door into the DISPLAY subscreen (mode / resolution / overscan /
-    // scaling / filter live there; k_display_settings_buttons below).
-    button("display_settings", "DISPLAY", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenDisplaySettings), -1, MenuNav{.up=1, .down=3, .right=6}),
-    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=2, .down=7}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=8, .down=6, .left=5}),
-    button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=8, .down=1, .left=0, .right=4}),
-    button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=4, .down=2, .left=1}),
-    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=3, .down=8}),
-    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=7, .down=0}),
-};
-
-inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
-
-// DISPLAY subscreen: the window/presentation settings a normal game keeps
-// together — mode (windowed / borderless / exclusive fullscreen), a real
-// WxH resolution that sizes the window when windowed and picks the closest
-// exclusive video mode when fullscreen, the overscan trim, the sprite/world
-// scale, and the present filter. 102px faces (17-char label budget) so
-// "Mode: Borderless" and "Res: 2560x1440" fit. Rows on the effects grid.
-static const button k_display_settings_buttons[] =
-{
-    button("display_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=6, .down=1}),
-    button("display_mode", "Mode: Windowed", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 102, 15,
-        button_action_id(ButtonAction::CycleDisplayMode), -1, MenuNav{.up=0, .down=2}),
-    button("display_resolution", "Res: 640x400", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 102, 15,
-        button_action_id(ButtonAction::CycleResolution), -1, MenuNav{.up=1, .down=3}),
-    button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=5, .right=4}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 159, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=2, .down=5, .left=3}),
-    button("display_zoom", "Zoom: 1.0x", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 102, 15,
-        button_action_id(ButtonAction::CycleZoom), -1, MenuNav{.up=3, .down=6}),
-    button("display_smoothing", "Smooth: Off", KEYSTATE_UNKNOWN, 115, effects_row_y(4), 102, 15,
-        button_action_id(ButtonAction::CycleSmoothing), -1, MenuNav{.up=5, .down=0}),
-};
-
-// FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
-// budget at 6px/char), rows at 23px pitch from y=35 (bottoms inside the
-// 4..196 bevel). All toggle button ids and (category, setting) cfg pairs are
-// unchanged from the single pre-split EFFECTS screen. Each BACK id is unique
-// (gameplay_fx_back / ui_fx_back / graphics_fx_back) because injector flows
-// disambiguate screens by button id.
-
-// GAMEPLAY FX: toggles that change how the game feels to play. Single
-// centered column; nav is a vertical cycle through BACK.
-static const button k_gameplay_fx_options_buttons[] =
-{
-    button("gameplay_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=2, .down=1}),
-    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=0, .down=2}),
-    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=1, .down=0}),
-};
-
-// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
-static const button k_ui_fx_options_buttons[] =
-{
-    button("ui_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .down=1}),
-    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=0, .down=2}),
-    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=1, .down=3}),
-    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=2, .down=0}),
-};
-
-// GRAPHICS FX: purely visual effects. 13 toggles on the 3-column grid:
-// 4 full rows plus a single-button fifth row (floor glide, the
-// generator_rate lone-row idiom). Weather (cfg effects/weather) is the
-// client-side display opt-out for the per-level sim weather (the old
-// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
-// bottom row's down land on BACK; BACK's up wraps to the bottom toggle.
-static const button k_graphics_fx_options_buttons[] =
-{
-    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=13, .down=1}),
-    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 15, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=0, .down=4, .left=3, .right=2}),
-    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=0, .down=5, .left=1, .right=3}),
-    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 215, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=0, .down=6, .left=2, .right=1}),
-    button("toggle_shadows", "Shadows", KEYSTATE_UNKNOWN, 15, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleShadows), -1, MenuNav{.up=1, .down=7, .left=6, .right=5}),
-    button("toggle_reflections", "Reflections", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleReflections), -1, MenuNav{.up=2, .down=8, .left=4, .right=6}),
-    button("toggle_weather", "Weather", KEYSTATE_UNKNOWN, 215, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleWeather), -1, MenuNav{.up=3, .down=9, .left=5, .right=4}),
-    button("toggle_dust", "Dust", KEYSTATE_UNKNOWN, 15, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDust), -1, MenuNav{.up=4, .down=10, .left=9, .right=8}),
-    button("depth_fx", "Depth: Fog", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::CycleDepthFx), -1, MenuNav{.up=5, .down=11, .left=7, .right=9}),
-    button("toggle_trails", "Trails", KEYSTATE_UNKNOWN, 215, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleTrails), -1, MenuNav{.up=6, .down=12, .left=8, .right=7}),
-    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=13, .left=12, .right=11}),
-    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=13, .left=10, .right=12}),
-    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=13, .left=11, .right=10}),
-    button("toggle_floor_glide", "Floor glide", KEYSTATE_UNKNOWN, 15, effects_row_y(4), 90, 15, button_action_id(ButtonAction::ToggleFloorGlide), -1, MenuNav{.up=10, .down=0}),
-};
-
-// Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
-// Text labels ("Px", key info) drawn in main_controls_options() below each section's buttons.
-#define CTRL_PLAYER_PITCH 28
-#define CTRL_PLAYER_Y(i) (40 + (i) * CTRL_PLAYER_PITCH)
-
-static const button k_control_options_buttons[] =
-{
-    button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1}),
-    button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 0, MenuNav{.up=0, .down=3, .right=2}),
-    button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(0), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 0, MenuNav{.up=0, .down=4, .left=1}),
-    button("player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(1), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 1, MenuNav{.up=1, .down=5, .right=4}),
-    button("player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(1), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 1, MenuNav{.up=2, .down=6, .left=3}),
-    button("player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(2), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 2, MenuNav{.up=3, .down=7, .right=6}),
-    button("player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(2), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 2, MenuNav{.up=4, .down=8, .left=5}),
-    button("player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(3), 100, 15,
-        button_action_id(ButtonAction::ToggleControlMode), 3, MenuNav{.up=5, .down=9, .right=8}),
-    button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(3), 100, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 3, MenuNav{.up=6, .down=9, .left=7}),
-    button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15,
-        button_action_id(ButtonAction::RestoreDefaultControls), -1, MenuNav{.up=7}),
-};
-
-// beginmenu (first menu of new game), create_team_menu.
-// A clean 3x3 grid on the classic x=30/120/210 columns: the scenario-shaped
-// commands (SET CAMPAIGN / SET LEVEL / VIEW LEVEL / TEAMS / PROGRESS) live in
-// the SCENARIO subscreen now (k_scenariomenu_buttons below). GO is the only
-// host-gated button here; sync_team_build_host_control_visibility rewires
-// hire_troops/save_team/networking around it when hidden.
-static const button k_createmenu_buttons[] =
-    {
-        button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.down=3, .right=1}),
-        button("train_team", "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, button_action_id(ButtonAction::CreateTrainMenu), -1, MenuNav{.down=4, .left=0, .right=2}),
-        button("hire_troops", "HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, button_action_id(ButtonAction::CreateHireMenu), -1, MenuNav{.down=5, .left=1}),
-        button("load_team", "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::CreateLoadMenu), -1, MenuNav{.up=0, .down=6, .right=4}),
-        button("save_team", "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateSaveMenu), -1, MenuNav{.up=1, .down=7, .left=3, .right=5}),
-        button("go", "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.up=2, .down=8, .left=4}),
-
-        button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .right=7}),
-        button("scenario", "SCENARIO", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateScenarioMenu), -1, MenuNav{.up=4, .left=6, .right=8}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=5, .left=7}),
-    };
-
-static const button k_viewteam_buttons[] =
-    {
-        //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
-        //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
-        button("go", "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.left=1}),
-        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_REDRAW, MenuNav{.right=0}),
-
-    };
+// TEAM BUILD -> BASE CAMP (create_team_menu, design §2.5): engine-hosted —
+// spec, accessor shims, and the entry wrapper live in menu_screen_specs.cpp
+// (docs/menu-engine.md). The VIEW TEAM screen and the SAVE/LOAD slot menus
+// are retired (the roster IS the default view; saving is automatic).
 
 static const button k_details_buttons[] =
     {
@@ -1729,40 +1587,9 @@ static const button k_details_buttons[] =
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
     };
 
-static const button k_trainmenu_buttons[] =
-    {
-        button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), -1, MenuNav{.down=2, .right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), 1, MenuNav{.down=3, .left=0, .right=16}),
-        button("dec_str", "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_STR, MenuNav{.up=0, .down=4, .right=3}),
-        button("inc_str", "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_STR, MenuNav{.up=1, .down=5, .left=2}),
-        button("dec_dex", "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_DEX, MenuNav{.up=2, .down=6, .right=5}),
-        button("inc_dex", "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_DEX, MenuNav{.up=3, .down=7, .left=4}),
-        button("dec_con", "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_CON, MenuNav{.up=4, .down=8, .right=7}),
-        button("inc_con", "", KEYSTATE_UNKNOWN,  126,100, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_CON, MenuNav{.up=5, .down=9, .left=6}),
-        button("dec_int", "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_INT, MenuNav{.up=6, .down=10, .right=9}),
-        button("inc_int", "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_INT, MenuNav{.up=7, .down=11, .left=8}),
-        button("dec_armor", "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_ARMOR, MenuNav{.up=8, .down=12, .right=11}),
-        button("inc_armor", "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_ARMOR, MenuNav{.up=9, .down=13, .left=10}),
-        button("dec_level", "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, button_action_id(ButtonAction::DecreaseStat), BUT_LEVEL, MenuNav{.up=10, .down=19, .right=13}),
-        button("inc_level", "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, button_action_id(ButtonAction::IncreaseStat), BUT_LEVEL, MenuNav{.up=11, .down=15, .left=12, .right=18}),
-        button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.up=18, .left=15}),
-        button("accept", "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, button_action_id(ButtonAction::EditGuy), -1, MenuNav{.up=13, .left=19, .right=14}),
-        button("rename", "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, button_action_id(ButtonAction::NameGuy), 1, MenuNav{.down=18, .left=1, .right=17}),
-        button("details", "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, button_action_id(ButtonAction::CreateDetailMenu), 0, MenuNav{.down=18, .left=16}),
-        button("change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, button_action_id(ButtonAction::ChangeTeam), 1, MenuNav{.up=17, .down=14, .left=13}),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=12, .right=15}),
-
-    };
-
-static const button k_hiremenu_buttons[] =
-    {
-        button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), -1, MenuNav{.down=4, .right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), 1, MenuNav{.down=3, .left=0, .right=3}),
-        button("change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 190, 170, 110, 20, button_action_id(ButtonAction::ChangeHireTeam), 1, MenuNav{.up=1, .left=3}),
-        button("hire_me", "HIRE ME", KEYSTATE_UNKNOWN,  82, 166, 88, 28, button_action_id(ButtonAction::AddGuy), -1, MenuNav{.up=1, .left=4, .right=2}),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=0, .right=3}),
-
-    };
+// TRAIN / HIRE: engine-hosted — specs, accessor shims, and the per-frame
+// hooks/entry wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
+// (docs/menu-engine.md).
 
 // NETWORKING subscreen (relay-first — see the layout contract in
 // picker_sdl_defs.h). Static nav encodes the zero-visible-rooms variant;
@@ -1808,115 +1635,26 @@ static const button k_networking_menu_buttons[] =
 #endif
 
 
-static const button k_saveteam_buttons[] =
-    {
-        button("save_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoSave), 1, MenuNav{.up=10, .down=1}),
-        button("save_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoSave), 2, MenuNav{.up=0, .down=2}),
-        button("save_slot_3", "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, button_action_id(ButtonAction::DoSave), 3, MenuNav{.up=1, .down=3}),
-        button("save_slot_4", "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, button_action_id(ButtonAction::DoSave), 4, MenuNav{.up=2, .down=4}),
-        button("save_slot_5", "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, button_action_id(ButtonAction::DoSave), 5, MenuNav{.up=3, .down=5}),
-        button("save_slot_6", "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, button_action_id(ButtonAction::DoSave),  6, MenuNav{.up=4, .down=6}),
-        button("save_slot_7", "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, button_action_id(ButtonAction::DoSave), 7, MenuNav{.up=5, .down=7}),
-        button("save_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, button_action_id(ButtonAction::DoSave), 8, MenuNav{.up=6, .down=8}),
-        button("save_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, button_action_id(ButtonAction::DoSave), 9, MenuNav{.up=7, .down=9}),
-        button("save_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, button_action_id(ButtonAction::DoSave), 10, MenuNav{.up=8, .down=10}),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
+// SAVE / LOAD slot menus: engine-hosted — specs, accessor shims, and
+// create_save_menu / create_load_menu live in menu_screen_specs.cpp
+// (docs/menu-engine.md).
 
-    };
+// TEAMS subscreen (create_teams_menu): engine-hosted — the spec, accessor
+// shim, and entry wrapper live in menu_screen_specs.cpp; the per-frame
+// machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
+// (docs/menu-engine.md).
 
-static const button k_loadteam_buttons[] =
-    {
-        button("load_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoLoad), 1, MenuNav{.up=10, .down=1}),
-        button("load_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoLoad), 2, MenuNav{.up=0, .down=2}),
-        button("load_slot_3", "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, button_action_id(ButtonAction::DoLoad), 3, MenuNav{.up=1, .down=3}),
-        button("load_slot_4", "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, button_action_id(ButtonAction::DoLoad), 4, MenuNav{.up=2, .down=4}),
-        button("load_slot_5", "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, button_action_id(ButtonAction::DoLoad), 5, MenuNav{.up=3, .down=5}),
-        button("load_slot_6", "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, button_action_id(ButtonAction::DoLoad),  6, MenuNav{.up=4, .down=6}),
-        button("load_slot_7", "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, button_action_id(ButtonAction::DoLoad), 7, MenuNav{.up=5, .down=7}),
-        button("load_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, button_action_id(ButtonAction::DoLoad), 8, MenuNav{.up=6, .down=8}),
-        button("load_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, button_action_id(ButtonAction::DoLoad), 9, MenuNav{.up=7, .down=9}),
-        button("load_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, button_action_id(ButtonAction::DoLoad), 10, MenuNav{.up=8, .down=10}),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
+// VIEW LEVEL (create_view_scenario_menu) and PROGRESS (create_progress_menu):
+// engine-hosted — specs, accessor shims, and the per-frame hooks/entry
+// wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
+// (docs/menu-engine.md).
 
-    };
+// SCENARIO subscreen (create_scenario_menu): engine-hosted — the spec,
+// accessor shim, title-strip content pass, and entry wrapper live in
+// menu_screen_specs.cpp (docs/menu-engine.md).
 
-// TEAMS subscreen (create_teams_menu): team rows are drawn at y=32+30*t with
-// the per-team JOIN column at x=240; the CTF match settings (host-gated, CTF
-// campaign only) sit at the top (Teams/Limit) and bottom-right (Troops); the
-// local guy-cycling row sits at y=146; READY replaces the guy row when
-// networked. Static nav encodes the local-classic variant — every conditional
-// state is rewired per frame by picker_wire_teams_menu_nav (the graph never
-// links to a hidden button).
-static const button k_teamsmenu_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.up=7}),
-        button("ctf_teams", "Teams: Auto", KEYSTATE_UNKNOWN, 120, 8, 80, 15, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.down=3, .right=2}, true),
-        button("ctf_caps", "Limit: Map", KEYSTATE_UNKNOWN, 210, 8, 80, 15, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.down=3, .left=1}, true),
-        button("join_team_0", "JOIN", KEYSTATE_UNKNOWN, 240, 32, 50, 12, button_action_id(ButtonAction::JoinTeam), 0, MenuNav{.down=4}),
-        button("join_team_1", "JOIN", KEYSTATE_UNKNOWN, 240, 62, 50, 12, button_action_id(ButtonAction::JoinTeam), 1, MenuNav{.up=3, .down=5}),
-        button("join_team_2", "JOIN", KEYSTATE_UNKNOWN, 240, 92, 50, 12, button_action_id(ButtonAction::JoinTeam), 2, MenuNav{.up=4, .down=6}),
-        button("join_team_3", "JOIN", KEYSTATE_UNKNOWN, 240, 122, 50, 12, button_action_id(ButtonAction::JoinTeam), 3, MenuNav{.up=5, .down=9}),
-        button("guy_prev", "<", KEYSTATE_UNKNOWN, 10, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), -1, MenuNav{.up=3, .down=0, .right=8}),
-        button("guy_next", ">", KEYSTATE_UNKNOWN, 120, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), 1, MenuNav{.up=3, .down=0, .left=7, .right=9}),
-        button("guy_team", "TEAM >", KEYSTATE_UNKNOWN, 150, 146, 70, 12, button_action_id(ButtonAction::TeamsCycleGuyTeam), 1, MenuNav{.up=6, .down=0, .left=8}),
-        button("ready", "READY", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::ToggleLobbyReady), -1, MenuNav{.up=6, .left=0}, true),
-        button("ctf_troops", "Troops: Scen", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::CycleCtfScenarioTroops), -1, MenuNav{.up=9, .left=0}, true),
-        // Per-team member pagers: a '>' at the right edge of each team row's
-        // readability bar (8..234), left of the JOIN column at x=240. Hidden
-        // unless that team's detail line needs more than one slice; nav is
-        // fully rewired per frame like every other conditional button here.
-        button("team_page_0", ">", KEYSTATE_UNKNOWN, 219, 39, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 0, MenuNav{}, true),
-        button("team_page_1", ">", KEYSTATE_UNKNOWN, 219, 69, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 1, MenuNav{}, true),
-        button("team_page_2", ">", KEYSTATE_UNKNOWN, 219, 99, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 2, MenuNav{}, true),
-        button("team_page_3", ">", KEYSTATE_UNKNOWN, 219, 129, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 3, MenuNav{}, true),
-    };
-
-// VIEW LEVEL (create_view_scenario_menu): a read-only framed report; PREV and
-// NEXT page through it and stay hidden while the report fits one page.
-static const button k_viewscenario_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.right=1}),
-        button("page_prev", "PREV", KEYSTATE_UNKNOWN, 220, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), -1, MenuNav{.left=0, .right=2}, true),
-        button("page_next", "NEXT", KEYSTATE_UNKNOWN, 270, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), 1, MenuNav{.left=1}, true),
-    };
-
-// SCENARIO subscreen (create_scenario_menu): the column at x=30 stacks
-// SET CAMPAIGN (y=40) and SET LEVEL (y=70) — the campaign-name and
-// level-title strips draw beside them — over the always-visible
-// VIEW LEVEL | TEAMS | PROGRESS row (y=100). BACK sits apart at (30,170)
-// so no other screen's "back" shares its geometry (the injector tests
-// disambiguate the per-screen "back" buttons by position). Static nav
-// encodes the host variant; sync_scenario_menu_host_control_visibility
-// rewires the row's up-links when SET CAMPAIGN / SET LEVEL are hidden.
-static const button k_scenariomenu_buttons[] =
-    {
-        button("back", "BACK", KEYSTATE_ESCAPE, 30, 170, 60, 20, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3}),
-        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 30, 40, 80, 15, button_action_id(ButtonAction::DoPickCampaign), -1, MenuNav{.down=2}),
-        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::DoSetScenLevel), -1, MenuNav{.up=1, .down=3}),
-        button("view_scenario", "VIEW LEVEL", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::ViewScenario), -1, MenuNav{.up=2, .down=0, .right=4}),
-        button("teams", "TEAMS", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateTeamsMenu), -1, MenuNav{.up=2, .down=0, .left=3, .right=5}),
-        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 210, 100, 80, 15, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=2, .down=0, .left=4}),
-    };
-
-// DIFFICULTY subscreen (run_difficulty_menu): the main-menu DIFFICULTY door
-// opens this blocking screen. One centered 140px column (23-char label budget
-// at 6px/char; the widest label, "Difficulty: Slaughter", is 21) on the FX
-// subscreen row pitch; nav is a vertical cycle through BACK. Static labels are
-// the default-state formatter outputs; run_difficulty_menu() re-derives every
-// row from session/save each frame (a lobby can rewrite the save under the
-// open menu). BACK id is unique ("difficulty_back") because injector flows
-// disambiguate screens by button id; the cycling rows keep their menu-model
-// ids ("difficulty" is shared with the main-menu door, which is never live at
-// the same time).
-static const button k_difficulty_menu_buttons[] =
-    {
-        button("difficulty_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=5, .down=1}),
-        button("difficulty", "Difficulty: Battle", KEYSTATE_UNKNOWN, 90, 35, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=0, .down=2}),
-        button("respawn_mode", "Respawns: Off", KEYSTATE_UNKNOWN, 90, 58, 140, 15, button_action_id(ButtonAction::CycleRespawnMode), -1, MenuNav{.up=1, .down=3}),
-        button("respawn_delay", "Spawn Delay: Normal", KEYSTATE_UNKNOWN, 90, 81, 140, 15, button_action_id(ButtonAction::CycleRespawnDelay), -1, MenuNav{.up=2, .down=4}),
-        button("permadeath", "Permadeath: On", KEYSTATE_UNKNOWN, 90, 104, 140, 15, button_action_id(ButtonAction::TogglePermadeath), -1, MenuNav{.up=3, .down=5}),
-        button("generator_rate", "Generators: Normal", KEYSTATE_UNKNOWN, 90, 127, 140, 15, button_action_id(ButtonAction::CycleGeneratorRate), -1, MenuNav{.up=4, .down=0}),
-    };
+// DIFFICULTY subscreen: engine-hosted — spec, accessor shim, and
+// run_difficulty_menu live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 namespace
 {
@@ -1927,126 +1665,9 @@ void reset_mutable_button_layout(std::vector<button>& out, const button (&defaul
 }
 } // namespace
 
-button* picker_mainmenu_buttons()
-{
-    reset_mutable_button_layout(pks().mainmenu_buttons, k_mainmenu_buttons);
-    return pks().mainmenu_buttons.data();
-}
-
-int picker_mainmenu_button_count()
-{
-    return static_cast<int>(pks().mainmenu_buttons.size());
-}
-
-button* picker_createmenu_buttons()
-{
-    reset_mutable_button_layout(pks().createmenu_buttons, k_createmenu_buttons);
-    return pks().createmenu_buttons.data();
-}
-
-int picker_createmenu_button_count()
-{
-    return static_cast<int>(pks().createmenu_buttons.size());
-}
-
-button* picker_viewteam_buttons()
-{
-    reset_mutable_button_layout(pks().viewteam_buttons, k_viewteam_buttons);
-    return pks().viewteam_buttons.data();
-}
-
-int picker_viewteam_button_count()
-{
-    return static_cast<int>(pks().viewteam_buttons.size());
-}
-
-button* picker_saveteam_buttons()
-{
-    reset_mutable_button_layout(pks().saveteam_buttons, k_saveteam_buttons);
-    return pks().saveteam_buttons.data();
-}
-
-int picker_saveteam_button_count()
-{
-    return static_cast<int>(pks().saveteam_buttons.size());
-}
-
-button* picker_loadteam_buttons()
-{
-    reset_mutable_button_layout(pks().loadteam_buttons, k_loadteam_buttons);
-    return pks().loadteam_buttons.data();
-}
-
-int picker_loadteam_button_count()
-{
-    return static_cast<int>(pks().loadteam_buttons.size());
-}
-
-button* picker_main_options_buttons()
-{
-    reset_mutable_button_layout(pks().main_options_buttons, k_main_options_buttons);
-    return pks().main_options_buttons.data();
-}
-
-int picker_main_options_button_count()
-{
-    return static_cast<int>(pks().main_options_buttons.size());
-}
-
-button* picker_control_options_buttons()
-{
-    reset_mutable_button_layout(pks().control_options_buttons, k_control_options_buttons);
-    return pks().control_options_buttons.data();
-}
-
-int picker_control_options_button_count()
-{
-    return static_cast<int>(pks().control_options_buttons.size());
-}
-
-button* picker_display_settings_buttons()
-{
-    reset_mutable_button_layout(pks().display_settings_buttons, k_display_settings_buttons);
-    return pks().display_settings_buttons.data();
-}
-
-int picker_display_settings_button_count()
-{
-    return static_cast<int>(pks().display_settings_buttons.size());
-}
-
-button* picker_gameplay_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().gameplay_fx_options_buttons, k_gameplay_fx_options_buttons);
-    return pks().gameplay_fx_options_buttons.data();
-}
-
-int picker_gameplay_fx_options_button_count()
-{
-    return static_cast<int>(pks().gameplay_fx_options_buttons.size());
-}
-
-button* picker_ui_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().ui_fx_options_buttons, k_ui_fx_options_buttons);
-    return pks().ui_fx_options_buttons.data();
-}
-
-int picker_ui_fx_options_button_count()
-{
-    return static_cast<int>(pks().ui_fx_options_buttons.size());
-}
-
-button* picker_graphics_fx_options_buttons()
-{
-    reset_mutable_button_layout(pks().graphics_fx_options_buttons, k_graphics_fx_options_buttons);
-    return pks().graphics_fx_options_buttons.data();
-}
-
-int picker_graphics_fx_options_button_count()
-{
-    return static_cast<int>(pks().graphics_fx_options_buttons.size());
-}
+// picker_createmenu_buttons()/picker_createmenu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 button* picker_details_buttons()
 {
@@ -2059,27 +1680,9 @@ int picker_details_button_count()
     return static_cast<int>(pks().details_buttons.size());
 }
 
-button* picker_trainmenu_buttons()
-{
-    reset_mutable_button_layout(pks().trainmenu_buttons, k_trainmenu_buttons);
-    return pks().trainmenu_buttons.data();
-}
-
-int picker_trainmenu_button_count()
-{
-    return static_cast<int>(pks().trainmenu_buttons.size());
-}
-
-button* picker_hiremenu_buttons()
-{
-    reset_mutable_button_layout(pks().hiremenu_buttons, k_hiremenu_buttons);
-    return pks().hiremenu_buttons.data();
-}
-
-int picker_hiremenu_button_count()
-{
-    return static_cast<int>(pks().hiremenu_buttons.size());
-}
+// picker_trainmenu_buttons()/picker_hiremenu_buttons() (+ counts):
+// engine-hosted screens — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 button* picker_networking_buttons()
 {
@@ -2171,50 +1774,20 @@ int picker_networking_button_count()
     return static_cast<int>(pks().networking_buttons.size());
 }
 
-button* picker_teamsmenu_buttons()
-{
-    reset_mutable_button_layout(pks().teamsmenu_buttons, k_teamsmenu_buttons);
-    return pks().teamsmenu_buttons.data();
-}
+// picker_teamsmenu_buttons()/picker_teamsmenu_button_count(): engine-hosted
+// screen — the D3 materialization shims live in menu_screen_specs.cpp.
 
-int picker_teamsmenu_button_count()
-{
-    return static_cast<int>(pks().teamsmenu_buttons.size());
-}
+// picker_viewscenario_buttons()/picker_progressmenu_buttons() (+ counts):
+// engine-hosted screens — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
-button* picker_viewscenario_buttons()
-{
-    reset_mutable_button_layout(pks().viewscenario_buttons, k_viewscenario_buttons);
-    return pks().viewscenario_buttons.data();
-}
+// picker_scenariomenu_buttons()/picker_scenariomenu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
-int picker_viewscenario_button_count()
-{
-    return static_cast<int>(pks().viewscenario_buttons.size());
-}
-
-button* picker_scenariomenu_buttons()
-{
-    reset_mutable_button_layout(pks().scenariomenu_buttons, k_scenariomenu_buttons);
-    return pks().scenariomenu_buttons.data();
-}
-
-int picker_scenariomenu_button_count()
-{
-    return static_cast<int>(pks().scenariomenu_buttons.size());
-}
-
-button* picker_difficulty_menu_buttons()
-{
-    reset_mutable_button_layout(pks().difficulty_menu_buttons, k_difficulty_menu_buttons);
-    return pks().difficulty_menu_buttons.data();
-}
-
-int picker_difficulty_menu_button_count()
-{
-    return static_cast<int>(pks().difficulty_menu_buttons.size());
-}
-
+// picker_difficulty_menu_buttons()/picker_difficulty_menu_button_count():
+// engine-hosted screen — the D3 materialization shims live in
+// menu_screen_specs.cpp.
 
 void view_team(short left, short top, short right, short bottom)
 {
@@ -2533,191 +2106,12 @@ Sint32 edit_player_keymap(Sint32 arg)
     return MENU_REDRAW;
 }
 
-Sint32 main_controls_options()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = picker_control_options_buttons();
-    const int num_buttons = picker_control_options_button_count();
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
+// main_controls_options(): engine-hosted (menu_screen_specs.cpp drives it
+// through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
 
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        for (int i = 0; i < 4; ++i)
-        {
-            const bool eight_dir = get_player_control_mode(i) == static_cast<int>(ControlDirectionMode::EightDirection);
-            const int mode_index = 1 + i * 2;
-            buttons[mode_index].label = eight_dir ? "8-DIRECTION" : "4-DIRECTION";
-            og::runtime::current_session->allbuttons_[mode_index]->label = buttons[mode_index].label;
-        }
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        // The header sits below the BACK button's animated highlight box
-        // (which reaches 3px past the bevel) and above the P1 row at y=40;
-        // drawing it any higher lets the highlight overwrite the first chars.
-        mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
-                        DARK_BLUE, "Player control modes and key remapping");
-
-        for (int i = 0; i < 4; ++i)
-        {
-            const int btn_y = CTRL_PLAYER_Y(i);
-            mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
-            const std::string summary = build_player_control_summary(i);
-            mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s", summary.c_str());
-        }
-
-        mytext.write_xy(10, 155, DARK_BLUE, "4-dir = cardinal only. 8-dir adds diagonals.");
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
-
-namespace {
-
-// One per-frame FX subscreen draw entry: which toggle button reflects which
-// cfg (category, setting) pair. A cycle entry's setting is a value string
-// (the depth selector) rather than an on/off flag.
-struct FxToggleDraw
-{
-    int index;
-    const char* category;
-    const char* setting;
-    bool cycle = false;
-};
-
-// Shared blocking loop for the three FX subscreens. Toggles only write cfg;
-// main_options() persists cfg when it exits, which is the only path back out
-// of these screens.
-Sint32 run_fx_options_screen(button* buttons, int num_buttons,
-                             std::span<const FxToggleDraw> toggles,
-                             const char* title)
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", title);
-
-        for (const FxToggleDraw& toggle : toggles)
-        {
-            if (toggle.cycle)
-                draw_cycle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
-            else
-                draw_toggle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
-        }
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
-
-} // namespace
-
-Sint32 gameplay_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "hit_recoil"},
-        {2, "effects", "attack_lunge"},
-    };
-    // Sequence the accessors: the count reads the vector the buttons
-    // accessor populates.
-    button* buttons = picker_gameplay_fx_options_buttons();
-    const int num_buttons = picker_gameplay_fx_options_button_count();
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Gameplay effects");
-}
-
-Sint32 ui_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "mini_hp_bar"},
-        {2, "effects", "damage_numbers"},
-        {3, "effects", "heal_numbers"},
-    };
-    button* buttons = picker_ui_fx_options_buttons();
-    const int num_buttons = picker_ui_fx_options_button_count();
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Interface effects");
-}
-
-Sint32 graphics_fx_options()
-{
-    static constexpr FxToggleDraw kToggles[] = {
-        {1, "effects", "hit_flash"},
-        {2, "effects", "hit_anim"},
-        {3, "effects", "gore"},
-        {4, "effects", "shadows"},
-        {5, "effects", "reflections"},
-        {6, "effects", "weather"},
-        {7, "effects", "dust"},
-        {8, "effects", "depth_fx", true},
-        {9, "effects", "trails"},
-        {10, "effects", "fire_glow"},
-        {11, "effects", "ripples"},
-        {12, "effects", "screen_shake"},
-        {13, "effects", "floor_glide"},
-    };
-    button* buttons = picker_graphics_fx_options_buttons();
-    const int num_buttons = picker_graphics_fx_options_button_count();
-    // The depth row's label is cfg-derived ("Depth: Fog" ... "Depth: Off"):
-    // write it into the mutable descriptor before run_fx_options_screen's
-    // init_buttons clones the rows, so both label surfaces start correct.
-    buttons[kGraphicsFxDepthFxIndex].label =
-        og::ui::format_depth_fx_label(cfg.get_setting("effects", "depth_fx"));
-    return run_fx_options_screen(buttons, num_buttons, kToggles, "Graphics effects");
-}
+// gameplay_fx_options() / ui_fx_options() / graphics_fx_options(): engine-
+// hosted (menu_screen_specs.cpp drives them through run_menu_screen; the
+// shared legacy loop run_fx_options_screen is gone — docs/menu-engine.md).
 
 // A remote (host) GO while this peer sits on the main menu or one of its
 // blocking subscreens: mainmenu()'s caller (present_menu) acts on the
@@ -2736,153 +2130,12 @@ bool picker_main_scope_remote_start_requested(int32_t& retvalue)
     return true;
 }
 
-// Blocking DIFFICULTY subscreen (the main-menu DIFFICULTY door): session
-// difficulty plus the SaveData match rules (respawns, respawn delay,
-// permadeath, generator rate). Same loop shape as run_fx_options_screen, but
-// every row's label is re-derived from session/save each frame instead of a
-// cfg toggle draw — an open lobby can rewrite the save under this menu.
-Sint32 run_difficulty_menu()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    // Sequence the accessors: the count reads the vector the buttons
-    // accessor populates.
-    button* buttons = picker_difficulty_menu_buttons();
-    const int num_buttons = picker_difficulty_menu_button_count();
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-    sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
+// run_difficulty_menu(): engine-hosted (menu_screen_specs.cpp drives it
+// through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
 
-    Sint32 retvalue = 0;
-    while(!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        // A host GO must launch a joiner parked in this subscreen: propagate
-        // MENU_EXIT (with CONTINUE selected) instead of a local BACK's
-        // MENU_REDRAW so mainmenu() unwinds too.
-        Sint32 remote_start = 0;
-        if (picker_main_scope_remote_start_requested(remote_start))
-            return remote_start;
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        // Host gating can flip mid-screen (connection loss, lobby changes):
-        // re-sync visibility and the BACK nav cycle every frame, like the
-        // teams menu does.
-        sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
-
-        // Per-frame label re-derive from session/save for every settings row
-        // (both surfaces: the mutable descriptor row and the live vbutton).
-        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        buttons[kDifficultyMenuDifficultyIndex].label =
-            og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
-        buttons[kDifficultyMenuRespawnModeIndex].label = og::ui::format_respawn_mode_label(save);
-        buttons[kDifficultyMenuRespawnDelayIndex].label = og::ui::format_respawn_delay_label(save);
-        buttons[kDifficultyMenuPermadeathIndex].label = og::ui::format_permadeath_label(save);
-        buttons[kDifficultyMenuGeneratorRateIndex].label = og::ui::format_generator_rate_label(save);
-        for (int i = kDifficultyMenuDifficultyIndex; i < num_buttons; ++i)
-        {
-            if (og::runtime::current_session->allbuttons_[i] != nullptr)
-                og::runtime::current_session->allbuttons_[i]->label = buttons[i].label;
-        }
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", "DIFFICULTY");
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
-
-Sint32 main_options()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-	button* buttons = picker_main_options_buttons();
-	int num_buttons = picker_main_options_button_count();
-
-
-	int highlighted_button = 0;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	clear_keyboard();
-    
-    Sint32 retvalue = 0;
-	while(!(retvalue & MENU_EXIT))
-	{
-        picker_lobby_poll();
-	    // Input
-		if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-			if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-        
-        // Reset buttons
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        {
-            buttons[6].label = "Sprite Sheet";
-            og::runtime::current_session->allbuttons_[6]->label = buttons[6].label;
-        }
-		
-		// Draw
-		og::runtime::current_session->myscreen_->clear_window();  // Clearing entire window because the overscan may have been adjusted.
-		
-		og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-		og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-		
-        
-        draw_buttons(buttons, num_buttons);
-        
-		draw_toggle_effect_button(buttons[1], "sound", "sound");
-		// Section rule between the sound row and the DISPLAY/effects doors.
-		og::runtime::current_session->myscreen_->hor_line(60, buttons[2].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Display:");
-		mytext.write_xy(20, buttons[3].y + 3, DARK_BLUE, "Effects:");
-        draw_sprite_sheet_button(buttons[6]);
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-	
-	og::runtime::current_session->myscreen_->soundp->set_sound(!cfg.is_on("sound", "sound"));
-	// Sync overscan to config before saving (data/ can't depend on input/)
-	cfg.apply_setting("graphics", "overscan_percentage",
-	    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
-    save_player_control_settings_to_cfg(cfg);
-	cfg.save_settings();
-    
-    return MENU_REDRAW;
-}
+// main_options(): engine-hosted (menu_screen_specs.cpp drives it through
+// run_menu_screen and keeps the exit epilogue that persists cfg for the
+// whole options family; the legacy loop is gone — docs/menu-engine.md).
 
 Sint32 overscan_adjust(Sint32 arg)
 {
@@ -3120,14 +2373,16 @@ Sint32 create_detail_menu(guy *arg1)
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
                thisguy->upgrade_to_level(new_level);
                thisguy->family = static_cast<unsigned char>(fd->promotes_to);
-               // The promotion mutated the REAL team member in place, so push
-               // the roster to the lobby client now — the same commit path the
-               // train menu's ACCEPT uses. Every picker menu loop starts with
-               // picker_lobby_poll(), which rewrites save.team_list from the
-               // lobby's cached roster; without this push the very next poll
-               // reverts the promotion (issue #133: the Archmage upgrade only
-               // "stuck" if a stat edit re-synced the roster afterwards).
-               picker_lobby_sync_roster_from_save();
+               // The promotion mutated the REAL team member in place: run
+               // the full §3.8 mutation tail — the lobby roster push (every
+               // picker menu loop starts with picker_lobby_poll(), which
+               // rewrites save.team_list from the lobby's cached roster;
+               // without this push the very next poll reverts the promotion,
+               // issue #133), the optimistic local ready drop (§4.3 — a
+               // networked content change re-readies this machine), and the
+               // company autosave (with SAVE retired, a bare sync would lose
+               // a promote-then-quit).
+               picker_base_camp_after_roster_mutation();
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
@@ -3399,6 +2654,25 @@ int matherr(struct exception *problem)
 }
 */
 
+// §3.8 settings tail (hook inventory: "difficulty/CTF setting callbacks —
+// picker_lobby_sync_settings_from_save() + company_autosave(BaseCampMutation)"):
+// persisted match settings autosave like any other base-camp mutation, so a
+// toggled setting survives QUIT (§0.3 "saving is automatic"). Gated on the
+// active company FILE existing: BEGIN NEW GAME's creation write is the only
+// company creator (§2.2), so a settings tweak from the pre-company main menu
+// never conjures an empty company. Networked lobbies take the [SAVE-F1]
+// owner-preserving merge write (session settings stay session-scoped there
+// by contract). Failures log inside company_autosave; settings cycling never
+// blocks on a failed autosave (§3.8 — callers surface but don't crash).
+static void picker_settings_autosave()
+{
+   if (!user_file_exists("save/" + og::data::active_company_slot() + ".gtl"))
+       return;
+   (void)og::ui::company_autosave_after_mutation(
+       og::runtime::current_session->myscreen_->save_data,
+       picker_lobby_is_networked());
+}
+
 // Refresh a DIFFICULTY-subscreen settings button's label in both the live
 // vbutton array and the mutable descriptor row that backs later redraws.
 static void refresh_difficulty_menu_button_label(int button_index,
@@ -3427,38 +2701,60 @@ Sint32 set_difficulty()
        og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
 
 Sint32 change_teamnum(Sint32 arg)
 {
-   // Change the team number of the current guy
+   // Change the team number of the current guy. TRAIN and Base Camp share the
+   // saved roster member as their source of truth: the Base Camp TEAM chip
+   // already cycles that member directly, so TRAIN must not leave its visible
+   // "Playing on Team" choice stranded in the session's temporary stat copy.
    Sint32 current_team;
 
    // What is our current team number?
    if (!og::runtime::current_session->current_guy_)
        return 0;
-   if (!picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
-       return 0;
-   current_team = og::runtime::current_session->current_guy_->teamnum;
 
-   // We can be from team 0 (default) to team 3 .. make sure
-   // we don't exceed this range.
-   current_team += arg;
-   current_team = (current_team % 4 + 4) % 4;
+   bool roster_changed = false;
+   if (pks().train_session && !pks().train_session->empty()) {
+       const int slot = pks().train_session->current_slot();
+       if (!picker_lobby_save_slot_editable(slot))
+           return 0;
+       SaveData& save = og::runtime::current_session->myscreen_->save_data;
+       const short old_team =
+           save.team_list[static_cast<std::size_t>(slot)]->teamnum;
+       const short cycled = og::ui::cycle_guy_team(save, slot, arg);
+       if (cycled < 0)
+           return 0;
+       current_team = cycled;
+       roster_changed = cycled != old_team;
+       pks().train_session->set_team(current_team);
+       TRACE("train", "team slot=%d team=%d", slot, current_team);
+   } else {
+       if (!picker_lobby_save_slot_editable(
+               og::runtime::current_session->editguy_))
+           return 0;
+       current_team = og::runtime::current_session->current_guy_->teamnum;
+
+       // We can be from team 0 (default) to team 3 .. make sure
+       // we don't exceed this range.
+       current_team += arg;
+       current_team = (current_team % 4 + 4) % 4;
+   }
 
    og::runtime::current_session->current_team_num_ = static_cast<short>(current_team);
-
-   if (pks().train_session && !pks().train_session->empty())
-       pks().train_session->set_team(current_team);
 
    // Set our team number ..
    og::runtime::current_session->current_guy_->teamnum = static_cast<short>(current_team);
 
    // Update our button display
-   if (og::runtime::current_session->allbuttons_[18] != nullptr)
-       og::runtime::current_session->allbuttons_[18]->label = std::format("Playing on Team {}", current_team + 1);
+   if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = std::format("Playing on Team {}", current_team + 1);
+   if (roster_changed)
+       picker_base_camp_after_roster_mutation();
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3490,10 +2786,13 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
 
-   if (og::runtime::current_session->allbuttons_[7] != nullptr)
-       og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
+   // G8 sweep (design §1.2): the old raw allbuttons_[7] click-side label
+   // write is gone. PLAYER SETTINGS owns the pvp_allied LabelBinding and
+   // re-derives both label surfaces every frame, so the write stays
+   // redundant after the row's move off the main menu.
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3521,6 +2820,7 @@ Sint32 change_ctf_teams()
                                   og::ui::format_ctf_teams_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3534,6 +2834,7 @@ Sint32 change_ctf_caps()
                                   og::ui::format_ctf_caps_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3547,6 +2848,7 @@ Sint32 change_ctf_troops()
                                   og::ui::format_ctf_troops_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3562,6 +2864,7 @@ Sint32 change_respawn_mode()
                                         og::ui::format_respawn_mode_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3575,6 +2878,7 @@ Sint32 change_respawn_delay()
                                         og::ui::format_respawn_delay_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3588,6 +2892,7 @@ Sint32 change_permadeath()
                                         og::ui::format_permadeath_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
@@ -3601,33 +2906,32 @@ Sint32 change_generator_rate()
                                         og::ui::format_generator_rate_label(save));
 
    picker_lobby_sync_settings_from_save();
+   picker_settings_autosave();
 
    return MENU_OK;
 }
 
-// GRAPHICS FX depth selector: step cfg effects/depth_fx one value and
-// rewrite the row's label on both surfaces (the live vbutton and the
-// mutable descriptor row backing later redraws). Pure cfg, no save/lobby
-// state — main_options() persists cfg on exit like every FX toggle.
+// GRAPHICS FX depth selector: step cfg effects/depth_fx one value. Pure
+// cfg, no save/lobby state — main_options() persists cfg on exit like every
+// FX toggle. The row's label re-derives from cfg on both surfaces every
+// frame via the engine spec's LabelBinding (menu_screen_specs.cpp), so this
+// callback no longer writes it (G8).
 Sint32 change_depth_fx()
 {
    const std::string next =
        og::ui::cycle_depth_fx(cfg.get_setting("effects", "depth_fx"));
    cfg.apply_setting("effects", "depth_fx", next);
 
-   const std::string label = og::ui::format_depth_fx_label(next);
-   if (og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex]->label = label;
-   if (static_cast<int>(pks().graphics_fx_options_buttons.size()) > kGraphicsFxDepthFxIndex)
-       pks().graphics_fx_options_buttons[kGraphicsFxDepthFxIndex].label = label;
-
    return MENU_OK;
 }
 
 // DISPLAY zoom selector: step graphics/zoom through the resource-safe range,
 // apply its aspect-relative world canvas (menus use the fixed UI canvas),
-// relayout views when the logical dimensions change, and sync both label
-// copies. main_options() persists cfg on exit.
+// and relayout views when the logical dimensions change. main_options()
+// persists cfg on exit. The face re-derives from cfg on both surfaces every
+// frame via the engine spec's LabelBinding (which is why the platform's
+// reflect-back of an allocation-rejected request shows correctly), so this
+// callback no longer writes labels (G8).
 Sint32 change_zoom()
 {
    screen* scr = og::runtime::current_session->myscreen_;
@@ -3642,16 +2946,6 @@ Sint32 change_zoom()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   // The platform reflects an allocation-rejected request back to the live
-   // zoom. Read cfg after applying so the face never advertises a canvas that
-   // was not installed.
-   const std::string label = og::ui::format_zoom_label(
-       cfg.get_setting("graphics", "zoom"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuZoomIndex)
-       pks().display_settings_buttons[kDisplayMenuZoomIndex].label = label;
-
    return MENU_OK;
 }
 
@@ -3665,13 +2959,6 @@ Sint32 change_smoothing()
 
    screen* scr = og::runtime::current_session->myscreen_;
    scr->reapply_world_scale(); // engine-only change: canvas dims are stable
-
-   const std::string label = og::ui::format_smoothing_label(
-       next, scr->world_smoothing_supported());
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuSmoothingIndex)
-       pks().display_settings_buttons[kDisplayMenuSmoothingIndex].label = label;
 
    return MENU_OK;
 }
@@ -3714,14 +3001,9 @@ Sint32 change_display_mode()
        scr->relayout_views();
 
    // SDL may reject exclusive fullscreen and leave the window in borderless
-   // (or windowed) mode. The platform apply normalizes cfg to that real state,
-   // so the button must read back cfg instead of displaying the request.
-   const std::string label = og::ui::format_display_mode_label(
-       cfg.get_setting("graphics", "fullscreen"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuModeIndex)
-       pks().display_settings_buttons[kDisplayMenuModeIndex].label = label;
+   // (or windowed) mode. The platform apply normalizes cfg to that real
+   // state, and the engine spec's LabelBinding reads cfg back every frame,
+   // so the button never displays the request (label writes removed — G8).
    return MENU_OK;
 }
 
@@ -3747,25 +3029,10 @@ static std::vector<std::pair<int, int>> resolution_choices()
 		display_modes, desktop, current, mode);
 }
 
-static std::string active_resolution_label()
-{
-    screen* scr = og::runtime::current_session->myscreen_;
-    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
-        og::ui::DisplayMode::Borderless)
-    {
-        // Borderless always uses the desktop mode; showing the remembered
-        // window size here made a 640x400 label describe a 1920x1080 screen.
-        const std::pair<int, int> desktop = scr->desktop_resolution();
-        if (desktop.first >= 320 && desktop.second >= 200)
-            return og::ui::format_resolution_label(
-                std::to_string(desktop.first), std::to_string(desktop.second));
-        return "Res: Desktop";
-    }
-    return og::ui::format_resolution_label(
-        cfg.get_setting("graphics", "width"),
-        cfg.get_setting("graphics", "height"));
-}
-
+// The face ("Res: WxH" / the borderless desktop mode) re-derives from cfg
+// on both surfaces every frame via the engine spec's LabelBinding
+// (active_resolution_label in menu_screen_specs.cpp), so this callback no
+// longer writes labels (G8).
 Sint32 change_resolution()
 {
    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
@@ -3775,11 +3042,6 @@ Sint32 change_resolution()
        // mode. Leave the remembered window size alone and keep the face
        // truthful; users can select a mode after choosing Windowed or
        // Fullscreen.
-       const std::string label = active_resolution_label();
-       if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
-           og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
-       if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
-           pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
        return MENU_OK;
    }
 
@@ -3797,98 +3059,13 @@ Sint32 change_resolution()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   const std::string label = og::ui::format_resolution_label(
-       cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
-       pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
    return MENU_OK;
 }
 
-// The DISPLAY subscreen blocking loop. Same shape as the FX subscreens
-// (poll, click, nav, per-frame label sync, draw); cfg persists when
-// main_options() exits, which is the only path back out.
-Sint32 display_settings_options()
-{
-    button* buttons = picker_display_settings_buttons();
-    const int num_buttons = picker_display_settings_button_count();
-
-    #if defined(OUYA) || defined(ANDROID) || defined(__IPHONEOS__) || \
-        defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
-    // No window to size or mode to pick: TV/mobile targets are always
-    // fullscreen, and on web the page/CSS owns the window (the fullscreen
-    // cfg is also deliberately ignored at boot there). Hide both rows and
-    // route the vertical cycle around them (BACK <-> overscan pair).
-    buttons[kDisplayMenuModeIndex].hidden = buttons[kDisplayMenuModeIndex].no_draw = true;
-    buttons[kDisplayMenuResolutionIndex].hidden = buttons[kDisplayMenuResolutionIndex].no_draw = true;
-    buttons[kDisplayMenuBackIndex].nav.down = kDisplayMenuOverscanMinusIndex;
-    buttons[kDisplayMenuOverscanMinusIndex].nav.up = kDisplayMenuBackIndex;
-    buttons[kDisplayMenuOverscanPlusIndex].nav.up = kDisplayMenuBackIndex;
-    #endif
-
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    int highlighted_button = 0;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-    clear_keyboard();
-
-    Sint32 retvalue = 0;
-    while(!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if(leftmouse(buttons))
-        {
-            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
-            if(click_result == MENU_EXIT)
-                break;
-            if(click_result != 0)
-                retvalue = click_result;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_EXIT)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        // Every face is cfg-derived: re-derive all four each frame on both
-        // label surfaces (the click callbacks also write them, but RESTORE
-        // DEFAULTS or a lobby-applied cfg must reflect here too).
-        const auto sync_label = [&](int index, std::string label) {
-            buttons[index].label = label;
-            og::runtime::current_session->allbuttons_[index]->label = std::move(label);
-        };
-        sync_label(kDisplayMenuModeIndex,
-                   og::ui::format_display_mode_label(cfg.get_setting("graphics", "fullscreen")));
-        sync_label(kDisplayMenuResolutionIndex, active_resolution_label());
-        sync_label(kDisplayMenuZoomIndex,
-                   og::ui::format_zoom_label(cfg.get_setting("graphics", "zoom")));
-        sync_label(kDisplayMenuSmoothingIndex,
-                   og::ui::format_smoothing_label(
-                       og::ui::effective_smoothing_setting(
-                           cfg.get_setting("graphics", "smoothing"),
-                           cfg.get_setting("graphics", "render")),
-                       og::runtime::current_session->myscreen_
-                           ->world_smoothing_supported()));
-
-        og::runtime::current_session->myscreen_->clear_window();
-        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
-        draw_buttons(buttons, num_buttons);
-
-        mytext.write_xy(80, 13, DARK_BLUE, "%s", "Display");
-        // Live overscan percentage next to its +/- pair.
-        mytext.write_xy(200, effects_row_y(2) + 4, DARK_BLUE, "Overscan: %d%%",
-                        static_cast<int>(
-                            og::runtime::current_session->overscan_percentage_ * 100.0f + 0.5f));
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-
-    return MENU_REDRAW;
-}
+// display_settings_options(): engine-hosted (menu_screen_specs.cpp drives
+// it through run_menu_screen; the legacy loop and its platform hide/rewire
+// block are gone — the spec's Rewire program carries the platform fork.
+// docs/menu-engine.md).
 
 Sint32 teams_join_team(Sint32 team)
 {
@@ -3953,8 +3130,8 @@ Sint32 teams_cycle_guy(Sint32 whichway)
 
 Sint32 teams_cycle_guy_team(Sint32 whichway)
 {
-   // Per-character moves are a local-session surface: networked lobbies stamp
-   // every slot to the owning player's team (the button is hidden there).
+   // Per-character moves are a local-session surface; the button stays hidden
+   // in networked lobbies, where roster ownership is server-authoritative.
    if (picker_lobby_is_networked())
        return MENU_OK;
 
@@ -3970,17 +3147,49 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
 
    pks().teams_menu_guy_slot = slot;
    if (og::ui::cycle_guy_team(save, slot, static_cast<int>(whichway)) >= 0)
-       picker_lobby_sync_roster_from_save();
+   {
+       // §3.8 hook inventory row "team cycle": the cycler mutates the
+       // persisted roster (teamnum), so it takes the full mutation tail —
+       // solo-only surface (the networked early-return above), so the ready
+       // drop inside is a no-op and the autosave is a plain company write.
+       picker_base_camp_after_roster_mutation();
+   }
 
    return MENU_OK;
 }
 
-Sint32 teams_toggle_ready()
+// Shared by the TEAMS mirror (origin_button_index < 0) and the base-camp
+// READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the same
+// lobby flag. The TEAMS mirror refreshes its label by index for the
+// same-frame flip; the base-camp twin is re-derived by the engine
+// label/color pass the same frame (a cross-screen index write here would
+// stamp a roster row instead).
+Sint32 teams_toggle_ready(Sint32 origin_button_index)
 {
    const bool ready = !picker_lobby_local_ready();
+   if (ready)
+   {
+       // §2.6 client ready gate: cross-control OFF + brought characters +
+       // none deployed => popup instead of readying. Spectator/empty-roster
+       // machines ready freely [NET-R9]; the server GO gate is the
+       // authoritative backstop either way.
+       const og::ui::ReadyGoPresentation presentation =
+           picker_compute_ready_go_presentation();
+       if (presentation.state == og::ui::ReadyGoState::ClientUnready &&
+           !presentation.caption.empty())
+       {
+           TRACE("basecamp", "ready_gated");
+           popup_dialog(presentation.caption.c_str(),
+                        "Deploy at least\none character\nbefore readying");
+           return MENU_OK;
+       }
+   }
    (void)picker_lobby_set_ready(ready);
-   refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
-                                  ready ? "UNREADY" : "READY");
+   if (origin_button_index < 0)
+   {
+       refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
+                                      ready ? "UNREADY" : "READY");
+   }
    return MENU_OK;
 }
 
@@ -4021,7 +3230,8 @@ bool picker_check_start_requested()
     picker_lobby_poll();
     Log("picker_check_start_requested: g_start_game_requested={}\n", g_start_game_requested);
     if (g_start_game_requested && og::runtime::current_session->myscreen_)
-        og::runtime::current_session->myscreen_->save_data.save("save0");
+        og::runtime::current_session->myscreen_->save_data.save(
+            og::data::active_company_slot());
     return g_start_game_requested;
 }
 
@@ -4050,7 +3260,8 @@ bool picker_frame()
     if (g_start_game_requested) {
         Log("picker_frame: Game start requested\n");
         if (og::runtime::current_session->myscreen_)
-            og::runtime::current_session->myscreen_->save_data.save("save0");
+            og::runtime::current_session->myscreen_->save_data.save(
+                og::data::active_company_slot());
         g_start_game_requested = false;
         return true;  // Signal to transition to PLAYING state
     }

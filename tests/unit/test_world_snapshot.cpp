@@ -558,6 +558,8 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.weather, actual.weather);
     EXPECT_EQ(expected.respawn_mode, actual.respawn_mode);
     EXPECT_EQ(expected.generator_rate, actual.generator_rate);
+    EXPECT_EQ(expected.control_policy, actual.control_policy);
+    EXPECT_EQ(expected.player_machine, actual.player_machine);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -2233,9 +2235,10 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 195 bytes of world scalars (the CTF block adds 120, the difficulty
-    // submenu scalars 4) + 4 grid bytes.
-    constexpr std::size_t kEntityCountOffset = 200;
+    // 212 bytes of world scalars (the CTF block adds 120, the difficulty
+    // submenu scalars 4, and the v9 control_policy + u8[16] player_machine
+    // map 17) + 4 grid bytes.
+    constexpr std::size_t kEntityCountOffset = 217;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -3011,6 +3014,56 @@ TEST(WorldSnapshot, difficulty_submenu_world_scalars_round_trip_to_mirror)
     og::sim::apply_delta(baseline, decoded);
     EXPECT_EQ(2, baseline.respawn_mode);
     EXPECT_EQ(200, baseline.generator_rate);
+}
+
+// Snapshot v9 (protocol v8, company-basecamp design §4.1): the control policy
+// and the per-player machine map (low 7 bits machine id, bit7 machine-deployed)
+// are world state on the wire and must survive capture -> serialize ->
+// deserialize -> apply plus the delta merge, preserving the bit7 encoding.
+TEST(WorldSnapshot, control_policy_and_player_machine_map_round_trip_to_mirror)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+
+    source.control_policy = 1;
+    // Machine 0 deployed (bit7 set over id 0), machine 3 not deployed, the
+    // rest unbound (0xff sentinel). The default map is all-0xff.
+    source.player_machine[0] = 0x80; // deployed machine, id 0
+    source.player_machine[1] = 0x83; // deployed machine, id 3
+    source.player_machine[2] = 0x03; // bound to machine 3, not deployed
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(1, keyframe.control_policy);
+    EXPECT_EQ(0x80, keyframe.player_machine[0]);
+    EXPECT_EQ(0x83, keyframe.player_machine[1]);
+    EXPECT_EQ(0x03, keyframe.player_machine[2]);
+    EXPECT_EQ(0xff, keyframe.player_machine[3]);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(1, decoded.control_policy);
+    EXPECT_EQ(source.player_machine, decoded.player_machine);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_EQ(0, mirror.control_policy);
+    ASSERT_EQ(0xff, mirror.player_machine[0]);
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(1, mirror.control_policy)
+        << "control_policy must reach the mirror world through apply";
+    EXPECT_EQ(source.player_machine, mirror.player_machine)
+        << "player_machine map must reach the mirror world through apply";
+
+    // Delta merge carries both fields onto a stale baseline.
+    og::sim::WorldSnapshot baseline;
+    og::sim::apply_delta(baseline, decoded);
+    EXPECT_EQ(1, baseline.control_policy);
+    EXPECT_EQ(source.player_machine, baseline.player_machine);
 }
 
 // Level-entry spawn points ride the entity snapshot: recorded values must

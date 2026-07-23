@@ -6,11 +6,16 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/lobby_state.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <string_view>
@@ -18,6 +23,7 @@
 
 class guy;
 class GameWorld;
+class IRandom;
 
 namespace og::ui {
 
@@ -76,6 +82,31 @@ const char* get_random_name(unsigned char family);
 
 // Return a unique name not already in the save's team list.
 std::string get_unique_name(unsigned char family, const SaveData& save);
+
+// --- Company name generation (design §2.2) ---
+
+// Hard cap on a generated company display name. 18 chars fits every later
+// surface without truncation: the Load-list name column, the main-menu
+// company strip, and the base-camp header all budget exactly 18.
+inline constexpr std::size_t kCompanyNameMaxLen = 18;
+
+// The three word banks behind generate_company_name, exposed so the unit
+// pins can assert the budget contract structurally: every word is uppercase
+// A-Z only, and max(adjective) + max(noun) + max(group) + 2 spaces
+// <= kCompanyNameMaxLen, so no combination can ever overflow.
+struct CompanyNameBanks {
+    std::span<const char* const> adjectives;
+    std::span<const char* const> nouns;
+    std::span<const char* const> groups;
+};
+CompanyNameBanks company_name_banks();
+
+// One generated fantasy company name, "<ADJ> <NOUN> <GROUP>" (e.g.
+// "IRON KETTLE BAND"), always <= kCompanyNameMaxLen chars by the bank
+// budget contract above — never truncated. Pure and deterministic under the
+// injected rng (exactly three next() draws per call); the name screen's
+// REROLL simply calls it again on the advancing rng.
+std::string generate_company_name(IRandom& rng);
 
 // --- Team queries ---
 
@@ -167,10 +198,274 @@ bool set_preferred_team(SaveData& save, short team);
 short cycle_guy_team(SaveData& save, int slot_index, int dir);
 
 // The local seat order gameplay derives (game.cpp view_teams): distinct
-// NONZERO roster teams in slot order, with my_team hoisted to the front when
-// it has members. Single source of truth for seat labels (P1..P4) and the
-// local lobby's synthetic peer teams.
+// NONZERO DEPLOYED roster teams in slot order, with my_team hoisted to the
+// front when it has a deployed member. Benched-only colors never create an
+// empty gameplay view.
 std::vector<short> derive_local_seat_teams(const SaveData& save);
+
+// The final local gameplay view teams for numplayers/allied_mode. Together
+// repeats Player 1's effective team; Split uses distinct deployed colors and
+// pads missing seats with otherwise-unused colors so validation can reject them.
+std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save);
+
+// True iff each requested seat can claim a distinct deployed character on its
+// gameplay team. Repeated Together seats consume one character each.
+bool local_seat_teams_have_controls(const SaveData& save,
+                                    std::span<const short> seat_teams);
+
+// --- Company autosave (design §3.8; §1.2 G12 autosave_on_mutation) ---
+
+// Builds the [SAVE-F1] session context for og::data::company_autosave.
+// `networked_lobby_active` is the caller's lobby flag (SDL passes
+// picker_lobby_is_networked(); the terminal clients pass their own state —
+// picker_common stays link-free of the lobby client on purpose). When it is
+// set, the owned teams are every wallet index a base-camp mutation can spend
+// from on this machine: the in-range teamnums of the (private-to-this-
+// machine) in-memory roster, plus my_team for the empty-roster hire case.
+og::data::CompanyAutosaveContext company_autosave_context(
+    const SaveData& save, bool networked_lobby_active);
+
+// The single mutation-autosave choke point the menu layer consumes: the
+// declarative per-screen `autosave_on_mutation` obligation (design §1.2 G12)
+// calls this ONCE after any handled click on a flagged screen — replacing
+// per-callback save tails. Routes through og::data::company_autosave
+// (BaseCampMutation) with the [SAVE-F1] context above, so networked-lobby
+// mutations become owner-preserving merge writes. No screen sets the flag
+// yet (WP4 flips it on); until then nothing calls this in production and
+// legacy flows stay byte-identical.
+[[nodiscard]] SaveDataIoError company_autosave_after_mutation(
+    SaveData& save, bool networked_lobby_active);
+
+// --- Base camp roster (design §2.5) ---
+
+// The display-slot list behind the base-camp roster rows: the occupied
+// team_list slot indices in slot order. Callers re-collect after every
+// roster change (and after a win fold — §3.3: update_guys' held-back pass
+// reorders the roster, so positional display indices must never be held
+// across a merge/fold).
+std::vector<int> collect_base_camp_slots(const SaveData& save);
+
+// Number of roster members with the v14 deployed flag set.
+int count_deployed_members(const SaveData& save);
+
+// The §2.5 deploy-toggle setter: flips guy::deployed at team_list `slot`.
+// Returns the NEW deployed state; false (and no change) for an empty slot.
+// Pure flip — the caller owns the §3.8 autosave and the §4.3 ready-clear
+// (a no-op in solo/local sessions).
+bool toggle_deploy_slot(SaveData& save, int slot);
+
+// One §2.5 roster row's text columns (solo shape, §9.5.3): the HP column is
+// GONE (it was DERIVED max HP — damage never persists to base camp — and
+// redundant with CLASS+LVL; HP lives one click away in TRAIN). Numeric
+// fields left-pad to fixed width (level 2, exp 6) so the digit columns
+// right-align down the page on all three clients (§9.9 graft b — a space
+// advances 6px like every glyph).
+struct BaseCampRowText {
+    std::string name;  // <= 12 chars
+    std::string cls;   // <= 9 chars, uppercased family display name
+    std::string level; // <= 3 chars, left-padded to 2
+    std::string exp;   // <= 6 chars, left-padded to 6
+};
+BaseCampRowText format_base_camp_row(const guy& member);
+
+// Start of the original View Team family's 16-color palette ramp. Base Camp
+// uses its first eight shades for the compact identity swatch.
+unsigned char base_camp_family_ramp_start(short family);
+
+// §2.5 header line A right block: "GOLD {n}" (clipped to the 11-char block).
+std::string format_base_camp_gold_label(const SaveData& save);
+
+// §2.5 header line B, solo shape: "SCEN {n}: {title}  DEP {dep}/{total}",
+// title clipped so the whole line fits the 34-char budget.
+std::string format_base_camp_scen_line(const SaveData& save,
+                                       std::string_view level_title);
+
+// --- Base camp MP display model (design §2.5 networked shape) ---
+
+// One display row of the base-camp roster. Solo/local sessions: every row
+// is owned and `save_slot` indexes the private team_list. Networked: the
+// MERGED lobby roster — this machine's characters first (still read from
+// the PRIVATE save via save_slot, so deploy toggles and train edits show
+// the same frame), then every other machine's replicated slots ordered by
+// owner player index (read-only per the §2.5 ownership rules; their display
+// data rides in `character`/`deployed`/`company`).
+struct BaseCampDisplaySlot {
+    bool owned = true;
+    int save_slot = -1;                     // own rows: team_list index
+    std::uint8_t owner_player_index = 0xff; // foreign rows: owning seat
+    bool deployed = true;                   // foreign rows (own rows read the save)
+    std::string company;                    // owning machine's company name
+    og::sim::LobbyCharacterData character;  // foreign row display data
+};
+
+// Build the display list. `players` is the replicated lobby roster
+// (ignored unless `networked`); `local_player_indices` marks which lobby
+// seats are THIS machine's (their slots are skipped — the private save is
+// the authority for own rows). Two well-stocked machines can replicate
+// more than 24 display slots (full rosters always replicate for display,
+// §4.2) — callers page over the returned size defensively, never over a
+// 24-row assumption.
+std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
+    const SaveData& save,
+    const std::vector<og::sim::LobbyPlayer>& players,
+    const std::vector<std::uint8_t>& local_player_indices,
+    bool networked);
+
+// Deployed/total over the display list; owned rows read the save's LIVE
+// deploy flag (an optimistic toggle or a server reconcile shows the same
+// frame — the §4.2 deploy_reconcile adoption writes that flag).
+struct BaseCampDeployCounts {
+    int deployed = 0;
+    int total = 0;
+};
+BaseCampDeployCounts count_base_camp_display_deploys(
+    const std::vector<BaseCampDisplaySlot>& slots, const SaveData& save);
+
+// Client-side machine grouping of the replicated lobby players. Seat
+// naming convention (the wire's find_local_seats contract): seat 0 keeps
+// the machine's base name, seat k is "base#k" — so the machine key is the
+// name up to the first '#'.
+std::string_view lobby_player_machine_key(std::string_view player_name);
+
+// READY n/m over NON-HOST machines only (a multi-seat host's extra seats
+// are is_host=false but never gate the start — §4.3; the server excludes
+// them by peer, this mirrors it by machine key). A machine counts ready
+// when ALL of its seats are ready.
+struct BaseCampReadyCounts {
+    int ready = 0;
+    int machines = 0;
+};
+BaseCampReadyCounts count_base_camp_ready_machines(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §9.12 (G5) lobby census over the replicated players: machines = distinct
+// machine keys (the HOST machine included, unlike BaseCampReadyCounts),
+// players = total seats.
+struct BaseCampSessionCensus {
+    int machines = 0;
+    int players = 0;
+};
+BaseCampSessionCensus count_base_camp_session_census(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The host machine's human identity for the joiner's "HOST:" display:
+// its company name (players carry machine-generated "net-<hex>" wire names),
+// falling back to the machine key when the company is empty — the
+// format_go_blockers naming convention. Clipped to the 16-char COMPANY
+// column budget. Empty until a host seat exists in the replicated state.
+std::string base_camp_host_display_name(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §9.12 header line B, networked HEALTHY shape — the G5 session status
+// (role + room code + census), clipped to the 42-char line-B band:
+//   host:   "HOSTING <ROOM> - <n> MACH / <p> PLYR"  (no room: the census
+//           alone after HOSTING)
+//   joiner: "IN <ROOM> - HOST: <name16>"  (no room: "JOINED - HOST: ...";
+//           host not yet known: the room half alone)
+// Room codes display-clip at 12 chars (relay codes are "GLAD-XXXX").
+std::string format_base_camp_session_status(
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The §2.5/§9.12 networked line-B priority stack: a degraded-link
+// connection_alert takes the slot (and the ORANGE color) over the healthy
+// session status. `alert` set => {alert text, alert=true}.
+struct BaseCampLineB {
+    std::string text;
+    bool alert = false;
+};
+BaseCampLineB compose_base_camp_line_b(
+    const std::optional<std::string>& alert,
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// --- §2.6 GO / READY slot (the base-camp dual-role button) ---
+
+// The six presentation states of the shared (244,178,68,18) slot: the host
+// keeps GO (grey solo, colored networked), clients get the READY toggle in
+// the SAME rect (exactly one of the two same-rect buttons is visible).
+enum class ReadyGoState : std::uint8_t {
+    LocalGo,         // state 1: solo/local multi — plain grey GO (pinned)
+    LocalGoNoDeploy, // state 2: solo, 0 deployed — grey GO, click popups
+    HostGated,       // state 3: networked host, gates unmet — yellow GO
+    HostGo,          // state 4: networked host, all ready + deploy — green GO
+    ClientUnready,   // state 5: joiner, not ready — red READY
+    ClientReady,     // state 6: joiner, ready — green UNREADY
+};
+
+// §2.6 face colors (label text stays DARK_BLUE in every state; the bevel
+// edges stay grey — only vbutton::color's front face is stamped).
+// CONTRAST DECISION (§2.0 U1, recorded 2026-07-20): the mandated one-frame
+// TESTING capture measured DARK_BLUE(0,0,168) against the candidate faces:
+// 61 green (2.61:1, readable) PASS, 93 yellow (3.20:1) PASS, 45 dark red
+// (1.23:1, illegible) FAIL — so the unready face takes the sanctioned
+// fallback grammar's shipped RED=40 (2.75:1, strong hue contrast; the
+// draw_button_colored FX-toggle red) while 61/93 ship as designed.
+inline constexpr std::uint8_t kReadyGoFaceGrey = 13;    // BUTTON_FACING
+inline constexpr std::uint8_t kReadyGoFaceGo = 61;      // green run
+inline constexpr std::uint8_t kReadyGoFaceGated = 93;   // yellow run
+inline constexpr std::uint8_t kReadyGoFaceUnready = 40; // RED (U1 fallback)
+
+// One frame's presentation of the slot. `label` is the ACTION ("GO",
+// "READY", "UNREADY" — label = the action, color = the state); `caption`
+// is the §2.6 blocker/denial headline a click on the gated state surfaces
+// ("WAITING FOR OTHERS" / "NO ONE IS DEPLOYED" / "DEPLOY AT LEAST ONE"),
+// empty when the click acts directly.
+struct ReadyGoPresentation {
+    ReadyGoState state = ReadyGoState::LocalGo;
+    std::string label;
+    std::uint8_t face_color = kReadyGoFaceGrey;
+    std::string caption;
+};
+
+// The §2.6 state table, pure (headlessly unit-tested — U10). `spectator`
+// means this machine contributes ZERO character slots to the lobby
+// (numplayers==0 spectator seat or an empty roster): such machines ready
+// freely [NET-R9]. `cross_control` ON removes the per-machine deploy
+// minimum for the client ready gate; the global >= 1 rule (host states)
+// always applies. Solo/local (`networked` false) never consults ready and
+// keeps the plain grey GO byte-identical (states 1-2).
+ReadyGoPresentation format_ready_go_button(bool networked,
+                                           bool is_host,
+                                           bool my_ready,
+                                           bool all_other_machines_ready,
+                                           int global_deployed,
+                                           int own_deployed,
+                                           bool cross_control,
+                                           bool spectator);
+
+// §2.6 state-3 popup body: the not-ready machines' company names (machine
+// key = seat-name convention; a machine's company = its first seat's
+// non-empty company, falling back to the machine key), one per line,
+// clipped to 26 chars, at most 4 lines with an "AND n MORE" tail.
+std::string format_go_blockers(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
+// controls its characters) / "CTRL: ALL" (players may control others'
+// characters in-level). Shared by the SDL TEAMS row and the curses lobby
+// status line.
+std::string format_cross_control_label(bool cross_control_enabled);
+
+// One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
+// carried by the family chip; 16-char COMPANY). §9.5.3: no HP column, and
+// the level left-pads to 2 like the solo shape (§9.9 graft b).
+struct BaseCampNetRowText {
+    std::string name;    // <= 10 chars
+    std::string company; // <= 16 chars
+    std::string level;   // <= 3 chars, left-padded to 2
+};
+BaseCampNetRowText format_base_camp_net_row(std::string_view name,
+                                            std::string_view company,
+                                            int level);
+
+// Display-only guy copy of a replicated foreign character (derived-stat
+// input + family swatch). NOT the roster-assembly builder — no id/teamnum
+// semantics, never enters a save or a level.
+std::unique_ptr<guy> make_base_camp_display_guy(
+    const og::sim::LobbyCharacterData& character);
 
 // One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
@@ -280,7 +575,8 @@ bool is_spectator_mode(const SaveData& save);
 // Format the difficulty button label (e.g. "Difficulty: Battle").
 std::string format_difficulty_label(int difficulty);
 
-// Format the allied mode button label ("PVP: Ally" or "PVP: Enemy").
+// Format the seat-assignment button label ("SEATS: TOGETHER" or
+// "SEATS: SPLIT"). Combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
 // Format the CTF team count label ("CTF Teams: N").
@@ -304,6 +600,100 @@ std::string format_permadeath_label(const SaveData& save);
 
 // "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
 std::string format_generator_rate_label(const SaveData& save);
+
+// --- Company screens: label formatters (design §2.2/§2.3) ---
+// (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
+// the filename teaches nothing; companies are fully managed in-game on
+// every client. Slug derivation itself stays og::data::derive_company_slot.)
+
+// "COMPANIES (N)" — the §2.3 Company List header line.
+std::string format_company_list_title(int count);
+
+// One §2.3 Company List row, pre-split into the three drawn columns (the
+// SDL content pass draws them at x=27/141/155; terminals join them).
+struct CompanyRowText {
+    // Display name, <= kCompanyNameMaxLen (18) chars, clipped; empty
+    // display names (and corrupt headers that never parsed one) fall back
+    // to the slot name so the row still identifies its file.
+    std::string name;
+    // Roster count, right-aligned 2 chars ("12", " 3"); "--" on corrupt
+    // rows (the count did not parse).
+    std::string roster;
+    // Last-played "YYYY-MM-DD" (UTC), 10 chars; "" when never played;
+    // "CORRUPT" on corrupt rows — the §2.3 corrupt-row marking.
+    std::string played;
+    bool corrupt = false;
+};
+CompanyRowText format_company_row(const og::data::CompanyInfo& info);
+
+// One §2.3 row joined into a single line for the terminal clients (both must
+// stay byte-identical): "<marker> <name padded to 18> <roster 2> <played>".
+// `active` marks the machine's active company with '*' (the terminal
+// projection of the SDL red do_outline, U4). The played column is omitted
+// entirely when empty, so never-played rows carry no trailing spaces.
+std::string format_company_row_line(const og::data::CompanyInfo& info,
+                                    bool active);
+
+// --- Backups sub-view: label formatters (design §2.4) ---
+
+// "BACKUPS: <name <= 18ch> (N/20)" — the §2.4 title line. The "/20"
+// (kCompanyBackupRetention) IS the retention display: the user sees how full
+// the ring is. `company_name` is clipped to kCompanyNameMaxLen.
+std::string format_backup_list_title(const std::string& company_name,
+                                     int count);
+
+// One §2.4 backup row, pre-split into the two drawn columns (the SDL content
+// pass draws them at x=27/151; terminals join them).
+struct BackupRowText {
+    // "L<nn>" plus the level title (<= 14 chars) when it is resolvable: the
+    // title comes off the MOUNTED package (the level_display_guarded rule),
+    // so a backup pointing at an unmounted campaign shows the bare "L<nn>".
+    // The "Level N" fallback title is dropped (redundant with L<nn>).
+    // "CORRUPT" on corrupt snapshots — the §2.4 corrupt-backup marking.
+    std::string level;
+    // "MM-DD HH:MM" (UTC — deterministic like the §2.3 date column) from the
+    // snapshot header's last_played; "" when the snapshot predates any stamp;
+    // "--" on corrupt snapshots.
+    std::string saved;
+    bool corrupt = false;
+};
+BackupRowText format_backup_row(const og::data::CompanyBackupInfo& info);
+
+// One §2.4 row joined into a single line for the terminal clients (both must
+// stay byte-identical): "<level padded to 20> <saved>"; the saved column is
+// omitted entirely when empty, so unstamped rows carry no trailing spaces.
+std::string format_backup_row_line(const og::data::CompanyBackupInfo& info);
+
+// Human-readable string for CompanyRestoreError values (§3.7 [SAVE-R3]).
+// RestampFailed is worded as the partial success it is: the rewind itself
+// finished, only the timestamp write failed.
+const char* company_restore_error_string(og::data::CompanyRestoreError error);
+
+// Outcome of CONTINUE (§2.1): the caller acts on failures (the SDL surface
+// keeps whatever is loaded rather than silently swapping in a broken file).
+enum class ContinueResult {
+    Opened,     // active company repointed and loaded
+    NoCompany,  // select_startup_company() was empty (CONTINUE is gated hidden)
+    Corrupt,    // the most-recent company header is invalid — do not switch
+    LoadFailed, // header validated but the full load failed
+};
+
+// §2.3 open-one-company core shared by CONTINUE and the Company List row
+// click: validate the slot's header first (never silently switch to a
+// corrupt company), point the active-company slot at it, and load it into
+// `save` (load mounts the company's campaign). On a load failure the
+// previous active slot is restored — and its save best-effort reloaded — so
+// the slot and the in-memory save never disagree about which company is
+// open. `io_error`, when non-null, receives the load error for surfacing.
+ContinueResult open_company_slot(SaveData& save, const std::string& slot,
+                                 SaveDataIoError* io_error = nullptr);
+
+// §2.1 CONTINUE: select the most-recent company (WP2 startup selection) and
+// open it via open_company_slot. Returns why it stopped so the surface can
+// react (popup + Company List fallback on Corrupt/LoadFailed, §2.9 flow 2).
+// `io_error`, when non-null, receives the load error for surfacing.
+ContinueResult open_most_recent_company(SaveData& save,
+                                        SaveDataIoError* io_error = nullptr);
 
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 // Pure string helpers over the depth-effect selector values
@@ -460,6 +850,11 @@ public:
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
     void set_team(int team_num);
+
+    // §2.5 per-row TRAIN: seat the session directly on `slot` (no more
+    // enter-then-cycle). Returns false (position unchanged) when the slot is
+    // empty or not editable by this machine.
+    bool seek_slot(int slot);
 
     // Accept: validates cost, deducts gold, copies working copy -> real team member.
     // If level changed, calls upgrade_to_level(). Returns false if can't afford.

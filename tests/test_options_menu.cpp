@@ -58,9 +58,11 @@ static bool click_until_interactable(const std::string& click_id, const std::str
     return has_interactable(next_id);
 }
 
-// Test: Open options menu, toggle some settings, then exit.
+// Test: Open PLAYER SETTINGS and its CONTROLS door, then open MAIN OPTIONS,
+// toggle its settings, and exit.
 //
-// Flow: Main Menu -> Options -> toggle some settings -> Back -> (main menu exits)
+// Flow: Main Menu -> Player Settings -> Controls -> Back -> Back -> Options
+// -> toggle settings -> Back -> (main menu exits)
 //
 // Verifies:
 //   1. Options menu opens
@@ -127,6 +129,10 @@ struct OptionsState {
     bool saw_options;
     bool entered_controls;
     bool exited_controls;
+    bool changed_control_mode;
+    bool settings_restore_preserved_controls;
+    bool reset_controls_from_player_settings;
+    int initial_control_mode;
     bool entered_fx[kFxScreenCount];
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
@@ -148,7 +154,8 @@ struct OptionsState {
 // Under machine load a single click can be dropped (the press is still held
 // when the handler samples the mouse), so poll for the flip and re-click
 // until a deadline. Net flip parity doesn't matter: the flow ends with
-// RESTORE DEFAULTS, which reloads cfg from disk and undoes every toggle.
+// RESTORE SETTINGS, which reloads non-control cfg defaults and undoes every
+// presentation/effect toggle.
 static bool toggle_effect_and_check_flip(const char* button_id, const char* category,
                                          const char* cfg_key)
 {
@@ -359,35 +366,65 @@ static int options_injector(void* data)
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
-    // Wait for main menu
-    if (!wait_for_interactable("options", 5000)) {
+    // Wait for main menu, then visit the controls through PLAYER SETTINGS.
+    if (!wait_for_interactable("player_settings", 5000)) {
         state->finished = true;
         return 0;
     }
     SDL_Delay(750);
 
+    fprintf(stderr, "  [test] entering player settings\n");
+    if (click_until_interactable("player_settings", "player_controls", 5000)) {
+        fprintf(stderr, "  [test] entering player controls\n");
+        bool in_controls =
+            click_until_interactable("player_controls", "player1_mode", 5000);
+        SDL_Delay(150);
+        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
+            state->entered_controls = true;
+            interact("player1_mode");
+            SDL_Delay(300);
+            state->changed_control_mode =
+                get_player_control_mode(0) != state->initial_control_mode;
+            if (wait_for_interactable("controls_back", 5000)) {
+                SDL_Delay(200);
+                state->exited_controls = click_until_interactable(
+                    "controls_back", "player_controls", 5000);
+            }
+            wait_for_interactable("player_controls", 5000);
+        }
+
+        fprintf(stderr, "  [test] resetting controls from player settings\n");
+        if (wait_for_interactable("reset_controls", 5000)) {
+            interact("reset_controls");
+            SDL_Delay(300);
+            state->reset_controls_from_player_settings =
+                get_player_control_mode(0) == state->initial_control_mode;
+        }
+
+        // Change the mode once more. RESTORE SETTINGS in GAME SETTINGS
+        // must preserve this second change.
+        if (click_until_interactable(
+                "player_controls", "player1_mode", 5000)) {
+            interact("player1_mode");
+            SDL_Delay(300);
+            if (wait_for_interactable("controls_back", 5000))
+                click_until_interactable(
+                    "controls_back", "player_controls", 5000);
+            wait_for_interactable("player_controls", 5000);
+        }
+        interact("player_settings_back");
+        wait_for_interactable("options", 5000);
+    }
+
     fprintf(stderr, "  [test] clicking options\n");
-    bool in_options = click_until_interactable("options", "gameplay_fx", 10000);
+    bool in_options =
+        click_until_interactable("options", "gameplay_fx", 10000);
 
     // Options menu buttons
     SDL_Delay(150);
     if (in_options || wait_for_interactable("gameplay_fx", 10000)) {
         state->saw_options = true;
         SDL_Delay(150);
-
-        fprintf(stderr, "  [test] entering player controls\n");
-        bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
-        SDL_Delay(150);
-        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
-            state->entered_controls = true;
-            interact("player1_mode");
-            if (wait_for_interactable("controls_back", 5000)) {
-                SDL_Delay(200);
-                state->exited_controls = click_until_interactable("controls_back", "gameplay_fx", 5000);
-            }
-            wait_for_interactable("gameplay_fx", 10000);
-            SDL_Delay(150);
-        }
 
         fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
@@ -507,11 +544,13 @@ static int options_injector(void* data)
             SDL_Delay(300);
         }
 
-        // Restore defaults last: it reloads cfg from disk, undoing every
-        // toggle above (including the FX subscreen flips).
-        fprintf(stderr, "  [test] restoring defaults\n");
+        // Restore game settings last, undoing the presentation and
+        // FX flips without touching the player-control mode changed above.
+        fprintf(stderr, "  [test] restoring settings\n");
         interact("restore_defaults");
-        SDL_Delay(80);
+        SDL_Delay(300);
+        state->settings_restore_preserved_controls =
+            get_player_control_mode(0) != state->initial_control_mode;
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
@@ -691,6 +730,10 @@ TEST(OptionsMenu, apply_display_settings_covers_all_modes) {
 TEST(OptionsMenu, options_menu) {
     trace_clear();
 
+    reset_default_player_controls();
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+
     // Need save data for continue_game
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -698,6 +741,7 @@ TEST(OptionsMenu, options_menu) {
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     OptionsState state = {};
+    state.initial_control_mode = get_player_control_mode(0);
     SDL_Thread* thread = SDL_CreateThread(options_injector, "options_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -712,11 +756,23 @@ TEST(OptionsMenu, options_menu) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    // Leave this integration process with the same default controls it began
+    // with; the assertions below use the injector's captured results.
+    reset_default_player_controls();
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+
     ASSERT_TRUE(state.started) << "injector thread should have started";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
     ASSERT_TRUE(state.entered_controls) << "should have entered controls submenu";
     ASSERT_TRUE(state.exited_controls) << "should have exited via controls_back";
+    ASSERT_TRUE(state.changed_control_mode)
+        << "controls screen should change the P1 direction mode";
+    ASSERT_TRUE(state.settings_restore_preserved_controls)
+        << "GAME SETTINGS restore must not reset player controls";
+    ASSERT_TRUE(state.reset_controls_from_player_settings)
+        << "PLAYER SETTINGS RESET CONTROLS should restore the default mode";
     for (int s = 0; s < kFxScreenCount; ++s) {
         const FxScreenSpec& screen = kFxScreens[s];
         ASSERT_TRUE(state.entered_fx[s])
@@ -845,15 +901,15 @@ void capture_quit_main_menu(CaptureState* state)
     }
 }
 
-// menu_tour: main menu (keyboard-nav highlight walk) -> SETTINGS -> CONTROLS
-// (flip P1 mode twice: 4-DIRECTION <-> 8-DIRECTION) -> back -> back -> quit.
+// menu_tour: main menu highlight walk -> PLAYER SETTINGS -> CONTROLS (flip
+// P1 mode twice) -> back -> back -> quit.
 int menu_tour_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     CaptureState* state = static_cast<CaptureState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("options", 10000)) {
+    if (!wait_for_interactable("player_settings", 10000)) {
         state->finished = true;
         return 0;
     }
@@ -867,12 +923,13 @@ int menu_tour_injector(void* data)
     g_test_menu_nav_key = KEY_UP;
     SDL_Delay(480);
 
-    bool in_options = click_until_interactable("options", "player_controls", 10000);
+    bool in_player_settings = click_until_interactable(
+        "player_settings", "player_controls", 10000);
     SDL_Delay(900);
-    if (in_options || wait_for_interactable("player_controls", 10000)) {
+    if (in_player_settings || wait_for_interactable("player_controls", 10000)) {
         state->saw_options = true;
 
-        // Two nav steps inside SETTINGS so the highlight is seen moving.
+        // Two nav steps inside PLAYER SETTINGS so the highlight is seen moving.
         g_test_menu_nav_key = KEY_DOWN;
         SDL_Delay(480);
         g_test_menu_nav_key = KEY_RIGHT;
@@ -892,9 +949,9 @@ int menu_tour_injector(void* data)
             SDL_Delay(700);
         }
 
-        if (wait_for_interactable("options_back", 5000)) {
+        if (wait_for_interactable("player_settings_back", 5000)) {
             SDL_Delay(300);
-            interact("options_back");
+            interact("player_settings_back");
             state->used_options_back = true;
             SDL_Delay(700);
         }
@@ -1119,7 +1176,7 @@ TEST(OptionsMenu, zz_capture_menu_tour)
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished);
-    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.saw_options) << "should have entered player settings";
     ASSERT_TRUE(state.entered_controls) << "should have entered controls";
     ASSERT_TRUE(state.exited_controls) << "should have returned from controls";
     ASSERT_TRUE(state.used_options_back) << "should have exited settings";

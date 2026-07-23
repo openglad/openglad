@@ -24,6 +24,12 @@ const NETWORKING_MENU_BUTTONS = {
   join: { x: 242, y: 175 },
 };
 const ACTIVE_ROOM_FIRST = { x: 160, y: 77 };
+// §2.5/§2.10: the base-camp GO/READY slot is (244,178,68,18), center
+// (278,187). On the host machine the rect reads GO (face color keyed to the
+// §2.6 state table); on a joiner the same rect is the READY/UNREADY toggle
+// twin, so the one coordinate drives both halves of the ready flow.
+const GO_READY_BUTTON = { x: 278, y: 187 };
+const GO_READY_SLOT_REGION = { x: 244, y: 178, w: 68, h: 18 };
 // popup_dialog's single OK button: x 135..185, y 130..150. Its event loop
 // exits on that click (or on a Return/Space/Backspace-as-back key press;
 // physical Escape is swallowed on web).
@@ -285,6 +291,13 @@ async function loadPickerWithSkippedIntro(page, relayBaseUrlForTests) {
   await page.addInitScript(
     ({ relayBaseUrl }) => {
       window.__opengladSkipIntroForTests = true;
+      // The company-era main menu boots into the no-company variant ("NO
+      // COMPANY YET - BEGIN A NEW GAME") unless a company save exists, and
+      // the CONTINUE half at (114,85) only exists in the with-company
+      // variant. Seed the standard single-soldier web company at boot (the
+      // same hook the game/jitter/touch specs use) so every navigation in
+      // this spec starts from CONTINUE.
+      window.__opengladSeedSinglePlayerTeam = true;
       if (relayBaseUrl) {
         window.__opengladRelayBaseUrlForTests = relayBaseUrl;
       }
@@ -948,6 +961,157 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
       // signal rather than host pixels.
       expect(ownerConnection.closed).toBe(false);
       expect(joinerConnection.closed).toBe(false);
+
+      // --- §4.8 READY-before-GO over the relay (§2.6 state table). ---
+
+      // 1. Denied GO: the host's GO is gated on the joiner's READY (§2.6
+      // state 3). The denial is synchronous and client-side on the browser
+      // host: a "WAITING FOR:" popup, nothing sent to the server, and the
+      // base camp stays alive — no hang, no abort.
+      const hostPopupBaseline = await captureSettledRegion(
+        hostPage,
+        POPUP_REGION,
+        'the host base-camp popup area before the gated GO',
+      );
+      let denialPopupUp = false;
+      for (let attempt = 0; attempt < 3 && !denialPopupUp; ++attempt) {
+        await clickCanvasGameCoord(
+          hostPage,
+          GO_READY_BUTTON.x,
+          GO_READY_BUTTON.y,
+        );
+        try {
+          await waitForRegionToLeave(
+            hostPage,
+            POPUP_REGION,
+            hostPopupBaseline,
+            'GO before the joiner is ready should draw the WAITING FOR popup',
+            7_000,
+          );
+          denialPopupUp = true;
+        } catch (error) {
+          if (attempt === 2) {
+            throw error;
+          }
+        }
+      }
+      await expectNoWasmAbort(
+        hostPage,
+        hostErrors,
+        'host GO denied while the joiner is unready',
+      );
+      // The denied GO must not have left the picker on either page.
+      expect(
+        await hostPage.evaluate(() => window.__opengladGameState === 2),
+      ).toBe(false);
+      expect(
+        await joinPage.evaluate(() => window.__opengladGameState === 2),
+      ).toBe(false);
+      // Dismiss the popup; the base camp must redraw exactly as captured.
+      for (let attempt = 0; attempt < 2; ++attempt) {
+        await hostPage.waitForTimeout(300);
+        await clickCanvasGameCoord(
+          hostPage,
+          POPUP_OK_BUTTON.x,
+          POPUP_OK_BUTTON.y,
+        );
+        try {
+          await waitForRegionToShow(
+            hostPage,
+            POPUP_REGION,
+            hostPopupBaseline,
+            'the base camp should be redrawn after dismissing WAITING FOR',
+            10_000,
+          );
+          break;
+        } catch (error) {
+          if (attempt === 1) {
+            throw error;
+          }
+        }
+      }
+
+      // 2. The joiner readies via the GO-slot READY twin. Two independent
+      // confirmations: the joiner's own slot flips READY -> UNREADY
+      // locally, and the HOST's GO face leaves its gated state (the ready
+      // travelled joiner -> relay -> host lobby server -> host §2.6
+      // presentation).
+      const hostGoGated = await captureSettledRegion(
+        hostPage,
+        GO_READY_SLOT_REGION,
+        'the host GO slot while gated on the unready joiner',
+      );
+      const joinReadyBaseline = await captureSettledRegion(
+        joinPage,
+        GO_READY_SLOT_REGION,
+        'the joiner READY slot before the toggle',
+      );
+      let readyToggled = false;
+      for (let attempt = 0; attempt < 3 && !readyToggled; ++attempt) {
+        await clickCanvasGameCoord(
+          joinPage,
+          GO_READY_BUTTON.x,
+          GO_READY_BUTTON.y,
+        );
+        try {
+          await waitForRegionToLeave(
+            joinPage,
+            GO_READY_SLOT_REGION,
+            joinReadyBaseline,
+            'the joiner READY toggle should flip to UNREADY',
+            7_000,
+          );
+          readyToggled = true;
+        } catch (error) {
+          if (attempt === 2) {
+            throw error;
+          }
+        }
+      }
+      await waitForRegionToLeave(
+        hostPage,
+        GO_READY_SLOT_REGION,
+        hostGoGated,
+        "the joiner's READY should reach the host and ungate its GO face",
+        30_000,
+      );
+
+      // 3. With the joiner ready, host GO starts the game on BOTH machines
+      // through the relay (the owner-locked default install). The picker
+      // runs under Asyncify, so gameplay liveness = __opengladGameState 2
+      // or the first render sample.
+      const inGameplay = () =>
+        window.__opengladGameState === 2 ||
+        Boolean(window.__opengladLatestRenderSample);
+      let hostStarted = false;
+      for (let attempt = 0; attempt < 3 && !hostStarted; ++attempt) {
+        await clickCanvasGameCoord(
+          hostPage,
+          GO_READY_BUTTON.x,
+          GO_READY_BUTTON.y,
+        );
+        try {
+          await hostPage.waitForFunction(inGameplay, null, {
+            timeout: 45_000,
+          });
+          hostStarted = true;
+        } catch (error) {
+          if (attempt === 2) {
+            throw error;
+          }
+        }
+      }
+      await joinPage.waitForFunction(inGameplay, null, { timeout: 90_000 });
+      await expectNoWasmAbort(
+        hostPage,
+        hostErrors,
+        'host gameplay start over the relay',
+      );
+      await expectNoWasmAbort(
+        joinPage,
+        joinErrors,
+        'joiner gameplay start over the relay',
+      );
 
       await expectNoWasmAbort(
         hostPage,

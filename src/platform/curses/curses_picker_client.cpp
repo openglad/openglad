@@ -23,17 +23,21 @@
 #include <openglad/platform/curses/curses_picker_client.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -50,7 +54,6 @@ namespace og::curses {
 namespace {
 
 using og::ui::PickerMenuCommand;
-using og::ui::PickerMenuDefinition;
 using og::ui::PickerMenuId;
 using og::ui::PickerMenuItem;
 using og::ui::TextPickerConfig;
@@ -82,13 +85,19 @@ public:
     // one. Returns the chosen entry index, or -1 on cancel (Esc/q/Backspace or
     // exhausted scripted input). `initial` is the starting highlight (clamped to
     // a selectable entry).
+    // `extra_keys`/`out_key`: opt-in single-key actions (the §2.5 roster's
+    // d=deploy / r=ready) — a listed key returns the cursor row with
+    // *out_key set; Enter/space return with *out_key == 0.
     int choose(std::string_view title, const std::vector<ListEntry>& entries,
-               std::string_view hint, int initial)
+               std::string_view hint, int initial,
+               std::u32string_view extra_keys = {}, char32_t* out_key = nullptr)
     {
         const int start = clamp_to_selectable(entries, initial, +1);
         if (start < 0)
             return -1; // nothing selectable
         int cursor = start;
+        if (out_key != nullptr)
+            *out_key = 0;
 
         for (;;) {
             draw_list(title, entries, hint, cursor);
@@ -98,6 +107,11 @@ public:
                 return -1; // scripted input exhausted -> treat as cancel
             if (key.is_release())
                 continue; // act on presses/repeats only; ignore key-up + focus
+            if (out_key != nullptr && key.is_char() &&
+                extra_keys.find(key.ch) != std::u32string_view::npos) {
+                *out_key = key.ch;
+                return cursor;
+            }
             if (is_cancel(key))
                 return -1;
             if (key.is_enter() || key.is_char(U' '))
@@ -289,91 +303,133 @@ private:
     IClock& clock_;
 };
 
-// --- dynamic menu labels (shared with TextPickerClient semantics) --------
+// --- dynamic menu labels (shared binding layer) --------------------------
 
-// "N. Title" for the configured level. Scenario titles are read off the
-// MOUNTED package, so the titled form is only trustworthy while the mount
-// matches the configured campaign (team build keeps them in sync); otherwise
-// show the bare number rather than a wrong campaign's title.
+// Borrow bundle for the shared label/gate layer (menu_binding.h): labels,
+// context lines, and guard messages all come from the same strings the text
+// client prints.
+og::ui::MenuLabelContext label_context(const TextPickerConfig& config,
+                                       const CursesPickerOptions& options,
+                                       const SaveData& save)
+{
+    og::ui::MenuLabelContext context;
+    context.save = &save;
+    context.session_difficulty = options.difficulty;
+    context.spectator = og::ui::is_spectator_mode(save);
+    context.campaign = config.campaign;
+    context.level = config.level;
+    return context;
+}
+
+// Mount-guarded level display over the session campaign (the shared
+// level_display_guarded helper carries the guard rule).
 std::string level_display(const TextPickerConfig& config)
 {
-    if (get_mounted_campaign() == config.campaign)
-        return og::data::scenario_display_name(config.level);
-    return std::to_string(config.level);
+    return og::ui::level_display_guarded(config.campaign, config.level);
 }
 
-std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& config,
-                            const CursesPickerOptions& options, const SaveData& save)
+// §2.3: prompt for a 1-based company row number; -1 on cancel/invalid.
+int prompt_company_index(Menu& menu, int count, std::string_view title)
 {
-    if (item.command == PickerMenuCommand::SetDifficulty)
-        return og::ui::format_difficulty_label(options.difficulty);
-    if (item.command == PickerMenuCommand::SetLevel)
-        return std::format("{} ({})", item.label, level_display(config));
-    if (item.command == PickerMenuCommand::SetCampaign)
-        return std::format("{} ({})", item.label,
-            og::data::campaign_display_title(config.campaign));
-    if (item.command == PickerMenuCommand::ToggleAlliedMode)
-        return og::ui::format_allied_mode_label(save);
-    if (item.command == PickerMenuCommand::CycleCtfTeamCount)
-        return og::ui::format_ctf_teams_label(save);
-    if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
-        return og::ui::format_ctf_caps_label(save);
-    if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
-        return og::ui::format_ctf_troops_label(save);
-    if (item.command == PickerMenuCommand::CycleRespawnMode)
-        return og::ui::format_respawn_mode_label(save);
-    if (item.command == PickerMenuCommand::CycleRespawnDelay)
-        return og::ui::format_respawn_delay_label(save);
-    if (item.command == PickerMenuCommand::TogglePermadeath)
-        return og::ui::format_permadeath_label(save);
-    if (item.command == PickerMenuCommand::CycleGeneratorRate)
-        return og::ui::format_generator_rate_label(save);
-    return std::string(item.label);
-}
-
-// Team + gold header lines shown above the Team Build menu (the curses analogue
-// of TextPickerClient::print_menu_context).
-std::vector<std::string> team_context_lines(const SaveData& save)
-{
-    std::vector<std::string> lines;
-    if (save.team_size == 0) {
-        lines.push_back("Team: (empty)");
-    } else {
-        std::string team = "Team: ";
-        bool first = true;
-        og::ui::for_each_team_member(save, [&](int, const guy& member) {
-            if (!first)
-                team += ", ";
-            team += std::format("{} ({})", member.name,
-                                og::ui::family_display_name(member.family));
-            first = false;
-        });
-        lines.push_back(team);
+    bool accepted = false;
+    const std::string entered = menu.prompt(title,
+        std::format("Company # [1-{}]: ", count), "1", accepted);
+    if (!accepted)
+        return -1;
+    const auto choice = parse_int_strict(entered);
+    if (!choice || *choice < 1 || *choice > count) {
+        menu.show_text(title, {"Invalid company selection."});
+        return -1;
     }
-    lines.push_back(std::format("Gold: {}", static_cast<unsigned>(save.m_totalcash[0])));
-    return lines;
+    return *choice - 1;
+}
+
+// §2.4: prompt for a 1-based backup row number; -1 on cancel/invalid.
+int prompt_backup_index(Menu& menu, int count, std::string_view title)
+{
+    bool accepted = false;
+    const std::string entered = menu.prompt(title,
+        std::format("Backup # [1-{}]: ", count), "1", accepted);
+    if (!accepted)
+        return -1;
+    const auto choice = parse_int_strict(entered);
+    if (!choice || *choice < 1 || *choice > count) {
+        menu.show_text(title, {"Invalid backup selection."});
+        return -1;
+    }
+    return *choice - 1;
 }
 
 // --- team views: roster / hire / train -----------------------------------
 
-void view_team_roster(Menu& menu, const SaveData& save)
+// §3.8: every curses base-camp mutation autosaves the active company slot
+// ([SAVE-R2]: the curses client's slot authority points it at the user's
+// chosen quicksave slot). The §4.3 ready-clear is a no-op here — the curses
+// picker holds no networked lobby (the network lobby's 'r' key is separate).
+void autosave_company_after_mutation(SaveData& save)
 {
-    std::vector<std::string> lines;
-    if (save.team_size == 0) {
-        lines.push_back("(empty)");
-    } else {
-        int idx = 1;
-        og::ui::for_each_team_member(save, [&](int, const guy& member) {
-            lines.push_back(std::format(
-                "{:2}. {:<14} {:<14} L={} STR={} DEX={} CON={} INT={} ARM={}",
-                idx++, member.name, og::ui::family_display_name(member.family),
-                member.level, member.strength, member.dexterity,
-                member.constitution, member.intelligence, member.armor));
-        });
+    (void)og::ui::company_autosave_after_mutation(save, false);
+}
+
+void train_team(Menu& menu, SaveData& save, int seed_slot = -1);
+
+// §2.5 command roster (curses shape): deploy flags lead each row;
+// Enter = train that character, 'd' = toggle deploy, 'r' = ready (guarded
+// outside networked lobbies), Esc = back.
+void view_team_roster(Menu& menu, SaveData& save)
+{
+    int cursor = 0;
+    for (;;) {
+        const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+        if (slots.empty()) {
+            menu.show_text("Team Roster", {"(empty)", "",
+                std::format("Gold: {}",
+                    static_cast<unsigned>(save.m_totalcash[0]))});
+            return;
+        }
+
+        std::vector<ListEntry> entries;
+        for (std::size_t i = 0; i < slots.size(); ++i) {
+            const guy& member =
+                *save.team_list[static_cast<std::size_t>(slots[i])];
+            entries.push_back(ListEntry{std::format(
+                "[{}] {:<14} {:<14} L={:>2} STR={} DEX={} CON={} INT={} ARM={}",
+                member.deployed ? 'X' : ' ', member.name,
+                og::ui::family_display_name(member.family), member.level,
+                member.strength, member.dexterity, member.constitution,
+                member.intelligence, member.armor), true});
+        }
+        entries.push_back(ListEntry{std::format("DEP {}/{}   Gold: {}",
+            og::ui::count_deployed_members(save),
+            static_cast<int>(slots.size()),
+            static_cast<unsigned>(save.m_totalcash[0])), false});
+
+        char32_t key = 0;
+        const int choice = menu.choose("Team Roster", entries,
+            "Enter train | d deploy | r ready | Esc back", cursor,
+            U"dDrR", &key);
+        if (choice < 0)
+            return;
+        cursor = choice;
+        if (choice >= static_cast<int>(slots.size()))
+            continue;
+        const int slot = slots[static_cast<std::size_t>(choice)];
+
+        if (key == U'd' || key == U'D') {
+            const bool deployed = og::ui::toggle_deploy_slot(save, slot);
+            (void)deployed;
+            autosave_company_after_mutation(save);
+            continue;
+        }
+        if (key == U'r' || key == U'R') {
+            // §2.6 state 1: no ready machinery outside a networked lobby
+            // (the curses network lobby keeps its own 'r' key).
+            menu.show_text("Ready",
+                {"Ready applies to networked lobbies only."});
+            continue;
+        }
+        train_team(menu, save, slot);
     }
-    lines.push_back("");
-    lines.push_back(std::format("Gold: {}", static_cast<unsigned>(save.m_totalcash[0])));
-    menu.show_text("Team Roster", lines);
 }
 
 // Returns the updated team_families so the caller can re-sync config.
@@ -427,6 +483,7 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
                 {std::format("Hired {}!",
                     save.team_list[static_cast<size_t>(slot)]->name)});
             config.team_families = og::ui::collect_team_families(save);
+            autosave_company_after_mutation(save);  // §3.8
             if (session.team_full()) {
                 menu.show_text("Hire Troops", {"Team is now full."});
                 return;
@@ -445,13 +502,44 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
     }
 }
 
-void train_team(Menu& menu, SaveData& save)
+// The §2.5 'deploy' item (was Load Team): prompt for a roster row and flip
+// its mission-deploy flag (§3.8 autosave rides the flip).
+void deploy_prompt(Menu& menu, SaveData& save)
+{
+    const std::vector<int> slots = og::ui::collect_base_camp_slots(save);
+    if (slots.empty()) {
+        menu.show_text("Deploy", {"(empty roster - hire someone first)"});
+        return;
+    }
+    bool accepted = false;
+    const std::string entered = menu.prompt("Deploy",
+        std::format("Toggle deploy for roster row [1-{}]: ", slots.size()),
+        "1", accepted);
+    if (!accepted)
+        return;
+    const auto value = parse_int_strict(entered);
+    if (!value || *value < 1 ||
+        static_cast<std::size_t>(*value) > slots.size()) {
+        menu.show_text("Deploy", {"Invalid roster row."});
+        return;
+    }
+    const int slot = slots[static_cast<std::size_t>(*value - 1)];
+    const bool deployed = og::ui::toggle_deploy_slot(save, slot);
+    menu.show_text("Deploy", {std::format("{} {}.",
+        save.team_list[static_cast<std::size_t>(slot)]->name,
+        deployed ? "deployed" : "benched")});
+    autosave_company_after_mutation(save);
+}
+
+void train_team(Menu& menu, SaveData& save, int seed_slot)
 {
     og::ui::TrainSession session(save);
     if (session.empty()) {
         menu.show_text("Train Team", {"No team members available to train."});
         return;
     }
+    if (seed_slot >= 0)
+        (void)session.seek_slot(seed_slot);  // §2.5 Enter-on-row direct-open
 
     using S = og::ui::TrainSession::Stat;
     for (;;) {
@@ -498,8 +586,12 @@ void train_team(Menu& menu, SaveData& save)
         }
         switch (choice - first_action) {
         case 0: // Accept
-            menu.show_text("Train Team",
-                {session.accept() ? "Training accepted." : "Can't afford training."});
+            if (session.accept()) {
+                menu.show_text("Train Team", {"Training accepted."});
+                autosave_company_after_mutation(save);  // §3.8
+            } else {
+                menu.show_text("Train Team", {"Can't afford training."});
+            }
             break;
         case 1:
             session.next_member();
@@ -580,7 +672,8 @@ void teams_screen(Menu& menu, SaveData& save)
                     og::sim::ctf_team_color_name(action.play_team))});
             }
         } else if (action.cycle_slot >= 0) {
-            (void)og::ui::cycle_guy_team(save, action.cycle_slot, 1);
+            if (og::ui::cycle_guy_team(save, action.cycle_slot, 1) >= 0)
+                autosave_company_after_mutation(save);  // §3.8 team cycle
         }
     }
 }
@@ -625,6 +718,15 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
+    // Terminal slot authority ([SAVE-R2]): company-level writes must target
+    // this client's chosen slot, never save0. An unsafe name is rejected by
+    // the setter and leaves the previous active slot in place.
+    assert_company_slot_authority();
+}
+
+void CursesPickerClient::assert_company_slot_authority() const
+{
+    (void)og::data::set_active_company_slot(config_.save_name);
 }
 
 // --- IPickerClient: menu presentation ------------------------------------
@@ -632,35 +734,31 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
 const PickerMenuItem* CursesPickerClient::present_menu(PickerMenuId menu_id)
 {
     Menu menu(term_, clock_);
-    const PickerMenuDefinition& def = og::ui::picker_menu_definition(menu_id);
 
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
 
+    const og::ui::TerminalMenuModel model = og::ui::build_terminal_menu_model(
+        menu_id, label_context(config_, options_, save_data_));
+
     // Build the entry list: team-build context as non-selectable headers, then
     // the menu items with their dynamic labels.
     std::vector<ListEntry> entries;
-    if (menu_id == PickerMenuId::TeamBuild) {
-        for (const std::string& line : team_context_lines(save_data_))
-            entries.push_back(ListEntry{line, false});
-    }
+    for (const std::string& line : model.context_lines)
+        entries.push_back(ListEntry{line, false});
     const int first_item = static_cast<int>(entries.size());
-    for (const PickerMenuItem& item : def.items)
-        entries.push_back(ListEntry{
-            menu_item_label(item, config_, options_, save_data_), true});
+    for (const og::ui::TerminalMenuEntry& entry : model.entries)
+        entries.push_back(ListEntry{entry.label, true});
 
-    const int choice = menu.choose(std::string(def.title), entries,
+    const int choice = menu.choose(model.title, entries,
         "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
         first_item);
 
-    if (choice < 0) {
-        // Cancel: Quit from Main, Back elsewhere (mirrors TextPickerClient).
-        if (menu_id == PickerMenuId::Main)
-            return og::ui::find_picker_menu_item(menu_id, PickerMenuCommand::Quit);
-        return og::ui::find_picker_menu_item(menu_id, PickerMenuCommand::Back);
-    }
-    return &def.items[static_cast<size_t>(choice - first_item)];
+    // Cancel: Quit from Main, Back elsewhere (mirrors TextPickerClient).
+    if (choice < 0)
+        return model.cancel_item;
+    return model.entries[static_cast<size_t>(choice - first_item)].item;
 }
 
 void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
@@ -670,16 +768,9 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
         case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: a nested presentation loop until Back,
-            // mirroring the shared show_scenario_menu precedent
-            // (picker_state.cpp) the Scenario submenu rides.
-            for (;;) {
-                const PickerMenuItem* sub =
-                    present_menu(PickerMenuId::Difficulty);
-                if (sub == nullptr || sub->command == PickerMenuCommand::Back)
-                    break;
-                handle_menu_item(PickerMenuId::Difficulty, *sub);
-            }
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back.
+            show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
             og::ui::set_player_count(save_data_, item.arg);
@@ -688,12 +779,16 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             break;
         case PickerMenuCommand::ToggleAlliedMode:
             og::ui::toggle_allied_mode(save_data_);
-            menu.show_text("PVP Mode",
-                {std::format("PVP mode set to {}.",
-                    og::ui::is_allied_mode(save_data_) ? "Allied" : "Enemy")});
+            menu.show_text("Seat Mode",
+                {std::format("Seat mode set to {}.",
+                    og::ui::is_allied_mode(save_data_) ? "Together" : "Split")});
+            // §3.8 settings tail: persisted match settings autosave like any
+            // other base-camp mutation (E4 — a toggled setting must survive
+            // quit without an explicit save).
+            autosave_company_after_mutation(save_data_);
             break;
         case PickerMenuCommand::LevelEdit:
-            menu.show_text("Level Edit",
+            menu.show_text("Level Editor",
                 {"The level editor is not available in the curses client.",
                  "Use the standalone 'openscen' tool instead."});
             break;
@@ -716,27 +811,32 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Difficulty",
                 {std::format("Difficulty set to {}.",
                     og::ui::kDifficultyNames[difficulty_index])});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         }
         case PickerMenuCommand::CycleRespawnMode:
             og::ui::cycle_respawn_mode(save_data_);
             menu.show_text("Respawns",
                 {og::ui::format_respawn_mode_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleRespawnDelay:
             og::ui::cycle_respawn_delay(save_data_);
             menu.show_text("Respawn Delay",
                 {og::ui::format_respawn_delay_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::TogglePermadeath:
             og::ui::toggle_permadeath(save_data_);
             menu.show_text("Permadeath",
                 {og::ui::format_permadeath_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         case PickerMenuCommand::CycleGeneratorRate:
             og::ui::cycle_generator_rate(save_data_);
             menu.show_text("Generators",
                 {og::ui::format_generator_rate_label(save_data_)});
+            autosave_company_after_mutation(save_data_); // §3.8 settings tail
             break;
         default:
             break;
@@ -744,7 +844,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         return;
     }
 
-    // Team Build menu.
+    // Team Build menu. Gated items (the CTF match settings outside the CTF
+    // campaign) show their shared guard message instead of acting.
+    const std::string_view guard = og::ui::terminal_gate_message(
+        item, label_context(config_, options_, save_data_));
+    if (!guard.empty()) {
+        menu.show_text(std::string(item.label), {std::string(guard)});
+        return;
+    }
+
     switch (item.command) {
     case PickerMenuCommand::ViewTeam:
         view_team_roster(menu, save_data_);
@@ -755,12 +863,11 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::HireTroops:
         hire_troops(menu, save_data_, config_);
         break;
-    case PickerMenuCommand::LoadTeam:
-        (void)load_game();
+    case PickerMenuCommand::ToggleDeploy:
+        deploy_prompt(menu, save_data_);
         break;
-    case PickerMenuCommand::SaveTeam:
-        (void)save_game();
-        break;
+    // ToggleReady is gated NetworkedOnly: the guard above already showed
+    // its message (the curses picker holds no networked lobby).
     case PickerMenuCommand::ShowProgress:
         menu.show_text("Progress",
             {std::format("Campaign: {}",
@@ -790,32 +897,21 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         (void)show_campaign_select();
         break;
     case PickerMenuCommand::CycleCtfTeamCount:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("CTF Teams", {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::cycle_ctf_team_count(save_data_);
         menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::CycleCtfCaptureLimit:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("Capture Limit",
-                {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::cycle_ctf_capture_limit(save_data_);
         menu.show_text("Capture Limit",
             {og::ui::format_ctf_caps_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ToggleCtfScenarioTroops:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("Scenario Troops",
-                {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::toggle_ctf_scenario_troops(save_data_);
         menu.show_text("Scenario Troops",
             {og::ui::format_ctf_troops_label(save_data_)});
+        autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ViewScenario:
         view_scenario(menu, save_data_);
@@ -833,8 +929,41 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
 
 bool CursesPickerClient::prepare_new_game()
 {
+    // §2.2 name entry: a generated fantasy name the user can edit inline or
+    // reroll (clear the field to get a fresh suggestion). Esc cancels —
+    // nothing is created, so the loaded game survives untouched.
+    Menu menu(term_, clock_);
+    SeededRandom rng(
+        static_cast<std::uint32_t>(og::data::company_clock_now_s()));
+    std::string company_name = og::ui::generate_company_name(rng);
+    for (;;) {
+        bool accepted = false;
+        // Deliberately NO "file: <slug>.gtl" preview in the label (§9.3/F2
+        // removed it on every client; here it was also simply false — the
+        // curses client persists in place to its own slot (config_.save_name,
+        // [SAVE-R2]), so the SDL slug preview would name a file that is
+        // never created).
+        const std::string label = "Name: ";
+        std::string result =
+            menu.prompt("Found Your Company", label, company_name, accepted);
+        if (!accepted)
+            return false;
+        if (result.empty()) {
+            company_name = og::ui::generate_company_name(rng);
+            continue;
+        }
+        if (result.size() > og::ui::kCompanyNameMaxLen)
+            result.resize(og::ui::kCompanyNameMaxLen);
+        company_name = std::move(result);
+        break;
+    }
+
     og::ui::reset_for_new_game(save_data_);
     og::ui::ensure_team_populated(save_data_);
+    // The display name lives in the 40-byte save_name; the filename stays this
+    // client's own slot (config_.save_name, [SAVE-R2]).
+    save_data_.save_name = company_name;
+    assert_company_slot_authority(); // [SAVE-R2]
     // A new game always starts on the default campaign: drop any campaign a
     // previously loaded save left in the session config (run_game copies
     // config_.campaign back over the freshly reset save) and re-point the
@@ -903,7 +1032,10 @@ void CursesPickerClient::show_options()
     const std::string slot = menu.prompt("Options", "Save slot: ",
         config_.save_name, accepted);
     if (accepted && !slot.empty())
+    {
         config_.save_name = slot;
+        assert_company_slot_authority(); // [SAVE-R2] slot command
+    }
 
     accepted = false;
     const std::string seed = menu.prompt("Options", "Seed: ",
@@ -959,6 +1091,18 @@ void CursesPickerClient::run_game()
     const GameRunResult result =
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
+    if (result.ended && result.ending == 0 && !result.ctf_rematch) {
+        // §3.8: the curses win commit (run_level_loop already folded the win
+        // into save_data_ via commit_result_to_save, gated on this same
+        // shape) persists through the company autosave choke point against
+        // the client's active slot: stamp last_played, atomic write, one
+        // retention-pruned backup snapshot. Failures are logged inside the
+        // choke point; the committed roster stays in memory either way.
+        assert_company_slot_authority(); // [SAVE-R2]
+        (void)og::data::company_autosave(
+            save_data_, og::data::CompanyAutosaveKind::LevelWin);
+    }
+
     if (result.ended) {
         // mission_verdict_line is CTF-aware: a CTF loss still ends with the
         // classic WIN shape, so ending==0 alone must not claim victory. The
@@ -985,6 +1129,7 @@ og::ui::PickerScreen CursesPickerClient::screen_after_game() const
 bool CursesPickerClient::load_game()
 {
     Menu menu(term_, clock_);
+    assert_company_slot_authority(); // [SAVE-R2]
     const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
     if (io != SaveDataIoError::None) {
         menu.show_text("Load failed",
@@ -1015,6 +1160,7 @@ bool CursesPickerClient::load_game()
 bool CursesPickerClient::save_game()
 {
     Menu menu(term_, clock_);
+    assert_company_slot_authority(); // [SAVE-R2]
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
@@ -1032,6 +1178,257 @@ bool CursesPickerClient::save_game()
 
     menu.show_text("Saved", {std::format("Saved '{}'.", config_.save_name)});
     return true;
+}
+
+// §2.3 Company List, curses projection: the joined company rows (shared row
+// formatter — byte-identical with the text client) sit as non-selectable
+// context lines above the LoadCompany chrome (open / backups / delete /
+// back); open and delete prompt for a row number. Opening repoints this
+// client's slot ([SAVE-R2]) via load_game and returns true so the state
+// machine proceeds to team build.
+bool CursesPickerClient::show_company_list()
+{
+    Menu menu(term_, clock_);
+    for (;;) {
+        const std::vector<og::data::CompanyInfo> companies =
+            og::data::list_companies();
+        if (companies.empty()) {
+            menu.show_text("Companies", {"No companies yet."});
+            return false;
+        }
+
+        const og::ui::TerminalMenuModel model =
+            og::ui::build_terminal_menu_model(
+                PickerMenuId::LoadCompany,
+                label_context(config_, options_, save_data_));
+        std::vector<ListEntry> entries;
+        entries.push_back(ListEntry{
+            og::ui::format_company_list_title(
+                static_cast<int>(companies.size())), false});
+        for (const og::data::CompanyInfo& info : companies) {
+            entries.push_back(ListEntry{
+                og::ui::format_company_row_line(info,
+                    info.slot == og::data::active_company_slot()), false});
+        }
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalMenuEntry& entry : model.entries)
+            entries.push_back(ListEntry{entry.label, true});
+
+        const int choice = menu.choose(model.title, entries,
+            "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
+            first_item);
+        if (choice < 0)
+            return false;
+        const PickerMenuItem* item =
+            model.entries[static_cast<size_t>(choice - first_item)].item;
+
+        switch (item->command) {
+        case PickerMenuCommand::Back:
+            return false;
+        case PickerMenuCommand::OpenCompany: {
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Open Company");
+            if (idx < 0)
+                break;
+            const og::data::CompanyInfo& info =
+                companies[static_cast<size_t>(idx)];
+            if (!info.valid) {
+                // Never silently switch to a corrupt company ([SAVE-R6]).
+                menu.show_text("Open Company",
+                    {std::format("Company file '{}' is damaged.", info.slot),
+                     "Restore a backup or delete it."});
+                break;
+            }
+            const std::string previous_slot = config_.save_name;
+            config_.save_name = info.slot;
+            if (load_game())
+                return true; // -> team build (base camp)
+            // load_game showed the error; restore the slot authority.
+            config_.save_name = previous_slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            break;
+        }
+        case PickerMenuCommand::OpenCompanyBackups: {
+            // §2.4 Backups sub-view for one company (corrupt rows keep the
+            // door — restore-from-backup IS their recovery path).
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Backups");
+            if (idx < 0)
+                break;
+            if (show_company_backups(companies[static_cast<size_t>(idx)]))
+                return true; // restored -> team build (base camp)
+            break;
+        }
+        case PickerMenuCommand::DeleteCompany: {
+            const int idx = prompt_company_index(
+                menu, static_cast<int>(companies.size()), "Delete Company");
+            if (idx < 0)
+                break;
+            const og::data::CompanyInfo& info =
+                companies[static_cast<size_t>(idx)];
+            if (info.slot == og::data::active_company_slot()) {
+                // §3.7: delete_company refuses the active slot.
+                menu.show_text("Delete Company",
+                    {"Cannot delete the open company; switch first."});
+                break;
+            }
+            const og::ui::CompanyRowText row =
+                og::ui::format_company_row(info);
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"Backups are deleted too.", false},
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose(
+                std::format("Delete company '{}'?", row.name), confirm,
+                "Enter select | Esc back", 1);
+            if (verdict != 2)
+                break;
+            if (og::data::delete_company(info.slot)) {
+                menu.show_text("Delete Company",
+                    {std::format("Deleted '{}'.", info.slot)});
+            } else {
+                menu.show_text("Delete Company",
+                    {std::format("Delete failed for '{}'.", info.slot)});
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+// §2.4 Backups sub-view, curses projection: the joined snapshot rows (shared
+// row formatter — byte-identical with the text client) sit as non-selectable
+// context lines above the Backups chrome (restore / delete / back); restore
+// and delete prompt for a row number behind NO-first confirms. A successful
+// restore repoints this client's slot ([SAVE-R2]) and reloads the rewound
+// company, so the caller proceeds to team build. An empty snapshot list
+// backs out (backups are level-win products, §3.7).
+bool CursesPickerClient::show_company_backups(
+    const og::data::CompanyInfo& company)
+{
+    Menu menu(term_, clock_);
+    const og::ui::CompanyRowText company_row =
+        og::ui::format_company_row(company);
+    for (;;) {
+        const std::vector<og::data::CompanyBackupInfo> backups =
+            og::data::list_company_backups(company.slot);
+        if (backups.empty()) {
+            menu.show_text("Backups",
+                {"No backups yet - backups snapshot on level wins."});
+            return false;
+        }
+
+        const og::ui::TerminalMenuModel model =
+            og::ui::build_terminal_menu_model(
+                PickerMenuId::Backups,
+                label_context(config_, options_, save_data_));
+        std::vector<ListEntry> entries;
+        entries.push_back(ListEntry{
+            og::ui::format_backup_list_title(
+                company_row.name, static_cast<int>(backups.size())), false});
+        for (const og::data::CompanyBackupInfo& backup : backups) {
+            entries.push_back(
+                ListEntry{og::ui::format_backup_row_line(backup), false});
+        }
+        const int first_item = static_cast<int>(entries.size());
+        for (const og::ui::TerminalMenuEntry& entry : model.entries)
+            entries.push_back(ListEntry{entry.label, true});
+
+        const int choice = menu.choose(model.title, entries,
+            "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
+            first_item);
+        if (choice < 0)
+            return false;
+        const PickerMenuItem* item =
+            model.entries[static_cast<size_t>(choice - first_item)].item;
+
+        switch (item->command) {
+        case PickerMenuCommand::Back:
+            return false;
+        case PickerMenuCommand::RestoreBackup: {
+            const int idx = prompt_backup_index(
+                menu, static_cast<int>(backups.size()), "Restore Backup");
+            if (idx < 0)
+                break;
+            const og::data::CompanyBackupInfo& backup =
+                backups[static_cast<size_t>(idx)];
+            if (!backup.header.valid) {
+                // The §3.7 step-0 validation is the real guard; refuse up
+                // front to spare a confirm that can only fail.
+                menu.show_text("Restore Backup",
+                    {std::format("Backup file '{}' is damaged.",
+                                 backup.filename)});
+                break;
+            }
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"The current state is backed up first.", false},
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose("Rewind to this backup?",
+                confirm, "Enter select | Esc back", 1);
+            if (verdict != 2)
+                break;
+            const std::string previous_slot = config_.save_name;
+            config_.save_name = company.slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            const og::data::CompanyRestoreError error =
+                og::data::restore_company_backup(save_data_, company.slot,
+                                                 backup.seq);
+            // RestampFailed included: the rewind itself finished (the next
+            // autosave re-stamps).
+            if (error == og::data::CompanyRestoreError::None
+                || error == og::data::CompanyRestoreError::RestampFailed) {
+                if (load_game())
+                    return true; // -> team build (base camp)
+            } else {
+                menu.show_text("Restore Backup",
+                    {std::format("Restore failed ({}).",
+                        og::ui::company_restore_error_string(error))});
+            }
+            // Not rewound: restore the slot authority (the open-flow
+            // discipline).
+            config_.save_name = previous_slot;
+            assert_company_slot_authority(); // [SAVE-R2]
+            break;
+        }
+        case PickerMenuCommand::DeleteBackup: {
+            const int idx = prompt_backup_index(
+                menu, static_cast<int>(backups.size()), "Delete Backup");
+            if (idx < 0)
+                break;
+            const og::data::CompanyBackupInfo& backup =
+                backups[static_cast<size_t>(idx)];
+            // NO-first confirm (U3): the highlight starts on No.
+            const std::vector<ListEntry> confirm = {
+                ListEntry{"No", true},
+                ListEntry{"Yes", true},
+            };
+            const int verdict = menu.choose(
+                std::format("Delete backup {} of '{}'?", backup.seq,
+                            company.slot),
+                confirm, "Enter select | Esc back", 0);
+            if (verdict != 1)
+                break;
+            if (og::data::delete_company_backup(company.slot, backup.seq)) {
+                menu.show_text("Delete Backup",
+                    {std::format("Deleted backup {}.", backup.seq)});
+            } else {
+                menu.show_text("Delete Backup",
+                    {std::format("Delete failed for backup {}.",
+                                 backup.seq)});
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
 }
 
 // --- IPickerClient: networking -------------------------------------------

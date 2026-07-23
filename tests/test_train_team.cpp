@@ -36,7 +36,7 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Test: Continue -> Train Team -> interact with stat buttons -> Back -> Back
+// Test: Continue -> base camp roster TRAIN (row 0, §2.5) -> stat buttons -> Back -> Back
 //
 // Verifies:
 //   1. Train menu opens when team has members
@@ -65,12 +65,12 @@ static int train_injector(void* data)
 
     // Wait for team menu
     SDL_Delay(500);
-    wait_for_interactable("train_team", 10000);
+    wait_for_interactable("roster_row_0", 10000);
     SDL_Delay(750);
 
-    // Click TRAIN TEAM
-    fprintf(stderr, "  [test] clicking train_team\n");
-    interact("train_team");
+    // Click the roster row body (§9.11: the row IS the train affordance)
+    fprintf(stderr, "  [test] clicking roster_row_0 (§9.11 row-click train)\n");
+    interact("roster_row_0");
 
     // Wait for train menu buttons
     SDL_Delay(500);

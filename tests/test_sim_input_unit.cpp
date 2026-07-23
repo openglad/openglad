@@ -1,3 +1,4 @@
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
@@ -17,6 +18,9 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <array>
+#include <cstdint>
+#include <initializer_list>
+#include <utility>
 #include "test_gameplay_context_scope.h"
 
 // --- From test_sim_input_coverage_push.cpp ---
@@ -413,3 +417,267 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     ASSERT_EQ(control, c);
 }
 } // namespace detail_sim_input_r11
+
+// --- §4.4 enforcement wiring: the owner-locked policy-on matrix through
+// sim_process_player_input (site 1 = the SwitchChar cycle conjunction,
+// site 2 = the sim_reacquire_apply death/entry hook). The policy-off twin of
+// every case is asserted in the same test: with control_policy == 0 the two
+// sites must behave exactly like the legacy shared pool. ---
+namespace detail_sim_control_enforcement {
+namespace {
+
+struct SimInputFixture {
+    LevelRuntimeData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
+
+    SimInputFixture()
+        : gameplay(level, save, events, cfg)
+    {
+        level.create_new_grid();
+        save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    GameWorld& world() { return level.world(); }
+};
+
+// A living walker; `hero` attaches a myguy carrying `owner` as its
+// owner_player_index (guy::kNoOwner = orphaned hero; hero=false = scenario
+// troop with no myguy at all).
+walker* add_char(SimInputFixture& fx, unsigned char team, signed char user,
+                 bool hero, std::uint8_t owner = guy::kNoOwner)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    bind_test_entity_sim_context(fx.level, w.get());
+    w->setxy(80, 80);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(user);
+    if (hero)
+    {
+        w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        w->myguy->owner_player_index = owner;
+    }
+    walker* out = w.get();
+    fx.level.world().oblist.push_back(std::move(w));
+    return out;
+}
+
+using MachineMap = std::array<std::uint8_t, og::sim::kPlayerMachineSlots>;
+
+MachineMap machine_map(
+    std::initializer_list<std::pair<int, std::uint8_t>> entries)
+{
+    MachineMap machines;
+    machines.fill(og::sim::kPlayerMachineNone);
+    for (const auto& [player, entry] : entries)
+        machines[static_cast<std::size_t>(player)] = entry;
+    return machines;
+}
+
+SimInputResult process(SimInputFixture& fx, const InputState& input,
+                       walker*& control, short player_num,
+                       SimInputDebounce& debounce)
+{
+    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    return sim_process_player_input(input.players[player_num], control,
+                                    fx.world(), player_num, 0, debounce,
+                                    special_names, &fx.events);
+}
+
+} // namespace
+
+// Site 2, the Follow verdict: a dead seat whose only candidate is a foreign
+// machine's hero goes NULL with no endgame request — the walker is never
+// stamped (the follow camera's engagement signal). Policy off: today's
+// shared-pool claim of the very same walker.
+TEST(SimInputUnit, sim_control_owner_locked_death_reacquire_follows_not_claims)
+{
+    SimInputFixture fx;
+    walker* foreign = add_char(fx, 0, -1, true, /*owner=*/2);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {2, og::sim::encode_player_machine(2, true)}}));
+
+    walker* control = nullptr;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    SimInputResult result = process(fx, input, control, 0, debounce);
+    ASSERT_FALSE(result.endgame_requested)
+        << "an ownership denial must NOT request the endgame";
+    ASSERT_EQ(nullptr, control) << "the seat must go null (Follow)";
+    ASSERT_EQ(nullptr, result.new_control);
+    ASSERT_FALSE(result.control_hp_changed);
+    ASSERT_EQ(-1, foreign->user()) << "the refused walker is never stamped";
+
+    // Policy off, same world: today's shared pool claims the foreign hero.
+    og::sim::set_control_policy(fx.world(), og::sim::kControlPolicyLegacy,
+                                machine_map({}));
+    result = process(fx, input, control, 0, debounce);
+    ASSERT_FALSE(result.endgame_requested);
+    ASSERT_EQ(foreign, control);
+    ASSERT_EQ(0, foreign->user());
+    ASSERT_TRUE(result.control_hp_changed);
+}
+
+// Site 2, Claimed: same-machine seats stay free among their machine's
+// characters — the reacquire claims a seatmate's hero exactly like today.
+TEST(SimInputUnit, sim_control_owner_locked_death_reacquire_claims_same_machine)
+{
+    SimInputFixture fx;
+    walker* seatmate_hero = add_char(fx, 0, -1, true, /*owner=*/1);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {1, og::sim::encode_player_machine(0, true)}}));
+
+    walker* control = nullptr;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    ASSERT_FALSE(result.endgame_requested);
+    ASSERT_EQ(seatmate_hero, control);
+    ASSERT_EQ(0, seatmate_hero->user());
+    ASSERT_EQ(ACT_CONTROL, seatmate_hero->act_type());
+    ASSERT_TRUE(result.control_hp_changed);
+}
+
+// Site 2, EndGame: a full wipe keeps today's endgame result under
+// owner-locked (the level ending stays reachable, [NET-F3]).
+TEST(SimInputUnit, sim_control_owner_locked_death_reacquire_endgame_on_wipe)
+{
+    SimInputFixture fx;
+    walker* corpse = add_char(fx, 0, -1, true, /*owner=*/0);
+    corpse->set_dead(1);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)}}));
+
+    walker* control = nullptr;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    ASSERT_TRUE(result.endgame_requested);
+    ASSERT_EQ(1, result.endgame_type);
+    ASSERT_EQ(nullptr, control);
+}
+
+// Site 2, the [NET-F3] troop rule: an unowned scenario troop is claimable by
+// a deployed machine's seat and follow-only for a 0-deploy machine.
+TEST(SimInputUnit, sim_control_owner_locked_troop_claim_deployed_vs_zero_deploy)
+{
+    SimInputFixture fx;
+    walker* troop = add_char(fx, 0, -1, /*hero=*/false);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {3, og::sim::encode_player_machine(3, false)}}));
+
+    // The 0-deploy machine's seat follows (no claim, no endgame request).
+    walker* control = nullptr;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    SimInputResult result = process(fx, input, control, 3, debounce);
+    ASSERT_FALSE(result.endgame_requested);
+    ASSERT_EQ(nullptr, control);
+    ASSERT_EQ(-1, troop->user());
+
+    // The deployed machine's seat claims the troop and can finish the level.
+    control = nullptr;
+    result = process(fx, input, control, 0, debounce);
+    ASSERT_FALSE(result.endgame_requested);
+    ASSERT_EQ(troop, control);
+    ASSERT_EQ(0, troop->user());
+}
+
+// Site 1: the SwitchChar cycle skips a foreign machine's hero and lands on
+// the same-machine one; the policy-off cycle takes the foreign hero first
+// (today's deliberate shared-pool stealing). Reverse honors the same filter.
+TEST(SimInputUnit, sim_control_owner_locked_switch_char_skips_foreign_hero)
+{
+    SimInputFixture fx;
+    walker* own = add_char(fx, 0, 0, true, /*owner=*/0);
+    walker* foreign = add_char(fx, 0, -1, true, /*owner=*/2);
+    walker* mate = add_char(fx, 0, -1, true, /*owner=*/1);
+    own->set_act_type(ACT_CONTROL);
+
+    SimInputDebounce debounce{};
+    InputState input;
+
+    // Policy off first: the legacy cycle lands on the foreign hero (it is
+    // the next eligible walker in oblist order).
+    walker* control = own;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(foreign, control) << "legacy shared pool takes the foreign hero";
+
+    // Restore the pre-switch state (the cycle stamps the new user only on
+    // the NEXT tick, so only own's released tag needs resetting).
+    control = own;
+    own->set_user(0);
+
+    // Owner-locked: the same press skips the foreign hero onto the
+    // same-machine one, and the foreign hero is never stamped.
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {1, og::sim::encode_player_machine(0, true)},
+                     {2, og::sim::encode_player_machine(2, true)}}));
+    debounce.changedchar = 0;
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(mate, control) << "owner-locked cycle must skip the foreign hero";
+    ASSERT_EQ(-1, foreign->user());
+
+    // Reverse (Shift) cycling honors the same conjunction: from own the
+    // reverse order visits mate first anyway, never foreign.
+    control = own;
+    own->set_user(0);
+    mate->set_user(-1);
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    debounce.changedchar = 0;
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(mate, control);
+    ASSERT_EQ(-1, foreign->user());
+}
+
+// Site 1, fallback: when every candidate is foreign the cycle finds nothing
+// and control falls back to the seat's own walker (no foreign stamp).
+TEST(SimInputUnit, sim_control_owner_locked_switch_char_falls_back_to_own)
+{
+    SimInputFixture fx;
+    walker* own = add_char(fx, 0, 0, true, /*owner=*/0);
+    walker* foreign = add_char(fx, 0, -1, true, /*owner=*/2);
+    own->set_act_type(ACT_CONTROL);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {2, og::sim::encode_player_machine(2, true)}}));
+
+    walker* control = own;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    ASSERT_EQ(own, control)
+        << "with only foreign candidates the cycle must fall back";
+    ASSERT_EQ(-1, foreign->user());
+    ASSERT_TRUE(result.control_hp_changed);
+}
+} // namespace detail_sim_control_enforcement

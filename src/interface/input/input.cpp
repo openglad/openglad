@@ -206,6 +206,28 @@ std::pair<float, float> active_canvas_to_window(float x, float y)
                 y * static_cast<float>(viewport.h) / active_canvas_h()};
 }
 
+std::pair<float, float> ui_canvas_to_window(float x, float y)
+{
+    // Forward map pinned to the FIXED UI canvas (kUiCanvasW x kUiCanvasH),
+    // independent of which canvas is active right now. The main thread flips
+    // the active canvas World<->UI inside every frame's draw pass, so a
+    // cross-thread caller (the test click injectors) sampling
+    // active_canvas_to_window races that flip: whenever the window aspect
+    // differs from 16:10 the World(320x240)/UI(320x200) transforms diverge
+    // and a menu click computed with the World state inverse-maps off the UI
+    // canvas (the seed-23 og_test_menu_ui wedge: game y=187 -> win 718 ->
+    // game y=204, a dead click). Menu buttons live on the UI canvas by
+    // definition; map them with its transform only.
+    const og::CanvasViewport viewport = canvas_viewport(
+        static_cast<float>(kUiCanvasW), static_cast<float>(kUiCanvasH));
+    return {static_cast<float>(viewport.x) +
+                x * static_cast<float>(viewport.w) /
+                    static_cast<float>(kUiCanvasW),
+            static_cast<float>(viewport.y) +
+                y * static_cast<float>(viewport.h) /
+                    static_cast<float>(kUiCanvasH)};
+}
+
 namespace
 {
 int scale_touch_coordinate(int value, int canvas_extent, int reference_extent)

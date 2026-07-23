@@ -12,8 +12,11 @@
 #include <openglad/interface/walker_render.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/pixie_data.h>
@@ -552,7 +555,8 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 12 items now (7=back, 8=networking, 9=Scenario); the
+    // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
+    // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=teams, 5=progress,
     // 6=back). Main 7=difficulty opens the DIFFICULTY submenu
@@ -579,10 +583,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "10\n"      // main: options again
         "textslot\n"
         "123\n"
-        "2\n"       // main: continue -> team build
-        "1\n"       // team build: view team
-        "\n"
-        "2\n"       // team build: train
+        "2\n"       // main: continue -> team build (base camp)
+        "1\n"       // base camp: roster (deploy flags + sub-prompt)
+        "deploy 1\n" //   roster: bench display row 1
+        "deploy 1\n" //   roster: re-deploy it
+        "train 1\n"  //   roster: train row 1 directly
+        "b\n"        //   train: back to the roster
+        "\n"         //   roster: blank exits
+        "2\n"       // base camp: train
         "n\n"
         "p\n"
         "1\n"
@@ -590,13 +598,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"
         "a\n"
         "b\n"
-        "3\n"       // team build: hire
+        "3\n"       // base camp: hire
         "p\n"
         "n\n"
         "h\n"
         "b\n"
-        "5\n"       // team build: save team
-        "4\n"       // team build: load team
+        "5\n"       // base camp: ready (guarded outside networked lobbies)
+        "4\n"       // base camp: deploy prompt
+        "2\n"       //   toggle display row 2
         "9\n"       // team build: Scenario submenu
         "5\n"       // scenario: progress
         "2\n"       // scenario: set level (invalid value)
@@ -610,7 +619,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -654,10 +663,11 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         << "the ctf package ships with the game and should mount";
 
     const std::string input =
-        "1\n"       // main: begin new game -> forced campaign select
-        "\n"        //   blank keeps current (= default after the reset)
+        "1\n"       // main: begin new game -> §2.2 name entry
+        "\n"        //   name entry: blank accepts the generated company name
+        "\n"        //   campaign select: blank keeps current (= default reset)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -677,6 +687,210 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// --- §2.3 Company List: text-client flow ----------------------------------
+
+namespace {
+
+// Sandboxes <user>/save so the company list is fully deterministic (renames
+// it aside, restores in the dtor). Also re-asserts the canonical unit
+// filesystem: the binary-shared PhysFS state can be redirected by earlier
+// tests under --gtest_shuffle.
+class HeadlessSaveDirSandbox
+{
+public:
+    HeadlessSaveDirSandbox()
+        : save_dir_(std::filesystem::path(get_user_path()) / "save")
+        , stash_dir_(std::filesystem::path(get_user_path()) /
+                     "save_sandbox_stash_hl")
+    {
+        if (og::resources::is_initialized()) {
+            const std::string user_path = get_user_path();
+            (void)og::resources::set_write_dir(user_path);
+            (void)og::resources::mount(user_path.c_str(), nullptr, 1);
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(stash_dir_, ec);
+        if (std::filesystem::exists(save_dir_, ec))
+            std::filesystem::rename(save_dir_, stash_dir_, ec);
+        std::filesystem::create_directories(save_dir_, ec);
+    }
+
+    ~HeadlessSaveDirSandbox()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(save_dir_, ec);
+        if (std::filesystem::exists(stash_dir_, ec))
+            std::filesystem::rename(stash_dir_, save_dir_, ec);
+        else
+            std::filesystem::create_directories(save_dir_, ec);
+    }
+
+private:
+    std::filesystem::path save_dir_;
+    std::filesystem::path stash_dir_;
+};
+
+bool seed_headless_company(const std::string& slot, const std::string& name,
+                           std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.last_played_unix_s = last_played;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+} // namespace
+
+// The main-menu LOAD door (position 13) presents the company list: open by
+// row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
+// row refuses to switch, deleting the ACTIVE company refuses with
+// switch-first, deleting another company needs the explicit "y" (NO-first),
+// and the §2.4 backups chrome backs out of a company with no snapshots yet.
+TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_headless_company("wp3hlb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_headless_company("wp3hla", "ALPHA BAND", 5000));
+    {
+        // Bad magic: lists as a CORRUPT row (sorts last, ts reads 0).
+        std::ofstream corrupt(std::filesystem::path(get_user_path()) /
+                              "save" / "wp3hlc.gtl");
+        corrupt << "not a save file";
+        ASSERT_TRUE(corrupt.good());
+    }
+
+    // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
+    const std::string input =
+        "13\n"      // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "3\n"       //     #3 = corrupt -> damaged message, never switches
+        "1\n"       //   list: open company...
+        "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
+        "7\n"       // team build: back -> main
+        "13\n"      // main: load company again (active is now wp3hlb)
+        "3\n"       //   list: delete company...
+        "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
+        "3\n"       //   list: delete company...
+        "2\n"       //     #2 = wp3hla...
+        "\n"        //     blank confirm = NO (NO-first) -> kept
+        "3\n"       //   list: delete company...
+        "2\n"       //     #2 = wp3hla...
+        "y\n"       //     explicit yes -> deleted
+        "2\n"       //   list: backups...
+        "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
+        "4\n"       //   list: back -> main
+        "12\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("wp3hlb", config.save_name)
+        << "[SAVE-R2] opening a company repoints the terminal slot";
+    EXPECT_TRUE(user_file_exists("save/wp3hlb.gtl"))
+        << "the active company must survive its refused delete";
+    EXPECT_FALSE(user_file_exists("save/wp3hla.gtl"))
+        << "the explicit yes must delete the other company";
+    EXPECT_TRUE(user_file_exists("save/wp3hlc.gtl"))
+        << "the corrupt company is never opened OR deleted here";
+}
+
+// The §2.4 Backups sub-view (text projection): snapshots list newest-first,
+// a corrupt snapshot refuses restore up front, delete and restore are both
+// NO-first ("y" only), and a successful restore rewinds the company,
+// repoints the terminal slot ([SAVE-R2]), re-stamps last-played, and
+// proceeds to team build (base camp).
+TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    HeadlessSaveDirSandbox sandbox;
+    // OLD (seq 1) and MID (seq 2) snapshots under a NEW current state, plus
+    // a corrupt snapshot at seq 9 (bad magic, sorts first: seq desc).
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "OLD BAND", 5000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3hlr"));
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "MID BAND", 5500));
+    ASSERT_TRUE(og::data::backup_company_now("wp3hlr"));
+    ASSERT_TRUE(seed_headless_company("wp3hlr", "NEW BAND", 6000));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream corrupt(backups_dir / "wp3hlr.009.gtl",
+                              std::ios::binary | std::ios::trunc);
+        corrupt << "not a backup";
+        ASSERT_TRUE(corrupt.good());
+    }
+    og::data::set_company_clock_for_tests(444444);
+
+    // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
+    // 3 = seq 1 (OLD).
+    const std::string input =
+        "13\n"      // main: load company -> the company list
+        "2\n"       //   list: backups...
+        "1\n"       //     #1 = wp3hlr (the only company)
+        "1\n"       //     backups: restore...
+        "1\n"       //       #1 = seq 9 corrupt -> damaged, no confirm
+        "2\n"       //     backups: delete...
+        "2\n"       //       #2 = seq 2 (MID)...
+        "\n"        //       blank confirm = NO (NO-first) -> kept
+        "2\n"       //     backups: delete...
+        "2\n"       //       #2 = seq 2 again...
+        "y\n"       //       explicit yes -> deleted
+        "1\n"       //     backups: restore... (rows now: seq 9, seq 1)
+        "2\n"       //       #2 = seq 1 (OLD)...
+        "\n"        //       blank confirm = NO -> not restored
+        "1\n"       //     backups: restore...
+        "2\n"       //       #2 = seq 1 (OLD)...
+        "y\n"       //       explicit yes -> rewound -> team build
+        "7\n"       // team build: back -> main
+        "12\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    og::data::set_company_clock_for_tests(std::nullopt);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("wp3hlr", config.save_name)
+        << "[SAVE-R2] a restore repoints the terminal slot";
+
+    // The slot file holds the rewound OLD state, re-stamped by the pinned
+    // clock (§3.7 step 4).
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header("wp3hlr");
+    ASSERT_TRUE(header && header->valid);
+    EXPECT_EQ("OLD BAND", header->display_name);
+    EXPECT_EQ(444444, header->last_played_unix_s);
+
+    // Snapshots after the round trip: the pre-restore NEW state became the
+    // newest (seq max+1 = 10), the corrupt seq 9 survives untouched, MID
+    // (seq 2) was explicitly deleted, OLD (seq 1) survives its own restore.
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3hlr");
+    ASSERT_EQ(3u, backups.size());
+    EXPECT_EQ(10, backups[0].seq);
+    EXPECT_EQ("NEW BAND", backups[0].header.display_name)
+        << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+    EXPECT_EQ(9, backups[1].seq);
+    EXPECT_FALSE(backups[1].header.valid);
+    EXPECT_EQ(1, backups[2].seq);
 }
 
 // Packs a one-file .glad (campaign.yaml with the given title) into the user
@@ -749,7 +963,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "1\n"       //   entry 1 is always the default campaign
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -788,7 +1002,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -837,7 +1051,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "5\n"       // scenario: progress
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "12\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -862,4 +1076,109 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// §2.5 per-row TRAIN (text shape): 'train 2' opens the train flow SEEDED on
+// roster row 2 — the banner names the second member's family and the first
+// member's train screen never appears.
+TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+
+    const std::string input =
+        "2\n"        // main: continue -> team build (base camp)
+        "1\n"        // base camp: roster
+        "train 2\n"  //   roster: train row 2 directly (the mage)
+        "1\n"        //   train: +1 STR on the SEEDED member
+        "a\n"        //   train: accept (autosaves the active slot)
+        "b\n"        //   train: back to the roster
+        "\n"         //   roster: blank exits
+        "7\n"        // base camp: back -> main
+        "12\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("(MAGE) ---"))
+        << "'train 2' must seed the session on roster row 2 (the mage)";
+    EXPECT_EQ(std::string::npos, out.find("(SOLDIER) ---"))
+        << "the train screen must never open on the first member";
+    EXPECT_NE(std::string::npos, out.find("Training accepted."))
+        << "the seeded member's +1 STR should be affordable and accepted";
+
+    // Hygiene: the train accept autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// §2.5 teams sub-prompt ('play N' / 'move SLOT N'): re-seat P1, move a
+// roster slot across teams (the §3.8 move autosave rides the valid move),
+// and every rejection wording. The teams screen previously had no test
+// surface at all (WP7 coverage pass); the roster/deploy legs bundle their
+// invalid-row rejections for the same reason.
+TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+
+    const std::string input =
+        "2\n"           // main: continue -> team build (base camp)
+        "1\n"           // base camp: roster
+        "deploy 99\n"   //   roster: deploy row out of range
+        "train 99\n"    //   roster: train row out of range
+        "gibberish\n"   //   roster: unrecognized command
+        "\n"            //   roster: blank exits
+        "4\n"           // base camp: deploy prompt
+        "abc\n"         //   non-numeric row rejected
+        "9\n"           // base camp: Scenario submenu
+        "4\n"           // scenario: teams -> teams sub-prompt
+        "play 9\n"      //   team out of range
+        "play 4\n"      //   in range but no heroes on team 4
+        "play 1\n"      //   valid: P1 plays team 1
+        "move 0 1\n"    //   slot out of range
+        "move 1 9\n"    //   team out of range
+        "move 1 2\n"    //   valid: slot 1 -> team 2 (§3.8 autosave)
+        "move 1 1\n"    //   valid: back to team 1
+        "gibberish\n"   //   unrecognized command
+        "\n"            //   blank exits teams
+        "6\n"           // scenario: back -> team build
+        "7\n"           // base camp: back -> main
+        "12\n";         // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("No heroes on team 9.\n"))
+        << "an out-of-range 'play' team must be rejected";
+    EXPECT_NE(std::string::npos, out.find("No heroes on team 4.\n"))
+        << "'play' onto an unmanned team must be rejected";
+    EXPECT_NE(std::string::npos, out.find("Playing on "))
+        << "'play 1' must re-seat P1 on the starting team";
+    EXPECT_NE(std::string::npos, out.find("Invalid slot or team.\n"))
+        << "out-of-range 'move' inputs must be rejected";
+    EXPECT_NE(std::string::npos, out.find("Moved slot 1 to "))
+        << "a valid 'move' must land and report the target team";
+    EXPECT_NE(std::string::npos, out.find("Invalid roster row.\n"))
+        << "out-of-range roster deploy/train rows must be rejected";
+
+    // Hygiene: the valid move autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
 }

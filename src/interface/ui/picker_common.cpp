@@ -21,13 +21,17 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/core/irandom.h>
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <format>
 #include <functional>
 #include <map>
+#include <set>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -320,6 +324,58 @@ std::string get_unique_name(unsigned char family, const SaveData& save)
     }
 
     return std::string(result);
+}
+
+// --- Company name generation (design §2.2) ---
+
+namespace {
+
+// Word banks for "<ADJ> <NOUN> <GROUP>". Budget contract (asserted by the
+// unit pins over company_name_banks()): adjectives <= 5 chars, nouns <= 6,
+// groups <= 5, so the longest combination is 5 + 1 + 6 + 1 + 5 = 18
+// = kCompanyNameMaxLen — the generator can never overflow and never
+// truncates (the cap is load-bearing: §2.2 promises the name fits every
+// later surface untrimmed).
+constexpr const char* kCompanyAdjectives[] = {
+    "IRON", "GREY", "BLACK", "WHITE", "ASHEN", "AMBER", "IVORY", "STONE",
+    "THORN", "EMBER", "RIVER", "NORTH", "SABLE", "FROST", "STORM", "GOLD",
+};
+
+constexpr const char* kCompanyNouns[] = {
+    "KETTLE", "RAVEN", "FALCON", "WOLF", "LION", "DRAGON", "HAMMER",
+    "SHIELD", "DAGGER", "BANNER", "VIPER", "BADGER", "WYVERN", "LANCE",
+    "CROW", "ANVIL",
+};
+
+constexpr const char* kCompanyGroups[] = {
+    "BAND", "CREW", "HOST", "GUILD", "ORDER", "LODGE", "TROOP", "WATCH",
+    "PACK", "CADRE",
+};
+
+const char* pick_bank_word(IRandom& rng, std::span<const char* const> bank)
+{
+    return bank[rng.next(static_cast<std::uint32_t>(bank.size()))];
+}
+
+} // namespace
+
+CompanyNameBanks company_name_banks()
+{
+    return CompanyNameBanks{
+        std::span<const char* const>(kCompanyAdjectives),
+        std::span<const char* const>(kCompanyNouns),
+        std::span<const char* const>(kCompanyGroups),
+    };
+}
+
+std::string generate_company_name(IRandom& rng)
+{
+    // Exactly three draws, adjective->noun->group, so the output for a given
+    // rng state is pinned (determinism is part of the API contract).
+    const char* adjective = pick_bank_word(rng, company_name_banks().adjectives);
+    const char* noun = pick_bank_word(rng, company_name_banks().nouns);
+    const char* group = pick_bank_word(rng, company_name_banks().groups);
+    return std::format("{} {} {}", adjective, noun, group);
 }
 
 // --- Team queries ---
@@ -793,7 +849,7 @@ std::vector<short> derive_local_seat_teams(const SaveData& save)
     teams.reserve(MAX_PLAYERS);
     for (const auto& member : save.team_list)
     {
-        if (!member)
+        if (!member || !member->deployed)
             continue;
         const short team = member->teamnum;
         if (team <= 0 || team >= MAX_PLAYERS)
@@ -803,14 +859,526 @@ std::vector<short> derive_local_seat_teams(const SaveData& save)
     }
 
     const short preferred = save.my_team;
-    if (preferred >= 0 && preferred < MAX_PLAYERS &&
-        team_has_members(save, preferred))
+    const bool preferred_has_deployed = std::any_of(
+        save.team_list.begin(), save.team_list.end(),
+        [preferred](const std::unique_ptr<guy>& member) {
+            return member != nullptr && member->deployed &&
+                member->teamnum == preferred;
+        });
+    if (preferred >= 0 && preferred < MAX_PLAYERS && preferred_has_deployed)
     {
         teams.erase(std::remove(teams.begin(), teams.end(), preferred),
                     teams.end());
         teams.insert(teams.begin(), preferred);
     }
     return teams;
+}
+
+std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
+{
+    const int required_players = std::clamp<int>(save.numplayers, 0, MAX_PLAYERS);
+    if (required_players == 0)
+        return {};
+
+    std::vector<short> teams = derive_local_seat_teams(save);
+    if (static_cast<int>(teams.size()) > required_players)
+        teams.resize(static_cast<std::size_t>(required_players));
+
+    for (short candidate = 0;
+         static_cast<int>(teams.size()) < required_players &&
+             candidate < MAX_PLAYERS;
+         ++candidate)
+    {
+        if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
+            teams.push_back(candidate);
+    }
+
+    if (teams.empty())
+        teams.push_back(0);
+    if (save.allied_mode != 0)
+        teams.assign(static_cast<std::size_t>(required_players), teams.front());
+    return teams;
+}
+
+bool local_seat_teams_have_controls(const SaveData& save,
+                                    std::span<const short> seat_teams)
+{
+    std::array<int, MAX_PLAYERS> available{};
+    for (const auto& member : save.team_list)
+    {
+        if (member == nullptr || !member->deployed || member->teamnum < 0 ||
+            member->teamnum >= MAX_PLAYERS)
+        {
+            continue;
+        }
+        ++available[static_cast<std::size_t>(member->teamnum)];
+    }
+
+    for (const short team : seat_teams)
+    {
+        if (team < 0 || team >= MAX_PLAYERS)
+            return false;
+        int& remaining = available[static_cast<std::size_t>(team)];
+        if (remaining <= 0)
+            return false;
+        --remaining;
+    }
+    return true;
+}
+
+og::data::CompanyAutosaveContext company_autosave_context(
+    const SaveData& save, bool networked_lobby_active)
+{
+    og::data::CompanyAutosaveContext context;
+    context.networked_lobby = networked_lobby_active;
+    if (!networked_lobby_active)
+        return context;
+
+    // Owned wallets = every m_totalcash index this machine's mutations spend
+    // from. In a networked lobby the in-memory roster remains private to this
+    // machine and each in-range teamnum remains a combat/wallet color;
+    // my_team covers hiring into an empty roster. Team 0 is a real wallet
+    // index here — unlike derive_local_seat_teams, which is about SEATS.
+    if (save.my_team >= 0 && save.my_team < SCORE_TEAM_COUNT)
+        context.owned_teams[static_cast<std::size_t>(save.my_team)] = true;
+    for (const auto& member : save.team_list)
+    {
+        if (!member)
+            continue;
+        const short team = member->teamnum;
+        if (team >= 0 && team < SCORE_TEAM_COUNT)
+            context.owned_teams[static_cast<std::size_t>(team)] = true;
+    }
+    return context;
+}
+
+SaveDataIoError company_autosave_after_mutation(SaveData& save,
+                                                bool networked_lobby_active)
+{
+    return og::data::company_autosave(
+        save,
+        og::data::CompanyAutosaveKind::BaseCampMutation,
+        company_autosave_context(save, networked_lobby_active));
+}
+
+std::vector<int> collect_base_camp_slots(const SaveData& save)
+{
+    std::vector<int> slots;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i])
+            slots.push_back(i);
+    }
+    return slots;
+}
+
+int count_deployed_members(const SaveData& save)
+{
+    int deployed = 0;
+    for (const auto& member : save.team_list) {
+        if (member && member->deployed)
+            ++deployed;
+    }
+    return deployed;
+}
+
+bool toggle_deploy_slot(SaveData& save, int slot)
+{
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+        return false;
+    guy& member = *save.team_list[slot];
+    member.deployed = !member.deployed;
+    return member.deployed;
+}
+
+namespace {
+
+std::string clip_chars(std::string value, std::size_t max_chars)
+{
+    if (value.size() > max_chars)
+        value.resize(max_chars);
+    return value;
+}
+
+} // namespace
+
+BaseCampRowText format_base_camp_row(const guy& member)
+{
+    BaseCampRowText row;
+    row.name = clip_chars(member.name, 12);
+    std::string cls = family_display_name(member.family);
+    for (char& c : cls)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    row.cls = clip_chars(std::move(cls), 9);
+    // §9.9 graft (b): fixed-width left-padded numerics so the digit columns
+    // right-align down the page (the clip budgets are unchanged).
+    row.level = clip_chars(std::format("{:>2}", member.level), 3);
+    row.exp = clip_chars(std::format("{:>6}", member.exp), 6);
+    return row;
+}
+
+unsigned char base_camp_family_ramp_start(short family)
+{
+    // The exact View Team formula from master. Each result begins the
+    // family's 16-entry palette ramp.
+    return static_cast<unsigned char>(((family + 1) << 4) & 255);
+}
+
+std::string format_base_camp_gold_label(const SaveData& save)
+{
+    // The lobby may remap my_team to a shared seat/control team without
+    // changing this company's combat colors or wallets. Prefer the first
+    // wallet actually represented by the private
+    // roster; only an empty company falls back to the seat team.
+    int team = MAX_PLAYERS;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->teamnum >= 0 &&
+            member->teamnum < MAX_PLAYERS)
+        {
+            team = std::min(team, static_cast<int>(member->teamnum));
+        }
+    }
+    if (team == MAX_PLAYERS)
+    {
+        team = (save.my_team >= 0 && save.my_team < MAX_PLAYERS)
+            ? save.my_team
+            : 0;
+    }
+    return clip_chars(
+        std::format("GOLD {}",
+                    static_cast<unsigned>(
+                        save.m_totalcash[static_cast<std::size_t>(team)])),
+        11);
+}
+
+std::string format_base_camp_scen_line(const SaveData& save,
+                                       std::string_view level_title)
+{
+    const std::string dep_part =
+        std::format("  DEP {}/{}", count_deployed_members(save),
+                    static_cast<int>(collect_base_camp_slots(save).size()));
+    std::string scen_part =
+        std::format("SCEN {}: {}", save.scen_num, level_title);
+    const std::size_t budget = 34;
+    const std::size_t scen_budget =
+        dep_part.size() < budget ? budget - dep_part.size() : 0;
+    scen_part = clip_chars(std::move(scen_part), scen_budget);
+    return scen_part + dep_part;
+}
+
+std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
+    const SaveData& save,
+    const std::vector<og::sim::LobbyPlayer>& players,
+    const std::vector<std::uint8_t>& local_player_indices,
+    bool networked)
+{
+    std::vector<BaseCampDisplaySlot> slots;
+
+    // Own rows first (§2.5 MP roster rule), read from the PRIVATE save so
+    // toggles/train edits show the same frame. Solo: this is the whole list.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (!save.team_list[i])
+            continue;
+        BaseCampDisplaySlot slot;
+        slot.owned = true;
+        slot.save_slot = i;
+        slot.deployed = save.team_list[i]->deployed;
+        if (networked)
+            slot.company = save.save_name;
+        slots.push_back(std::move(slot));
+    }
+    if (!networked)
+        return slots;
+
+    // Foreign rows: every other machine's replicated slots, ordered by
+    // owner player index then declared slot order (stable across polls).
+    std::vector<const og::sim::LobbyPlayer*> foreign;
+    for (const og::sim::LobbyPlayer& player : players) {
+        if (std::find(local_player_indices.begin(), local_player_indices.end(),
+                      player.player_index) != local_player_indices.end())
+        {
+            continue;
+        }
+        foreign.push_back(&player);
+    }
+    std::stable_sort(foreign.begin(), foreign.end(),
+                     [](const og::sim::LobbyPlayer* a,
+                        const og::sim::LobbyPlayer* b) {
+                         return a->player_index < b->player_index;
+                     });
+    for (const og::sim::LobbyPlayer* player : foreign) {
+        for (const og::sim::LobbyCharacterSlot& wire_slot :
+             player->character_slots)
+        {
+            BaseCampDisplaySlot slot;
+            slot.owned = false;
+            slot.owner_player_index = player->player_index;
+            slot.deployed = wire_slot.deployed;
+            slot.company = player->company;
+            slot.character = wire_slot.character;
+            slots.push_back(std::move(slot));
+        }
+    }
+    return slots;
+}
+
+BaseCampDeployCounts count_base_camp_display_deploys(
+    const std::vector<BaseCampDisplaySlot>& slots, const SaveData& save)
+{
+    BaseCampDeployCounts counts;
+    for (const BaseCampDisplaySlot& slot : slots) {
+        ++counts.total;
+        bool deployed = slot.deployed;
+        if (slot.owned && slot.save_slot >= 0 &&
+            slot.save_slot < MAX_TEAM_SIZE &&
+            save.team_list[slot.save_slot])
+        {
+            deployed = save.team_list[slot.save_slot]->deployed;
+        }
+        if (deployed)
+            ++counts.deployed;
+    }
+    return counts;
+}
+
+std::string_view lobby_player_machine_key(std::string_view player_name)
+{
+    const std::size_t hash = player_name.find('#');
+    return hash == std::string_view::npos ? player_name
+                                          : player_name.substr(0, hash);
+}
+
+BaseCampReadyCounts count_base_camp_ready_machines(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    struct MachineState {
+        bool is_host = false;
+        bool all_ready = true;
+    };
+    std::map<std::string, MachineState, std::less<>> machines;
+    for (const og::sim::LobbyPlayer& player : players) {
+        MachineState& machine =
+            machines[std::string(lobby_player_machine_key(player.name))];
+        machine.is_host = machine.is_host || player.is_host;
+        machine.all_ready = machine.all_ready && player.ready;
+    }
+    BaseCampReadyCounts counts;
+    for (const auto& [key, machine] : machines) {
+        (void)key;
+        if (machine.is_host)
+            continue;
+        ++counts.machines;
+        if (machine.all_ready)
+            ++counts.ready;
+    }
+    return counts;
+}
+
+BaseCampSessionCensus count_base_camp_session_census(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    std::set<std::string, std::less<>> machines;
+    for (const og::sim::LobbyPlayer& player : players)
+        machines.insert(std::string(lobby_player_machine_key(player.name)));
+    BaseCampSessionCensus census;
+    census.machines = static_cast<int>(machines.size());
+    census.players = static_cast<int>(players.size());
+    return census;
+}
+
+std::string base_camp_host_display_name(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    for (const og::sim::LobbyPlayer& player : players) {
+        if (!player.is_host)
+            continue;
+        if (!player.company.empty())
+            return clip_chars(player.company, 16);
+        return clip_chars(
+            std::string(lobby_player_machine_key(player.name)), 16);
+    }
+    return {};
+}
+
+std::string format_base_camp_session_status(
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    // Room codes display-clip at 12 (relay codes are 9-char "GLAD-XXXX";
+    // the NETWORKING screen keeps the authoritative full form).
+    const std::string room = clip_chars(std::string(room_code), 12);
+    std::string status;
+    if (is_host) {
+        // §9.12 budget note: "MACH / PLYR" is the recorded "shape like"
+        // latitude call — the spelled-out census overruns the 42-char band
+        // at double-digit counts ("HOSTING GLAD-XXXX - 16 MACHINES / 16
+        // PLAYERS" = 44); the abbreviated worst case is 37.
+        const BaseCampSessionCensus census =
+            count_base_camp_session_census(players);
+        const std::string census_part = std::format(
+            "{} MACH / {} PLYR", census.machines, census.players);
+        status = room.empty()
+            ? std::format("HOSTING {}", census_part)
+            : std::format("HOSTING {} - {}", room, census_part);
+    } else {
+        const std::string host_name = base_camp_host_display_name(players);
+        const std::string room_part =
+            room.empty() ? std::string("JOINED")
+                         : std::format("IN {}", room);
+        status = host_name.empty()
+            ? room_part
+            : std::format("{} - HOST: {}", room_part, host_name);
+    }
+    return clip_chars(std::move(status), 42);
+}
+
+BaseCampLineB compose_base_camp_line_b(
+    const std::optional<std::string>& alert,
+    bool is_host,
+    std::string_view room_code,
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    // Degraded links outrank the healthy session status: the alert takes
+    // the §2.5 line-B slot (and the ORANGE color) until the link heals.
+    if (alert.has_value())
+        return {.text = *alert, .alert = true};
+    return {.text = format_base_camp_session_status(is_host, room_code,
+                                                    players),
+            .alert = false};
+}
+
+ReadyGoPresentation format_ready_go_button(bool networked,
+                                           bool is_host,
+                                           bool my_ready,
+                                           bool all_other_machines_ready,
+                                           int global_deployed,
+                                           int own_deployed,
+                                           bool cross_control,
+                                           bool spectator)
+{
+    ReadyGoPresentation p;
+    if (!networked) {
+        // States 1-2: solo/local multi never consults ready (the local
+        // LobbyServer is exempt) and keeps the plain grey face byte-identical.
+        p.state = global_deployed > 0 ? ReadyGoState::LocalGo
+                                      : ReadyGoState::LocalGoNoDeploy;
+        p.label = "GO";
+        p.face_color = kReadyGoFaceGrey;
+        if (p.state == ReadyGoState::LocalGoNoDeploy)
+            p.caption = "DEPLOY AT LEAST ONE";
+        return p;
+    }
+    if (is_host) {
+        // States 3-4. Rule 3 outranks rule 4 (the server's start_allowed
+        // order): report unready machines before the global-deploy gate.
+        p.label = "GO";
+        if (!all_other_machines_ready) {
+            p.state = ReadyGoState::HostGated;
+            p.face_color = kReadyGoFaceGated;
+            p.caption = "WAITING FOR OTHERS";
+        } else if (global_deployed <= 0) {
+            p.state = ReadyGoState::HostGated;
+            p.face_color = kReadyGoFaceGated;
+            p.caption = "NO ONE IS DEPLOYED";
+        } else {
+            p.state = ReadyGoState::HostGo;
+            p.face_color = kReadyGoFaceGo;
+        }
+        return p;
+    }
+    // States 5-6 (joiner). Label = the action, color = the state.
+    if (my_ready) {
+        p.state = ReadyGoState::ClientReady;
+        p.label = "UNREADY";
+        p.face_color = kReadyGoFaceGo;
+        return p;
+    }
+    p.state = ReadyGoState::ClientUnready;
+    p.label = "READY";
+    p.face_color = kReadyGoFaceUnready;
+    // Client ready gate: cross-control OFF + own roster brought characters
+    // + none deployed => the click popups instead of readying. Spectator /
+    // empty-roster machines ready freely [NET-R9]; cross-control ON removes
+    // the per-machine minimum (bring 0, play a friend's characters).
+    if (!cross_control && !spectator && own_deployed <= 0)
+        p.caption = "DEPLOY AT LEAST ONE";
+    return p;
+}
+
+std::string format_go_blockers(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    struct MachineState {
+        bool is_host = false;
+        bool all_ready = true;
+        std::string company;
+    };
+    // Insertion order keeps the popup stable across identical lobby states.
+    std::vector<std::pair<std::string, MachineState>> machines;
+    for (const og::sim::LobbyPlayer& player : players) {
+        const std::string key(lobby_player_machine_key(player.name));
+        auto it = std::find_if(machines.begin(), machines.end(),
+                               [&key](const auto& entry) {
+                                   return entry.first == key;
+                               });
+        if (it == machines.end())
+            it = machines.insert(machines.end(), {key, MachineState{}});
+        it->second.is_host = it->second.is_host || player.is_host;
+        it->second.all_ready = it->second.all_ready && player.ready;
+        if (it->second.company.empty())
+            it->second.company = player.company;
+    }
+    std::vector<std::string> blockers;
+    for (const auto& [key, machine] : machines) {
+        if (machine.is_host || machine.all_ready)
+            continue;
+        blockers.push_back(clip_chars(
+            machine.company.empty() ? key : machine.company, 26));
+    }
+    std::string body;
+    constexpr std::size_t kMaxLines = 4;
+    for (std::size_t i = 0; i < blockers.size() && i < kMaxLines; ++i) {
+        if (!body.empty())
+            body += '\n';
+        body += blockers[i];
+    }
+    if (blockers.size() > kMaxLines)
+        body += std::format("\nAND {} MORE", blockers.size() - kMaxLines);
+    return body;
+}
+
+std::string format_cross_control_label(bool cross_control_enabled)
+{
+    return cross_control_enabled ? "CTRL: ALL" : "CTRL: OWN";
+}
+
+BaseCampNetRowText format_base_camp_net_row(std::string_view name,
+                                            std::string_view company,
+                                            int level)
+{
+    BaseCampNetRowText row;
+    row.name = clip_chars(std::string(name), 10);
+    row.company = clip_chars(std::string(company), 16);
+    // §9.9 graft (b): the level left-pads to 2 like the solo shape.
+    row.level = clip_chars(std::format("{:>2}", level), 3);
+    return row;
+}
+
+std::unique_ptr<guy> make_base_camp_display_guy(
+    const og::sim::LobbyCharacterData& character)
+{
+    auto result = std::make_unique<guy>(character.family);
+    result->name = character.name;
+    result->family = static_cast<char>(character.family);
+    result->strength = character.strength;
+    result->dexterity = character.dexterity;
+    result->constitution = character.constitution;
+    result->intelligence = character.intelligence;
+    result->armor = character.armor;
+    result->exp = character.exp;
+    result->level = character.level;
+    return result;
 }
 
 std::string format_team_row_label(short team,
@@ -993,7 +1561,7 @@ std::string format_difficulty_label(int difficulty)
 
 std::string format_allied_mode_label(const SaveData& save)
 {
-    return is_allied_mode(save) ? "PVP: Ally" : "PVP: Enemy";
+    return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
 }
 
 std::string format_ctf_teams_label(const SaveData& save)
@@ -1047,6 +1615,216 @@ std::string format_generator_rate_label(const SaveData& save)
     if (save.generator_rate == 200)
         return "Generators: Frenzy";
     return "Generators: Normal";
+}
+
+// --- Company screens: label formatters (design §2.2/§2.3) ---
+
+namespace {
+
+std::string clip_to(std::string text, std::size_t max_len)
+{
+    if (text.size() > max_len)
+        text.resize(max_len);
+    return text;
+}
+
+// "YYYY-MM-DD" in UTC (deterministic — never the machine's timezone), or ""
+// for never-played (<= 0) and out-of-calendar values (a 4-digit year keeps
+// the §2.3 10-char date column budget honest).
+std::string format_played_date_utc(std::int64_t unix_s)
+{
+    // 9999-12-31T23:59:59Z. Values beyond this would overflow the int day
+    // count inside year_month_day (wrapping to a bogus in-range date), so
+    // bound the input BEFORE converting.
+    constexpr std::int64_t kMaxFourDigitYearUnixS = 253402300799;
+    if (unix_s <= 0 || unix_s > kMaxFourDigitYearUnixS)
+        return {};
+    const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
+    const std::chrono::year_month_day ymd{
+        std::chrono::floor<std::chrono::days>(when)};
+    if (!ymd.ok())
+        return {};
+    return std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()),
+                       static_cast<unsigned>(ymd.month()),
+                       static_cast<unsigned>(ymd.day()));
+}
+
+} // namespace
+
+std::string format_company_list_title(int count)
+{
+    return std::format("COMPANIES ({})", count);
+}
+
+CompanyRowText format_company_row(const og::data::CompanyInfo& info)
+{
+    CompanyRowText row;
+    row.corrupt = !info.valid;
+    // Corrupt headers may still have parsed a display name before failing;
+    // fall back to the slot so the row always identifies its file.
+    row.name = clip_to(
+        !info.display_name.empty() ? info.display_name : info.slot,
+        kCompanyNameMaxLen);
+    if (row.corrupt)
+    {
+        row.roster = "--";
+        row.played = "CORRUPT";
+        return row;
+    }
+    row.roster = std::format("{:2}", std::clamp(info.roster_size, 0, 99));
+    row.played = format_played_date_utc(info.last_played_unix_s);
+    return row;
+}
+
+std::string format_company_row_line(const og::data::CompanyInfo& info,
+                                    bool active)
+{
+    const CompanyRowText row = format_company_row(info);
+    std::string line = std::format("{} {:<18} {:>2}", active ? '*' : ' ',
+                                   row.name, row.roster);
+    if (!row.played.empty()) {
+        line += ' ';
+        line += row.played;
+    }
+    return line;
+}
+
+// --- Backups sub-view: label formatters (design §2.4) ---
+
+namespace {
+
+// "MM-DD HH:MM" in UTC (deterministic — never the machine's timezone; the
+// §2.3 date-column precedent), or "" for unstamped (<= 0) and
+// out-of-calendar values.
+std::string format_saved_datetime_utc(std::int64_t unix_s)
+{
+    // 9999-12-31T23:59:59Z, the same bound the §2.3 date formatter applies
+    // BEFORE converting (larger values overflow year_month_day's day count).
+    constexpr std::int64_t kMaxFourDigitYearUnixS = 253402300799;
+    if (unix_s <= 0 || unix_s > kMaxFourDigitYearUnixS)
+        return {};
+    const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
+    const auto day = std::chrono::floor<std::chrono::days>(when);
+    const std::chrono::year_month_day ymd{day};
+    if (!ymd.ok())
+        return {};
+    const std::chrono::hh_mm_ss<std::chrono::seconds> tod{when - day};
+    return std::format("{:02}-{:02} {:02}:{:02}",
+                       static_cast<unsigned>(ymd.month()),
+                       static_cast<unsigned>(ymd.day()),
+                       tod.hours().count(), tod.minutes().count());
+}
+
+} // namespace
+
+std::string format_backup_list_title(const std::string& company_name,
+                                     int count)
+{
+    return std::format("BACKUPS: {} ({}/{})",
+                       clip_to(company_name, kCompanyNameMaxLen), count,
+                       og::data::kCompanyBackupRetention);
+}
+
+BackupRowText format_backup_row(const og::data::CompanyBackupInfo& info)
+{
+    BackupRowText row;
+    row.corrupt = !info.header.valid;
+    if (row.corrupt)
+    {
+        // §2.4 corrupt-backup marking: the row stays listed (and clickable —
+        // the restore API's step-0 validation is the guard), but identifies
+        // itself as damage instead of level context it never parsed.
+        row.level = "CORRUPT";
+        row.saved = "--";
+        return row;
+    }
+    const int scen = info.header.scen_num;
+    row.level = std::format("L{}", scen);
+    // Level title off the MOUNTED package only (the level_display_guarded
+    // mount-match rule): a mismatched mount would caption the row with
+    // another campaign's title.
+    if (get_mounted_campaign() == info.header.campaign_id)
+    {
+        std::string title = og::data::scenario_display_name(scen);
+        const std::string prefix = std::format("{}. ", scen);
+        if (title.starts_with(prefix))
+            title.erase(0, prefix.size());
+        // The missing-scenario fallback title is "Level N" — pure noise
+        // next to "L<nn>", so the bare tag stands alone instead.
+        if (title != std::format("Level {}", scen))
+        {
+            row.level += ' ';
+            row.level += clip_to(std::move(title), 14);
+        }
+    }
+    row.saved = format_saved_datetime_utc(info.header.last_played_unix_s);
+    return row;
+}
+
+std::string format_backup_row_line(const og::data::CompanyBackupInfo& info)
+{
+    const BackupRowText row = format_backup_row(info);
+    if (row.saved.empty())
+        return row.level;
+    return std::format("{:<20} {}", row.level, row.saved);
+}
+
+const char* company_restore_error_string(og::data::CompanyRestoreError error)
+{
+    switch (error)
+    {
+    case og::data::CompanyRestoreError::None:
+        return "";
+    case og::data::CompanyRestoreError::InvalidBackup:
+        return "BACKUP FILE DAMAGED";
+    case og::data::CompanyRestoreError::PreRestoreBackupFailed:
+        return "COULD NOT BACK UP CURRENT STATE";
+    case og::data::CompanyRestoreError::CopyFailed:
+        return "COPY FAILED - COMPANY UNCHANGED";
+    case og::data::CompanyRestoreError::ReloadFailed:
+        return "RELOAD FAILED - REWIND UNDONE";
+    case og::data::CompanyRestoreError::RestampFailed:
+        return "REWOUND, BUT THE TIMESTAMP WRITE FAILED";
+    }
+    return "";
+}
+
+ContinueResult open_company_slot(SaveData& save, const std::string& slot,
+                                 SaveDataIoError* io_error)
+{
+    // Never SILENTLY switch to a corrupt company (§2.1/§2.3): validate the
+    // header first and keep the currently loaded save on damage — only an
+    // explicit restore-from-backup or delete acts on a corrupt file.
+    const std::optional<og::data::CompanyInfo> header =
+        og::data::read_company_header(slot);
+    if (!header || !header->valid)
+        return ContinueResult::Corrupt;
+
+    const std::string previous = og::data::active_company_slot();
+    (void)og::data::set_active_company_slot(slot);
+    const SaveDataIoError io = save.load_with_error(slot);
+    if (io != SaveDataIoError::None) {
+        if (io_error != nullptr)
+            *io_error = io;
+        // The header validated but the body failed (torn file, missing
+        // campaign package). Restore the previous slot and best-effort
+        // reload it so autosaves keep targeting the company that is really
+        // open instead of writing the old save into the broken slot.
+        (void)og::data::set_active_company_slot(previous);
+        (void)save.load_with_error(previous);
+        return ContinueResult::LoadFailed;
+    }
+    return ContinueResult::Opened;
+}
+
+ContinueResult open_most_recent_company(SaveData& save,
+                                        SaveDataIoError* io_error)
+{
+    // §2.1: CONTINUE opens the most-recent company (WP2 startup selection).
+    const std::string slot = og::data::select_startup_company();
+    if (slot.empty())
+        return ContinueResult::NoCompany;  // CONTINUE is gated hidden anyway.
+    return open_company_slot(save, slot, io_error);
 }
 
 // --- Team family extraction ---
@@ -1277,6 +2055,18 @@ void TrainSession::next_member()
              edit_slot_ != start);
 
     select_current_slot();
+}
+
+bool TrainSession::seek_slot(int slot)
+{
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save_.team_list[slot] ||
+        !picker_lobby_save_slot_editable(slot))
+    {
+        return false;
+    }
+    edit_slot_ = slot;
+    select_current_slot();
+    return true;
 }
 
 void TrainSession::prev_member()
@@ -1566,8 +2356,6 @@ bool is_score_team_index(int team)
 
 std::vector<short> roster_teams_for_strip(const SaveData& save)
 {
-    if (is_allied_mode(save))
-        return {0};
     std::vector<short> teams;
     for (const auto& member : save.team_list)
     {
@@ -1607,7 +2395,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
 {
     ScenarioRosterReport report;
     report.is_ctf = (world.type & GameWorld::TYPE_CTF) != 0;
-    report.your_team = is_allied_mode(save) ? 0 : save.my_team;
+    report.your_team = save.my_team;
 
     int map_capture_limit = 0;
     if (report.is_ctf)

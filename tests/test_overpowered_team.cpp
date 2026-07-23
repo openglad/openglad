@@ -63,7 +63,7 @@ static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
     int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("view_team") && has_interactable("go"))
+        if (has_interactable("hire_troops") && has_interactable("go"))
         {
             return true;
         }
@@ -114,6 +114,9 @@ static int op_injector(void* data)
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
+
+    // §2.2: accept the generated company name at the name-entry screen.
+    accept_generated_company_name();
 
     // Dismiss campaign intro screen (blocks until Escape)
     SDL_Delay(kMenuTransitionMs);

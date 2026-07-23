@@ -29,6 +29,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -39,27 +40,36 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/win_shares.h>
 #include <openglad/server/headless_server_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <exception>
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -178,24 +188,29 @@ short resolve_initial_local_team(const SaveData& save)
     return 0;
 }
 
-// Build this peer's roster (the characters whose teamnum == local_team).
+// Build this peer's complete roster. The player's seat team chooses the view;
+// each character's own teamnum remains its combat allegiance.
 og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
                                               std::string_view player_name,
                                               short local_team)
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
+    // v8: advertise the active company's display name (SaveData::save_name).
+    player.company = save.save_name;
     player.team = local_team;
     player.ready = false;
     player.is_host = false;
 
     for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index) {
         const auto& member = save.team_list[slot_index];
-        if (member == nullptr || member->teamnum != local_team)
+        if (member == nullptr)
             continue;
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
             .character = make_lobby_character_data(*member),
+            // v8: stamped from the save guy's v14 deploy flag.
+            .deployed = member->deployed,
         });
     }
     return player;
@@ -228,6 +243,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.cross_control = save.cross_control;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -280,6 +296,99 @@ std::uint32_t resolve_followed_entity_id(const og::sim::GameClient& client,
     return 0;
 }
 
+// §4.5 follow camera for a networked curses peer — the curses parity of the
+// SDL DisplayFollowState. Engaged while the local seat has no controllable
+// walker (0-deploy, all-dead, spectator); the seat's SwitchChar binding
+// cycles the watched target (Shift = reverse) through the shared
+// og::sim follow-target selectors, so a curses peer picks the same targets
+// an SDL peer would. Camera-only: never stamps user tags.
+struct CursesFollowState {
+    bool engaged = false;
+    std::uint32_t target_entity_id = 0;
+};
+
+// Per-frame maintenance, run after the mirror poll: engage when the legacy
+// resolution has nothing (no live mapped walker, no user-tagged fallback)
+// and no respawn-pending corpse holds the "(spectating)" countdown view;
+// disengage the moment the seat resolves again; auto-advance a
+// dead/unresolved target.
+void maintain_curses_follow(CursesFollowState& follow,
+                            const og::sim::GameClient& client,
+                            GameWorld& mirror,
+                            std::size_t local_player_index)
+{
+    if (resolve_followed_entity_id(client, mirror, local_player_index) != 0) {
+        follow = {};
+        return;
+    }
+
+    // A dead own corpse with a pending revive entry keeps today's
+    // "(spectating)" respawn-countdown shape instead of engaging.
+    if (((mirror.type & GameWorld::TYPE_CTF) && mirror.ctf.active) ||
+        og::sim::classic_respawn_active(mirror)) {
+        for (const auto& up : mirror.oblist) {
+            const walker* w = up.get();
+            if (w && w->dead() && w->myguy != nullptr &&
+                w->user() == static_cast<int>(local_player_index) &&
+                og::sim::ctf_pending_player_respawn(mirror.ctf,
+                                                    w->entity_id())) {
+                follow = {};
+                return;
+            }
+        }
+    }
+
+    if (!follow.engaged) {
+        follow.engaged = true;
+        follow.target_entity_id = og::sim::default_follow_target_id(
+            mirror, client.controlled_entity_ids());
+        return;
+    }
+
+    walker* const target = follow.target_entity_id != 0
+        ? mirror.find_by_id(follow.target_entity_id)
+        : nullptr;
+    if (target == nullptr) {
+        follow.target_entity_id = og::sim::default_follow_target_id(
+            mirror, client.controlled_entity_ids());
+    } else if (target->dead()) {
+        follow.target_entity_id =
+            og::sim::next_follow_target_id(mirror, target, false);
+    }
+}
+
+// SwitchChar press-edge cycles the watched target. The same input still
+// rides to the server, which ignores it for a null seat (harmless dual
+// consumption, matching the SDL client).
+void handle_curses_follow_input(CursesFollowState& follow,
+                                const InputState& input, GameWorld& mirror)
+{
+    if (!follow.engaged ||
+        !input.players[0].was_pressed(InputAction::SwitchChar))
+        return;
+    walker* const current = follow.target_entity_id != 0
+        ? mirror.find_by_id(follow.target_entity_id)
+        : nullptr;
+    follow.target_entity_id = og::sim::next_follow_target_id(
+        mirror, current, input.players[0].is_held(InputAction::Shift));
+}
+
+// followed_entity_id() resolution while engaged: the watched target when it
+// is still live, else the legacy resolution (maintenance re-targets on the
+// next advance).
+std::uint32_t follow_or_legacy_entity_id(const CursesFollowState& follow,
+                                         const og::sim::GameClient& client,
+                                         const GameWorld& mirror,
+                                         std::size_t local_player_index)
+{
+    if (follow.engaged && follow.target_entity_id != 0) {
+        if (const walker* w = mirror.find_by_id(follow.target_entity_id);
+            w != nullptr && !w->dead())
+            return follow.target_entity_id;
+    }
+    return resolve_followed_entity_id(client, mirror, local_player_index);
+}
+
 // Decode lobby traffic regardless of whether the transport speaks typed messages
 // (in-process) or raw envelopes (WebSocket / relay).
 std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
@@ -327,6 +436,54 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 // Networked sessions
 // =====================================================================
 
+// §4.6: a curses networked win persists this machine's deploy-ratio SHARE of
+// the pot into its own company save (active_company_slot), while `session_save`
+// (the in-memory authoritative/mirror save) keeps the full combined fold. The
+// fold's applied deltas + the pre-fold deploy roster feed the shared SDL-free
+// win-share core, so a curses peer conserves with an SDL peer in the same
+// match. Only a genuine win (ended, ending == 0, not a CTF rematch) persists.
+void persist_curses_networked_win(SaveData& session_save, const GameWorld& world,
+                                  std::size_t player_index, int next_level)
+{
+    if (is_ctf_rematch_end(world, /*ending=*/0, next_level))
+        return;
+
+    og::server::sync_headless_server_save_data_from_world(session_save, world);
+
+    og::progression::WinFoldContext fold_ctx;
+    for (std::size_t team = 0; team < fold_ctx.time_bonus.size(); ++team)
+        fold_ctx.time_bonus[team] = og::progression::calculate_win_time_bonus(
+            world, session_save, static_cast<int>(team));
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        world, session_save, static_cast<short>(next_level));
+    fold_ctx.finished_level = session_save.scen_num;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(
+        next_level >= 0 ? next_level : (session_save.scen_num + 1));
+    fold_ctx.outcome.networked = true;
+
+    og::progression::NetWinFoldCapture capture;
+    capture.deployed = og::progression::collect_deployed_contributors(world);
+
+    const int finished_level = fold_ctx.finished_level;
+    // The in-memory session save keeps the full combined fold.
+    og::progression::apply_win_fold(session_save, world, fold_ctx);
+    capture.cash_delta = fold_ctx.applied_cash_delta;
+    capture.score_delta = fold_ctx.applied_score_delta;
+
+    const std::array<std::uint8_t, 1> owners = {
+        static_cast<std::uint8_t>(player_index)};
+    std::optional<std::size_t> primary_team;
+    if (session_save.my_team >= 0 && session_save.my_team < MAX_PLAYERS)
+        primary_team = static_cast<std::size_t>(session_save.my_team);
+
+    // The disk company save gets baseline + this machine's share.
+    (void)og::progression::persist_networked_win(
+        og::data::active_company_slot(), session_save, world,
+        std::span<const std::uint8_t>(owners), primary_team, capture,
+        finished_level);
+}
+
 // HOST: authoritative GameServer over the lobby's shared transport + a
 // co-located mirror GameClient connected over a loopback client transport. Almost
 // identical to LocalCursesSession, but the transport, save and player bindings
@@ -347,6 +504,7 @@ public:
 
     void send_input(const InputState& input) override
     {
+        handle_curses_follow_input(follow_, input, client_level_->world());
         pending_input_ = input;
         have_input_ = true;
     }
@@ -362,15 +520,20 @@ public:
         server_->step();
         current_game = &client_ctx_;
         client_->poll_messages();
+        maintain_curses_follow(follow_, *client_, client_level_->world(),
+                               local_player_index_);
     }
 
     GameWorld& mirror_world() override { return client_level_->world(); }
 
     std::uint32_t followed_entity_id() const override
     {
-        return resolve_followed_entity_id(*client_, client_level_->world(),
+        return follow_or_legacy_entity_id(follow_, *client_,
+                                          client_level_->world(),
                                           local_player_index_);
     }
+
+    bool follow_engaged() const override { return follow_.engaged; }
 
     std::uint32_t next_input_tick() const override
     {
@@ -398,10 +561,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    // Networked persistence flows through the lobby/server save-sync path; the
-    // ncurses host does not write the caller's save directly (parity with the
-    // SDL networked host, which persists via reset_network_host_transport_shadow).
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the host banks its deploy-ratio share into its
+    // own company save (the authoritative server_save_ keeps the full fold).
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(server_save_, server_world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameServer& server() { return *server_; }
     og::sim::GameClient& client() { return *client_; }
@@ -454,6 +622,63 @@ public:
         current_game = saved;
         return ok;
     }
+
+    // Force the deterministic WIN shape on the AUTHORITATIVE world, mirroring
+    // the SDL e2e recipe (g_test_remove_exits + clear-all-foes): pin a nonzero
+    // team-0 payout, kill the level exits, and slay every living hostile to
+    // the host team. The next server steps then declare the win
+    // (level_done == 2) and forward the terminal EndGame to every peer.
+    // Returns the number of foes slain.
+    int force_server_win_for_testing(std::uint32_t pinned_team0_score)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        world.m_score[0] = pinned_team0_score;
+        for (auto& uptr : world.fxlist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_EXIT)
+                w->set_dead(1);
+        }
+        const unsigned char host_team =
+            static_cast<unsigned char>(world.my_team);
+        int slain = 0;
+        for (auto& uptr : world.oblist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->is_friendly_to_team(host_team) == 0) {
+                w->set_dead(1);
+                ++slain;
+            }
+        }
+        current_game = saved;
+        return slain;
+    }
+
+    // Kill every living walker on `team` in the AUTHORITATIVE server world
+    // (§4.5 follow tests). With the whole team gone the seat's
+    // death-reacquire finds nothing claimable; while another bound team
+    // stays alive the wipe is suppressed, the seat goes null, and the
+    // mirror's follow camera engages. Returns the number of walkers slain.
+    int clear_server_team_for_testing(short team)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        int slain = 0;
+        for (auto& uptr : world.oblist) {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Living &&
+                static_cast<short>(w->team_num()) == team) {
+                w->set_dead(1);
+                ++slain;
+            }
+        }
+        current_game = saved;
+        return slain;
+    }
 #endif
 
 private:
@@ -484,6 +709,7 @@ private:
     og::sim::PeerId host_peer_id_ = 0;
     std::unique_ptr<og::sim::GameClient> client_;
     std::size_t local_player_index_ = 0;
+    CursesFollowState follow_;
 
     GameplayContext* saved_game_ = nullptr;
     PendingEnd pending_end_;
@@ -543,6 +769,17 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
         current_game = s->saved_game_;
         return set_error("failed to load level for host game");
     }
+
+    // §4.4 control-policy install: derive owner-locked from the negotiated
+    // lobby config (session-only cross_control rides the equivalent, never a
+    // disk round-trip) and stamp the machine map BEFORE bind_player scans run
+    // below; snapshot v9 replicates both scalars to every mirror, including
+    // the host's own.
+    og::sim::install_control_policy(sw,
+                                    /*networked=*/true,
+                                    s->server_save_.cross_control != 0,
+                                    bindings,
+                                    s->server_save_.team_list);
 
     // --- Client mirror world: load the same level (grid + smoother) ---
     s->client_level_ = std::make_unique<LevelRuntimeData>(
@@ -641,6 +878,7 @@ public:
     void send_input(const InputState& input) override
     {
         current_game = &client_ctx_;
+        handle_curses_follow_input(follow_, input, client_level_->world());
         client_->send_input(input, client_level_->world().tick_count_ + 1);
     }
 
@@ -648,15 +886,20 @@ public:
     {
         current_game = &client_ctx_;
         client_->poll_messages();
+        maintain_curses_follow(follow_, *client_, client_level_->world(),
+                               local_player_index_);
     }
 
     GameWorld& mirror_world() override { return client_level_->world(); }
 
     std::uint32_t followed_entity_id() const override
     {
-        return resolve_followed_entity_id(*client_, client_level_->world(),
+        return follow_or_legacy_entity_id(follow_, *client_,
+                                          client_level_->world(),
                                           local_player_index_);
     }
+
+    bool follow_engaged() const override { return follow_.engaged; }
 
     std::uint32_t next_input_tick() const override
     {
@@ -684,7 +927,15 @@ public:
         return std::exchange(messages_, {});
     }
 
-    void commit_result_to_save() override {}
+    // §4.6: on a networked win the joiner banks its deploy-ratio share into its
+    // own company save; the mirror client_save_ keeps the full fold.
+    void commit_result_to_save() override
+    {
+        if (!ended() || ending() != 0)
+            return;
+        persist_curses_networked_win(client_save_, client_level_->world(),
+                                     local_player_index_, next_level());
+    }
 
     og::sim::GameClient& client() { return *client_; }
 
@@ -700,6 +951,7 @@ private:
     std::shared_ptr<og::sim::ITransport> transport_;
     std::unique_ptr<og::sim::GameClient> client_;
     std::size_t local_player_index_ = 0;
+    CursesFollowState follow_;
 
     GameplayContext* saved_game_ = nullptr;
     PendingEnd pending_end_;
@@ -927,8 +1179,55 @@ public:
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
                 request_start();
             }
-            if (key.is_char(U'r') || key.is_char(U'R'))
-                (void)set_ready(!local_ready());
+            if (key.is_char(U'r') || key.is_char(U'R')) {
+                // §2.6 client ready gate (parity with the SDL
+                // teams_toggle_ready click): setting ready with brought
+                // characters, none deployed, and cross-control OFF is
+                // denied — surface the caption instead of sending.
+                // Spectator/empty-roster machines ready freely [NET-R9];
+                // host machines never gate (the state table returns a
+                // host state with no ClientUnready caption).
+                const bool next_ready = !local_ready();
+                const og::ui::ReadyGoPresentation ready_presentation =
+                    og::ui::format_ready_go_button(
+                        /*networked=*/true,
+                        /*is_host=*/role_ == LobbyRole::Host,
+                        /*my_ready=*/!next_ready,
+                        /*all_other_machines_ready=*/true,
+                        /*global_deployed=*/1,
+                        /*own_deployed=*/
+                        og::ui::count_deployed_members(save_),
+                        /*cross_control=*/save_.cross_control != 0,
+                        /*spectator=*/save_.numplayers <= 0 ||
+                            save_.team_size <= 0);
+                if (next_ready &&
+                    ready_presentation.state ==
+                        og::ui::ReadyGoState::ClientUnready &&
+                    !ready_presentation.caption.empty()) {
+                    team_status_ = ready_presentation.caption;
+                } else {
+                    (void)set_ready(next_ready);
+                }
+            }
+            if (key.is_char(U'c') || key.is_char(U'C')) {
+                // §2.7 cross-control (curses parity surface = the lobby):
+                // host-only actionable; a toggle is a SETTINGS change, so
+                // the server clears every non-host machine's ready (§4.5)
+                // and the echoed settings drive the status line below.
+                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0).
+                if (role_ == LobbyRole::Host &&
+                    host_client_transport_ != nullptr) {
+                    save_.cross_control = static_cast<std::int16_t>(
+                        save_.cross_control != 0 ? 0 : 1);
+                    send_lobby_message(
+                        *host_client_transport_,
+                        host_client_transport_->local_peer_id(),
+                        make_settings_message(save_, difficulty_));
+                    pump_once();
+                } else {
+                    team_status_ = "Host controls cross-control";
+                }
+            }
             if (key.is_char(U't') || key.is_char(U'T')) {
                 // Cycle from the last REQUESTED target (wrapping), not the
                 // replicated team: a denied target is skipped on the next
@@ -1009,15 +1308,54 @@ public:
                                  ? og::data::scenario_display_name(
                                        state_->settings.scenario_id)
                                  : std::to_string(state_->settings.scenario_id)));
+            int lobby_deployed = 0;
+            int lobby_slots = 0;
             for (const og::sim::LobbyPlayer& player : state_->players) {
                 const bool is_me = player.name == player_name_;
-                lines.push_back("  Player " + std::to_string(player.player_index + 1) +
-                                " (team " + std::to_string(player.team) + ")" +
-                                (player.is_host ? " [host]" : "") +
-                                (player.ready ? " [ready]" : "") +
-                                (is_me ? " [you]" : ""));
+                std::string line =
+                    "  Player " + std::to_string(player.player_index + 1) +
+                    " (team " + std::to_string(player.team) + ")" +
+                    (player.is_host ? " [host]" : "") +
+                    (player.ready ? " [ready]" : "") +
+                    (is_me ? " [you]" : "");
+                // §2.5 curses parity: the origin/company column + per-seat
+                // deploy counts (clipped to the SDL COMPANY budget).
+                if (!player.company.empty()) {
+                    std::string company = player.company;
+                    if (company.size() > 16)
+                        company.resize(16);
+                    line += " <" + company + ">";
+                }
+                int seat_deployed = 0;
+                for (const og::sim::LobbyCharacterSlot& slot :
+                     player.character_slots)
+                {
+                    ++lobby_slots;
+                    if (slot.deployed) {
+                        ++seat_deployed;
+                        ++lobby_deployed;
+                    }
+                }
+                if (!player.character_slots.empty()) {
+                    line += " DEP " + std::to_string(seat_deployed) + "/" +
+                        std::to_string(player.character_slots.size());
+                }
+                lines.push_back(std::move(line));
             }
             lines.push_back("Players: " + std::to_string(state_->players.size()));
+            lines.push_back("Deployed: " + std::to_string(lobby_deployed) +
+                            "/" + std::to_string(lobby_slots));
+            // §9.12 (G5) census parity: the same session-status line the
+            // SDL base camp header shows — role + machine/player census +
+            // the host machine's company for joiners (the curses lobby has
+            // no relay room code, so the room half stays empty).
+            lines.push_back(og::ui::format_base_camp_session_status(
+                role_ == LobbyRole::Host, {}, state_->players));
+            // §2.7: every peer sees the mode that changes its own rights
+            // (the SDL TEAMS row's shared label formatter).
+            lines.push_back(
+                "Control: " + og::ui::format_cross_control_label(
+                                  state_->settings.cross_control != 0));
         } else {
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");
@@ -1118,7 +1456,7 @@ private:
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
         const char* hint = role_ == LobbyRole::Host
-            ? "[s] start (host)  [t] team  [r] ready  [q] cancel"
+            ? "[s] start (host)  [t] team  [r] ready  [c] control  [q] cancel"
             : "[t] team  [r] ready  [q] cancel";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
@@ -1274,18 +1612,22 @@ private:
         eq.respawn_mode = state_->settings.respawn_mode;
         eq.generator_rate = state_->settings.generator_rate;
         eq.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        eq.cross_control = state_->settings.cross_control;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
         std::uint8_t next_slot = 0;
         for (const og::sim::LobbyPlayer& player : state_->players) {
             for (const og::sim::LobbyCharacterSlot& slot : player.character_slots) {
+                // §4.2: assembly materializes only DEPLOYED slots — must
+                // match the host's LobbyServer::build_save_data_equivalent
+                // filter or the joiner's spawn diverges from the server.
+                if (!slot.deployed)
+                    continue;
                 if (next_slot >= MAX_TEAM_SIZE)
                     break;
                 og::sim::LobbyCharacterSlot compacted = slot;
                 compacted.slot_index = next_slot++;
-                if (eq.allied_mode != 0)
-                    compacted.character.teamnum = 0;
                 eq.team_list.push_back(std::move(compacted));
             }
         }
@@ -1411,6 +1753,7 @@ int curses_network_testing_exercise_internal_helpers()
     save.respawn_mode = 2;
     save.generator_rate = 50;
     save.keep_fallen_heroes = 1;
+    save.cross_control = 1;
     const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
     const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
         &rules_message.payload);
@@ -1419,11 +1762,13 @@ int curses_network_testing_exercise_internal_helpers()
         rules->settings.ctf_respawn_ticks == 60 &&
         rules->settings.respawn_mode == 2 &&
         rules->settings.generator_rate == 50 &&
-        rules->settings.keep_fallen_heroes == 1);
+        rules->settings.keep_fallen_heroes == 1 &&
+        rules->settings.cross_control == 1);
     save.ctf_respawn_ticks = 0;
     save.respawn_mode = 0;
     save.generator_rate = 0;
     save.keep_fallen_heroes = 0;
+    save.cross_control = 0;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";
@@ -1680,6 +2025,24 @@ bool curses_network_testing_inject_ctf(CursesGameSession& session,
     if (host == nullptr)
         return false;
     return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+}
+
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                            std::uint32_t pinned_team0_score)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return -1;
+    return host->force_server_win_for_testing(pinned_team0_score);
+}
+
+int curses_network_testing_clear_server_team(CursesGameSession& session,
+                                             short team)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return -1;
+    return host->clear_server_team_for_testing(team);
 }
 #endif
 

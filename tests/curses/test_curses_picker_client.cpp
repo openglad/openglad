@@ -29,12 +29,16 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
@@ -54,6 +58,19 @@ struct PickerFixture {
 
     HeadlessTerminal& t() { return term; }
     SaveData& save() { return client.save_data(); }
+
+    // §3.8: hire/train/deploy mutations AUTOSAVE the active slot now, so a
+    // fixture test can leave a company file behind — which would pollute
+    // the company-list tests' row ordering under any test order. Reap the
+    // fixture slot's file (the active slot may have been repointed by an
+    // open flow, so reap both).
+    ~PickerFixture()
+    {
+        (void)remove_user_file("save/" + config.save_name + ".gtl");
+        (void)remove_user_file(
+            "save/" + og::data::active_company_slot() + ".gtl");
+        og::data::set_active_company_slot("save0");
+    }
 };
 
 // Select the item at 0-based selectable index `n` from the current menu:
@@ -197,6 +214,8 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
     for (auto& slot : f.save().team_list)
         slot.reset();
 
+    // §2.2: accept the generated company name at the name-entry prompt.
+    f.t().push_special(KeyCode::Enter);
     ASSERT_TRUE(f.client.prepare_new_game());
 
     EXPECT_GE(team_count(f.save()), 1) << "new game must populate a team";
@@ -217,6 +236,8 @@ TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
               mount_campaign_package_with_error("org.openglad.ctf"))
         << "the ctf package ships with the game and should mount";
 
+    // §2.2: accept the generated company name at the name-entry prompt.
+    f.t().push_special(KeyCode::Enter);
     ASSERT_TRUE(f.client.prepare_new_game());
 
     EXPECT_EQ(f.config.campaign, "org.openglad.gladiator")
@@ -224,6 +245,55 @@ TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
     EXPECT_EQ(f.save().current_campaign, "org.openglad.gladiator");
     EXPECT_EQ(get_mounted_campaign(), "org.openglad.gladiator")
         << "the in-picker scenario viewer reads the mounted package";
+}
+
+// §2.2: a typed name at the name-entry prompt becomes the company display
+// name (save_name). Clear the pre-filled suggestion, then type the new name.
+TEST(CursesPickerClient, name_entry_typed_name_becomes_company)
+{
+    PickerFixture f;
+    // Clear the pre-filled suggestion (generous backspaces), type a name.
+    for (int i = 0; i < 30; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("MY BAND");
+    f.t().push_special(KeyCode::Enter);
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_EQ(f.save().save_name, "MY BAND")
+        << "the typed name should land in the 40-byte save_name";
+}
+
+// §2.2: an empty entry rerolls a fresh suggestion; accepting it founds a
+// company with a non-empty generated name.
+TEST(CursesPickerClient, name_entry_empty_rerolls_then_accepts)
+{
+    PickerFixture f;
+    // Clear the field and Enter -> reroll; then accept the new suggestion.
+    for (int i = 0; i < 30; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_special(KeyCode::Enter);  // empty -> reroll
+    f.t().push_special(KeyCode::Enter);  // accept the fresh suggestion
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_FALSE(f.save().save_name.empty())
+        << "reroll then accept must found a company with a generated name";
+}
+
+// §2.2: Esc at the name-entry prompt cancels — nothing is created, so the
+// loaded game (its gold) survives untouched.
+TEST(CursesPickerClient, name_entry_escape_cancels_without_founding)
+{
+    PickerFixture f;
+    f.save().m_totalcash[0] = 4242u;
+    f.save().save_name = "PRIOR CO";
+
+    f.t().push_special(KeyCode::Escape);
+    EXPECT_FALSE(f.client.prepare_new_game())
+        << "Esc at the name prompt cancels the new game";
+    EXPECT_EQ(f.save().m_totalcash[0], 4242u)
+        << "cancel must not reset the loaded game";
+    EXPECT_EQ(f.save().save_name, "PRIOR CO")
+        << "cancel must not overwrite the loaded company name";
 }
 
 // --- difficulty ----------------------------------------------------------
@@ -355,8 +425,9 @@ TEST(CursesPickerClient, view_roster_renders_names)
     const auto* item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     ASSERT_NE(item, nullptr);
-    // View Team shows a scrollable roster screen that consumes one key.
-    dismiss(f.t());
+    // §2.5: the roster is an interactive list now (Enter=train, d=deploy,
+    // r=ready) — Escape exits it; the drawn list stays on the terminal.
+    f.t().push_special(KeyCode::Escape);
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
 
     bool found = false;
@@ -494,6 +565,46 @@ TEST(CursesPickerClient, train_empty_team_reports_and_returns)
     EXPECT_NE(f.t().dump().find("No team members"), std::string::npos);
 }
 
+// §2.5 per-row TRAIN (curses shape): Enter on a roster row opens the train
+// flow SEEDED on that member — the +1/accept lands on the second member,
+// never the first (the old enter-then-cycle default).
+TEST(CursesPickerClient, roster_enter_opens_train_seeded_on_that_row)
+{
+    PickerFixture f;
+    {
+        og::ui::HireSession session(f.save(), 0);
+        ASSERT_GE(session.hire(), 0);  // second member at slot 1
+    }
+    const short member0_before = f.save().team_list[0]->strength;
+    const short member1_before = f.save().team_list[1]->strength;
+    const std::uint32_t before_gold = f.save().m_totalcash[0];
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    // Roster list: Down to row 1, Enter trains it (seeded). Train list:
+    // Enter raises STR of the SEEDED member, digit '7' jumps to Accept,
+    // Enter accepts, dismiss the notice, 'q' backs out of the train loop,
+    // Escape exits the roster.
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Enter);  // train roster row 1
+    f.t().push_special(KeyCode::Enter);  // +1 STR (highlight starts on STR)
+    f.t().push_char(U'7');               // jump to "Accept training"
+    f.t().push_special(KeyCode::Enter);  // accept
+    dismiss(f.t());                      // "Training accepted." notice
+    f.t().push_char(U'q');               // back out of the train loop
+    f.t().push_special(KeyCode::Escape); // exit the roster list
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.save().team_list[1]->strength, member1_before + 1)
+        << "Enter on roster row 1 must seed the train session on member 1";
+    EXPECT_EQ(f.save().team_list[0]->strength, member0_before)
+        << "the first member must be untouched by the seeded train";
+    EXPECT_LT(f.save().m_totalcash[0], before_gold)
+        << "the seeded accept still charges gold";
+}
+
 TEST(CursesPickerClient, train_navigation_next_prev_and_back)
 {
     PickerFixture f;
@@ -616,31 +727,59 @@ TEST(CursesPickerClient, save_then_load_round_trips_team)
     EXPECT_EQ(config.level, 3) << "level should restore from the save's scen_num";
 }
 
-TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_campaign)
+TEST(CursesPickerClient, team_build_dispatches_deploy_ready_progress_network_and_campaign)
 {
     PickerFixture f;
     f.config.save_name = "curses_dispatch_slot";
 
-    const auto* save_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SaveTeam);
-    const auto* load_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::LoadTeam);
+    // §2.5 substitution: deploy (was Load Team) and ready (was Save Team).
+    const auto* deploy_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleDeploy);
+    const auto* ready_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleReady);
     const auto* progress_item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::ShowProgress);
     const auto* network_item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::Networking);
     const auto* campaign_item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetCampaign);
-    ASSERT_NE(save_item, nullptr);
-    ASSERT_NE(load_item, nullptr);
+    ASSERT_NE(deploy_item, nullptr);
+    ASSERT_NE(ready_item, nullptr);
     ASSERT_NE(progress_item, nullptr);
     ASSERT_NE(network_item, nullptr);
     ASSERT_NE(campaign_item, nullptr);
 
+    // Deploy: the prompt's default "1" toggles roster row 1 (slot 0);
+    // Enter accepts, one dismiss for the confirmation. §3.8: the toggle
+    // AUTOSAVES; §2.6 state 1: ready is guarded outside networked lobbies.
+    ASSERT_TRUE(f.save().team_list[0] != nullptr);
+    ASSERT_TRUE(f.save().team_list[0]->deployed);
+    f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *save_item);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *deploy_item);
+    EXPECT_FALSE(f.save().team_list[0]->deployed)
+        << "the deploy prompt should bench roster row 1";
+
+    // §3.8 disk round trip (§2.9 flow 5 on the curses client): the toggle's
+    // autosave banked the benched flag in the ACTIVE company file.
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(og::data::active_company_slot()));
+        ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+        EXPECT_FALSE(reloaded.team_list[0]->deployed)
+            << "the deploy-toggle autosave must persist the benched flag";
+    }
+
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *load_item);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *ready_item);
+    {
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find("Ready applies to networked lobbies only."),
+                  std::string::npos)
+            << dump;
+    }
+
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *progress_item);
     pick(f.t(), 2);
@@ -691,6 +830,218 @@ TEST(CursesPickerClient, load_missing_slot_fails_gracefully)
     EXPECT_FALSE(client.load_game());
 }
 
+// --- §2.3 company list ----------------------------------------------------
+
+namespace {
+
+// Seeds a loadable company with a pinned last-played timestamp. High
+// timestamps keep the seeded rows at the top of the most-recent-first list
+// even when other tests' quicksave slots (last_played 0) share the binary's
+// config dir under --gtest_shuffle.
+bool seed_curses_company(const std::string& slot, const std::string& name,
+                         std::int64_t last_played)
+{
+    SaveData sd;
+    sd.reset();
+    sd.save_name = name;
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.last_played_unix_s = last_played;
+    return sd.save_with_error(slot) == SaveDataIoError::None;
+}
+
+struct CursesSlotCleanup {
+    std::vector<std::string> slots;
+    ~CursesSlotCleanup()
+    {
+        for (const std::string& slot : slots)
+            (void)remove_user_file("save/" + slot + ".gtl");
+    }
+};
+
+} // namespace
+
+// Opening row 1 (the most recent company) repoints the terminal slot
+// ([SAVE-R2]) and loads that company's save; show_company_list reports true
+// so the state machine proceeds to team build.
+TEST(CursesPickerClient, company_list_open_repoints_slot)
+{
+    CursesSlotCleanup cleanup{{"wp3curb", "wp3cura"}};
+    ASSERT_TRUE(seed_curses_company("wp3curb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_curses_company("wp3cura", "ALPHA BAND", 5000));
+
+    PickerFixture f;
+    pick(f.t(), 0);                       // chrome: Open Company
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled "1"
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Loaded" notice
+
+    EXPECT_TRUE(f.client.show_company_list())
+        << "an opened company reports true (-> team build)";
+    EXPECT_EQ("wp3curb", f.config.save_name)
+        << "[SAVE-R2] opening repoints the terminal slot";
+    EXPECT_EQ("BRAVO BAND", f.save().save_name);
+}
+
+// Esc backs out (nothing opened, slot untouched), and the §2.4 backups
+// chrome backs out of a company with no snapshots yet (backups are
+// level-win products).
+TEST(CursesPickerClient, company_list_backups_empty_and_escape_back)
+{
+    CursesSlotCleanup cleanup{{"wp3cures"}};
+    ASSERT_TRUE(seed_curses_company("wp3cures", "SOLO BAND", 6000));
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled company "1"
+    f.t().push_special(KeyCode::Enter);   // dismiss the "No backups yet" notice
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(slot_before, f.config.save_name)
+        << "backing out must not repoint the slot";
+}
+
+// §2.4 restore round trip (curses projection): the NO-first confirm keeps
+// the current state; the explicit Yes rewinds the company, repoints the
+// terminal slot ([SAVE-R2]), snapshots the pre-restore state first, and
+// reports true so the state machine proceeds to team build.
+TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curr"}};
+    ASSERT_TRUE(seed_curses_company("wp3curr", "OLD BAND", 7000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3curr"));
+    ASSERT_TRUE(seed_curses_company("wp3curr", "NEW BAND", 8000));
+
+    PickerFixture f;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled company "1"
+    // Restore, answering the NO-first confirm with the default No.
+    pick(f.t(), 0);                       // backups chrome: Restore Backup
+    f.t().push_special(KeyCode::Enter);   // accept the pre-filled backup "1"
+    f.t().push_special(KeyCode::Enter);   // confirm: highlight starts on No
+    // Restore again, this time selecting Yes.
+    pick(f.t(), 0);
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_char(U'2');                // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Loaded" notice
+
+    EXPECT_TRUE(f.client.show_company_list())
+        << "a rewound company reports true (-> team build / base camp)";
+    EXPECT_EQ("wp3curr", f.config.save_name)
+        << "[SAVE-R2] a restore repoints the terminal slot";
+    EXPECT_EQ("OLD BAND", f.save().save_name)
+        << "the in-memory save must hold the rewound state";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3curr");
+    ASSERT_EQ(2u, backups.size());
+    EXPECT_EQ("NEW BAND", backups.front().header.display_name)
+        << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+    for (const og::data::CompanyBackupInfo& backup : backups)
+        (void)og::data::delete_company_backup("wp3curr", backup.seq);
+}
+
+// §2.4 delete-backup round trip (curses projection): NO-first keeps the
+// snapshot, the explicit Yes deletes it, and the emptied list backs out.
+TEST(CursesPickerClient, company_backups_delete_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curd"}};
+    ASSERT_TRUE(seed_curses_company("wp3curd", "KEEP BAND", 7000));
+    ASSERT_TRUE(og::data::backup_company_now("wp3curd"));
+
+    PickerFixture f;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // company "1"
+    // Delete, answering the NO-first confirm with the default No.
+    pick(f.t(), 1);                       // backups chrome: Delete Backup
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_special(KeyCode::Enter);   // confirm: highlight starts on No
+    // Delete again, this time selecting Yes.
+    pick(f.t(), 1);
+    f.t().push_special(KeyCode::Enter);   // backup "1"
+    f.t().push_char(U'2');                // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);   // dismiss the "Deleted" notice
+    // The emptied snapshot list backs out with a notice; leave the list.
+    f.t().push_special(KeyCode::Enter);   // dismiss "No backups yet"
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_TRUE(og::data::list_company_backups("wp3curd").empty())
+        << "the explicit Yes must delete the snapshot";
+    EXPECT_TRUE(user_file_exists("save/wp3curd.gtl"))
+        << "deleting a snapshot never touches the company file";
+}
+
+// §2.4 corrupt snapshots refuse restore up front (the §3.7 step-0 API
+// validation stays the real guard; no confirm is ever reached).
+TEST(CursesPickerClient, company_backups_corrupt_snapshot_refuses)
+{
+    CursesSlotCleanup cleanup{{"wp3curc"}};
+    ASSERT_TRUE(seed_curses_company("wp3curc", "INTACT BAND", 7000));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream corrupt(backups_dir / "wp3curc.001.gtl",
+                              std::ios::binary | std::ios::trunc);
+        corrupt << "not a backup";
+        ASSERT_TRUE(corrupt.good());
+    }
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    pick(f.t(), 1);                       // chrome: Backups...
+    f.t().push_special(KeyCode::Enter);   // company "1"
+    pick(f.t(), 0);                       // backups chrome: Restore Backup
+    f.t().push_special(KeyCode::Enter);   // backup "1" (the corrupt one)
+    f.t().push_special(KeyCode::Enter);   // dismiss the "damaged" notice
+    f.t().push_special(KeyCode::Escape);  // back out of the backups view
+    f.t().push_special(KeyCode::Escape);  // back out of the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(slot_before, f.config.save_name)
+        << "a refused restore must not repoint the slot";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("wp3curc");
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_FALSE(backups.front().header.valid);
+    (void)og::data::delete_company_backup("wp3curc", 1);
+}
+
+// Delete is NO-first: the default confirm keeps the company; an explicit
+// Yes deletes it (file gone), and the list re-scans.
+TEST(CursesPickerClient, company_list_delete_no_first_then_yes)
+{
+    CursesSlotCleanup cleanup{{"wp3curdb", "wp3curda"}};
+    ASSERT_TRUE(seed_curses_company("wp3curdb", "BRAVO BAND", 6000));
+    ASSERT_TRUE(seed_curses_company("wp3curda", "ALPHA BAND", 5000));
+
+    PickerFixture f;
+    // Delete row 2 (ALPHA), answer the NO-first confirm with the default No.
+    pick(f.t(), 2);                          // chrome: Delete Company
+    f.t().push_special(KeyCode::Backspace);  // clear the pre-filled "1"
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);      // row 2
+    f.t().push_special(KeyCode::Enter);      // confirm: highlight starts on No
+    // Delete row 2 again, this time selecting Yes.
+    pick(f.t(), 2);
+    f.t().push_special(KeyCode::Backspace);
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'2');                   // digit-jump to Yes
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Enter);      // dismiss the "Deleted" notice
+    f.t().push_special(KeyCode::Escape);     // leave the list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_FALSE(user_file_exists("save/wp3curda.gtl"))
+        << "the explicit Yes must delete the company";
+    EXPECT_TRUE(user_file_exists("save/wp3curdb.gtl"))
+        << "the NO-first default must keep the company";
+}
+
 // --- options -------------------------------------------------------------
 
 // Options accepts a new save slot and a new seed via text prompts.
@@ -717,6 +1068,49 @@ TEST(CursesPickerClient, options_set_save_slot_and_seed)
 
     EXPECT_EQ(f.config.save_name, "new_slot");
     EXPECT_EQ(f.config.seed, 123u);
+}
+
+// [SAVE-R2] Terminal slot authority: the client repoints the process-wide
+// active-company slot at construction, on the Options slot command, and on
+// prepare_new_game, so company-level writes always target the user's chosen
+// slot, never save0. (The curses_test_main [SAVE-R8] listener restores
+// "save0" after each test.)
+TEST(CursesPickerClient, asserts_company_slot_authority)
+{
+    {
+        PickerFixture f; // default TextPickerConfig slot: "text_quicksave"
+        EXPECT_EQ("text_quicksave", og::data::active_company_slot())
+            << "construction must assert the configured slot";
+
+        // The Options slot command repoints the active company. The prompt is
+        // prefilled with the current slot; erase it and type the new one.
+        const std::string old_slot = f.config.save_name;
+        for (size_t i = 0; i < old_slot.size(); ++i)
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("curses-authority-slot");
+        f.t().push_special(KeyCode::Enter);
+        f.t().push_special(KeyCode::Escape); // cancel the seed prompt
+        f.client.show_options();
+        EXPECT_EQ(f.config.save_name, "curses-authority-slot");
+        EXPECT_EQ("curses-authority-slot", og::data::active_company_slot());
+    }
+
+    // The CursesApp launch flow passes its --save option (default
+    // "curses_quicksave") through the config; construction applies it.
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    config.save_name = "curses_quicksave";
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+    EXPECT_EQ("curses_quicksave", og::data::active_company_slot());
+
+    // A stale process-wide slot must not survive a new game.
+    ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+    // §2.2: accept the generated company name at the name-entry prompt.
+    term.push_special(KeyCode::Enter);
+    ASSERT_TRUE(client.prepare_new_game());
+    EXPECT_EQ("curses_quicksave", og::data::active_company_slot());
 }
 
 // Cancelling the options prompts (Esc) leaves config untouched.
@@ -937,6 +1331,17 @@ TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
     EXPECT_EQ(1, (int)f.save().my_team);
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("GREEN TEAM (P1) 1 HEROES"), std::string::npos) << dump;
+
+    // §3.8 hook inventory row "team cycle": the cycle AUTOSAVED the company
+    // — the new team round-trips from the active slot's file with no
+    // manual save (my_team is session-only and never serialized).
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()))
+        << "the team-cycle autosave must have written the active slot";
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
+        << "the cycled team must persist via the mutation autosave";
 }
 
 // Playing on an empty team is impossible: empty teams offer no Play entry.

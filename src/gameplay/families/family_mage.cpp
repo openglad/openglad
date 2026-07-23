@@ -195,7 +195,11 @@ static bool mage_do_special(walker* self)
             break;
         }
         case 3: // freeze time
-            if (self->team_num() == 0 || self->myguy)
+            // enemy_freeze is relative to world.my_team. Company ownership
+            // does not make a foreign-color Mage part of that team: using the
+            // global bank for one made it freeze itself and its own allies.
+            if (self->team_num() ==
+                static_cast<unsigned char>(current_game->world->my_team))
             {
                 current_game->world->enemy_freeze += 20 + 11 * self->stats()->level();
                 current_game->world->current_palette_id = 1;

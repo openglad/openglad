@@ -7,10 +7,14 @@
  */
 #include <SDL3/SDL.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <array>
+#include <atomic>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -1277,6 +1281,21 @@ void Screen::set_world_canvas_pinned_classic(bool pinned)
 	}
 }
 
+// Set from the browser 'webglcontextrestored' notification (an ASYNCIFY
+// re-entrant callback context) and consumed at the top of Screen::swap(),
+// the single production present site.
+static std::atomic<bool> g_render_backend_recreate_pending{false};
+
+void request_render_backend_recreate()
+{
+	g_render_backend_recreate_pending.store(true, std::memory_order_release);
+}
+
+bool render_backend_recreate_pending()
+{
+	return g_render_backend_recreate_pending.load(std::memory_order_acquire);
+}
+
 void Screen::destroy_render2()
 {
 	SDL_DestroyTexture(render2_tex);
@@ -1313,6 +1332,86 @@ void Screen::destroy_gameplay_ui_overlay()
 	gameplay_ui_failed_h_ = 0;
 	smart_present_suppressed_ = false;
 	last_world_present_used_render2_ = false;
+}
+
+bool Screen::recreate_render_backend()
+{
+	// Free every GPU-side object owned by this Screen. The render2 scratch
+	// and gameplay-UI overlay are lazy caches that self-recreate on demand.
+	destroy_render2();
+	destroy_gameplay_ui_overlay();
+	if (world_tex_ != ui_tex_)
+		SDL_DestroyTexture(world_tex_);
+	world_tex_ = nullptr;
+	SDL_DestroyTexture(ui_tex_);
+	ui_tex_ = nullptr;
+	SDL_DestroyRenderer(renderer);
+	renderer = nullptr;
+
+	// Constructor parity for the renderer (see Screen::Screen).
+	renderer = SDL_CreateRenderer(window, nullptr);
+	if (renderer == nullptr)
+	{
+		LogError("recreate_render_backend: SDL_CreateRenderer failed: {}\n",
+		         SDL_GetError());
+		set_active_canvas(active_);
+		return false;
+	}
+	#ifndef TESTING
+	SDL_SetRenderVSync(renderer, 1);
+	#endif
+
+	// Constructor parity for the fixed 320x200 UI texture: opaque present,
+	// chunky-crisp nearest upscale (see the notes in Screen::Screen).
+	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+	                            SDL_TEXTUREACCESS_STREAMING,
+	                            kUiCanvasW, kUiCanvasH);
+	if (ui_tex_ == nullptr)
+	{
+		LogError("recreate_render_backend: UI texture creation failed: {}\n",
+		         SDL_GetError());
+		set_active_canvas(active_);
+		return false;
+	}
+	SDL_SetTextureBlendMode(ui_tex_, SDL_BLENDMODE_NONE);
+	SDL_SetTextureScaleMode(ui_tex_, SDL_SCALEMODE_NEAREST);
+
+	if (world_surf_ == ui_surf_)
+	{
+		// Shared classic pair: keep the byte-identity aliasing.
+		world_tex_ = ui_tex_;
+	}
+	else
+	{
+		// Split world canvas: rebuild its texture at the live dimensions
+		// with set_world_canvas_size() parity. The world surface (and its
+		// pixels) survives — only the GPU object was lost.
+		world_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+		                               SDL_TEXTUREACCESS_STREAMING,
+		                               world_w_, world_h_);
+		if (world_tex_ == nullptr)
+		{
+			// Degrade to the shared classic pair rather than presenting
+			// through a dead handle. The caller's apply_world_scale_from_cfg
+			// pass retries the split allocation transactionally.
+			LogError("recreate_render_backend: world texture creation failed "
+			         "for {}x{}: {}\n", world_w_, world_h_, SDL_GetError());
+			SDL_DestroySurface(world_surf_);
+			world_surf_ = ui_surf_;
+			world_tex_ = ui_tex_;
+			world_w_ = kUiCanvasW;
+			world_h_ = kUiCanvasH;
+		}
+		else
+		{
+			SDL_SetTextureBlendMode(world_tex_, SDL_BLENDMODE_NONE);
+			SDL_SetTextureScaleMode(world_tex_, SDL_SCALEMODE_NEAREST);
+		}
+	}
+
+	// Repair the public render/render_tex aliases for the active target.
+	set_active_canvas(active_);
+	return true;
 }
 
 bool Screen::ensure_gameplay_ui_overlay()
@@ -1516,6 +1615,38 @@ void Screen::swap(int x, int y, int w, int h)
     // This is used by multi-session demos that composite multiple session
     // surfaces before presenting once.
     if (suppress_present) return;
+
+	// A lost rendering device (web WebGL context loss) is repaired here, at
+	// the single production present site — never inside the browser event
+	// callback that observed it: under ASYNCIFY those callbacks can run
+	// while the C stack is suspended inside a blocking menu loop.
+	if (g_render_backend_recreate_pending.load(std::memory_order_acquire))
+	{
+		if (!recreate_render_backend())
+		{
+			// The device may still be gone (Safari can restore late, or the
+			// browser may fire restore before the context is usable). Keep
+			// the request pending and retry on the next present; the page
+			// watchdog covers the never-restored case with a reload.
+			return;
+		}
+		g_render_backend_recreate_pending.store(false,
+		                                        std::memory_order_release);
+		if (E_Screen.get() == this)
+		{
+			// Re-derive the zoom/split world canvas state for the new
+			// renderer (this also retries a degraded shared-pair fallback)
+			// and force a full repaint. Per-present uploads restore the
+			// pixels either way.
+			apply_world_scale_from_cfg();
+			if (og::runtime::current_session != nullptr &&
+			    og::runtime::current_session->myscreen_ != nullptr)
+			{
+				og::runtime::current_session->myscreen_->redrawme = 1;
+			}
+		}
+		TRACE("video", "render backend recreated");
+	}
 
     // A World present consumes exactly one prepared gameplay overlay. Keep
     // its pixels capture-valid afterwards for an immediate screenshot, but

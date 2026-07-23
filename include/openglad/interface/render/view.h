@@ -176,6 +176,10 @@ class viewscreen
 		std::uint32_t text_expire_ticks[MAX_MESSAGES];
 
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
+		// Global simulation player mapped to this local view. Network joins can
+		// map local view 0 to global player 6, so HUD ownership must never alias
+		// this with mynum. -1 means spectator/no seat.
+		short global_player_index_ = -1;
 		short my_team;         // used for Player-v-Player mode
 			int* mykeys;     // holds the keyboard mapping
 			walker  *control;  // the user
@@ -211,6 +215,18 @@ class viewscreen
 		// the key is held (see floor_render_alpha). Recomputed at the top of
 		// every redraw; render-only, never fed into the sim.
 		bool ghost_hold_override_ = false;
+
+		// §4.5 networked follow camera (render-only; stamped by the
+		// platform local transport shadow on every control re-sync). True
+		// while this view watches a target it does not control: gates the
+		// SwitchChar follow-cycle branch in process_input and the §2.8
+		// "FOLLOWING <name>" caption strip in score_panel. The watched
+		// walker rides view->control WITHOUT a user-tag stamp, so the HUD
+		// (gated on user() != -1) and the radar stay quiet for AI targets.
+		bool following_ = false;
+		// Company display name of the watched target's owning machine for
+		// the caption ("" = unknown / AI target -> name-only caption).
+		std::string follow_company_;
 
 		// ---- Floor-glide transition (render-only; per-viewport => mirror-safe and
 		// split-screen-independent, exactly like current_floor_). Inactive whenever

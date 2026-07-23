@@ -18,6 +18,9 @@
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_network.h>
+#include <openglad/platform/curses/curses_game_runtime.h>
+#include <openglad/platform/curses/curses_input.h>
+#include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/platform/curses/headless_terminal.h>
 #include <openglad/platform/curses/clock.h>
 
@@ -26,12 +29,16 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -54,6 +61,10 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                            std::uint32_t pinned_team0_score);
+int curses_network_testing_clear_server_team(CursesGameSession& session,
+                                             short team);
 } // namespace og::curses
 
 namespace {
@@ -86,6 +97,24 @@ std::map<std::uint32_t, std::pair<int, int>> entity_positions(const GameWorld& w
         out[e->entity_id()] = {e->xpos(), e->ypos()};
     }
     return out;
+}
+
+// §4.3 ready gate: the host's start is denied until every non-host machine is
+// ready. Ready the joiner and drive both sides until the host's roster reflects
+// it, so a subsequent host GO is accepted.
+void ready_curses_joiner(CursesLobby& host_lobby, CursesLobby& join_lobby,
+                         HeadlessTerminal& host_term, HeadlessTerminal& join_term,
+                         FakeClock& clock)
+{
+    (void)join_lobby.set_ready(true);
+    for (int i = 0; i < 200; ++i) {
+        host_lobby.poll(host_term, clock);
+        join_lobby.poll(join_term, clock);
+        for (const og::sim::LobbyPlayer& player : host_lobby.players()) {
+            if (!player.is_host && player.ready)
+                return;
+        }
+    }
 }
 
 // Run the lobby handshake to a start over the shared in-process transport, then
@@ -135,6 +164,10 @@ StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
                        return false;
                    }();
     }
+
+    // §4.3 ready gate: the joiner must be ready before the host may start.
+    ready_curses_joiner(*game.host_lobby, *game.join_lobby, host_term, join_term,
+                        clock);
 
     // Host requests start, then both poll until the start is negotiated and the
     // sessions are ready.
@@ -213,6 +246,10 @@ TEST(CursesNetwork, roster_reflects_two_players)
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
     init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    // §2.5 curses parity: company + deploy counts ride the status lines.
+    host_save.save_name = "HOST CURSES CO";
+    join_save.save_name = "JOIN CURSES CO";
+    join_save.team_list[0]->deployed = false;
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -232,12 +269,39 @@ TEST(CursesNetwork, roster_reflects_two_players)
     for (int i = 0; i < 200 && !two_players; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
+        bool host_sees_two = false;
         for (const std::string& s : host_lobby->status_lines()) {
             if (s == "Players: 2")
-                two_players = true;
+                host_sees_two = true;
         }
+        // Both views must converge before the company/deploy pins below.
+        two_players = host_sees_two &&
+            status_contains(*join_lobby, "Players: 2");
     }
     EXPECT_TRUE(two_players) << "the host roster should list both players";
+
+    // §2.5 curses parity (stage mp-columns): each player line names its
+    // machine's company (the wire's LobbyPlayer::company) and per-seat
+    // deploy counts; the lobby-wide Deployed line sums the wire flags —
+    // the joiner's benched member drops it to 1/2.
+    EXPECT_TRUE(status_contains(*host_lobby, "<HOST CURSES CO>"));
+    EXPECT_TRUE(status_contains(*host_lobby, "<JOIN CURSES CO>"))
+        << "the host sees the joiner's company off the wire";
+    EXPECT_TRUE(status_contains(*host_lobby, "DEP 1/1"));
+    EXPECT_TRUE(status_contains(*host_lobby, "DEP 0/1"))
+        << "the joiner's benched seat shows an empty deploy count";
+    EXPECT_TRUE(status_contains(*host_lobby, "Deployed: 1/2"));
+    EXPECT_TRUE(status_contains(*join_lobby, "<HOST CURSES CO>"))
+        << "the joiner sees the host's company off the wire";
+    EXPECT_TRUE(status_contains(*join_lobby, "Deployed: 1/2"));
+
+    // §9.12 (G5) census parity: the terminal lobby carries the same
+    // session-status line as the SDL base camp header — role + machine/
+    // player census for the host, host company for the joiner (the curses
+    // lobby has no relay room code, so the room half stays empty).
+    EXPECT_TRUE(status_contains(*host_lobby, "HOSTING 2 MACH / 2 PLYR"));
+    EXPECT_TRUE(status_contains(*join_lobby,
+                                "JOINED - HOST: HOST CURSES CO"));
 
     // The joiner should also observe the shared lobby (>=1 player visible).
     bool join_sees_lobby = false;
@@ -246,6 +310,146 @@ TEST(CursesNetwork, roster_reflects_two_players)
             join_sees_lobby = true;
     }
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
+}
+
+// §2.7 curses parity (stage ready-go-slot): the lobby is the curses MP
+// surface — every peer's status lines carry the shared cross-control label,
+// the host's 'c' key toggles it (a SETTINGS change the server answers by
+// clearing every non-host machine's ready, §4.5), and a joiner's 'c' only
+// surfaces the host-controls guard.
+TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.cross_control = 0;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"))
+        << "every peer sees the mode that changes its own rights (§2.7)";
+
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+    EXPECT_TRUE(status_contains(*host_lobby, "[ready]"));
+
+    // Non-host 'c': guard message only, nothing toggles, ready survives.
+    join_term.push_char(U'c');
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(*join_lobby, "Host controls cross-control"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*host_lobby, "[ready]"))
+        << "a denied joiner toggle must not clear ready";
+
+    // Host 'c': both peers converge on CTRL: ALL and the settings change
+    // clears the joiner's ready (§4.5).
+    host_term.push_char(U'c');
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = status_contains(*host_lobby, "Control: CTRL: ALL") &&
+            status_contains(*join_lobby, "Control: CTRL: ALL") &&
+            !status_contains(*host_lobby, "[ready]");
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: ALL"));
+    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: ALL"))
+        << "the toggle must replicate to the joiner's status";
+    EXPECT_FALSE(status_contains(*host_lobby, "[ready]"))
+        << "a settings change clears every non-host machine's ready (§4.5)";
+
+    // Toggle back: sanitized {0,1} round trip.
+    host_term.push_char(U'C');
+    bool reverted = false;
+    for (int i = 0; i < 200 && !reverted; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        reverted = status_contains(*join_lobby, "Control: CTRL: OWN");
+    }
+    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(reverted);
+}
+
+// §2.6 curses parity (the lobby is the curses MP surface): the 'r' key runs
+// the client ready gate the SDL twin runs — a joiner with brought
+// characters, none deployed, and cross-control OFF is denied with the
+// DEPLOY AT LEAST ONE caption and never readies; once a character is
+// deployed, 'r' readies and the flag replicates to the host.
+TEST(CursesNetwork, lobby_ready_key_gates_on_zero_deployed)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    ASSERT_TRUE(join_save.team_list[0] != nullptr);
+    join_save.team_list[0]->deployed = false;  // brought but benched
+    host_save.cross_control = 0;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+
+    // Benched roster + cross-control OFF: 'r' is denied with the §2.6
+    // caption; nothing is sent, so the host never sees [ready].
+    join_term.push_char(U'r');
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_FALSE(join_lobby->local_ready())
+        << "a gated 'r' must not set ready";
+    EXPECT_TRUE(status_contains(*join_lobby, "DEPLOY AT LEAST ONE"))
+        << "the denial must surface the §2.6 caption";
+    EXPECT_FALSE(status_contains(*host_lobby, "[ready]"))
+        << "a denied ready must not replicate";
+
+    // Deploy the character: the gate opens and 'r' readies + replicates.
+    join_save.team_list[0]->deployed = true;
+    join_term.push_char(U'r');
+    bool host_sees_ready = false;
+    for (int i = 0; i < 200 && !host_sees_ready; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        host_sees_ready = status_contains(*host_lobby, "[ready]");
+    }
+    EXPECT_TRUE(join_lobby->local_ready());
+    EXPECT_TRUE(host_sees_ready)
+        << "the accepted ready must replicate to the host";
 }
 
 TEST(CursesNetwork, cancel_tears_down_cleanly)
@@ -420,6 +624,299 @@ TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
     EXPECT_GT(matched, 0) << "at least one entity should be mirrored on both sides";
 }
 
+// §4.4 install + snapshot v9 consumption on the curses stack: the host
+// session derives the control policy from the negotiated cross-control
+// setting at install time (owner-locked iff cross-control is OFF) and
+// stamps the machine map (host machine 0 deployed, joiner machine 1
+// deployed); BOTH mirrors render the scalars straight from the wire.
+TEST(CursesNetwork, install_derives_control_policy_and_mirrors_consume_v9)
+{
+    {
+        SaveData host_save;
+        SaveData join_save;
+        init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+        init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+        ASSERT_EQ(0, static_cast<int>(host_save.cross_control))
+            << "cross-control defaults OFF: the install derives owner-locked";
+
+        StartedGame game = negotiate_and_start(host_save, join_save);
+        ASSERT_NE(game.host_session, nullptr);
+        ASSERT_NE(game.join_session, nullptr);
+        advance_all(*game.host_session, *game.join_session, 30);
+
+        for (const GameWorld* mirror : {&game.host_session->mirror_world(),
+                                        &game.join_session->mirror_world()})
+        {
+            EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+                      mirror->control_policy)
+                << "cross-control OFF must reach the mirror as owner-locked";
+            EXPECT_EQ(og::sim::encode_player_machine(0, true),
+                      mirror->player_machine[0]);
+            EXPECT_EQ(og::sim::encode_player_machine(1, true),
+                      mirror->player_machine[1]);
+            EXPECT_EQ(og::sim::kPlayerMachineNone, mirror->player_machine[2]);
+        }
+    }
+    {
+        // Cross-control ON twin: the identical staging derives the LEGACY
+        // policy; the machine map is still stamped and replicated.
+        SaveData host_save;
+        SaveData join_save;
+        init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+        init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+        host_save.cross_control = 1;
+
+        StartedGame game = negotiate_and_start(host_save, join_save);
+        ASSERT_NE(game.host_session, nullptr);
+        ASSERT_NE(game.join_session, nullptr);
+        advance_all(*game.host_session, *game.join_session, 30);
+
+        for (const GameWorld* mirror : {&game.host_session->mirror_world(),
+                                        &game.join_session->mirror_world()})
+        {
+            EXPECT_EQ(og::sim::kControlPolicyLegacy, mirror->control_policy)
+                << "cross-control ON must reach the mirror as legacy";
+            EXPECT_EQ(og::sim::encode_player_machine(0, true),
+                      mirror->player_machine[0]);
+            EXPECT_EQ(og::sim::encode_player_machine(1, true),
+                      mirror->player_machine[1]);
+        }
+    }
+}
+
+// §4.2 deploy filter over the curses stack: a benched host member never
+// enters the level — the host's build_save_data_equivalent and the joiner's
+// build_join_save_equivalent apply the SAME filter, so both mirrors converge
+// on a world without the benched character.
+TEST(CursesNetwork, benched_member_never_enters_the_level)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    // Second host member, BENCHED: replicates in the lobby, filtered from
+    // the match assembly.
+    host_save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    host_save.team_list[1]->name = "Reserve";
+    host_save.team_list[1]->teamnum = 0;
+    host_save.team_list[1]->deployed = false;
+    host_save.team_size = 2;
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    const auto count_heroes = [](const GameWorld& world,
+                                 int& reserve_count) {
+        int heroes = 0;
+        reserve_count = 0;
+        for (const auto& up : world.oblist) {
+            const walker* e = up.get();
+            if (e == nullptr || e->dead() || e->myguy == nullptr)
+                continue;
+            ++heroes;
+            if (e->myguy->name == "Reserve")
+                ++reserve_count;
+        }
+        return heroes;
+    };
+
+    int host_reserve = 0;
+    int join_reserve = 0;
+    const int host_heroes =
+        count_heroes(game.host_session->mirror_world(), host_reserve);
+    const int join_heroes =
+        count_heroes(game.join_session->mirror_world(), join_reserve);
+    EXPECT_EQ(2, host_heroes)
+        << "only the two deployed heroes spawn (host mirror)";
+    EXPECT_EQ(2, join_heroes)
+        << "only the two deployed heroes spawn (join mirror)";
+    EXPECT_EQ(0, host_reserve) << "the benched member must not spawn";
+    EXPECT_EQ(0, join_reserve) << "the benched member must not spawn";
+
+    // The benched member is still in the host's save, flag intact.
+    ASSERT_NE(nullptr, host_save.team_list[1]);
+    EXPECT_FALSE(host_save.team_list[1]->deployed);
+    EXPECT_EQ("Reserve", host_save.team_list[1]->name);
+}
+
+// §4.6/§4.8 "curses share persists": a WON networked curses session banks
+// baseline + this machine's deploy-ratio SHARE into the active-company slot
+// on disk, through the exact production call (run_level_loop ends the level
+// and invokes commit_result_to_save -> persist_curses_networked_win). This
+// fixture explicitly puts BOTH machines' heroes on money team 0 (owners 0 and
+// 1, one deployed character each), so the pot splits 2 ways with the remainder going
+// to the lowest player index (the host) — and the two shares CONSERVE to
+// exactly the whole pot on the (process-shared) save0 file.
+TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
+{
+    namespace fs = std::filesystem;
+    ASSERT_EQ("save0", og::data::active_company_slot())
+        << "the suite listener must have restored the default slot";
+
+    // save0 hygiene (the test_curses_game_runtime precedent): preserve any
+    // prior slot file and restore it on exit so this test cannot leak state
+    // into later tests under --gtest_shuffle.
+    const fs::path save0_path =
+        fs::path(get_user_path()) / "save" / "save0.gtl";
+    std::error_code ec;
+    fs::create_directories(save0_path.parent_path(), ec);
+    const bool had_save0 = fs::exists(save0_path, ec);
+    if (had_save0)
+        fs::copy_file(save0_path, save0_path.string() + ".netwinbak",
+                      fs::copy_options::overwrite_existing, ec);
+    struct RestoreGuard {
+        fs::path save0_path;
+        bool had_save0;
+        ~RestoreGuard()
+        {
+            std::error_code ec2;
+            if (had_save0) {
+                fs::copy_file(save0_path.string() + ".netwinbak", save0_path,
+                              fs::copy_options::overwrite_existing, ec2);
+                fs::remove(save0_path.string() + ".netwinbak", ec2);
+            } else {
+                fs::remove(save0_path, ec2);
+            }
+        }
+    } restore{save0_path, had_save0};
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host Hero");
+    init_team_save(join_save, 0, FAMILY_ELF, "Join Hero");
+    // Together mode is a HOST setting (the lobby settings ride the host save).
+    // It shares seat controls, but each fighter keeps its combat/team color.
+    host_save.allied_mode = 1;
+    // Distinct private save slots (host slot 0, joiner slot 1) so the two
+    // machines' roster merges land side by side in the shared save0 file.
+    join_save.team_list[1] = std::move(join_save.team_list[0]);
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr) << "allied host session should start";
+    ASSERT_NE(game.join_session, nullptr) << "allied join session should start";
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    // The company baseline this machine's shares are banked on top of. The
+    // merge overlays each machine's own PRE-SESSION slots, so the disk roster
+    // must (as in production) still hold the brought characters — seed stale
+    // copies at the two private slots for the win merges to overwrite.
+    SaveData base;
+    base.reset();
+    base.current_campaign = "org.openglad.gladiator";
+    base.scen_num = 1;
+    base.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    base.team_list[0]->name = "Stale Host";
+    base.team_list[0]->teamnum = 0;
+    base.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    base.team_list[1]->name = "Stale Join";
+    base.team_list[1]->teamnum = 1;
+    base.team_size = 2;
+    for (std::size_t team = 0; team < std::size(base.m_totalcash); ++team) {
+        base.m_totalcash[team] = 5000u + 100u * static_cast<std::uint32_t>(team);
+        base.m_totalscore[team] = 7000u + 100u * static_cast<std::uint32_t>(team);
+    }
+    ASSERT_TRUE(base.save("save0"));
+
+    // A mid-level commit is a NO-OP (the genuine-win gate): nothing banks
+    // before the level actually ends with a win.
+    game.host_session->commit_result_to_save();
+    {
+        SaveData untouched;
+        ASSERT_EQ(SaveDataIoError::None, untouched.load_with_error("save0"));
+        EXPECT_EQ(base.m_totalcash[0], untouched.m_totalcash[0])
+            << "an unfinished level must not bank any share";
+        EXPECT_EQ(1, static_cast<int>(untouched.scen_num));
+    }
+
+    // Force the deterministic win on the authoritative world: pin the pot
+    // (m_score[0] = 123 -> score delta 123, cash delta 246 + time bonus) and
+    // clear exits + foes, then pump until BOTH machines report the end.
+    const int slain =
+        curses_network_testing_force_server_win(*game.host_session, 123u);
+    ASSERT_GT(slain, 0) << "level 1 should contain foes to clear";
+    bool both_ended = false;
+    for (int round = 0; round < 400 && !both_ended; ++round) {
+        advance_all(*game.host_session, *game.join_session, 5);
+        both_ended =
+            game.host_session->ended() && game.join_session->ended();
+    }
+    ASSERT_TRUE(both_ended) << "the forced win must end both sessions";
+    EXPECT_EQ(0, game.host_session->ending()) << "a genuine win, not an abort";
+    EXPECT_EQ(0, game.join_session->ending());
+    EXPECT_EQ(2, game.host_session->next_level());
+
+    // HOST commit through the production loop tail: run_level_loop sees the
+    // ended session, breaks, and calls commit_result_to_save (the §4.6 curses
+    // share persist).
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    const GameRunResult host_result = run_level_loop(
+        *game.host_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(host_result.ended);
+    ASSERT_EQ(0, host_result.ending);
+
+    std::uint32_t host_cash_delta = 0;
+    {
+        SaveData after_host;
+        ASSERT_EQ(SaveDataIoError::None, after_host.load_with_error("save0"));
+        ASSERT_GE(after_host.m_totalcash[0], base.m_totalcash[0]);
+        host_cash_delta = after_host.m_totalcash[0] - base.m_totalcash[0];
+        // Two contributors, one each: score 123 splits 61/61 with the
+        // remainder to the LOWEST player index — the host (player 0) banks 62.
+        EXPECT_EQ(base.m_totalscore[0] + 62u, after_host.m_totalscore[0])
+            << "host score share = floor(123/2) + remainder";
+        for (std::size_t team = 1; team < std::size(after_host.m_totalcash);
+             ++team) {
+            EXPECT_EQ(base.m_totalcash[team], after_host.m_totalcash[team])
+                << "teams without contributors stay at the disk baseline";
+            EXPECT_EQ(base.m_totalscore[team], after_host.m_totalscore[team]);
+        }
+        EXPECT_EQ(2, static_cast<int>(after_host.scen_num))
+            << "the machine's own campaign cursor advances";
+        EXPECT_TRUE(after_host.is_level_completed(1))
+            << "a deployed machine earns completion credit (§4.7)";
+    }
+
+    // JOINER commit through the same production loop tail: banks ITS share on
+    // top of the (already host-credited) shared save0 file.
+    const GameRunResult join_result = run_level_loop(
+        *game.join_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(join_result.ended);
+    ASSERT_EQ(0, join_result.ending);
+
+    {
+        SaveData after_both;
+        ASSERT_EQ(SaveDataIoError::None, after_both.load_with_error("save0"));
+        const std::uint32_t total_cash_delta =
+            after_both.m_totalcash[0] - base.m_totalcash[0];
+        // §4.6 CONSERVATION: the two deploy-ratio shares sum to exactly the
+        // whole pot — never the v7 duplicated-pot overlay (which would have
+        // banked the full delta twice, or the session's absolute totals).
+        EXPECT_EQ(base.m_totalscore[0] + 123u, after_both.m_totalscore[0])
+            << "score shares conserve to the exact pinned pot";
+        EXPECT_GE(total_cash_delta, 246u)
+            << "cash pot = 2x score + first-win time bonus";
+        EXPECT_EQ(total_cash_delta - total_cash_delta / 2u, host_cash_delta)
+            << "host (lowest player index) banked the remainder half, the "
+               "joiner the floor half — the split conserves ONLY if both "
+               "machines sized the pot identically from the synced state";
+        // Both machines merged their own hero at its own private slot.
+        ASSERT_NE(nullptr, after_both.team_list[0]);
+        EXPECT_EQ("Host Hero", after_both.team_list[0]->name);
+        ASSERT_NE(nullptr, after_both.team_list[1]);
+        EXPECT_EQ("Join Hero", after_both.team_list[1]->name);
+        EXPECT_TRUE(after_both.is_level_completed(1));
+        EXPECT_EQ(2, static_cast<int>(after_both.scen_num));
+    }
+}
+
 TEST(CursesNetwork, both_players_follow_distinct_avatars)
 {
     SaveData host_save;
@@ -443,6 +940,91 @@ TEST(CursesNetwork, both_players_follow_distinct_avatars)
     // The avatars are present on both mirrors (server-authoritative).
     EXPECT_NE(game.join_session->mirror_world().find_by_id(host_avatar), nullptr);
     EXPECT_NE(game.host_session->mirror_world().find_by_id(join_avatar), nullptr);
+}
+
+// §4.5 curses follow parity: when the joiner's whole team dies while the
+// host's stays alive, the joiner's seat goes null (the bound-team wipe
+// suppression keeps the level running), the session auto-enters follow mode
+// on the host's hero, the HUD renders "(following Host)", and the seat's
+// SwitchChar binding cycles the watched target through the shared
+// follow-target selectors. Camera-only: nothing here claims control.
+TEST(CursesNetwork, joiner_follows_after_team_wipe_and_switch_char_cycles)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    // Before the wipe: the joiner follows its own avatar, no follow caption.
+    EXPECT_FALSE(game.join_session->follow_engaged());
+    const std::uint32_t own_avatar = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, own_avatar);
+
+    // Wipe the joiner's ENTIRE team on the authoritative server (troops on
+    // its team would otherwise be claimed by the shared-pool reacquire).
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, 1),
+              1);
+
+    bool engaged = false;
+    for (int i = 0; i < 120 && !engaged; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        engaged = game.join_session->follow_engaged();
+    }
+    ASSERT_TRUE(engaged) << "the joiner's null seat must auto-enter follow mode";
+    EXPECT_FALSE(game.join_session->ended())
+        << "the host's living team keeps the level running";
+    EXPECT_FALSE(game.host_session->follow_engaged())
+        << "the host still controls its own hero";
+
+    // Default target: the lowest player index with a live controlled walker
+    // — the host's hero, wearing its OWNER's replicated user tag.
+    const std::uint32_t followed = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, followed);
+    EXPECT_NE(own_avatar, followed);
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(followed);
+        ASSERT_NE(nullptr, w);
+        EXPECT_FALSE(w->dead());
+        ASSERT_NE(nullptr, w->myguy);
+        EXPECT_EQ("Host", w->myguy->name);
+        EXPECT_NE(-1, static_cast<int>(w->user()));
+    }
+
+    // The HUD captions the watched target.
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, game.join_session->mirror_world(),
+                  game.join_session->followed_entity_id(),
+                  game.join_session->follow_engaged());
+    EXPECT_NE(term.text_row(0).find("(following Host)"), std::string::npos)
+        << "row 0 must caption the watched target; got: " << term.text_row(0);
+
+    // SwitchChar cycles the watched target (the any-living fallback reaches
+    // the scenario troops once the host hero is the current target).
+    InputState cycle;
+    cycle.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    cycle.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    game.join_session->send_input(cycle);
+    game.host_session->send_input(InputState{});
+    game.host_session->advance();
+    game.join_session->advance();
+
+    const std::uint32_t cycled = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, cycled);
+    EXPECT_NE(followed, cycled) << "SwitchChar must move the watched target";
+    EXPECT_TRUE(game.join_session->follow_engaged());
+    {
+        const walker* w = game.join_session->mirror_world().find_by_id(cycled);
+        ASSERT_NE(nullptr, w);
+        EXPECT_FALSE(w->dead());
+    }
 }
 
 TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
@@ -540,6 +1122,9 @@ TEST(CursesNetwork, host_start_via_s_key)
         join_lobby->poll(join_term, clock);
     }
 
+    // §4.3: the joiner readies so the host's GO is accepted.
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+
     // Pressing 's' on the host terminal requests the start (no direct call).
     host_term.push_char(U's');
     bool host_started = false;
@@ -586,6 +1171,9 @@ TEST(CursesNetwork, host_start_via_uppercase_s_and_enter)
             host_lobby->poll(host_term, clock);
             join_lobby->poll(join_term, clock);
         }
+
+        // §4.3: the joiner readies so the host's GO is accepted.
+        ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
 
         host_term.push_key(key);
         bool host_started = false;

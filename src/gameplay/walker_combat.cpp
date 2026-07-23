@@ -238,9 +238,6 @@ bool walker::attack(walker  *target)
     walker *attacker; // us or our owner ..
     static short tom = 0;
 
-    if (myguy != nullptr || team_num() == 0)
-        getscore = 1;
-
     if (target && target->dead())
         return 0;
 
@@ -261,6 +258,16 @@ bool walker::attack(walker  *target)
     headguy = this;
     while (headguy->owner() && (headguy->owner() != headguy) )
         headguy = headguy->owner();
+
+    // Score and kill semantics follow the actual attacker's team. The legacy
+    // red-only checks made non-red company heroes deal damage without normal
+    // projectile score, and treated their red victims as friendly deaths.
+    playerteam = static_cast<short>(headguy->team_num());
+    if (headguy->myguy != nullptr ||
+        playerteam == current_game->world->my_team)
+    {
+        getscore = 1;
+    }
 
     if (headguy->myguy && headguy->user() == 0 && order() == Order::Weapon)
         tom++;
@@ -342,8 +349,6 @@ bool walker::attack(walker  *target)
             wfd->on_hit_target(this, target, owner());
 
     }
-
-    playerteam = 0;
 
     // Positive score for hurting enemies, negative for us.
     if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())

@@ -72,6 +72,12 @@ public:
     virtual GameWorld& mirror_world() = 0;
     // Entity id the local view follows (the player's avatar), or 0 if none yet.
     virtual std::uint32_t followed_entity_id() const = 0;
+    // §4.5 follow camera: true while the local seat has no controllable
+    // walker (0-deploy, all-dead, spectator) and followed_entity_id() names
+    // a WATCHED target instead of the player's avatar — the HUD renders
+    // "(following NAME)" and the seat's SwitchChar binding cycles the target
+    // (Shift = reverse). Local sessions never follow.
+    virtual bool follow_engaged() const { return false; }
     // Server tick used to stamp outgoing input.
     virtual std::uint32_t next_input_tick() const = 0;
 

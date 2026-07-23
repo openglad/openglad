@@ -442,28 +442,15 @@ public:
 
     void expect_clients_match_server()
     {
-        ensure_initial_sync();
+        expect_clients_match_server_impl(false);
+    }
 
-        const WorldSnapshot server_snapshot = server_world_.with_context([&] {
-            return capture_keyframe_snapshot(server_world_.world());
-        });
-
-        for (std::size_t index = 0; index < clients_.size(); ++index)
-        {
-            ClientState& client = *clients_[index];
-            const WorldSnapshot client_snapshot = client.world.with_context([&] {
-                return capture_keyframe_snapshot(client.world.world());
-            });
-            const auto failure = find_first_snapshot_difference(
-                server_snapshot.tick_count, server_snapshot, client_snapshot);
-            ASSERT_FALSE(failure.has_value())
-                << "client " << index << " diverged at field "
-                << (failure ? failure->field : std::string{})
-                << " expected "
-                << (failure ? failure->expected_value : std::string{})
-                << " actual "
-                << (failure ? failure->actual_value : std::string{});
-        }
+    void expect_clients_match_server_ignoring_visual_transients()
+    {
+        // hurt_flash is delivered for rendering, then consumed on the server
+        // after broadcast. A client may therefore retain the just-delivered
+        // value until the following delta without any simulation divergence.
+        expect_clients_match_server_impl(true);
     }
 
     GameWorld& server_world() { return server_world_.world(); }
@@ -532,6 +519,48 @@ public:
     }
 
 private:
+    void expect_clients_match_server_impl(bool ignore_visual_transients)
+    {
+        ensure_initial_sync();
+
+        WorldSnapshot server_snapshot = server_world_.with_context([&] {
+            return capture_keyframe_snapshot(server_world_.world());
+        });
+        if (ignore_visual_transients)
+            clear_visual_transients(server_snapshot);
+
+        for (std::size_t index = 0; index < clients_.size(); ++index)
+        {
+            ClientState& client = *clients_[index];
+            WorldSnapshot client_snapshot = client.world.with_context([&] {
+                return capture_keyframe_snapshot(client.world.world());
+            });
+            if (ignore_visual_transients)
+                clear_visual_transients(client_snapshot);
+            const auto failure = find_first_snapshot_difference(
+                server_snapshot.tick_count, server_snapshot, client_snapshot);
+            ASSERT_FALSE(failure.has_value())
+                << "client " << index << " diverged at field "
+                << (failure ? failure->field : std::string{})
+                << " expected "
+                << (failure ? failure->expected_value : std::string{})
+                << " actual "
+                << (failure ? failure->actual_value : std::string{});
+        }
+    }
+
+    static void clear_visual_transients(WorldSnapshot& snapshot)
+    {
+        const auto clear_hurt_flash = [](std::vector<EntitySnapshot>& entities) {
+            for (EntitySnapshot& entity : entities)
+                entity.hurt_flash = 0;
+        };
+        clear_hurt_flash(snapshot.oblist);
+        clear_hurt_flash(snapshot.fxlist);
+        clear_hurt_flash(snapshot.weaplist);
+        snapshot.snapshot_hash = compute_snapshot_hash(snapshot);
+    }
+
     struct FixtureWorld {
         explicit FixtureWorld(int level_id)
             : level(level_id, true, &sdl_level_data_hooks())

@@ -27,6 +27,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
@@ -660,6 +661,7 @@ TEST(SaveAllScoping, legacy_named_team0_death_still_fails_mission)
     TestGameWorld tw;
     GameWorld& w = tw.world();
     w.type = SCEN_TYPE_SAVE_ALL;
+    w.my_team = 0;
 
     walker* hero = w.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(hero, nullptr);
@@ -673,6 +675,27 @@ TEST(SaveAllScoping, legacy_named_team0_death_still_fails_mission)
     kill(hero);
     EXPECT_EQ(1, save_all_losses(tw))
         << "legacy SAVE_ALL: a named team-0 death fails the mission";
+}
+
+TEST(SaveAllScoping, foreign_color_company_hero_death_does_not_fail_mission)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.type = SCEN_TYPE_SAVE_ALL;
+    w.my_team = 0;
+
+    walker* foreign = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(foreign, nullptr);
+    foreign->setxy(64, 64);
+    foreign->set_team_num(1);
+    foreign->set_real_team_num(255);
+    foreign->stats()->name = "Yellow Company Hero";
+    foreign->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+
+    ASSERT_FALSE(w.has_save_all_protected());
+    kill(foreign);
+    EXPECT_EQ(0, save_all_losses(tw))
+        << "company persistence must not turn an enemy color into a protectee";
 }
 
 TEST(SaveAllScoping, summoned_walker_death_never_fails_mission)

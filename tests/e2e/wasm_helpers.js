@@ -209,15 +209,19 @@ async function waitForPickerReady(page, settlingMs = 5_000) {
 }
 
 // From the picker main menu: CONTINUE opens the team-build menu.
+// §2.1/§2.10: CONTINUE was split into the 68x20 CONTINUE|LOAD pair, so its
+// center moved from (150,85) to (114,85).
 async function continueToTeamBuildMenu(page) {
   await waitForPickerReady(page);
-  await clickCanvasGameCoord(page, 150, 85);
+  await clickCanvasGameCoord(page, 114, 85);
   await page.waitForTimeout(1_500);
 }
 
-// From the team-build menu: open the NETWORKING menu.
+// From the base-camp (team-build) menu: open the NETWORKING menu.
+// §2.5/§2.10: the command strip moved to y=178 — NETWORK is (182,178,56,18),
+// center (210,187).
 async function openNetworkingFromTeamBuild(page) {
-  await clickCanvasGameCoord(page, 250, 150);
+  await clickCanvasGameCoord(page, 210, 187);
   await page.waitForTimeout(1_500);
 }
 
@@ -230,8 +234,10 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
   const {
     preStartSettlingMs = 5_000,
     expectedCaptureProfileId = null,
-    continueButton = { x: 150, y: 85 },
-    goButton = { x: 250, y: 107 },
+    continueButton = { x: 114, y: 85 },
+    // §2.5/§2.10: GO is (244,178,68,18) on the base-camp strip, center
+    // (278,187).
+    goButton = { x: 278, y: 187 },
     onTeamBuildReady = null,
   } = options;
 

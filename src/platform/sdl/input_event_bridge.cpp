@@ -9,6 +9,9 @@
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/legacy/base.h>
@@ -32,9 +35,27 @@ void autosave_active_screen(screen& s, const char* event_name)
     if (og::runtime::current_session != nullptr &&
         og::runtime::current_session->gameplay_active_)
     {
+        // [SAVE-F2] Never write the company file from a mission-only roster.
+        // Network games hold the combined roster; local lobby games hold an
+        // isolated mission copy of the company. Their explicit win/withdraw
+        // paths merge back into the private company. Skipping also leaves an
+        // abandoned mission unable to promote the company timestamp or erase
+        // private roster state.
+        if (og::runtime::current_session->networked_session_ ||
+            og::runtime::current_session->isolated_company_session_)
+            return;
         s.sync_save_data_from_world();
     }
-    const SaveDataIoError err = s.save_data.save_with_error("save0");
+    // §3.8 WindowEvent autosave: stamp + atomic write to the active company,
+    // no backup. [SAVE-F1] In a networked LOBBY (menus / between levels) the
+    // in-memory save carries the HOST's campaign/settings, so the context
+    // routes the write through the owner-preserving merge instead of a
+    // plain save.
+    const SaveDataIoError err = og::data::company_autosave(
+        s.save_data,
+        og::data::CompanyAutosaveKind::WindowEvent,
+        og::ui::company_autosave_context(s.save_data,
+                                         picker_lobby_is_networked()));
     if (err != SaveDataIoError::None)
     {
         LogError("window_autosave_failed event={} error={}\n",
@@ -168,8 +189,8 @@ void handle_key_event(const void* native_event)
             {
                 const int old_w = s->world_canvas_w();
                 const int old_h = s->world_canvas_h();
-                // Match the in-menu RESTORE DEFAULTS path: mode, window
-                // size, zoom and smoothing all take effect immediately.
+                // Ctrl-F12 remains the full emergency reset (including
+                // controls); mode, size, zoom and smoothing apply immediately.
                 s->apply_display_settings_from_cfg();
                 if (s->world_canvas_w() != old_w || s->world_canvas_h() != old_h)
                     s->relayout_views();

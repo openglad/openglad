@@ -258,6 +258,7 @@ static void create_dataopenglad()
     mkdir(user_path.c_str(), 0770);
     mkdir((user_path + "campaigns/").c_str(), 0770);
     mkdir((user_path + "save/").c_str(), 0770);
+    mkdir((user_path + "save/backups/").c_str(), 0770);
     mkdir((user_path + "cfg/").c_str(), 0770);
     mkdir((user_path + "extra_pix/").c_str(), 0770);
 }

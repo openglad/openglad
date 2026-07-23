@@ -2902,7 +2902,7 @@ void sdl_video::set_world_canvas_pinned_classic(bool pinned)
 
 void sdl_video::reapply_world_scale()
 {
-	// DISPLAY zoom/smoothing, window resize, and RESTORE DEFAULTS live-apply
+	// DISPLAY zoom/smoothing, window resize, and RESTORE SETTINGS live-apply
 	// seam. The legacy method name remains part of the video interface.
 	apply_world_scale_from_cfg();
 }
@@ -3253,7 +3253,7 @@ void sdl_video::reflect_display_settings_from_window(
 void sdl_video::apply_display_settings_from_cfg()
 {
 #ifndef __EMSCRIPTEN__
-	// The DISPLAY screen's live-apply path (and RESTORE DEFAULTS): read the
+	// The DISPLAY screen's live-apply path (and RESTORE SETTINGS): read the
 	// mode + resolution out of cfg, drive the real window, update the overscan
 	// viewport, then reapply the aspect-relative world zoom/smoothing settings.
 	// The completed resize event refreshes that zoom baseline as well.
@@ -3340,7 +3340,7 @@ void sdl_video::apply_display_settings_from_cfg()
 		// A normal Exclusive -> Windowed selector step still carries the
 		// exclusive physical mode in cfg. Restore the logical size captured
 		// before entering fullscreen; an explicitly different cfg size (for
-		// example RESTORE DEFAULTS) remains authoritative.
+		// example RESTORE SETTINGS) remains authoritative.
 		if (was_fullscreen && was_exclusive &&
 		    std::pair<int, int>{w, h} == previous_exclusive_pixels)
 		{
@@ -3414,7 +3414,7 @@ void sdl_video::apply_display_settings_from_cfg()
 #endif
 	// Zoom and smoothing are world-canvas settings on every target, including
 	// Emscripten. Keep this outside the native window-management branch so
-	// RESTORE DEFAULTS live-applies them in the browser too.
+	// RESTORE SETTINGS live-applies them in the browser too.
 	apply_world_scale_from_cfg();
 }
 

@@ -170,6 +170,12 @@ void vbutton::set_graphic(char family)
     //vdisplay();
 }
 
+// Label centering (all five write_xy copies below, §9.1): the true ink width
+// of an N-char label is N*(w+1)-1 pixels (each glyph advances w+1; the final
+// pen advance never lands), so start_x subtracts (N*(w+1)-1)/2 from the face
+// midpoint. The historical (N-1)*(w+1)/2 undercounted one cell and drew every
+// label ~2-3px right of center — a 1-char "X" hugged the right half of its
+// 14px face (F5).
 void vbutton::vdisplay()
 {
     if(hidden || no_draw)
@@ -185,7 +191,7 @@ void vbutton::vdisplay()
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -196,7 +202,7 @@ void vbutton::vdisplay()
         og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
         og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
 }
@@ -216,7 +222,7 @@ void vbutton::vdisplay(Sint32 status)
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -229,7 +235,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_LEFT,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_TOP,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             og::runtime::current_session->myscreen_->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         }
@@ -241,7 +247,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT+32,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM+32,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
         }
     }
@@ -535,16 +541,15 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 	    case ButtonAction::QuitMenu:
 	        quit(call_arg);
 	        return 1;
-	    case ButtonAction::CreateViewMenu:
-	        return create_view_menu(call_arg);
 	    case ButtonAction::CreateTrainMenu:
 	        return create_train_menu(call_arg);
 	    case ButtonAction::CreateHireMenu:
 	        return create_hire_menu(call_arg);
-	    case ButtonAction::CreateLoadMenu:
-	        return create_load_menu(call_arg);
-	    case ButtonAction::CreateSaveMenu:
-	        return create_save_menu(call_arg);
+	    // CreateLoadMenu reaches do_call only when the MainMenu-scope
+	    // intercept did not consume it (the §2.1 LOAD door); with the slot
+	    // menus retired there is nothing left to open — fall through to the
+	    // no-op default alongside the fully retired actions
+	    // (CreateViewMenu / CreateSaveMenu / DoSave / DoLoad).
 	    case ButtonAction::CreateProgressMenu:
 	        return create_progress_menu(call_arg);
 	    case ButtonAction::GoMenu:
@@ -563,10 +568,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return cycle_guy(arg);
     case ButtonAction::AddGuy:
         return add_guy(arg);
-    case ButtonAction::DoSave:
-        return do_save(arg);
-    case ButtonAction::DoLoad:
-        return do_load(arg);
     case ButtonAction::NameGuy: // name some guy
         return name_guy(arg);
     case ButtonAction::CreateDetailMenu:
@@ -606,7 +607,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::TeamsCycleGuyTeam:
         return teams_cycle_guy_team(call_arg);
     case ButtonAction::ToggleLobbyReady:
-        return teams_toggle_ready();
+        // arg -1 = the TEAMS mirror; the base-camp READY twin passes its
+        // own button index (§2.6).
+        return teams_toggle_ready(call_arg);
     case ButtonAction::DoLevelEdit:
         return level_editor();
     case ButtonAction::YesOrNo:
@@ -649,6 +652,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         // Stash which ACTIVE GAMES row was clicked; configure_networking's
         // menu loop consumes it (retvalue only carries the action id).
         pks().networking_clicked_room_slot = arg;
+        return whatfunc;
+    case ButtonAction::MenuSpecRow:
+        // Stash which engine spec row was activated; run_menu_screen's loop
+        // consumes it (retvalue only carries the action id).
+        pks().menu_spec_clicked_row = arg;
         return whatfunc;
     case ButtonAction::ShowHelp:
         show_general_help();
@@ -742,7 +750,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         cfg.load_settings();
-        load_player_control_settings_from_cfg(cfg);
+        // GAME SETTINGS owns presentation/effects settings, not player
+        // controls. Put the live modes and both keymaps back into the freshly
+        // restored config before it reaches disk.
+        save_player_control_settings_to_cfg(cfg);
+        cfg.save_settings();
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
             parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
@@ -761,6 +773,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();
+        save_player_control_settings_to_cfg(cfg);
+        cfg.save_settings();
         return REDRAW;
     default:
         return OK;

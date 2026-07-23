@@ -28,6 +28,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
@@ -162,12 +163,14 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     s->save_data.scen_num = static_cast<short>(scen_id);
     s->save_data.current_campaign = "org.openglad.gladiator";
 
-    if (!s->save_data.save("save0")) {
+    // The demo never selects a company, so this is the default "save0" slot
+    // and the bootstrap stays byte-identical (§3.9).
+    if (!s->save_data.save(og::data::active_company_slot())) {
         throw std::runtime_error(std::format(
             "openglad_demo failed to bootstrap save0 for scenario {}",
             scen_id));
     }
-    if (load_saved_game("save0", s) == 0) {
+    if (load_saved_game(og::data::active_company_slot().c_str(), s) == 0) {
         throw std::runtime_error(std::format(
             "openglad_demo failed to load bootstrap save0 for scenario {}",
             scen_id));

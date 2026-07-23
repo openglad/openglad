@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
+#include <string>
+#include <utility>
 
 #include <openglad/interface/session_state.h>
 
@@ -96,6 +99,11 @@ private:
         og::sim::PeerId server_peer_id,
         std::size_t local_player_index);
     friend void clear_local_transport_shadow(GameSession& session) noexcept;
+    friend bool display_follow_cycle_target(SessionState& session,
+                                            int view_index, bool reverse);
+    friend void local_transport_shadow_set_player_companies(
+        GameSession& session,
+        std::span<const std::pair<std::uint8_t, std::string>> companies);
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
     friend bool local_transport_shadow_abort_level(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,

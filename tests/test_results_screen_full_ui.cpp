@@ -611,6 +611,72 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
     screen_ref.world().end = saved_end;
 }
 
+TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
+{
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    const char saved_end = screen_ref.world().end;
+    const char saved_type = screen_ref.world().type;
+    const short saved_my_team = screen_ref.world().my_team;
+    screen_ref.world().end = 0;
+    screen_ref.world().type = static_cast<char>(
+        screen_ref.world().type & ~GameWorld::TYPE_CTF);
+    screen_ref.world().my_team = 0;
+
+    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    auto* red = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    auto* yellow = screen_ref.world().add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_TRUE(red != nullptr && yellow != nullptr)
+        << "expected walkers for classic MVP team test";
+
+    red->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    red->set_team_num(0);
+    red->myguy->name = "REDMVP";
+    red->myguy->scen_damage = 1;
+    red->myguy->scen_damage_taken = 1;
+    red->myguy->scen_min_hp = 1;
+    red->stats()->set_max_hitpoints(10);
+    red->stats()->set_hitpoints(5);
+    after[1] = red;
+
+    yellow->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+    yellow->set_team_num(1);
+    yellow->myguy->name = "YELLOWOPPONENT";
+    yellow->myguy->scen_damage = 1000;
+    yellow->myguy->scen_damage_taken = 1000;
+    yellow->myguy->scen_min_hp = 1;
+    yellow->stats()->set_max_hitpoints(10);
+    yellow->stats()->set_hitpoints(5);
+    after[2] = yellow;
+
+    trace_clear();
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(
+        results_ui_ok_injector, "results_classic_mvp_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(0, 1, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+    results_screen_testing_set_force_full(false);
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_FALSE(retry);
+    EXPECT_TRUE(trace_contains("results", "mvp_pick name=REDMVP team=0"));
+    EXPECT_FALSE(trace_contains("results", "YELLOWOPPONENT"));
+
+    screen_ref.world().type = saved_type;
+    screen_ref.world().my_team = saved_my_team;
+    screen_ref.world().end = saved_end;
+}
+
 TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;

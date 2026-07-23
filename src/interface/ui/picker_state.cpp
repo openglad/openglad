@@ -22,6 +22,15 @@ MainMenuAction IPickerClient::show_main_menu()
             return MainMenuAction::NewGame;
         case PickerMenuCommand::ContinueGame:
             return MainMenuAction::ViewTeam;
+        case PickerMenuCommand::LoadGame:
+            // §2.3: the LOAD door presents the Company List. An OPENED
+            // company proceeds to team build (base camp) exactly like
+            // CONTINUE; BACK re-presents the main menu. (The scripted test
+            // clients that return MainMenuAction::LoadGame directly still
+            // exercise run_picker's legacy LoadGame transition.)
+            if (show_company_list())
+                return MainMenuAction::ViewTeam;
+            break;
         case PickerMenuCommand::Networking:
             return MainMenuAction::Networking;
         case PickerMenuCommand::HostGame:
@@ -57,7 +66,7 @@ TeamBuildAction IPickerClient::show_team_build()
             (void)configure_networking();
             break;
         case PickerMenuCommand::Scenario:
-            show_scenario_menu();
+            show_submenu(PickerMenuId::Scenario);
             break;
         default:
             handle_menu_item(PickerMenuId::TeamBuild, *item);
@@ -66,13 +75,13 @@ TeamBuildAction IPickerClient::show_team_build()
     }
 }
 
-void IPickerClient::show_scenario_menu()
+void IPickerClient::show_submenu(PickerMenuId menu_id)
 {
     for (;;) {
-        const PickerMenuItem* item = present_menu(PickerMenuId::Scenario);
+        const PickerMenuItem* item = present_menu(menu_id);
         if (!item || item->command == PickerMenuCommand::Back)
             return;
-        handle_menu_item(PickerMenuId::Scenario, *item);
+        handle_menu_item(menu_id, *item);
     }
 }
 

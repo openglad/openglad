@@ -138,11 +138,8 @@ Sint32 load2(Sint32 arg1);
 Sint32 load3(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
 Sint32 create_detail_menu(guy *arg1); // detailed character information
-Sint32 create_view_menu(Sint32 arg1); // View team members
 Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
-Sint32 create_load_menu(Sint32 arg1); // Load a team
-Sint32 create_save_menu(Sint32 arg1); // Save a team
 Sint32 create_progress_menu(Sint32 arg1); // View level progress
 Sint32 go_menu(Sint32 arg1); // run glad..
 Sint32 increase_stat(Sint32 arg1, Sint32 howmuch=1); // increase a guy's stats
@@ -151,8 +148,6 @@ Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
 Sint32 add_guy(Sint32 ignoreme);
 Sint32 edit_guy(Sint32 arg1); // transfer stats .. hardcoded
-Sint32 do_save(Sint32 arg1);  // dummy function for saving team list
-Sint32 do_load(Sint32 arg1); // dummy function for loading team list
 Sint32 delete_all(); // delete entire team
 Sint32 delete_first(); // delete first guy on team list
 Sint32 how_many(Sint32 whatfamily);   // how many guys of family X on the team?
@@ -180,7 +175,10 @@ Sint32 teams_page_flip(Sint32 team);      // TEAMS per-team member pager
 Sint32 teams_join_team(Sint32 team);
 Sint32 teams_cycle_guy(Sint32 whichway);
 Sint32 teams_cycle_guy_team(Sint32 whichway);
-Sint32 teams_toggle_ready();
+// origin_button_index < 0: the TEAMS READY mirror (index-refreshes its own
+// label); >= 0: the base-camp READY twin (§2.6 — the engine label/color
+// pass re-derives its surfaces, so no index write happens here).
+Sint32 teams_toggle_ready(Sint32 origin_button_index);
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();
@@ -212,11 +210,13 @@ enum class ButtonAction : Sint32
     CreateTeamMenu = 2,
     SetPlayerMode = 3,
     QuitMenu = 4,
-    CreateViewMenu = 5,
+    CreateViewMenu = 5,   // RETIRED (§2.5: the base-camp roster IS the team view)
     CreateTrainMenu = 6,
     CreateHireMenu = 7,
+    // CreateLoadMenu doubles as the §2.1 main-menu LOAD door (intercepted to
+    // the Company List); the team-build slot menu it once opened is retired.
     CreateLoadMenu = 8,
-    CreateSaveMenu = 9,
+    CreateSaveMenu = 9,   // RETIRED (§3.8: saving is automatic)
     GoMenu = 10,
     ReturnMenu = 11,
     CycleTeamGuy = 12,
@@ -225,8 +225,8 @@ enum class ButtonAction : Sint32
     EditGuy = 15,
     CycleGuy = 16,
     AddGuy = 17,
-    DoSave = 18,
-    DoLoad = 19,
+    DoSave = 18,          // RETIRED with the slot menus (§3.8)
+    DoLoad = 19,          // RETIRED with the slot menus (§3.8)
     NameGuy = 20,
     CreateDetailMenu = 21,
     NullMenu = 22,
@@ -253,8 +253,8 @@ enum class ButtonAction : Sint32
     ToggleDamageNumbers = 41,
     ToggleHealNumbers = 42,
     ToggleGore = 43,
-    RestoreDefaultSettings = 44,
-    RestoreDefaultControls = 45,
+    RestoreDefaultSettings = 44, // Game-settings cfg; preserves controls.
+    RestoreDefaultControls = 45, // Player modes + both keymaps only.
     ShowHelp = 46,
     CreateProgressMenu = 47,
     OpenControlSettings = 48,
@@ -336,6 +336,14 @@ enum class ButtonAction : Sint32
     // NETWORKING subscreen ACTIVE GAMES list: one row per live relay room
     // (arg = list slot 0..4); clicking a row joins that room immediately.
     JoinRelayRoomListEntry = 100,
+    // Generic engine-row dispatch (menu engine, docs/menu-engine.md): arg =
+    // materialized row ordinal. The ONE ButtonAction the engine adds — every
+    // new-screen spec row routes through it (zero further enum burn), and a
+    // nonzero myfun keeps every engine row keyboard-live. do_call mirrors the
+    // stash-and-return pattern of 100. NOTE: 101 & MENU_EXIT != 0, so
+    // run_menu_screen MUST consume the stash and rewrite retvalue before its
+    // loop-condition test (the retvalue-collision discipline).
+    MenuSpecRow = 101,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

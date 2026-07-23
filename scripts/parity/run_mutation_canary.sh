@@ -77,14 +77,17 @@ require_clean_worktree() {
     fi
 }
 
-# All-scenario id list emitted by Phase 01's scenario_facts_dump.
+# Master-comparable scenario ids emitted by Phase 01's scenario_facts_dump.
+# Branch-internal invariant rows deliberately have no discriminating mutation;
+# the same exclusion is enforced by lint.parse_scenarios().
 all_scenario_ids() {
     python3 - "${FACTS_JSON}" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)
 for s in data.get("scenarios", []):
-    print(s["id"])
+    if not s.get("is_branch_internal", False):
+        print(s["id"])
 PY
 }
 
@@ -96,7 +99,11 @@ match_glob() {
 import fnmatch, json, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)
-ids = [s["id"] for s in data.get("scenarios", [])]
+ids = [
+    s["id"]
+    for s in data.get("scenarios", [])
+    if not s.get("is_branch_internal", False)
+]
 hits = [i for i in ids if fnmatch.fnmatchcase(i, sys.argv[2])]
 if not hits:
     sys.stderr.write(f"canary: --filter {sys.argv[2]!r} matched zero scenarios\n")

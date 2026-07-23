@@ -1,5 +1,6 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/input.h>
@@ -44,8 +45,6 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Sint32 add_guy(guy* newguy);
-Sint32 do_save(Sint32 arg1);
-Sint32 do_load(Sint32 arg1);
 std::string get_saved_name(const char* filename);
 Sint32 delete_all();
 void quit(Sint32 arg1);
@@ -172,12 +171,12 @@ struct PlatformBridgeGuard
 
 void inject_mouse_click(int x, int y, int delay_ms = 50)
 {
-    const int sx = static_cast<int>(
-        static_cast<float>(x) * og::runtime::current_session->viewport_w_ / 320.0f +
-        og::runtime::current_session->viewport_offset_x_);
-    const int sy = static_cast<int>(
-        static_cast<float>(y) * og::runtime::current_session->viewport_h_ / 200.0f +
-        og::runtime::current_session->viewport_offset_y_);
+    // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
+    // windows (see test_interact.h).
+    const auto [mapped_x, mapped_y] = ui_canvas_to_window(
+        static_cast<float>(x), static_cast<float>(y));
+    const int sx = static_cast<int>(mapped_x);
+    const int sy = static_cast<int>(mapped_y);
 
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
@@ -636,7 +635,7 @@ TEST(PickerFuncs, how_many_with_team)
     vbutton* old2 = og::runtime::current_session->allbuttons_[2];
     vbutton* old6 = og::runtime::current_session->allbuttons_[6];
     vbutton* old7 = og::runtime::current_session->allbuttons_[7];
-    vbutton* old18 = og::runtime::current_session->allbuttons_[18];
+    vbutton* old18 = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
     short old_team_num = og::runtime::current_session->current_team_num_;
     Sint32 old_diff = og::runtime::current_session->current_difficulty_;
@@ -646,7 +645,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->allbuttons_[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
-    og::runtime::current_session->allbuttons_[18] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
 
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->current_guy_->teamnum = 1;
@@ -662,7 +661,7 @@ TEST(PickerFuncs, how_many_with_team)
 
     ASSERT_EQ(4, (int)change_teamnum(1)) << "change_teamnum should return OK";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0) << "team label should be updated";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Playing on Team ") == 0) << "team label should be updated";
 
     og::runtime::current_session->current_team_num_ = 0;
     ASSERT_EQ(4, (int)change_hire_teamnum(1)) << "change_hire_teamnum should return OK";
@@ -670,12 +669,14 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
 
+    // G8 (design §1.2): change_allied no longer writes allbuttons_[7]. The
+    // pvp_allied LabelBinding moved to PLAYER SETTINGS and re-derives both
+    // label surfaces every frame, so change_allied only toggles the save flag
+    // and syncs the lobby.
     ASSERT_EQ(4, (int)change_allied()) << "change_allied should return OK";
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle on";
-    ASSERT_TRUE(og::runtime::current_session->allbuttons_[7]->label == "PVP: Ally") << "allied label should update";
     ASSERT_EQ(4, (int)change_allied()) << "change_allied second toggle should return OK";
     ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle off";
-    ASSERT_TRUE(og::runtime::current_session->allbuttons_[7]->label == "PVP: Enemy") << "enemy label should update";
 
     // Directly exercise picker helpers that were still uncovered.
     const unsigned char saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -699,9 +700,8 @@ TEST(PickerFuncs, how_many_with_team)
         og::runtime::current_session->allbuttons_[0] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b0", KEYSTATE_UNKNOWN);
     }
     og::runtime::current_session->allbuttons_[0]->label = "UNIT_TEST_SAVE";
-    Sint32 save_ret = do_save(1);
-    Sint32 load_ret = do_load(1);
-    ASSERT_TRUE(save_ret == load_ret) << "do_save/do_load should return same menu status";
+    // (do_save/do_load retired with the slot menus — §3.8: saving is
+    // automatic; loading is the Company List.)
 
     ASSERT_EQ(1234, (int)return_menu(1234)) << "return_menu should echo its argument";
     quit(0); // test mode: should not exit
@@ -721,7 +721,7 @@ TEST(PickerFuncs, how_many_with_team)
     delete og::runtime::current_session->allbuttons_[2];
     delete og::runtime::current_session->allbuttons_[6];
     delete og::runtime::current_session->allbuttons_[7];
-    delete og::runtime::current_session->allbuttons_[18];
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     if (old0 == nullptr) {
         delete og::runtime::current_session->allbuttons_[0];
     }
@@ -730,7 +730,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->allbuttons_[2] = old2;
     og::runtime::current_session->allbuttons_[6] = old6;
     og::runtime::current_session->allbuttons_[7] = old7;
-    og::runtime::current_session->allbuttons_[18] = old18;
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old18;
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         og::runtime::current_session->myscreen_->save_data.team_list[i].reset(saved_team_list[i]);
@@ -1169,62 +1169,9 @@ TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
     level_editor_testing_prompt_queue_clear();
 }
 
-TEST(PickerFuncs, do_load_syncs_active_lobby_client_without_reinitializing)
-{
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    const std::string old_save_name = save.save_name;
-    const std::string old_campaign = save.current_campaign;
-    const short old_scen_num = save.scen_num;
-    const unsigned char old_team_size = save.team_size;
-    const unsigned char old_numplayers = save.numplayers;
-    const short old_allied_mode = save.allied_mode;
-    const short old_my_team = save.my_team;
-    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
-
-    save.save_name = "NETWORK LOAD";
-    save.current_campaign = "org.openglad.gladiator";
-    save.scen_num = 1;
-    save.team_size = 1;
-    save.numplayers = 1;
-    save.allied_mode = 0;
-    save.my_team = 0;
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->name = "Loader";
-    save.team_list[0]->teamnum = 0;
-    for (int i = 1; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i].reset();
-
-    ASSERT_TRUE(save.save("save1"));
-
-    save.scen_num = 2;
-    save.team_list[0]->name = "Modified";
-
-    auto trace = std::make_shared<PickerLobbyClientTrace>();
-    TraceablePickerLobbyClient client(trace);
-    ActivePickerLobbyClientGuard guard(&client);
-
-    ASSERT_EQ(2, do_load(1));
-    EXPECT_EQ(0, trace->initialize_calls);
-    EXPECT_EQ(0, trace->shutdown_calls);
-    EXPECT_EQ(1, trace->sync_from_save_calls);
-    EXPECT_EQ(0, trace->sync_roster_calls);
-    EXPECT_EQ(0, trace->sync_settings_calls);
-    EXPECT_EQ(1, save.scen_num);
-    ASSERT_TRUE(save.team_list[0] != nullptr);
-    EXPECT_EQ("Loader", save.team_list[0]->name);
-
-    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
-    save.save_name = old_save_name;
-    save.current_campaign = old_campaign;
-    save.scen_num = old_scen_num;
-    save.team_size = old_team_size;
-    save.numplayers = old_numplayers;
-    save.allied_mode = old_allied_mode;
-    save.my_team = old_my_team;
-}
+// (do_load retired with the slot menus; the lobby sync-on-load behavior is
+// exercised by the Company List open path — open_company_slot -> load ->
+// picker_lobby_sync_from_save — in the og_test_basecamp flows.)
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
 {
@@ -1808,7 +1755,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
     g_start_game_requested = false;
 }
 
-TEST(PickerFuncs, train_team_change_persists_after_accept)
+TEST(PickerFuncs, train_team_change_immediately_syncs_saved_roster)
 {
     picker_lobby_shutdown();
 
@@ -1824,7 +1771,7 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
 
     std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
     const short old_team_num = og::runtime::current_session->current_team_num_;
-    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+    auto* old_team_button = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
     auto* old_train_session = pks().train_session;
 
     save.team_size = 1;
@@ -1832,31 +1779,38 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
     save.m_totalcash[0] = 10000;
     save.m_totalcash[1] = 10000;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->teamnum = 2;
     save.team_list[0]->name = "Trainer";
 
-    og::runtime::current_session->allbuttons_[18] =
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] =
         new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
                     "team", KEYSTATE_UNKNOWN);
 
     og::ui::TrainSession session(save);
     pks().train_session = &session;
+    EXPECT_EQ(2, static_cast<int>(session.working_copy().teamnum))
+        << "TRAIN must start from Base Camp's saved TEAM value";
     og::runtime::current_session->current_guy_ =
         std::make_unique<guy>(session.working_copy());
     og::runtime::current_session->current_team_num_ = session.working_copy().teamnum;
 
     ASSERT_EQ(4, static_cast<int>(change_teamnum(1)));
-    EXPECT_EQ(1, static_cast<int>(session.working_copy().teamnum));
-    EXPECT_EQ(1, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+    EXPECT_EQ(3, static_cast<int>(session.working_copy().teamnum));
+    EXPECT_EQ(3, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum))
+        << "Base Camp's TEAM column must see the TRAIN choice immediately";
+    EXPECT_TRUE(trace_contains("train", "team slot=0 team=3"));
 
+    // ACCEPT remains harmless for the already-synchronized team setting;
+    // stat changes still use the TrainSession's transactional path.
     ASSERT_TRUE(session.accept(true));
     picker_lobby_sync_from_save();
-    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum));
 
     picker_lobby_shutdown();
     pks().train_session = old_train_session;
-    delete og::runtime::current_session->allbuttons_[18];
-    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old_team_button;
     og::runtime::current_session->current_guy_ = std::move(old_current);
     og::runtime::current_session->current_team_num_ = old_team_num;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
@@ -1919,7 +1873,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
         std::move(og::runtime::current_session->current_guy_);
     const short old_team_num = og::runtime::current_session->current_team_num_;
     const int old_editguy = og::runtime::current_session->editguy_;
-    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+    auto* old_team_button = og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
 
     save.team_size = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1928,7 +1882,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
         std::make_unique<guy>(*save.team_list[0]);
     og::runtime::current_session->current_team_num_ = 0;
     og::runtime::current_session->editguy_ = 0;
-    og::runtime::current_session->allbuttons_[18] =
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] =
         new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
                     "team", KEYSTATE_UNKNOWN);
 
@@ -1941,8 +1895,8 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
     ASSERT_EQ(0, static_cast<int>(change_teamnum(1)));
     EXPECT_EQ(0, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
 
-    delete og::runtime::current_session->allbuttons_[18];
-    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    delete og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex];
+    og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old_team_button;
     og::runtime::current_session->current_guy_ = std::move(old_current);
     og::runtime::current_session->current_team_num_ = old_team_num;
     og::runtime::current_session->editguy_ = old_editguy;
@@ -1998,12 +1952,28 @@ TEST(PickerFuncs, get_saved_name_handles_legacy_truncated_and_named_slots)
 {
     create_dir(get_user_path() + "save");
 
-    auto write_slot = [](const std::string& slot, const std::string& bytes) {
+    // [SAVE-R5] Raw-slot seeding must not leave stray companies behind: with
+    // startup selection scanning save/ (design §3.5), leaked fixture slots
+    // would become phantom "most recent company" candidates for other tests.
+    std::vector<std::string> seeded_slots;
+    struct SlotCleanup
+    {
+        std::vector<std::string>& slots;
+        ~SlotCleanup()
+        {
+            for (const std::string& slot : slots)
+                (void)remove_user_file("save/" + slot + ".gtl");
+        }
+    } cleanup{seeded_slots};
+
+    auto write_slot = [&seeded_slots](const std::string& slot,
+                                      const std::string& bytes) {
         const std::string path = get_user_path() + "save/" + slot + ".gtl";
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         ASSERT_TRUE(out.good()) << "failed to open " << path;
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
         ASSERT_TRUE(out.good()) << "failed to write " << path;
+        seeded_slots.push_back(slot);
     };
 
     EXPECT_EQ("EMPTY SLOT", get_saved_name("__picker_missing_slot__"));
@@ -2142,6 +2112,241 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
             << "synthetic seats must cover teams {0,2}, got "
             << players[0].team << "/" << players[1].team;
 
+        client->shutdown();
+    }
+
+    // Restore.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
+TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    for (const short allied_mode : {short{0}, short{1}})
+    {
+        for (short team = 0; team < 4; ++team)
+        {
+            for (auto& member : save.team_list)
+                member.reset();
+            save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[0]->name = "Color Guard";
+            save.team_list[0]->teamnum = team;
+            save.team_size = 1;
+            save.my_team = team;
+            save.numplayers = 1;
+            save.allied_mode = allied_mode;
+
+            auto client = og::ui::create_local_picker_lobby_client();
+            client->initialize_from_save();
+            const auto config = client->build_game_start_config();
+            ASSERT_TRUE(config.has_value());
+            ASSERT_EQ(1u, config->save_data.team_list.size());
+            EXPECT_FALSE(config->is_networked);
+            EXPECT_EQ(team, config->my_team)
+                << "allied=" << allied_mode << " team=" << team;
+            EXPECT_EQ(team, config->save_data.team_list[0].character.teamnum)
+                << "allied=" << allied_mode << " team=" << team;
+            ASSERT_EQ(1u, config->local_seat_teams.size());
+            EXPECT_EQ(team, config->local_seat_teams[0])
+                << "allied=" << allied_mode << " team=" << team;
+            client->shutdown();
+        }
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
+TEST(PickerFuncs, local_lobby_rejects_every_uncontrollable_seat_shape)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+    const bool orig_start_requested = g_start_game_requested;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Red One";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Second";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+
+    {
+        g_start_game_requested = false;
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_FALSE(client->request_start_game())
+            << "two Together seats require two deployed fighters on their "
+               "shared control team";
+        save.team_list[1]->deployed = true;
+        client->sync_roster_from_save();
+        EXPECT_TRUE(client->request_start_game());
+        client->shutdown();
+    }
+
+    // Split seats require a deployed fighter for each derived team. A yellow
+    // reserve must not count merely because it still exists in the company.
+    save.allied_mode = 0;
+    save.team_list[1]->teamnum = 1;
+    save.team_list[1]->deployed = false;
+    {
+        g_start_game_requested = false;
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_FALSE(client->request_start_game());
+        save.team_list[1]->deployed = true;
+        client->sync_roster_from_save();
+        EXPECT_TRUE(client->request_start_game());
+        client->shutdown();
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+    g_start_game_requested = orig_start_requested;
+}
+
+// Player seats are control assignments, not roster filters. A one-player
+// local mission must carry deployed and benched members from every company
+// color into its isolated start seed, preserving their original private slots.
+TEST(PickerFuncs, local_lobby_one_player_start_carries_the_full_mixed_team_roster)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    constexpr std::array<short, 4> teams = {0, 1, 2, 3};
+    for (std::size_t index = 0; index < teams.size(); ++index)
+    {
+        save.team_list[index] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[index]->name = std::format("Color {}", index + 1);
+        save.team_list[index]->teamnum = teams[index];
+        save.team_list[index]->deployed = index != 2;
+    }
+    save.team_size = static_cast<unsigned char>(teams.size());
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        const auto config = client->build_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        ASSERT_EQ(teams.size(), config->save_data.team_list.size());
+        for (std::size_t index = 0; index < teams.size(); ++index)
+        {
+            const auto& slot = config->save_data.team_list[index];
+            EXPECT_EQ(index, slot.slot_index);
+            EXPECT_EQ(teams[index], slot.character.teamnum);
+            EXPECT_EQ(index != 2, slot.deployed);
+            EXPECT_EQ(0u, slot.owner_player_index);
+            EXPECT_EQ(index, slot.owner_save_slot);
+        }
+        client->shutdown();
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
+// §4.2: the LOCAL lobby round-trips the machine's own roster through the
+// lobby state on every sync. A benched member must survive that round-trip
+// (flag intact, never force-redeployed, never dropped) and must still ride
+// the game-start equivalent — the local start path seeds the real company
+// save from it, so dropping benched members would be save data loss. The
+// local benched member is kept OUT of the level at spawn time instead.
+TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Stash what this test mutates.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Front";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Reserve";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        // Drive a second sync (what the picker loop does every frame): the
+        // round-trip rebuild must keep the benched member benched.
+        client->sync_roster_from_save();
+
+        ASSERT_NE(nullptr, save.team_list[0]);
+        ASSERT_NE(nullptr, save.team_list[1]);
+        EXPECT_TRUE(save.team_list[0]->deployed);
+        EXPECT_FALSE(save.team_list[1]->deployed)
+            << "the lobby echo must not force-redeploy a benched member";
+        EXPECT_EQ("Reserve", save.team_list[1]->name);
+
+        const auto config = client->build_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        ASSERT_EQ(2u, config->save_data.team_list.size())
+            << "the LOCAL equivalent keeps benched slots (save-seed safety)";
+        EXPECT_TRUE(config->save_data.team_list[0].deployed);
+        EXPECT_FALSE(config->save_data.team_list[1].deployed);
         client->shutdown();
     }
 

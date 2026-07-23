@@ -10,7 +10,7 @@
 #include <openglad/resources/io_common.h>
 
 #include <algorithm>
-#include <vector>
+#include <optional>
 
 namespace
 {
@@ -43,35 +43,28 @@ private:
     bool previous_ = false;
 };
 
-std::vector<short> replay_view_teams(const og::sim::WorldSnapshot& snapshot,
-                                     short max_views)
+std::optional<short> replay_team_for_user(
+    const og::sim::WorldSnapshot& snapshot, short view_index)
 {
-    std::vector<short> teams;
-    teams.reserve(static_cast<std::size_t>(std::max<short>(max_views, 0)));
-
-    for (const auto& guy_snapshot : snapshot.guy_snapshots)
+    for (const og::sim::EntitySnapshot& entity : snapshot.oblist)
     {
-        if (guy_snapshot.teamnum == 0)
-            continue;
-        if (std::find(teams.begin(), teams.end(), guy_snapshot.teamnum) != teams.end())
-            continue;
-
-        teams.push_back(guy_snapshot.teamnum);
-        if (static_cast<short>(teams.size()) >= max_views)
-            break;
+        if (entity.order == Order::Living && entity.user == view_index)
+        {
+            return static_cast<short>(entity.team_num);
+        }
     }
 
-    return teams;
+    return std::nullopt;
 }
 
-walker* replay_find_bound_control(GameWorld& world, short view_index, short my_team)
+walker* replay_find_bound_control(GameWorld& world, short view_index)
 {
     for (auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
         if (w == nullptr || w->dead() || w->query_order() != Order::Living)
             continue;
-        if (w->user() == view_index && (my_team == 0 || w->team_num() == my_team))
+        if (w->user() == view_index)
             return w;
     }
 
@@ -81,8 +74,6 @@ walker* replay_find_bound_control(GameWorld& world, short view_index, short my_t
 void assign_replay_views(screen& game_screen,
                          const og::sim::WorldSnapshot& snapshot)
 {
-    const std::vector<short> teams =
-        replay_view_teams(snapshot, game_screen.numviews);
     const bool spectator = og::ui::is_spectator_mode(game_screen.save_data);
     short view_index = 0;
     const short numviews = std::min<short>(
@@ -94,12 +85,15 @@ void assign_replay_views(screen& game_screen,
         if (!view || view_index >= numviews)
             break;
 
-        view->my_team = (view_index < static_cast<short>(teams.size()))
-            ? teams[static_cast<std::size_t>(view_index)]
-            : 0;
-        view->control = replay_find_bound_control(game_screen.world(),
-                                                  view_index,
-                                                  view->my_team);
+        // The recorded user binding is authoritative. Inferring view teams
+        // from roster order made an unseated foreign-color company member the
+        // replay controller in mixed-team Ally games.
+        view->control = replay_find_bound_control(game_screen.world(), view_index);
+        const std::optional<short> recorded_team =
+            replay_team_for_user(snapshot, view_index);
+        view->my_team = view->control != nullptr
+            ? static_cast<short>(view->control->team_num())
+            : recorded_team.value_or(game_screen.world().my_team);
         if (view->control == nullptr)
             view->control = view->find_next_control();
 

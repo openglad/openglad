@@ -4,12 +4,17 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/io_common.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <sstream>
+#include <string>
 
 #include "test_network_fixture.h"
 
@@ -187,6 +192,62 @@ TEST(ScreenExtended, screen_endgame_clears_mission_score_after_payout)
     ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0])) << "subsequent wins must not re-credit previous mission score";
 
     og::runtime::current_session->myscreen_->world().end = saved_end;
+}
+
+
+// ---------------------------------------------------------------------------
+// §3.7 level-win backup producer (screen::endgame local-win autosave tail)
+// ---------------------------------------------------------------------------
+
+static std::string read_user_file_bytes(const std::string& relative)
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / relative,
+                     std::ios::binary);
+    std::stringstream contents;
+    contents << in.rdbuf();
+    return contents.str();
+}
+
+TEST(ScreenExtended, level_win_snapshots_one_company_backup)
+{
+    auto* scr = og::runtime::current_session->myscreen_;
+    const char saved_end = scr->world().end;
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.scen_num = 1;
+    scr->sync_world_from_save_data();
+    scr->world().end = 0;
+
+    const std::string slot = og::data::active_company_slot();
+    ASSERT_EQ("save0", slot)
+        << "WP2 invisibility: the producer targets the default slot";
+    // Relative accounting keeps this deterministic under --gtest_shuffle and
+    // repeated runs against the binary's persistent config dir (other tests
+    // in this suite also win levels and snapshot backups).
+    const std::vector<og::data::CompanyBackupInfo> before =
+        og::data::list_company_backups(slot);
+    const int max_before = before.empty() ? 0 : before.front().seq;
+
+    (void)scr->endgame(0, -1); // local, non-networked win
+
+    const std::vector<og::data::CompanyBackupInfo> after =
+        og::data::list_company_backups(slot);
+    ASSERT_FALSE(after.empty())
+        << "a local level win must snapshot a company backup (§3.7)";
+    EXPECT_EQ(max_before + 1, after.front().seq)
+        << "exactly one new snapshot per win, seq = max(existing) + 1";
+    EXPECT_LE(after.size(),
+              static_cast<std::size_t>(og::data::kCompanyBackupRetention))
+        << "retention must keep pruning the win-producer's snapshots";
+
+    // The snapshot is a byte copy of the freshly autosaved company file
+    // (backup runs AFTER the win autosave, so both must match).
+    EXPECT_EQ(read_user_file_bytes("save/" + slot + ".gtl"),
+              read_user_file_bytes("save/backups/" + after.front().filename))
+        << "the level-win snapshot must byte-match the autosaved company";
+
+    scr->world().end = saved_end;
 }
 
 

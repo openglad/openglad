@@ -40,7 +40,7 @@
 
 namespace
 {
-constexpr unsigned char kMaxPlayers = 4;
+constexpr unsigned char kMaxPlayers = kMaxSavePlayers;
 constexpr int kMaxLegacyLevels = 500;
 }
 
@@ -139,6 +139,8 @@ bool SaveData::load(const std::string& filename)
 	std::int16_t temp_teamnum = 0; // version 5+
 	std::int16_t temp_allied = 0;            // v.7+
 	std::int16_t temp_registered = 0;        // v.7+
+	std::int64_t temp_last_played = 0;       // v.14+
+	std::uint8_t temp_deployed = 1;          // v.14+
 
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
@@ -158,7 +160,11 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes Allied mode                // Versions 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
-	// 31-bytes RESERVED
+	// 31-bytes RESERVED, reinterpreted by version 14+ as:
+	//   8-bytes (Sint64) last-played unix seconds (offset 133)  // Version 14+
+	//   23-bytes RESERVED (zero-filled by v14+ writers)
+	// (v13 and older files carry 'GTL' filler here — the two fields are
+	// hard-gated on temp_version >= 14 and never sniffed from content)
 	// List of n objects, each of 58-bytes of form:
 	// 1-byte ORDER
 	// 1-byte FAMILY
@@ -176,7 +182,9 @@ bool SaveData::load(const std::string& filename)
 	// 4-bytes total hits inflicted, v.4+
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number
-	// 2*4 = 8 bytes RESERVED
+	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
+	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
+	//   7-bytes RESERVED (zero-filled by v14+ writers)
 	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -330,8 +338,20 @@ bool SaveData::load(const std::string& filename)
     }
 	numplayers = temp_numplayers;
 
-	// Read the reserved area, 31 bytes
-	READ_OR_FAIL(filler.data(), 31, 1);
+	// Read the reserved area, 31 bytes. Version 14+ reinterprets the first
+	// 8 bytes as the last-played timestamp (offset 133); older files carry
+	// filler there, so the field is hard-gated on the version byte.
+	if (temp_version >= 14)
+	{
+		READ_OR_FAIL(&temp_last_played, 8, 1);
+		READ_OR_FAIL(filler.data(), 23, 1);
+		last_played_unix_s = temp_last_played;
+	}
+	else
+	{
+		READ_OR_FAIL(filler.data(), 31, 1);
+		last_played_unix_s = 0;
+	}
 
 	// Okay, we've read header .. now read the team list data ..
     for(int i = 0; i < listsize; i++)
@@ -370,8 +390,19 @@ bool SaveData::load(const std::string& filename)
 		READ_OR_FAIL(&temp_ts, 4, 1); // total shots
 		READ_OR_FAIL(&temp_teamnum, 2, 1); // team number
 
-		// And the filler
-		READ_OR_FAIL(filler.data(), 8, 1);
+		// "And the filler," as the 2002 reader put it. Version 14+
+		// reinterprets the first byte as the
+		// mission-deploy flag (guy offset +50); older files hold filler.
+		temp_deployed = 1;
+		if (temp_version >= 14)
+		{
+			READ_OR_FAIL(&temp_deployed, 1, 1);
+			READ_OR_FAIL(filler.data(), 7, 1);
+		}
+		else
+		{
+			READ_OR_FAIL(filler.data(), 8, 1);
+		}
 			// Now set the values ..
             if (temp_guy_ptr != nullptr)
             {
@@ -417,6 +448,10 @@ bool SaveData::load(const std::string& filename)
 			    {
 				    temp_guy_ptr->teamnum = 0;
 			    }
+			    // v14+ carries the deploy flag; older versions default to
+			    // deployed (every legacy character was always brought)
+			    temp_guy_ptr->deployed =
+			        (temp_version >= 14) ? (temp_deployed != 0) : true;
             }
 		}
 
@@ -606,6 +641,24 @@ std::int32_t calculate_level(std::uint32_t temp_exp);
 
 void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 {
+    // Pass 0 (docs/company-basecamp-design.md §3.3): held-back characters
+    // (deployed == false) never entered the level's oblist, so rebuilding the
+    // roster purely from the oblist would silently delete them. Move them
+    // aside first and reserve their slots. 24-cap priority rule (pinned by
+    // test): held-back characters always survive; newly-acquired recruits
+    // are dropped first when the cap binds. With every guy deployed (all
+    // legacy flows) passes 0 and 2 are empty and behavior is byte-identical.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> held_back;
+    int held_back_count = 0;
+    for (int i = 0; i < team_size; i++)
+    {
+        if (team_list[i] != nullptr && !team_list[i]->deployed)
+        {
+            held_back[held_back_count] = std::move(team_list[i]);
+            held_back_count++;
+        }
+    }
+
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
     {
@@ -613,8 +666,10 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
     }
     team_size = 0;
 
+    const int survivor_capacity = MAX_TEAM_SIZE - held_back_count;
 
-    // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
+    // Pass 1: remove new (or existing) "guys" from the list and store them in
+    // this SaveData to be saved and trained.
     // Permadeath (keep_fallen_heroes == 0, the default) keeps only living guys;
     // with the toggle set, fallen heroes stay on the roster too.
     for(auto& uptr : oblist)
@@ -622,7 +677,7 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 	    walker* ob = uptr.get();
         if (ob && ob->myguy && (!ob->dead() || keep_fallen_heroes != 0))
 		{
-            if (team_size >= MAX_TEAM_SIZE)
+            if (team_size >= survivor_capacity)
             {
                 continue;
             }
@@ -635,6 +690,15 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 			team_size++;
 		}
 	}
+
+    // Pass 2: move-append the held-back entries (their guy objects preserved,
+    // stats untouched). NOTE: this changes roster ORDER when deploy toggles
+    // are in use — UI must not hold positional slot indices across a win.
+    for (int i = 0; i < held_back_count; i++)
+    {
+        team_list[team_size] = std::move(held_back[i]);
+        team_size++;
+    }
 }
 
 void SaveData::merge_owned_guys_from(
@@ -748,17 +812,16 @@ bool SaveData::save(const std::string& filename)
         last_io_error_ = SaveDataIoError::OpenWriteFailed;
         return false;
     }
-	std::array<char, 50> filler = {'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L',
-		'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T',
-		'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G',
-		'T', 'L', 'G', 'T', 'L'}; // for RESERVED
+	// The 2002 writer filled RESERVED with literal "GTLGTLGTL..." bytes and
+	// labeled the array simply "for RESERVED." v14 writes real fields plus
+	// zero-filled reserved bytes instead (see §3.1).
 	std::array<char, 41> savedgame;
 	std::fill_n(savedgame.data(), savedgame.size(), '\0');
 	std::array<char, 41> temp_campaign;
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 13;
+	std::uint8_t temp_version = 14;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -802,7 +865,9 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes allied setting              // Version 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
-	// 31-bytes RESERVED
+	// 31-bytes RESERVED, reinterpreted by version 14+ as:
+	//   8-bytes (Sint64) last-played unix seconds (offset 133)  // Version 14+
+	//   23-bytes RESERVED (zero-filled)
 	// List of n objects, each of 58-bytes of form:
 	// 1-byte ORDER
 	// 1-byte FAMILY
@@ -820,7 +885,9 @@ bool SaveData::save(const std::string& filename)
 	// 4-bytes total hits inflicted, v.4+
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number, v.5+
-	// 2*4 = 8 bytes RESERVED
+	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
+	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
+	//   7-bytes RESERVED (zero-filled)
 	// List of 500 (max scenarios) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -918,8 +985,13 @@ bool SaveData::save(const std::string& filename)
 
 	WRITE_OR_FAIL(&numplayers_to_save, 1, 1);
 
-	// Write the reserved area, 31 bytes
-	WRITE_OR_FAIL(filler.data(), 31, 1);
+	// Write the former 31-byte reserved area: v14+ stores the last-played
+	// timestamp in the first 8 bytes (offset 133) and zero-fills the rest.
+	// save() only serializes the field — company_autosave stamps it (§3.2).
+	std::int64_t temp_last_played = last_played_unix_s;
+	WRITE_OR_FAIL(&temp_last_played, 8, 1);
+	std::array<char, 23> reserved_header{};
+	WRITE_OR_FAIL(reserved_header.data(), 23, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for(int team_idx = 0; team_idx < team_size; team_idx++)
@@ -967,8 +1039,13 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_th, 4, 1);
         WRITE_OR_FAIL(&temp_ts, 4, 1);
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
-        // And the filler
-        WRITE_OR_FAIL(filler.data(), 8, 1);
+        // And the filler: v14+ stores the mission-deploy flag in the first
+        // byte of the former 8-byte guy filler (offset +50), then zero-fills
+        // the other 7.
+        std::uint8_t temp_deployed = temp_guy->deployed ? 1 : 0;
+        WRITE_OR_FAIL(&temp_deployed, 1, 1);
+        std::array<char, 7> reserved_guy{};
+        WRITE_OR_FAIL(reserved_guy.data(), 7, 1);
 	}
 
 	// Write the completed levels

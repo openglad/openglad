@@ -25,8 +25,9 @@ struct PickerLobbyGameStartConfig
     // All of this machine's seats, in local seat order (seat 0 first), captured
     // from the FINAL authoritative lobby state when the start was accepted:
     // the global player_index each seat was assigned, and the GAMEPLAY team its
-    // view renders for (allied mode folds every seat to team 0). Empty for
-    // local (non-networked) games.
+    // view renders for (Together mode shares the first active authoritative
+    // team, while character roster colors remain independent combat teams).
+    // Empty for local (non-networked) games.
     std::vector<std::uint8_t> local_player_indices = {};
     std::vector<short> local_seat_teams = {};
 };
@@ -68,6 +69,24 @@ public:
     {
         return {};
     }
+    // A short degraded-link banner for the base camp's §2.5 line-B slot, or
+    // nullopt while the session is healthy (the §9.12 session status carries
+    // the healthy state). Local/solo clients never alert. Join clients report the
+    // transport link ("Status: connecting / connection failed / connection
+    // lost"); the host reports a dead relay room ("Relay: connection lost").
+    [[nodiscard]] virtual std::optional<std::string> connection_alert() const
+    {
+        return std::nullopt;
+    }
+    // §9.12 (G5) display-only: the relay room code this session advertises
+    // (host) or joined through (relay joiner). Empty for local sessions,
+    // direct (LAN) joins, and relay-less hosts. Returned raw even while the
+    // relay link is degraded — connection_alert() outranks the session
+    // status on the base camp, so a dead room never displays as healthy.
+    [[nodiscard]] virtual std::string session_room_code() const
+    {
+        return {};
+    }
     [[nodiscard]] virtual bool host_controls_visible() const noexcept
     {
         return true;
@@ -97,9 +116,27 @@ public:
     {
         return false;
     }
+    // The most recent StartGame denial the server echoed to this client
+    // (protocol v8, §4.3). None for local/solo sessions (never gated) and
+    // until the host's first denied GO. The go_menu / dedicated-server host
+    // reads this to surface WHO is blocking the start.
+    [[nodiscard]] virtual og::sim::StartDenialReason last_start_denial()
+        const noexcept
+    {
+        return og::sim::StartDenialReason::None;
+    }
     // The replicated lobby roster (local clients expose their synthetic
     // per-seat players too). Empty before any state broadcast.
     [[nodiscard]] virtual std::vector<og::sim::LobbyPlayer> lobby_players() const
+    {
+        return {};
+    }
+    // THIS machine's seats' global player indexes in the replicated lobby
+    // state, in local seat order. Empty for local sessions and before the
+    // first state broadcast. The base-camp MP roster (§2.5) uses it to
+    // split lobby_players() into own rows (private-save authority) and
+    // foreign read-only rows.
+    [[nodiscard]] virtual std::vector<std::uint8_t> local_player_indices() const
     {
         return {};
     }
@@ -133,11 +170,15 @@ picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
+std::optional<std::string> picker_lobby_connection_alert();
+std::string picker_lobby_session_room_code();
 bool picker_lobby_host_controls_visible();
 bool picker_lobby_request_team_change(short team);
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
+og::sim::StartDenialReason picker_lobby_last_start_denial();
 std::vector<og::sim::LobbyPlayer> picker_lobby_players();
+std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {

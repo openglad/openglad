@@ -188,6 +188,15 @@ class Screen
         void clear(int x, int y, int w, int h);
 		void swap(int x, int y, int w, int h);
 
+		// Rebuild the renderer and every GPU-side texture after the rendering
+		// device was lost (the web 'webglcontextrestored' path; see
+		// request_render_backend_recreate in video_sdl.h). The CPU canvases
+		// keep their pixels: swap() re-uploads surface content on every
+		// present, so the next frame self-heals without repainting callers.
+		// Returns false — and stays safe to retry — while the device is
+		// still gone.
+		bool recreate_render_backend();
+
 		void clear_window();
 
 	private:

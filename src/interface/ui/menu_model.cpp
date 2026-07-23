@@ -13,7 +13,7 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 13> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
     {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
@@ -23,22 +23,29 @@ constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
     // The DIFFICULTY entry is a door into the DIFFICULTY submenu
     // (kDifficultyMenuItems below); the in-place cycle moved in there.
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
-    {"pvp_allied", "PVP Mode", PickerMenuCommand::ToggleAlliedMode},
-    {"level_edit", "Level Edit", PickerMenuCommand::LevelEdit},
-    {"options", "Options", PickerMenuCommand::Options},
-#ifdef __EMSCRIPTEN__
+    {"pvp_allied", "Seat Mode", PickerMenuCommand::ToggleAlliedMode},
+    {"level_edit", "Level Editor", PickerMenuCommand::LevelEdit},
+    {"options", "Game Settings", PickerMenuCommand::Options},
+    // HELP and QUIT are separate, stable footer actions on the graphical
+    // menu. Text clients expose both too; the browser's disabled QUIT face
+    // is an SDL presentation concern.
     {"help", "Help", PickerMenuCommand::Help},
-#else
     {"quit", "Quit", PickerMenuCommand::Quit},
-#endif
+    // §2.1: the LOAD half of the CONTINUE|LOAD split remains at the end of
+    // the terminal model; the SDL surface positions it beside CONTINUE.
+    {"load_company", "Load Company", PickerMenuCommand::LoadGame},
 }};
 
+// §2.5 base camp: the TeamBuild model stays 12 items by IN-PLACE substitution
+// (minimizes 1-based churn for the text/curses index contract): 1 roster (was
+// view_team), 4 deploy (was load_team), 5 ready (was save_team). Save/Load
+// left the base camp entirely — saving is automatic (§3.8).
 constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
-    {"view_team", "View Team", PickerMenuCommand::ViewTeam},
+    {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
-    {"load_team", "Load Team", PickerMenuCommand::LoadTeam},
-    {"save_team", "Save Team", PickerMenuCommand::SaveTeam},
+    {"deploy", "Deploy", PickerMenuCommand::ToggleDeploy},
+    {"ready", "Ready", PickerMenuCommand::ToggleReady},
     {"go", "GO!", PickerMenuCommand::StartGame},
     {"back", "Back", PickerMenuCommand::Back},
     {"networking", "Networking", PickerMenuCommand::Networking},
@@ -76,6 +83,31 @@ constexpr std::array<PickerMenuItem, 6> kDifficultyMenuItems = {{
     {"back", "Back", PickerMenuCommand::Back},
 }};
 
+// The Company & Base Camp screens (design §2.2-§2.4). LoadCompany and
+// Backups list dynamic rows (companies on disk / snapshots) at runtime; the
+// model carries the fixed command chrome all three clients share. Nothing
+// presents these menus yet — the SDL specs and the terminal flows land with
+// the WP3 screen reshapes, atomically with their re-pins.
+constexpr std::array<PickerMenuItem, 4> kLoadCompanyItems = {{
+    {"open_company", "Open Company", PickerMenuCommand::OpenCompany},
+    {"company_backups", "Backups", PickerMenuCommand::OpenCompanyBackups},
+    {"delete_company", "Delete Company", PickerMenuCommand::DeleteCompany},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
+constexpr std::array<PickerMenuItem, 3> kBackupsItems = {{
+    {"restore_backup", "Restore Backup", PickerMenuCommand::RestoreBackup},
+    {"delete_backup", "Delete Backup", PickerMenuCommand::DeleteBackup},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
+constexpr std::array<PickerMenuItem, 4> kNameEntryItems = {{
+    {"company_name_value", "Company Name", PickerMenuCommand::EditCompanyName},
+    {"company_name_reroll", "Reroll", PickerMenuCommand::RerollCompanyName},
+    {"company_name_accept", "Accept", PickerMenuCommand::AcceptCompanyName},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
 constexpr PickerMenuDefinition kMainMenu{
     PickerMenuId::Main,
     "OpenGlad Main Menu",
@@ -100,6 +132,24 @@ constexpr PickerMenuDefinition kDifficultyMenu{
     std::span<const PickerMenuItem>(kDifficultyMenuItems),
 };
 
+constexpr PickerMenuDefinition kLoadCompanyMenu{
+    PickerMenuId::LoadCompany,
+    "Companies",
+    std::span<const PickerMenuItem>(kLoadCompanyItems),
+};
+
+constexpr PickerMenuDefinition kBackupsMenu{
+    PickerMenuId::Backups,
+    "Backups",
+    std::span<const PickerMenuItem>(kBackupsItems),
+};
+
+constexpr PickerMenuDefinition kNameEntryMenu{
+    PickerMenuId::NameEntry,
+    "Found Your Company",
+    std::span<const PickerMenuItem>(kNameEntryItems),
+};
+
 } // namespace
 
 const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
@@ -113,6 +163,12 @@ const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
         return kScenarioMenu;
     case PickerMenuId::Difficulty:
         return kDifficultyMenu;
+    case PickerMenuId::LoadCompany:
+        return kLoadCompanyMenu;
+    case PickerMenuId::Backups:
+        return kBackupsMenu;
+    case PickerMenuId::NameEntry:
+        return kNameEntryMenu;
     }
     return kMainMenu;
 }

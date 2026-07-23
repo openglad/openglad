@@ -82,7 +82,6 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
 
     walker* npc_same_teamp = npc_same_team.get();
     walker* player_same_teamp = player_same_team.get();
-    walker* player_other_teamp = player_other_team.get();
 
     // Insert in an order that would pick the player walker only if the priority
     // logic is working (player character loop runs first).
@@ -98,11 +97,12 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
     walker* found2 = v.find_next_control();
     ASSERT_TRUE(found2 == npc_same_teamp) << "should fall back to any un-controlled living team member";
 
-    // Now eliminate team 0 options; should fall back to any remaining player character.
+    // Now eliminate team 0 options; another team's hero is never claimable.
     npc_same_teamp->set_dead(1);
     player_same_teamp->set_dead(1);
     walker* found3 = v.find_next_control();
-    ASSERT_TRUE(found3 == player_other_teamp) << "should fall back to any living player character";
+    ASSERT_EQ(nullptr, found3)
+        << "a wiped view must never take control of an enemy-color hero";
 
     // Cleanup - remove just our inserted walkers.
     og::runtime::current_session->myscreen_->world().oblist.clear();

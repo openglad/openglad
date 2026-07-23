@@ -45,8 +45,10 @@ constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
 constexpr int kFairyPollMs = 10;
-constexpr int kTeamMenuBackGameX = 60;
-constexpr int kTeamMenuBackGameY = 155;
+// §2.5 base camp: BACK sits on the command strip at (8,178,44,18) —
+// click its center.
+constexpr int kTeamMenuBackGameX = 30;
+constexpr int kTeamMenuBackGameY = 187;
 
 template <typename Predicate>
 bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kFairyPollMs)
@@ -67,7 +69,7 @@ bool wait_for_team_menu(int timeout_ms = kGameStartTimeoutMs)
     int since_last_retry = 250;
     const int poll_ms = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("view_team") && has_interactable("go"))
+        if (has_interactable("hire_troops") && has_interactable("go"))
             return true;
 
         if (since_last_retry >= 250 && has_interactable("hire_me")) {
@@ -218,6 +220,9 @@ static int fairy_injector(void* data)
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
+
+    // §2.2: accept the generated company name at the name-entry screen.
+    accept_generated_company_name();
 
     // Dismiss campaign intro screen (blocks until Escape)
     SDL_Delay(kMenuTransitionMs);
@@ -402,14 +407,13 @@ static int fairy_injector(void* data)
                                   "expected observed fairy death or generic defeat");
         }
         SDL_Delay(kMenuTransitionMs + kUiSettleMs);
-        const int back_win_x = static_cast<int>(
-            static_cast<float>(kTeamMenuBackGameX) *
-                (og::runtime::current_session->viewport_w_ / 320.0f) +
-            og::runtime::current_session->viewport_offset_x_);
-        const int back_win_y = static_cast<int>(
-            static_cast<float>(kTeamMenuBackGameY) *
-                (og::runtime::current_session->viewport_h_ / 200.0f) +
-            og::runtime::current_session->viewport_offset_y_);
+        // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
+        // windows (see test_interact.h).
+        const auto [back_mapped_x, back_mapped_y] = ui_canvas_to_window(
+            static_cast<float>(kTeamMenuBackGameX),
+            static_cast<float>(kTeamMenuBackGameY));
+        const int back_win_x = static_cast<int>(back_mapped_x);
+        const int back_win_y = static_cast<int>(back_mapped_y);
         fprintf(stderr,
                 "  [test] clicking back from team menu after auto-defeat\n");
         inject_click(back_win_x, back_win_y);

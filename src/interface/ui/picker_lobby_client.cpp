@@ -40,9 +40,9 @@ struct PreservedSaveSlot {
     std::unique_ptr<guy> member;
 };
 
-short gameplay_start_team(short allied_mode, short requested_team) noexcept
+short local_gameplay_start_team(short requested_team) noexcept
 {
-    return allied_mode != 0 ? 0 : requested_team;
+    return requested_team;
 }
 
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
@@ -99,6 +99,12 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // v8: the deploy flag rides the lobby SLOT, not the guy payload. This
+    // copy default-deploys; the LOCAL round-trip rebuild overrides it from
+    // the slot right after (a benched member must survive the state sync —
+    // the local lobby echoes the machine's own roster, it is not the
+    // match-assembly filter).
+    result->deployed = true;
     return result;
 }
 
@@ -282,6 +288,16 @@ public:
         if (!ensure_initialized() || peers_.empty())
             return false;
 
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const std::vector<short> seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
+        {
+            start_request_pending_ = false;
+            return false;
+        }
+
         pending_game_start_config_.reset();
         start_request_pending_ = true;
         og::sim::LobbyMessage message;
@@ -304,6 +320,35 @@ public:
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data = server_->build_save_data_equivalent();
+        // Local player seats decide who CONTROLS which gameplay team; they
+        // are not a mission-roster filter. Every deployed company member
+        // enters the level even when no local view controls that member's
+        // color (for example, a yellow company member in a one-player game).
+        // Keep benched members in the transient seed as well so the mission
+        // round-trip cannot lose private save slots; the loader filters them
+        // at spawn time.
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        config.save_data.team_list.clear();
+        for (std::size_t slot_index = 0;
+             slot_index < save.team_list.size(); ++slot_index)
+        {
+            const auto& member = save.team_list[slot_index];
+            if (!member)
+                continue;
+
+            config.save_data.team_list.push_back(
+                og::sim::LobbyCharacterSlot{
+                    .slot_index = static_cast<std::uint8_t>(slot_index),
+                    .character = make_lobby_character_data(*member),
+                    .deployed = member->deployed,
+                    // Every local seat belongs to this same company. Owner 0
+                    // therefore makes every mission member eligible for the
+                    // existing owner-aware merge back into the private save.
+                    .owner_player_index = 0u,
+                    .owner_save_slot = static_cast<std::uint8_t>(slot_index),
+                });
+        }
         // The lobby always has at least a connected host peer, even for spectator
         // starts. Preserve the picker's zero-player mode so gameplay stays in
         // spectator/autoplay instead of being coerced into a 1-player start.
@@ -311,21 +356,25 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        config.my_team = gameplay_start_team(
-            config.save_data.allied_mode,
-            !peers_.empty() ? peers_.front().team : 0);
+        const std::vector<short> gameplay_seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        const short shared_local_team = gameplay_seat_teams.empty()
+            ? 0
+            : gameplay_seat_teams.front();
+        config.my_team = shared_local_team;
         // Symmetry with the networked clients: one seat per local in-process
         // peer, in seat/view order. The local (is_networked == false) start
         // path ignores these — reset_local_transport_shadow binds seats 1:1
         // by view index on its own.
         if (!spectator_mode_)
         {
-            for (std::size_t index = 0; index < peers_.size(); ++index)
+            for (std::size_t index = 0;
+                 index < gameplay_seat_teams.size(); ++index)
             {
                 config.local_player_indices.push_back(
                     static_cast<std::uint8_t>(index));
-                config.local_seat_teams.push_back(gameplay_start_team(
-                    config.save_data.allied_mode, peers_[index].team));
+                config.local_seat_teams.push_back(
+                    local_gameplay_start_team(gameplay_seat_teams[index]));
             }
         }
         return config;
@@ -450,6 +499,7 @@ private:
         settings.respawn_mode = save.respawn_mode;
         settings.generator_rate = save.generator_rate;
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
+        settings.cross_control = save.cross_control;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -476,6 +526,9 @@ private:
 
             og::sim::LobbyPlayer player;
             player.name = peer.name;
+            // v8: every seat of one machine advertises the same active
+            // company display name (SaveData::save_name).
+            player.company = save.save_name;
             player.team = peer.team;
             player.ready = false;
             player.is_host = peer_index == 0;
@@ -489,6 +542,8 @@ private:
                 player.character_slots.push_back(og::sim::LobbyCharacterSlot{
                     .slot_index = static_cast<std::uint8_t>(slot_index),
                     .character = make_lobby_character_data(*member),
+                    // v8: stamped from the save guy's v14 deploy flag.
+                    .deployed = member->deployed,
                 });
             }
 
@@ -582,6 +637,7 @@ private:
         save.respawn_mode = state_->settings.respawn_mode;
         save.generator_rate = state_->settings.generator_rate;
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
+        save.cross_control = state_->settings.cross_control;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0
@@ -616,27 +672,30 @@ private:
                       return lhs.slot_order < rhs.slot_order;
                   });
 
-        const bool slots_are_dense = std::all_of(
-            ordered_slots.begin(), ordered_slots.end(),
-            [&ordered_slots](const OrderedLobbySlot& slot) {
-                return static_cast<std::size_t>(slot.slot_index) ==
-                    static_cast<std::size_t>(&slot - ordered_slots.data());
-            });
-
         for (auto& member : save.team_list)
             member.reset();
         save.team_size = 0;
 
-        for (std::size_t index = 0; index < ordered_slots.size(); ++index)
+        for (const OrderedLobbySlot& ordered_slot : ordered_slots)
         {
-            std::uint8_t slot_index = ordered_slots[index].slot_index;
-            if (!slots_are_dense)
-                slot_index = static_cast<std::uint8_t>(index);
+            // LobbyCharacterSlot::slot_index is the machine's PRIVATE save
+            // slot. Keep it authoritative even when only one of several
+            // teams is currently represented by a synthetic local peer.
+            // Compacting that subset to 0..N made a Base Camp team click
+            // collide with preserved inactive-team members, reshuffling the
+            // visible roster and then persisting the shuffle.
+            const std::uint8_t slot_index = ordered_slot.slot_index;
             if (slot_index >= save.team_list.size())
                 continue;
 
             save.team_list[slot_index] =
-                make_guy_from_lobby_character(ordered_slots[index].slot->character);
+                make_guy_from_lobby_character(ordered_slot.slot->character);
+            // §4.2: preserve the slot's deploy flag through the round-trip —
+            // the local lobby state carries the machine's WHOLE roster
+            // (benched included) and this rebuild writes back into the real
+            // save, so re-deploying here would wipe a benched selection.
+            save.team_list[slot_index]->deployed =
+                ordered_slot.slot->deployed;
             save.team_size++;
         }
 
@@ -812,6 +871,20 @@ std::vector<std::string> picker_lobby_status_lines()
     return {};
 }
 
+std::optional<std::string> picker_lobby_connection_alert()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->connection_alert();
+    return std::nullopt;
+}
+
+std::string picker_lobby_session_room_code()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->session_room_code();
+    return {};
+}
+
 bool picker_lobby_host_controls_visible()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
@@ -838,10 +911,24 @@ bool picker_lobby_local_ready()
     return false;
 }
 
+og::sim::StartDenialReason picker_lobby_last_start_denial()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->last_start_denial();
+    return og::sim::StartDenialReason::None;
+}
+
 std::vector<og::sim::LobbyPlayer> picker_lobby_players()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->lobby_players();
+    return {};
+}
+
+std::vector<std::uint8_t> picker_lobby_local_player_indices()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->local_player_indices();
     return {};
 }
 

@@ -24,6 +24,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/input.h> // load_player_control_settings_from_cfg, InputHardwareState
 #include <openglad/interface/session_state.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/save_data.h>
 
@@ -80,6 +81,10 @@ public:
         session_.game_.session_rng_ref = &session_.ctx_.rng;
         session_.game_.gameplay_active_ref = &session_.gameplay_active_;
         session_.gameplay_active_ = false;
+        // [SAVE-R8] Structural active-company reset: CursesPickerClient's
+        // constructor asserts terminal slot authority, so every picker test
+        // repoints the process-wide slot; restore the default between tests.
+        (void)og::data::set_active_company_slot("save0");
     }
 
 private:

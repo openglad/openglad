@@ -200,7 +200,7 @@ The DISPLAY screen has two live controls:
   presentation path, so no layout pass is needed.
 
 Menus remain on the fixed UI canvas while settings are applied. Both values
-are saved when OPTIONS exits, and RESTORE DEFAULTS returns them to 1.0 and
+are saved when OPTIONS exits, and RESTORE SETTINGS returns them to 1.0 and
 `off`.
 
 ## Layout and fixed-coordinate screens

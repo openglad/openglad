@@ -28,6 +28,7 @@
 #include <cstring>
 #include <format>
 #include <memory>
+#include <span>
 
 // For deterministic helper-only test coverage.
 #ifdef TESTING
@@ -464,15 +465,15 @@ std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ct
     return segments;
 }
 
-int get_num_foes(LevelRuntimeData& level)
+int get_num_foes(LevelRuntimeData& level, short viewer_team)
 {
     int result = 0;
     
 	for(auto& uptr : level.world().oblist)
 	{
 	    walker* ob = uptr.get();
-	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead() && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num() != 0)
+		if (ob && !ob->dead() && ob->query_order() == Order::Living &&
+		    ob->team_num() != static_cast<unsigned char>(viewer_team))
 		{
 		    result++;
 		}
@@ -534,13 +535,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     LevelRuntimeData& level_data = og::runtime::current_session->myscreen_->level_runtime_data();
     SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
     
-    int num_foes_left = get_num_foes(level_data);
+    int num_foes_left = get_num_foes(level_data, save_data.my_team);
     int num_foes_total = 0;
     {
         LevelRuntimeData original_level(level_data.world().id);
         original_level.load();
-        num_foes_total = get_num_foes(original_level);
-}
+        num_foes_total = get_num_foes(original_level, save_data.my_team);
+    }
 
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	text& bigtext = og::runtime::current_session->myscreen_->text_big;
@@ -586,14 +587,17 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             troops.push_back(TroopResult(before[id], w));
     }
     
-    // MVP. In a decided CTF match only the WINNING team's rostered humans are
-    // candidates — a losing hero must never headline under the winner banner.
-    // When the winner fielded no rostered humans (a solo loss to bots), mvp
-    // stays null and the MVP line is omitted below.
+    // MVP. A foreign-color company member is an opponent in this mission and
+    // must never headline the local team's results. In a decided CTF match,
+    // scope to the winning team instead. If that side fielded no rostered
+    // humans, mvp stays null and the line is omitted below.
     const GameWorld& mvp_world = og::runtime::current_session->myscreen_->world();
     const bool ctf_winner_scope =
         (mvp_world.type & GameWorld::TYPE_CTF) && mvp_world.ctf.active &&
         mvp_world.ctf.winner_team >= 0;
+    const short mvp_team = ctf_winner_scope
+        ? mvp_world.ctf.winner_team
+        : mvp_world.my_team;
     walker* mvp = nullptr;
     float mvp_points = 0;
     for(auto& troop : troops)
@@ -603,9 +607,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         if(troop.after == nullptr)
             continue;
 
-        if(ctf_winner_scope &&
-           troop.after->team_num() !=
-               static_cast<unsigned char>(mvp_world.ctf.winner_team))
+        if(troop.after->team_num() != static_cast<unsigned char>(mvp_team))
             continue;
 
         points = troop.after->myguy->scen_damage + 3*troop.after->myguy->scen_damage_taken;
@@ -862,7 +864,40 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 }
                 y += 22;
             }
-            
+
+            // §2.8: a networked win shows THIS machine's prospective share of
+            // the pot (split by deploy-ratio; 0-deploy machines see 0). The
+            // results screen renders pre-fold, so the delta is computed on the
+            // spot from the live m_score + time bonus. Local/solo prints
+            // nothing here, keeping single-player output byte-identical.
+            if (ending == 0 &&
+                og::runtime::current_session != nullptr &&
+                og::runtime::current_session->networked_session_)
+            {
+                BEGIN_IF_IN_SCROLL_AREA;
+                og::progression::NetWinFoldCapture prospective;
+                for (std::size_t t = 0; t < 4; ++t)
+                    prospective.cash_delta[t] =
+                        save_data.m_score[t] * 2u +
+                        bonuscash[t];
+                prospective.deployed =
+                    og::progression::collect_deployed_contributors(
+                        og::runtime::current_session->myscreen_->world());
+                const std::uint64_t share =
+                    og::progression::machine_cash_share(
+                        prospective,
+                        std::span<const std::uint8_t>(
+                            og::runtime::current_session->own_player_indices_));
+                const std::uint64_t pot =
+                    static_cast<std::uint64_t>(allscore) * 2u + allbonuscash;
+                std::string share_buf = std::format("{}", share);
+                std::string pot_buf = std::format("{}", pot);
+                mytext.write_xy_center_shadow(area.x + area.w / 2, y, YELLOW,
+                    "YOUR SHARE: %s OF %s", share_buf.c_str(), pot_buf.c_str());
+                END_IF_IN_SCROLL_AREA;
+                y += 12;
+            }
+
             BEGIN_IF_IN_SCROLL_AREA;
             if(ending == 0)
             {

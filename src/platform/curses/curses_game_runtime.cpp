@@ -470,7 +470,8 @@ bool ask_exit_prompt(ITerminal& term, CursesRenderer& renderer,
                      CursesGameSession& session, const LevelLoopOptions& opt)
 {
     if (opt.render) {
-        renderer.draw(term, session.mirror_world(), session.followed_entity_id());
+        renderer.draw(term, session.mirror_world(), session.followed_entity_id(),
+                      session.follow_engaged());
         std::string line = " ";
         line += session.exit_prompt_text();
         line += "   [y]es / [n]o ";
@@ -546,7 +547,8 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
             renderer.log_message(std::move(msg));
 
         if (opt.render)
-            renderer.draw(term, session.mirror_world(), session.followed_entity_id());
+            renderer.draw(term, session.mirror_world(), session.followed_entity_id(),
+                          session.follow_engaged());
 
         ++frames;
 

@@ -7,17 +7,25 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
 #include <atomic>
 #include <cstdint>
+#include <format>
 #include <functional>
+#include <list>
+#include <string_view>
 
 namespace {
 constexpr int kViewMenuTransitionTimeoutMs = 15000;
@@ -32,7 +40,6 @@ constexpr int kTeamBuildInterceptScope = 2;
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1);
 Sint32 create_train_menu(Sint32 arg1);
 extern bool g_start_game_requested;
@@ -177,8 +184,14 @@ static bool interact_match(
         if (item.id == id && !item.hidden && predicate(item)) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
+            // UI-canvas-pinned map — raw viewport_*/320 math ignores the
+            // aspect-fit letterbox and mismaps in non-16:10 windows (the
+            // seed-23 og_test_menu_ui wedge class; see test_interact.h).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            const int win_x = static_cast<int>(mapped_x);
+            const int win_y = static_cast<int>(mapped_y);
             fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
             inject_click(win_x, win_y);
@@ -196,13 +209,12 @@ static bool interact_silent(const std::string& id)
         if (item.id == id && !item.hidden) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x)
-                * (og::runtime::current_session->viewport_w_ / 320.0f)
-                + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y)
-                * (og::runtime::current_session->viewport_h_ / 200.0f)
-                + og::runtime::current_session->viewport_offset_y_);
-            inject_click(win_x, win_y);
+            // UI-canvas-pinned map (see interact_match above).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            inject_click(static_cast<int>(mapped_x),
+                         static_cast<int>(mapped_y));
             return true;
         }
     }
@@ -236,30 +248,25 @@ static bool unwind_to_main_menu(int timeout_ms = 7000)
     return has_interactable("continue_game");
 }
 
-static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
+// §2.5 base camp: the roster IS the default view — wait for a roster row
+// pair plus the command strip (GO/BACK at y=178).
+static bool wait_for_base_camp_roster(int timeout_ms = 6000)
 {
-    const auto is_view_menu_button = [](const Interactable& item) { return item.y >= 160; };
+    const auto is_strip_button = [](const Interactable& item) { return item.y >= 160; };
     int elapsed = 0;
-    int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (!has_interactable("view_team")
-            && has_interactable_match("go", is_view_menu_button)
-            && has_interactable_match("back", is_view_menu_button))
+        if (has_interactable("roster_dep_0")
+            && has_interactable("roster_row_0")
+            && has_interactable_match("go", is_strip_button)
+            && has_interactable_match("back", is_strip_button))
             return true;
-
-        if (since_last_retry >= 250 && has_interactable("view_team")) {
-            fprintf(stderr, "  [test] retry clicking view_team\n");
-            interact("view_team");
-            since_last_retry = 0;
-        }
 
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
-        since_last_retry += poll_interval;
     }
 
-    fprintf(stderr, "  [interact] TIMEOUT entering view_team menu (%d ms)\n", timeout_ms);
+    fprintf(stderr, "  [interact] TIMEOUT waiting for the base-camp roster (%d ms)\n", timeout_ms);
     return false;
 }
 
@@ -328,7 +335,7 @@ static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
     interact("continue_game");
 
     int elapsed = 0;
-    while (elapsed < timeout_ms && !has_interactable("view_team")) {
+    while (elapsed < timeout_ms && !has_interactable("hire_troops")) {
         if (has_interactable("continue_game")) {
             fprintf(stderr, "  [test] retry clicking continue_game\n");
             interact("continue_game");
@@ -336,14 +343,14 @@ static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
         SDL_Delay(50);
         elapsed += 50;
     }
-    return has_interactable("view_team");
+    return has_interactable("hire_troops");
 }
 
-// Test: Continue -> View Team -> Back -> Back
+// Test: Continue -> base camp roster (the default view, §2.5) -> Back
 //
 // Verifies:
-//   1. View Team menu opens with a team
-//   2. The view menu has GO and BACK buttons
+//   1. The base camp opens straight onto the roster rows
+//   2. The command strip has GO and BACK
 //   3. Can navigate back cleanly
 
 struct ViewState {
@@ -364,14 +371,11 @@ static int view_team_injector(void* data)
         return 0;
     }
 
-    fprintf(stderr, "  [test] clicking view_team\n");
-    interact("view_team");
-
-    const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
-    if (wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    const auto is_strip_back = [](const Interactable& item) { return item.y >= 160; };
+    if (wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
-        fprintf(stderr, "  [test] clicking back from view menu\n");
-        interact_match("back", is_view_menu_back);
+        fprintf(stderr, "  [test] clicking back from the base camp\n");
+        interact_match("back", is_strip_back);
     }
 
     // Always try to unwind so picker_main cannot deadlock on failed interactions.
@@ -440,10 +444,9 @@ static int view_team_go_injector(void* data)
         state->finished = true;
         return 0;
     }
-    interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    if (!wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
@@ -517,40 +520,59 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
-struct TrainMenuViewTeamGoState {
+// §2.5 flow 4 via the §9.11 row-body affordance: tapping a roster row's
+// visible NAME (inside the name/class/level body — the TRAIN column is
+// deleted) opens the train screen seeded ON THAT CHARACTER (no more
+// enter-then-cycle), and
+// backing out returns to the base camp with the roster intact.
+struct BaseCampRowTrainState {
     bool finished;
     bool saw_train_menu;
-    bool saw_view_menu;
-    bool clicked_go;
+    int seeded_slot;
 };
 
-static int train_menu_view_team_go_injector(void* data)
+static int base_camp_row_train_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* state = static_cast<TrainMenuViewTeamGoState*>(data);
+    auto* state = static_cast<BaseCampRowTrainState*>(data);
+
+    if (!wait_for_interactable("roster_row_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    // Tap the rendered name itself, not the center of the wide row hit zone.
+    // Round 6 places NAME at x=88; row 1 remains y=59..68.
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(90.0f, 64.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
 
     if (!wait_for_interactable("inc_str", 10000)) {
         state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
     state->saw_train_menu = true;
+    if (pks().train_session != nullptr)
+        state->seeded_slot = pks().train_session->current_slot();
 
-    interact("view_team");
+    SDL_Delay(300);
+    interact("back");  // exit the train screen back to the base camp
 
-    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+    if (!wait_for_interactable("roster_dep_0", 10000)) {
         state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    state->saw_view_menu = true;
-    state->clicked_go = click_intercepted_start_from_view_menu(
-        kGameStartTimeoutMs, is_view_menu_go);
+    SDL_Delay(300);
+    interact("back");  // exit the base camp
 
     state->finished = true;
     return 0;
 }
 
-TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
+TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
 {
     trace_clear();
 
@@ -559,14 +581,11 @@ TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
     og::runtime::current_session->myscreen_->save_data.current_campaign =
         "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.totalcash = 50000;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     auto archer = std::make_unique<guy>(FAMILY_ARCHER);
-    soldier->strength = soldier->dexterity = soldier->constitution =
-        soldier->intelligence = soldier->armor = 200;
-    archer->strength = archer->dexterity = archer->constitution =
-        archer->intelligence = archer->armor = 200;
+    soldier->name = "FRONT";
+    archer->name = "SECOND";
     og::runtime::current_session->myscreen_->save_data.team_list[0] =
         std::move(soldier);
     og::runtime::current_session->myscreen_->save_data.team_list[1] =
@@ -574,33 +593,168 @@ TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
     og::runtime::current_session->myscreen_->save_data.team_size = 2;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    TrainMenuViewTeamGoState state = { false, false, false, false };
+    BaseCampRowTrainState state = { false, false, -1 };
     SDL_Thread* thread = SDL_CreateThread(
-        train_menu_view_team_go_injector,
-        "train_menu_view_team_go",
-        &state);
+        base_camp_row_train_injector, "base_camp_row_train", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     pks().selected_menu_item = nullptr;
-    pks().intercept_scope = kTeamBuildInterceptScope;
-    const Sint32 ret = create_train_menu(0);
-    const og::ui::PickerMenuItem* const selected = pks().selected_menu_item;
-    pks().intercept_scope = 0;
+    const Sint32 ret = create_team_menu(0);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
-
     cleanup_picker_state();
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
-    ASSERT_TRUE(state.saw_view_menu) << "should have entered the nested view menu";
-    ASSERT_TRUE(state.clicked_go) << "nested view menu should click GO";
-    ASSERT_TRUE(ret & 1) << "train menu should propagate EXIT to start game";
-    ASSERT_NE(nullptr, selected);
-    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
+    ASSERT_TRUE(state.saw_train_menu)
+        << "tapping a roster name should open the train screen";
+    EXPECT_EQ(1, state.seeded_slot)
+        << "row 1's body must seed the session on team_list slot 1 (§9.11)";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
 }
 
+// The visible TEAM-color square is an independent column before NAME.
+// Coordinate-level coverage keeps it from regressing into the train zone.
+struct BaseCampTeamChipTapState {
+    bool finished;
+    bool saw_team_change;
+};
+
+static int base_camp_team_chip_tap_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampTeamChipTapState*>(data);
+
+    if (!wait_for_interactable("roster_team_0", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(66.0f, 49.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+    SDL_Delay(500);
+
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    state->saw_team_change = save.team_list[0] != nullptr &&
+        save.team_list[0]->teamnum == 1;
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
+{
+    trace_clear();
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "COLOR TAP";
+    soldier->teamnum = 0;
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+    save.save("save0");
+
+    BaseCampTeamChipTapState state = {false, false};
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_team_chip_tap_injector, "base_camp_team_chip", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "team-chip injector should complete";
+    ASSERT_TRUE(state.saw_team_change)
+        << "tapping the team color should advance that character's team";
+    EXPECT_TRUE(trace_contains("basecamp", "team slot=0 team=1"));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="));
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
+
+// §9.14: the rendered solo SCEN status line is itself a click target for
+// the Scenario menu. Use an ink coordinate rather than interact(id), so the
+// test pins the player-facing affordance and not merely its hidden geometry.
+struct BaseCampScenarioLineState {
+    bool finished;
+    bool saw_scenario_menu;
+};
+
+static int base_camp_scenario_line_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampScenarioLineState*>(data);
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    const auto [mapped_x, mapped_y] =
+        ui_canvas_to_window(30.0f, 19.0f);
+    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
+
+    if (!wait_for_interactable("set_level", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_scenario_menu = true;
+    SDL_Delay(300);
+    interact("back");  // Scenario menu -> Base Camp
+
+    if (!wait_for_interactable("scenario_line", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // Base Camp -> main menu caller
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_scenario_line_tap_opens_scenario_menu)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "SCOUT";
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+
+    BaseCampScenarioLineState state = {false, false};
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_scenario_line_injector, "base_camp_scenario_line", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "scenario-line injector should complete";
+    ASSERT_TRUE(state.saw_scenario_menu)
+        << "tapping the visible SCEN line should open the Scenario menu";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+}
 
 struct DirectMenuClickState {
     bool finished;
@@ -627,12 +781,12 @@ static int direct_menu_click_injector(void* data)
                 if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
                     const int game_x = item.x + item.width / 2;
                     const int game_y = item.y + item.height / 2;
-                    const int win_x = static_cast<int>(static_cast<float>(game_x)
-                        * (og::runtime::current_session->viewport_w_ / 320.0f)
-                        + og::runtime::current_session->viewport_offset_x_);
-                    const int win_y = static_cast<int>(static_cast<float>(game_y)
-                        * (og::runtime::current_session->viewport_h_ / 200.0f)
-                        + og::runtime::current_session->viewport_offset_y_);
+                    // UI-canvas-pinned map (see interact_match above).
+                    const auto [mapped_x, mapped_y] =
+                        ui_canvas_to_window(static_cast<float>(game_x),
+                                            static_cast<float>(game_y));
+                    const int win_x = static_cast<int>(mapped_x);
+                    const int win_y = static_cast<int>(mapped_y);
                     inject_click(win_x, win_y);
                     state->clicked_target = true;
                     click_cooldown_ms = 200;
@@ -707,36 +861,6 @@ static int direct_menu_visibility_injector(void* data)
     state->finished = true;
     return 0;
 }
-
-TEST(ViewTeam, create_view_menu_direct_back)
-{
-    trace_clear();
-
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-
-    std::atomic<bool> menu_done{false};
-    DirectMenuClickState state = { false, false, "back", 160, &menu_done };
-    SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create direct view-menu injector thread";
-
-    const Sint32 ret = create_view_menu(0);
-    menu_done.store(true, std::memory_order_release);
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    cleanup_picker_state();
-
-    ASSERT_TRUE(state.finished) << "direct view-menu injector should complete";
-    ASSERT_TRUE(state.clicked_target) << "direct view-menu injector should click back";
-    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
-}
-
 
 TEST(ViewTeam, create_team_menu_direct_back)
 {
@@ -937,49 +1061,6 @@ TEST(ViewTeam, create_scenario_menu_shows_host_controls_for_host)
     ASSERT_TRUE(ret & 2) << "create_scenario_menu(back) should return REDRAW";
 }
 
-TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)
-{
-    trace_clear();
-
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
-    og::runtime::current_session->myscreen_->save_data.team_size = 1;
-
-    HostVisibilityPickerLobbyClient client(false);
-    ActivePickerLobbyClientGuard guard(&client);
-    std::atomic<bool> menu_done{false};
-    DirectMenuVisibilityState state{
-        .finished = false,
-        .saw_menu = false,
-        .go_visible = false,
-        .set_level_visible = false,
-        .set_campaign_visible = false,
-        .scenario_visible = false,
-        .min_y = 160,
-        .menu_done = &menu_done,
-    };
-    SDL_Thread* thread =
-        SDL_CreateThread(direct_menu_visibility_injector, "direct_view_visibility", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create view-menu visibility injector thread";
-
-    const Sint32 ret = create_view_menu(0);
-    menu_done.store(true, std::memory_order_release);
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    cleanup_picker_state();
-
-    ASSERT_TRUE(state.finished) << "view-menu visibility injector should complete";
-    ASSERT_TRUE(state.saw_menu) << "view menu should become visible";
-    EXPECT_FALSE(state.go_visible);
-    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
-}
-
-
 struct ViewTeamGoLevel17State {
     bool finished;
     bool saw_view_menu;
@@ -999,10 +1080,9 @@ static int view_team_go_level17_injector(void* data)
         state->finished = true;
         return 0;
     }
-    interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(7000)) {
+    if (!wait_for_base_camp_roster(7000)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
@@ -1093,4 +1173,1237 @@ TEST(ViewTeam, go_level17_no_hang)
     ASSERT_TRUE(state.game_started) << "GO should start level 17";
     ASSERT_TRUE(state.frame_progressed) << "level 17 should advance frames";
     ASSERT_TRUE(state.game_finished) << "level 17 should return to picker (no hang)";
+}
+
+// ---------------------------------------------------------------------------
+// §3.3 positional-index refresh after a WIN: update_guys' fold drops the
+// dead and REORDERS the roster (survivors first, held-back appended), so the
+// base-camp screen state must re-derive its display rows and a click
+// captured against the pre-fold layout must be guarded, never dereference a
+// vacated slot. This drives the SCREEN-level state (BaseCampScreenState +
+// the spec's on_spec_row dispatch) directly; the pure reorder itself is
+// pinned in test_picker_common.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
+{
+    trace_clear();
+
+    // The deploy dispatch below runs the base-camp mutation tail, which
+    // lazily creates the local lobby client outside picker_main — pair it
+    // with a shutdown or later picker loops read a stale roster cache (the
+    // documented promote-wedge class).
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    // 13 members so a second page exists (8 rows/page, §9.14); M03 is
+    // held back.
+    for (int i = 0; i < 13; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("M{:02}", i);
+        save.team_list[i] = std::move(member);
+    }
+    save.team_list[3]->deployed = false;
+    save.team_size = 13;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(13u, state.slots.size());
+    ASSERT_EQ(2, state.page.page_count());
+    ASSERT_TRUE(state.page.step(1)) << "page 2 should be reachable";
+    ASSERT_EQ(8, state.page.first_index());
+
+    // The win fold: only one deployed member survived; every other deployed
+    // member died. Pass 2 appends the held-back M03 behind the survivor.
+    {
+        std::list<std::unique_ptr<walker>> oblist;
+        auto survivor = std::make_unique<walker>();
+        auto survivor_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+        survivor_guy->name = "SURVIVOR";
+        survivor->set_dead(0);
+        survivor->set_owned_myguy(std::move(survivor_guy));
+        oblist.push_back(std::move(survivor));
+        save.update_guys(oblist);
+    }
+    ASSERT_EQ(2, static_cast<int>(save.team_size));
+
+    // Stale window: the fold landed this frame; a click captured against
+    // the OLD page-2 layout dispatches before the frame tick refreshes.
+    // Both the deploy toggle and the §9.11 row-body train zone must no-op
+    // (the vacated slot guard), never crash or open a session on a
+    // dangling slot.
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    ASSERT_NE(nullptr, host.spec);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(0, spec.on_spec_row(0, &state))
+        << "stale deploy click on a vacated slot must be guarded";
+    EXPECT_EQ(0, spec.on_spec_row(kBaseCampRowBodyBase + 0, &state))
+        << "stale row-body click on a vacated slot must be guarded";
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="))
+        << "a stale row-body click must not seed a session";
+
+    // §3.3: the refresh re-derives the rows and clamps the page window.
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+    EXPECT_EQ(1, state.page.page_count());
+    EXPECT_EQ(0, state.page.page);
+    EXPECT_TRUE(state.slots[0].owned && state.slots[1].owned)
+        << "solo display rows are all owned";
+    EXPECT_EQ("SURVIVOR", save.team_list[state.slots[0].save_slot]->name)
+        << "pass 1 seats the survivor first";
+    EXPECT_EQ("M03", save.team_list[state.slots[1].save_slot]->name)
+        << "pass 2 appends the held-back member";
+    EXPECT_FALSE(save.team_list[state.slots[1].save_slot]->deployed)
+        << "the held-back flag survives the fold";
+
+    // A fresh click maps to the CURRENT occupant: row 1 toggles M03 back on.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(save.team_list[state.slots[1].save_slot]->deployed);
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"))
+        << "the post-refresh toggle should hit the re-derived slot";
+}
+
+// ---------------------------------------------------------------------------
+// §2.0 U6: roster-row tap debounce. A second ACCEPTED deploy toggle of the
+// SAME display row within 250 ms is silently ignored (a touch mistap
+// double-toggle would be a spurious §4.3 MP ready-clear); a different row
+// is never debounced, and the window expires (the test rewinds the public
+// stamp instead of sleeping).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    for (int i = 0; i < 2; ++i) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("TAP{:02}", i);
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = 2;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // First tap toggles row 1 off and stamps the debounce state.
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 off"));
+    EXPECT_FALSE(save.team_list[1]->deployed);
+
+    // Immediate second tap of the SAME row: silently ignored (U6).
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy_debounced slot=1"))
+        << "the mistap must be traced as debounced";
+    EXPECT_FALSE(trace_contains("basecamp", "deploy slot=1"))
+        << "the mistap must not re-toggle";
+    EXPECT_FALSE(save.team_list[1]->deployed)
+        << "a double-tap within 250 ms must not flip the flag back";
+
+    // Rewinding the stamp past the window re-arms the same row.
+    state.last_deploy_toggle_ms -= 251;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"));
+    EXPECT_TRUE(save.team_list[1]->deployed);
+
+    // A DIFFERENT row right afterwards is never debounced.
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(0, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
+    EXPECT_FALSE(save.team_list[0]->deployed);
+
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §3.8 hook inventory row "team cycle": the TEAMS per-character cycler
+// mutates the persisted roster (teamnum), so it runs the shared mutation
+// tail — the new team round-trips from the active company file with no
+// manual save. Solo-only surface (networked lobbies hide the button).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, teams_cycle_guy_team_autosaves_solo_team_change)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "CYCLER";
+    member->teamnum = 0;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+    pks().teams_menu_guy_slot = 0;
+
+    ASSERT_EQ(MENU_OK, teams_cycle_guy_team(1));
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)save.team_list[0]->teamnum);
+
+    // §3.8: the cycle AUTOSAVED — the team change must be on disk without
+    // any manual save.
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"))
+        << "the team-cycle autosave must have written the active slot";
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
+        << "the cycled team must persist via the mutation autosave";
+
+    save.reset();
+}
+
+// The Base Camp exposes that same mutation directly on each rendered team
+// color chip. Its MenuSpecRow ordinal must target the visible character,
+// cycle the team, and run the shared autosave tail without opening TRAIN.
+TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = "CHIPPER";
+    member->teamnum = 0;
+    save.team_list[0] = std::move(member);
+    save.team_size = 1;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+
+    ASSERT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase, &state));
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_TRUE(trace_contains("basecamp", "team slot=0 team=1"));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="));
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    EXPECT_EQ(1, static_cast<int>(reloaded.team_list[0]->teamnum));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// A team click must mutate only the selected guy's teamnum. The local lobby
+// echo addresses characters by their private save slot; compacting the one
+// newly active team ahead of the preserved slots used to rotate the roster
+// when a middle row changed teams.
+TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    constexpr std::array<std::string_view, 4> names = {
+        "ALPHA", "BRAVO", "CHARLIE", "DELTA"};
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = names[static_cast<std::size_t>(slot)];
+        member->teamnum = 0;
+        save.team_list[slot] = std::move(member);
+    }
+    save.team_size = static_cast<unsigned char>(names.size());
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+
+    ASSERT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 2, &state));
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        ASSERT_NE(nullptr, save.team_list[slot]) << "slot " << slot;
+        EXPECT_EQ(names[static_cast<std::size_t>(slot)],
+                  save.team_list[slot]->name)
+            << "a team click must not reorder private save slots";
+        EXPECT_EQ(slot == 2 ? 1 : 0,
+                  static_cast<int>(save.team_list[slot]->teamnum));
+    }
+
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(names.size(), state.slots.size());
+    for (int row = 0; row < static_cast<int>(names.size()); ++row)
+        EXPECT_EQ(row, state.slots[static_cast<std::size_t>(row)].save_slot);
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
+        ASSERT_NE(nullptr, reloaded.team_list[slot]);
+        EXPECT_EQ(names[static_cast<std::size_t>(slot)],
+                  reloaded.team_list[slot]->name);
+    }
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// Team chips retain the four gameplay ramps and overlay their one-based team
+// number. Pin every glyph pixel so 1-4 cannot disappear into the colored face
+// or regress to the shaded font treatment used elsewhere.
+TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("TEAM{}", team + 1);
+        member->teamnum = static_cast<short>(team);
+        save.team_list[team] = std::move(member);
+    }
+    save.team_size = SCORE_TEAM_COUNT;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    constexpr std::array<int, SCORE_TEAM_COUNT> label_x = {65, 64, 64, 64};
+    constexpr int first_label_y = 48;
+    constexpr int row_pitch = 14;
+    for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
+        const unsigned char label = static_cast<unsigned char>('1' + team);
+        const unsigned char* const glyph =
+            font.letters->data.get() + static_cast<std::size_t>(label) * stride;
+        const int team_color = team * 16 + 40;
+        for (Sint32 row = 0; row < font.sizey; ++row) {
+            for (Sint32 col = 0; col < font.sizex; ++col) {
+                int actual = -1;
+                output->get_pixel(label_x[static_cast<std::size_t>(team)] + col,
+                                  first_label_y + row_pitch * team + row,
+                                  &actual);
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                EXPECT_EQ(source == 0 ? team_color : PURE_BLACK, actual)
+                    << "team " << team + 1 << " chip pixel " << col << ","
+                    << row;
+            }
+        }
+    }
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// Identity text stays readable while the old View Team palette survives as
+// a real eight-shade family ramp immediately after the class label.
+TEST(ViewTeam, base_camp_draws_crisp_identity_text_and_family_ramp_swatches)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+
+    auto deployed = std::make_unique<guy>(FAMILY_ELF);
+    deployed->name = "ELENA";
+    deployed->deployed = true;
+    save.team_list[0] = std::move(deployed);
+    auto benched = std::make_unique<guy>(FAMILY_MAGE);
+    benched->name = "MIRA";
+    benched->deployed = false;
+    save.team_list[1] = std::move(benched);
+    save.team_size = 2;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    const auto expect_flat_glyph = [&](char label, int x, int y,
+                                       int expected_color) {
+        const unsigned char* const glyph =
+            font.letters->data.get() +
+            static_cast<std::size_t>(static_cast<unsigned char>(label)) *
+                stride;
+        int opaque_pixels = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row) {
+            for (Sint32 col = 0; col < font.sizex; ++col) {
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                if (source == 0)
+                    continue;
+                ++opaque_pixels;
+                int actual = -1;
+                output->get_pixel(x + col, y + row, &actual);
+                EXPECT_EQ(expected_color, actual)
+                    << label << " pixel " << col << "," << row;
+            }
+        }
+        EXPECT_GT(opaque_pixels, 0);
+    };
+
+    constexpr int name_x = 88;
+    constexpr int class_x = 164;
+    constexpr int first_text_y = 47;
+    constexpr int row_pitch = 14;
+    expect_flat_glyph('E', name_x, first_text_y, PURE_BLACK);
+    expect_flat_glyph('E', class_x, first_text_y, PURE_BLACK);
+    expect_flat_glyph('M', name_x, first_text_y + row_pitch, 21);
+    expect_flat_glyph('M', class_x, first_text_y + row_pitch, 21);
+
+    const auto expect_swatch = [&](std::string_view cls, int row_y,
+                                   int ramp_start) {
+        const int swatch_x = class_x + font.query_width(cls) + 1;
+        int actual = -1;
+        output->get_pixel(swatch_x, row_y + 1, &actual);
+        EXPECT_EQ(PURE_BLACK, actual) << "swatch border";
+        for (int shade = 0; shade < 8; ++shade) {
+            output->get_pixel(swatch_x + 1 + shade, row_y + 2, &actual);
+            EXPECT_EQ(ramp_start + shade, actual) << "shade " << shade;
+        }
+        output->get_pixel(swatch_x + 9, row_y + 8, &actual);
+        EXPECT_EQ(PURE_BLACK, actual) << "swatch lower-right border";
+    };
+    expect_swatch("ELF", 45, 32);
+    expect_swatch("MAGE", 45 + row_pitch, 64);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 MP presentation (stage mp-columns): the merged display list splits
+// into own rows (private-save authority, editable) and foreign rows
+// (read-only hit zones). Foreign clicks pop OWNED BY <full company name>
+// (U9), the client-side 24-cap guard denies a toggle-ON at 24 deployed
+// (§4.2 pre-empt), and an accepted own-row toggle runs the §4.3 ready-clear
+// + roster-sync mutation tail. Also drives the networked draw pass (READY
+// n/m + DEP n/m header, COMPANY column, foreign X/- glyphs).
+// ---------------------------------------------------------------------------
+namespace {
+
+class NetworkedRosterLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override { ++roster_syncs; }
+    void sync_settings_from_save() override { ++settings_syncs; }
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host;
+    }
+    bool set_ready(bool ready) override
+    {
+        ready_calls.push_back(ready);
+        // Mimic the production convergence: both SDL network clients block
+        // until the echo lands, so local_ready() reflects the send in-call.
+        ready_state = ready;
+        return true;
+    }
+    [[nodiscard]] bool local_ready() const noexcept override
+    {
+        return ready_state;
+    }
+    bool request_start_game() override
+    {
+        requested = true;
+        return false;
+    }
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        return denial;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+        const override
+    {
+        return players;
+    }
+    [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+        const override
+    {
+        return local_indices;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+
+    bool host = false;
+    bool ready_state = false;
+    bool requested = false;
+    og::sim::StartDenialReason denial = og::sim::StartDenialReason::None;
+    std::vector<og::sim::LobbyPlayer> players;
+    std::vector<std::uint8_t> local_indices;
+    std::vector<bool> ready_calls;
+    int roster_syncs = 0;
+    int settings_syncs = 0;
+};
+
+og::sim::LobbyPlayer make_foreign_lobby_player(std::uint8_t player_index,
+                                               const char* name,
+                                               const char* company,
+                                               int deployed_slots,
+                                               int benched_slots)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = player_index;
+    player.name = name;
+    player.company = company;
+    int slot_index = 0;
+    for (int i = 0; i < deployed_slots + benched_slots; ++i) {
+        og::sim::LobbyCharacterSlot slot;
+        slot.slot_index = static_cast<std::uint8_t>(slot_index++);
+        slot.deployed = i < deployed_slots;
+        slot.character.name = std::format("{}-{}", company, i);
+        slot.character.family = FAMILY_ELF;
+        slot.character.level = 5;
+        slot.character.strength = 10;
+        slot.character.dexterity = 10;
+        slot.character.constitution = 10;
+        slot.character.intelligence = 10;
+        player.character_slots.push_back(std::move(slot));
+    }
+    return player;
+}
+
+} // namespace
+
+TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "MY OWN BAND";
+
+    auto own_deployed = std::make_unique<guy>(FAMILY_SOLDIER);
+    own_deployed->name = "OWN FRONT";
+    auto own_benched = std::make_unique<guy>(FAMILY_ARCHER);
+    own_benched->name = "OWN RESERVE";
+    own_benched->deployed = false;
+    save.team_list[0] = std::move(own_deployed);
+    save.team_list[1] = std::move(own_benched);
+    save.team_size = 2;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;  // joiner machine: GO hidden by the production rewire
+    lobby.local_indices = {7};
+    // The local machine's own replicated seat must be SKIPPED (the private
+    // save is the authority for own rows); the host machine's slots are the
+    // foreign read-only rows.
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 1, 1));
+    {
+        og::sim::LobbyPlayer self =
+            make_foreign_lobby_player(7, "net-me", "MY OWN BAND", 2, 0);
+        lobby.players.push_back(std::move(self));
+    }
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(4u, state.slots.size())
+        << "2 own rows + the host machine's 2 replicated rows";
+    EXPECT_TRUE(state.slots[0].owned);
+    EXPECT_EQ(0, state.slots[0].save_slot);
+    EXPECT_TRUE(state.slots[1].owned);
+    EXPECT_EQ(1, state.slots[1].save_slot);
+    EXPECT_FALSE(state.slots[2].owned);
+    EXPECT_EQ(3, state.slots[2].owner_player_index);
+    EXPECT_EQ("IRON HOST BAND", state.slots[2].company)
+        << "the COMPANY column reads LobbyPlayer::company off the wire";
+    EXPECT_TRUE(state.slots[2].deployed);
+    EXPECT_FALSE(state.slots[3].deployed);
+
+    const og::ui::BaseCampDeployCounts counts =
+        og::ui::count_base_camp_display_deploys(state.slots, save);
+    EXPECT_EQ(2, counts.deployed);
+    EXPECT_EQ(4, counts.total);
+
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+
+    // The production rewire shapes the ownership row: foreign dep buttons
+    // widen into no_draw hit zones and their §9.11 row-body zones hide.
+    og::ui::install_base_camp_state_for_screen(&state);
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = 0;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[0].no_draw);
+    EXPECT_EQ(14, buttons[0].sizex);
+    EXPECT_FALSE(buttons[kBaseCampRowBodyBase + 0].hidden);
+    EXPECT_TRUE(buttons[kBaseCampTeamChipBase + 0].hidden)
+        << "network team assignment makes the color chip read-only";
+    EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
+    EXPECT_EQ(12, buttons[2].x);
+    EXPECT_EQ(300, buttons[2].sizex)
+        << "foreign rows use the full padded roster width";
+    EXPECT_TRUE(buttons[kBaseCampRowBodyBase + 2].hidden)
+        << "foreign rows have no row-body train zone";
+    EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
+        << "joiner machine: GO hidden by the production rewire";
+
+    const short assigned_team = save.team_list[0]->teamnum;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 0, &state));
+    EXPECT_EQ(assigned_team, save.team_list[0]->teamnum)
+        << "even a stale network chip dispatch must not change team";
+
+    // Foreign clicks are read-only: OWNED BY <full company name> (U9).
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(2, &state));
+    EXPECT_TRUE(trace_contains("popup", "OWNED BY: IRON HOST BAND"))
+        << "foreign deploy hit zone names the owning company";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampRowBodyBase + 3, &state));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot="))
+        << "a foreign row-body ordinal must not seed a session";
+    EXPECT_TRUE(save.team_list[0]->deployed);
+    EXPECT_FALSE(save.team_list[1]->deployed);
+    EXPECT_TRUE(lobby.ready_calls.empty())
+        << "a denied foreign click must not touch ready";
+    EXPECT_EQ(0, lobby.roster_syncs);
+
+    // Client-side 24-cap guard: 23 foreign deploys + 1 own deployed = 24 —
+    // toggling the own benched row ON is denied with the popup.
+    lobby.players[0] =
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 23, 0);
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(25u, state.slots.size())
+        << ">24 display slots replicate (the §4.2 full-roster rule)";
+    EXPECT_EQ(4, state.page.page_count())
+        << "the page window grows defensively past 3 pages";
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy_cap_denied deployed=24"));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY LIMIT 24"));
+    EXPECT_FALSE(save.team_list[1]->deployed)
+        << "a denied toggle must not flip the flag";
+    EXPECT_TRUE(lobby.ready_calls.empty());
+
+    // Under the cap the toggle lands and runs the §4.3 mutation tail:
+    // roster re-sync (server clears ready on the content change) + the
+    // optimistic local ready drop.
+    lobby.players[0] =
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 22, 1);
+    og::ui::base_camp_refresh_rows(state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"));
+    EXPECT_TRUE(save.team_list[1]->deployed);
+    ASSERT_EQ(1u, lobby.ready_calls.size())
+        << "an own-row mutation clears this machine's ready";
+    EXPECT_FALSE(lobby.ready_calls[0]);
+    EXPECT_EQ(1, lobby.roster_syncs);
+
+    // Networked draw pass: §9.12 session-status header, COMPANY column,
+    // foreign X/- glyphs (smoke + coverage; the strings are unit-pinned in
+    // test_picker_common).
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+    spec.draw_background(&state);
+    spec.draw_content(&state);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Empty-state treatment: the fixed View Team-style grey roster panel remains
+// visible with zero rows and the content pass centers the ORANGE line inside
+// it. The null install renders the empty shape on both hooks; smoke + coverage
+// (the panel itself is verified by capture).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    // Null state == zero visible rows == the empty-roster shape.
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    spec.draw_background(nullptr);
+    spec.draw_content(nullptr);
+
+    // An installed-but-empty state windows zero rows and draws the same
+    // shape (the page model clamps to an empty slot list).
+    og::ui::BaseCampScreenState empty_state;
+    og::ui::install_base_camp_state_for_screen(&empty_state);
+    spec.draw_background(&empty_state);
+    spec.draw_content(&empty_state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 READY twin (stage ready-go-slot): a networked joiner gets READY in
+// GO's exact rect; the click drives the shared lobby flag through the
+// production ToggleLobbyReady handler with the client deploy gate
+// (cross-control OFF + brought-but-benched => popup; spectator machines
+// ready freely [NET-R9]; cross-control ON removes the minimum).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "JOINER BAND";
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "OWN FRONT";
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    lobby.local_indices = {7};
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-host", "IRON HOST BAND", 1, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(7, "net-me", "JOINER BAND", 1, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = 0;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // The dual-role slot: READY occupies GO's exact rect on a joiner.
+    EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden);
+    ASSERT_FALSE(buttons[kCreateMenuReadyIndex].hidden);
+    EXPECT_EQ(buttons[kCreateMenuGoIndex].x,
+              buttons[kCreateMenuReadyIndex].x);
+    EXPECT_EQ(buttons[kCreateMenuGoIndex].sizex,
+              buttons[kCreateMenuReadyIndex].sizex);
+    EXPECT_EQ("READY", buttons[kCreateMenuReadyIndex].label);
+    EXPECT_EQ(kCreateMenuReadyIndex,
+              buttons[kCreateMenuNetworkingIndex].nav.right)
+        << "the strip chains into the visible half of the pair";
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
+    }
+
+    // Deployed roster: the toggle acts directly (production dispatch arg =
+    // the twin's own index — the TEAMS mirror label is NOT index-stamped).
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(1u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[0]);
+    EXPECT_TRUE(lobby.ready_state);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::ClientReady, p.state);
+        EXPECT_EQ("UNREADY", p.label);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+    }
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("UNREADY", buttons[kCreateMenuReadyIndex].label)
+        << "the rewire stamps the presentation label on the descriptor";
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(2u, lobby.ready_calls.size());
+    EXPECT_FALSE(lobby.ready_calls[1]);
+
+    // Brought-but-benched + cross-control OFF: the ready click popups and
+    // sends nothing (§2.6 client gate).
+    save.team_list[0]->deployed = false;
+    save.cross_control = 0;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_TRUE(trace_contains("basecamp", "ready_gated"));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
+    EXPECT_EQ(2u, lobby.ready_calls.size()) << "gated click sends nothing";
+
+    // Cross-control ON removes the per-machine minimum.
+    save.cross_control = 1;
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(3u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[2]);
+    lobby.ready_state = false;
+    save.cross_control = 0;
+
+    // Spectator machine (empty roster): readies freely [NET-R9]; the slot
+    // stays visible and reachable on an all-foreign display.
+    save.team_list[0].reset();
+    save.team_size = 0;
+    og::ui::base_camp_refresh_rows(state);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden)
+        << "[NET-R9]: the spectator machine keeps the READY button";
+    trace_clear();
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    ASSERT_EQ(4u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_calls[3]);
+    EXPECT_FALSE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
+
+    // The engine's per-frame bindings (the runner's label/color pass)
+    // re-derive the twin from the same presentation — drive the spec-row
+    // formatters directly (both label states, both faces).
+    const og::ui::MenuButtonSpec& ready_row =
+        spec.rows[kCreateMenuReadyIndex];
+    ASSERT_NE(nullptr, ready_row.label_binding.formatter);
+    ASSERT_NE(nullptr, ready_row.color);
+    og::ui::MenuLabelContext binding_context;
+    lobby.ready_state = false;
+    EXPECT_EQ("READY", ready_row.label_binding.formatter(binding_context));
+    EXPECT_EQ(og::ui::kReadyGoFaceUnready, ready_row.color(binding_context));
+    lobby.ready_state = true;
+    EXPECT_EQ("UNREADY", ready_row.label_binding.formatter(binding_context));
+    EXPECT_EQ(og::ui::kReadyGoFaceGo, ready_row.color(binding_context));
+    const og::ui::MenuButtonSpec& go_row = spec.rows[kCreateMenuGoIndex];
+    ASSERT_NE(nullptr, go_row.color);
+    EXPECT_EQ(og::ui::kReadyGoFaceGrey, go_row.color(binding_context))
+        << "GO keeps the default face while hidden on a joiner";
+
+    // The TEAMS mirror (origin -1) index-refreshes its own label surfaces;
+    // the base-camp twin never touches them.
+    (void)picker_teamsmenu_buttons();
+    lobby.ready_state = false;
+    EXPECT_EQ(MENU_OK, teams_toggle_ready(-1));
+    ASSERT_EQ(5u, lobby.ready_calls.size());
+    EXPECT_TRUE(lobby.ready_state);
+    EXPECT_EQ("UNREADY",
+              og::runtime::current_session->picker_
+                  ->teamsmenu_buttons[kTeamsMenuReadyIndex].label)
+        << "the TEAMS mirror refreshes its descriptor label";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.6 host GO gating (states 3-4): a networked host's GO pre-checks the
+// lobby BEFORE sending — machines-not-ready popups WAITING FOR: <companies>
+// (rule 3 outranks rule 4), an all-benched lobby popups NO ONE IS DEPLOYED,
+// and only a fully-gated GO sends the start request. A denial that arrives
+// asynchronously (the [NET-R4] echo) still renders its reason, and the solo
+// deploy popup carries the §2.6 state-2 wording.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_go_host_gate_popups_and_denial_display)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.save_name = "HOST BAND";
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "HOST FRONT";
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = true;
+    lobby.local_indices = {0};
+    {
+        og::sim::LobbyPlayer self =
+            make_foreign_lobby_player(0, "net-host", "HOST BAND", 1, 0);
+        self.is_host = true;
+        lobby.players.push_back(std::move(self));
+    }
+    lobby.players.push_back(
+        make_foreign_lobby_player(3, "net-join", "IRON JOIN BAND", 1, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const og::ui::MenuScreenSpec& tb_spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    const og::ui::MenuButtonSpec& go_row = tb_spec.rows[kCreateMenuGoIndex];
+    ASSERT_NE(nullptr, go_row.color);
+    og::ui::MenuLabelContext binding_context;
+
+    // State 3, rule 3: the joiner machine is unready — popup names it, no
+    // request is sent. The GO color binding stamps the yellow face.
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceGated, p.face_color);
+        EXPECT_EQ(og::ui::kReadyGoFaceGated, go_row.color(binding_context));
+    }
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("basecamp", "go_gated ready=0/1"));
+    EXPECT_TRUE(trace_contains("popup", "WAITING FOR:"));
+    EXPECT_TRUE(trace_contains("popup", "IRON JOIN BAND"))
+        << "the blocker popup names the unready company";
+    EXPECT_FALSE(lobby.requested) << "state 3 sends NOTHING";
+
+    // Rule 4 after rule 3 clears: everyone ready but every slot benched.
+    lobby.players[1].ready = true;
+    lobby.players[0].character_slots[0].deployed = false;
+    lobby.players[1].character_slots[0].deployed = false;
+    save.team_list[0]->deployed = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "NO ONE IS DEPLOYED"));
+    EXPECT_FALSE(lobby.requested);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGated, p.state);
+    }
+
+    // Gates met => the request goes out (state 4, green face).
+    lobby.players[0].character_slots[0].deployed = true;
+    lobby.players[1].character_slots[0].deployed = true;
+    save.team_list[0]->deployed = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        EXPECT_EQ(og::ui::ReadyGoState::HostGo, p.state);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, p.face_color);
+        EXPECT_EQ(og::ui::kReadyGoFaceGo, go_row.color(binding_context))
+            << "the color binding stamps the green face on the last ready";
+    }
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(lobby.requested);
+    EXPECT_FALSE(trace_contains("popup", "WAITING FOR:"));
+
+    // An async server denial that beat the pre-check still renders its
+    // reason from the cached echo (best-effort, [NET-R4] client mirror).
+    lobby.requested = false;
+    lobby.denial = og::sim::StartDenialReason::MachinesNotReady;
+    lobby.players[1].ready = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "WAITING FOR:"))
+        << "the pre-check catches it, or the denial display does — either "
+           "way the reason shows";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.7 cross-control (TEAMS subscreen): visible to ALL peers when networked
+// in the guy-row slot; host-only actionable (non-host click popups HOST
+// CONTROLS THIS SETTING); a host toggle sanitizes to {0,1}, TRACEs, and
+// syncs settings (the server clears every non-host machine's ready — §4.5).
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, teams_cross_control_toggle_host_gates_and_syncs)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.cross_control = 0;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
+    ASSERT_NE(nullptr, spec.on_spec_row)
+        << "§2.7: cross-control is the TEAMS screen's one MenuSpecRow";
+
+    // Visible to every networked peer (the guy row is local-only, so the
+    // §2.7 slot is free), label from the shared formatter.
+    button* buttons = picker_teamsmenu_buttons();
+    const int count = picker_teamsmenu_button_count();
+    int highlighted = 0;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kTeamsMenuCrossControlIndex].hidden)
+        << "§2.7: joiners must SEE the mode that changes their rights";
+    EXPECT_TRUE(buttons[kTeamsMenuGuyTeamIndex].hidden)
+        << "the same-rect guy row is local-only";
+    EXPECT_EQ("CTRL: OWN", buttons[kTeamsMenuCrossControlIndex].label);
+
+    // Non-host click: popup, no change, no settings sync.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_TRUE(trace_contains("teams", "cross_control_denied"));
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
+    EXPECT_EQ(0, save.cross_control);
+    EXPECT_EQ(0, lobby.settings_syncs);
+
+    // Host click: toggles, TRACEs, and syncs settings (server-side that
+    // clears every non-host machine's ready — pinned e2e in
+    // test_picker_network_client).
+    lobby.host = true;
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
+    EXPECT_EQ(1, save.cross_control);
+    EXPECT_EQ(1, lobby.settings_syncs);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("CTRL: ALL", buttons[kTeamsMenuCrossControlIndex].label);
+
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_EQ(0, save.cross_control);
+
+    // Sanitization: junk counts as ON and lands on exactly 0.
+    save.cross_control = 7;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
+    EXPECT_EQ(0, save.cross_control);
+
+    // Other rows are not this screen's spec rows.
+    EXPECT_EQ(0, spec.on_spec_row(kTeamsMenuBackIndex, nullptr));
+
+    save.cross_control = 0;
+    save.reset();
+}
+
+// §2.6 state 2 wording (solo reword pin): a solo hired-but-benched roster
+// gets the DEPLOY AT LEAST ONE popup (was NO ONE DEPLOYED).
+TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
+{
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    auto own = std::make_unique<guy>(FAMILY_SOLDIER);
+    own->name = "BENCHED";
+    own->deployed = false;
+    save.team_list[0] = std::move(own);
+    save.team_size = 1;
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "DEPLOY AT LEAST ONE"))
+        << "§2.6 state 2 wording";
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// §2.5 flow 4 + rename: the train screen's RENAME button, reached through a
+// §9.11 row-body click's seed, renames THAT character (editguy_ follows the
+// seeded slot) and the rename accept autosaves the company (§3.8).
+// ---------------------------------------------------------------------------
+struct BaseCampRenameState {
+    bool finished;
+    bool saw_train_menu;
+    bool saw_rename_button;
+};
+
+static int base_camp_train_rename_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<BaseCampRenameState*>(data);
+
+    if (!wait_for_interactable("roster_row_1", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    interact("roster_row_1");
+
+    if (!wait_for_interactable("rename", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    state->saw_train_menu = true;
+    state->saw_rename_button = true;
+    SDL_Delay(300);
+    interact("rename");
+
+    // name_guy(1)'s modal is live now: the first text event replaces the
+    // prefilled name, RETURN accepts it.
+    SDL_Delay(400);
+    inject_text_input("ZEDNAME");
+    SDL_Delay(150);
+    inject_key_press(SDLK_RETURN, 10);
+
+    if (!wait_for_interactable("inc_str", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // exit the train screen back to the base camp
+
+    if (!wait_for_interactable("roster_dep_0", 10000)) {
+        state->finished = true;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("back");  // exit the base camp
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, base_camp_row_train_rename_renames_seeded_character)
+{
+    trace_clear();
+
+    // The rename accept runs the base-camp mutation tail (lazy local lobby
+    // client) — shut it down on every exit path.
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->name = "FRONT";
+    archer->name = "SECOND";
+    og::runtime::current_session->myscreen_->save_data.team_list[0] =
+        std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] =
+        std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    BaseCampRenameState state = { false, false, false };
+    SDL_Thread* thread = SDL_CreateThread(
+        base_camp_train_rename_injector, "base_camp_rename", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu)
+        << "a roster row-body click should open the train screen";
+    ASSERT_TRUE(ret & 1) << "base camp BACK should propagate EXIT";
+
+    // The SEEDED character was renamed; its neighbor was not.
+    EXPECT_EQ("ZEDNAME",
+              og::runtime::current_session->myscreen_->save_data
+                  .team_list[1]->name)
+        << "RENAME from a seeded train screen must target the seeded slot";
+    EXPECT_EQ("FRONT",
+              og::runtime::current_session->myscreen_->save_data
+                  .team_list[0]->name)
+        << "slot 0 must be untouched by the seeded rename";
+
+    // §3.8: the rename accept AUTOSAVED — the new name is on disk without
+    // any manual save.
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_EQ(2, static_cast<int>(reloaded.team_size));
+    ASSERT_TRUE(reloaded.team_list[1] != nullptr);
+    EXPECT_EQ("ZEDNAME", reloaded.team_list[1]->name)
+        << "the rename mutation must persist via the company autosave";
 }

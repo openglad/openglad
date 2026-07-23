@@ -40,12 +40,13 @@ static void cleanup_picker_state()
 //
 // Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
 // (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3 — all
-// back to their defaults) -> BACK -> player modes -> Continue -> Back
+// back to their defaults) -> BACK -> PLAYER SETTINGS -> exercise every local
+// player count and PVP -> BACK -> quit
 //
 // Verifies:
 //   1. The door opens the subscreen (its rows become interactable)
 //   2. Every settings row is clickable and a full cycle restores defaults
-//   3. BACK returns to a working main menu (player modes / continue still work)
+//   3. BACK returns to a working main menu and PLAYER SETTINGS returns cleanly
 
 struct DifficultyState {
     bool started;
@@ -98,7 +99,11 @@ static int difficulty_injector(void* data)
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(300);
 
-    // Exercise all multiplayer player-count redraw branches.
+    // PLAYER SETTINGS owns the local-seat selector now. Exercise every
+    // outline branch, then return to the reflowed main menu.
+    fprintf(stderr, "  [test] clicking player_settings\n");
+    interact("player_settings");
+    wait_for_interactable("1_player", 5000);
     if (has_interactable("4_player")) {
         fprintf(stderr, "  [test] clicking 4_player\n");
         interact("4_player");
@@ -119,14 +124,21 @@ static int difficulty_injector(void* data)
         interact("1_player");
         SDL_Delay(150);
     }
+    if (has_interactable("pvp_allied")) {
+        interact("pvp_allied");
+        SDL_Delay(150);
+        interact("pvp_allied");
+        SDL_Delay(150);
+    }
+    interact("player_settings_back");
+    wait_for_interactable("continue_game", 5000);
 
-    // Exit by going continue -> back
-    fprintf(stderr, "  [test] clicking continue_game\n");
-    interact("continue_game");
-    SDL_Delay(500);
-    wait_for_interactable("back", 10000);
-    SDL_Delay(750);
-    interact("back");
+    // The player-settings door returns to the same main-menu loop. Exit that
+    // loop directly; the base-camp transition is covered by its own tests.
+    fprintf(stderr, "  [test] clicking quit\n");
+    g_picker_mainmenu_calls = g_picker_max_mainmenu_calls;
+    SDL_Delay(300);
+    interact("quit");
 
     state->finished = true;
     return 0;

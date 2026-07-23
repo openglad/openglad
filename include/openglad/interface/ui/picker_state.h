@@ -89,11 +89,13 @@ public:
     // Display team building menu.
     virtual TeamBuildAction show_team_build();
 
-    // Display the SCENARIO submenu (campaign/level/viewer/teams/progress)
-    // as a nested presentation loop until Back. Terminal clients reach it
-    // from the team-build "Scenario" item; the SDL client nests it inside
-    // its own blocking team-build screen instead.
-    virtual void show_scenario_menu();
+    // Display a shared submenu (SCENARIO: campaign/level/viewer/teams/
+    // progress; DIFFICULTY: session difficulty + match rules) as a nested
+    // presentation loop until Back. Terminal clients reach these from their
+    // team-build/main items; the SDL client nests the equivalent blocking
+    // subscreens inside its own screens instead (its present_menu answers
+    // the Scenario id with a safe no-op Back).
+    virtual void show_submenu(PickerMenuId menu_id);
 
     // Render a shared picker menu and return which shared item was selected.
     // Returning nullptr means "cancel/default back".
@@ -109,6 +111,14 @@ public:
     // Allow platform clients to pump asynchronous lobby/runtime updates while
     // the shared state machine is between blocking menu screens.
     virtual void poll_updates() {}
+
+    // §2.3 Company List: the main-menu LOAD door. Present the company list
+    // (open / backups / delete / back) and return true when a company was
+    // OPENED — show_main_menu then proceeds to team build (base camp), the
+    // same destination CONTINUE reaches (row 0 IS what CONTINUE opens).
+    // Returning false (BACK) re-presents the main menu. The default keeps
+    // headless fakes trivially constructible: no list UI, nothing opened.
+    virtual bool show_company_list() { return false; }
 
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;

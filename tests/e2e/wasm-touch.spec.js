@@ -25,12 +25,14 @@ const {
 const YES_BUTTON = { x: 95, y: 140 };
 const OK_BUTTON = { x: 160, y: 140 };
 
-// Main-menu CONTINUE and the team-build NETWORKING button (both on the
-// 320x200 grid; same coords the wasm-networking spec navigates with).
-const CONTINUE_BUTTON = { x: 150, y: 85 };
-const NETWORKING_BUTTON = { x: 250, y: 150 };
+// Main-menu CONTINUE — center of the (80,75,68,20) CONTINUE half after the
+// CONTINUE | LOAD split — and the team-build NETWORKING button (both on the
+// 320x200 grid; same coords the wasm helpers navigate with; §2.10 ledger).
+const CONTINUE_BUTTON = { x: 114, y: 85 };
+// §2.5/§2.10: NETWORK is (182,178,56,18) on the base-camp strip.
+const NETWORKING_BUTTON = { x: 210, y: 187 };
 const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
-const TEAM_BUILD_NETWORKING_REGION = { x: 210, y: 140, w: 80, h: 20 };
+const TEAM_BUILD_NETWORKING_REGION = { x: 182, y: 178, w: 56, h: 18 };
 
 // Web relay-first networking-menu ROOM CODE field (button id
 // "network_room_value" in src/interface/ui/picker.cpp).
@@ -502,6 +504,10 @@ test.describe('Touch overlay activation', () => {
     await page.addInitScript(() => {
       window.__opengladSkipIntroForTests = true;
       window.__opengladForceTouchControls = true;
+      // The company-era main menu only has the CONTINUE half at (114,85)
+      // when a company save exists — seed the standard web company so the
+      // all-taps CONTINUE -> NETWORKING navigation below lands.
+      window.__opengladSeedSinglePlayerTeam = true;
       window.__opengladRelayBaseUrlForTests = 'https://relay.test';
     });
     // Keep discovery deterministic and entirely local to Playwright. A DNS
@@ -634,9 +640,9 @@ test.describe('Touch gameplay controls', () => {
       .toBe(false);
 
     // CONTINUE on the main menu, then GO on the team-build menu — all taps.
-    await tapCanvasGameCoord(page, 150, 85);
+    await tapCanvasGameCoord(page, CONTINUE_BUTTON.x, CONTINUE_BUTTON.y);
     await page.waitForTimeout(1_500);
-    await tapCanvasGameCoord(page, 250, 107);
+    await tapCanvasGameCoord(page, 278, 187); // base-camp GO (244,178,68,18)
     // Level load ends on the blocking SCENARIO INFORMATION dialog
     // ("TAP OR BACKSPACE TO CONTINUE" on web); a tap dismisses it. Harmless
     // if timing skipped the dialog — it is just a tap into the world.

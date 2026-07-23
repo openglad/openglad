@@ -27,6 +27,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -37,7 +38,9 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -103,7 +106,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 void show_guy(Sint32 frames, Sint32 who, Sint32 centerx = 80, Sint32 centery = 45);
-void view_team(short left, short top, short right, short bottom);
 void draw_backdrop();
 Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
@@ -113,7 +115,6 @@ bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint3
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 std::string get_saved_name(const char* filename);
-Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
 Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
@@ -146,6 +147,72 @@ static bool save_has_trainable_team_member(const SaveData& save)
     return false;
 }
 
+// §2.5 per-row TRAIN seed: the base-camp dispatch stashes the clicked
+// roster slot here; create_train_menu consumes it (one-shot) so the train
+// screen opens directly on that character instead of the first editable one.
+static int g_train_seed_slot = -1;
+
+void picker_set_train_seed_slot(int slot)
+{
+    g_train_seed_slot = slot;
+}
+
+// The §3.8 base-camp mutation tail (design G12, live via the WP2 choke
+// point): re-sync the lobby roster (a networked content change clears that
+// machine's ready server-side — §4.3), optimistically drop the local ready
+// flag (a no-op for solo/local lobby clients), and autosave the company
+// (networked lobbies take the [SAVE-F1] owner-preserving merge write).
+// Called from every roster-mutation site: deploy toggle, hire, train accept,
+// TRAIN/Base Camp team change, and rename.
+void picker_base_camp_after_roster_mutation()
+{
+    picker_lobby_sync_roster_from_save();
+    (void)picker_lobby_set_ready(false);
+    // Failures log inside company_autosave; the base camp never blocks on a
+    // failed autosave (§3.8 — callers surface but don't crash).
+    (void)og::ui::company_autosave_after_mutation(
+        og::runtime::current_session->myscreen_->save_data,
+        picker_lobby_is_networked());
+}
+
+// §2.6: gather the lobby/save inputs for the pure GO/READY state table.
+// Global deployed: networked = every machine's replicated deploy flags (the
+// server's rule-4 count); solo = the private roster. Own deployed reads the
+// PRIVATE save (the wire mirrors it). Spectator = this machine contributes
+// no character slots (numplayers==0 spectator seat or an empty roster) —
+// such machines ready freely [NET-R9].
+og::ui::ReadyGoPresentation picker_compute_ready_go_presentation()
+{
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const bool networked = picker_lobby_is_networked();
+    const int own_deployed = og::ui::count_deployed_members(save);
+    int global_deployed = own_deployed;
+    bool all_ready = true;
+    if (networked)
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        global_deployed = 0;
+        for (const og::sim::LobbyPlayer& player : players)
+        {
+            for (const og::sim::LobbyCharacterSlot& slot :
+                 player.character_slots)
+            {
+                if (slot.deployed)
+                    ++global_deployed;
+            }
+        }
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(players);
+        all_ready = ready.ready == ready.machines;
+    }
+    const bool spectator = save.numplayers == 0 || save.team_size == 0;
+    return og::ui::format_ready_go_button(
+        networked, picker_lobby_host_controls_visible(),
+        picker_lobby_local_ready(), all_ready, global_deployed, own_deployed,
+        save.cross_control != 0, spectator);
+}
+
 void picker_prepare_async_team_build_start_request()
 {
     picker_lobby_sync_settings_from_save();
@@ -164,7 +231,9 @@ void picker_prepare_async_team_build_start_request()
 #endif
 }
 
-static bool team_build_remote_start_requested(Sint32& retvalue)
+// Non-static: the menu engine's RemoteStartScope::TeamBuildScope check
+// (run_menu_screen) calls this too; declared in picker_sdl_defs.h.
+bool team_build_remote_start_requested(Sint32& retvalue)
 {
     if (!g_start_game_requested || !picker_lobby_has_game_start_config())
         return false;
@@ -176,15 +245,14 @@ static bool team_build_remote_start_requested(Sint32& retvalue)
     return true;
 }
 
-static bool team_build_start_selected()
+// Non-static: the engine wrappers for the team-build subscreens (SCENARIO in
+// menu_screen_specs.cpp) fold their exits through this too.
+bool team_build_start_selected()
 {
     return pks().selected_menu_item != nullptr
         && pks().selected_menu_item->command ==
             og::ui::PickerMenuCommand::StartGame;
 }
-
-constexpr int kTeamBuildGoButtonIndex = kCreateMenuGoIndex;
-constexpr int kViewTeamGoButtonIndex = 0;
 
 void sync_button_hidden_state(const button* buttons, int button_index)
 {
@@ -222,28 +290,8 @@ void ensure_highlighted_button_visible(const button* buttons,
     highlighted_button = 0;
 }
 
-// Nav must never link to a hidden button: route hire_troops/save_team/
-// networking around GO when it is hidden (and back through it when not).
-void picker_wire_team_build_nav(button* buttons,
-                                int count,
-                                bool host_controls_visible)
-{
-    if (buttons == nullptr || count < kCreateMenuButtonCount)
-        return;
-
-    if (host_controls_visible)
-    {
-        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuGoIndex;
-        buttons[kCreateMenuSaveIndex].nav.right = kCreateMenuGoIndex;
-        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuGoIndex;
-    }
-    else
-    {
-        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuNetworkingIndex;
-        buttons[kCreateMenuSaveIndex].nav.right = -1;
-        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuHireIndex;
-    }
-}
+// The §2.5 base camp rewires its full roster graph per frame (pattern b) —
+// the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Rewire the always-visible VIEW LEVEL | TEAMS | PROGRESS row's up-links
 // around the host-gated SET CAMPAIGN / SET LEVEL column.
@@ -259,24 +307,6 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
     buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
     buttons[kScenarioMenuProgressIndex].nav.up = row_up;
-}
-
-void sync_team_build_host_control_visibility(button* buttons,
-                                             int num_buttons,
-                                             int& highlighted_button)
-{
-    if (buttons == nullptr || num_buttons < kCreateMenuButtonCount)
-        return;
-
-    // GO is the only host-gated team-build button now: SET CAMPAIGN and
-    // SET LEVEL moved into the SCENARIO subscreen (with their own gating),
-    // and the CTF match settings live inside the TEAMS subscreen.
-    const bool host_controls_visible = picker_lobby_host_controls_visible();
-    buttons[kTeamBuildGoButtonIndex].hidden = !host_controls_visible;
-    sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
-    picker_wire_team_build_nav(buttons, num_buttons, host_controls_visible);
-
-    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -295,19 +325,6 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
     picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible);
 
-    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
-}
-
-void sync_view_team_host_control_visibility(button* buttons,
-                                            int num_buttons,
-                                            int& highlighted_button)
-{
-    if (buttons == nullptr || num_buttons <= kViewTeamGoButtonIndex)
-        return;
-
-    buttons[kViewTeamGoButtonIndex].hidden =
-        !picker_lobby_host_controls_visible();
-    sync_button_hidden_state(buttons, kViewTeamGoButtonIndex);
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
@@ -348,7 +365,9 @@ void sync_difficulty_menu_visibility(button* buttons,
 #define STAT_DERIVED DARK_BLUE + 3
 
 // Compute derived stats for a guy using the current screen's loader data.
-static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
+// Non-static: the base-camp roster's HP column (menu_screen_specs.cpp)
+// computes per-row derived hitpoints through this too.
+og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g)
 {
     // guy::family comes verbatim from the .gtl save file with no range check;
     // a malicious/negative value would index the loader stat arrays out of
@@ -392,171 +411,10 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
     mytext.write_xy(x + derived_offset + 21, y_fn(line), value_color, "%.1f", ds.atk_spd);
 }
 
-Sint32 create_team_menu(Sint32 arg1)
-{
-    (void)arg1;
-	Sint32 retvalue=0;
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-	og::runtime::current_session->myscreen_->fadeblack(0);
-	
-	text& mytext = og::runtime::current_session->myscreen_->text_normal;
-	
-	button* buttons = picker_createmenu_buttons();
-	int num_buttons = picker_createmenu_button_count();
-	int highlighted_button = 1;
-    sync_team_build_host_control_visibility(
-        buttons, num_buttons, highlighted_button);
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-	draw_backdrop();
-	draw_buttons(buttons, num_buttons);
-	
-	int last_level_id = -1;
-	
-	og::runtime::current_session->myscreen_->fadeblack(1);
-	
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        sync_team_build_host_control_visibility(
-            buttons, num_buttons, highlighted_button);
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		if(leftmouse(buttons))
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        
-        // Reset buttons
-        bool buttons_were_reset = reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-        // Nested menus can replace the global vbutton array with a different
-        // layout before returning MENU_EXIT. Avoid drawing with mismatched arrays.
-        if (retvalue & MENU_EXIT)
-            break;
-		
-        if(last_level_id != og::runtime::current_session->myscreen_->save_data.scen_num || buttons_were_reset)
-        {
-            retvalue = 0;
-            last_level_id = og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->world().id = last_level_id;
-            og::runtime::current_session->myscreen_->load_level();
-        }
-        
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-
-        const std::vector<std::string> lobby_status = picker_lobby_status_lines();
-        for (std::size_t line_index = 0;
-             line_index < lobby_status.size() && line_index < 2;
-             ++line_index)
-        {
-            const std::string& line = lobby_status[line_index];
-            if (line.empty())
-                continue;
-
-            const int status_y = 8 + static_cast<int>(line_index) * 10;
-            const int status_w = static_cast<int>(line.size()) * 6;
-            og::runtime::current_session->myscreen_->draw_rect_filled(
-                10,
-                status_y - 1,
-                status_w + 4,
-                8,
-                PURE_BLACK,
-                150);
-            mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
-        }
-        
-        // Compact current-scenario hint in the empty y=40 band. The full
-        // level-title and campaign-name strips moved into the SCENARIO
-        // subscreen, next to the SET LEVEL / SET CAMPAIGN buttons.
-        {
-            std::string hint = std::format(
-                "SCEN {}: {}",
-                og::runtime::current_session->myscreen_->save_data.scen_num,
-                og::runtime::current_session->myscreen_->world().title);
-            if (hint.size() > 34)
-                hint.resize(34);
-            const int hint_w = static_cast<int>(hint.size()) * 6;
-            og::runtime::current_session->myscreen_->draw_rect_filled(
-                10, 43, hint_w + 4, 8, PURE_BLACK, 150);
-            mytext.write_xy(12, 44, WHITE, "%s", hint.c_str());
-        }
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-
-	// Propagate MENU_EXIT if that's why we left the loop
-	if (retvalue & MENU_EXIT)
-		return retvalue;
-
-	return MENU_REDRAW;
-}
-
-Sint32 create_view_menu(Sint32 arg1)
-{
-	Sint32 retvalue = 0;
-
-	if (arg1)
-		arg1 = 1;
-
-	og::runtime::current_session->myscreen_->clearbuffer();
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-	button* buttons = picker_viewteam_buttons();
-	int num_buttons = picker_viewteam_button_count();
-	int highlighted_button = 1;
-    sync_view_team_host_control_visibility(
-        buttons, num_buttons, highlighted_button);
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        sync_view_team_host_control_visibility(
-            buttons, num_buttons, highlighted_button);
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		if(leftmouse(buttons))
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        // Check before reset_buttons can clear it.
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        // Reset buttons (relevant after go_menu returns from game)
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        view_team(5,5,314, 160);
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-	og::runtime::current_session->myscreen_->clearbuffer();
-
-	// Propagate MENU_EXIT so TeamBuild interception can map GO -> StartGame.
-	// BACK returns MENU_REDRAW to keep parent create_team_menu running.
-	if (retvalue & MENU_EXIT)
-		return retvalue;
-
-	return MENU_REDRAW;
-}
+// create_team_menu (TEAM BUILD -> BASE CAMP, §2.5): engine-hosted — the
+// roster spec, its content/rewire/frame hooks, and the entry wrapper live in
+// menu_screen_specs.cpp (docs/menu-engine.md). The VIEW TEAM screen retired
+// into the roster view.
 
 // ---------------------------------------------------------------------------
 // TEAMS subscreen: per-team JOIN (local my_team / networked TeamChange), the
@@ -586,6 +444,10 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     const int last_mid = mids.empty() ? -1 : mids.back();
     const int bottom_mid = wiring.networked ? kTeamsMenuReadyIndex : -1;
     const int bottom_right = wiring.show_ctf ? kTeamsMenuCtfTroopsIndex : -1;
+    // §2.7: cross-control occupies the guy-row band when networked (the guy
+    // row itself is local-only — mutually exclusive by construction).
+    const int cross =
+        wiring.cross_control ? kTeamsMenuCrossControlIndex : -1;
 
     for (int index = 0; index < kTeamsMenuButtonCount; ++index)
         buttons[index].nav = MenuNav{};
@@ -607,9 +469,11 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     // Row-anchor chain (visible rows only, top to bottom).
     const int below_mids = wiring.guy_row
         ? kTeamsMenuGuyTeamIndex
-        : (bottom_right >= 0
-               ? bottom_right
-               : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex));
+        : (cross >= 0
+               ? cross
+               : (bottom_right >= 0
+                      ? bottom_right
+                      : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex)));
     for (std::size_t mid_order = 0; mid_order < mids.size(); ++mid_order)
     {
         buttons[mids[mid_order]].nav.up = mid_order == 0
@@ -668,6 +532,18 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
             bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex;
     }
 
+    // §2.7 cross-control row: chained between the team rows and the bottom
+    // row, exactly where the guy row sits locally.
+    if (cross >= 0)
+    {
+        buttons[cross].nav.up = last_mid >= 0
+            ? last_mid
+            : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
+        buttons[cross].nav.down = bottom_mid >= 0
+            ? bottom_mid
+            : (bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex);
+    }
+
     // Bottom-row up links.
     buttons[kTeamsMenuBackIndex].nav.up = wiring.guy_row
         ? kTeamsMenuGuyPrevIndex
@@ -676,15 +552,19 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
                : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
     if (bottom_mid >= 0)
     {
-        buttons[bottom_mid].nav.up = last_mid >= 0
-            ? last_mid
-            : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
+        buttons[bottom_mid].nav.up = cross >= 0
+            ? cross
+            : (last_mid >= 0
+                   ? last_mid
+                   : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
     }
     if (bottom_right >= 0)
     {
         buttons[bottom_right].nav.up = wiring.guy_row
             ? kTeamsMenuGuyTeamIndex
-            : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex);
+            : (cross >= 0
+                   ? cross
+                   : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex));
     }
 }
 
@@ -724,6 +604,9 @@ TeamsMenuFrameState compute_teams_menu_state()
         state.is_ctf && picker_lobby_host_controls_visible();
     state.wiring.networked = picker_lobby_is_networked();
     state.wiring.guy_row = !state.wiring.networked && save.team_size > 0;
+    // §2.7: shown to ALL peers when networked (host-only actionable — the
+    // dispatch popups for non-hosts); shares the local guy row's rect.
+    state.wiring.cross_control = state.wiring.networked;
 
     // Per-team detail items: lobby players (networked) or roster members.
     const std::vector<og::sim::LobbyPlayer> players =
@@ -845,6 +728,14 @@ void sync_teams_menu_visibility(button* buttons,
     {
         buttons[kTeamsMenuReadyIndex].label =
             picker_lobby_local_ready() ? "UNREADY" : "READY";
+    }
+
+    buttons[kTeamsMenuCrossControlIndex].hidden =
+        !state.wiring.cross_control;
+    if (state.wiring.cross_control)
+    {
+        buttons[kTeamsMenuCrossControlIndex].label =
+            og::ui::format_cross_control_label(save.cross_control != 0);
     }
 
     picker_wire_teams_menu_nav(buttons, num_buttons, state.wiring);
@@ -986,7 +877,7 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
     if (state.allied)
     {
         myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
-        mytext.write_xy(10, 24, "ALLIED: ALL PLAYERS FIGHT TOGETHER",
+        mytext.write_xy(10, 24, "SEATS: PLAYERS SHARE ONE TEAM",
                         YELLOW, 1);
     }
     else if (!state.campaign_mounted)
@@ -1014,104 +905,129 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
 
 } // namespace
 
-Sint32 create_teams_menu(Sint32 arg1)
+// create_teams_menu (the TEAMS subscreen): engine-hosted — the spec and the
+// entry wrapper live in menu_screen_specs.cpp; the per-frame machinery stays
+// here beside its helpers (compute_teams_menu_state and the draw passes are
+// file-local). One open screen's state is shared between the hooks: the
+// frame state the rewire computes and the draw hooks read, the per-team
+// trace dedup, and the level-reload guard cursor.
+static TeamsMenuFrameState g_teams_engine_state;
+static std::array<int, 4> g_teams_engine_traced_page = {-1, -1, -1, -1};
+static short g_teams_engine_last_level_id = -1;
+
+// Trace each paged team's slice on entry and on every flip (tests pin the
+// indicator and the rotating member names through these).
+static void teams_engine_trace_paged_rows(const TeamsMenuFrameState& frame)
 {
-    (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_teamsmenu_buttons();
-    int num_buttons = picker_teamsmenu_button_count();
-    int highlighted_button = kTeamsMenuBackIndex;
-    // Per-team pager pages are session state and reset every open.
-    pks().teams_menu_team_page.fill(0);
-    TeamsMenuFrameState state = compute_teams_menu_state();
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button, state);
-    short last_level_id =
-        og::runtime::current_session->myscreen_->save_data.scen_num;
-    // Trace each paged team's slice on entry and on every flip (tests pin
-    // the indicator and the rotating member names through these).
-    std::array<int, 4> traced_page = {-1, -1, -1, -1};
-    const auto trace_paged_rows = [&traced_page](
-                                      const TeamsMenuFrameState& frame) {
-        for (int t = 0; t < 4; ++t)
-        {
-            const auto& pages =
-                frame.detail_pages[static_cast<std::size_t>(t)];
-            if (pages.size() <= 1)
-                continue;
-            const int page = frame.detail_page[static_cast<std::size_t>(t)];
-            if (traced_page[static_cast<std::size_t>(t)] == page)
-                continue;
-            traced_page[static_cast<std::size_t>(t)] = page;
-            TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
-                  static_cast<int>(pages.size()),
-                  pages[static_cast<std::size_t>(page)].c_str());
-        }
-    };
-    trace_paged_rows(state);
-
-    while (!(retvalue & MENU_EXIT))
+    for (int t = 0; t < 4; ++t)
     {
-        picker_lobby_poll();
-        // Mirror the parent team-build loop's level-reload guard: a host
-        // SET LEVEL synced into save.scen_num while parked here must reload
-        // the picker world so JOIN gating reflects the real map.
-        if (last_level_id !=
-            og::runtime::current_session->myscreen_->save_data.scen_num)
-        {
-            last_level_id =
-                og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->world().id = last_level_id;
-            og::runtime::current_session->myscreen_->load_level();
-        }
-        state = compute_teams_menu_state();
-        sync_teams_menu_visibility(
-            buttons, num_buttons, highlighted_button, state);
-        trace_paged_rows(state);
-        // A joiner parked here still follows the host's GO.
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        // Check before reset_buttons can clear it.
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        reset_buttons(og::runtime::current_session->localbuttons_,
-                      buttons, num_buttons, retvalue);
-
-        // Draw: row bars go beneath the buttons (the in-row pager must keep
-        // the standard button face); text content goes on top of both.
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_teams_menu_row_bars();
-        draw_buttons(buttons, num_buttons);
-        draw_teams_menu_content(state, mytext);
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
+        const auto& pages = frame.detail_pages[static_cast<std::size_t>(t)];
+        if (pages.size() <= 1)
+            continue;
+        const int page = frame.detail_page[static_cast<std::size_t>(t)];
+        if (g_teams_engine_traced_page[static_cast<std::size_t>(t)] == page)
+            continue;
+        g_teams_engine_traced_page[static_cast<std::size_t>(t)] = page;
+        TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
+              static_cast<int>(pages.size()),
+              pages[static_cast<std::size_t>(page)].c_str());
     }
+}
+
+// Per-open reset, called by the create_teams_menu wrapper before the runner:
+// pager pages are session state and reset every open; the reload cursor
+// starts at the current level (no reload on entry — the parent team-build
+// loop already loaded it).
+void picker_teams_menu_engine_reset_open_state()
+{
+    pks().teams_menu_team_page.fill(0);
+    g_teams_engine_traced_page = {-1, -1, -1, -1};
+    g_teams_engine_last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+}
+
+// The spec's Rewire program (G1): the legacy per-frame compute + sync +
+// trace, verbatim — visibility for every conditional row, both label
+// surfaces, the full nav rewire, and the highlight pull.
+void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& highlighted_button)
+{
+    g_teams_engine_state = compute_teams_menu_state();
+    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button,
+                               g_teams_engine_state);
+    teams_engine_trace_paged_rows(g_teams_engine_state);
+}
+
+// Mirror the parent team-build loop's level-reload guard: a host SET LEVEL
+// synced into save.scen_num while parked here must reload the picker world
+// so JOIN gating reflects the real map. Engine placement note (V1): the
+// legacy loop reloaded at loop-top BEFORE the frame's compute; frame_tick
+// runs after reset and before the draw, so the recompute lands one frame
+// (10ms) later — the flows that watch this poll with timeouts.
+bool picker_teams_menu_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    if (g_teams_engine_last_level_id != myscreen->save_data.scen_num)
+    {
+        g_teams_engine_last_level_id = myscreen->save_data.scen_num;
+        myscreen->world().id = g_teams_engine_last_level_id;
+        myscreen->load_level();
+    }
+    return true;
+}
+
+// Draw split: row bars go BENEATH the buttons (the in-row pager must keep
+// the standard button face); all text content goes on top of both.
+void picker_teams_menu_engine_draw_background(void* /*screen_state*/)
+{
     og::runtime::current_session->myscreen_->clearbuffer();
+    draw_backdrop();
+    draw_teams_menu_row_bars();
+}
 
-    // Propagate MENU_EXIT (remote start / GO) so TeamBuild interception works;
-    // BACK returns MENU_REDRAW to keep the parent create_team_menu running.
-    if (retvalue & MENU_EXIT)
-        return retvalue;
+void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
+{
+    draw_teams_menu_content(g_teams_engine_state,
+                            og::runtime::current_session->myscreen_->text_normal);
+}
 
-    return MENU_REDRAW;
+// §2.7 cross-control dispatch (the TEAMS screen's one MenuSpecRow, G3).
+// Visible to every peer; host-only actionable. A host toggle is a SETTINGS
+// change: the sync propagates it over the wire and the server clears every
+// non-host machine's ready (§4.5 — the settings-clear-ready rule). The value
+// is sanitized on toggle ({0,1}; any junk counts as ON and lands on 0);
+// cross_control is SESSION-ONLY (never in the GTL file), so no company
+// autosave fires here. Both label surfaces update the same frame; the
+// per-frame sync re-derives them from the save thereafter.
+Sint32 picker_teams_menu_engine_on_spec_row(int row, void* /*screen_state*/)
+{
+    if (row != kTeamsMenuCrossControlIndex)
+        return 0;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    if (!picker_lobby_host_controls_visible())
+    {
+        TRACE("teams", "cross_control_denied");
+        popup_dialog("HOST CONTROLS THIS SETTING",
+                     "Only the host may\nchange cross-control");
+        return MENU_OK;
+    }
+    save.cross_control =
+        static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
+    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
+    picker_lobby_sync_settings_from_save();
+
+    const std::string label =
+        og::ui::format_cross_control_label(save.cross_control != 0);
+    if (static_cast<int>(pks().teamsmenu_buttons.size()) >
+        kTeamsMenuCrossControlIndex)
+    {
+        pks().teamsmenu_buttons[kTeamsMenuCrossControlIndex].label = label;
+    }
+    vbutton* const live = og::runtime::current_session
+                              ->allbuttons_[kTeamsMenuCrossControlIndex];
+    if (live != nullptr)
+        live->label = label;
+    return MENU_OK;
 }
 
 #ifdef TESTING
@@ -1146,19 +1062,110 @@ void picker_test_render_teams_menu_frame()
 // a scratch headless level load (never touches the live picker world).
 // ---------------------------------------------------------------------------
 
-// PREV/NEXT handler: records the requested page step for the frame loop and
-// returns MENU_OK so both vbutton::leftclick and handle_menu_nav fire it.
+// PREV/NEXT handler: records the requested page step and returns MENU_OK so
+// both vbutton::leftclick and handle_menu_nav fire it; the engine screen's
+// consume_click hook turns the step into a clamped page flip.
 Sint32 view_scenario_page_flip(Sint32 step)
 {
     pks().view_scenario_page_step = (step < 0) ? -1 : 1;
     return MENU_OK;
 }
 
+// VIEW LEVEL: engine-hosted (§1.8 step 6; the spec lives in
+// menu_screen_specs.cpp, docs/menu-engine.md). The open screen's report and
+// PageModel live in the wrapper; the hooks read them through a file-static
+// pointer (the rewire and state-override signatures carry no screen_state —
+// the TEAMS pattern). Null state = no open screen (the G5 sweep and the
+// gate-lattice sweep drive the spec bare) and presents the single-page
+// shape: pagers hidden, BACK's right-link closed.
+struct ViewScenarioEngineState
+{
+    og::ui::PageModel pager;
+    std::vector<std::string> lines;
+    std::string title;
+};
+
+static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
+
+// PREV/NEXT visibility: the legacy entry-time `hidden = !multi_page()`,
+// re-derived per frame (page count never changes while the screen is open).
+og::ui::RowState picker_view_scenario_engine_pager_row_state(
+    const og::ui::MenuLabelContext& /*context*/)
+{
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    return (state != nullptr && state->pager.multi_page())
+        ? og::ui::RowState::Visible
+        : og::ui::RowState::Hidden;
+}
+
+// The legacy entry-time nav closure (`back.nav.right = -1` when one page),
+// re-asserted per frame over the static base link.
+void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
+                                        int& /*highlighted_button*/)
+{
+    if (num_buttons <= kViewScenarioBackIndex)
+        return;
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    const bool multi_page = state != nullptr && state->pager.multi_page();
+    buttons[kViewScenarioBackIndex].nav.right =
+        multi_page ? kViewScenarioPrevIndex : -1;
+}
+
+// The legacy page-step consumption, verbatim at the legacy frame point:
+// PREV/NEXT carry ButtonAction::ViewScenarioPageFlip — both mouse leftclick
+// and keyboard FIRE route through do_call, which records the requested step
+// and returns MENU_OK. Consume the step here (retvalue-zero + clamped flip
+// + the flip trace).
+Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
+                                                 void* /*screen_state*/)
+{
+    ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr)
+        return retvalue;
+    const int step = pks().view_scenario_page_step;
+    pks().view_scenario_page_step = 0;
+    if (step != 0)
+    {
+        retvalue = 0;
+        if (state->pager.step(step))
+        {
+            TRACE("picker", "view_scenario lines=%d page=%d",
+                  static_cast<int>(state->lines.size()), state->pager.page);
+        }
+    }
+    return retvalue;
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons —
+// the report frame at (5,5,314,160) never covers the y>=170 buttons).
+void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
+{
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr)
+        return;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
+    mytext.write_xy(10, 8, state->title.c_str(), static_cast<unsigned char>(BLACK), 1);
+    const int first_line = state->pager.first_index();
+    for (int line_index = first_line; line_index < state->pager.end_index();
+         ++line_index)
+    {
+        mytext.write_xy(10, 18 + (line_index - first_line) * 6,
+                        state->lines[static_cast<std::size_t>(line_index)].c_str(),
+                        static_cast<unsigned char>(BLACK), 1);
+    }
+    if (state->pager.multi_page())
+    {
+        mytext.write_xy(140, 176, state->pager.indicator().c_str(), WHITE, 1);
+    }
+}
+
+// VIEW LEVEL, engine-hosted (the legacy loop is gone). The pre-loop guards,
+// the scratch level load, and the exit shape are the legacy code, verbatim:
+// BACK returns MENU_REDRAW; a remote start propagates its MENU_EXIT.
 Sint32 create_view_scenario_menu(Sint32 arg1)
 {
     (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // The viewer is read-only and never mounts: a joiner without the host's
@@ -1180,102 +1187,31 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(scenario.world(), save);
-    const std::vector<std::string> lines =
-        og::ui::format_scenario_report_lines(report);
-    const int total_pages = std::max(
-        1,
-        (static_cast<int>(lines.size()) + kViewScenarioRowsPerPage - 1) /
-            kViewScenarioRowsPerPage);
-    int page = 0;
+    ViewScenarioEngineState state;
+    state.lines = og::ui::format_scenario_report_lines(report);
+    // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
+    // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
+    // all come from the model; the oracle test in tests/unit/test_menu_spec
+    // pins its equivalence to the legacy arithmetic this replaced.
+    state.pager = og::ui::PageModel::make(
+        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
 
-    std::string title =
+    state.title =
         std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
-    if (title.size() > 48)
-        title.resize(48);
+    if (state.title.size() > 48)
+        state.title.resize(48);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
-          static_cast<int>(lines.size()), page);
+          static_cast<int>(state.lines.size()), state.pager.page);
 
     og::runtime::current_session->myscreen_->clearbuffer();
 
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_viewscenario_buttons();
-    int num_buttons = picker_viewscenario_button_count();
-    int highlighted_button = kViewScenarioBackIndex;
-    buttons[kViewScenarioPrevIndex].hidden = total_pages <= 1;
-    buttons[kViewScenarioNextIndex].hidden = total_pages <= 1;
-    if (total_pages <= 1)
-        buttons[kViewScenarioBackIndex].nav.right = -1;
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-
     pks().view_scenario_page_step = 0;
+    g_view_scenario_engine_state = &state;
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::view_scenario_menu_screen_spec(), &state);
+    g_view_scenario_engine_state = nullptr;
 
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input: the leftmouse() result is the consumed press transition; a
-        // fast press+release must still dispatch the click.
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // BACK returns MENU_REDRAW to signal "go back to team menu".
-        if (retvalue & MENU_REDRAW)
-            break;
-
-        // PREV/NEXT carry ButtonAction::ViewScenarioPageFlip: both mouse
-        // leftclick and keyboard FIRE route through do_call, which records
-        // the requested step and returns MENU_OK. Consume the step here.
-        const int step = pks().view_scenario_page_step;
-        pks().view_scenario_page_step = 0;
-        if (step != 0)
-        {
-            const int next_page =
-                std::clamp(page + step, 0, total_pages - 1);
-            retvalue = 0;
-            if (next_page != page)
-            {
-                page = next_page;
-                TRACE("picker", "view_scenario lines=%d page=%d",
-                      static_cast<int>(lines.size()), page);
-            }
-        }
-
-        reset_buttons(og::runtime::current_session->localbuttons_,
-                      buttons, num_buttons, retvalue);
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
-        mytext.write_xy(10, 8, title.c_str(), static_cast<unsigned char>(BLACK), 1);
-        const int first_line =
-            page * kViewScenarioRowsPerPage;
-        for (int row = 0; row < kViewScenarioRowsPerPage; ++row)
-        {
-            const int line_index = first_line + row;
-            if (line_index >= static_cast<int>(lines.size()))
-                break;
-            mytext.write_xy(10, 18 + row * 6, lines[line_index].c_str(),
-                            static_cast<unsigned char>(BLACK), 1);
-        }
-        if (total_pages > 1)
-        {
-            const std::string page_info =
-                std::format("{}/{}", page + 1, total_pages);
-            mytext.write_xy(140, 176, page_info.c_str(), WHITE, 1);
-        }
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
     og::runtime::current_session->myscreen_->clearbuffer();
 
     if (retvalue & MENU_EXIT)
@@ -1292,107 +1228,9 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 // the StartGame item), BACK returns MENU_REDRAW to the team-build screen.
 // ---------------------------------------------------------------------------
 
-Sint32 create_scenario_menu(Sint32 arg1)
-{
-    (void)arg1;
-    Sint32 retvalue = 0;
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = picker_scenariomenu_buttons();
-    int num_buttons = picker_scenariomenu_button_count();
-    int highlighted_button = kScenarioMenuBackIndex;
-    sync_scenario_menu_host_control_visibility(
-        buttons, num_buttons, highlighted_button);
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-
-    short last_level_id =
-        og::runtime::current_session->myscreen_->save_data.scen_num;
-
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        sync_scenario_menu_host_control_visibility(
-            buttons, num_buttons, highlighted_button);
-        // A joiner parked here still follows the host's GO.
-        if (team_build_remote_start_requested(retvalue))
-            break;
-
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Nested screens (TEAMS / VIEW LEVEL / PROGRESS / the campaign and
-        // level pickers) return MENU_REDRAW; reset_buttons clears it and
-        // reinits this layout. BACK carries MENU_EXIT; a remote start that
-        // fired inside a nested screen propagates MENU_EXIT + StartGame.
-        const bool buttons_were_reset = reset_buttons(
-            og::runtime::current_session->localbuttons_, buttons, num_buttons,
-            retvalue);
-        if (retvalue & MENU_EXIT)
-            break;
-
-        // The parent loop's level-reload guard: a SET LEVEL pick (or a host
-        // sync while parked here) must refresh the title strip's world.
-        if (last_level_id !=
-                og::runtime::current_session->myscreen_->save_data.scen_num ||
-            buttons_were_reset)
-        {
-            retvalue = 0;
-            last_level_id =
-                og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->world().id = last_level_id;
-            og::runtime::current_session->myscreen_->load_level();
-        }
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        mytext.write_xy(10, 8, "SCENARIO", WHITE, 1);
-
-        // The campaign-name / level-title strips sit beside the buttons that
-        // change them (always drawn — joiners see the host's choices even
-        // while SET CAMPAIGN / SET LEVEL are hidden).
-        const auto draw_strip = [&mytext](int y, const std::string& value) {
-            const std::string clipped = clip_to_width(value, 32);
-            const int strip_w = static_cast<int>(clipped.size()) * 6;
-            og::runtime::current_session->myscreen_->draw_rect_filled(
-                114, y - 1, strip_w + 4, 8, PURE_BLACK, 150);
-            mytext.write_xy(116, y, WHITE, "%s", clipped.c_str());
-        };
-        draw_strip(
-            buttons[kScenarioMenuSetCampaignIndex].y + 4,
-            og::data::campaign_display_title(
-                og::runtime::current_session->myscreen_->save_data
-                    .current_campaign));
-        draw_strip(
-            buttons[kScenarioMenuSetLevelIndex].y + 4,
-            std::format(
-                "SCEN {}: {}",
-                og::runtime::current_session->myscreen_->save_data.scen_num,
-                og::runtime::current_session->myscreen_->world().title));
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
-    og::runtime::current_session->myscreen_->clearbuffer();
-
-    // Propagate a remote start (MENU_EXIT + the StartGame item) so the
-    // parent team-build screen exits into GO; BACK's own MENU_EXIT folds
-    // into MENU_REDRAW to keep the parent running.
-    if ((retvalue & MENU_EXIT) && team_build_start_selected())
-        return retvalue;
-
-    return MENU_REDRAW;
-}
+// create_scenario_menu (the SCENARIO subscreen): engine-hosted — the spec,
+// the title-strip content pass, the level-reload guard, and the entry
+// wrapper live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // Helper struct for progress menu
 struct LevelProgress {
@@ -1405,24 +1243,198 @@ struct LevelProgress {
 
 std::vector<int> get_accessible_levels();
 
-Sint32 create_progress_menu(Sint32 arg1)
+// ---------------------------------------------------------------------------
+// PROGRESS: engine-hosted (§1.8 step 6; the spec lives in
+// menu_screen_specs.cpp, docs/menu-engine.md). PREV/NEXT are KEYBOARD-DEAD
+// by design (myfun = 0 — the shipped screen; fixing that is a visible
+// change deferred past Layer E): the raw mouse-rect dispatch, the per-row
+// GO shortcut scan, and the held-click spin-wait live in the frame_tick
+// hook, verbatim. The screen draws over a plain cleared buffer (no
+// backdrop). NOTE the draw-order normalization: legacy painted the report
+// BEFORE its three buttons; the runner paints buttons first — no content
+// pixel reaches y >= 170, so the output is identical.
+// ---------------------------------------------------------------------------
+
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct ProgressEngineState
 {
-    Sint32 retvalue = 0;
+    std::vector<LevelProgress> levels;
+    int num_cleared = 0;
+    int scroll_offset = 0;
+    int visible_rows = 10;
+};
+
+// The legacy button rects, needed by the raw mouse-rect dispatch (the
+// engine spec transcribes the same values).
+constexpr UiRect kProgressPrevBtn = {30, 170, 40, 20};
+constexpr UiRect kProgressNextBtn = {80, 170, 40, 20};
+
+void picker_progress_menu_engine_draw_background(void* /*screen_state*/)
+{
+    og::runtime::current_session->myscreen_->clearbuffer();
+}
+
+// The legacy custom input block, verbatim: held-click spin-wait (lobby kept
+// alive; a remote start ends the wait and fires the loop-top check next
+// frame — team_build_remote_start_requested is idempotent), raw-rect
+// PREV/NEXT scrolling, and the per-row GO shortcut (false => the runner
+// exits with MENU_REDRAW, the legacy return). The legacy block also read
+// retvalue == MENU_OK for keyboard PREV/NEXT — dead code (their myfun is 0,
+// so neither leftclick nor handle_menu_nav ever produced MENU_OK here) —
+// and that dead branch does not survive.
+bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
+{
+    auto* const state = static_cast<ProgressEngineState*>(screen_state);
+    if (state == nullptr)
+        return true;
+
+    MouseState& mymouse = query_mouse();
+    bool clicked = mymouse.left;
+    const int mx = static_cast<int>(mymouse.x);
+    const int my = static_cast<int>(mymouse.y);
+    if (clicked) {
+        while (mymouse.left) {
+            picker_lobby_poll();
+            Sint32 remote_retvalue = 0;
+            if (team_build_remote_start_requested(remote_retvalue))
+                return true;
+            og::input_native::sleep_ms(1);
+            get_input_events(POLL);
+        }
+    }
+
+    bool prev_enabled = (state->scroll_offset > 0);
+    bool next_enabled = (state->scroll_offset + state->visible_rows < static_cast<int>(state->levels.size()));
+
+    bool do_prev = prev_enabled && clicked && kProgressPrevBtn.x <= mx && mx <= kProgressPrevBtn.x + kProgressPrevBtn.w
+                   && kProgressPrevBtn.y <= my && my <= kProgressPrevBtn.y + kProgressPrevBtn.h;
+    bool do_next = next_enabled && clicked && kProgressNextBtn.x <= mx && mx <= kProgressNextBtn.x + kProgressNextBtn.w
+                   && kProgressNextBtn.y <= my && my <= kProgressNextBtn.y + kProgressNextBtn.h;
+
+    if (do_prev) {
+        state->scroll_offset--;
+    }
+    if (do_next) {
+        state->scroll_offset++;
+    }
+
+    // Check for GO button clicks on level rows
+    if (clicked) {
+        int row_y = 36;
+        int row_height = 13;
+        int go_btn_x = 295;
+        int go_btn_w = 20;
+        for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
+            LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
+            if (!lp.is_cleared) {
+                // Check if click is on this row's GO button
+                if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
+                    my >= row_y && my <= row_y + row_height) {
+                    // Set current level and exit
+                    og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
+                    picker_lobby_sync_settings_from_save();
+                    og::runtime::current_session->myscreen_->clearbuffer();
+                    return false;
+                }
+            }
+            row_y += row_height;
+        }
+    }
+
+    return true;
+}
+
+// The legacy report pass, verbatim: header, column bar, level rows with GO
+// shortcuts, scroll indicator. No pixel reaches the y >= 170 button strip,
+// so painting after draw_buttons (the runner order) is output-identical.
+void picker_progress_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<ProgressEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
-    if (arg1)
-        arg1 = 1;
+    // Header
+    std::string header = std::format("Level Progress: {} cleared of {} discovered",
+             state->num_cleared, static_cast<int>(state->levels.size()));
+    mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
+
+    // Column headers
+    og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
+    mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
+    mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
+    mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
+    mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
+
+    // Level rows
+    int y = 36;
+    int row_height = 13;
+    for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
+        LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
+
+        // ID
+        std::string buf = std::format("{}", lp.id);
+        mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
+
+        // Status
+        unsigned char status_color;
+        const char* status_text;
+        if (lp.is_cleared) {
+            status_text = "CLEARED";
+            status_color = DARK_GREEN;
+        } else if (lp.is_current) {
+            status_text = "CURRENT";
+            status_color = YELLOW;
+        } else {
+            status_text = "-------";
+            status_color = WHITE;
+        }
+        mytext.write_xy(36, y + 2, status_text, status_color, 1);
+
+        // Title
+        mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
+
+        // Enemy count
+        if (lp.is_cleared) {
+            mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
+        } else {
+            buf = std::format("{}", lp.num_enemies);
+            mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
+
+            // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
+            og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
+            mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
+        }
+
+        y += row_height;
+    }
+
+    // Scroll indicator
+    if (state->levels.size() > static_cast<size_t>(state->visible_rows)) {
+        std::string scroll_info = std::format("{}-{} of {}",
+                 state->scroll_offset + 1,
+                 std::min(state->scroll_offset + state->visible_rows, static_cast<int>(state->levels.size())),
+                 static_cast<int>(state->levels.size()));
+        mytext.write_xy(140, 172, scroll_info.c_str(), WHITE, 1);
+    }
+}
+
+// PROGRESS, engine-hosted (the legacy loop is gone). The level-report build
+// and the exit shape are the legacy code, verbatim: every local exit (BACK,
+// a GO shortcut) returns MENU_REDRAW; a remote start propagates its
+// MENU_EXIT (legacy split both ways across its two check sites — normalized
+// to the propagating shape).
+Sint32 create_progress_menu(Sint32 arg1)
+{
+    // arg1 is part of the button.h signature but was never read by the
+    // legacy loop (it only normalized it and moved on).
+    (void)arg1;
 
     og::runtime::current_session->myscreen_->clearbuffer();
 
-	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
     // Get accessible levels
     std::vector<int> level_ids = get_accessible_levels();
-    std::vector<LevelProgress> levels;
-
-    // Count cleared levels
-    int num_cleared = 0;
+    ProgressEngineState state;
 
     // Load level info for each accessible level
     for (int level_id : level_ids) {
@@ -1432,7 +1444,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         lp.is_current = (level_id == og::runtime::current_session->myscreen_->save_data.scen_num);
 
         if (lp.is_cleared)
-            num_cleared++;
+            state.num_cleared++;
 
         // Load level to get title and enemy count
         LevelRuntimeData ld(level_id);
@@ -1453,175 +1465,15 @@ Sint32 create_progress_menu(Sint32 arg1)
             lp.num_enemies = 0;
         }
 
-        levels.push_back(lp);
+        state.levels.push_back(lp);
     }
 
-    // Scrolling state
-    int scroll_offset = 0;
-    int visible_rows = 10;
-
-    // Buttons
-    UiRect prev_btn = {30, 170, 40, 20};
-    UiRect next_btn = {80, 170, 40, 20};
-    UiRect back_btn = {260, 170, 50, 20};
-
-    button buttons[] = {
-        button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav{.right=1}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav{.left=0, .right=2}),
-        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.left=1}),
-    };
-    int num_buttons = 3;
-    int highlighted_button = 2;
-    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-    while (!(retvalue & MENU_EXIT))
-    {
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-        // Input
-        if (leftmouse(buttons))
-            retvalue = og::runtime::current_session->localbuttons_->leftclick();
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Handle scroll buttons
-        MouseState& mymouse = query_mouse();
-        bool clicked = mymouse.left;
-        const int mx = static_cast<int>(mymouse.x);
-        const int my = static_cast<int>(mymouse.y);
-        if (clicked) {
-            while (mymouse.left) {
-                picker_lobby_poll();
-                if (team_build_remote_start_requested(retvalue))
-                    return retvalue;
-                og::input_native::sleep_ms(1);
-                get_input_events(POLL);
-            }
-        }
-
-        bool prev_enabled = (scroll_offset > 0);
-        bool next_enabled = (scroll_offset + visible_rows < static_cast<int>(levels.size()));
-
-        bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mx && mx <= prev_btn.x + prev_btn.w
-                       && prev_btn.y <= my && my <= prev_btn.y + prev_btn.h)
-                       || (retvalue == MENU_OK && highlighted_button == 0));
-        bool do_next = next_enabled && ((clicked && next_btn.x <= mx && mx <= next_btn.x + next_btn.w
-                       && next_btn.y <= my && my <= next_btn.y + next_btn.h)
-                       || (retvalue == MENU_OK && highlighted_button == 1));
-
-        if (do_prev) {
-            scroll_offset--;
-            retvalue = 0;
-        }
-        if (do_next) {
-            scroll_offset++;
-            retvalue = 0;
-        }
-
-        // Check for GO button clicks on level rows
-        if (clicked) {
-            int row_y = 36;
-            int row_height = 13;
-            int go_btn_x = 295;
-            int go_btn_w = 20;
-            for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
-                LevelProgress& lp = levels[i];
-                if (!lp.is_cleared) {
-                    // Check if click is on this row's GO button
-                    if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
-                        my >= row_y && my <= row_y + row_height) {
-                        // Set current level and exit
-                        og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
-                        picker_lobby_sync_settings_from_save();
-                        og::runtime::current_session->myscreen_->clearbuffer();
-                        return MENU_REDRAW;
-                    }
-                }
-                row_y += row_height;
-            }
-        }
-
-        // Reset
-        if (retvalue == MENU_OK && highlighted_button != 2)
-            retvalue = 0;
-
-        // Draw
-        og::runtime::current_session->myscreen_->clearbuffer();
-
-        // Header
-        std::string header = std::format("Level Progress: {} cleared of {} discovered",
-                 num_cleared, static_cast<int>(levels.size()));
-        mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
-
-        // Column headers
-        og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
-        mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
-        mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
-        mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
-        mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
-
-        // Level rows
-        int y = 36;
-        int row_height = 13;
-        for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
-            LevelProgress& lp = levels[i];
-
-            // ID
-            std::string buf = std::format("{}", lp.id);
-            mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
-
-            // Status
-            unsigned char status_color;
-            const char* status_text;
-            if (lp.is_cleared) {
-                status_text = "CLEARED";
-                status_color = DARK_GREEN;
-            } else if (lp.is_current) {
-                status_text = "CURRENT";
-                status_color = YELLOW;
-            } else {
-                status_text = "-------";
-                status_color = WHITE;
-            }
-            mytext.write_xy(36, y + 2, status_text, status_color, 1);
-
-            // Title
-            mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
-
-            // Enemy count
-            if (lp.is_cleared) {
-                mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
-            } else {
-                buf = std::format("{}", lp.num_enemies);
-                mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
-
-                // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
-                og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
-                mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
-            }
-
-            y += row_height;
-        }
-
-        // Scroll indicator
-        if (levels.size() > static_cast<size_t>(visible_rows)) {
-            std::string scroll_info = std::format("{}-{} of {}",
-                     scroll_offset + 1,
-                     std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
-                     static_cast<int>(levels.size()));
-            mytext.write_xy(140, 172, scroll_info.c_str(), WHITE, 1);
-        }
-
-        // Buttons
-        draw_buttons(buttons, num_buttons);
-        draw_highlight(buttons[highlighted_button]);
-
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        og::input_native::sleep_ms(10);
-    }
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::progress_menu_screen_spec(), &state);
 
     og::runtime::current_session->myscreen_->clearbuffer();
+    if (retvalue & MENU_EXIT)
+        return retvalue;
     return MENU_REDRAW;
 }
 
@@ -1660,363 +1512,348 @@ std::string get_class_description(unsigned char family)
     }
 }
 
-Sint32 create_hire_menu(Sint32 arg1)
-{
-	Sint32 linesdown, retvalue = 0;
-	Sint32 start_time = query_timer();
-	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
-	Uint32 current_cost;
-	Sint32 clickvalue;
+// ---------------------------------------------------------------------------
+// HIRE: engine-hosted (§1.8 step 6; the spec lives in menu_screen_specs.cpp,
+// docs/menu-engine.md). The hooks below carry everything the deleted legacy
+// loop did around the shared frame skeleton: the entry-time PREV/NEXT
+// repositioning, the solo-hidden team cycler's nav closure, the reset tail,
+// the new-game popup, and the stat/cost/description content pass — all
+// verbatim, beside the file-local helpers they use.
+// ---------------------------------------------------------------------------
 
-    
+// The legacy box geometry, verbatim (pure constants; shared by the
+// prepare-buttons hook and the content pass).
+struct HireMenuLayout
+{
     UiRect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
     UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
-    
+
     UiRect cost_box = {196, 130, 104, 31};
     UiRect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
     UiRect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
-    
+
     UiRect description_box = {11, 71, 180, 90};
     UiRect description_box_inner = {description_box.x + 4, description_box.y + 4, description_box.w - 8, description_box.h - 8};
     UiRect description_box_content = {description_box_inner.x + 4, description_box_inner.y + 4, description_box_inner.w - 8, description_box_inner.h - 8};
-    
+
     UiRect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     UiRect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
-    
-    button* buttons = picker_hiremenu_buttons();
-    const int num_buttons = picker_hiremenu_button_count();
+};
 
-    buttons[0].x = description_box.x + description_box.w/2 - buttons[0].sizex - 4 - 30;
-    buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[0].sizey/2;
-    
-    buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
-    buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[1].sizey/2;
-    
-    buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
-    
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct HireEngineState
+{
+    Sint32 start_time = 0;
+    unsigned char last_family = 0;
+    std::string description;
+    std::list<std::string> desc;
+    const char* family_name = "";
+    // arg1 == 1: show the new-game intro popup after the first presented
+    // frame (no production caller passes 1 today — team build passes -1 —
+    // but the signature contract is preserved).
+    bool pending_new_game_popup = false;
+};
+
+// Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
+// the deleted loop (runs once, before init_buttons; the accessor output —
+// what the G2 pins transcribe — keeps the table shape).
+void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
+                                             void* /*screen_state*/)
+{
+    if (num_buttons < 2)
+        return;
+    const HireMenuLayout l;
+    buttons[0].x = l.description_box.x + l.description_box.w/2 - buttons[0].sizex - 4 - 30;
+    buttons[0].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[0].sizey/2;
+
+    buttons[1].x = l.description_box.x + l.description_box.w/2 + 4 + 30;
+    buttons[1].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[1].sizey/2;
+}
+
+// Nav closure over the solo-hidden team cycler: legacy left HIRE ME's
+// right-link pointing at the hidden row — a no-op in handle_menu_nav (it
+// refuses hidden targets) — so the explicit no-op (-1) is
+// behavior-identical and satisfies the engine's §1.5 nav invariant.
+void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
+                                    int& /*highlighted_button*/)
+{
+    if (num_buttons > 3)
+        buttons[3].nav.right = buttons[2].hidden ? -1 : 2;
+}
+
+// The legacy reset tail: after any consumed MENU_OK/MENU_REDRAW re-init,
+// re-derive the hire-team label onto the fresh live surface.
+void picker_hire_menu_engine_on_reset(void* /*screen_state*/)
+{
+    change_hire_teamnum(0);
+}
+
+// The legacy loop-bottom arg1 == 1 branch: one intro popup after the first
+// presented frame (frame 1 draws at the END of iteration 1; the tick for
+// iteration 2 is the first point after that present), then a re-init
+// because the production popup swaps allbuttons_ under the screen.
+bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame)
+{
+    auto* const state = static_cast<HireEngineState*>(screen_state);
+    if (state == nullptr)
+        return true;
+    if (state->pending_new_game_popup && frame >= 2)
+    {
+        state->pending_new_game_popup = false;
+        popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
+        // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+        og::runtime::current_session->localbuttons_ =
+            init_buttons(pks().hiremenu_buttons.data(),
+                         static_cast<int>(pks().hiremenu_buttons.size()));
+    }
+    return true;
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons):
+// name box, portrait, description, cost, and the stat panel. Note the
+// shipped one-frame quirk preserved on purpose: the name-box label is drawn
+// from last frame's family_name, and the family-change re-derive happens
+// mid-pass (between the portrait and the description lines).
+void picker_hire_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<HireEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
+    const HireMenuLayout l;
+
+    if (!og::runtime::current_session->current_guy_)
+        sync_current_guy_from_hire();
+
+    // Name box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.name_box.x, l.name_box.y, l.name_box.x + l.name_box.w - 1,
+        l.name_box.y + l.name_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.name_box_inner.x, l.name_box_inner.y, l.name_box_inner.w,
+        l.name_box_inner.h);
+
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    mytext.write_xy(l.name_box.x + l.name_box.w/2 - 3*static_cast<Sint32>(strlen(state->family_name)), l.name_box.y + 6, state->family_name, static_cast<unsigned char>(DARK_BLUE), 1);
+
+    show_guy(query_timer()-state->start_time, 0, l.description_box.x + l.description_box.w/2, l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2); // 0 means current_guy
+    change_hire_teamnum(0);
+
+
+    // Description box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.description_box.x, l.description_box.y,
+        l.description_box.x + l.description_box.w - 1,
+        l.description_box.y + l.description_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.description_box_inner.x, l.description_box_inner.y,
+        l.description_box_inner.w, l.description_box_inner.h);
+
+    if(og::runtime::current_session->current_guy_->family != state->last_family)
+    {
+        // Update description
+        state->last_family = og::runtime::current_session->current_guy_->family;
+        state->description = get_class_description(state->last_family);
+        state->desc = explode(state->description);
+
+        state->family_name = get_family_string(state->last_family);
+    }
+
+    int i = 0;
+    for(auto& line : state->desc)
+    {
+        mytext.write_xy(l.description_box_content.x, l.description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
+        i++;
+    }
+
+    // Cost box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.cost_box.x, l.cost_box.y, l.cost_box.x + l.cost_box.w - 1,
+        l.cost_box.y + l.cost_box.h - 1, 1);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.cost_box_inner.x, l.cost_box_inner.y, l.cost_box_inner.w,
+        l.cost_box_inner.h);
+
+    // current_team_num_ is derived from a save-loaded guy::teamnum (which
+    // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
+    const int hire_cash_team =
+        (og::runtime::current_session->current_team_num_ < 0 ||
+         og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
+            ? 0
+            : static_cast<int>(og::runtime::current_session->current_team_num_);
+    og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
+    mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+    const Uint32 current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
+    mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
+    og::runtime::current_session->message_ = std::format("      {}", current_cost );
+    if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
+        mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
+    else
+        mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
+
+    // Stat box
+    og::runtime::current_session->myscreen_->draw_button(
+        l.stat_box.x, l.stat_box.y, l.stat_box.x + l.stat_box.w - 1,
+        l.stat_box.y + l.stat_box.h - 1, 1);
+    mytext.write_xy(l.stat_box.x + 65, l.stat_box.y + 2, DARK_BLUE, "Train");
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        l.stat_box_inner.x, l.stat_box_inner.y, l.stat_box_inner.w,
+        l.stat_box_inner.h);
+
+    // Stat box content
+    Sint32 linesdown = 0;
+    int line_height = 10;
+
+    unsigned char showcolor = STAT_COLOR; // normally STAT_COLOR or STAT_CHANGED
+
+    struct { const char* label; short value; } hire_stats[] = {
+        {"STR:",  og::runtime::current_session->current_guy_->strength},
+        {"DEX:",  og::runtime::current_session->current_guy_->dexterity},
+        {"CON:",  og::runtime::current_session->current_guy_->constitution},
+        {"INT:",  og::runtime::current_session->current_guy_->intelligence},
+        {"ARMOR:", og::runtime::current_session->current_guy_->armor},
+    };
+    for (int si = 0; si < 5; si++) {
+        int y = l.stat_box_content.y + linesdown * line_height;
+        og::runtime::current_session->message_ = std::format("{}", hire_stats[si].value);
+        mytext.write_xy(l.stat_box_content.x, y, hire_stats[si].label,
+                         static_cast<unsigned char>(STAT_COLOR), 1);
+        mytext.write_xy(l.stat_box_content.x + STAT_NUM_OFFSET, y, og::runtime::current_session->message_.c_str(), showcolor, 1);
+        if (si < 4) // cost rating for STR/DEX/CON/INT only
+            mytext.write_xy(l.stat_box_content.x + STAT_NUM_OFFSET + 18, y,
+                            get_training_cost_rating(state->last_family, si), showcolor, 1);
+        if (si < 4)
+            linesdown++;
+    }
+
+    // Separator bar
+    UiRect r = {l.stat_box_content.x + 10, l.stat_box_content.y + (linesdown+1)*line_height - 2, l.stat_box_content.w - 20, 2};
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        r.x, r.y, r.w, r.h);
+
+    int derived_offset = 3*STAT_NUM_OFFSET/4;
+    auto ds = picker_compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
+
+    linesdown++;
+    int hire_line = linesdown;
+    draw_derived_stats_block(mytext, ds, l.stat_box_content.x, derived_offset, showcolor,
+        [&](int lline) { return l.stat_box_content.y + lline*line_height + 4; }, hire_line);
+}
+
+// HIRE, engine-hosted (the legacy loop is gone). Entry setup, session
+// lifetime, and the exit shape are the legacy code, verbatim: BACK folds to
+// MENU_REDRAW (the spec's exit_value); a remote start propagates its
+// MENU_EXIT directly (the slot-menu normalization — the parent breaks with
+// StartGame selected instead of re-detecting the start one loop later).
+Sint32 create_hire_menu(Sint32 arg1)
+{
 	og::runtime::current_session->myscreen_->clearbuffer();
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	#ifdef DISABLE_MULTIPLAYER
-	buttons[2].hidden = true;
-	#endif
-
-	int highlighted_button = 1;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     og::ui::HireSession hire_session(og::runtime::current_session->myscreen_->save_data, og::runtime::current_session->current_team_num_);
     pks().hire_session = &hire_session;
     sync_current_guy_from_hire();
+    // Legacy entry side effects (team stamp on the recruit); the label write
+    // inside is null-guarded and re-derived on the first frame regardless.
     change_hire_teamnum(0);
-    
-    
-    unsigned char last_family = og::runtime::current_session->current_guy_->family;
-    std::string description = get_class_description(last_family);
-    std::list<std::string> desc = explode(description);
-    const char* family_name = get_family_string(last_family);
-	
+
+    HireEngineState state;
+    state.start_time = query_timer();
+    state.last_family = og::runtime::current_session->current_guy_->family;
+    state.description = get_class_description(state.last_family);
+    state.desc = explode(state.description);
+    state.family_name = get_family_string(state.last_family);
+    state.pending_new_game_popup = (arg1 == 1);
+
 	grab_mouse();
 
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		clickvalue = leftmouse(buttons);
-		if (clickvalue == 1)
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-		else if (clickvalue == 2)
-			retvalue = og::runtime::current_session->localbuttons_->rightclick();
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        // Reset buttons
-        if(retvalue == MENU_OK || retvalue == MENU_REDRAW)
-        {
-	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::hire_menu_screen_spec(), &state);
 
-            // Update our team-number display ..
-            change_hire_teamnum(0);
-            
-            retvalue = 0;
-        }
-		
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-		
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-        if (!og::runtime::current_session->current_guy_)
-            sync_current_guy_from_hire();
-        
-        // Name box
-        og::runtime::current_session->myscreen_->draw_button(
-            name_box.x, name_box.y, name_box.x + name_box.w - 1,
-            name_box.y + name_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            name_box_inner.x, name_box_inner.y, name_box_inner.w,
-            name_box_inner.h);
-        
-        text& mytext = og::runtime::current_session->myscreen_->text_normal;
-        mytext.write_xy(name_box.x + name_box.w/2 - 3*static_cast<Sint32>(strlen(family_name)), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
-        
-		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
-        change_hire_teamnum(0);
-        
-        
-        // Description box
-        og::runtime::current_session->myscreen_->draw_button(
-            description_box.x, description_box.y,
-            description_box.x + description_box.w - 1,
-            description_box.y + description_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            description_box_inner.x, description_box_inner.y,
-            description_box_inner.w, description_box_inner.h);
-        
-        if(og::runtime::current_session->current_guy_->family != last_family)
-        {
-            // Update description
-            last_family = og::runtime::current_session->current_guy_->family;
-            description = get_class_description(last_family);
-            desc = explode(description);
-            
-            family_name = get_family_string(last_family);
-        }
-        
-        int i = 0;
-        for(auto& line : desc)
-        {
-            mytext.write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
-            i++;
-        }
-        
-        // Cost box
-        og::runtime::current_session->myscreen_->draw_button(
-            cost_box.x, cost_box.y, cost_box.x + cost_box.w - 1,
-            cost_box.y + cost_box.h - 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            cost_box_inner.x, cost_box_inner.y, cost_box_inner.w,
-            cost_box_inner.h);
-        
-        // current_team_num_ is derived from a save-loaded guy::teamnum (which
-        // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
-        const int hire_cash_team =
-            (og::runtime::current_session->current_team_num_ < 0 ||
-             og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
-                ? 0
-                : static_cast<int>(og::runtime::current_session->current_team_num_);
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
-        mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
-        mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
-        og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
-        else
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
-
-        // Stat box
-        og::runtime::current_session->myscreen_->draw_button(
-            stat_box.x, stat_box.y, stat_box.x + stat_box.w - 1,
-            stat_box.y + stat_box.h - 1, 1);
-        mytext.write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
-        og::runtime::current_session->myscreen_->draw_button_inverted(
-            stat_box_inner.x, stat_box_inner.y, stat_box_inner.w,
-            stat_box_inner.h);
-
-        // Stat box content
-        linesdown = 0;
-        int line_height = 10;
-
-        showcolor = STAT_COLOR;
-
-        struct { const char* label; short value; } hire_stats[] = {
-            {"STR:",  og::runtime::current_session->current_guy_->strength},
-            {"DEX:",  og::runtime::current_session->current_guy_->dexterity},
-            {"CON:",  og::runtime::current_session->current_guy_->constitution},
-            {"INT:",  og::runtime::current_session->current_guy_->intelligence},
-            {"ARMOR:", og::runtime::current_session->current_guy_->armor},
-        };
-        for (int si = 0; si < 5; si++) {
-            int y = stat_box_content.y + linesdown * line_height;
-            og::runtime::current_session->message_ = std::format("{}", hire_stats[si].value);
-            mytext.write_xy(stat_box_content.x, y, hire_stats[si].label,
-                             static_cast<unsigned char>(STAT_COLOR), 1);
-            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, og::runtime::current_session->message_.c_str(), showcolor, 1);
-            if (si < 4) // cost rating for STR/DEX/CON/INT only
-                mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, y,
-                                get_training_cost_rating(last_family, si), showcolor, 1);
-            if (si < 4)
-                linesdown++;
-        }
-		
-		// Separator bar
-		UiRect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
-		og::runtime::current_session->myscreen_->draw_button_inverted(
-			r.x, r.y, r.w, r.h);
-		
-		int derived_offset = 3*STAT_NUM_OFFSET/4;
-		auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
-
-        linesdown++;
-        int hire_line = linesdown;
-        draw_derived_stats_block(mytext, ds, stat_box_content.x, derived_offset, showcolor,
-            [&](int l) { return stat_box_content.y + l*line_height + 4; }, hire_line);
-        linesdown = hire_line;
-
-
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-        
-        if(arg1 == 1)
-        {
-            // Show popup on new game
-            arg1 = -1;
-            popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
-            
-	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-        }
-	}
-	
 	pks().hire_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
-	return MENU_REDRAW;
+	return retvalue;
 }
 
-Sint32 create_train_menu(Sint32 arg1)
+// ---------------------------------------------------------------------------
+// TRAIN: engine-hosted (§1.8 step 6; the spec lives in menu_screen_specs.cpp,
+// docs/menu-engine.md). The +/- pixie faces are the spec's art_family
+// bindings (re-applied by the runner after init_buttons and after every
+// reset — legacy re-applied only on MENU_REDRAW re-inits, but under the
+// engine EVERY consumed reset re-inits, so the re-apply must ride along);
+// the reset tail is the on_reset hook; the stat/info panels and the live
+// allbuttons_[18] label write are the content pass, verbatim.
+// ---------------------------------------------------------------------------
+
+// Per-open screen state (the legacy loop's locals), owned by the wrapper.
+struct TrainEngineState
 {
-	float linesdown = 0.0f;
-	Sint32 i, retvalue=0;
-	unsigned char showcolor;
-	Sint32 start_time = query_timer();
-	Uint32 current_cost;
-	Sint32 clickvalue;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-	
+    Sint32 start_time = 0;
+};
+
+// DISABLE_MULTIPLAYER hides the team cycler (the spec's state_override);
+// the legacy static links into it were refused by handle_menu_nav, so the
+// explicit no-ops keep behavior identical under the §1.5 nav invariant.
+// With multiplayer compiled in this is a no-op (row 18 is always visible).
+void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
+                                     int& /*highlighted_button*/)
+{
+#ifdef DISABLE_MULTIPLAYER
+    if (num_buttons > kTrainMenuChangeTeamIndex &&
+        buttons[kTrainMenuChangeTeamIndex].hidden)
+    {
+        buttons[13].nav.right = -1;  // inc_level
+        buttons[15].nav.down = -1;   // rename
+        buttons[16].nav.down = -1;   // details
+    }
+#else
+    (void)buttons;
+    (void)num_buttons;
+#endif
+}
+
+// The legacy reset tail. On MENU_REDRAW resets: the DETAILS submenu can
+// promote (family-change) the REAL team member in place — re-snapshot the
+// working copy first or the stale copy hides the promotion on screen and a
+// later ACCEPT statscopy()s the old family back (bug A9). The runner fires
+// this on MENU_OK resets too, where both calls are idempotent no-ops (the
+// stat callbacks already synced; no promotion is pending).
+void picker_train_menu_engine_on_reset(void* /*screen_state*/)
+{
+    if (pks().train_session)
+        pks().train_session->resync_if_promoted();
+    sync_current_guy_from_train();
+}
+
+// The legacy per-frame content pass, verbatim (runs after draw_buttons):
+// portrait, name box, stat box with change-coloring against the original,
+// the info box (kills/accuracy/exp, derived stats, cash/cost), and the live
+// allbuttons_[18] "Playing on Team N" write + vdisplay (G8: swept only at
+// Layer F). current_cost re-derives from the session each frame — it only
+// changes through clicks, which is when the legacy loop re-read it.
+void picker_train_menu_engine_draw_content(void* screen_state)
+{
+    auto* const state = static_cast<TrainEngineState*>(screen_state);
+    if (state == nullptr)
+        return;
+    float linesdown = 0.0f;
+    unsigned char showcolor;
+
     UiRect stat_box = {38, 66, 82, 94};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
     UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
-    
+
     UiRect info_box_inner = {176, 34, 304-176, 112+22-34};
     UiRect info_box_content = {info_box_inner.x + 4, info_box_inner.y + 4, info_box_inner.w - 8, info_box_inner.h - 8};
-    
-	if (arg1)
-		arg1 = 1;
 
-	// Make sure we have a local team member we can train.
-	if (save.team_size < 1 || !save_has_trainable_team_member(save))
-	{
-        show_need_team_to_train_popup();
-		
-		return MENU_OK;
-	}
+    const Uint32 current_cost =
+        pks().train_session ? pks().train_session->current_cost() : 0;
+    // The 2013 loop left this breadcrumb in its draw pass after moving the
+    // live calculation elsewhere; TrainSession now performs that calculation:
+    //current_cost = calculate_train_cost(here);
 
-	og::runtime::current_session->myscreen_->clearbuffer();
+		show_guy(query_timer()-state->start_time, 1); // 1 means ourteam[editguy]
 
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	
-	#ifdef DISABLE_MULTIPLAYER
-	button* buttons = picker_trainmenu_buttons();
-	const int num_buttons = picker_trainmenu_button_count();
-	buttons[18].hidden = true;
-	#else
-	button* buttons = picker_trainmenu_buttons();
-	const int num_buttons = picker_trainmenu_button_count();
-	#endif
-
-	int highlighted_button = 1;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-	
-	for (i=2; i < 14; i++)
-	{
-		if (!(i%2)) // 2, 4, ..., 12
-			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
-		else
-			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
-	}
-
-    og::ui::TrainSession train_session(save);
-    pks().train_session = &train_session;
-    sync_current_guy_from_train();
-    if (pks().train_session->empty()) {
-        pks().train_session = nullptr;
-        show_need_team_to_train_popup();
-        return MENU_OK;
-    }
-    current_cost = pks().train_session->current_cost();
-
-	grab_mouse();
-	
-    clear_keyboard();
-    
-    clear_key_press_event();
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		clickvalue = leftmouse(buttons);
-		if (clickvalue == 1)
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-		else if (clickvalue == 2)
-			retvalue = og::runtime::current_session->localbuttons_->rightclick();
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Nested menus can replace the global button array before returning.
-        // Once a submenu requests EXIT, stop drawing this menu immediately.
-        if (retvalue & MENU_EXIT)
-            break;
-        
-        // Reset buttons
-        if(og::runtime::current_session->localbuttons_ && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
-        {
-            if(retvalue == MENU_REDRAW)
-            {
-					og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-				for (i=2; i < 14; i++)
-				{
-					if (!(i%2)) // 2, 4, ..., 12
-						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
-					else
-						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
-				}
-				// The DETAILS submenu can promote (family-change) the REAL
-				// team member in place. Re-snapshot the working copy first
-				// or the stale copy hides the promotion on screen and a
-				// later ACCEPT statscopy()s the old family back (bug A9).
-				if (pks().train_session)
-					pks().train_session->resync_if_promoted();
-				sync_current_guy_from_train();
-            }
-
-            if (!og::runtime::current_session->current_guy_)
-                sync_current_guy_from_train();
-            current_cost = pks().train_session->current_cost();
-            retvalue = 0;
-        }
-		
-        //current_cost = calculate_train_cost(here);
-        
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-		
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-		show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
-		
 
         linesdown = 0;
 
@@ -2109,7 +1946,7 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown += 0.4f;
 
         {
-            auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
+            auto ds = picker_compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
             float base_line = linesdown;
             int train_line = 0;
             draw_derived_stats_block(mytext, ds, info_box_content.x, derived_offset, showcolor,
@@ -2144,15 +1981,63 @@ Sint32 create_train_menu(Sint32 arg1)
 	        else
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
-        // Display our team setting ..
+        // Update our team-number display ..
         og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
-        og::runtime::current_session->allbuttons_[18]->label = og::runtime::current_session->message_;
-        og::runtime::current_session->allbuttons_[18]->vdisplay();
+        og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label = og::runtime::current_session->message_;
+        og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->vdisplay();
+}
 
-        draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
+// TRAIN, engine-hosted (the legacy loop is gone). The entry guards, session
+// lifetime, and the exit fold are the legacy code, verbatim: nested
+// submenus' MENU_REDRAWs are consumed by reset_buttons; every exit-bearing
+// path carries MENU_EXIT and folds to MENU_REDRAW unless a start (VIEW TEAM
+// GO or a remote host GO) was selected.
+Sint32 create_train_menu(Sint32 arg1)
+{
+    // arg1 is part of the button.h signature but was never read by the
+    // legacy loop (it only normalized it and moved on).
+    (void)arg1;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+	// Make sure we have a local team member we can train.
+	if (save.team_size < 1 || !save_has_trainable_team_member(save))
+	{
+        g_train_seed_slot = -1;
+        show_need_team_to_train_popup();
+
+		return MENU_OK;
 	}
+
+	og::runtime::current_session->myscreen_->clearbuffer();
+
+    og::ui::TrainSession train_session(save);
+    // §2.5 per-row TRAIN: a stashed base-camp seed slot opens the session
+    // directly on that character (one-shot; empty/foreign slots fall back to
+    // the legacy first-editable seat).
+    if (g_train_seed_slot >= 0) {
+        (void)train_session.seek_slot(g_train_seed_slot);
+        g_train_seed_slot = -1;
+    }
+    pks().train_session = &train_session;
+    sync_current_guy_from_train();
+    if (pks().train_session->empty()) {
+        pks().train_session = nullptr;
+        show_need_team_to_train_popup();
+        return MENU_OK;
+    }
+
+    TrainEngineState state;
+    state.start_time = query_timer();
+
+	grab_mouse();
+
+    clear_keyboard();
+
+    clear_key_press_event();
+
+    const Sint32 retvalue =
+        og::ui::run_menu_screen(og::ui::train_menu_screen_spec(), &state);
+
 	pks().train_session = nullptr;
 	pks().old_guy = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
@@ -2164,89 +2049,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	return MENU_REDRAW;
 }
 
-static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* title)
-{
-	Sint32 retvalue=0;
-	text& menutext = og::runtime::current_session->myscreen_->text_normal;
-    auto return_to_parent = []() {
-        clear_allbuttons();
-        return MENU_REDRAW;
-    };
-
-	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	int highlighted_button = 10;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-	while ( !(retvalue & MENU_EXIT) )
-	{
-        picker_lobby_poll();
-        if (team_build_remote_start_requested(retvalue))
-            break;
-	    // Input
-		if(leftmouse(buttons))
-        {
-			retvalue = og::runtime::current_session->localbuttons_->leftclick();
-			if(retvalue == MENU_REDRAW)
-            {
-                return return_to_parent();
-            }
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == MENU_REDRAW)
-        {
-            return return_to_parent();
-        }
-
-        // Reset buttons
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-
-		// Draw
-		og::runtime::current_session->myscreen_->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-
-        og::runtime::current_session->myscreen_->draw_button(15,  9, 255, 199, 1, 1);
-        og::runtime::current_session->myscreen_->draw_text_bar(19, 13, 251, 21);
-        int title_len = static_cast<int>(std::strlen(title));
-        menutext.write_xy(135-(title_len*3), 15, title, RED, 1);
-        for (Sint32 i=0; i < 10; i++)
-        {
-            std::string temp_filename = std::format("save{}", i+1);
-            og::runtime::current_session->allbuttons_[i]->label = get_saved_name(temp_filename.c_str());
-            og::runtime::current_session->myscreen_->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-            og::runtime::current_session->allbuttons_[i]->vdisplay();
-            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[i]->xloc-1,
-                               og::runtime::current_session->allbuttons_[i]->yloc-1,
-                               og::runtime::current_session->allbuttons_[i]->xend,
-                               og::runtime::current_session->allbuttons_[i]->yend, 0, 0, 1);
-        }
-        og::runtime::current_session->myscreen_->draw_text_bar(23, og::runtime::current_session->allbuttons_[10]->yloc-2, 66, og::runtime::current_session->allbuttons_[10]->yend+1);
-        og::runtime::current_session->allbuttons_[10]->vdisplay();
-        og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[10]->xloc-1,
-                           og::runtime::current_session->allbuttons_[10]->yloc-1,
-                           og::runtime::current_session->allbuttons_[10]->xend,
-                           og::runtime::current_session->allbuttons_[10]->yend, 0, 0, 1);
-
-        draw_highlight(buttons[highlighted_button]);
-		og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        og::input_native::sleep_ms(10);
-	}
-
-	return return_to_parent();
-}
-
-Sint32 create_load_menu(Sint32 /*arg1*/)
-{
-	button* buttons = picker_loadteam_buttons();
-	return create_slot_menu(buttons, picker_loadteam_button_count(), "Gladiator: Load Game");
-}
-
-Sint32 create_save_menu(Sint32 /*arg1*/)
-{
-	button* buttons = picker_saveteam_buttons();
-	return create_slot_menu(buttons, picker_saveteam_button_count(), "Gladiator: Save Game");
-}
+// The SAVE/LOAD slot menus are retired (§3.8): saving is automatic.
 
 // --- Session-based thin wrappers for button callbacks ---
 
@@ -2348,8 +2151,8 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	og::runtime::current_session->current_team_num_ = og::runtime::current_session->current_guy_->teamnum;
 
 	// Set our team button back to normal color
-	if (og::runtime::current_session->allbuttons_[18])
-		og::runtime::current_session->allbuttons_[18]->do_outline = 0;
+	if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex])
+		og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->do_outline = 0;
 
 	return MENU_OK;
 }
@@ -2393,7 +2196,14 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	clear_keyboard();
     std::optional<std::string> new_text = nametext.input_string_value(176, 20, 11, someguy->name.c_str());
 	if(new_text.has_value())
+	{
 		someguy->name = *new_text;
+		// §3.8: renaming a ROSTER member (arg != 0) is a base-camp mutation.
+		// The arg==0 path names the hire screen's not-yet-hired recruit —
+		// nothing on the roster changed, so nothing to save.
+		if (arg)
+			picker_base_camp_after_roster_mutation();
+	}
 	og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
 
 	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
@@ -2421,7 +2231,9 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	// Sync current_guy from the session's next recruit
 	sync_current_guy_from_hire();
-    picker_lobby_sync_roster_from_save();
+    // §3.8: a hire is a base-camp mutation — autosave + ready-clear ride the
+    // shared tail (which also re-syncs the lobby roster).
+    picker_base_camp_after_roster_mutation();
 
 	return MENU_OK;
 }
@@ -2446,11 +2258,13 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
-    picker_lobby_sync_roster_from_save();
+    // §3.8: an accepted training is a base-camp mutation — autosave +
+    // ready-clear ride the shared tail (which re-syncs the lobby roster).
+    picker_base_camp_after_roster_mutation();
     sync_current_guy_from_train();
 
 	// Color our team button normally
-	og::runtime::current_session->allbuttons_[18]->do_outline = 0;
+	og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->do_outline = 0;
 
 	return MENU_OK;
 }
@@ -2460,48 +2274,10 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, og::runtime::current_session->myscreen_->save_data));
 }
 
-Sint32 do_save(Sint32 arg1)
-{
-	release_mouse();
-	clear_keyboard();
-	
-	std::string name = og::runtime::current_session->allbuttons_[arg1-1]->label;
-	if(prompt_for_string("NAME YOUR SAVED GAME", name))
-    {
-        og::runtime::current_session->myscreen_->save_data.save_name = name;
-        
-        std::string newname = std::format("save{}", arg1);
-        if(og::runtime::current_session->myscreen_->save_data.save(newname))
-            timed_dialog("GAME SAVED");
-        else
-            timed_dialog("SAVE FAILED");
-    }
-    else
-    {
-        timed_dialog("SAVE CANCELED");
-    }
-
-    grab_mouse();
-
-	return MENU_REDRAW;
-}
-
-Sint32 do_load(Sint32 arg1)
-{
-	std::string newname = std::format("save{}", arg1);
-
-	if(og::runtime::current_session->myscreen_->save_data.load(newname))
-    {
-        timed_dialog("GAME LOADED");
-        picker_lobby_sync_from_save();
-    }
-    else
-    {
-        timed_dialog("LOAD FAILED");
-    }
-
-    return MENU_REDRAW;
-}
+// do_save/do_load (the slot-menu actions) are RETIRED (§3.8): saving is
+// automatic on every base-camp mutation + level win; loading goes through
+// the §2.3 Company List. get_saved_name stays (header-only slot peek used
+// by tests; §3.5 records the scanner consolidation as debt).
 
 std::string get_saved_name(const char * filename)
 {
@@ -2591,23 +2367,84 @@ Sint32 go_menu(Sint32 arg1)
     // Make sure the launched match has a valid team. Networked picker saves
     // remain private, so a spectator/empty-local peer must consult the
     // authoritative lobby roster rather than only its own save_data.
-    bool has_gameplay_roster =
+    //
+    // §4.3 rule 4 / [NET-R9]: the guard requires >= 1 DEPLOYED character
+    // GLOBALLY — never a per-machine minimum (an all-spectator or 0-deploy
+    // host machine starts fine when any other machine deploys; the server's
+    // start_allowed is the authoritative backstop). Hired-but-benched rosters
+    // get the deploy popup instead of the hire popup.
+    bool has_any_member =
         og::runtime::current_session->myscreen_->save_data.team_size > 0;
+    bool has_gameplay_roster = std::any_of(
+        og::runtime::current_session->myscreen_->save_data.team_list.begin(),
+        og::runtime::current_session->myscreen_->save_data.team_list.end(),
+        [](const std::unique_ptr<guy>& member) {
+            return member != nullptr && member->deployed;
+        });
     if (picker_lobby_is_networked())
     {
         const std::vector<og::sim::LobbyPlayer> players =
             picker_lobby_players();
-        has_gameplay_roster = std::any_of(
+        has_any_member = std::any_of(
             players.begin(), players.end(),
             [](const og::sim::LobbyPlayer& player) {
                 return !player.character_slots.empty();
             });
+        has_gameplay_roster = std::any_of(
+            players.begin(), players.end(),
+            [](const og::sim::LobbyPlayer& player) {
+                return std::any_of(
+                    player.character_slots.begin(),
+                    player.character_slots.end(),
+                    [](const og::sim::LobbyCharacterSlot& slot) {
+                        return slot.deployed;
+                    });
+            });
+    }
+    // §2.6 state 3 (networked host, machines not ready): popup the blocking
+    // companies and send NOTHING — the server gate stays the authoritative
+    // backstop. Rule 3 outranks rule 4 (the server's start_allowed order),
+    // so the unready popup fires before the global-deploy popup below.
+    if (picker_lobby_is_networked() && picker_lobby_host_controls_visible())
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        const og::ui::BaseCampReadyCounts ready =
+            og::ui::count_base_camp_ready_machines(players);
+        if (ready.ready < ready.machines)
+        {
+            TRACE("basecamp", "go_gated ready=%d/%d", ready.ready,
+                  ready.machines);
+            popup_dialog("WAITING FOR:",
+                         og::ui::format_go_blockers(players).c_str());
+            return MENU_REDRAW;
+        }
     }
     if (!has_gameplay_roster)
     {
-        popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+        if (!has_any_member)
+            popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+        else if (picker_lobby_is_networked())
+            popup_dialog("NO ONE IS DEPLOYED", "Deploy at least\none character\nbefore starting");
+        else
+            popup_dialog("DEPLOY AT LEAST ONE", "Deploy at least\none character\nbefore starting");
 
         return MENU_REDRAW;
+    }
+
+    if (!picker_lobby_is_networked() &&
+        og::runtime::current_session->myscreen_->save_data.numplayers > 0)
+    {
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const std::vector<short> seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
+        {
+            popup_dialog("DEPLOY FOR EVERY PLAYER",
+                         "Each player needs\na deployed hero on\ntheir playing team");
+            return MENU_REDRAW;
+        }
     }
 
     // Tier-B progression hook (tower-triple §5.9): the mounted mode
@@ -2634,7 +2471,8 @@ Sint32 go_menu(Sint32 arg1)
 
 #ifdef __EMSCRIPTEN__
     picker_prepare_async_team_build_start_request();
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.save(
+        og::data::active_company_slot());
     og::runtime::current_session->current_guy_.reset();
     Log("go_menu: Lobby start requested, returning MENU_EXIT\n");
     return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
@@ -2655,14 +2493,43 @@ Sint32 go_menu(Sint32 arg1)
     }
 
     if (!g_start_game_requested)
+    {
+        // §2.6: a server denial that beat the local pre-check (a joiner
+        // flipping unready mid-flight / the async echo race) still renders
+        // its reason — best-effort from the cached [NET-R4] echo (a repeated
+        // identical denial does not re-broadcast, and an accepted retry can
+        // blip a stale reason; both disclosed WP5 contracts).
+        if (picker_lobby_is_networked())
+        {
+            switch (picker_lobby_last_start_denial())
+            {
+            case og::sim::StartDenialReason::MachinesNotReady:
+            {
+                std::string blockers =
+                    og::ui::format_go_blockers(picker_lobby_players());
+                if (blockers.empty())
+                    blockers = "Waiting for other\nmachines to ready";
+                popup_dialog("WAITING FOR:", blockers.c_str());
+                break;
+            }
+            case og::sim::StartDenialReason::NoDeployedCharacters:
+                popup_dialog("NO ONE IS DEPLOYED",
+                             "Deploy at least\none character\nbefore starting");
+                break;
+            default:
+                break;
+            }
+        }
         return MENU_REDRAW;
+    }
 
     g_start_game_requested = false;
 
     // Native build: use blocking loop
     do
     {
-        og::runtime::current_session->myscreen_->save_data.save("save0");
+        og::runtime::current_session->myscreen_->save_data.save(
+            og::data::active_company_slot());
         release_mouse();
 
         //*******************************
@@ -2717,10 +2584,12 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->reset(1);
         og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
 
-        auto loadgame = og::io::og_open_read("save/", "save0.gtl");
+        const std::string slot_file = og::data::active_company_slot() + ".gtl";
+        auto loadgame = og::io::og_open_read("save/", slot_file.c_str());
         if (loadgame)
         {
-            og::runtime::current_session->myscreen_->save_data.load("save0");
+            og::runtime::current_session->myscreen_->save_data.load(
+                og::data::active_company_slot());
         }
     }
     while(og::runtime::current_session->myscreen_->world().retry);
@@ -2741,6 +2610,8 @@ int picker_team_build_testing_exercise_internal_paths()
         bool has_start_config = true;
         bool editable = true;
         bool requested = false;
+        bool networked = false;
+        std::vector<og::sim::LobbyPlayer> players;
 
         void initialize_from_save() override {}
         void shutdown() override {}
@@ -2781,6 +2652,14 @@ int picker_team_build_testing_exercise_internal_paths()
         bool is_save_slot_editable(std::size_t) const noexcept override
         {
             return editable;
+        }
+        bool is_networked_session() const noexcept override
+        {
+            return networked;
+        }
+        std::vector<og::sim::LobbyPlayer> lobby_players() const override
+        {
+            return players;
         }
     };
 
@@ -2860,18 +2739,8 @@ int picker_team_build_testing_exercise_internal_paths()
     check(highlighted == 0);
 
     highlighted = 5;
-    client.host_visible = false;
-    sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    check(buttons[kTeamBuildGoButtonIndex].hidden &&
-        buttons[kCreateMenuHireIndex].nav.down == kCreateMenuNetworkingIndex &&
-        buttons[kCreateMenuSaveIndex].nav.right == -1 &&
-        buttons[kCreateMenuNetworkingIndex].nav.up == kCreateMenuHireIndex);
-    client.host_visible = true;
-    sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    check(!buttons[kTeamBuildGoButtonIndex].hidden &&
-        buttons[kCreateMenuHireIndex].nav.down == kTeamBuildGoButtonIndex &&
-        buttons[kCreateMenuSaveIndex].nav.right == kTeamBuildGoButtonIndex &&
-        buttons[kCreateMenuNetworkingIndex].nav.up == kTeamBuildGoButtonIndex);
+    // (The base camp's full-graph rewire — GO gating included — lives on the
+    // spec in menu_screen_specs.cpp and is exercised by the engine tests.)
     client.host_visible = false;
     sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);
     check(buttons[kScenarioMenuSetCampaignIndex].hidden &&
@@ -2885,8 +2754,6 @@ int picker_team_build_testing_exercise_internal_paths()
         !buttons[kScenarioMenuSetLevelIndex].hidden &&
         buttons[kScenarioMenuViewScenarioIndex].nav.up ==
             kScenarioMenuSetLevelIndex);
-    sync_view_team_host_control_visibility(buttons, 1, highlighted);
-    check(!buttons[kViewTeamGoButtonIndex].hidden);
 
     // DIFFICULTY subscreen gating: every settings row hides for a non-host;
     // BACK's vertical cycle is rewired and the highlight is pulled onto BACK.
@@ -3008,6 +2875,92 @@ int picker_team_build_testing_exercise_internal_paths()
     client.requested = false;
     g_start_game_requested = false;
     check(go_menu(0) == MENU_REDRAW && client.requested);
+
+    // §4.3 rule 4 / [NET-R9] go_menu guard: a hired-but-benched LOCAL roster
+    // blocks the launch (deploy popup, no start request)...
+    save.team_list[0]->deployed = false;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    // ...and the §2.6 presentation resolves to state 2 (grey face — the
+    // solo byte-identity face) with the DEPLOY caption.
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::LocalGoNoDeploy &&
+              p.face_color == og::ui::kReadyGoFaceGrey &&
+              p.caption == "DEPLOY AT LEAST ONE");
+    }
+    save.team_list[0]->deployed = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::LocalGo &&
+              p.face_color == og::ui::kReadyGoFaceGrey && p.label == "GO");
+    }
+    // ...and the NETWORKED guard is GLOBAL any-deployed, not per-machine:
+    // an all-benched lobby blocks, one deployed slot ANYWHERE (even on a
+    // remote machine) launches.
+    client.networked = true;
+    {
+        og::sim::LobbyPlayer remote_machine;
+        remote_machine.name = "Remote";
+        // [NET-R2]: the earlier difficulty arm left host_visible=true, so
+        // the §2.6 rule-3 pre-check runs here — the remote machine must be
+        // ready for these arms to isolate the rule-4 deploy gate.
+        remote_machine.ready = true;
+        remote_machine.character_slots.push_back(og::sim::LobbyCharacterSlot{
+            .slot_index = 0,
+            .deployed = false,
+        });
+        client.players = {remote_machine};
+    }
+    client.requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    client.players[0].character_slots[0].deployed = true;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && client.requested);
+
+    // §2.6 state 3: a networked HOST with an unready machine popups the
+    // blockers (rule 3 outranks rule 4) and sends NOTHING; readying that
+    // machine flips the presentation yellow -> green and unblocks the GO.
+    client.host_visible = true;
+    client.players[0].name = "Remote";
+    client.players[0].company = "REMOTE BAND";
+    client.players[0].ready = false;
+    client.requested = false;
+    g_start_game_requested = false;
+    check(go_menu(0) == MENU_REDRAW && !client.requested);
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::HostGated &&
+              p.face_color == og::ui::kReadyGoFaceGated &&
+              p.caption == "WAITING FOR OTHERS");
+    }
+    client.players[0].ready = true;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::HostGo &&
+              p.face_color == og::ui::kReadyGoFaceGo && p.label == "GO");
+    }
+    client.requested = false;
+    check(go_menu(0) == MENU_REDRAW && client.requested);
+    // Joiner shape (states 5-6): READY/UNREADY labels off the lobby flag.
+    client.host_visible = false;
+    {
+        const og::ui::ReadyGoPresentation p =
+            picker_compute_ready_go_presentation();
+        check(p.state == og::ui::ReadyGoState::ClientUnready &&
+              p.face_color == og::ui::kReadyGoFaceUnready &&
+              p.label == "READY");
+    }
+    client.networked = false;
+    client.players.clear();
+    client.requested = false;
+    g_start_game_requested = false;
 
     guy source(FAMILY_ELF);
     guy destination(FAMILY_SOLDIER);

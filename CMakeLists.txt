@@ -229,7 +229,11 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
+    ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
@@ -273,6 +277,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/win_shares.cpp
     ${SRC_DIR}/resources/tower_progression.cpp
     ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/gameplay/mapgen/builders.cpp
@@ -281,6 +286,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -307,6 +313,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
     ${SRC_DIR}/interface/sdl_context_services.cpp
@@ -358,12 +365,14 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/win_shares.cpp
     ${SRC_DIR}/resources/tower_progression.cpp
     ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/company.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -441,6 +450,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -485,7 +495,11 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_input.cpp
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
+    ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
+    ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
@@ -527,6 +541,7 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/gameplay/mapgen/builders.cpp
     ${SRC_DIR}/gameplay/mapgen/audits.cpp
@@ -1263,7 +1278,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/platform/text/text_picker.cpp
         ${SRC_DIR}/platform/text/text_protocol.cpp
+        ${SRC_DIR}/interface/ui/menu_binding.cpp
         ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
@@ -1297,6 +1314,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
         ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
+        ${SRC_DIR}/gameplay/sim_control_policy.cpp
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
@@ -1542,7 +1560,9 @@ if(NOT EMSCRIPTEN)
     )
     # Shared SDL-free menu model + business logic (also compiled into openglad_text).
     set(OG_CURSES_MENU_SOURCES
+        ${SRC_DIR}/interface/ui/menu_binding.cpp
         ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
     )
@@ -1909,7 +1929,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_go_no_team.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_fairy_death.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_overpowered_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
@@ -1981,6 +2000,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_zip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_company_io.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_libzip.cpp
@@ -2059,6 +2079,10 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_company_list.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_uxshots_probe.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2307,7 +2331,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_new_game.cpp
             test_hire_team.cpp
             test_train_team.cpp
-            test_save_menu.cpp
             test_save_load_team.cpp
             test_options_menu.cpp
             test_networking_menu.cpp
@@ -2321,6 +2344,23 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_intro_smoke.cpp
             test_campaign_and_level_picker.cpp
             test_level_progress.cpp
+        )
+
+        # WP1 menu-engine group (design §1.9 G10): fast, engine-focused menu
+        # tests live here, NEVER in og_test_menu_ui (~130s vs the 180s
+        # timeout). Holds the G2 pin-then-migrate exact-table oracles and,
+        # as the engine lands, tests/test_menu_engine.cpp.
+        og_add_test_group(og_test_menu_engine FILES
+            test_menu_pins.cpp
+            test_menu_engine.cpp
+        )
+
+        # Layer-F Company & Base Camp flow group (design G10): heavyweight
+        # picker_main injector flows for the §2.2-§2.5 feature screens live
+        # here, never in og_test_menu_ui (~130s vs the 180s timeout).
+        og_add_test_group(og_test_basecamp FILES
+            test_company_list.cpp
+            test_uxshots_probe.cpp
         )
 
         og_add_test_group(og_test_input FILES
@@ -2354,6 +2394,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_gparser_funcs.cpp
             test_util.cpp
             test_save_data_versions.cpp
+            test_company_io.cpp
             test_save_load.cpp
             test_load_levels.cpp
             test_io_coverage.cpp
@@ -2529,6 +2570,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_network.cpp
         )
         if(TARGET og_platform_ws_transport)
@@ -2552,6 +2594,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
         )
 
         og_add_unit_group(og_unit_entity FILES
@@ -2569,11 +2612,13 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         og_add_unit_group(og_unit_data FILES
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
@@ -2814,6 +2859,14 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # sanitizer lanes already protect it below; give it the same dedicated
         # budget in EVERY lane, mirroring og_test_picker_network above.
         set_tests_properties(og_test_menu_ui PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
+        # The Base Camp group now includes the visual smoke matrix in addition
+        # to the company-list flows. Both drive wall-clock fades from injector
+        # threads, so isolate the combined ~80s binary and leave ample CI
+        # headroom just as we do for the older menu UI group.
+        set_tests_properties(og_test_basecamp PROPERTIES
             RUN_SERIAL TRUE
             TIMEOUT 420
         )

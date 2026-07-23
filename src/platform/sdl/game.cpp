@@ -145,6 +145,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
     {
 	    temp_guy = screenp->save_data.team_list[guy_idx].get();
 	    if (!temp_guy) continue;
+	    // §4.2: benched members stay in the save but never enter the level —
+	    // must match spawn_team_from_save (the authoritative server world) or
+	    // the display would show a hero the sim never spawned.
+	    if (!temp_guy->deployed) continue;
 	    temp_walker = guy_create_and_add_walker(*temp_guy, screenp);
 	    if (!temp_walker) continue;
 	    // Clear the new guy's battle data
@@ -155,13 +159,14 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	    temp_walker->myguy->scen_shots = 0;
 	    temp_walker->myguy->scen_hits = 0;
 
-		// First, try to find a marker that's the correct team number ..
+		// A start marker belongs to exactly one team. Never fall through to a
+		// foreign marker: selectable roster teams made the old "grab any marker"
+		// fallback visibly deploy yellow/green/blue heroes from red starts. If a
+		// map has no marker for this team (or its markers are exhausted), use the
+		// neutral teleport fallback below.
 			replace_walker = screenp->first_of(Order::Special,
 			                                    FAMILY_RESERVED_TEAM,
 			                                    static_cast<int>(temp_guy->teamnum));
-		// If that doesn't work, though, grab any marker we can ..
-			if (!replace_walker)
-				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
 			// Inherit the start marker's floor so the player spawns on the
@@ -192,33 +197,12 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	}
 
-	std::vector<short> view_teams;
-	view_teams.reserve(static_cast<std::size_t>(screenp->numviews));
-	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
-	{
-		const guy* team_guy = screenp->save_data.team_list[guy_idx].get();
-		if (!team_guy)
-			continue;
-		if (team_guy->teamnum == 0)
-			continue;
-		if (std::find(view_teams.begin(), view_teams.end(), team_guy->teamnum) == view_teams.end())
-			view_teams.push_back(team_guy->teamnum);
-	}
-
-	const short preferred_team = screenp->save_data.my_team;
-	const bool has_preferred_team = std::any_of(
-		screenp->save_data.team_list.begin(),
-		screenp->save_data.team_list.end(),
-		[preferred_team](const std::unique_ptr<guy>& member) {
-			return member != nullptr && member->teamnum == preferred_team;
-		});
-	if (has_preferred_team)
-	{
-		view_teams.erase(
-			std::remove(view_teams.begin(), view_teams.end(), preferred_team),
-			view_teams.end());
-		view_teams.insert(view_teams.begin(), preferred_team);
-	}
+	// Use the same deployed-only seat plan validated by the picker. This keeps
+	// the pre-intro control assignment in lockstep with the transport install:
+	// benched-only colors never create empty views, and Together repeats Player
+	// 1's chosen team instead of assigning Player 2 by roster order.
+	const std::vector<short> view_teams =
+		og::ui::derive_local_gameplay_seat_teams(screenp->save_data);
 
 	// Have we already done this scenario? CTF maps skip the purge: rematches
 	// replay the full map (flags, control points, and bot squads stay).
@@ -287,8 +271,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 		}
 	}
 
-    // Here we decide if all players are controlling team 0, or if they're
-    // playing competing teams. Then pre-assign controls so the first redraw
+    // Apply the validated Together/Split seat plan. Then pre-assign controls
+    // so the first redraw
     // (shown before/under scenario intro text) is centered on the player.
     const bool spectator = og::ui::is_spectator_mode(screenp->save_data);
     short view_idx = 0;

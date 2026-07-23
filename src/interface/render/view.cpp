@@ -386,6 +386,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
+	global_player_index_ = whatnum; // local games map views 1:1
 	my_team = 0;
 	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
@@ -942,7 +943,10 @@ bool viewscreen::redraw()
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
-		if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+		if (!following_ && controlob && !controlob->dead() &&
+		    global_player_index_ >= 0 &&
+		    controlob->user() == global_player_index_ &&
+		    prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw();
 		display_text();
 	}
@@ -1205,7 +1209,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
-		if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+		if (draw_radar && !following_ && controlob && !controlob->dead() &&
+		    global_player_index_ >= 0 &&
+		    controlob->user() == global_player_index_ &&
+		    prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw(data);
 		display_text();
 	}
@@ -1341,8 +1348,35 @@ void viewscreen::process_input(const InputState& input_state)
 {
 	const PlayerInput& pi = input_state.players[mynum];
 
+	// §4.5 networked follow camera. When the networked transport shadow is
+	// installed, a follow-engaged view (0-deploy, all-dead, spectator — the
+	// shadow stamps following_ on every control re-sync) owns the SwitchChar
+	// edge and cycles its watched target through the runtime's follow state,
+	// which survives the per-snapshot control re-sync. [NET-F1]: the legacy
+	// spectator block below is gated OFF for networked sessions — it would
+	// consume the edge, claim a camera target directly on the mirror, and
+	// RETURN before the shadow guard, only for the next snapshot sync to
+	// stomp the choice within the frame. It remains for non-networked
+	// spectators (demo/local) unchanged. The same key still rides the
+	// InputMessage; the server ignores it for null seats.
+	const bool networked_shadow =
+	    og::runtime::current_session != nullptr &&
+	    og::runtime::current_session->networked_session_ &&
+	    og::runtime::local_transport_active(*og::runtime::current_session);
+	if (networked_shadow)
+	{
+		if (!pi.was_pressed(InputAction::SwitchChar))
+			g_viewscreen_debounce[mynum].changedchar = 0;
+		else if (following_ && !g_viewscreen_debounce[mynum].changedchar)
+		{
+			g_viewscreen_debounce[mynum].changedchar = 1;
+			og::runtime::display_follow_cycle_target(
+			    *og::runtime::current_session, mynum,
+			    pi.is_held(InputAction::Shift));
+		}
+	}
 	// --- Spectator mode: only allow switching the camera target ---
-	if (og::ui::is_spectator_mode(active_screen()->save_data))
+	else if (og::ui::is_spectator_mode(active_screen()->save_data))
 	{
 		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
 		if (!pi.was_pressed(InputAction::SwitchChar))
@@ -1381,7 +1415,11 @@ void viewscreen::process_input(const InputState& input_state)
 	}
 
 	// --- Prefs key (render-layer concern: opens a UI menu) ---
-	if (!pi.is_held(InputAction::Cheat))
+	// A genuine network spectator has no local player seat. Do not let its
+	// otherwise-unconsumed key open a player-specific preferences menu.
+	const bool networked_spectator = networked_shadow &&
+	    og::runtime::current_session->own_player_indices_.empty();
+	if (!networked_spectator && !pi.is_held(InputAction::Cheat))
 	{
 		if (pi.was_pressed(InputAction::OpenPrefs))
 		{

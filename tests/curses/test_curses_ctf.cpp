@@ -139,6 +139,19 @@ StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
                 rostered = true;
     }
 
+    // §4.3 ready gate: the joiner must be ready before the host may start.
+    (void)game.join_lobby->set_ready(true);
+    for (int i = 0; i < 200; ++i) {
+        game.host_lobby->poll(host_term, clock);
+        game.join_lobby->poll(join_term, clock);
+        bool joiner_ready = false;
+        for (const og::sim::LobbyPlayer& player : game.host_lobby->players())
+            if (!player.is_host && player.ready)
+                joiner_ready = true;
+        if (joiner_ready)
+            break;
+    }
+
     game.host_lobby->request_start();
     bool host_ready = false;
     bool join_ready = false;

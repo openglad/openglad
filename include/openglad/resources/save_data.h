@@ -30,6 +30,9 @@ class guy;
 class walker;
 
 inline constexpr int MAX_TEAM_SIZE = 24; // max # of guys on a team
+// Max # of player seats a save may claim; the GTL reader and the company
+// header scanner both reject anything larger.
+inline constexpr unsigned char kMaxSavePlayers = 4;
 
 enum class SaveDataIoError
 {
@@ -73,12 +76,26 @@ public:
     short respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
     short generator_rate = 0;     // percent; 0 = default (100)
     short keep_fallen_heroes = 0; // 0 = permadeath on win (classic), 1 = keep
+    // Cross-control (protocol v8, company-basecamp design §4.1): host-only
+    // lobby setting; 0 = owner-locked networked control (default), 1 =
+    // players may control other machines' characters. SESSION-ONLY — never
+    // serialized to the GTL file (a lobby-negotiated match setting that is
+    // meaningless outside a networked session), so save()/load() bytes are
+    // untouched.
+    short cross_control = 0;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation
     // seed persist. The seed is serialized as 2 x int16 (lo, hi).
     short tower_best_floor = 0;         // highest floor ever REACHED
     std::uint32_t tower_run_seed = 0;   // current run's generation seed
+    // Company bookkeeping (GTL v14; docs/company-basecamp-design.md §3.1).
+    // Wall-clock unix seconds when this company was last played; serialized
+    // raw (host-endian, per format precedent) into the first 8 bytes of the
+    // header's former reserved block at offset 133. NOT cleared by reset()
+    // and stamped ONLY by company_autosave — save() just serializes it, so
+    // SaveData::save() itself stays deterministic (§3.2).
+    std::int64_t last_played_unix_s = 0;
 
     SaveData();
     ~SaveData();

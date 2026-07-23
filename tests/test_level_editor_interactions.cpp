@@ -1,4 +1,5 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/core/test_trace.h>
@@ -367,16 +368,17 @@ namespace
 // controller-input path uses, so callers can think in game coordinates.
 static int game_to_window_x(int gx)
 {
-    auto* ses = og::runtime::current_session;
-    return static_cast<int>(static_cast<float>(gx) * (ses->viewport_w_ / 320.0f)
-                            + ses->viewport_offset_x_);
+    // UI-canvas-pinned map — raw viewport_*/320 math ignores the aspect-fit
+    // letterbox and mismaps in non-16:10 windows (see test_interact.h). In
+    // the default 640x400 window the two are identical.
+    return static_cast<int>(
+        ui_canvas_to_window(static_cast<float>(gx), 0.0f).first);
 }
 
 static int game_to_window_y(int gy)
 {
-    auto* ses = og::runtime::current_session;
-    return static_cast<int>(static_cast<float>(gy) * (ses->viewport_h_ / 200.0f)
-                            + ses->viewport_offset_y_);
+    return static_cast<int>(
+        ui_canvas_to_window(0.0f, static_cast<float>(gy)).second);
 }
 
 static void inject_click_game(int gx, int gy, int delay_ms = 20)

@@ -9,6 +9,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/guy_create.h>
@@ -50,12 +51,18 @@ static bool interact_match(
         if (item.id == id && !item.hidden && predicate(item)) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x)
-                * (og::runtime::current_session->viewport_w_ / 320.0f)
-                + og::runtime::current_session->viewport_offset_x_);
-            const int win_y = static_cast<int>(static_cast<float>(game_y)
-                * (og::runtime::current_session->viewport_h_ / 200.0f)
-                + og::runtime::current_session->viewport_offset_y_);
+            // UI-canvas-pinned map (NOT hand-rolled viewport math): the raw
+            // viewport_* fields are the FULL window, so scaling by
+            // viewport_h_/200 ignores the aspect-fit letterbox and mismaps
+            // clicks in any non-16:10 window (a preceding display-settings
+            // test leaves 1024x768 under --gtest_shuffle: game y=187 mapped
+            // to win 718, which production inverse-mapped OFF-canvas to
+            // y=204 — the seed-23 og_test_menu_ui wedge).
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(static_cast<float>(game_x),
+                                    static_cast<float>(game_y));
+            const int win_x = static_cast<int>(mapped_x);
+            const int win_y = static_cast<int>(mapped_y);
             fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
             inject_click(win_x, win_y);
@@ -330,20 +337,23 @@ TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
     scr->save_data.reset();
 }
 
-// Test: Navigate to Load Team menu via UI, see the load slots, and exit
+// §2.5 flow 5 + §3.8: the base-camp deploy toggle flips the roster row's
+// mission-deploy flag, the mutation AUTOSAVES the active company slot, and
+// the flag round-trips through the v14 save (the slot UI is retired — this
+// replaced the old load_team_menu slot flow).
 //
-// Flow: Main Menu -> Continue -> Load Team -> Back -> Back
+// Flow: Main Menu -> Continue -> base camp -> toggle roster_dep_1 -> Back
 
-struct LoadMenuState {
+struct DeployToggleState {
     bool started;
     bool finished;
-    bool saw_load_menu;
+    bool saw_roster;
 };
 
-static int load_menu_injector(void* data)
+static int deploy_toggle_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    LoadMenuState* state = static_cast<LoadMenuState*>(data);
+    DeployToggleState* state = static_cast<DeployToggleState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -353,19 +363,15 @@ static int load_menu_injector(void* data)
     interact("continue_game");
 
     SDL_Delay(500);
-    wait_for_interactable("load_team", 10000);
-    SDL_Delay(750);
+    if (wait_for_interactable("roster_dep_1", 10000)) {
+        state->saw_roster = true;
+        SDL_Delay(750);
 
-    fprintf(stderr, "  [test] clicking load_team\n");
-    interact("load_team");
+        fprintf(stderr, "  [test] toggling roster_dep_1\n");
+        interact("roster_dep_1");
+        SDL_Delay(500);  // label flip + §3.8 autosave land this frame
 
-    // Load menu has load_slot_1 through load_slot_10 and back
-    SDL_Delay(500);
-    if (wait_for_interactable("load_slot_1", 10000)) {
-        state->saw_load_menu = true;
-        SDL_Delay(500);
-
-        fprintf(stderr, "  [test] clicking back from load menu\n");
+        fprintf(stderr, "  [test] clicking back from the base camp\n");
         interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
@@ -375,17 +381,8 @@ static int load_menu_injector(void* data)
         if (wait_for_interactable("continue_game", 150))
             break;
 
-        if (wait_for_interactable("load_team", 150))
-        {
-            fprintf(stderr, "  [test] clicking back from team menu\n");
-            interact_match("back", [](const Interactable& item) { return item.y < 170; });
-            SDL_Delay(150);
-            continue;
-        }
-
         if (wait_for_interactable("back", 150))
         {
-            fprintf(stderr, "  [test] retry clicking back from load menu\n");
             interact_match("back", [](const Interactable& item) { return item.y >= 170; });
             SDL_Delay(150);
             continue;
@@ -399,17 +396,38 @@ static int load_menu_injector(void* data)
     return 0;
 }
 
-TEST(SaveLoadTeam, load_team_menu) {
+TEST(SaveLoadTeam, base_camp_deploy_toggle_autosaves_and_round_trips) {
     trace_clear();
 
-    // Need a save so continue_game works
+    // Need a save so continue_game works; two members so row 1 exists.
+    og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    {
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = "KEEPER";
+        auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+        archer->name = "BENCHME";
+        og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+        og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+        og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    }
+    // CONTINUE opens select_startup_company() = the newest last_played_unix_s
+    // on disk. Raw SaveData::save() serializes the field as-is and reset()
+    // keeps the stale in-memory value, so under --gtest_shuffle a predecessor
+    // can leave a stray company (a new-company flow's generated slot, or a
+    // raw slot that inherited a stamp) that outranks this save0 — CONTINUE
+    // then opens, and the deploy toggle autosaves into, the WRONG slot
+    // (battery seeds 59/83). Stamp real now: >= every predecessor stamp in
+    // this binary (nothing here pins the company clock), and a tie breaks
+    // toward save0, the default slot.
+    og::runtime::current_session->myscreen_->save_data.last_played_unix_s =
+        og::data::company_clock_now_s();
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    LoadMenuState state = { false, false, false };
-    SDL_Thread* thread = SDL_CreateThread(load_menu_injector, "load_menu_test", &state);
+    DeployToggleState state = { false, false, false };
+    SDL_Thread* thread = SDL_CreateThread(deploy_toggle_injector, "deploy_toggle_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
@@ -424,7 +442,20 @@ TEST(SaveLoadTeam, load_team_menu) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.saw_load_menu) << "should have seen the load team menu";
+    ASSERT_TRUE(state.saw_roster) << "should have seen the base-camp roster";
+    ASSERT_TRUE(trace_contains("basecamp", "deploy slot=1 off"))
+        << "the deploy dispatch should toggle display row 1 (slot 1) off";
+
+    // §3.8: the toggle AUTOSAVED — the flag must be on disk without any
+    // manual save (v14 guy+50 deployed byte).
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"));
+    ASSERT_EQ(2, static_cast<int>(reloaded.team_size));
+    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
+    ASSERT_TRUE(reloaded.team_list[1] != nullptr);
+    EXPECT_TRUE(reloaded.team_list[0]->deployed) << "row 0 untouched";
+    EXPECT_FALSE(reloaded.team_list[1]->deployed)
+        << "the toggled row must persist benched via the mutation autosave";
 }
 
 // Permadeath toggle (keep_fallen_heroes): with the flag set, update_guys keeps
@@ -538,6 +569,10 @@ TEST(SaveLoadTeam, merge_owned_guys_keep_fallen_preserves_died_slot) {
     EXPECT_EQ(8000u, merged.team_list[2]->exp);
 
     scr->save_data.reset();
+    // reset() deliberately preserves the negotiated match settings (the v10+
+    // precedent), so restore the flag this test set or it leaks into any
+    // later test that writes save0 under --gtest_shuffle.
+    scr->save_data.keep_fallen_heroes = 0;
 }
 
 // The real networked flow keeps each peer's private roster in save0 before the
@@ -597,9 +632,13 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
 
     scr->world().delete_objects();
     scr->save_data.reset();
+    // reset() deliberately preserves the negotiated match settings (the v10+
+    // precedent), so restore the flag this test set or it leaks into any
+    // later test that writes save0 under --gtest_shuffle.
+    scr->save_data.keep_fallen_heroes = 0;
 }
 
-TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
+TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
 
@@ -624,6 +663,9 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
     scr->save_data.completed_levels[disk.current_campaign].insert(7);
     scr->save_data.completed_levels["org.openglad.host-history"] = {11};
     scr->world().id = 1;
+    // The session (combined) wallet totals are deliberately WRONG values: §4.6
+    // banks the disk baseline plus this machine's SHARE of the fold DELTA, never
+    // the absolute session totals, so these must never surface in save0.
     for (std::size_t team = 0;
          team < std::size(scr->save_data.m_totalcash);
          ++team)
@@ -634,16 +676,23 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
             10100u + static_cast<std::uint32_t>(team);
     }
 
-    // Global player ids 6 and 7 share gameplay team 2. They must select the
-    // team-2 wallet (never index the four-element totals arrays by player id),
-    // and duplicate seats on that team must not add the payout twice.
+    // Global player ids 6 and 7 each deployed one character on gameplay team 2;
+    // the level's fold added 300 cash / 120 score to team 2. As the ONLY
+    // contributors, the machine banks the whole team-2 delta over its disk
+    // baseline. Wallets are keyed by gameplay team, never by player id.
+    og::progression::NetWinFoldCapture capture;
+    capture.cash_delta[2] = 300u;
+    capture.score_delta[2] = 120u;
+    capture.deployed.push_back({.owner = 6, .team = 2});
+    capture.deployed.push_back({.owner = 7, .team = 2});
+
     const std::array<og::runtime::LocalSeatBinding, 2> seats = {{
         {.player_index = 6, .team = 2},
         {.player_index = 7, .team = 2},
     }};
-    og::runtime::detail::persist_owned_characters_to_save0(
-        *scr,
-        std::span<const og::runtime::LocalSeatBinding>(seats));
+    ASSERT_TRUE(og::runtime::detail::persist_network_win_to_save0(
+        *scr, std::span<const og::runtime::LocalSeatBinding>(seats),
+        /*completed_level=*/1, capture));
 
     SaveData after;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
@@ -651,10 +700,9 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
     {
         if (team == 2)
         {
-            EXPECT_EQ(scr->save_data.m_totalcash[team],
-                      after.m_totalcash[team]);
-            EXPECT_EQ(scr->save_data.m_totalscore[team],
-                      after.m_totalscore[team]);
+            EXPECT_EQ(disk.m_totalcash[team] + 300u, after.m_totalcash[team])
+                << "owned team banks disk baseline + the machine's share";
+            EXPECT_EQ(disk.m_totalscore[team] + 120u, after.m_totalscore[team]);
         }
         else
         {
@@ -664,10 +712,11 @@ TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
                 << "an unowned team's score must remain private";
         }
     }
-    EXPECT_EQ(scr->save_data.m_totalcash[2], after.totalcash)
+    EXPECT_EQ(after.m_totalcash[2], after.totalcash)
         << "the legacy primary-wallet field follows the first local seat";
     EXPECT_EQ(2, static_cast<int>(after.scen_num));
-    EXPECT_TRUE(after.is_level_completed(1));
+    EXPECT_TRUE(after.is_level_completed(1))
+        << "a machine that deployed characters earns completion credit";
     EXPECT_TRUE(after.is_level_completed(4))
         << "the client's divergent private completion history must survive";
     EXPECT_FALSE(after.is_level_completed(7))
@@ -761,10 +810,13 @@ TEST(SaveLoadTeam,
     scr->save_data.m_totalcash[0] = 93000u;
     scr->save_data.m_totalscore[0] = 92000u;
 
+    // A zero-seat spectator ignores the capture entirely (no owned player to
+    // bank a share for): cursor advances, no roster/money/completion.
     ASSERT_TRUE(og::runtime::detail::persist_network_win_to_save0(
         *scr,
         std::span<const og::runtime::LocalSeatBinding>(),
-        /*completed_level=*/1));
+        /*completed_level=*/1,
+        og::progression::NetWinFoldCapture{}));
 
     SaveData after;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));

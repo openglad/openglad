@@ -324,15 +324,17 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
 
     const int old_allied_mode = og::runtime::current_session->myscreen_->world_.allied_mode;
 
-    // Allied mode with one myguy missing (has_myguy == 2 path).
+    // Ownership does not affect same-team friendliness.
     owner_a->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     owner_b->clear_myguy();
     owner_b->set_team_num(0);
     og::runtime::current_session->myscreen_->world_.allied_mode = 1;
-    ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "allied mode should treat team-0 non-myguy as friendly";
+    ASSERT_TRUE(a->is_friendly(b.get()) != 0)
+        << "same-team walkers should be friendly";
 
     owner_b->set_team_num(1);
-    ASSERT_EQ(0, (int)a->is_friendly(b.get())) << "allied mode should reject non-team-0 when only one side has myguy";
+    ASSERT_EQ(0, (int)a->is_friendly(b.get()))
+        << "different teams should be hostile regardless of ownership";
 
     // Enemy mode path (allied_mode==0).
     og::runtime::current_session->myscreen_->world_.allied_mode = 0;
@@ -377,7 +379,7 @@ TEST(WalkerMore, walker_round6_act_fire_collision_attack_path)
 }
 
 
-TEST(WalkerMore, walker_friendliness_null_dead_and_allied_mode_paths)
+TEST(WalkerMore, walker_friendliness_null_dead_and_strict_team_paths)
 {
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_ORC);
@@ -401,7 +403,7 @@ TEST(WalkerMore, walker_friendliness_null_dead_and_allied_mode_paths)
     ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "team 0 target with one myguy should be treated as friendly";
 
     ASSERT_FALSE(a->is_friendly_to_team(1))
-        << "team 0 walker should not be friendly to team 1 when allied mode is off";
+        << "team 0 walker should not be friendly to team 1";
 
     a->set_dead(1);
     ASSERT_TRUE(!a->is_friendly_to_team(0)) << "dead walker should be unfriendly to all teams";
