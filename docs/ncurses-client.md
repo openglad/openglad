@@ -21,7 +21,7 @@ follows.
 - Full menu flow, reusing the existing data-driven menu model
   (`IPickerClient` / `run_picker` / `menu_model` / `picker_common`): new game,
   continue, hire, train, view roster, save/load, campaign select, level select,
-  options, help, difficulty, player count, and **networking (host & join)**.
+  options, help, difficulty, Base Camp, and **networking (host & join)**.
 - Real-time gameplay rendered as a roguelike: each tile is a character, each
   "dude" (walker) is a character chosen to approximate its family, drawn on the
   **nearest tile to its actual pixel coordinates** (entities move smoothly in
@@ -346,8 +346,9 @@ The lobby roster uses the same lobby-wide P# display ordinals as SDL Base Camp.
 cycles the selected seat's team; remote seats are read-only. One ncurses
 process currently advertises one local seat (split-screen remains a non-goal),
 while lobbies may contain more than four seats across network clients. The
-shared 2–4 Player Settings choices are therefore refused by ncurses and leave
-the local count at one; additional players join from separate clients.
+terminal Main menu no longer carries the old 1–4 player-count rows. SDL Base
+Camp's **+** and remove-seat lifecycle is unavailable in ncurses, so additional
+players join from separate clients.
 
 ---
 

@@ -424,12 +424,13 @@ struct ReadyGoPresentation {
 };
 
 // The §2.6 state table, pure (headlessly unit-tested — U10). `spectator`
-// means this machine contributes ZERO character slots to the lobby
-// (numplayers==0 spectator seat or an empty roster): such machines ready
-// freely [NET-R9]. `cross_control` ON removes the per-machine deploy
-// minimum for the client ready gate; the global >= 1 rule (host states)
-// always applies. Solo/local (`networked` false) never consults ready and
-// keeps the plain grey GO byte-identical (states 1-2).
+// is the formatter's historical name for a machine that contributes ZERO
+// character slots (an empty roster): that shape has no deploy minimum
+// [NET-R9]. A true zero-seat Base Camp client has no READY action and never
+// calls this formatter through that path. `cross_control` ON also removes the
+// per-machine deploy minimum; the global >= 1 rule (host states) always
+// applies. Solo/local (`networked` false) never consults ready and keeps the
+// plain grey GO byte-identical (states 1-2).
 ReadyGoPresentation format_ready_go_button(bool networked,
                                            bool is_host,
                                            bool my_ready,

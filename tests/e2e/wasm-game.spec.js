@@ -261,13 +261,13 @@ async function pressPickerKey(page, key, settlingMs = 150) {
 
 async function openWebDisplayOptions(page) {
   // Emscripten starts forwarding keyboard input after a real canvas click.
-  // Use an inert corner rather than focusCanvas(), whose center lands on a
-  // player-count button in the multiplayer web menu.
+  // Use an inert corner rather than focusCanvas(). Its center used to land
+  // on the old player-count buttons and still sits among live menu faces.
   await clickCanvasGameCoord(page, 10, 10);
 
   // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
-  // arrow keys and Enter. From CONTINUE, LEVEL EDITOR, PLAYERS, then GAME
-  // SETTINGS are three downward steps in the multiplayer web layout.
+  // arrow keys and Enter. From CONTINUE, LEVEL EDITOR, DIFFICULTY, then GAME
+  // SETTINGS are three downward steps in the web layout.
   for (let i = 0; i < 3; ++i) {
     await pressPickerKey(page, 's');
   }

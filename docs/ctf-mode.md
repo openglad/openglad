@@ -45,12 +45,20 @@ to every client:
 - **Scenario Troops** — keep the level's authored fighters, or field only
   the players' selected company fighters.
 
-Assign player teams with the **SEATS** rail in Base Camp. Each local **P#**
-card cycles independently: put several seats on one team for co-op, or spread
-them across teams for a versus or mixed-team match. A fighter's color remains
-its combat allegiance; changing a player-seat assignment does not recolor the
-company roster. The assignments work locally, in split-screen and networked
-games, and through the dedicated server.
+Assign player teams with the **SEATS** rail in Base Camp. Use **+** to add a
+local seat, then open an owned **P#** card and choose **TEAM** in its editor.
+The rail shows four cards at a time and **<**/**>** page through larger network
+lobbies. Put several seats on one team for co-op, or spread them across teams
+for a versus or mixed-team match. Remote cards are read-only.
+
+The same editor selects 4- or 8-direction movement, remaps that local player's
+keys, resets that player's controls, and removes the seat. Removing a machine's
+last network seat leaves it connected as a spectator; **+** brings it back.
+Seat membership and CTF team choices belong to the current session, not the
+company file. A fighter's color remains its combat allegiance, so changing a
+player-seat assignment does not recolor the company roster. The assignments
+work locally, in split-screen and networked games, and through the dedicated
+server.
 
 ## The maps
 

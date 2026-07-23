@@ -98,6 +98,11 @@ private:
         // The peer's local seats in seat order (empty = not joined). Seat k is
         // driven by the peer's InputState slot k.
         std::vector<LobbyPlayer> seats = {};
+        // Removing the final seat leaves the peer connected as a true
+        // spectator: it is absent from LobbyState, readiness, capacity, and
+        // gameplay bindings. Retain only its stable command token privately so
+        // a later [+] can reactivate the same seat identity.
+        LobbySeatId dormant_seat_id = kInvalidLobbySeatId;
         // Recipient-specific Join acknowledgement. This is deliberately peer
         // state rather than canonical LobbyState so another client's broadcast
         // can never appear to acknowledge this peer's in-flight declaration.

@@ -462,15 +462,27 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 #endif
             const Sint32 click_result =
                 og::runtime::current_session->localbuttons_->leftclick();
-            if (click_result == MENU_EXIT)
+            if (click_result == MENU_EXIT) {
+                // A blocking child can discover a remote start and return its
+                // structural exit through this activation. Do not fold that
+                // into the parent's ordinary local-BACK exit_value.
+                Sint32 nested_remote_start = 0;
+                if (remote_start_requested(spec, nested_remote_start))
+                    return nested_remote_start;
                 break;
+            }
             if (click_result != 0)
                 retvalue = click_result;
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        if (retvalue == MENU_EXIT)
+        if (retvalue == MENU_EXIT) {
+            // Same child-return path as mouse activation, for Enter/hotkeys.
+            Sint32 nested_remote_start = 0;
+            if (remote_start_requested(spec, nested_remote_start))
+                return nested_remote_start;
             break;
+        }
 
         // Subscreens whose BACK carries MENU_REDRAW (view team / MATCHUP /
         // the slot menus) END here — the same point the legacy loops

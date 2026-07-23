@@ -312,9 +312,14 @@ TEST(NewGame, name_entry_edit_strip_sets_company_name) {
         << "the edited name should become the founded company's display name";
 }
 
-// Regression for the exact user flow:
+// Regression for the originally reported flow:
 //   BEGIN NEW GAME -> Base Camp BACK -> PLAYERS -> 3 PLAYER -> BACK
 //   -> CONTINUE -> Base Camp.
+//
+// PLAYERS has since moved into Base Camp as the seat rail's + action. Keep
+// the heart of that report intact: grow the live machine to three seats,
+// leave Base Camp, then CONTINUE the company and require all three seats to
+// still be present.
 //
 // The player count is a live machine/session choice, not company state.
 // CONTINUE still reloads the most-recent company, so that load must preserve
@@ -324,7 +329,7 @@ struct ContinuePlayerCountState {
     bool started = false;
     bool finished = false;
     bool saw_initial_base_camp = false;
-    bool saw_player_settings = false;
+    bool saw_seat_add = false;
     bool saw_continued_base_camp = false;
     bool saw_three_seats = false;
     unsigned char live_count_after_continue = 0;
@@ -357,26 +362,27 @@ static int continue_player_count_injector(void* data)
     state->saw_initial_base_camp = true;
     state->founded_slot = og::data::active_company_slot();
     SDL_Delay(750);
+    if (!wait_for_interactable("add_seat", 5000))
+        return 0;
+    state->saw_seat_add = true;
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] adding local seat 2 in Base Camp\n");
+    interact("add_seat");
+    if (!wait_for_interactable("seat_card_1", 5000))
+        return 0;
+    // The + row deliberately rejects a second activation inside 250 ms so a
+    // touch release cannot create two seats. Cross that boundary before the
+    // intentional second click.
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] adding local seat 3 in Base Camp\n");
+    interact("add_seat");
+    if (!wait_for_interactable("seat_card_2", 5000))
+        return 0;
+
+    // Let the + release edge clear before injecting the next press.
+    SDL_Delay(300);
     fprintf(stderr, "  [test] backing out of the new company's Base Camp\n");
     interact("back");
-
-    if (!wait_for_interactable("player_settings", 10000))
-        return 0;
-    SDL_Delay(750);
-    fprintf(stderr, "  [test] opening PLAYERS\n");
-    interact("player_settings");
-
-    if (!wait_for_interactable("3_player", 5000))
-        return 0;
-    state->saw_player_settings = true;
-    SDL_Delay(300);
-    fprintf(stderr, "  [test] choosing 3 PLAYER\n");
-    interact("3_player");
-
-    // Let the 3 PLAYER release edge clear before injecting the next press.
-    SDL_Delay(300);
-    fprintf(stderr, "  [test] backing out of PLAYERS\n");
-    interact("player_settings_back");
 
     if (!wait_for_interactable("continue_game", 10000))
         return 0;
@@ -421,6 +427,11 @@ static int continue_player_count_injector(void* data)
 
 TEST(NewGame, player_count_survives_back_then_continue)
 {
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP()
+        << "this build supports one local seat, so the three-seat Continue "
+           "regression does not apply";
+#endif
     struct ClockReset {
         ~ClockReset()
         {
@@ -449,8 +460,9 @@ TEST(NewGame, player_count_survives_back_then_continue)
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
-    // First main menu founds the company. The second hosts PLAYERS and
-    // CONTINUE; after the second Base Camp BACK, the test gate quits.
+    // First main menu founds the company and Base Camp grows the machine's
+    // seat declaration. The second hosts CONTINUE; after the second Base Camp
+    // BACK, the test gate quits.
     g_picker_max_mainmenu_calls = 2;
     picker_main(0, nullptr);
     SDL_WaitThread(thread, nullptr);
@@ -467,7 +479,7 @@ TEST(NewGame, player_count_survives_back_then_continue)
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished) << "the complete user flow should unwind";
     ASSERT_TRUE(state.saw_initial_base_camp);
-    ASSERT_TRUE(state.saw_player_settings);
+    ASSERT_TRUE(state.saw_seat_add);
     ASSERT_TRUE(state.saw_continued_base_camp);
     EXPECT_EQ(state.founded_slot, state.continued_slot)
         << "Continue should reopen the company just founded";

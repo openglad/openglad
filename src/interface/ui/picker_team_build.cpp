@@ -181,8 +181,9 @@ void picker_base_camp_after_roster_mutation()
 // Global deployed: networked = every machine's replicated deploy flags (the
 // server's rule-4 count); solo = the private roster. Own deployed reads the
 // PRIVATE save (the wire mirrors it). Spectator = this machine contributes
-// no character slots (numplayers==0 spectator seat or an empty roster) —
-// such machines ready freely [NET-R9].
+// no character slots (numplayers==0 or an empty roster). That formatter shape
+// has no deploy minimum [NET-R9]; Base Camp gives a true zero-seat client no
+// READY action and exempts it from the server gate.
 og::ui::ReadyGoPresentation picker_compute_ready_go_presentation()
 {
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;

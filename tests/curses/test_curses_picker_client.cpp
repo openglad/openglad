@@ -321,31 +321,26 @@ TEST(CursesPickerClient, difficulty_cycles_on_select)
     EXPECT_TRUE(found) << "difficulty notice should render the new difficulty name";
 }
 
-// --- player count --------------------------------------------------------
+// --- player count compatibility -----------------------------------------
 
-// A terminal process owns one local player. Shared-menu choices for 2-4 are
-// retained for SDL parity, but curses must reject them clearly and stay at 1.
-TEST(CursesPickerClient, player_count_rejects_extra_local_players)
+// Seat lifecycle moved off Main. Keep the legacy command dispatch safe for
+// old callers, but never advertise any of the old 1-4 player rows.
+TEST(CursesPickerClient,
+     main_menu_omits_player_count_and_legacy_dispatch_stays_single_player)
 {
     PickerFixture f;
-    for (int n : {4, 3, 2}) {
-        const auto* item = og::ui::find_picker_menu_item(
-            PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, n);
-        ASSERT_NE(item, nullptr) << "missing player-mode item for " << n;
-        dismiss(f.t());
-        f.client.handle_menu_item(PickerMenuId::Main, *item);
-        EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
-        EXPECT_NE(f.t().dump().find("supports one local player"),
-                  std::string::npos) << f.t().dump();
+    for (int players = 1; players <= 4; ++players) {
+        EXPECT_EQ(nullptr, og::ui::find_picker_menu_item(
+            PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, players));
     }
 
-    const auto* one = og::ui::find_picker_menu_item(
-        PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 1);
-    ASSERT_NE(one, nullptr);
+    const og::ui::PickerMenuItem legacy{
+        "legacy-player-count", "Legacy Player Count",
+        PickerMenuCommand::SetPlayerMode, 4};
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Main, *one);
+    f.client.handle_menu_item(PickerMenuId::Main, legacy);
     EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
-    EXPECT_NE(f.t().dump().find("Player mode set to 1"),
+    EXPECT_NE(f.t().dump().find("supports one local player"),
               std::string::npos) << f.t().dump();
 }
 

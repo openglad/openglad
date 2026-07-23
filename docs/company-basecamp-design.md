@@ -29,7 +29,7 @@ The main menu presents:
 1. **Begin**
 2. **Continue** and **Load**
 3. **Level Editor**
-4. **Players**, **Difficulty**, and **Game Settings**
+4. **Difficulty** and **Game Settings**
 5. **Help** and **Quit**
 
 The web build keeps **Quit** visible but disabled. **Continue** opens the most
@@ -38,9 +38,13 @@ Company List.
 
 ![Main menu](media/company-basecamp/main-menu.png)
 
-| Player Settings | Game Settings |
+The shared **CONTROLS** screen remains available under **GAME SETTINGS**. It
+edits all four local controller profiles and has a **RESET ALL** action. Seat
+count and next-level team choices no longer live on the main menu.
+
+| Game Settings | Global Controls |
 |---|---|
-| ![Player Settings](media/company-basecamp/player-settings.png) | ![Game Settings](media/company-basecamp/settings.png) |
+| ![Game Settings](media/company-basecamp/settings.png) | ![Global Controls](media/company-basecamp/global-controls.png) |
 
 ### 2.2 Found Your Company
 
@@ -76,24 +80,35 @@ level, and experience fields.
 - Tap the deploy box to deploy or bench a character.
 - Tap the team box to cycle the character's combat team.
 - Tap the name or row body to train that character.
-- Use the **SEATS** rail to assign each player seat to a team for the next
-  level. Four seats are shown at a time; **<** and **>** page the rail when a
-  lobby has more than four.
+- Use **+** at the far right of the **SEATS** rail to add a local seat. A
+  machine may contribute four active seats and a network lobby may contain
+  sixteen. Four cards are shown at a time; **<** and **>** page the rail when
+  it grows past the visible window.
+- Open an owned seat card to edit that player. The editor contains **TEAM**,
+  **4-DIRECTION**/**8-DIRECTION**, **REMAP**, **RESET THIS PLAYER**, and
+  **REMOVE PLAYER**. In a network lobby the last action becomes **SPECTATE**
+  when it removes the machine's final active seat. Use **+** to return from
+  spectator mode.
 - Player numbers are lobby-wide. A local card says **YOU**; a remote card uses
-  a short company abbreviation. Tapping a local card cycles its team, while a
-  remote card is read-only and identifies the company that controls it.
+  a short company abbreviation. Remote cards are read-only and identify the
+  company that controls them.
 - Multiple seats may deliberately choose the same team for co-op or team
   matchups. Seats on different teams oppose one another.
 - Tap **SEATS** to open the full **MATCHUP** overview.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
+![Owned seat settings](media/team-selection/seat-settings.png)
+
 | Seats 1–4 | Seats 5–7 |
 |---|---|
 | ![Base Camp seat page one](media/team-selection/basecamp-seats-page-1.png) | ![Base Camp seat page two](media/team-selection/basecamp-seats-page-2.png) |
 
-The local player count survives leaving Base Camp and returning through
-**CONTINUE**, because it belongs to the session rather than the company file.
+Adding or removing seats and choosing their teams changes the current session.
+Those choices survive leaving Base Camp and returning through **CONTINUE**, but
+they are neither loaded from nor written to a company file. Direction modes
+and key bindings belong to the shared control configuration instead, so they
+remain available across companies.
 
 ![Three local seats after Continue](media/team-selection/basecamp-three-local-seats.png)
 
@@ -102,7 +117,9 @@ The local player count survives leaving Base Camp and returning through
 Solo games show **GO**. In a network lobby, guests see **READY** and the host
 sees **GO**. The host cannot start until every connected machine is ready and
 the deployment can provide one distinct controllable hero for each local view.
-Denials are shown instead of silently ignoring the request.
+Denials are shown instead of silently ignoring the request. Opening an owned
+seat editor withdraws that machine's readiness before a synchronous remap or
+confirmation can hold it there; the player must choose **READY** again.
 
 | Host | Joiner |
 |---|---|
@@ -187,9 +204,10 @@ then replaces it atomically. Backup retention is bounded per company.
 Roster mutations autosave at their commit point: deploy, team change, hire,
 training acceptance, rename, and promotion. Persisted match settings autosave
 as well. In a lobby, a roster mutation republishes the roster and clears that
-machine's ready state. Player-seat assignments and cross-control remain
-session state: they are synchronized through the lobby but are not written
-into a private company roster.
+machine's ready state. Adding, removing, and assigning player seats, as well as
+cross-control, remain session state: they are synchronized through the lobby
+but are not written into a private company roster. Direction modes and keymaps
+are saved in the process-wide control configuration, not in a company.
 
 ## 4. Multiplayer
 
@@ -215,9 +233,12 @@ the owning client.
 ### 4.3 Ready state
 
 Ready state belongs to a machine, not a character. Roster or relevant lobby
-changes clear readiness. Empty-roster spectators may ready without supplying a
-hero. Start validation checks all machines and returns a specific denial when
-the roster cannot satisfy the requested local views.
+changes clear readiness. A client with an active seat but an empty roster may
+ready without supplying a hero. A machine with no active seat remains
+connected as a spectator, has no **READY** action, and does not consume player
+capacity or a gameplay binding; **+** can reactivate its dormant stable seat
+token. Start validation checks participating machines and returns a specific
+denial when the roster cannot satisfy the requested local views.
 
 ### 4.4 Ownership and controls
 
@@ -229,21 +250,22 @@ disabled, input may claim only eligible characters owned by that player or
 machine.
 
 The visible `P#` is a dense lobby-wide display ordinal and may change when a
-machine leaves. Team-change commands therefore target a separate stable,
-server-issued seat token. The server also assigns every connected machine an
-identity shared by all of its seats; readiness and census grouping use that
-identity instead of matching mutable display names. Each lobby-state echo also
-carries a recipient-specific list of owned seat tokens, so **YOU**, edit
-rights, and runtime bindings never depend on a player or company name being
-unique.
+seat or machine leaves. Team-change and remove commands therefore target a
+separate stable, server-issued seat token. Removing a middle seat re-densifies
+the display ordinals without changing its siblings' tokens. The server also
+assigns every connected machine an identity shared by all of its seats;
+readiness and census grouping use that identity instead of matching mutable
+display names. Each lobby-state echo also carries a recipient-specific list of
+owned seat tokens, so **YOU**, edit rights, and runtime bindings never depend
+on a player or company name being unique.
 
 ### 4.5 Follow and lobby changes
 
-Follow targets are selected from the authoritative display world. Changing
-a player-seat assignment, cross-control, or another start-relevant lobby
-setting clears guest readiness. At match start, each global player index uses
-its authoritative seat assignment rather than deriving a shared control team
-from another player.
+Follow targets are selected from the authoritative display world. Adding or
+removing a seat, changing a player-seat assignment, changing cross-control, or
+editing another start-relevant lobby setting clears guest readiness. At match
+start, each global player index uses its authoritative seat assignment rather
+than deriving a shared control team from another player.
 
 ### 4.6 Win shares
 
@@ -307,8 +329,9 @@ A degraded-link alert takes the same line and its warning color.
 ### 9.14 Eight-row page
 
 Eight roster rows fit above the independent player-seat rail while leaving the
-column header clear. The scenario summary and **SEATS** label are direct click
-targets.
+column header clear. The rail presents a four-card window between **<** and
+**>**, with **+** fixed at the far right. The scenario summary and **SEATS**
+label are direct click targets.
 
 ### 9.19 Company List geometry
 

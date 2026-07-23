@@ -886,15 +886,25 @@ bool isJoystickEvent(const void* native_event)
             || event.type == og::input_native::EventType::JoyButtonDown);
 }
 
-const void* wait_for_key_event()
+namespace
+{
+
+const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
 {
 #ifdef TESTING
+    if (poll_callback != nullptr && !poll_callback())
+    {
+        TRACE("input", "wait_for_key_event: cancelled by poll callback");
+        return nullptr;
+    }
     // In test mode, return immediately with a fake ESC keypress
     TRACE("input", "wait_for_key_event: returning fake ESC (test mode)");
     return og::input_native::make_test_keydown_event(KEYCODE_ESCAPE, KEYSTATE_ESCAPE);
 #else
     while(1)
     {
+        if (poll_callback != nullptr && !poll_callback())
+            return nullptr;
         while(const void* event = og::input_native::poll_event())
         {
             og::input_native::EventData event_data;
@@ -914,6 +924,13 @@ const void* wait_for_key_event()
 #endif
 }
 
+} // namespace
+
+const void* wait_for_key_event()
+{
+    return wait_for_key_event_polling(nullptr);
+}
+
 void quit_if_quit_event(const void* native_event)
 {
     og::input_native::EventData event;
@@ -928,12 +945,20 @@ void clear_events()
     while (og::input_native::poll_event() != nullptr) {}
 }
 
-void assignKeyFromWaitEvent(int player_num, int key_enum)
+bool assignKeyFromWaitEventPolling(
+    int player_num, int key_enum, KeyWaitPollCallback poll_callback)
 {
-    const void* event = wait_for_key_event();
+    const void* event = wait_for_key_event_polling(poll_callback);
+    if (event == nullptr)
+    {
+        // A remap key queued in the same frame as a remote launch must not
+        // leak through into the newly-started game.
+        clear_events();
+        return false;
+    }
     og::input_native::EventData event_data;
     if (!as_event_data(event, event_data))
-        return;
+        return true;
     quit_if_quit_event(event);
     if(isKeyboardEvent(event))
     {
@@ -946,9 +971,32 @@ void assignKeyFromWaitEvent(int player_num, int key_enum)
         player_joy[player_num].setKeyFromEvent(key_enum, event);
 
 #ifndef TESTING
-    YIELD_SLEEP(400);
+    if (poll_callback == nullptr)
+    {
+        YIELD_SLEEP(400);
+    }
+    else
+    {
+        // Preserve the remap debounce without going dark to the lobby for
+        // another 400 ms after each accepted key.
+        for (int waited_ms = 0; waited_ms < 400; waited_ms += 10)
+        {
+            if (!poll_callback())
+            {
+                clear_events();
+                return false;
+            }
+            YIELD_SLEEP(10);
+        }
+    }
 #endif
     clear_events();
+    return true;
+}
+
+void assignKeyFromWaitEvent(int player_num, int key_enum)
+{
+    (void)assignKeyFromWaitEventPolling(player_num, key_enum, nullptr);
 }
 
 

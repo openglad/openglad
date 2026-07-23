@@ -13,13 +13,9 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
-    {"3_player", "3 Player", PickerMenuCommand::SetPlayerMode, 3},
-    {"2_player", "2 Player", PickerMenuCommand::SetPlayerMode, 2},
-    {"1_player", "1 Player", PickerMenuCommand::SetPlayerMode, 1},
     // The DIFFICULTY entry is a door into the DIFFICULTY submenu
     // (kDifficultyMenuItems below); the in-place cycle moved in there.
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},

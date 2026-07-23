@@ -231,6 +231,7 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.players.push_back(make_lobby_player_for_test());
     state.local_seat_ids.push_back(state.players.front().seat_id);
     state.last_join_request_id = 0x10293847u;
+    state.local_peer_is_host = true;
     return state;
 }
 
@@ -338,6 +339,7 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
     join.payload = og::sim::LobbyJoinMessage{
         .player = make_lobby_player_for_test(),
         .request_id = 0xabcdef12u,
+        .resume_after_level = true,
     };
     messages.push_back(join);
 
@@ -359,6 +361,13 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
         .team = 1,
     };
     messages.push_back(team_change);
+
+    og::sim::LobbyMessage remove_seat;
+    remove_seat.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = 4u,
+        .seat_id = 0x55667788u,
+    };
+    messages.push_back(remove_seat);
 
     og::sim::LobbyMessage start_game;
     start_game.payload = og::sim::LobbyStartGameMessage{
@@ -419,12 +428,32 @@ TEST(NetTransport, lobby_state_roundtrip_and_decode_received_message)
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(expected, *decoded);
     EXPECT_EQ(0x10293847u, decoded->last_join_request_id);
+    EXPECT_TRUE(decoded->local_peer_is_host);
 
     const og::sim::TypedReceivedMessage typed =
         og::sim::decode_received_message({.peer_id = 6u, .data = bytes});
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState, typed.kind);
     ASSERT_NE(nullptr, typed.lobby_state);
     EXPECT_EQ(expected, *typed.lobby_state);
+}
+
+TEST(NetTransport, lobby_remove_seat_rejects_truncated_stable_token)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = 7u,
+        .seat_id = 0x10293847u,
+    };
+    std::vector<std::uint8_t> bytes =
+        og::sim::serialize_lobby_message(message);
+    ASSERT_GT(bytes.size(), og::sim::kTransportHeaderSize);
+
+    bytes.pop_back();
+    const std::uint16_t payload_size = static_cast<std::uint16_t>(
+        bytes.size() - og::sim::kTransportHeaderSize);
+    bytes[2] = static_cast<std::uint8_t>(payload_size & 0xffu);
+    bytes[3] = static_cast<std::uint8_t>((payload_size >> 8) & 0xffu);
+    EXPECT_FALSE(og::sim::deserialize_lobby_message(bytes).has_value());
 }
 
 // Protocol v8 (company-basecamp design §4.1/§4.8): the slot deployed flag,
@@ -2496,6 +2525,14 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
         };
     messages.push_back(team_change);
 
+    og::sim::LobbyMessage remove_seat;
+    remove_seat.payload =
+        og::sim::LobbyRemoveSeatMessage{
+            .player_index = 1u,
+            .seat_id = player.seat_id,
+        };
+    messages.push_back(remove_seat);
+
     og::sim::LobbyMessage start_game;
     start_game.payload = og::sim::LobbyStartGameMessage{
         .player_index = 1u,
@@ -2535,7 +2572,8 @@ TEST(NetTransport,
     // fields and the authored-team-mask u8 = 27 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —
     // so player-count sits at offset 37. A trailing u8 local-seat-id count
-    // follows the players, then a u32 recipient-specific Join acknowledgement.
+    // follows the players, then a u32 recipient-specific Join acknowledgement
+    // and a bool recipient-host flag.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
@@ -2549,24 +2587,39 @@ TEST(NetTransport,
     auto oversized_local_seat_count = empty_state_bytes;
     ASSERT_GE(oversized_local_seat_count.size(), sizeof(std::uint32_t) + 1u);
     const std::size_t local_seat_count_offset =
-        oversized_local_seat_count.size() - sizeof(std::uint32_t) - 1u;
+        oversized_local_seat_count.size() -
+        sizeof(std::uint32_t) - sizeof(std::uint8_t) - 1u;
     oversized_local_seat_count[local_seat_count_offset] =
         static_cast<std::uint8_t>(MAX_PLAYERS + 1);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_local_seat_count)
             .has_value());
 
-    auto truncated_join_ack = empty_state_bytes;
-    truncated_join_ack.pop_back();
+    auto truncated_host_flag = empty_state_bytes;
+    truncated_host_flag.pop_back();
     const std::uint16_t truncated_payload_size =
+        static_cast<std::uint16_t>(
+            truncated_host_flag.size() - og::sim::kTransportHeaderSize);
+    truncated_host_flag[2] =
+        static_cast<std::uint8_t>(truncated_payload_size & 0xffu);
+    truncated_host_flag[3] =
+        static_cast<std::uint8_t>((truncated_payload_size >> 8) & 0xffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(truncated_host_flag)
+            .has_value());
+
+    auto truncated_join_ack = truncated_host_flag;
+    truncated_join_ack.pop_back();
+    const std::uint16_t shorter_payload_size =
         static_cast<std::uint16_t>(
             truncated_join_ack.size() - og::sim::kTransportHeaderSize);
     truncated_join_ack[2] =
-        static_cast<std::uint8_t>(truncated_payload_size & 0xffu);
+        static_cast<std::uint8_t>(shorter_payload_size & 0xffu);
     truncated_join_ack[3] =
-        static_cast<std::uint8_t>((truncated_payload_size >> 8) & 0xffu);
+        static_cast<std::uint8_t>((shorter_payload_size >> 8) & 0xffu);
     EXPECT_FALSE(
-        og::sim::deserialize_lobby_state_message(truncated_join_ack).has_value());
+        og::sim::deserialize_lobby_state_message(truncated_join_ack)
+            .has_value());
 
     og::sim::LobbyPlayer player;
     player.player_index = 0u;

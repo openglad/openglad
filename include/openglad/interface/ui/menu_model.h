@@ -32,7 +32,7 @@ enum class PickerMenuCommand : std::int32_t
     Networking,
     HostGame,
     JoinGame,
-    SetPlayerMode,
+    SetPlayerMode, // Legacy direct-dispatch compatibility; no menu exposes it.
     SetDifficulty,
     ToggleAlliedMode,
     LevelEdit,

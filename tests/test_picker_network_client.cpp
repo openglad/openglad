@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -1431,7 +1432,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     host_client->sync_from_save();
     host_client->sync_settings_from_save();
     host_client->sync_roster_from_save();
-    host_client->set_player_mode(0);
+    host_client->set_player_mode(1);
 
     ASSERT_TRUE(host_client->request_start_game());
     EXPECT_FALSE(host_client->start_request_pending());
@@ -1442,7 +1443,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     ASSERT_TRUE(start_config.has_value());
     EXPECT_EQ("org.openglad.gladiator", start_config->save_data.current_campaign);
     EXPECT_EQ(2, start_config->save_data.scen_num);
-    EXPECT_EQ(0u, start_config->save_data.numplayers);
+    EXPECT_EQ(1u, start_config->save_data.numplayers);
     EXPECT_EQ(1, start_config->save_data.allied_mode);
     EXPECT_EQ(6, start_config->difficulty);
     EXPECT_EQ(2, start_config->my_team);
@@ -1460,6 +1461,458 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     og::runtime::clear_local_transport_shadow(*active_game_session());
 
     host_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     host_local_seat_lifecycle_preserves_tokens_and_uses_zero_seat_spectator)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+    save.numplayers = 3;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    host_client->initialize_from_save();
+
+    ASSERT_EQ(3u, host_client->local_seat_count());
+    std::vector<std::uint8_t> indices =
+        host_client->local_player_indices();
+    ASSERT_EQ(3u, indices.size());
+    std::vector<og::sim::LobbyPlayer> players =
+        host_client->lobby_players();
+    ASSERT_EQ(3u, players.size());
+    const og::sim::LobbyPlayer first = players[indices[0]];
+    const og::sim::LobbyPlayer removed = players[indices[1]];
+    const og::sim::LobbyPlayer third = players[indices[2]];
+
+    EXPECT_TRUE(host_client->set_ready(true));
+    EXPECT_TRUE(host_client->local_ready());
+    ASSERT_TRUE(host_client->remove_local_seat(
+        0xffu, removed.seat_id))
+        << "stable seat token remains authoritative after P# compaction";
+    EXPECT_EQ(2u, host_client->local_seat_count());
+    EXPECT_FALSE(host_client->local_ready())
+        << "an exact seat removal clears the machine's ready state";
+    indices = host_client->local_player_indices();
+    players = host_client->lobby_players();
+    ASSERT_EQ(2u, indices.size());
+    ASSERT_EQ(2u, players.size());
+    EXPECT_EQ(first.seat_id, players[indices[0]].seat_id);
+    EXPECT_EQ(third.seat_id, players[indices[1]].seat_id);
+    EXPECT_FALSE(host_client->remove_local_seat(
+        removed.player_index, removed.seat_id));
+
+    // Removing local seat 0 promotes its surviving sibling to the host row
+    // without changing that sibling's stable token.
+    ASSERT_TRUE(host_client->remove_local_seat(
+        players[indices[0]].player_index,
+        players[indices[0]].seat_id));
+    EXPECT_EQ(1u, host_client->local_seat_count());
+    indices = host_client->local_player_indices();
+    players = host_client->lobby_players();
+    ASSERT_EQ(1u, indices.size());
+    ASSERT_EQ(1u, players.size());
+    EXPECT_EQ(third.seat_id, players[indices.front()].seat_id);
+    EXPECT_TRUE(players[indices.front()].is_host);
+    EXPECT_TRUE(host_client->host_controls_visible());
+
+    const og::sim::LobbySeatId dormant_id =
+        players[indices.front()].seat_id;
+    ASSERT_TRUE(host_client->remove_local_seat(
+        players[indices.front()].player_index, dormant_id));
+    EXPECT_EQ(0u, host_client->local_seat_count());
+    EXPECT_TRUE(host_client->local_player_indices().empty());
+    EXPECT_TRUE(host_client->lobby_players().empty())
+        << "a connected spectator is not an authoritative LobbyPlayer";
+    EXPECT_TRUE(host_client->host_controls_visible())
+        << "host authority belongs to the connected peer, not its seat";
+
+    EXPECT_TRUE(host_client->add_local_seat());
+    EXPECT_EQ(1u, host_client->local_seat_count());
+    ASSERT_EQ(1u, host_client->local_player_indices().size());
+    ASSERT_EQ(1u, host_client->lobby_players().size());
+    EXPECT_EQ(dormant_id, host_client->lobby_players().front().seat_id)
+        << "reactivation reuses the server-private dormant seat token";
+    EXPECT_TRUE(host_client->add_local_seat());
+    EXPECT_TRUE(host_client->add_local_seat());
+    EXPECT_TRUE(host_client->add_local_seat());
+    EXPECT_EQ(4u, host_client->local_seat_count());
+    EXPECT_FALSE(host_client->add_local_seat());
+    EXPECT_EQ(4u, host_client->local_seat_count());
+
+    host_client->set_player_mode(1);
+    players = host_client->lobby_players();
+    ASSERT_EQ(1u, players.size());
+    ASSERT_TRUE(host_client->request_start_game());
+    EXPECT_FALSE(host_client->add_local_seat())
+        << "a locked lobby must not queue a seat for the next round";
+    EXPECT_FALSE(host_client->remove_local_seat(
+        players.front().player_index, players.front().seat_id));
+    EXPECT_EQ(1u, host_client->local_seat_count());
+
+    host_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     joiner_local_seat_lifecycle_round_trips_exact_removal_and_spectating)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Joiner");
+    join_save.numplayers = 3;
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup{
+        .join_session = &join_session,
+        .host_client = host_client.get(),
+        .join_client = join_client.get(),
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return host_client->lobby_players().size() == 4u &&
+            join_client->local_seat_count() == 3u;
+    }));
+
+    const auto run_join_request = [&](auto request) {
+        std::atomic<bool> done = false;
+        bool result = false;
+        std::jthread worker([&] {
+            auto join_scope = join_session.activate();
+            result = request();
+            done.store(true);
+        });
+        const bool completed = wait_until([&] {
+            host_client->poll_and_apply();
+            return done.load();
+        });
+        worker.join();
+        EXPECT_TRUE(completed);
+        return result;
+    };
+
+    std::vector<og::sim::LobbyPlayer> local_players;
+    {
+        auto join_scope = join_session.activate();
+        const std::vector<std::uint8_t> local_indices =
+            join_client->local_player_indices();
+        ASSERT_EQ(3u, local_indices.size());
+        const std::vector<og::sim::LobbyPlayer> all_players =
+            join_client->lobby_players();
+        for (const std::uint8_t index : local_indices)
+            local_players.push_back(all_players[index]);
+    }
+    ASSERT_EQ(3u, local_players.size());
+    const og::sim::LobbyPlayer first = local_players[0];
+    const og::sim::LobbyPlayer removed = local_players[1];
+    const og::sim::LobbyPlayer third = local_players[2];
+
+    EXPECT_TRUE(run_join_request([&] {
+        return join_client->set_ready(true);
+    }));
+    EXPECT_TRUE(run_join_request([&] {
+        return join_client->set_ready(false);
+    })) << "establish the authoritative unready barrier before delaying Remove";
+    // Delay authority beyond the historic 50x10ms synchronous window. The
+    // call remains pending so Base Camp neither skips a late committed
+    // profile compaction nor compacts optimistically before stable-token
+    // absence is authoritative.
+    std::atomic<bool> delayed_remove_done = false;
+    bool delayed_remove_result = false;
+    std::jthread delayed_remove_worker([&] {
+        auto join_scope = join_session.activate();
+        delayed_remove_result = join_client->remove_local_seat(
+            0xffu, removed.seat_id);
+        delayed_remove_done.store(true);
+    });
+    std::this_thread::sleep_for(600ms);
+    EXPECT_FALSE(delayed_remove_done.load())
+        << "the old fixed deadline must not misreport an in-flight remove";
+    EXPECT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return delayed_remove_done.load();
+    })) << "a live authority echo settles the exact remove";
+    delayed_remove_worker.join();
+    EXPECT_TRUE(delayed_remove_result)
+        << "a delayed authoritative absence commits the local profile change";
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return host_client->lobby_players().size() == 3u &&
+            join_client->local_player_indices().size() == 2u;
+    })) << "the pending stable-token removal and roster repartition converge";
+
+    og::sim::LobbyPlayer remaining_first;
+    og::sim::LobbyPlayer remaining_third;
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(2u, join_client->local_seat_count());
+        EXPECT_FALSE(join_client->local_ready());
+        const std::vector<std::uint8_t> local_indices =
+            join_client->local_player_indices();
+        const std::vector<og::sim::LobbyPlayer> all_players =
+            join_client->lobby_players();
+        ASSERT_EQ(2u, local_indices.size());
+        remaining_first = all_players[local_indices[0]];
+        remaining_third = all_players[local_indices[1]];
+    }
+    EXPECT_EQ(first.seat_id, remaining_first.seat_id);
+    EXPECT_EQ(third.seat_id, remaining_third.seat_id);
+    EXPECT_EQ(remaining_first.player_index + 1,
+              remaining_third.player_index);
+    EXPECT_FALSE(run_join_request([&] {
+        return join_client->remove_local_seat(
+            removed.player_index, removed.seat_id);
+    }));
+
+    EXPECT_TRUE(run_join_request([&] {
+        return join_client->remove_local_seat(
+            remaining_first.player_index, remaining_first.seat_id);
+    }));
+    og::sim::LobbyPlayer final_active;
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(1u, join_client->local_seat_count());
+        const auto local_indices = join_client->local_player_indices();
+        const auto all_players = join_client->lobby_players();
+        ASSERT_EQ(1u, local_indices.size());
+        final_active = all_players[local_indices.front()];
+        EXPECT_EQ(third.seat_id, final_active.seat_id);
+    }
+
+    EXPECT_TRUE(run_join_request([&] {
+        return join_client->remove_local_seat(
+            final_active.player_index, final_active.seat_id);
+    }));
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(0u, join_client->local_seat_count());
+        EXPECT_TRUE(join_client->local_player_indices().empty());
+        const auto all_players = join_client->lobby_players();
+        ASSERT_EQ(1u, all_players.size());
+        const auto removed_seat = std::find_if(
+            all_players.begin(), all_players.end(),
+            [seat_id = third.seat_id](const og::sim::LobbyPlayer& player) {
+                return player.seat_id == seat_id;
+            });
+        EXPECT_EQ(all_players.end(), removed_seat)
+            << "spectators are absent from the active lobby roster";
+    }
+
+    std::atomic<bool> delayed_add_done = false;
+    bool delayed_add_result = false;
+    std::jthread delayed_add_worker([&] {
+        auto join_scope = join_session.activate();
+        delayed_add_result = join_client->add_local_seat();
+        delayed_add_done.store(true);
+    });
+    std::this_thread::sleep_for(600ms);
+    EXPECT_FALSE(delayed_add_done.load())
+        << "a live delayed Join remains pending past the old fixed deadline";
+    EXPECT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return delayed_add_done.load();
+    }));
+    delayed_add_worker.join();
+    EXPECT_TRUE(delayed_add_result);
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(1u, join_client->local_seat_count());
+        ASSERT_EQ(1u, join_client->local_player_indices().size());
+        const auto all_players = join_client->lobby_players();
+        const auto reactivated = std::find_if(
+            all_players.begin(), all_players.end(),
+            [seat_id = third.seat_id](const og::sim::LobbyPlayer& player) {
+                return player.seat_id == seat_id;
+            });
+        EXPECT_NE(all_players.end(), reactivated)
+            << "spectator [+] reuses its server-private dormant token";
+    }
+
+    EXPECT_TRUE(run_join_request([&] {
+        return join_client->set_ready(true);
+    }));
+
+    const auto host_indices = host_client->local_player_indices();
+    const auto host_players = host_client->lobby_players();
+    ASSERT_EQ(1u, host_indices.size());
+    const og::sim::LobbyPlayer host_seat =
+        host_players[host_indices.front()];
+    ASSERT_TRUE(host_client->remove_local_seat(
+        host_seat.player_index, host_seat.seat_id));
+    EXPECT_EQ(0u, host_client->local_seat_count());
+    EXPECT_TRUE(host_client->local_player_indices().empty());
+    EXPECT_TRUE(host_client->host_controls_visible())
+        << "a zero-seat host retains peer-level Scenario/GO authority";
+
+    ASSERT_TRUE(host_client->request_start_game());
+    const auto spectator_host_config = host_client->build_game_start_config();
+    ASSERT_TRUE(spectator_host_config.has_value());
+    EXPECT_EQ(0u, spectator_host_config->save_data.numplayers);
+    EXPECT_TRUE(spectator_host_config->local_player_indices.empty());
+    ASSERT_TRUE(wait_until([&] {
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->has_game_start_config();
+    }));
+    og::sim::LobbyPlayer locked_seat;
+    {
+        auto join_scope = join_session.activate();
+        const auto local_indices = join_client->local_player_indices();
+        const auto all_players = join_client->lobby_players();
+        ASSERT_EQ(1u, local_indices.size());
+        locked_seat = all_players[local_indices.front()];
+    }
+    EXPECT_FALSE(run_join_request([&] {
+        return join_client->add_local_seat();
+    })) << "a received StartGame lock must not queue a next-round add";
+    EXPECT_FALSE(run_join_request([&] {
+        return join_client->remove_local_seat(
+            locked_seat.player_index, locked_seat.seat_id);
+    }));
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(1u, join_client->local_seat_count());
+    }
+}
+
+TEST(PickerNetworkClient,
+     joiner_middle_remove_reports_failure_on_disconnect_before_authority)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Joiner");
+    join_save.numplayers = 3;
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return host_client->lobby_players().size() == 4u &&
+            join_client->local_player_indices().size() == 3u;
+    }));
+
+    og::sim::LobbyPlayer middle;
+    {
+        auto join_scope = join_session.activate();
+        const auto local_indices = join_client->local_player_indices();
+        const auto players = join_client->lobby_players();
+        ASSERT_EQ(3u, local_indices.size());
+        middle = players[local_indices[1]];
+    }
+
+    std::atomic<bool> remove_done = false;
+    bool remove_result = true;
+    std::jthread worker([&] {
+        auto join_scope = join_session.activate();
+        remove_result = join_client->remove_local_seat(
+            middle.player_index, middle.seat_id);
+        remove_done.store(true);
+    });
+
+    // Do not pump LobbyServer: the exact command remains unread, then the
+    // authority/link disappears. This is a definitive failure, so the API
+    // must not tell Base Camp to compact B out of the A/B/C control profiles.
+    std::this_thread::sleep_for(100ms);
+    host_client->shutdown();
+    EXPECT_TRUE(wait_until([&] {
+        return remove_done.load();
+    }, 8s));
+    worker.join();
+    EXPECT_FALSE(remove_result);
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(3u, join_client->local_seat_count());
+        EXPECT_EQ(3u, join_client->local_player_indices().size());
+        const auto players = join_client->lobby_players();
+        EXPECT_NE(
+            players.end(),
+            std::find_if(
+                players.begin(), players.end(),
+                [seat_id = middle.seat_id](
+                    const og::sim::LobbyPlayer& player) {
+                    return player.seat_id == seat_id;
+                }));
+        join_client->shutdown();
+    }
 }
 
 TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
@@ -1786,22 +2239,26 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     og::sim::LobbyMessage sync_message;
     join_client->sync_settings_from_save();
     join_client->set_player_mode(0);
+    bool saw_sync_join = false;
+    bool saw_leave = false;
     ASSERT_TRUE(wait_until([&] {
         join_client->poll_and_apply();
-        bool saw_join = false;
         for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
         {
-            if (peer_id != join_peer_id ||
-                message.kind() != og::sim::LobbyMessageKind::Join)
-            {
+            if (peer_id != join_peer_id)
                 continue;
+            if (message.kind() == og::sim::LobbyMessageKind::Join)
+            {
+                sync_message = std::move(message);
+                saw_sync_join = true;
             }
-
-            sync_message = std::move(message);
-            saw_join = true;
+            else if (message.kind() == og::sim::LobbyMessageKind::Leave)
+            {
+                saw_leave = true;
+            }
         }
-        return saw_join;
-    })) << "direct join client should re-send its join roster after local save changes";
+        return saw_sync_join && saw_leave;
+    })) << "roster sync precedes the explicit zero-seat spectator Leave";
 
     const auto& synced_join =
         std::get<og::sim::LobbyJoinMessage>(sync_message.payload);
@@ -1809,13 +2266,8 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ("Joiner Prime",
               synced_join.player.character_slots.front().character.name);
 
-    join_player = synced_join.player;
-    join_player.player_index = 1u;
-    join_player.seat_id = 102u;
-    join_player.machine_id = 2u;
-    join_player.ready = false;
-    join_player.is_host = false;
-    state.players[1] = join_player;
+    state.players.resize(1u);
+    state.local_seat_ids.clear();
     state.last_join_request_id = synced_join.request_id;
     server_transport->send_lobby_state(
         join_peer_id, std::make_shared<og::sim::LobbyState>(state));
@@ -1836,10 +2288,8 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(7, start_config->difficulty);
     EXPECT_EQ(1, start_config->my_team)
         << "allied_mode must not collapse an explicit nonzero seat team";
-    ASSERT_EQ(2u, start_config->save_data.team_list.size());
+    ASSERT_EQ(1u, start_config->save_data.team_list.size());
     EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
-    EXPECT_EQ(1, start_config->save_data.team_list[1].character.teamnum)
-        << "the allied flag does not repaint either company's roster";
 
     ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
@@ -5994,10 +6444,13 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
         return join_client->host_controls_visible();
     })) << "relay join client should become the visible host once the lobby state arrives";
     join_client->sync_roster_from_save();
-    join_client->set_player_mode(0);
+    join_client->set_player_mode(1);
+    EXPECT_FALSE(join_client->request_start_game())
+        << "the roster echo is still pending, so GO queues instead of sending";
+    EXPECT_TRUE(join_client->start_request_pending())
+        << "queued GO must remain observable to the menu poll loop";
 
     ASSERT_TRUE(wait_until([&] {
-        (void)join_client->request_start_game();
         lobby_server.poll_incoming_messages();
         join_client->poll_and_apply();
         return join_client->has_game_start_config();
@@ -6009,7 +6462,7 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     const auto start_config = join_client->consume_game_start_config();
     ASSERT_TRUE(start_config.has_value());
     EXPECT_EQ(1, start_config->save_data.scen_num);
-    EXPECT_EQ(0u, start_config->save_data.numplayers);
+    EXPECT_EQ(1u, start_config->save_data.numplayers);
     EXPECT_LE(start_config->save_data.team_list.size(), 1u);
     EXPECT_EQ(1, start_config->difficulty);
 

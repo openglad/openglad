@@ -559,27 +559,23 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
-    // 6=back). Main 7=difficulty opens the DIFFICULTY submenu
+    // 6=back). Main 3=difficulty opens the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=back).
     const std::string input =
         "bad\n"     // main: invalid choice
-        "7\n"       // main: difficulty -> DIFFICULTY submenu
+        "3\n"       // main: difficulty -> DIFFICULTY submenu
         "1\n"       // difficulty: cycle difficulty
         "2\n"       // difficulty: cycle respawns
         "3\n"       // difficulty: cycle respawn delay
         "4\n"       // difficulty: toggle permadeath
         "5\n"       // difficulty: cycle generators
         "6\n"       // difficulty: back -> main
-        "3\n"       // main: 4 player
-        "4\n"       // main: 3 player
-        "5\n"       // main: 2 player
-        "6\n"       // main: 1 player
-        "8\n"       // main: level edit (unavailable)
-        "9\n"       // main: options
+        "4\n"       // main: level edit (unavailable)
+        "5\n"       // main: options
         "newslot\n"
         "not-a-seed\n"
-        "9\n"       // main: options again
+        "5\n"       // main: options again
         "textslot\n"
         "123\n"
         "2\n"       // main: continue -> team build (base camp)
@@ -618,7 +614,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -666,7 +662,7 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         "\n"        //   name entry: blank accepts the generated company name
         "\n"        //   campaign select: blank keeps current (= default reset)
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -744,7 +740,7 @@ bool seed_headless_company(const std::string& slot, const std::string& name,
 
 } // namespace
 
-// The main-menu LOAD door (position 12) presents the company list: open by
+// The main-menu LOAD door (position 8) presents the company list: open by
 // row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
 // row refuses to switch, deleting the ACTIVE company refuses with
 // switch-first, deleting another company needs the explicit "y" (NO-first),
@@ -765,13 +761,13 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 
     // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
     const std::string input =
-        "12\n"      // main: load company -> the company list
+        "8\n"       // main: load company -> the company list
         "1\n"       //   list: open company...
         "3\n"       //     #3 = corrupt -> damaged message, never switches
         "1\n"       //   list: open company...
         "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
         "7\n"       // team build: back -> main
-        "12\n"      // main: load company again (active is now wp3hlb)
+        "8\n"       // main: load company again (active is now wp3hlb)
         "3\n"       //   list: delete company...
         "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
         "3\n"       //   list: delete company...
@@ -783,7 +779,7 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -836,7 +832,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
     // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
     // 3 = seq 1 (OLD).
     const std::string input =
-        "12\n"      // main: load company -> the company list
+        "8\n"       // main: load company -> the company list
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlr (the only company)
         "1\n"       //     backups: restore...
@@ -854,7 +850,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
         "2\n"       //       #2 = seq 1 (OLD)...
         "y\n"       //       explicit yes -> rewound -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -962,7 +958,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "1\n"       //   entry 1 is always the default campaign
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1001,7 +997,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1050,7 +1046,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "5\n"       // scenario: progress
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "11\n";     // main: quit
+        "7\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1093,7 +1089,7 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
         "b\n"        //   train: back to the roster
         "\n"         //   roster: blank exits
         "7\n"        // base camp: back -> main
-        "11\n";      // main: quit
+        "7\n";       // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1129,7 +1125,6 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
     restore_default_campaigns(); // order-independent: install the packages
 
     const std::string input =
-        "3\n"           // main: unsupported four-player setting stays at one
         "2\n"           // main: continue -> team build (base camp)
         "1\n"           // base camp: roster
         "deploy 99\n"   //   roster: deploy row out of range
@@ -1152,7 +1147,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "\n"            //   blank exits matchup
         "6\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
-        "11\n";         // main: quit
+        "7\n";          // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1168,10 +1163,8 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
     EXPECT_NE(std::string::npos, out.find("--- Matchup ---\n"));
     EXPECT_EQ(std::string::npos, out.find("--- Teams ---\n"))
         << "the retired TEAMS title must not remain user-visible";
-    EXPECT_NE(std::string::npos,
-              out.find("The text simulator has no player controls; "
-                       "player mode remains 1.\n"))
-        << "shared 2-4 player settings must be rejected honestly";
+    EXPECT_EQ(std::string::npos, out.find("4 Player\n"))
+        << "the terminal Main menu must not expose retired player-count rows";
     EXPECT_NE(std::string::npos,
               out.find("Matchup (simulation has no player controls):"))
         << "the Matchup prompt must not imply controllable seats";

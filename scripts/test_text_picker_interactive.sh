@@ -15,8 +15,8 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 # Drive sequence (1-based menu indices):
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
-#     name entry); blank keeps the campaign. Back, then 3 verifies that the
-#     unsupported 4 Player choice stays at one; 2=Continue returns to Base Camp.
+#     name entry); blank keeps the campaign. Back, then 2=Continue returns to
+#     Base Camp. The retired 1–4 player-count rows are no longer present.
 #   Base camp / Team Build (12 items, §2.5 substitution): 3=Hire Troops
 #     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster
 #     (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys row 2),
@@ -24,13 +24,12 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Scenario submenu (6 items): 4=Matchup (set preferred-team metadata, blank
 #     exits), 3=View Scenario (blank dismisses), 6=Back.
 #   Protocol session after GO!: state, quit.
-#   Main: 11=Quit.
+#   Main: 7=Quit.
 cat > "$TMPIN" << 'INP'
 1
 
 
 7
-3
 2
 3
 n
@@ -52,7 +51,7 @@ play 1
 state
 quit
 7
-11
+7
 INP
 
 HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
@@ -136,8 +135,9 @@ if not any('--- Matchup ---' in l for l in lines):
 if not any('RED TEAM' in l for l in lines):
     print('FAIL: expected a RED TEAM roster row', file=sys.stderr)
     sys.exit(1)
-if not any('The text simulator has no player controls; player mode remains 1.' in l for l in lines):
-    print('FAIL: expected the unsupported multiplayer notice', file=sys.stderr)
+if any('1 Player' in l or '2 Player' in l or
+       '3 Player' in l or '4 Player' in l for l in lines):
+    print('FAIL: retired player-count row leaked into terminal Main', file=sys.stderr)
     sys.exit(1)
 if not any('Preferred-team metadata is now RED;' in l for l in lines):
     print('FAIL: expected the honest preferred-team metadata confirmation', file=sys.stderr)

@@ -3,6 +3,7 @@
 #include <openglad/gameplay/lobby_server.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -56,6 +57,33 @@ public:
     // 0 = spectate, 1..MAX_PLAYERS = local seats. Networked clients honor the
     // requested count too, declaring one lobby seat per local player.
     virtual void set_player_mode(int player_count) = 0;
+    // Add one active seat owned by this machine. The authority may refuse the
+    // request when either the per-machine or global lobby cap is full.
+    virtual bool add_local_seat()
+    {
+        return false;
+    }
+    // Remove the exact owned seat represented by one displayed LobbyPlayer.
+    // seat_id is the stable authoritative target; player_index is retained as
+    // display/diagnostic context and may already be stale after global P#
+    // compaction. Networked clients leave a connected zero-seat spectator;
+    // local/offline clients refuse to remove their sole seat.
+    virtual bool remove_local_seat(std::uint8_t player_index,
+                                   og::sim::LobbySeatId seat_id)
+    {
+        (void)player_index;
+        (void)seat_id;
+        return false;
+    }
+    // Active local controls (a connected network spectator has zero).
+    [[nodiscard]] virtual std::size_t local_seat_count() const
+    {
+        const std::vector<std::uint8_t> local_indices =
+            local_player_indices();
+        if (!local_indices.empty() || is_networked_session())
+            return local_indices.size();
+        return lobby_players().size();
+    }
     virtual bool request_start_game() = 0;
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
     build_game_start_config() const = 0;
@@ -204,6 +232,10 @@ void picker_lobby_sync_settings_from_save();
 void picker_reinitialize_lobby_after_game();
 void picker_lobby_poll();
 void picker_lobby_set_player_mode(int player_count);
+bool picker_lobby_add_local_seat();
+bool picker_lobby_remove_local_seat(std::uint8_t player_index,
+                                    og::sim::LobbySeatId seat_id);
+std::size_t picker_lobby_local_seat_count();
 bool picker_lobby_request_start();
 std::optional<og::ui::PickerLobbyGameStartConfig>
 picker_lobby_consume_game_start_config();

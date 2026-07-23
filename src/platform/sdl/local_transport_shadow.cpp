@@ -979,9 +979,10 @@ std::string follow_company_for_control(
     return runtime->player_company[owner];
 }
 
-// View i follows seats[i] (a networked machine's local seat list); with no
-// seat list (local splitscreen), view i follows global player_index i — the
-// in-process peers are bound 1:1 in view order.
+// View i follows seats[i] (a networked machine's local seat list). An empty
+// NETWORK seat list is a real zero-seat spectator and therefore has no player
+// binding at all. Only the legacy local-shadow path treats an empty list as
+// split-screen, where the in-process peers are bound 1:1 in view order.
 void sync_display_controls(
     screen& gameplay_screen,
     std::span<const std::uint32_t> controlled_entity_ids,
@@ -999,12 +1000,16 @@ void sync_display_controls(
         if (view == nullptr)
             continue;
 
-        std::optional<std::size_t> player_index = index;
+        std::optional<std::size_t> player_index;
         if (!display_seats.empty())
         {
             player_index = index < display_seats.size()
                 ? std::optional<std::size_t>(display_seats[index].player_index)
                 : std::nullopt;
+        }
+        else if (runtime == nullptr || !runtime->networked)
+        {
+            player_index = index;
         }
         view->global_player_index_ = player_index.has_value()
             ? static_cast<short>(*player_index)
@@ -2025,6 +2030,30 @@ void reset_network_host_transport_shadow(
                 /*isolated_company=*/false);
         };
 
+    // Connected peers with no seat binding are real spectators. Admit them
+    // BEFORE the explicit initial-snapshot pass; transport discovery alone is
+    // deliberately not enough to authorize an unknown zero-token connection.
+    // Register loopback first so a zero-seat host remains the gameplay host.
+    const auto register_lobby_peer =
+        [&player_bindings, &runtime](og::sim::PeerId peer_id) {
+            const bool owns_seat = std::any_of(
+                player_bindings.begin(),
+                player_bindings.end(),
+                [peer_id](const og::sim::LobbyPlayerBinding& binding) {
+                    return binding.peer_id == peer_id;
+                });
+            if (owns_seat)
+                runtime->server->connect_client(peer_id);
+            else
+                runtime->server->connect_spectator(peer_id);
+        };
+    register_lobby_peer(loopback_peer_id);
+    for (const og::sim::PeerId peer_id :
+         runtime->server_transport->connected_peers())
+    {
+        if (peer_id != loopback_peer_id)
+            register_lobby_peer(peer_id);
+    }
     for (const og::sim::LobbyPlayerBinding& binding : player_bindings)
     {
         runtime->server->connect_client(binding.peer_id);
@@ -2043,7 +2072,7 @@ void reset_network_host_transport_shadow(
     // The host's single loopback connection carries all of its seats' inputs:
     // seat k reads keyboard map k, so slot k drives local_slot k.
     for (std::size_t slot = 0;
-         slot < std::max<std::size_t>(host_seats.size(), 1u) &&
+         slot < host_seats.size() &&
          slot < static_cast<std::size_t>(MAX_PLAYERS);
          ++slot)
     {
@@ -2109,7 +2138,7 @@ void reset_network_client_transport_shadow(
     client.drives_display = true;
     // One connection carries all local seats: slot k drives local_slot k.
     for (std::size_t slot = 0;
-         slot < std::max<std::size_t>(local_seats.size(), 1u) &&
+         slot < local_seats.size() &&
          slot < static_cast<std::size_t>(MAX_PLAYERS);
          ++slot)
     {

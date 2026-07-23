@@ -444,7 +444,10 @@ void LobbyServer::disconnect_client(PeerId peer_id)
     if (had_player || was_host)
     {
         rebuild_state();
-        if (state_ != previous_state)
+        // Host authority is recipient-specific and can change even when both
+        // the departing and promoted peers have zero active seats, leaving
+        // the canonical player list byte-for-byte identical.
+        if (was_host || state_ != previous_state)
             broadcast_state();
     }
 
@@ -626,6 +629,8 @@ void LobbyServer::send_state(PeerId peer_id) const
             peer_state->local_seat_ids.push_back(seat.seat_id);
         peer_state->last_join_request_id =
             peer_it->second.last_join_request_id;
+        peer_state->local_peer_is_host =
+            host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     }
     transport_.send_lobby_state(peer_id, std::move(peer_state));
 }
@@ -639,6 +644,8 @@ void LobbyServer::broadcast_state() const
         for (const LobbyPlayer& seat : peer.seats)
             peer_state->local_seat_ids.push_back(seat.seat_id);
         peer_state->last_join_request_id = peer.last_join_request_id;
+        peer_state->local_peer_is_host =
+            host_peer_id_.has_value() && *host_peer_id_ == peer_id;
         transport_.send_lobby_state(peer_id, std::move(peer_state));
     }
 }
@@ -664,7 +671,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     if (lobby_locked_)
     {
         if (message.kind() == LobbyMessageKind::Join &&
-            peers_.contains(peer_id))
+            peers_.contains(peer_id) &&
+            std::get<LobbyJoinMessage>(message.payload).resume_after_level)
         {
             const auto pending_it = std::find_if(
                 pending_locked_joins_.begin(),
@@ -793,9 +801,20 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
             // A re-join replaces the peer's declaration, but the seat at local
             // ordinal k remains the same command target. New ordinals receive
             // fresh tokens; never trust a client-authored token.
-            seat.seat_id = seat_order < previous_seats.size()
-                ? previous_seats[seat_order].seat_id
-                : allocate_seat_id();
+            if (seat_order < previous_seats.size())
+            {
+                seat.seat_id = previous_seats[seat_order].seat_id;
+            }
+            else if (seat_order == 0 && previous_seats.empty() &&
+                     peer_it->second.dormant_seat_id !=
+                         kInvalidLobbySeatId)
+            {
+                seat.seat_id = peer_it->second.dormant_seat_id;
+            }
+            else
+            {
+                seat.seat_id = allocate_seat_id();
+            }
             // Machine identity is scoped to the connected peer. All of its
             // seats share the server-issued value; never trust the client's.
             seat.machine_id = peer_it->second.machine_id;
@@ -839,6 +858,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         }
 
         peer_it->second.seats = std::move(new_seats);
+        if (!peer_it->second.seats.empty())
+            peer_it->second.dormant_seat_id = kInvalidLobbySeatId;
         rebuild_needed = true;
         break;
     }
@@ -846,6 +867,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     case LobbyMessageKind::Leave:
         if (!peer_it->second.seats.empty())
         {
+            peer_it->second.dormant_seat_id =
+                peer_it->second.seats.front().seat_id;
             peer_it->second.seats.clear();
             rebuild_needed = true;
         }
@@ -916,6 +939,41 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 // requester so its bounce is detectable without a timeout.
                 send_state(peer_id);
             }
+        }
+        break;
+
+    case LobbyMessageKind::RemoveSeat:
+        if (!peer_it->second.seats.empty())
+        {
+            const auto& remove_seat =
+                std::get<LobbyRemoveSeatMessage>(message.payload);
+            std::vector<LobbyPlayer>& seats = peer_it->second.seats;
+            const auto target = std::find_if(
+                seats.begin(), seats.end(),
+                [&remove_seat](const LobbyPlayer& seat) {
+                    return remove_seat.seat_id != kInvalidLobbySeatId &&
+                        seat.seat_id == remove_seat.seat_id;
+                });
+            if (target == seats.end())
+            {
+                // A stale P#/token pair must not remove whichever sibling
+                // happens to occupy that dense index now.
+                requester_echo_required = true;
+                break;
+            }
+
+            if (seats.size() == 1u)
+                peer_it->second.dormant_seat_id = target->seat_id;
+            seats.erase(target);
+            // Removing a seat changes this machine's declaration. Its
+            // remaining seats must reconfirm readiness as one unit.
+            for (LobbyPlayer& machine_seat : seats)
+                machine_seat.ready = false;
+            rebuild_needed = true;
+        }
+        else
+        {
+            requester_echo_required = true;
         }
         break;
 

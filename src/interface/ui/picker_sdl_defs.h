@@ -115,8 +115,8 @@ inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();
-button* picker_player_settings_buttons();
-int picker_player_settings_button_count();
+button* picker_seat_settings_buttons();
+int picker_seat_settings_button_count();
 // GAME SETTINGS' materialized main-menu index, derived from the spec
 // (replaces the retired OPTIONS_BUTTON_INDEX #defines). The legacy function
 // name remains as an internal compatibility seam.
@@ -199,8 +199,22 @@ inline constexpr int kBaseCampSeatsLabelIndex = 33;
 inline constexpr int kBaseCampSeatPagePrevIndex = 34;
 inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
 inline constexpr int kBaseCampSeatPageNextIndex = 39;
+inline constexpr int kBaseCampAddSeatIndex = 40;
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
-inline constexpr int kCreateMenuButtonCount = 40;
+inline constexpr int kCreateMenuButtonCount = 41;
+
+// --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
+// A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
+// machine-local controller profile each frame. Multiplayer-disabled builds
+// omit REMOVE/SPECTATE but keep the first five ordinals unchanged.
+inline constexpr int kSeatSettingsBackIndex = 0;
+inline constexpr int kSeatSettingsTeamIndex = 1;
+inline constexpr int kSeatSettingsModeIndex = 2;
+inline constexpr int kSeatSettingsRemapIndex = 3;
+inline constexpr int kSeatSettingsResetIndex = 4;
+inline constexpr int kSeatSettingsRemoveIndex = 5;
+inline constexpr int kSeatSettingsButtonCountMP = 6;
+inline constexpr int kSeatSettingsButtonCountNoMP = 5;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().

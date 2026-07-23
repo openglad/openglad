@@ -208,21 +208,57 @@ void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
+bool reset_default_player_controls_for_player(int player_index)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        hw().player_mode_keys[player_index][kModeFourIndex][k] =
+            kDefaultFourDirKeys[player_index][k];
+        hw().player_mode_keys[player_index][kModeEightIndex][k] =
+            kDefaultEightDirKeys[player_index][k];
+    }
+    hw().player_control_modes[player_index] =
+        kDefaultControlModes[static_cast<std::size_t>(player_index)];
+    // Activate the default mode's keymap into player_keys
+    activate_mode_keymap_for_player(
+        player_index, kDefaultControlModes[static_cast<std::size_t>(player_index)]);
+    return true;
+}
+
+bool compact_player_controls_after_removal(int removed_player_index, int active_player_count)
+{
+    if (active_player_count < 1 || active_player_count > 4 ||
+        removed_player_index < 0 || removed_player_index >= active_player_count)
+        return false;
+
+    for (int source = removed_player_index + 1; source < active_player_count; ++source)
+    {
+        sync_runtime_keys_to_active_mode(source);
+        const int destination = source - 1;
+        for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
+        {
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                hw().player_mode_keys[destination][mode][k] =
+                    hw().player_mode_keys[source][mode][k];
+            }
+        }
+        hw().player_control_modes[destination] = hw().player_control_modes[source];
+        activate_mode_keymap_for_player(
+            destination, hw().player_control_modes[destination]);
+    }
+
+    reset_default_player_controls_for_player(active_player_count - 1);
+    return true;
+}
+
 void reset_default_player_controls()
 {
     for (int p = 0; p < 4; ++p)
-    {
-        for (int k = 0; k < NUM_KEYS; ++k)
-        {
-            hw().player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
-            hw().player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
-        }
-        hw().player_control_modes[p] = kDefaultControlModes[static_cast<std::size_t>(p)];
-        // Activate the default mode's keymap into player_keys
-        const int idx = control_mode_keymap_index(kDefaultControlModes[static_cast<std::size_t>(p)]);
-        for (int k = 0; k < NUM_KEYS; ++k)
-            og::runtime::current_session->player_keys_[p][k] = hw().player_mode_keys[p][idx][k];
-    }
+        reset_default_player_controls_for_player(p);
 }
 
 int get_player_control_mode(int player_index)

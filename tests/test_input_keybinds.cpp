@@ -686,6 +686,217 @@ TEST(InputKeybinds, input_mode_key_binding_updates_are_isolated_by_control_mode)
 }
 
 
+TEST(InputKeybinds, reset_default_controls_for_player_restores_only_that_player)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+    int expected_mode4[NUM_KEYS];
+    int expected_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        expected_mode4[k] = get_player_key_binding_for_mode(1, kFour, k);
+        expected_mode8[k] = get_player_key_binding_for_mode(1, kEight, k);
+    }
+
+    set_player_control_mode(1, kFour);
+    set_player_key_binding(1, KEY_UP, SDLK_F1);
+    set_player_control_mode(1, kEight);
+    set_player_key_binding(1, KEY_UP_RIGHT, SDLK_F2);
+
+    // Keep another player deliberately non-default so a per-player reset
+    // cannot pass by falling back to the existing reset-all behavior.
+    set_player_control_mode(0, kFour);
+    set_player_key_binding(0, KEY_FIRE, SDLK_F3);
+    set_player_control_mode(0, kEight);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_F4);
+    int untouched_mode4[NUM_KEYS];
+    int untouched_mode8[NUM_KEYS];
+    int untouched_active[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        untouched_mode4[k] = get_player_key_binding_for_mode(0, kFour, k);
+        untouched_mode8[k] = get_player_key_binding_for_mode(0, kEight, k);
+        untouched_active[k] = og::runtime::current_session->player_keys_[0][k];
+    }
+
+    ASSERT_TRUE(reset_default_player_controls_for_player(1));
+    ASSERT_EQ(kFour, get_player_control_mode(1));
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        ASSERT_EQ(expected_mode4[k], get_player_key_binding_for_mode(1, kFour, k))
+            << "P2 4-direction key " << k << " should return to its default";
+        ASSERT_EQ(expected_mode8[k], get_player_key_binding_for_mode(1, kEight, k))
+            << "P2 8-direction key " << k << " should return to its default";
+        ASSERT_EQ(expected_mode4[k], og::runtime::current_session->player_keys_[1][k])
+            << "P2 active key " << k << " should carry the default mode map";
+
+        ASSERT_EQ(untouched_mode4[k], get_player_key_binding_for_mode(0, kFour, k))
+            << "P1 4-direction key " << k << " must remain untouched";
+        ASSERT_EQ(untouched_mode8[k], get_player_key_binding_for_mode(0, kEight, k))
+            << "P1 8-direction key " << k << " must remain untouched";
+        ASSERT_EQ(untouched_active[k], og::runtime::current_session->player_keys_[0][k])
+            << "P1 active key " << k << " must remain untouched";
+    }
+    ASSERT_EQ(kEight, get_player_control_mode(0));
+}
+
+
+TEST(InputKeybinds, reset_default_controls_for_player_rejects_invalid_index)
+{
+    FullControlSnapshotGuard guard;
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F5);
+
+    const int mode_before = get_player_control_mode(0);
+    const int binding_before = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT);
+    const int active_before = og::runtime::current_session->player_keys_[0][KEY_UP_RIGHT];
+
+    ASSERT_TRUE(!reset_default_player_controls_for_player(-1));
+    ASSERT_TRUE(!reset_default_player_controls_for_player(4));
+    ASSERT_EQ(mode_before, get_player_control_mode(0));
+    ASSERT_EQ(binding_before, get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT));
+    ASSERT_EQ(active_before, og::runtime::current_session->player_keys_[0][KEY_UP_RIGHT]);
+}
+
+
+TEST(InputKeybinds, compact_controls_after_middle_player_removal_preserves_profiles)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+    int tail_default_mode4[NUM_KEYS];
+    int tail_default_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        tail_default_mode4[k] = get_player_key_binding_for_mode(3, kFour, k);
+        tail_default_mode8[k] = get_player_key_binding_for_mode(3, kEight, k);
+    }
+
+    // Player 1 precedes the removed profile and must not move or reset.
+    set_player_control_mode(0, kFour);
+    set_player_key_binding(0, KEY_UP, SDLK_F1);
+    set_player_control_mode(0, kEight);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F2);
+    int earlier_mode4[NUM_KEYS];
+    int earlier_mode8[NUM_KEYS];
+    int earlier_active[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        earlier_mode4[k] = get_player_key_binding_for_mode(0, kFour, k);
+        earlier_mode8[k] = get_player_key_binding_for_mode(0, kEight, k);
+        earlier_active[k] = og::runtime::current_session->player_keys_[0][k];
+    }
+
+    // Player 3 is the immediate successor of the removed Player 2 profile.
+    set_player_control_mode(2, kFour);
+    set_player_key_binding(2, KEY_LEFT, SDLK_F3);
+    set_player_control_mode(2, kEight);
+    set_player_key_binding(2, KEY_DOWN_LEFT, SDLK_F4);
+    og::runtime::current_session->player_keys_[2][KEY_FIRE] = SDLK_F5;
+    int successor_mode4[NUM_KEYS];
+    int successor_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        successor_mode4[k] = get_player_key_binding_for_mode(2, kFour, k);
+        successor_mode8[k] = get_player_key_binding_for_mode(2, kEight, k);
+    }
+    successor_mode8[KEY_FIRE] = SDLK_F5;
+
+    // Player 4 must also shift, proving the whole active suffix compacts.
+    set_player_control_mode(3, kFour);
+    set_player_key_binding(3, KEY_YELL, SDLK_F6);
+    set_player_control_mode(3, kEight);
+    set_player_key_binding(3, KEY_SPECIAL, SDLK_F7);
+    int final_successor_mode4[NUM_KEYS];
+    int final_successor_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        final_successor_mode4[k] = get_player_key_binding_for_mode(3, kFour, k);
+        final_successor_mode8[k] = get_player_key_binding_for_mode(3, kEight, k);
+    }
+
+    ASSERT_TRUE(compact_player_controls_after_removal(1, 4));
+
+    ASSERT_EQ(kEight, get_player_control_mode(1));
+    ASSERT_EQ(kEight, get_player_control_mode(2));
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        ASSERT_EQ(earlier_mode4[k], get_player_key_binding_for_mode(0, kFour, k));
+        ASSERT_EQ(earlier_mode8[k], get_player_key_binding_for_mode(0, kEight, k));
+        ASSERT_EQ(earlier_active[k], og::runtime::current_session->player_keys_[0][k]);
+
+        ASSERT_EQ(successor_mode4[k], get_player_key_binding_for_mode(1, kFour, k))
+            << "the clicked middle seat's successor must retain 4-dir key " << k;
+        ASSERT_EQ(successor_mode8[k], get_player_key_binding_for_mode(1, kEight, k))
+            << "the clicked middle seat's successor must retain 8-dir key " << k;
+        ASSERT_EQ(successor_mode8[k], og::runtime::current_session->player_keys_[1][k])
+            << "the shifted successor must activate its retained mode";
+
+        ASSERT_EQ(final_successor_mode4[k], get_player_key_binding_for_mode(2, kFour, k));
+        ASSERT_EQ(final_successor_mode8[k], get_player_key_binding_for_mode(2, kEight, k));
+        ASSERT_EQ(final_successor_mode8[k], og::runtime::current_session->player_keys_[2][k]);
+
+        ASSERT_EQ(tail_default_mode4[k], get_player_key_binding_for_mode(3, kFour, k))
+            << "the vacated tail must reset its 4-dir key " << k;
+        ASSERT_EQ(tail_default_mode8[k], get_player_key_binding_for_mode(3, kEight, k))
+            << "the vacated tail must reset its 8-dir key " << k;
+        ASSERT_EQ(tail_default_mode4[k], og::runtime::current_session->player_keys_[3][k])
+            << "the vacated tail must activate its default mode";
+    }
+    ASSERT_EQ(kEight, get_player_control_mode(0));
+    ASSERT_EQ(kFour, get_player_control_mode(3));
+}
+
+
+TEST(InputKeybinds, compact_controls_after_removal_rejects_invalid_inputs)
+{
+    FullControlSnapshotGuard guard;
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F8);
+
+    int modes[4];
+    int mode4[4][NUM_KEYS];
+    int mode8[4][NUM_KEYS];
+    int active[4][NUM_KEYS];
+    for (int p = 0; p < 4; ++p)
+    {
+        modes[p] = get_player_control_mode(p);
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            mode4[p][k] = get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::FourDirection), k);
+            mode8[p][k] = get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::EightDirection), k);
+            active[p][k] = og::runtime::current_session->player_keys_[p][k];
+        }
+    }
+
+    ASSERT_TRUE(!compact_player_controls_after_removal(-1, 3));
+    ASSERT_TRUE(!compact_player_controls_after_removal(3, 3));
+    ASSERT_TRUE(!compact_player_controls_after_removal(0, 0));
+    ASSERT_TRUE(!compact_player_controls_after_removal(0, 5));
+    for (int p = 0; p < 4; ++p)
+    {
+        ASSERT_EQ(modes[p], get_player_control_mode(p));
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            ASSERT_EQ(mode4[p][k], get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::FourDirection), k));
+            ASSERT_EQ(mode8[p][k], get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::EightDirection), k));
+            ASSERT_EQ(active[p][k], og::runtime::current_session->player_keys_[p][k]);
+        }
+    }
+}
+
+
 TEST(InputKeybinds, input_control_settings_cfg_roundtrip)
 {
     cfg_store config;
@@ -811,8 +1022,8 @@ TEST(InputKeybinds, controls_reset_defaults_action_resets_controls_only)
 
     ASSERT_STREQ("CONTROL_RESET_TEST", cfg.get_setting("graphics", "render").c_str()) << "controls reset should not modify non-controls settings";
 
-    // The PLAYER SETTINGS action persists immediately: dirty runtime again,
-    // reload cfg, and prove the defaults return from disk.
+    // The global CONTROLS / RESET ALL action persists immediately: dirty
+    // runtime again, reload cfg, and prove the defaults return from disk.
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F12);
     cfg.load_settings();

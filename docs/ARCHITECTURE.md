@@ -388,7 +388,10 @@ Setting `save_data.numplayers = 0` enables spectator mode:
 - Only `InputAction::SwitchChar` works (cycles camera target)
 - All characters remain AI-controlled
 
-In the picker UI, right-clicking the player count button sets spectator mode, displaying a "SPECTATOR" label.
+In a network lobby, removing the machine's final owned seat through Base
+Camp's **SPECTATE** action leaves that client connected without a gameplay
+binding; **+** adds an active seat again. The old main-menu player-count
+right-click no longer exists.
 
 ---
 
@@ -501,9 +504,10 @@ Shadow](#local-transport-shadow).
 The current network compatibility line is lobby/gameplay protocol **v9**, world
 snapshot format **v9**, and replay format **v11**. Protocol v9 adds stable,
 server-issued lobby seat identity and authoritative per-recipient ownership on
-top of the Company/Base Camp multiplayer state introduced by v8; peers reject
-incompatible versions during the handshake, while snapshot and replay readers
-independently reject unsupported payload formats.
+top of the Company/Base Camp multiplayer state introduced by v8. Team changes
+and exact-seat removal use that identity rather than the mutable dense `P#`.
+Peers reject incompatible versions during the handshake, while snapshot and
+replay readers independently reject unsupported payload formats.
 
 ### Core components (`og_gameplay`, SDL-free)
 
@@ -513,7 +517,7 @@ independently reject unsupported payload formats.
 | `GameClient` | `src/gameplay/game_client.cpp` | Mirror. Sends this peer's input, applies snapshots to its local mirror world, raises callbacks (initial setup, control mapping, sim/game-flow event batches, exit/pause prompts). |
 | `WorldSnapshot` | `src/gameplay/world_snapshot.cpp` | Serializes world state. Full **keyframes** and **deltas** against a baseline; per-entity `GuySnapshot`s; deterministic hashing for desync detection. |
 | `ITransport` | `src/gameplay/net_transport.cpp` | Typed message channel (snapshots, input, event batches, lobby messages, hello/heartbeat, exit/pause). Implementations below. |
-| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
+| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, seat lifecycle and team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
 
 **Transports** (`ITransport` implementations):
 
@@ -547,7 +551,14 @@ play the server and the single client are both in-process (`InProcessTransport`)
 
 ### Lobby → gameplay → lobby flow
 
-The team-build menu already coordinates a networked start. `IPickerLobbyClient`
+Base Camp coordinates a networked start. Its seat rail is a four-card view of
+the authoritative lobby roster, with paging for larger lobbies and **+** for
+adding a local seat. An owned card opens its machine-local control profile and
+next-level team assignment; a foreign card is read-only. The interface keeps
+stable seat tokens behind the dense display ordinals, so removing a middle
+seat cannot retarget a command to one of its siblings.
+
+`IPickerLobbyClient`
 (`src/interface/ui/picker_lobby_client.cpp`,
 `picker_lobby_network_client.cpp`) has three implementations:
 
@@ -556,19 +567,20 @@ The team-build menu already coordinates a networked start. `IPickerLobbyClient`
 - `JoinPickerLobbyClient` — connects to a remote host
 
 ```
-picker_team_build (lobby)                 each peer
+Base Camp / picker_team_build (lobby)     each peer
   ├── poll lobby, show status lines
+  ├── add/remove local seats and edit owned seats
   ├── host: request_start_game() ──┐
   └── join: wait for handoff       │   StartGame broadcast
                                    ▼
   install_gameplay_runtime() → reset_network_{host,client}_transport_shadow()
         creates the per-level GameServer / GameClient on the live transport
   glad_main()  ── play the level ──
-  glad_main returns (world.end != 0) → back to the team-build menu
+  glad_main returns (world.end != 0) → back to Base Camp
   resume_after_level()  reuse the SAME connection for the next level
 ```
 
-Between levels every peer returns to the team-build menu (single-player parity).
+Between levels every peer returns to Base Camp (single-player parity).
 The lobby connection **persists across `glad_main`** — `install_gameplay_runtime`
 keeps the host/join client's transport refs and `LobbyServer` alive (dormant
 during gameplay; the lobby is never polled inside the game loop), and
@@ -626,9 +638,12 @@ save_data
 ```
 
 Save slots are numbered 0–9. Slot 0 is the auto-save. The game saves after each completed level.
-The local player count (including spectator mode at 0) is session state and
-is not restored from or persisted in a company save. The unchanged GTL layout
-retains a fixed one-player marker for older readers.
+The local player count (including spectator mode at 0), active seat tokens, and
+seat-team assignments are session state. They are not restored from or
+persisted in a company save. Although `numplayers` remains as an in-memory
+compatibility projection in `SaveData`, GTL writers emit a fixed one-player
+marker and current readers ignore the old field. Direction modes and keymaps
+live in the shared configuration, outside company storage.
 
 ### Campaign Packages
 

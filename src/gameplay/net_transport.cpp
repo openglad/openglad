@@ -524,6 +524,7 @@ std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
                 // before the variable-size seat records makes malformed
                 // payloads fail before any potentially large allocations.
                 append_u32(payload, lobby_message.request_id);
+                append_bool(payload, lobby_message.resume_after_level);
                 append_lobby_player(payload, lobby_message.player);
                 // v7: extra seats (1..N-1) after seat 0.
                 append_u8(payload,
@@ -546,6 +547,11 @@ std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
                 append_u8(payload, lobby_message.player_index);
                 append_u32(payload, lobby_message.seat_id);
                 append_i16(payload, lobby_message.team);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyRemoveSeatMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+                append_u32(payload, lobby_message.seat_id);
             }
             else if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
             {
@@ -577,6 +583,7 @@ std::optional<LobbyMessage> deserialize_lobby_message(
             {
                 LobbyJoinMessage join;
                 join.request_id = reader.read_u32();
+                join.resume_after_level = reader.read_bool();
                 join.player = read_lobby_player(reader);
                 // v7: u8 extra-seat count, bounds-checked against the minimum
                 // serialized seat size so a crafted count cannot over-reserve.
@@ -619,6 +626,15 @@ std::optional<LobbyMessage> deserialize_lobby_message(
                 team_change.seat_id = reader.read_u32();
                 team_change.team = reader.read_i16();
                 message.payload = team_change;
+                break;
+            }
+
+            case LobbyMessageKind::RemoveSeat:
+            {
+                LobbyRemoveSeatMessage remove_seat;
+                remove_seat.player_index = reader.read_u8();
+                remove_seat.seat_id = reader.read_u32();
+                message.payload = remove_seat;
                 break;
             }
 
@@ -668,6 +684,7 @@ std::vector<std::uint8_t> serialize_lobby_state_message(const LobbyState& state)
         append_u32(payload, state.local_seat_ids[index]);
     }
     append_u32(payload, state.last_join_request_id);
+    append_bool(payload, state.local_peer_is_host);
     return wrap_transport_message(kLobbyStateMessageType, payload);
 }
 
@@ -698,9 +715,10 @@ std::optional<LobbyState> deserialize_lobby_state_message(
             const std::uint8_t local_seat_count = reader.read_u8();
             const std::size_t remaining = reader.remaining_bytes();
             if (!reader.ok() ||
-                remaining < sizeof(std::uint32_t) ||
+                remaining < sizeof(std::uint32_t) + sizeof(std::uint8_t) ||
                 static_cast<std::size_t>(local_seat_count) >
-                    (remaining - sizeof(std::uint32_t)) /
+                    (remaining - sizeof(std::uint32_t) -
+                     sizeof(std::uint8_t)) /
                         sizeof(LobbySeatId) ||
                 local_seat_count > MAX_PLAYERS)
             {
@@ -712,6 +730,7 @@ std::optional<LobbyState> deserialize_lobby_state_message(
             for (std::uint8_t i = 0; i < local_seat_count && reader.ok(); ++i)
                 state.local_seat_ids.push_back(reader.read_u32());
             state.last_join_request_id = reader.read_u32();
+            state.local_peer_is_host = reader.read_bool();
         });
 }
 

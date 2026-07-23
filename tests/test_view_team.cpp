@@ -46,6 +46,8 @@ extern int g_picker_max_mainmenu_calls;
 Sint32 create_team_menu(Sint32 arg1);
 Sint32 create_train_menu(Sint32 arg1);
 extern bool g_start_game_requested;
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -1619,11 +1621,11 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     constexpr int kRailBottom = 176;
     constexpr int kRailWidth = kRailRight - kRailLeft + 1;
     constexpr int kRailHeight = kRailBottom - kRailTop + 1;
-    constexpr int kSelectedCardX = 117;
+    constexpr int kSelectedCardX = 112;
     constexpr int kSelectedCardY = 164;
-    constexpr int kLabelFocusRight = kSelectedCardX + 50;
+    constexpr int kLabelFocusRight = kSelectedCardX + 47;
     constexpr int kFocusBottom = kSelectedCardY + 10;
-    constexpr int kChipX = kSelectedCardX + 51;
+    constexpr int kChipX = kSelectedCardX + 48;
     constexpr int kChipY = kSelectedCardY + 1;
     constexpr int kChipSize = 8;
 
@@ -1810,6 +1812,49 @@ public:
     void sync_settings_from_save() override { ++settings_syncs; }
     void poll_and_apply() override {}
     void set_player_mode(int) override {}
+    bool add_local_seat() override
+    {
+        ++add_seat_calls;
+        if (!add_seat_accept)
+            return false;
+        if (active_local_count.has_value())
+            ++*active_local_count;
+        if (seat_to_publish_on_add.has_value()) {
+            local_indices.push_back(
+                seat_to_publish_on_add->player_index);
+            players.push_back(std::move(*seat_to_publish_on_add));
+            seat_to_publish_on_add.reset();
+        }
+        return true;
+    }
+    bool remove_local_seat(std::uint8_t player_index,
+                           og::sim::LobbySeatId seat_id) override
+    {
+        remove_seat_calls.emplace_back(player_index, seat_id);
+        if (!remove_seat_accept)
+            return false;
+        const auto player = std::find_if(
+            players.begin(), players.end(),
+            [player_index, seat_id](const og::sim::LobbyPlayer& candidate) {
+                return candidate.player_index == player_index &&
+                    candidate.seat_id == seat_id;
+            });
+        const auto local = std::find(
+            local_indices.begin(), local_indices.end(), player_index);
+        if (player == players.end() || local == local_indices.end())
+            return false;
+        players.erase(player);
+        local_indices.erase(local);
+        if (active_local_count.has_value() && *active_local_count > 0)
+            --*active_local_count;
+        return true;
+    }
+    [[nodiscard]] std::size_t local_seat_count() const override
+    {
+        if (active_local_count.has_value())
+            return *active_local_count;
+        return IPickerLobbyClient::local_seat_count();
+    }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
     build_game_start_config() const override { return std::nullopt; }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
@@ -1890,6 +1935,13 @@ public:
     std::vector<bool> ready_calls;
     std::vector<std::pair<std::uint8_t, short>> seat_team_calls;
     bool seat_team_accept = true;
+    bool add_seat_accept = true;
+    std::optional<std::size_t> active_local_count;
+    std::optional<og::sim::LobbyPlayer> seat_to_publish_on_add;
+    int add_seat_calls = 0;
+    bool remove_seat_accept = true;
+    std::vector<std::pair<std::uint8_t, og::sim::LobbySeatId>>
+        remove_seat_calls;
     int roster_syncs = 0;
     int settings_syncs = 0;
 };
@@ -1901,6 +1953,8 @@ og::sim::LobbyPlayer make_foreign_lobby_player(std::uint8_t player_index,
                                                int benched_slots)
 {
     og::sim::LobbyPlayer player;
+    player.seat_id =
+        static_cast<og::sim::LobbySeatId>(1000 + player_index);
     player.player_index = player_index;
     player.name = name;
     player.company = company;
@@ -2139,45 +2193,76 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     for (int i = 0; i < 5; ++i)
         EXPECT_EQ(i, state.seats[static_cast<std::size_t>(i)].player_index);
 
-    const og::ui::MenuScreenSpec& spec =
+    const og::ui::MenuScreenSpec& base_spec =
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
-    ASSERT_NE(nullptr, spec.on_spec_row);
-    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, base_spec.on_spec_row);
+    ASSERT_NE(nullptr, base_spec.nav.rewire);
     og::ui::install_base_camp_state_for_screen(&state);
 
     button* buttons = picker_createmenu_buttons();
     const int count = picker_createmenu_button_count();
     int highlighted = kBaseCampSeatCardBase;
-    spec.nav.rewire(buttons, count, highlighted);
+    base_spec.nav.rewire(buttons, count, highlighted);
     EXPECT_FALSE(buttons[kBaseCampSeatPagePrevIndex].hidden);
     EXPECT_FALSE(buttons[kBaseCampSeatPageNextIndex].hidden);
-    EXPECT_EQ("P1 IRO", buttons[kBaseCampSeatCardBase].label);
-    EXPECT_EQ("P4 IRO", buttons[kBaseCampSeatCardBase + 3].label);
+    EXPECT_EQ("P1 IRO ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("P4 IRO ", buttons[kBaseCampSeatCardBase + 3].label);
 
     // A foreign card is informational only and names the full company.
     trace_clear();
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              base_spec.on_spec_row(kBaseCampSeatCardBase, &state));
     EXPECT_TRUE(trace_contains("popup", "Iron Host"));
     EXPECT_TRUE(lobby.seat_team_calls.empty());
 
     // Page 2 contains only P5, which this client owns.
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
+              base_spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
     EXPECT_EQ(1, state.seat_page.page);
     // Stepping beyond the final page is a no-op.
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
+              base_spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
     EXPECT_EQ(1, state.seat_page.page);
     buttons = picker_createmenu_buttons();
-    spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P5 YOU", buttons[kBaseCampSeatCardBase].label);
+    base_spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("P5 YOU ", buttons[kBaseCampSeatCardBase].label);
     for (int card = 1; card < kBaseCampSeatCardsPerPage; ++card)
         EXPECT_TRUE(buttons[kBaseCampSeatCardBase + card].hidden);
 
+    // Clicking that card opens the stable-token editor in production. Drive
+    // its TEAM row directly here so the test never depends on a blocking
+    // nested menu, and pin that P5/local-profile-1 identity all the way
+    // through the action.
+    const auto local = std::find_if(
+        lobby.players.begin(), lobby.players.end(),
+        [](const og::sim::LobbyPlayer& player) {
+            return player.player_index == 4;
+        });
+    ASSERT_NE(lobby.players.end(), local);
+    og::ui::SeatSettingsScreenState editor_state{
+        .seat_id = local->seat_id,
+        .player_index = local->player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&editor_state);
+    const og::ui::MenuScreenSpec& editor_spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, editor_spec.on_spec_row);
+    ASSERT_NE(nullptr, editor_spec.nav.rewire);
+
+    button* editor_buttons = editor_spec.buttons_accessor();
+    const int editor_count = editor_spec.count_accessor();
+    int editor_highlight = kSeatSettingsTeamIndex;
+    editor_spec.nav.rewire(
+        editor_buttons, editor_count, editor_highlight);
+    EXPECT_EQ("TEAM 4", editor_buttons[kSeatSettingsTeamIndex].label);
+    EXPECT_EQ("SPECTATE",
+              editor_buttons[kSeatSettingsRemoveIndex].label);
+
     lobby.ready_state = true;
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              editor_spec.on_spec_row(
+                  kSeatSettingsTeamIndex, &editor_state));
     ASSERT_EQ(1u, lobby.seat_team_calls.size());
     EXPECT_EQ(4, lobby.seat_team_calls[0].first)
         << "P5 must target global player_index 4, never local seat zero";
@@ -2194,7 +2279,8 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     lobby.seat_team_accept = false;
     trace_clear();
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              editor_spec.on_spec_row(
+                  kSeatSettingsTeamIndex, &editor_state));
     ASSERT_EQ(2u, lobby.seat_team_calls.size());
     EXPECT_TRUE(trace_contains("popup", "CHANGE DENIED"));
     EXPECT_EQ(2, save.team_list[0]->teamnum);
@@ -2203,18 +2289,13 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     lobby.seat_team_accept = true;
     save.current_campaign = "org.openglad.ctf";
     save.ctf_team_count = 2;
-    const auto local = std::find_if(
-        lobby.players.begin(), lobby.players.end(),
-        [](const og::sim::LobbyPlayer& player) {
-            return player.player_index == 4;
-        });
-    ASSERT_NE(lobby.players.end(), local);
     local->team = 1;
     og::ui::base_camp_refresh_rows(state);
     ASSERT_EQ(1, state.seat_page.page)
         << "refresh preserves a still-valid page";
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              editor_spec.on_spec_row(
+                  kSeatSettingsTeamIndex, &editor_state));
     ASSERT_EQ(3u, lobby.seat_team_calls.size());
     const std::pair<std::uint8_t, short> expected_ctf_request{4, 0};
     EXPECT_EQ(expected_ctf_request, lobby.seat_team_calls.back());
@@ -2253,7 +2334,8 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     local->team = 0;
     og::ui::base_camp_refresh_rows(state);
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              editor_spec.on_spec_row(
+                  kSeatSettingsTeamIndex, &editor_state));
     EXPECT_EQ(4u, lobby.seat_team_calls.size());
     const std::pair<std::uint8_t, short> expected_auto_request{4, 2};
     if (!lobby.seat_team_calls.empty()) {
@@ -2267,7 +2349,8 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     local->team = 0;
     og::ui::base_camp_refresh_rows(state);
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampSeatCardBase, &state));
+              editor_spec.on_spec_row(
+                  kSeatSettingsTeamIndex, &editor_state));
     ASSERT_EQ(5u, lobby.seat_team_calls.size());
     const std::pair<std::uint8_t, short> expected_sparse_explicit{4, 2};
     EXPECT_EQ(expected_sparse_explicit, lobby.seat_team_calls.back());
@@ -2294,28 +2377,41 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_EQ(0, state.seat_page.page);
     EXPECT_EQ(1, state.seat_page.page_count());
     buttons = picker_createmenu_buttons();
-    spec.nav.rewire(buttons, count, highlighted);
+    base_spec.nav.rewire(buttons, count, highlighted);
     EXPECT_TRUE(buttons[kBaseCampSeatPagePrevIndex].hidden);
     EXPECT_TRUE(buttons[kBaseCampSeatPageNextIndex].hidden);
 
+    og::ui::install_seat_settings_state_for_screen(nullptr);
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();
 }
 
-TEST(ViewTeam, player_settings_draws_explicit_spectator_status)
+TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
 {
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {6};
+    lobby.players.push_back(
+        make_foreign_lobby_player(6, "net-me", "WATCHING BAND", 0, 0));
+    lobby.players.front().team = 2;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::player_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec_mp();
     ASSERT_NE(nullptr, spec.draw_content);
+    ASSERT_NE(nullptr, spec.nav.rewire);
 
     screen* const output = og::runtime::current_session->myscreen_;
-    SaveData& save = output->save_data;
-    const unsigned char old_numplayers = save.numplayers;
     text& font = output->text_normal;
 
-    const auto status_band_hash = [&] {
+    const auto identity_band_hash = [&] {
         std::uint64_t hash = 1469598103934665603ULL;
-        for (int y = 55; y < 55 + font.sizey; ++y) {
+        for (int y = 13; y < 13 + font.sizey; ++y) {
             for (int x = 0; x < 320; ++x) {
                 int pixel = 0;
                 output->get_pixel(x, y, &pixel);
@@ -2325,30 +2421,114 @@ TEST(ViewTeam, player_settings_draws_explicit_spectator_status)
         }
         return hash;
     };
-    const auto expected_status_hash = [&](const char* label) {
+    const auto expected_identity_hash = [&](const char* label) {
         output->clearbuffer();
-        font.write_xy_center(160, 55, DARK_BLUE, "%s", label);
-        return status_band_hash();
+        font.write_xy_center(160, 13, DARK_BLUE, "%s", label);
+        return identity_band_hash();
     };
 
-    save.numplayers = 0;
+    const int old_mode = get_player_control_mode(0);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
     output->clearbuffer();
-    spec.draw_content(nullptr);
-    const std::uint64_t spectator_status = status_band_hash();
-    EXPECT_EQ(expected_status_hash("SPECTATOR"), spectator_status)
-        << "right-click spectator mode must remain visibly identified";
+    spec.draw_content(&state);
+    const std::uint64_t selected_identity = identity_band_hash();
+    EXPECT_EQ(expected_identity_hash("LOCAL PLAYER 1 / P7"),
+              selected_identity);
 
-    save.numplayers = 1;
-    output->clearbuffer();
-    spec.draw_content(nullptr);
-    const std::uint64_t player_status = status_band_hash();
-    EXPECT_EQ(expected_status_hash("LOCAL PLAYERS"), player_status);
-    EXPECT_NE(spectator_status, player_status);
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kSeatSettingsTeamIndex;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("TEAM 3", buttons[kSeatSettingsTeamIndex].label);
+    EXPECT_EQ("4-DIRECTION", buttons[kSeatSettingsModeIndex].label);
 
-    save.numplayers = old_numplayers;
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("8-DIRECTION", buttons[kSeatSettingsModeIndex].label);
+
+    set_player_control_mode(0, old_mode);
+    og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
-TEST(ViewTeam, base_camp_spectator_pseudo_seat_is_local_and_labeled_you)
+TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
+{
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_control_mode(
+        1, static_cast<int>(ControlDirectionMode::EightDirection));
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {1, 4};
+    lobby.active_local_count = 2;
+    lobby.players.push_back(
+        make_foreign_lobby_player(4, "net-second", "MY COMPANY", 0, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(1, "net-first", "MY COMPANY", 0, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const auto selected = std::find_if(
+        lobby.players.begin(), lobby.players.end(),
+        [](const og::sim::LobbyPlayer& player) {
+            return player.player_index == 1;
+        });
+    ASSERT_NE(lobby.players.end(), selected);
+    const std::uint8_t selected_index = selected->player_index;
+    const og::sim::LobbySeatId selected_token = selected->seat_id;
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = selected_token,
+        .player_index = selected_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    ASSERT_NE(nullptr, spec.frame_tick);
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kSeatSettingsRemoveIndex;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("REMOVE PLAYER",
+              buttons[kSeatSettingsRemoveIndex].label);
+
+    // REMOVE is deliberately NO-first; the queued affirmative drives the
+    // destructive branch without weakening the live confirmation contract.
+    picker_testing_yes_or_no_queue_push(true);
+    EXPECT_EQ(
+        MENU_REDRAW,
+        spec.on_spec_row(kSeatSettingsRemoveIndex, &state));
+    ASSERT_EQ(1u, lobby.remove_seat_calls.size());
+    EXPECT_EQ(
+        std::make_pair(selected_index, selected_token),
+        lobby.remove_seat_calls.front())
+        << "the dense P# and authority token must name the same live seat";
+    EXPECT_TRUE(state.removed);
+    EXPECT_FALSE(spec.frame_tick(&state, 0))
+        << "the editor exits immediately after its selected seat leaves";
+    ASSERT_TRUE(lobby.active_local_count.has_value());
+    EXPECT_EQ(1u, *lobby.active_local_count);
+    EXPECT_EQ(std::vector<std::uint8_t>({4}), lobby.local_indices);
+
+    // Local profile 2 follows its surviving seat down to profile 1; the
+    // vacated tail returns to the defaults instead of leaking old controls.
+    EXPECT_EQ(
+        static_cast<int>(ControlDirectionMode::EightDirection),
+        get_player_control_mode(0));
+    EXPECT_EQ(
+        static_cast<int>(ControlDirectionMode::FourDirection),
+        get_player_control_mode(1));
+
+    picker_testing_yes_or_no_queue_clear();
+    reset_default_player_controls();
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+}
+
+TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
@@ -2359,6 +2539,7 @@ TEST(ViewTeam, base_camp_spectator_pseudo_seat_is_local_and_labeled_you)
     lobby.players.push_back(
         make_foreign_lobby_player(6, "spectator", "WATCHING BAND", 0, 0));
     lobby.players.front().team = 0;
+    lobby.active_local_count = 0;
     ActivePickerLobbyClientGuard client_guard(&lobby);
 
     const og::ui::MenuScreenSpec& spec =
@@ -2368,6 +2549,8 @@ TEST(ViewTeam, base_camp_spectator_pseudo_seat_is_local_and_labeled_you)
 
     // Local sessions own every synthetic seat, including the one retained
     // for a zero-player spectator. They do not need a network ownership list.
+    // The old Player Settings right-click painted a separate SPECTATOR status;
+    // Base Camp now makes that state actionable in-place as SPEC + [+].
     lobby.networked = false;
     lobby.local_indices.clear();
     {
@@ -2383,33 +2566,69 @@ TEST(ViewTeam, base_camp_spectator_pseudo_seat_is_local_and_labeled_you)
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
         EXPECT_FALSE(buttons[kBaseCampSeatCardBase].hidden);
-        EXPECT_EQ("P7 YOU", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ("P7 SPEC ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_FALSE(buttons[kBaseCampAddSeatIndex].hidden);
+        ASSERT_NE(nullptr,
+                  spec.rows[kBaseCampAddSeatIndex].state_override);
+        EXPECT_EQ(
+            og::ui::RowState::Visible,
+            spec.rows[kBaseCampAddSeatIndex].state_override(
+                og::ui::MenuLabelContext{}));
+        trace_clear();
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(kBaseCampSeatCardBase, &state));
+        EXPECT_TRUE(trace_contains("popup", "PRESS + TO ADD A PLAYER"));
+        EXPECT_TRUE(lobby.seat_team_calls.empty());
         og::ui::install_base_camp_state_for_screen(nullptr);
     }
 
-    // A network spectator owns only the server-identified pseudo-seat. It is
-    // still editable and must not be mistaken for a foreign company card.
+    // A current network spectator publishes no owned placeholder at all:
+    // the dormant reconnect token is server-private, so the client sees zero
+    // cards and cannot READY. [+] asks authority to activate and publish P1.
     lobby.networked = true;
-    lobby.local_indices = {6};
+    lobby.players.clear();
+    lobby.local_indices.clear();
+    lobby.active_local_count = 0;
+    lobby.seat_to_publish_on_add =
+        make_foreign_lobby_player(0, "net-me", "WATCHING BAND", 0, 0);
     {
         og::ui::BaseCampScreenState state;
         og::ui::base_camp_refresh_rows(state);
-        ASSERT_EQ(1u, state.local_seat_indices.size());
-        EXPECT_EQ(6, state.local_seat_indices.front());
+        EXPECT_TRUE(state.seats.empty());
+        EXPECT_TRUE(state.local_seat_indices.empty());
 
         og::ui::install_base_camp_state_for_screen(&state);
         button* buttons = picker_createmenu_buttons();
-        int highlighted = kBaseCampSeatCardBase;
+        int highlighted = kBaseCampAddSeatIndex;
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
-        EXPECT_EQ("P7 YOU", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_TRUE(buttons[kBaseCampSeatCardBase].hidden);
+        EXPECT_FALSE(buttons[kBaseCampAddSeatIndex].hidden);
+        EXPECT_TRUE(buttons[kCreateMenuReadyIndex].hidden);
+        ASSERT_NE(nullptr,
+                  spec.rows[kBaseCampAddSeatIndex].state_override);
+        EXPECT_EQ(
+            og::ui::RowState::Visible,
+            spec.rows[kBaseCampAddSeatIndex].state_override(
+                og::ui::MenuLabelContext{}));
+        EXPECT_TRUE(lobby.seat_team_calls.empty());
+
+        // [+] activates the authority's dormant token and publishes its new
+        // active seat. One touch-collapsed duplicate is debounced.
+        trace_clear();
         EXPECT_EQ(MENU_OK,
-                  spec.on_spec_row(kBaseCampSeatCardBase, &state));
-        EXPECT_EQ(1u, lobby.seat_team_calls.size());
-        if (!lobby.seat_team_calls.empty()) {
-            EXPECT_EQ(6, lobby.seat_team_calls.front().first);
-            EXPECT_EQ(1, lobby.seat_team_calls.front().second);
-        }
+                  spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+        ASSERT_EQ(1, lobby.add_seat_calls);
+        ASSERT_TRUE(lobby.active_local_count.has_value());
+        EXPECT_EQ(1u, *lobby.active_local_count);
+        buttons = picker_createmenu_buttons();
+        spec.nav.rewire(
+            buttons, picker_createmenu_button_count(), highlighted);
+        EXPECT_EQ("P1 YOU ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+        EXPECT_EQ(1, lobby.add_seat_calls);
+        EXPECT_TRUE(trace_contains("basecamp", "seat_add_debounced"));
         og::ui::install_base_camp_state_for_screen(nullptr);
     }
 
@@ -2449,8 +2668,9 @@ TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
 // §2.6 READY twin (stage ready-go-slot): a networked joiner gets READY in
 // GO's exact rect; the click drives the shared lobby flag through the
 // production ToggleLobbyReady handler with the client deploy gate
-// (cross-control OFF + brought-but-benched => popup; spectator machines
-// ready freely [NET-R9]; cross-control ON removes the minimum).
+// (cross-control OFF + brought-but-benched => popup; active empty-roster
+// seats have no deploy minimum [NET-R9]; cross-control ON removes it too).
+// True zero-seat clients have no READY twin and are covered separately.
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
 {
@@ -2544,14 +2764,15 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     lobby.ready_state = false;
     save.cross_control = 0;
 
-    // Spectator machine (empty roster): readies freely [NET-R9]; the slot
-    // stays visible and reachable on an all-foreign display.
+    // Active seat with an empty roster: readies freely [NET-R9]; the slot
+    // stays visible and reachable on an all-foreign display. A true zero-seat
+    // spectator has no READY action.
     save.team_list[0].reset();
     save.team_size = 0;
     og::ui::base_camp_refresh_rows(state);
     spec.nav.rewire(buttons, count, highlighted);
     EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden)
-        << "[NET-R9]: the spectator machine keeps the READY button";
+        << "[NET-R9]: the active empty-roster seat keeps the READY button";
     trace_clear();
     EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
     ASSERT_EQ(4u, lobby.ready_calls.size());

@@ -1298,16 +1298,16 @@ int text_picker_testing_exercise_internal_paths()
     } else {
         check(false);
     }
-    if (const PickerMenuItem* item =
-            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2)) {
-        client.handle_menu_item(PickerMenuId::Main, *item);
-        check(save.numplayers == 1);
-    } else {
-        check(false);
-    }
-    // Seat assignment moved to Base Camp. Keep the legacy dispatch branch
+    // Seat lifecycle moved to Base Camp. Keep legacy dispatch branches
     // covered for old callers, but assert that the terminal menu no longer
-    // exposes it as a selectable main-menu row.
+    // exposes either operation as a selectable main-menu row.
+    check(find_picker_menu_item(
+              PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2) == nullptr);
+    const PickerMenuItem legacy_player_mode{
+        "legacy-player-mode", "Legacy Player Mode",
+        PickerMenuCommand::SetPlayerMode, 2};
+    client.handle_menu_item(PickerMenuId::Main, legacy_player_mode);
+    check(save.numplayers == 1);
     check(find_picker_menu_item(
               PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode) == nullptr);
     const bool previous_allied_mode = is_allied_mode(save);

@@ -87,9 +87,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // authoritative ownership without trusting display names. LobbySettings gains
 // an authored CTF-team-mask u8. StartGame carries a u32 request_id echoed by
 // its confirmation or LobbyState's u32 last_start_request_id on denial. Join
-// likewise carries a u32 request_id, and LobbyState appends the recipient's
-// u32 last_join_request_id after local_seat_ids so a resume declaration cannot
-// be acknowledged by an unrelated ready-reset broadcast.
+// likewise carries a u32 request_id plus a resume-after-level flag, and
+// LobbyState appends the recipient's u32 last_join_request_id and host-peer
+// flag after local_seat_ids. The resume flag is the only Join form retained
+// while a level has locked the lobby, preventing a seat mutation that lost a
+// StartGame race from appearing silently next round; recipient host authority
+// remains visible even when that machine has zero active seats. RemoveSeat
+// carries the retained player_index plus the server-issued seat_id, allowing
+// an owned middle seat to leave without retargeting its siblings by dense
+// ordinal.
 // Snapshot protocol follows the network version, so replay format moves to v11.
 inline constexpr std::uint8_t kNetworkProtocolVersion = 9;
 

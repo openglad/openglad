@@ -3743,16 +3743,17 @@ TEST(ReadyGoSlot, state_5_client_unready_red_with_deploy_gate)
     EXPECT_TRUE(cross.caption.empty());
 }
 
-TEST(ReadyGoSlot, state_5_spectator_machines_ready_freely)
+TEST(ReadyGoSlot, state_5_spectator_formatter_has_no_deploy_caption)
 {
-    // [NET-R9]: the spectator machine (zero contributed character slots)
-    // gets the READY button and may ready with nothing deployed.
+    // [NET-R9]: the pure formatter's spectator shape has no local deployment
+    // warning. Base Camp separately hides the READY button when the machine
+    // has no active seat.
     const og::ui::ReadyGoPresentation p =
         ready_go(true, false, false, false, 3, 0, false, true);
     EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
     EXPECT_EQ("READY", p.label);
     EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
-    EXPECT_TRUE(p.caption.empty()) << "spectators ready freely";
+    EXPECT_TRUE(p.caption.empty()) << "spectator shape has no deploy warning";
 }
 
 TEST(ReadyGoSlot, state_6_client_ready_green_unready_action)

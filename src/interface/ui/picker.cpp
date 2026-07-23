@@ -1530,6 +1530,7 @@ void picker_cleanup_resources()
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
     pks().mainmenu_buttons.clear();
+    pks().seat_settings_buttons.clear();
     pks().createmenu_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
@@ -1948,6 +1949,20 @@ static std::string get_key_display_name_short(int keycode)
     return sname;
 }
 
+std::string player_control_key_display_name(int player_index, int key_enum)
+{
+    if (player_index < 0 || player_index >= 4 ||
+        key_enum < 0 || key_enum >= NUM_KEYS)
+    {
+        return "--";
+    }
+    const int keycode =
+        og::runtime::current_session->player_keys_[player_index][key_enum];
+    return keycode == KEYCODE_UNKNOWN
+        ? "--"
+        : get_key_display_name_short(keycode);
+}
+
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
@@ -1955,22 +1970,23 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
 
     const bool eight_dir =
         get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
-    const std::string up_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP]);
-    const std::string left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_LEFT]);
-    const std::string down_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN]);
-    const std::string right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_RIGHT]);
-    const std::string yell_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_YELL]);
-    const std::string fire_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_FIRE]);
-    const std::string special_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL]);
+    const std::string up_s = player_control_key_display_name(player_index, KEY_UP);
+    const std::string left_s = player_control_key_display_name(player_index, KEY_LEFT);
+    const std::string down_s = player_control_key_display_name(player_index, KEY_DOWN);
+    const std::string right_s = player_control_key_display_name(player_index, KEY_RIGHT);
+    const std::string yell_s = player_control_key_display_name(player_index, KEY_YELL);
+    const std::string fire_s = player_control_key_display_name(player_index, KEY_FIRE);
+    const std::string special_s = player_control_key_display_name(player_index, KEY_SPECIAL);
     const std::string special_switch_s =
-        get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL_SWITCH]);
-    const std::string switch_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SWITCH]);
-    const std::string shifter_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SHIFTER]);
+        player_control_key_display_name(player_index, KEY_SPECIAL_SWITCH);
+    const std::string switch_s =
+        player_control_key_display_name(player_index, KEY_SWITCH);
+    const std::string shifter_s =
+        player_control_key_display_name(player_index, KEY_SHIFTER);
     // Unbound look-up (the P4 8-direction default, or user-cleared) shows
     // "--" instead of the empty string SDL names keycode 0 with.
-    const int lookup_key = og::runtime::current_session->player_keys_[player_index][KEY_LOOKUP];
-    const std::string lookup_s = lookup_key == KEYCODE_UNKNOWN
-        ? "--" : get_key_display_name_short(lookup_key);
+    const std::string lookup_s =
+        player_control_key_display_name(player_index, KEY_LOOKUP);
     const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
         yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s, lookup_s);
 
@@ -1989,10 +2005,14 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
         };
     }
 
-    const std::string up_right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP_RIGHT]);
-    const std::string down_right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN_RIGHT]);
-    const std::string down_left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN_LEFT]);
-    const std::string up_left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP_LEFT]);
+    const std::string up_right_s =
+        player_control_key_display_name(player_index, KEY_UP_RIGHT);
+    const std::string down_right_s =
+        player_control_key_display_name(player_index, KEY_DOWN_RIGHT);
+    const std::string down_left_s =
+        player_control_key_display_name(player_index, KEY_DOWN_LEFT);
+    const std::string up_left_s =
+        player_control_key_display_name(player_index, KEY_UP_LEFT);
 
     if (remap_mode)
     {
@@ -2034,6 +2054,17 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
     mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
     mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+}
+
+// Remapping is intentionally a blocking prompt, but a network guest must
+// still receive an accepted host GO while waiting for the next key. Returning
+// false cancels the prompt sequence; the enclosing engine screen then sees
+// the same remote-start flag at its next loop-top check and unwinds normally.
+static bool poll_lobby_during_control_remap()
+{
+    picker_lobby_poll();
+    return !g_start_game_requested ||
+        !picker_lobby_has_game_start_config();
 }
 
 static void remap_player_keys(int player_index)
@@ -2082,7 +2113,11 @@ static void remap_player_keys(int player_index)
     {
         const auto& prompt = prompts[idx];
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
-        assignKeyFromWaitEvent(player_index, prompt.key);
+        if (!assignKeyFromWaitEventPolling(
+                player_index, prompt.key, &poll_lobby_during_control_remap))
+        {
+            break;
+        }
     }
 }
 
@@ -3171,9 +3206,9 @@ Sint32 teams_toggle_ready(Sint32 origin_button_index)
    if (ready)
    {
        // §2.6 client ready gate: cross-control OFF + brought characters +
-       // none deployed => popup instead of readying. Spectator/empty-roster
-       // machines ready freely [NET-R9]; the server GO gate is the
-       // authoritative backstop either way.
+       // none deployed => popup instead of readying. An active seat with an
+       // empty roster bypasses this local deploy check [NET-R9]. A true
+       // zero-seat client has no READY action and never reaches this handler.
        const og::ui::ReadyGoPresentation presentation =
            picker_compute_ready_go_presentation();
        if (presentation.state == og::ui::ReadyGoState::ClientUnready &&

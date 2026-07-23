@@ -1322,9 +1322,11 @@ ReadyGoPresentation format_ready_go_button(bool networked,
     p.label = "READY";
     p.face_color = kReadyGoFaceUnready;
     // Client ready gate: cross-control OFF + own roster brought characters
-    // + none deployed => the click popups instead of readying. Spectator /
-    // empty-roster machines ready freely [NET-R9]; cross-control ON removes
-    // the per-machine minimum (bring 0, play a friend's characters).
+    // + none deployed => the click popups instead of readying. The spectator
+    // formatter shape and active seats with empty rosters have no deploy
+    // minimum [NET-R9]; Base Camp separately hides READY for a true zero-seat
+    // client, which is exempt from the server gate. Cross-control ON also
+    // removes the minimum (bring 0, play a friend's characters).
     if (!cross_control && !spectator && own_deployed <= 0)
         p.caption = "DEPLOY AT LEAST ONE";
     return p;

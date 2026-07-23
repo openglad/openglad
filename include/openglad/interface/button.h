@@ -200,6 +200,7 @@ Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
+std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
 

@@ -2217,6 +2217,98 @@ TEST(PickerFuncs,
     g_start_game_requested = orig_start_requested;
 }
 
+TEST(PickerFuncs,
+     local_lobby_adds_and_removes_exact_seats_with_offline_last_seat_guard)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> original_roster;
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        original_roster[slot] = std::move(save.team_list[slot]);
+    const unsigned char original_team_size = save.team_size;
+    const short original_my_team = save.my_team;
+    const unsigned char original_numplayers = save.numplayers;
+    const short original_allied_mode = save.allied_mode;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    for (int slot = 0; slot < 3; ++slot)
+    {
+        save.team_list[slot] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[slot]->name = std::format("Seat {}", slot + 1);
+        save.team_list[slot]->teamnum = static_cast<short>(slot);
+    }
+    save.team_size = 3;
+    save.my_team = 0;
+    save.numplayers = 3;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_EQ(3u, client->local_seat_count());
+
+        std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        ASSERT_EQ(3u, players.size());
+        const og::sim::LobbyPlayer first = players[0];
+        const og::sim::LobbyPlayer removed = players[1];
+        const og::sim::LobbyPlayer third = players[2];
+
+        EXPECT_TRUE(client->remove_local_seat(
+            0xffu, removed.seat_id))
+            << "the stable token, not a stale dense P#, targets the seat";
+        EXPECT_EQ(2u, client->local_seat_count());
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(first.seat_id, players[0].seat_id);
+        EXPECT_EQ(first.team, players[0].team);
+        EXPECT_EQ(third.seat_id, players[1].seat_id);
+        EXPECT_EQ(third.team, players[1].team);
+        EXPECT_EQ(1u, players[1].player_index)
+            << "the surviving third seat gets the dense P2 display index";
+        EXPECT_FALSE(client->remove_local_seat(
+            removed.player_index, removed.seat_id))
+            << "the removed stable token must never alias the new P2";
+
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(3u, client->local_seat_count());
+        players = client->lobby_players();
+        ASSERT_EQ(3u, players.size());
+        EXPECT_EQ(first.seat_id, players[0].seat_id);
+        EXPECT_EQ(third.seat_id, players[1].seat_id);
+        EXPECT_NE(removed.seat_id, players[2].seat_id);
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(4u, client->local_seat_count());
+        EXPECT_FALSE(client->add_local_seat())
+            << "one machine cannot exceed MAX_PLAYERS local controls";
+
+        client->set_player_mode(1);
+        players = client->lobby_players();
+        ASSERT_EQ(1u, players.size());
+        EXPECT_FALSE(client->remove_local_seat(
+            players.front().player_index, players.front().seat_id))
+            << "offline play keeps one active seat";
+        EXPECT_EQ(1u, client->local_seat_count());
+
+        // The legacy spectator mode still exists. [+] activates its existing
+        // placeholder instead of creating a second lobby player.
+        client->set_player_mode(0);
+        EXPECT_EQ(0u, client->local_seat_count());
+        ASSERT_EQ(1u, client->lobby_players().size());
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(1u, client->local_seat_count());
+        EXPECT_EQ(1u, client->lobby_players().size());
+        client->shutdown();
+    }
+
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        save.team_list[slot] = std::move(original_roster[slot]);
+    save.team_size = original_team_size;
+    save.my_team = original_my_team;
+    save.numplayers = original_numplayers;
+    save.allied_mode = original_allied_mode;
+}
+
 TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;

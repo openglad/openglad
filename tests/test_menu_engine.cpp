@@ -80,9 +80,14 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
             og::ui::ctf_authored_team_mask_for_loaded_level(
                 myscreen->save_data,
                 myscreen->world(),
-                get_mounted_campaign());
+            get_mounted_campaign());
     }
-    void poll_and_apply() override {}
+    void poll_and_apply() override
+    {
+        ++poll_count;
+        if (start_on_next_poll.exchange(false))
+            g_start_game_requested = true;
+    }
     void set_player_mode(int) override {}
     bool request_start_game() override { return true; }
     std::optional<og::ui::PickerLobbyGameStartConfig>
@@ -114,11 +119,18 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return networked;
     }
+    [[nodiscard]] std::size_t local_seat_count() const override
+    {
+        return local_seats;
+    }
 
     int settings_syncs = 0;
     short synced_save_level = -1;
     int synced_world_level = -1;
     std::uint8_t synced_ctf_team_mask = 0;
+    std::size_t local_seats = 1;
+    std::atomic<int> poll_count{0};
+    std::atomic<bool> start_on_next_poll{false};
 };
 
 // Restores every global a runner invocation can touch (shuffle hygiene).
@@ -206,7 +218,7 @@ static bool remote_start_none_is_legacy_faithful(const std::string& name)
 {
     static const std::set<std::string> kLegacyNoRemoteStart = {
         "gameplay_fx", "ui_fx", "graphics_fx",
-        "display_settings", "control_options", "main_options",
+        "display_settings",
     };
     return kLegacyNoRemoteStart.count(name) > 0;
 }
@@ -289,6 +301,75 @@ TEST(MenuEngine, remote_start_team_build_scope_returns_exit)
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
+}
+
+namespace
+{
+
+struct NestedControlsRemoteStartState
+{
+    FakeLobbyClient* lobby = nullptr;
+    std::atomic<bool> opened_controls{false};
+};
+
+int nested_controls_remote_start_injector(void* data)
+{
+    auto& state = *static_cast<NestedControlsRemoteStartState*>(data);
+    og::runtime::ensure_thread_session();
+    if (!wait_for_interactable("control_settings"))
+        return 0;
+    interact("control_settings");
+    if (!wait_for_interactable("player1_remap"))
+        return 0;
+    state.opened_controls = true;
+    state.lobby->start_on_next_poll = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(MenuEngine, remote_start_propagates_through_nested_main_options_controls)
+{
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    g_start_game_requested = false;
+    pks().selected_menu_item = nullptr;
+    clear_events();
+
+    NestedControlsRemoteStartState state{.lobby = &lobby};
+    SDL_Thread* thread = SDL_CreateThread(
+        nested_controls_remote_start_injector, "nested_controls_start",
+        &state);
+    ASSERT_NE(nullptr, thread);
+
+    const Sint32 result = main_options();
+    SDL_WaitThread(thread, nullptr);
+
+    EXPECT_TRUE(state.opened_controls)
+        << "the remote start must be injected only after CONTROLS is active";
+    EXPECT_TRUE(result & MENU_EXIT)
+        << "the child remote exit must not become the parent's local redraw";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::ContinueGame,
+              pks().selected_menu_item->command);
+}
+
+TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
+{
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    lobby.start_on_next_poll = true;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    g_start_game_requested = false;
+
+    EXPECT_EQ(MENU_REDRAW, edit_player_keymap(0));
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_EQ(1, lobby.poll_count)
+        << "the first prompt should poll once and abort the remaining remap "
+           "sequence as soon as the host start is launchable";
 }
 
 TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
@@ -1665,7 +1746,8 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
 // MAIN OPTIONS content-draw index pins + the sprite-sheet label restore.
 // The draw hook reads rows [1]/[2]/[3]/[6] by ordinal (sound face, section
 // rule + captions, sprite-sheet face) — pin those ids so a row insertion
-// cannot silently redraw the wrong faces. The legacy loop also re-wrote
+// cannot silently redraw the wrong faces. CONTROLS is appended without
+// disturbing those historical ordinals. The legacy loop also re-wrote
 // "Sprite Sheet" to BOTH surfaces every frame after reset_buttons (the
 // pick-spritesheet subscreen swaps allbuttons_ under this screen); that
 // restore is now the row's LabelBinding, so pin that it exists and yields
@@ -1684,11 +1766,14 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(8, count);
+    ASSERT_EQ(9, count);
     EXPECT_EQ("toggle_sound", buttons[1].id);
     EXPECT_EQ("display_settings", buttons[2].id);
     EXPECT_EQ("gameplay_fx", buttons[3].id);
     EXPECT_EQ("pick_sprite_sheet", buttons[5].id);
+    EXPECT_EQ("control_settings", buttons[8].id);
+    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings),
+              buttons[8].myfun);
 
     const og::ui::LabelFormatter sprite_formatter =
         spec.rows[5].label_binding.formatter;
@@ -1830,44 +1915,36 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 55, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
-     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 8}},
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
-    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
-     ButtonAction::MenuSpecRow, 2,
-     MenuNav{.up = 2, .down = 5, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
-     ButtonAction::OpenDifficultyMenu, -1,
-     MenuNav{.up = 2, .down = 5, .left = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
     {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
-     ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 6}},
+     ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 5}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
-     ButtonAction::ShowHelp, -1,
-     MenuNav{.up = 5, .down = 0, .right = 7}},
+     ButtonAction::ShowHelp, -1, MenuNav{.up = 4, .down = 0, .right = 6}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
     "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0,
-    MenuNav{.up = 5, .down = 0, .left = 6}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .down = 0, .left = 5}};
 constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
     "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0,
-    MenuNav{.up = 5, .down = 0, .left = 6}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .down = 0, .left = 5}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
 constexpr ExpectedSpecRow kMainMenuMPNote = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
-    ButtonAction::MenuSpecRow, 9, MenuNav{}, true};
+    ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
 
-// Main geometry no longer changes with multiplayer support; the nested
-// PLAYER SETTINGS spec owns that build difference.
+// Main geometry no longer changes with multiplayer support: every build
+// manages seats in Base Camp and reaches persistent profiles via CONTROLS.
 constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
     kMainMenuMPCommon[0], kMainMenuMPCommon[1], kMainMenuMPCommon[2],
     kMainMenuMPCommon[3], kMainMenuMPCommon[4], kMainMenuMPCommon[5],
-    kMainMenuMPCommon[6],
 };
 
 constexpr ExpectedSpecRow kMainMenuNoMPQuitNative = kMainMenuMPQuitNative;
@@ -1893,7 +1970,7 @@ std::vector<ExpectedSpecRow> build_expected_shape(
 
 // Registry + spec-shape pins. The main menu keeps the legacy remote-start
 // check (MainScope, break-with-selection), fade-bracketed entry, and
-// exit-bearing return. Player-count right-click moved to PLAYER SETTINGS.
+// exit-bearing return. Player-count editing now belongs to Base Camp.
 TEST(MenuEngine, main_menu_registry_and_spec_shape)
 {
     const og::ui::MenuScreenHost& host =
@@ -1917,55 +1994,61 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     ASSERT_GT(count, 2);
-    EXPECT_EQ(5, picker_mainmenu_options_index());
+    EXPECT_EQ(4, picker_mainmenu_options_index());
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
     EXPECT_EQ("load_company", buttons[count - 2].id);
     EXPECT_EQ("no_company_note", buttons[count - 1].id);
 }
 
-TEST(MenuEngine, player_settings_registry_and_variant_shapes)
+TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
 {
-    const og::ui::MenuScreenHost& host =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::PlayerSettings);
-    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
-    ASSERT_EQ(&og::ui::player_settings_menu_screen_spec(), host.spec);
-    EXPECT_STREQ("player_settings", host.spec->name);
+    const og::ui::MenuScreenHost& seat_host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::SeatSettings);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, seat_host.kind);
+    ASSERT_EQ(&og::ui::seat_settings_menu_screen_spec(), seat_host.spec);
+    EXPECT_STREQ("seat_settings", seat_host.spec->name);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              seat_host.spec->remote_start);
+    EXPECT_TRUE(seat_host.spec->polls_lobby);
+    EXPECT_TRUE(seat_host.spec->exit_on_redraw);
+    EXPECT_EQ(MENU_REDRAW, seat_host.spec->exit_value);
+
+    const og::ui::MenuScreenSpec& seat_mp =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& seat_nomp =
+        og::ui::seat_settings_menu_screen_spec_nomp();
+    EXPECT_EQ(kSeatSettingsButtonCountMP, seat_mp.row_count);
+    EXPECT_EQ(kSeatSettingsButtonCountNoMP, seat_nomp.row_count);
+    EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
+    EXPECT_STREQ("seat_remove", seat_mp.rows[kSeatSettingsRemoveIndex].id);
+    EXPECT_STREQ("seat_reset", seat_nomp.rows[kSeatSettingsResetIndex].id);
+
+    const og::ui::MenuScreenHost& controls_host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, controls_host.kind);
+    ASSERT_NE(nullptr, controls_host.spec);
+    EXPECT_STREQ("control_options", controls_host.spec->name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope,
-              host.spec->remote_start);
-    EXPECT_TRUE(host.spec->polls_lobby);
-    EXPECT_TRUE(host.spec->right_click_enabled);
-    EXPECT_EQ(MENU_REDRAW, host.spec->exit_value);
+              controls_host.spec->remote_start);
+    EXPECT_TRUE(controls_host.spec->polls_lobby);
+    ASSERT_EQ(10, controls_host.spec->row_count);
+    const og::ui::MenuButtonSpec& reset =
+        controls_host.spec->rows[controls_host.spec->row_count - 1];
+    EXPECT_STREQ("reset_all_controls", reset.id);
+    EXPECT_EQ(ButtonAction::RestoreDefaultControls, reset.action);
 
-    const og::ui::MenuScreenSpec& mp =
-        og::ui::player_settings_menu_screen_spec_mp();
-    ASSERT_EQ(7, mp.row_count);
-    EXPECT_STREQ("player_settings_back", mp.rows[0].id);
-    for (int i = 1; i <= 4; ++i) {
-        EXPECT_EQ(ButtonAction::SetPlayerMode, mp.rows[i].action);
-        EXPECT_EQ(i, mp.rows[i].arg);
-    }
-    EXPECT_STREQ("player_controls", mp.rows[5].id);
-    EXPECT_EQ(ButtonAction::OpenControlSettings, mp.rows[5].action);
-    EXPECT_STREQ("reset_controls", mp.rows[6].id);
-    EXPECT_EQ(ButtonAction::RestoreDefaultControls, mp.rows[6].action);
-    for (int i = 0; i < mp.row_count; ++i)
-        EXPECT_NE(ButtonAction::AlliedMode, mp.rows[i].action)
-            << "per-level seat allegiance belongs in Base Camp";
-
-    const og::ui::MenuScreenSpec& nomp =
-        og::ui::player_settings_menu_screen_spec_nomp();
-    ASSERT_EQ(3, nomp.row_count);
-    EXPECT_STREQ("player_settings_back", nomp.rows[0].id);
-    EXPECT_STREQ("player_controls", nomp.rows[1].id);
-    EXPECT_STREQ("reset_controls", nomp.rows[2].id);
-    EXPECT_EQ(ButtonAction::RestoreDefaultControls, nomp.rows[2].action);
-
-    // The main surface opens the nested screen through the engine's one
-    // generic row action instead of burning another ButtonAction value.
-    const og::ui::MenuScreenSpec& main = og::ui::main_menu_screen_spec_mp();
-    EXPECT_STREQ("player_settings", main.rows[3].id);
-    EXPECT_EQ(ButtonAction::MenuSpecRow, main.rows[3].action);
-    EXPECT_NE(nullptr, main.on_spec_row);
+    // Persistent profiles remain available without opening a company.
+    const og::ui::MenuScreenHost& options_host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, options_host.kind);
+    ASSERT_NE(nullptr, options_host.spec);
+    const og::ui::MenuScreenSpec& options = *options_host.spec;
+    ASSERT_EQ(9, options.row_count);
+    EXPECT_EQ(og::ui::RemoteStartScope::MainScope, options.remote_start);
+    const og::ui::MenuButtonSpec& door =
+        options.rows[options.row_count - 1];
+    EXPECT_STREQ("control_settings", door.id);
+    EXPECT_EQ(ButtonAction::OpenControlSettings, door.action);
 }
 
 // G9: the four materialized shapes, re-derived from the two specs. The
@@ -2010,14 +2093,16 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
                              "mainmenu_nomp_web");
 }
 
-// Player count remains in PLAYER SETTINGS; per-level team assignment lives
-// in Base Camp. The main screen retains only the BEGIN NEW GAME pixie art.
+// Player count and per-level team assignment now live in Base Camp. The main
+// screen retains only the BEGIN NEW GAME pixie art and no player bindings.
 TEST(MenuEngine, main_menu_binding_pins)
 {
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& nomp = og::ui::main_menu_screen_spec_nomp();
-    const og::ui::MenuScreenSpec& players =
-        og::ui::player_settings_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& seat_mp =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    const og::ui::MenuScreenSpec& seat_nomp =
+        og::ui::seat_settings_menu_screen_spec_nomp();
 
     // The wrench face is gone: GAME SETTINGS is a normal labeled button.
     EXPECT_EQ(FAMILY_NORMAL1, mp.rows[0].art_family);
@@ -2046,30 +2131,25 @@ TEST(MenuEngine, main_menu_binding_pins)
     EXPECT_EQ(og::ui::RowState::Disabled,
               web_quit->state_override(og::ui::MenuLabelContext{}));
 
-    // Player-count outlines: spec rows 1..4 are 1/2/3/4 PLAYER.
-    for (int i = 1; i <= 4; ++i) {
-        EXPECT_EQ(og::ui::MenuOutlineBinding::PlayerCountEquals,
-                  players.rows[i].outline)
-            << players.rows[i].id;
-        EXPECT_EQ(players.rows[i].arg, players.rows[i].outline_arg)
-            << players.rows[i].id;
-    }
-
-    // No Player Settings row owns a team-assignment formatter anymore.
-    for (int i = 0; i < players.row_count; ++i) {
-        EXPECT_EQ(nullptr, players.rows[i].label_binding.formatter)
-            << players.rows[i].id;
-        EXPECT_NE(ButtonAction::AlliedMode, players.rows[i].action)
-            << players.rows[i].id;
-    }
-
-    // Main menu and no-MP player settings carry no player-specific bindings.
-    for (const og::ui::MenuScreenSpec* spec :
-         {&mp, &nomp, &og::ui::player_settings_menu_screen_spec_nomp()})
+    // Main-menu variants carry no player-specific outlines, formatters, or
+    // old player-count actions; those belong to the live Base Camp roster.
+    for (const og::ui::MenuScreenSpec* spec : {&mp, &nomp})
         for (int i = 0; i < spec->row_count; ++i) {
             EXPECT_EQ(og::ui::MenuOutlineBinding::None, spec->rows[i].outline)
                 << spec->name << " " << spec->rows[i].id;
             EXPECT_EQ(nullptr, spec->rows[i].label_binding.formatter)
+                << spec->name << " " << spec->rows[i].id;
+            EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
+                << spec->name << " " << spec->rows[i].id;
+        }
+
+    // Both seat-editor variants dispatch against the selected stable seat;
+    // neither revives the old save-backed player-count action or outline.
+    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp})
+        for (int i = 0; i < spec->row_count; ++i) {
+            EXPECT_EQ(og::ui::MenuOutlineBinding::None, spec->rows[i].outline)
+                << spec->name << " " << spec->rows[i].id;
+            EXPECT_NE(ButtonAction::SetPlayerMode, spec->rows[i].action)
                 << spec->name << " " << spec->rows[i].id;
         }
 }
@@ -2228,7 +2308,10 @@ TEST(MenuEngine, control_options_mode_label_bindings_follow_the_mode)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(9, count);
+    ASSERT_EQ(10, count);
+    EXPECT_EQ("reset_all_controls", buttons[9].id);
+    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
+              buttons[9].myfun);
 
     og::ui::MenuLabelContext context;
     for (int player = 0; player < 4; ++player) {

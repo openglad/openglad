@@ -967,7 +967,18 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     // Connect every peer the lobby left attached to the shared transport (remote
     // joiners + the host's own loopback), then apply the lobby's player bindings.
     for (const og::sim::PeerId peer_id : s->server_transport_->connected_peers())
-        s->server_->connect_client(peer_id);
+    {
+        const bool owns_seat = std::any_of(
+            bindings.begin(),
+            bindings.end(),
+            [peer_id](const og::sim::LobbyPlayerBinding& binding) {
+                return binding.peer_id == peer_id;
+            });
+        if (owns_seat)
+            s->server_->connect_client(peer_id);
+        else
+            s->server_->connect_spectator(peer_id);
+    }
     for (const og::sim::LobbyPlayerBinding& binding : bindings) {
         s->server_->bind_player(binding.peer_id, binding.player_index,
                                 static_cast<short>(binding.team), nullptr);
@@ -1330,9 +1341,11 @@ public:
                 // teams_toggle_ready click): setting ready with brought
                 // characters, none deployed, and cross-control OFF is
                 // denied — surface the caption instead of sending.
-                // Spectator/empty-roster machines ready freely [NET-R9];
-                // host machines never gate (the state table returns a
-                // host state with no ClientUnready caption).
+                // An empty-roster machine has no deploy minimum [NET-R9].
+                // This client always owns one active seat; SDL's true
+                // zero-seat shape has no READY action. Host machines never
+                // gate (the state table returns a host state with no
+                // ClientUnready caption).
                 const bool next_ready = !local_ready();
                 const og::ui::ReadyGoPresentation ready_presentation =
                     og::ui::format_ready_go_button(

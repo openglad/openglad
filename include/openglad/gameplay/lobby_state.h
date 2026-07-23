@@ -337,6 +337,10 @@ struct LobbyState {
     // echoes let a client distinguish its Join response from an unrelated
     // ready/team/reset broadcast.
     std::uint32_t last_join_request_id = 0;
+    // Recipient-specific peer authority (protocol v9). Host authority belongs
+    // to the connected machine, not one of its active seats, so this remains
+    // true when the elected host is spectating with zero LobbyPlayers.
+    bool local_peer_is_host = false;
 
     bool operator==(const LobbyState&) const = default;
 };
@@ -348,6 +352,7 @@ enum class LobbyMessageKind : std::uint8_t {
     TeamChange = 4,
     StartGame = 5,
     SettingsChange = 6,
+    RemoveSeat = 7,
 };
 
 constexpr std::uint8_t lobby_message_kind_value(LobbyMessageKind kind) noexcept
@@ -367,6 +372,10 @@ struct LobbyJoinMessage {
     // echoes it only after the LobbyServer has processed that Join. Zero opts
     // out for fire-and-forget local/host/terminal declarations.
     std::uint32_t request_id = 0;
+    // Only the between-level resume handshake may survive a currently locked
+    // lobby. Ordinary roster mutations that race StartGame must be dropped,
+    // never queued as a silent next-round change.
+    bool resume_after_level = false;
 
     bool operator==(const LobbyJoinMessage&) const = default;
 };
@@ -394,6 +403,15 @@ struct LobbyTeamChangeMessage {
     bool operator==(const LobbyTeamChangeMessage&) const = default;
 };
 
+struct LobbyRemoveSeatMessage {
+    // Dense P# captured when the request was made. Retained on the wire for
+    // diagnostics/display compatibility; seat_id is the authoritative target.
+    std::uint8_t player_index = 0xff;
+    LobbySeatId seat_id = kInvalidLobbySeatId;
+
+    bool operator==(const LobbyRemoveSeatMessage&) const = default;
+};
+
 struct LobbyStartGameMessage {
     std::uint8_t player_index = 0xff;
     // Client-issued correlation token; authority echoes it in either the
@@ -415,6 +433,7 @@ using LobbyMessagePayload =
                  LobbyLeaveMessage,
                  LobbyReadyMessage,
                  LobbyTeamChangeMessage,
+                 LobbyRemoveSeatMessage,
                  LobbyStartGameMessage,
                  LobbySettingsChangeMessage>;
 
@@ -434,6 +453,8 @@ struct LobbyMessage {
                     return LobbyMessageKind::Ready;
                 if constexpr (std::is_same_v<Message, LobbyTeamChangeMessage>)
                     return LobbyMessageKind::TeamChange;
+                if constexpr (std::is_same_v<Message, LobbyRemoveSeatMessage>)
+                    return LobbyMessageKind::RemoveSeat;
                 if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
                     return LobbyMessageKind::StartGame;
                 return LobbyMessageKind::SettingsChange;

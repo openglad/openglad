@@ -249,34 +249,92 @@ TEST(UxShots, b_mainmenu_with_company) {
   ASSERT_EQ(1, state.captures);
 }
 
-// --- 2a. player settings ----------------------------------------------------
+// --- 2a. game settings and global controls ---------------------------------
 
-int player_settings_injector(void *data) {
+int game_settings_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
-  if (wait_for_interactable("player_settings", 5000)) {
+  if (wait_for_interactable("options", 5000)) {
     SDL_Delay(1500);
-    interact("player_settings");
-    if (wait_for_interactable("player_settings_back", 5000)) {
+    interact("options");
+    if (wait_for_interactable("control_settings", 5000)) {
       SDL_Delay(1500);
-      state->captures += capture_frame("player_settings");
-      interact("player_settings_back");
+      state->captures += capture_frame("game_settings");
+      interact("control_settings");
     }
-  }
-  if (wait_for_interactable("quit", 10000)) {
-    SDL_Delay(750);
-    interact("quit");
+    if (wait_for_interactable("controls_back", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("global_controls");
+      interact("controls_back");
+    }
+    if (wait_for_interactable("options_back", 5000)) {
+      SDL_Delay(300);
+      interact("options_back");
+    }
   }
   state->finished = true;
   return 0;
 }
 
-TEST(UxShots, b2_player_settings) {
+TEST(UxShots, b1_game_settings_and_controls) {
   trace_clear();
   reap_all_companies();
   ShotState state;
   SDL_Thread *thread =
-      SDL_CreateThread(player_settings_injector, "ux_players", &state);
+      SDL_CreateThread(game_settings_injector, "ux_settings", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 1;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(2, state.captures);
+}
+
+// --- 2b. per-seat settings --------------------------------------------------
+// This probe used to capture the main-menu PLAYER SETTINGS screen. Its
+// successor is deliberately reached from an owned Base Camp card so the
+// screenshot covers the stable-seat editor in its real context.
+
+int seat_settings_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_interactable("continue_game", 5000)) {
+    SDL_Delay(1500);
+    interact("continue_game");
+    if (wait_for_team_menu() &&
+        wait_for_interactable("seat_card_0", 5000)) {
+      SDL_Delay(500);
+      interact("seat_card_0");
+    }
+    if (wait_for_interactable("seat_settings_back", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("seat_settings");
+      interact("seat_settings_back");
+    }
+    if (wait_for_team_menu()) {
+      SDL_Delay(300);
+      interact("back");
+    }
+  }
+  // This probe permits one main-menu call. Base Camp BACK therefore returns
+  // through picker_main's test gate instead of materializing another QUIT
+  // face; there is nothing left for the injector to dismiss.
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, b2_seat_settings) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(seat_settings_injector, "ux_seat", &state);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
   g_picker_max_mainmenu_calls = 1;
@@ -564,6 +622,35 @@ int basecamp_paged_injector(void *data) {
   return 0;
 }
 
+int basecamp_three_seats_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu() &&
+      wait_for_interactable("add_seat", 5000)) {
+    SDL_Delay(300);
+    interact("add_seat");
+    if (wait_for_interactable("seat_card_1", 5000)) {
+      SDL_Delay(300);  // cross the intentional 250 ms + debounce
+      interact("add_seat");
+    }
+    if (wait_for_interactable("seat_card_2", 5000)) {
+      SDL_Delay(1500);
+      shot->state.captures += capture_frame(shot->name);
+    }
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
 void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
@@ -596,6 +683,17 @@ TEST(UxShots, h_basecamp_empty) {
   NamedShot shot;
   shot.name = "basecamp_empty";
   run_basecamp_shot(shot, &basecamp_shot_injector);
+}
+
+TEST(UxShots, i_basecamp_three_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  NamedShot shot;
+  shot.name = "basecamp_three_local_seats";
+  run_basecamp_shot(shot, &basecamp_three_seats_injector);
 }
 
 // --- 10-12. networked base camp: host / joiner / degraded alert -------------

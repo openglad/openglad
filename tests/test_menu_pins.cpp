@@ -3,11 +3,8 @@
 // The tables are independent oracles: a spec transcription error fails here
 // instead of validating itself against another projection of the same spec.
 //
-// Pinned screens: main menu (the
-// compiled build variant — all four k_mainmenu_buttons variants are
-// transcribed under the same preprocessor selection picker.cpp uses, so
-// whichever variant a build compiles is the one pinned), hire, train, the
-// save/load slot menus, view-team, and the progress screen (whose table is
+// Pinned screens: main menu (including the native/web QUIT fork), global
+// controls, hire, train, and the progress screen (whose table is
 // function-local in create_progress_menu; it is pinned through the live
 // vbutton surface instead of an accessor).
 //
@@ -22,6 +19,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -74,18 +72,10 @@ void check_exact_table(button* buttons, int count,
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Main menu: the four k_mainmenu_buttons build variants (picker.cpp). The
-// SAME preprocessor selection picker.cpp uses (including its
-// USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping) picks the table below, so
-// the pin always matches the variant the build actually compiled. Native CI
-// pins the native+MP table; a touch or web build of this test pins its own.
+// Main menu: multiplayer support no longer changes this table now that seat
+// lifecycle lives in Base Camp. The platform still chooses the enabled
+// native or disabled web QUIT row, so each build pins the shape it compiles.
 // ---------------------------------------------------------------------------
-
-#ifdef USE_TOUCH_INPUT
-#ifndef DISABLE_MULTIPLAYER
-#define DISABLE_MULTIPLAYER
-#endif
-#endif
 
 // HELP and QUIT are a stable footer. Native QUIT keeps Escape; web QUIT is
 // materialized without a hotkey and disabled by its row-state binding.
@@ -94,22 +84,19 @@ static const ExpectedButton kExpectedMainMenu[] = {
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 8}},
+     MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
      MenuNav{.up = 1, .down = 3}},
-    {"player_settings", "PLAYERS", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
-     button_action_id(ButtonAction::MenuSpecRow), 2,
-     MenuNav{.up = 2, .down = 5, .right = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 2, .down = 5, .left = 3}},
+     MenuNav{.up = 2, .down = 4}},
     {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 3, .down = 6}},
+     MenuNav{.up = 3, .down = 5}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
-     MenuNav{.up = 5, .down = 0, .right = 7}},
+     MenuNav{.up = 4, .down = 0, .right = 6}},
     {"quit", "QUIT ",
 #ifdef __EMSCRIPTEN__
      KEYSTATE_UNKNOWN,
@@ -117,12 +104,12 @@ static const ExpectedButton kExpectedMainMenu[] = {
      KEYSTATE_ESCAPE,
 #endif
      152, 178, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
-     MenuNav{.up = 5, .down = 0, .left = 6}},
+     MenuNav{.up = 4, .down = 0, .left = 5}},
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
     {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 9, MenuNav{}, true},
+     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
 };
 
 TEST(MenuEnginePins, mainmenu_exact_table)
@@ -133,59 +120,69 @@ TEST(MenuEnginePins, mainmenu_exact_table)
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
     // §2.1/§9.2 index contract: load_company then no_company_note remain the
-    // appended tail; GAME SETTINGS is the full-width settings-group row.
+    // appended tail; DIFFICULTY and GAME SETTINGS are the full-width rows
+    // left after local seat management moved into Base Camp.
     ASSERT_EQ("no_company_note", buttons[count - 1].id);
     ASSERT_EQ("load_company", buttons[count - 2].id);
     ASSERT_EQ("level_edit", buttons[2].id);
-    ASSERT_EQ("options", buttons[5].id);
-    ASSERT_EQ("help", buttons[6].id);
-    ASSERT_EQ("quit", buttons[7].id);
+    ASSERT_EQ("difficulty", buttons[3].id);
+    ASSERT_EQ("options", buttons[4].id);
+    ASSERT_EQ("help", buttons[5].id);
+    ASSERT_EQ("quit", buttons[6].id);
 }
 
-TEST(MenuEnginePins, player_settings_exact_table)
+TEST(MenuEnginePins, control_options_exact_table)
 {
-#ifndef DISABLE_MULTIPLAYER
     static const ExpectedButton kExpected[] = {
-        {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
+        {"controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 6, .down = 1}},
-        {"1_player", "1 PLAYER", KEYSTATE_1, 27, 70, 62, 20,
-         button_action_id(ButtonAction::SetPlayerMode), 1,
-         MenuNav{.up = 0, .down = 5, .right = 2}},
-        {"2_player", "2 PLAYER", KEYSTATE_2, 95, 70, 62, 20,
-         button_action_id(ButtonAction::SetPlayerMode), 2,
-         MenuNav{.up = 0, .down = 5, .left = 1, .right = 3}},
-        {"3_player", "3 PLAYER", KEYSTATE_3, 163, 70, 62, 20,
-         button_action_id(ButtonAction::SetPlayerMode), 3,
-         MenuNav{.up = 0, .down = 5, .left = 2, .right = 4}},
-        {"4_player", "4 PLAYER", KEYSTATE_4, 231, 70, 62, 20,
-         button_action_id(ButtonAction::SetPlayerMode), 4,
-         MenuNav{.up = 0, .down = 5, .left = 3}},
-        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 112, 140, 20,
-         button_action_id(ButtonAction::OpenControlSettings), -1,
-         MenuNav{.up = 1, .down = 6}},
-        {"reset_controls", "RESET CONTROLS", KEYSTATE_UNKNOWN, 90, 141, 140, 20,
+         MenuNav{.up = 9, .down = 1}},
+        {"player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 40, 100, 15,
+         button_action_id(ButtonAction::ToggleControlMode), 0,
+         MenuNav{.up = 0, .down = 3, .right = 2}},
+        {"player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, 40, 100, 15,
+         button_action_id(ButtonAction::EditPlayerKeymap), 0,
+         MenuNav{.up = 0, .down = 4, .left = 1}},
+        {"player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 68, 100, 15,
+         button_action_id(ButtonAction::ToggleControlMode), 1,
+         MenuNav{.up = 1, .down = 5, .right = 4}},
+        {"player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 170, 68, 100, 15,
+         button_action_id(ButtonAction::EditPlayerKeymap), 1,
+         MenuNav{.up = 2, .down = 6, .left = 3}},
+        {"player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 96, 100, 15,
+         button_action_id(ButtonAction::ToggleControlMode), 2,
+         MenuNav{.up = 3, .down = 7, .right = 6}},
+        {"player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 170, 96, 100, 15,
+         button_action_id(ButtonAction::EditPlayerKeymap), 2,
+         MenuNav{.up = 4, .down = 8, .left = 5}},
+        {"player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 124, 100, 15,
+         button_action_id(ButtonAction::ToggleControlMode), 3,
+         MenuNav{.up = 5, .down = 9, .right = 8}},
+        {"player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, 124, 100, 15,
+         button_action_id(ButtonAction::EditPlayerKeymap), 3,
+         MenuNav{.up = 6, .down = 9, .left = 7}},
+        {"reset_all_controls", "RESET ALL", KEYSTATE_UNKNOWN, 90, 174, 140, 15,
          button_action_id(ButtonAction::RestoreDefaultControls), -1,
-         MenuNav{.up = 5, .down = 0}},
+         MenuNav{.up = 7, .down = 0}},
     };
-#else
-    static const ExpectedButton kExpected[] = {
-        {"player_settings_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
-         button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 2, .down = 1}},
-        {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 76, 140, 20,
-         button_action_id(ButtonAction::OpenControlSettings), -1,
-         MenuNav{.up = 0, .down = 2}},
-        {"reset_controls", "RESET CONTROLS", KEYSTATE_UNKNOWN, 90, 105, 140, 20,
-         button_action_id(ButtonAction::RestoreDefaultControls), -1,
-         MenuNav{.up = 1, .down = 0}},
-    };
-#endif
-    button* buttons = picker_player_settings_buttons();
-    const int count = picker_player_settings_button_count();
+
+    std::array<int, 4> saved_modes{};
+    for (int player = 0; player < 4; ++player) {
+        saved_modes[static_cast<std::size_t>(player)] =
+            get_player_control_mode(player);
+        set_player_control_mode(
+            player, static_cast<int>(ControlDirectionMode::FourDirection));
+    }
+
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
     check_exact_table(buttons, count, kExpected,
                       static_cast<int>(std::size(kExpected)),
-                      "player_settings");
+                      "control_options");
+
+    for (int player = 0; player < 4; ++player)
+        set_player_control_mode(
+            player, saved_modes[static_cast<std::size_t>(player)]);
 }
 
 // The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (design

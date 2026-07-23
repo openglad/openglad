@@ -105,6 +105,7 @@ static void check_no_overlaps(button* buttons, int count, const char* menu_name)
             }
         }
     }
+
 }
 
 static void check_bounds(button* buttons, int count, const char* menu_name)
@@ -194,64 +195,56 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
-    ASSERT_GE(count, 10);
+    ASSERT_GE(count, 9);
 
-    // Within-group vertical gutters match the 4px horizontal split-row gutter.
-    const int split_row_gutter =
-        buttons[4].x - (buttons[3].x + buttons[3].sizex);
-    EXPECT_EQ(4, split_row_gutter);
-    EXPECT_EQ(split_row_gutter,
+    // The primary action group retains its classic 4px vertical gutter.
+    constexpr int kWithinGroupGutter = 4;
+    EXPECT_EQ(kWithinGroupGutter,
               buttons[1].y - (buttons[0].y + buttons[0].sizey));
 
     // LEVEL EDITOR completes the primary-action group at the same 4px gap.
     EXPECT_EQ("level_edit", buttons[2].id);
-    EXPECT_EQ(split_row_gutter,
+    EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: equal compact top-row faces, a 4px gutter, then a centered
-    // full-width GAME SETTINGS face with the same 4px vertical gutter.
-    EXPECT_EQ("player_settings", buttons[3].id);
-    EXPECT_EQ("difficulty", buttons[4].id);
-    EXPECT_EQ(buttons[3].y, buttons[4].y);
+    // SETTINGS: seat lifecycle left this screen for Base Camp, so DIFFICULTY
+    // and GAME SETTINGS now form a centered full-width stack.
+    EXPECT_EQ("difficulty", buttons[3].id);
+    EXPECT_EQ("options", buttons[4].id);
+    EXPECT_EQ(buttons[2].x, buttons[3].x);
+    EXPECT_EQ(buttons[2].sizex, buttons[3].sizex);
+    EXPECT_EQ(buttons[3].x, buttons[4].x);
     EXPECT_EQ(buttons[3].sizex, buttons[4].sizex);
-    EXPECT_EQ(split_row_gutter,
-              buttons[4].x - (buttons[3].x + buttons[3].sizex));
-    EXPECT_EQ("options", buttons[5].id);
-    EXPECT_EQ(buttons[3].x, buttons[5].x);
-    EXPECT_EQ(buttons[4].x + buttons[4].sizex,
-              buttons[5].x + buttons[5].sizex);
-    EXPECT_EQ(split_row_gutter,
-              buttons[5].y - (buttons[3].y + buttons[3].sizey));
+    EXPECT_EQ(kWithinGroupGutter,
+              buttons[4].y - (buttons[3].y + buttons[3].sizey));
 
     // Tightening within groups does not collapse the category breaks.
     EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
-    EXPECT_EQ("help", buttons[6].id);
-    EXPECT_EQ("quit", buttons[7].id);
-    EXPECT_EQ(buttons[6].y, buttons[7].y);
-    EXPECT_EQ(buttons[6].sizex, buttons[7].sizex);
-    EXPECT_EQ(4, buttons[7].x - (buttons[6].x + buttons[6].sizex));
-    EXPECT_EQ(9, buttons[6].y - (buttons[5].y + buttons[5].sizey));
+    EXPECT_EQ("help", buttons[5].id);
+    EXPECT_EQ("quit", buttons[6].id);
+    EXPECT_EQ(buttons[5].y, buttons[6].y);
+    EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
+    EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
+    EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
 }
 
-TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)
+TEST(MenuLayout, global_control_reset_is_centered_and_reachable)
 {
-    button* buttons = picker_player_settings_buttons();
-    const int count = picker_player_settings_button_count();
-    check_no_overlaps(buttons, count, "player_settings");
-    check_bounds(buttons, count, "player_settings");
-    check_nav_in_range(buttons, count, "player_settings");
-    check_nav_closed_and_reachable(buttons, count, 1, "player_settings");
-#ifndef DISABLE_MULTIPLAYER
-    ASSERT_EQ(7, count);
-    EXPECT_EQ(27, buttons[1].x);
-    EXPECT_EQ(293, buttons[4].x + buttons[4].sizex);
-    for (int i = 1; i <= 4; ++i)
-        EXPECT_EQ(70, buttons[i].y);
-    EXPECT_EQ(160, buttons[5].x + buttons[5].sizex / 2);
-    EXPECT_EQ(160, buttons[6].x + buttons[6].sizex / 2);
-#endif
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
+    check_no_overlaps(buttons, count, "control_options");
+    check_bounds(buttons, count, "control_options");
+    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
+
+    ASSERT_EQ(10, count);
+    const button& reset = buttons[9];
+    EXPECT_EQ("reset_all_controls", reset.id);
+    EXPECT_EQ("RESET ALL", reset.label);
+    EXPECT_EQ(160, reset.x + reset.sizex / 2);
+    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
+              reset.myfun);
 }
 
 TEST(MenuLayout, createmenu_buttons_no_overlap)
@@ -327,8 +320,9 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // (84,y,228,10) opens training. Spec ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
-// seat-assignment rail is appended at 33-39, preserving every old ordinal;
-// the layout is identical for classic and CTF campaigns.
+// seat-assignment rail is appended at 33-40, preserving every old ordinal.
+// Its far-right + owns the new final slot; the layout is identical for
+// classic and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -385,18 +379,20 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
          true},
         {"seats", "SEATS", 8, 164, 34, 10,
          MenuNav{.down = 27, .right = 34}, false},
-        {"seat_page_prev", "<", 44, 164, 10, 10,
+        {"seat_page_prev", "<", 44, 164, 8, 10,
          MenuNav{.left = 33, .right = 35}, true},
-        {"seat_card_0", "", 56, 164, 60, 10,
+        {"seat_card_0", "", 54, 164, 57, 10,
          MenuNav{.left = 34, .right = 36}, false},
-        {"seat_card_1", "", 117, 164, 60, 10,
+        {"seat_card_1", "", 112, 164, 57, 10,
          MenuNav{.left = 35, .right = 37}, false},
-        {"seat_card_2", "", 178, 164, 60, 10,
+        {"seat_card_2", "", 170, 164, 57, 10,
          MenuNav{.left = 36, .right = 38}, false},
-        {"seat_card_3", "", 239, 164, 60, 10,
+        {"seat_card_3", "", 228, 164, 57, 10,
          MenuNav{.left = 37, .right = 39}, false},
-        {"seat_page_next", ">", 301, 164, 10, 10,
+        {"seat_page_next", ">", 287, 164, 8, 10,
          MenuNav{.down = 31, .left = 38}, true},
+        {"add_seat", "+", 297, 164, 14, 10,
+         MenuNav{.down = 31, .left = 39}, false},
     };
 
     for (const char* campaign :
@@ -408,8 +404,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         ASSERT_EQ(kCreateMenuButtonCount, count)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
                "hit zone + 5 strip buttons + the hidden READY twin + "
-               "7 appended seat-rail controls";
-        ASSERT_EQ(40, count);
+               "8 appended seat-rail controls";
+        ASSERT_EQ(41, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -453,7 +449,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampSeatPagePrevIndex, 34);
         EXPECT_EQ(kBaseCampSeatCardBase, 35);
         EXPECT_EQ(kBaseCampSeatPageNextIndex, 39);
-        EXPECT_EQ(kCreateMenuButtonCount, 40);
+        EXPECT_EQ(kBaseCampAddSeatIndex, 40);
+        EXPECT_EQ(kCreateMenuButtonCount, 41);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -483,9 +480,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 
         // The compact rail uses an interior keyboard-focus ring; its one- and
         // two-pixel horizontal gutters therefore remain clear between every
-        // adjacent control.
+        // adjacent control, including the new far-right +.
         for (int left = kBaseCampSeatsLabelIndex;
-             left < kBaseCampSeatPageNextIndex; ++left)
+             left < kBaseCampAddSeatIndex; ++left)
         {
             EXPECT_LT(buttons[left].x + buttons[left].sizex,
                       buttons[left + 1].x)
@@ -507,6 +504,12 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 // two-page fill, and the lobby-wide 16-seat ceiling.
 TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
 {
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    constexpr bool kAddSeatCompiledIn = false;
+#else
+    constexpr bool kAddSeatCompiledIn = true;
+#endif
+
     struct LocalSeatRailLobby final : og::ui::IPickerLobbyClient
     {
         void initialize_from_save() override {}
@@ -533,7 +536,20 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
         {
             return host;
         }
+        [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players()
+            const override
+        {
+            return players;
+        }
+        [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
+            const override
+        {
+            return local_indices;
+        }
+
         bool host = true;
+        std::vector<og::sim::LobbyPlayer> players;
+        std::vector<std::uint8_t> local_indices;
     } lobby;
     struct LobbyRestore
     {
@@ -578,6 +594,8 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
         }
         state.seat_page = og::ui::PageModel::make(
             seat_count, kBaseCampSeatCardsPerPage);
+        lobby.players = state.seats;
+        lobby.local_indices = state.local_seat_indices;
         og::ui::install_base_camp_state_for_screen(&state);
 
         if (seat_count > kBaseCampSeatCardsPerPage)
@@ -608,6 +626,27 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             EXPECT_EQ(!paged,
                       buttons[kBaseCampSeatPageNextIndex].hidden)
                 << variant;
+            EXPECT_EQ(!kAddSeatCompiledIn,
+                      buttons[kBaseCampAddSeatIndex].hidden)
+                << variant;
+            ASSERT_NE(nullptr,
+                      spec.rows[kBaseCampAddSeatIndex].state_override);
+            const og::ui::RowState add_state =
+                spec.rows[kBaseCampAddSeatIndex].state_override(
+                    og::ui::MenuLabelContext{});
+            if (!kAddSeatCompiledIn)
+            {
+                EXPECT_EQ(og::ui::RowState::Hidden, add_state)
+                    << variant;
+            }
+            else
+            {
+                EXPECT_EQ(seat_count == og::sim::kMaxGlobalPlayers
+                              ? og::ui::RowState::Disabled
+                              : og::ui::RowState::Visible,
+                          add_state)
+                    << variant;
+            }
 
             const int first =
                 page * kBaseCampSeatCardsPerPage;
@@ -631,7 +670,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     player_index == 0 ||
                     (seat_count > 1 && player_index == seat_count - 1);
                 EXPECT_EQ(
-                    std::format("P{} {}", player_index + 1,
+                    std::format("P{} {} ", player_index + 1,
                                 local ? "YOU" : "IRO"),
                     card_button.label)
                     << variant << " card " << card;
@@ -639,6 +678,8 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (paged)
                 rail.push_back(kBaseCampSeatPageNextIndex);
+            if (kAddSeatCompiledIn)
+                rail.push_back(kBaseCampAddSeatIndex);
 
             for (std::size_t i = 0; i < rail.size(); ++i)
             {
@@ -664,9 +705,11 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             EXPECT_EQ(visible_card_or_label(2),
                       buttons[kCreateMenuNetworkingIndex].nav.up)
                 << variant;
-            EXPECT_EQ(paged
-                          ? kBaseCampSeatPageNextIndex
-                          : visible_card_or_label(3),
+            EXPECT_EQ(kAddSeatCompiledIn
+                          ? kBaseCampAddSeatIndex
+                          : (paged
+                                 ? kBaseCampSeatPageNextIndex
+                                 : visible_card_or_label(3)),
                       buttons[kCreateMenuGoIndex].nav.up)
                 << variant;
 
@@ -675,35 +718,53 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             check_nav_closed_and_reachable(
                 buttons, count, kCreateMenuBackIndex, variant.c_str());
 
-            // The same rail page must close over READY for a joiner: GO
-            // hides, the fourth card and next arrow point down to READY,
-            // and READY points back up to the page's rightmost anchor.
+            // The same rail page must close over READY for a joiner with an
+            // active seat: GO hides, the fourth card, next arrow, and + point
+            // down to READY, and READY points back up to the far-right +.
+            // A zero-seat spectator has no READY target; + remains the route
+            // back down to NETWORK until it activates a seat.
             lobby.host = false;
             buttons = picker_createmenu_buttons();
             highlighted = kBaseCampSeatsLabelIndex;
             spec.nav.rewire(buttons, count, highlighted);
             EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden) << variant;
-            EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden) << variant;
-            EXPECT_EQ(kCreateMenuReadyIndex,
+            EXPECT_EQ(seat_count == 0,
+                      buttons[kCreateMenuReadyIndex].hidden)
+                << variant;
+            EXPECT_EQ(seat_count > 0 ? kCreateMenuReadyIndex : -1,
                       buttons[kCreateMenuNetworkingIndex].nav.right)
                 << variant;
-            if (visible == kBaseCampSeatCardsPerPage)
+            if (seat_count > 0 &&
+                visible == kBaseCampSeatCardsPerPage)
             {
                 EXPECT_EQ(kCreateMenuReadyIndex,
                           buttons[kBaseCampSeatCardBase + 3].nav.down)
                     << variant;
             }
-            if (paged)
+            if (seat_count > 0 && paged)
             {
                 EXPECT_EQ(kCreateMenuReadyIndex,
                           buttons[kBaseCampSeatPageNextIndex].nav.down)
                     << variant;
             }
-            EXPECT_EQ(paged
-                          ? kBaseCampSeatPageNextIndex
-                          : visible_card_or_label(3),
-                      buttons[kCreateMenuReadyIndex].nav.up)
-                << variant;
+            if (kAddSeatCompiledIn)
+            {
+                EXPECT_EQ(seat_count > 0
+                              ? kCreateMenuReadyIndex
+                              : kCreateMenuNetworkingIndex,
+                          buttons[kBaseCampAddSeatIndex].nav.down)
+                    << variant;
+            }
+            if (seat_count > 0)
+            {
+                EXPECT_EQ(kAddSeatCompiledIn
+                              ? kBaseCampAddSeatIndex
+                              : (paged
+                                     ? kBaseCampSeatPageNextIndex
+                                     : visible_card_or_label(3)),
+                          buttons[kCreateMenuReadyIndex].nav.up)
+                    << variant;
+            }
             const std::string joiner_variant = variant + " joiner";
             check_nav_closed_and_reachable(
                 buttons, count, kCreateMenuBackIndex,
@@ -711,6 +772,90 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             lobby.host = true;
         }
     }
+
+    // A network peer may remain connected after removing its final local
+    // seat while one to four remote seats still fill the rail. Hosts retain
+    // GO; guests have neither GO nor READY until + activates a seat. Exercise
+    // every single-page width so card four can never fall through to a hidden
+    // GO/READY twin.
+    for (const int remote_count : {1, 2, 3, 4})
+    {
+        og::ui::BaseCampScreenState spectator_state;
+        spectator_state.page = og::ui::PageModel::make(
+            0, kBaseCampRosterRowsPerPage);
+        for (int i = 0; i < remote_count; ++i)
+        {
+            spectator_state.seats.push_back(og::sim::LobbyPlayer{
+                .player_index = static_cast<std::uint8_t>(i),
+                .name = std::format("remote-{}", i),
+                .company = "Iron Keep",
+                .team = static_cast<short>(i % SCORE_TEAM_COUNT),
+                .character_slots = {},
+                .ready = false,
+                .is_host = i == 0,
+            });
+        }
+        spectator_state.seat_page = og::ui::PageModel::make(
+            remote_count, kBaseCampSeatCardsPerPage);
+        lobby.players = spectator_state.seats;
+        lobby.local_indices.clear();
+        og::ui::install_base_camp_state_for_screen(&spectator_state);
+
+        for (const bool host : {false, true})
+        {
+            lobby.host = host;
+            button* buttons = picker_createmenu_buttons();
+            const int count = picker_createmenu_button_count();
+            int highlighted = kBaseCampSeatsLabelIndex;
+            spec.nav.rewire(buttons, count, highlighted);
+            const std::string variant = std::format(
+                "zero-seat {} remote-cards={}",
+                host ? "host" : "guest", remote_count);
+
+            EXPECT_EQ(!host, buttons[kCreateMenuGoIndex].hidden)
+                << variant;
+            EXPECT_TRUE(buttons[kCreateMenuReadyIndex].hidden)
+                << variant;
+            constexpr std::array<int, kBaseCampSeatCardsPerPage>
+                kCardStripTargets{
+                    kCreateMenuHireIndex,
+                    kCreateMenuScenarioIndex,
+                    kCreateMenuNetworkingIndex,
+                    kCreateMenuNetworkingIndex,
+                };
+            for (int card = 0; card < remote_count; ++card)
+            {
+                const int expected_down =
+                    card == kBaseCampSeatCardsPerPage - 1 && host
+                    ? kCreateMenuGoIndex
+                    : kCardStripTargets[static_cast<std::size_t>(card)];
+                EXPECT_EQ(expected_down,
+                          buttons[kBaseCampSeatCardBase + card].nav.down)
+                    << variant << " card " << card;
+            }
+            if (kAddSeatCompiledIn)
+            {
+                EXPECT_EQ(host ? kCreateMenuGoIndex
+                               : kCreateMenuNetworkingIndex,
+                          buttons[kBaseCampAddSeatIndex].nav.down)
+                    << variant;
+            }
+            check_nav_closed_and_reachable(
+                buttons, count, kCreateMenuBackIndex, variant.c_str());
+        }
+    }
+
+    // The row stays in the native rail but becomes visibly inert when this
+    // machine already owns four active seats. Touch/no-MP builds hide the
+    // same final slot altogether; both variants keep the authored cap rule.
+    lobby.players.resize(static_cast<std::size_t>(MAX_PLAYERS));
+    lobby.local_indices = {0, 1, 2, 3};
+    const og::ui::RowState local_cap_state =
+        spec.rows[kBaseCampAddSeatIndex].state_override(
+            og::ui::MenuLabelContext{});
+    EXPECT_EQ(kAddSeatCompiledIn ? og::ui::RowState::Disabled
+                                : og::ui::RowState::Hidden,
+              local_cap_state);
 }
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
@@ -788,6 +933,14 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                                 kCreateMenuGoIndex
                             ? kCreateMenuNetworkingIndex
                             : buttons[kBaseCampPageNextIndex].nav.down;
+                    // The far-right + inherited GO as its native host down
+                    // target. This matrix's synthetic joiner hides GO by
+                    // hand, so close that final rail link as well.
+                    buttons[kBaseCampAddSeatIndex].nav.down =
+                        buttons[kBaseCampAddSeatIndex].nav.down ==
+                                kCreateMenuGoIndex
+                            ? kCreateMenuNetworkingIndex
+                            : buttons[kBaseCampAddSeatIndex].nav.down;
                 }
                 const std::string variant = std::format(
                     "basecamp roster={} page={} {}", roster_size, page,
@@ -1423,18 +1576,20 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
     const int count = picker_control_options_button_count();
     check_nav_in_range(buttons, count, "control_options");
     check_nav_closed_and_reachable(buttons, count, 0, "control_options");
+    ASSERT_EQ(10, count);
+    EXPECT_EQ("reset_all_controls", buttons[9].id);
 }
 
 // The per-effect toggles live in the three FX subscreens; main options keeps
-// the sound/graphics settings plus the three stacked FX doors. CONTROLS moved
-// to PLAYER SETTINGS. Pin the draw-hook index contract and nav graph.
+// the sound/graphics settings plus the three stacked FX doors and the global
+// CONTROLS door. Pin the draw-hook index contract and nav graph.
 TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(8, count)
+    ASSERT_EQ(9, count)
         << "main options is BACK + Sound + DISPLAY + sprite sheet + "
-           "3 FX doors + RESTORE SETTINGS";
+           "3 FX doors + CONTROLS + RESTORE SETTINGS";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1445,6 +1600,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "pick_sprite_sheet",  // 5: label synced by index each frame
         "ui_fx",              // 6: opens the UI FX subscreen
         "graphics_fx",        // 7: opens the GRAPHICS FX subscreen
+        "control_settings",   // 8: opens persistent player profiles
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1462,10 +1618,13 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     EXPECT_EQ(buttons[2].x, buttons[3].x);
     EXPECT_EQ(buttons[3].x, buttons[6].x);
     EXPECT_EQ(buttons[3].x, buttons[7].x);
+    EXPECT_EQ(buttons[3].x, buttons[8].x);
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
     EXPECT_EQ(buttons[3].y + 23, buttons[6].y);
     EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
+    EXPECT_EQ(buttons[7].y + 23, buttons[8].y);
     EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings), buttons[8].myfun);
 
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
 }
