@@ -504,7 +504,11 @@ void seed_test_save_if_requested()
         soldier->name = requested_player_count == 1
             ? "Web Soldier"
             : std::format("Web Soldier {}", index + 1);
-        soldier->teamnum = static_cast<short>(index);
+        // SaveData defaults to Together mode, so every requested local view
+        // controls the same combat team. Seed one distinct red hero per view;
+        // assigning colors by index would create hostile fighters and the
+        // picker's start gate would correctly reject the unstaffed views.
+        soldier->teamnum = 0;
         soldier->strength = 200;
         soldier->dexterity = 200;
         soldier->constitution = 200;
