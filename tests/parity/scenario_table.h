@@ -1132,8 +1132,8 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 // flip at least one of its predicates. Phase 02 applies these via the
 // canary and verifies at least one predicate per row flips after the
 // mutation. Mutations are addressed at the file the spec text named:
-// `walker_combat.cpp:302` is the weapon's hitpoint decay (which gates
-// projectile death and thus the weapon-survives invariant);
+// `walker_combat.cpp:309` is the attack dispatch that hands the reduced damage
+// to the shared combat-damage path;
 // `families/family_<name>.cpp:<do_special line>` is the family-specific
 // "init" the spec refers to (each family's first declared function in
 // the descriptor).
@@ -1146,7 +1146,7 @@ inline constexpr Mutation kMut_combat_damage = {
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 302,
+    "src/gameplay/walker_combat.cpp", 309,
     "do_combat_damage(attacker, target, tempdamage_i);",
     "do_combat_damage(attacker, target, 0);",
     "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
