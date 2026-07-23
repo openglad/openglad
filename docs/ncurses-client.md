@@ -341,6 +341,14 @@ lifted from the SDL-free portions of the lobby clients, handoff modeled on
 `server_main.cpp`) and the networked variant of the level loop (host runs the
 `GameServer`; join only polls its `GameClient`).
 
+The lobby roster uses the same lobby-wide P# display ordinals as SDL Base Camp.
+`<`/`>` (or the arrow keys) moves between seats owned by this terminal and `t`
+cycles the selected seat's team; remote seats are read-only. One ncurses
+process currently advertises one local seat (split-screen remains a non-goal),
+while lobbies may contain more than four seats across network clients. The
+shared 2–4 Player Settings choices are therefore refused by ncurses and leave
+the local count at one; additional players join from separate clients.
+
 ---
 
 ## Test plan (CI-safe, no TTY)
@@ -349,7 +357,7 @@ All tests use `HeadlessTerminal` + `FakeClock`, so they run headlessly (no TTY) 
 the tty-specific bits of `CursesTerminal` (raw I/O, signals) are the only untested
 code; the parsing they depend on is covered by the `kitty_keys` decoder tests.
 Every case lives in a single CTest binary, **`og_test_curses`** (unit + component
-+ integration + networking, ~128 cases), plus the **`openglad_curses_link_no_sdl`**
++ integration + networking, ~210 cases), plus the **`openglad_curses_link_no_sdl`**
 CTest that asserts the shipped binary has zero SDL symbols.
 
 1. **glyph_map** — every living family id → expected glyph; treasure/weapon/

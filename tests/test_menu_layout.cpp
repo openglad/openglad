@@ -244,14 +244,13 @@ TEST(MenuLayout, player_settings_buttons_are_centered_and_reachable)
     check_nav_in_range(buttons, count, "player_settings");
     check_nav_closed_and_reachable(buttons, count, 1, "player_settings");
 #ifndef DISABLE_MULTIPLAYER
-    ASSERT_EQ(8, count);
+    ASSERT_EQ(7, count);
     EXPECT_EQ(27, buttons[1].x);
     EXPECT_EQ(293, buttons[4].x + buttons[4].sizex);
     for (int i = 1; i <= 4; ++i)
         EXPECT_EQ(70, buttons[i].y);
     EXPECT_EQ(160, buttons[5].x + buttons[5].sizex / 2);
     EXPECT_EQ(160, buttons[6].x + buttons[6].sizex / 2);
-    EXPECT_EQ(160, buttons[7].x + buttons[7].sizex / 2);
 #endif
 }
 
@@ -327,8 +326,9 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team and the row body
 // (84,y,228,10) opens training. Spec ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
-// strip 27-31, ready twin 32) so MenuSpecRow args decode
-// positionally; the layout is identical for classic and CTF campaigns.
+// strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
+// seat-assignment rail is appended at 33-39, preserving every old ordinal;
+// the layout is identical for classic and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -383,6 +383,20 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         // for networked joiners).
         {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30},
          true},
+        {"seats", "SEATS", 4, 164, 34, 10,
+         MenuNav{.down = 27, .right = 34}, false},
+        {"seat_page_prev", "<", 40, 164, 10, 10,
+         MenuNav{.left = 33, .right = 35}, true},
+        {"seat_card_0", "", 52, 164, 60, 10,
+         MenuNav{.left = 34, .right = 36}, false},
+        {"seat_card_1", "", 113, 164, 60, 10,
+         MenuNav{.left = 35, .right = 37}, false},
+        {"seat_card_2", "", 174, 164, 60, 10,
+         MenuNav{.left = 36, .right = 38}, false},
+        {"seat_card_3", "", 235, 164, 60, 10,
+         MenuNav{.left = 37, .right = 39}, false},
+        {"seat_page_next", ">", 297, 164, 10, 10,
+         MenuNav{.down = 31, .left = 38}, true},
     };
 
     for (const char* campaign :
@@ -393,8 +407,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
-               "hit zone + 5 strip buttons + the hidden READY twin";
-        ASSERT_EQ(33, count);
+               "hit zone + 5 strip buttons + the hidden READY twin + "
+               "7 appended seat-rail controls";
+        ASSERT_EQ(40, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -412,9 +427,13 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             EXPECT_EQ(want.nav.down, got.nav.down) << got.id;
             EXPECT_EQ(want.nav.left, got.nav.left) << got.id;
             EXPECT_EQ(want.nav.right, got.nav.right) << got.id;
-            // The 6px/char face budget: floor((w - 8) / 6) chars.
-            EXPECT_LE(static_cast<int>(got.label.size()),
-                      (got.sizex - 8) / 6)
+            // The compact rail uses the full face; established beveled
+            // controls retain their eight-pixel inset budget.
+            const int label_budget =
+                i < kBaseCampSeatsLabelIndex
+                ? (got.sizex - 8) / 6
+                : got.sizex / 6;
+            EXPECT_LE(static_cast<int>(got.label.size()), label_budget)
                 << got.id << " '" << got.label << "'";
         }
 
@@ -430,6 +449,11 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kCreateMenuNetworkingIndex, 30);
         EXPECT_EQ(kCreateMenuGoIndex, 31);
         EXPECT_EQ(kCreateMenuReadyIndex, 32);
+        EXPECT_EQ(kBaseCampSeatsLabelIndex, 33);
+        EXPECT_EQ(kBaseCampSeatPagePrevIndex, 34);
+        EXPECT_EQ(kBaseCampSeatCardBase, 35);
+        EXPECT_EQ(kBaseCampSeatPageNextIndex, 39);
+        EXPECT_EQ(kCreateMenuButtonCount, 40);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -454,14 +478,236 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                 << "team chip overlaps the training zone on row " << r;
         }
 
+        // The compact rail uses an interior keyboard-focus ring; its one- and
+        // two-pixel horizontal gutters therefore remain clear between every
+        // adjacent control.
+        for (int left = kBaseCampSeatsLabelIndex;
+             left < kBaseCampSeatPageNextIndex; ++left)
+        {
+            EXPECT_LT(buttons[left].x + buttons[left].sizex,
+                      buttons[left + 1].x)
+                << "seat rail needs a visible focus-safe gutter";
+        }
+
         check_no_overlaps(buttons, count, "createmenu_basecamp");
         check_bounds(buttons, count, "createmenu_basecamp");
-        check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
-                                       "createmenu_basecamp");
+        check_nav_in_range(buttons, count, "createmenu_basecamp_static");
     }
 
     save.current_campaign = old_campaign;
     (void)picker_createmenu_buttons();
+}
+
+// The seat rail has its own four-card pager, independent of the eight-row
+// company-roster pager. Pin every boundary shape through the production
+// rewire: empty, partial/full single page, first overflowing page, exact
+// two-page fill, and the lobby-wide 16-seat ceiling.
+TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
+{
+    struct LocalSeatRailLobby final : og::ui::IPickerLobbyClient
+    {
+        void initialize_from_save() override {}
+        void shutdown() override {}
+        void sync_from_save() override {}
+        void sync_roster_from_save() override {}
+        void sync_settings_from_save() override {}
+        void poll_and_apply() override {}
+        void set_player_mode(int) override {}
+        bool request_start_game() override { return false; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        build_game_start_config() const override { return std::nullopt; }
+        [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+        consume_game_start_config() override { return std::nullopt; }
+        [[nodiscard]] bool start_request_pending() const noexcept override
+        {
+            return false;
+        }
+        [[nodiscard]] bool is_networked_session() const noexcept override
+        {
+            return true;
+        }
+        [[nodiscard]] bool host_controls_visible() const noexcept override
+        {
+            return host;
+        }
+        bool host = true;
+    } lobby;
+    struct LobbyRestore
+    {
+        og::ui::IPickerLobbyClient* saved =
+            og::ui::active_picker_lobby_client();
+        ~LobbyRestore()
+        {
+            og::ui::install_base_camp_state_for_screen(nullptr);
+            og::ui::install_active_picker_lobby_client(saved);
+        }
+    } restore;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    for (const int seat_count : {0, 1, 4, 5, 8, 16})
+    {
+        og::ui::BaseCampScreenState state;
+        state.page = og::ui::PageModel::make(
+            0, kBaseCampRosterRowsPerPage);
+        for (int i = 0; i < seat_count; ++i)
+        {
+            state.seats.push_back(og::sim::LobbyPlayer{
+                .player_index = static_cast<std::uint8_t>(i),
+                .name = std::format("net-{}", i),
+                .company = "Iron Keep",
+                .team = static_cast<short>(i % SCORE_TEAM_COUNT),
+                .character_slots = {},
+                .ready = false,
+                .is_host = i == 0,
+            });
+        }
+        if (seat_count > 0)
+        {
+            state.local_seat_indices.push_back(0);
+            if (seat_count > 1)
+                state.local_seat_indices.push_back(
+                    static_cast<std::uint8_t>(seat_count - 1));
+        }
+        state.seat_page = og::ui::PageModel::make(
+            seat_count, kBaseCampSeatCardsPerPage);
+        og::ui::install_base_camp_state_for_screen(&state);
+
+        if (seat_count > kBaseCampSeatCardsPerPage)
+        {
+            EXPECT_EQ(MENU_OK,
+                      spec.on_spec_row(kBaseCampSeatPageNextIndex, &state));
+            EXPECT_EQ(1, state.seat_page.page);
+            EXPECT_EQ(MENU_OK,
+                      spec.on_spec_row(kBaseCampSeatPagePrevIndex, &state));
+            EXPECT_EQ(0, state.seat_page.page);
+        }
+
+        for (int page = 0; page < state.seat_page.page_count(); ++page)
+        {
+            state.seat_page.page = page;
+            button* buttons = picker_createmenu_buttons();
+            const int count = picker_createmenu_button_count();
+            int highlighted = kBaseCampSeatsLabelIndex;
+            spec.nav.rewire(buttons, count, highlighted);
+
+            const std::string variant = std::format(
+                "basecamp seats={} page={}", seat_count, page);
+            const bool paged =
+                seat_count > kBaseCampSeatCardsPerPage;
+            EXPECT_EQ(!paged,
+                      buttons[kBaseCampSeatPagePrevIndex].hidden)
+                << variant;
+            EXPECT_EQ(!paged,
+                      buttons[kBaseCampSeatPageNextIndex].hidden)
+                << variant;
+
+            const int first =
+                page * kBaseCampSeatCardsPerPage;
+            const int visible =
+                std::min(kBaseCampSeatCardsPerPage,
+                         seat_count - first);
+            std::vector<int> rail{kBaseCampSeatsLabelIndex};
+            if (paged)
+                rail.push_back(kBaseCampSeatPagePrevIndex);
+            for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card)
+            {
+                const button& card_button =
+                    buttons[kBaseCampSeatCardBase + card];
+                EXPECT_EQ(card >= visible, card_button.hidden)
+                    << variant << " card " << card;
+                if (card >= visible)
+                    continue;
+
+                const int player_index = first + card;
+                const bool local =
+                    player_index == 0 ||
+                    (seat_count > 1 && player_index == seat_count - 1);
+                EXPECT_EQ(
+                    std::format("P{} {}", player_index + 1,
+                                local ? "YOU" : "IRO"),
+                    card_button.label)
+                    << variant << " card " << card;
+                rail.push_back(kBaseCampSeatCardBase + card);
+            }
+            if (paged)
+                rail.push_back(kBaseCampSeatPageNextIndex);
+
+            for (std::size_t i = 0; i < rail.size(); ++i)
+            {
+                const button& control = buttons[rail[i]];
+                EXPECT_EQ(i > 0 ? rail[i - 1] : -1, control.nav.left)
+                    << variant << " " << control.id;
+                EXPECT_EQ(i + 1 < rail.size() ? rail[i + 1] : -1,
+                          control.nav.right)
+                    << variant << " " << control.id;
+            }
+
+            const auto visible_card_or_label = [visible](int card) {
+                return card < visible
+                    ? kBaseCampSeatCardBase + card
+                    : kBaseCampSeatsLabelIndex;
+            };
+            EXPECT_EQ(visible_card_or_label(0),
+                      buttons[kCreateMenuHireIndex].nav.up)
+                << variant;
+            EXPECT_EQ(visible_card_or_label(1),
+                      buttons[kCreateMenuScenarioIndex].nav.up)
+                << variant;
+            EXPECT_EQ(visible_card_or_label(2),
+                      buttons[kCreateMenuNetworkingIndex].nav.up)
+                << variant;
+            EXPECT_EQ(paged
+                          ? kBaseCampSeatPageNextIndex
+                          : visible_card_or_label(3),
+                      buttons[kCreateMenuGoIndex].nav.up)
+                << variant;
+
+            check_no_overlaps(buttons, count, variant.c_str());
+            check_bounds(buttons, count, variant.c_str());
+            check_nav_closed_and_reachable(
+                buttons, count, kCreateMenuBackIndex, variant.c_str());
+
+            // The same rail page must close over READY for a joiner: GO
+            // hides, the fourth card and next arrow point down to READY,
+            // and READY points back up to the page's rightmost anchor.
+            lobby.host = false;
+            buttons = picker_createmenu_buttons();
+            highlighted = kBaseCampSeatsLabelIndex;
+            spec.nav.rewire(buttons, count, highlighted);
+            EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden) << variant;
+            EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden) << variant;
+            EXPECT_EQ(kCreateMenuReadyIndex,
+                      buttons[kCreateMenuNetworkingIndex].nav.right)
+                << variant;
+            if (visible == kBaseCampSeatCardsPerPage)
+            {
+                EXPECT_EQ(kCreateMenuReadyIndex,
+                          buttons[kBaseCampSeatCardBase + 3].nav.down)
+                    << variant;
+            }
+            if (paged)
+            {
+                EXPECT_EQ(kCreateMenuReadyIndex,
+                          buttons[kBaseCampSeatPageNextIndex].nav.down)
+                    << variant;
+            }
+            EXPECT_EQ(paged
+                          ? kBaseCampSeatPageNextIndex
+                          : visible_card_or_label(3),
+                      buttons[kCreateMenuReadyIndex].nav.up)
+                << variant;
+            const std::string joiner_variant = variant + " joiner";
+            check_nav_closed_and_reachable(
+                buttons, count, kCreateMenuBackIndex,
+                joiner_variant.c_str());
+            lobby.host = true;
+        }
+    }
 }
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
@@ -825,7 +1071,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | TEAMS | PROGRESS row; BACK sits at (30,170)
+// always-visible VIEW LEVEL | MATCHUP | PROGRESS row; BACK sits at (30,170)
 // so no other screen's "back" shares its geometry.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
@@ -845,7 +1091,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
         {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
-        {"teams", "TEAMS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 3, .right = 5}},
+        {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 3, .right = 5}},
         {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
     };
 
@@ -903,9 +1149,9 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
     }
 }
 
-// TEAMS subscreen static table: geometry, ids, label budgets, and the
-// local-classic default nav encoded in the table.
-TEST(MenuLayout, teamsmenu_static_layout)
+// MATCHUP retains the former TEAMS table's 17 stable ordinals, but JOIN,
+// local-guy cycling, and duplicate READY are permanently dormant.
+TEST(MenuLayout, matchup_static_layout)
 {
     button* buttons = picker_teamsmenu_buttons();
     const int count = picker_teamsmenu_button_count();
@@ -929,30 +1175,27 @@ TEST(MenuLayout, teamsmenu_static_layout)
     ASSERT_EQ("team_page_3", buttons[kTeamsMenuPageFirstIndex + 3].id);
     ASSERT_EQ("cross_control", buttons[kTeamsMenuCrossControlIndex].id);
 
-    // All three CTF match settings (host-gated) plus READY and
-    // CROSS-CONTROL (networked-only) start hidden; the local-classic
-    // surface is the static default.
+    // Conditional settings, pagers, and cross-control start hidden.
     EXPECT_TRUE(buttons[kTeamsMenuCtfTeamsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuCtfTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuReadyIndex].hidden);
     EXPECT_TRUE(buttons[kTeamsMenuCrossControlIndex].hidden);
+    for (int t = 0; t < 4; ++t)
+        EXPECT_TRUE(buttons[kTeamsMenuJoinFirstIndex + t].hidden);
+    EXPECT_TRUE(buttons[kTeamsMenuGuyPrevIndex].hidden);
+    EXPECT_TRUE(buttons[kTeamsMenuGuyNextIndex].hidden);
+    EXPECT_TRUE(buttons[kTeamsMenuGuyTeamIndex].hidden);
 
-    // §2.7: cross-control reuses the guy-team slot (150,146,70,12) — the
-    // same-rect mutually-exclusive-gate pattern (guy row is local-only,
-    // cross-control networked-only). Label budget: floor((70-8)/6) = 10.
-    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].x,
-              buttons[kTeamsMenuCrossControlIndex].x);
-    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].y,
-              buttons[kTeamsMenuCrossControlIndex].y);
-    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].sizex,
-              buttons[kTeamsMenuCrossControlIndex].sizex);
-    EXPECT_EQ(buttons[kTeamsMenuGuyTeamIndex].sizey,
-              buttons[kTeamsMenuCrossControlIndex].sizey);
+    // Cross-control occupies the bottom-center space released by READY.
+    EXPECT_EQ(120, buttons[kTeamsMenuCrossControlIndex].x);
+    EXPECT_EQ(170, buttons[kTeamsMenuCrossControlIndex].y);
+    EXPECT_EQ(80, buttons[kTeamsMenuCrossControlIndex].sizex);
+    EXPECT_EQ(20, buttons[kTeamsMenuCrossControlIndex].sizey);
     EXPECT_EQ("CTRL: OWN", buttons[kTeamsMenuCrossControlIndex].label);
-    EXPECT_LE(buttons[kTeamsMenuCrossControlIndex].label.size(), 10u);
-    EXPECT_LE(og::ui::format_cross_control_label(true).size(), 10u);
-    EXPECT_LE(og::ui::format_cross_control_label(false).size(), 10u);
+    EXPECT_LE(buttons[kTeamsMenuCrossControlIndex].label.size(), 12u);
+    EXPECT_LE(og::ui::format_cross_control_label(true).size(), 12u);
+    EXPECT_LE(og::ui::format_cross_control_label(false).size(), 12u);
 
     // CTF settings row at the top; troops completes the trio bottom-right.
     EXPECT_EQ(120, buttons[kTeamsMenuCtfTeamsIndex].x);
@@ -964,37 +1207,34 @@ TEST(MenuLayout, teamsmenu_static_layout)
     EXPECT_EQ(170, buttons[kTeamsMenuCtfTroopsIndex].y);
     EXPECT_EQ(80, buttons[kTeamsMenuCtfTroopsIndex].sizex);
 
-    // JOIN column beside the team rows (y = 32 + 30*t).
+    // Retired JOIN rows preserve their old descriptors solely to keep the
+    // historic positional table legible; they never reappear.
     for (int t = 0; t < 4; ++t)
     {
         const button& join = buttons[kTeamsMenuJoinFirstIndex + t];
+        EXPECT_TRUE(join.hidden);
         EXPECT_EQ(240, join.x);
         EXPECT_EQ(32 + 30 * t, join.y);
         EXPECT_EQ(50, join.sizex);
         EXPECT_EQ(12, join.sizey);
-        // "JOIN"/"YOU" within the 50px face budget (8 chars).
-        EXPECT_LE(join.label.size(), 8u) << join.label;
     }
 
-    // Per-team member pagers: hidden by default, '>' inside the row band's
-    // right edge (the readability bar spans x=8..234), left of the JOIN
-    // column at x=240 and below the row's label line (row_y..row_y+6).
+    // Per-team detail pagers sit inside the widened x=8..312 row bars.
     for (int t = 0; t < 4; ++t)
     {
         const button& pager = buttons[kTeamsMenuPageFirstIndex + t];
         EXPECT_TRUE(pager.hidden) << pager.id;
-        EXPECT_EQ(219, pager.x) << pager.id;
+        EXPECT_EQ(297, pager.x) << pager.id;
         EXPECT_EQ(39 + 30 * t, pager.y) << pager.id;
         EXPECT_EQ(14, pager.sizex) << pager.id;
         EXPECT_EQ(12, pager.sizey) << pager.id;
         EXPECT_EQ(">", pager.label) << pager.id;
         // Fully inside the row band: bar bottom is row_y+20 = 39+30t+13.
-        EXPECT_LE(pager.x + pager.sizex, 234) << pager.id;
+        EXPECT_LE(pager.x + pager.sizex, 312) << pager.id;
         EXPECT_LE(pager.y + pager.sizey, (32 + 30 * t) + 20) << pager.id;
-        // The detail slice (26 chars from x=24) and the p/N indicator
-        // (ending at x=217) stay left of the pager face.
-        EXPECT_LE(24 + 26 * 6, 217) << "paged detail slice budget";
-        EXPECT_LT(217, pager.x) << pager.id;
+        // The 39-character detail slice and p/N indicator stop before it.
+        EXPECT_LE(24 + 39 * 6, 295) << "paged detail slice budget";
+        EXPECT_LT(295, pager.x) << pager.id;
     }
 
     // 6px/char budgets: 12 chars on the 80px settings faces, 6 on TEAM >.
@@ -1004,25 +1244,25 @@ TEST(MenuLayout, teamsmenu_static_layout)
     EXPECT_LE(buttons[kTeamsMenuGuyTeamIndex].label.size(), 11u);
     EXPECT_LE(buttons[kTeamsMenuReadyIndex].label.size(), 12u);
 
-    check_no_overlaps(buttons, count, "teamsmenu");
-    check_bounds(buttons, count, "teamsmenu");
-    check_nav_in_range(buttons, count, "teamsmenu");
+    check_no_overlaps(buttons, count, "matchup");
+    check_bounds(buttons, count, "matchup");
+    check_nav_in_range(buttons, count, "matchup");
 }
 
 namespace
 {
-// Apply a wiring's hidden flags the way sync_teams_menu_visibility does.
+// Apply a wiring's hidden flags the way MATCHUP's per-frame sync does.
 void apply_teams_menu_hidden_flags(button* buttons, const TeamsMenuWiring& w)
 {
     buttons[kTeamsMenuCtfTeamsIndex].hidden = !w.show_ctf;
     buttons[kTeamsMenuCtfCapsIndex].hidden = !w.show_ctf;
     buttons[kTeamsMenuCtfTroopsIndex].hidden = !w.show_ctf;
     for (int t = 0; t < 4; ++t)
-        buttons[kTeamsMenuJoinFirstIndex + t].hidden = !w.join_visible[t];
-    buttons[kTeamsMenuGuyPrevIndex].hidden = !w.guy_row;
-    buttons[kTeamsMenuGuyNextIndex].hidden = !w.guy_row;
-    buttons[kTeamsMenuGuyTeamIndex].hidden = !w.guy_row;
-    buttons[kTeamsMenuReadyIndex].hidden = !w.networked;
+        buttons[kTeamsMenuJoinFirstIndex + t].hidden = true;
+    buttons[kTeamsMenuGuyPrevIndex].hidden = true;
+    buttons[kTeamsMenuGuyNextIndex].hidden = true;
+    buttons[kTeamsMenuGuyTeamIndex].hidden = true;
+    buttons[kTeamsMenuReadyIndex].hidden = true;
     buttons[kTeamsMenuCrossControlIndex].hidden = !w.cross_control;
     for (int t = 0; t < 4; ++t)
         buttons[kTeamsMenuPageFirstIndex + t].hidden = !w.pager_visible[t];
@@ -1036,6 +1276,13 @@ void check_teams_menu_wiring(const TeamsMenuWiring& w, const char* variant)
     const int count = picker_teamsmenu_button_count();
     apply_teams_menu_hidden_flags(buttons, w);
     picker_wire_teams_menu_nav(buttons, count, w);
+
+    for (int t = 0; t < 4; ++t)
+        EXPECT_TRUE(buttons[kTeamsMenuJoinFirstIndex + t].hidden) << variant;
+    EXPECT_TRUE(buttons[kTeamsMenuGuyPrevIndex].hidden) << variant;
+    EXPECT_TRUE(buttons[kTeamsMenuGuyNextIndex].hidden) << variant;
+    EXPECT_TRUE(buttons[kTeamsMenuGuyTeamIndex].hidden) << variant;
+    EXPECT_TRUE(buttons[kTeamsMenuReadyIndex].hidden) << variant;
 
     check_nav_in_range(buttons, count, variant);
 
@@ -1085,75 +1332,43 @@ void check_teams_menu_wiring(const TeamsMenuWiring& w, const char* variant)
 }
 } // namespace
 
-// The conditional-visibility matrix: every variant the subscreen can show
-// must keep the keyboard nav graph closed over the visible set. Pager flags
-// ('>' member pagers, shown only for overflowing detail lines) ride along:
-// beside a visible JOIN, as a row's only anchor (join hidden), and chained
-// across rows with no joins at all.
-TEST(MenuLayout, teamsmenu_nav_variants_keyboard_reachable)
+// MATCHUP's remaining conditional axes are CTF controls, cross-control, and
+// the four independent team-detail pagers.
+TEST(MenuLayout, matchup_nav_variants_keyboard_reachable)
 {
-    // Local classic: all joins, guy row; big teams 0/1 carry pagers.
+    // Local classic overview: only overflowing detail rows are interactive.
     check_teams_menu_wiring(
-        TeamsMenuWiring{.guy_row = true,
-                        .join_visible = {true, true, true, true},
-                        .pager_visible = {true, true, false, false}},
+        TeamsMenuWiring{.pager_visible = {true, true, false, false}},
         "local_classic");
-    // Local CTF host: settings trio shown, one paged row.
+    // Local CTF host: settings trio and one paged row.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
-                        .guy_row = true,
-                        .join_visible = {true, true, true, true},
                         .pager_visible = {true, false, false, false}},
         "local_ctf_host");
-    // Local CTF host, 2-team map/clamp: a pager on a join-less row (the
-    // pager becomes that row's chain anchor).
+    // An isolated lower-team pager remains a reachable row anchor.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
-                        .guy_row = true,
-                        .join_visible = {true, true, false, false},
                         .pager_visible = {false, false, true, false}},
         "local_ctf_two_teams");
-    // Networked joiner, classic: READY + CROSS-CONTROL shown (§2.7:
-    // visible to ALL peers), guy row hidden, every lobby row paged.
+    // Networked classic: cross-control plus every detail pager; READY stays
+    // exclusively in Base Camp.
     check_teams_menu_wiring(
         TeamsMenuWiring{.networked = true,
                         .cross_control = true,
-                        .join_visible = {true, true, true, true},
                         .pager_visible = {true, true, true, true}},
         "networked_joiner_classic");
-    // Networked CTF host: settings + READY + CROSS-CONTROL; pager anchors
-    // the join-less row.
+    // Networked CTF host: settings, cross-control, and a lower pager.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
                         .networked = true,
                         .cross_control = true,
-                        .join_visible = {true, true, true, false},
                         .pager_visible = {false, false, false, true}},
         "networked_ctf_host");
-    // Allied local: joins hidden, guy row + CTF settings shown; the pagers
-    // form the whole row-anchor chain.
-    check_teams_menu_wiring(
-        TeamsMenuWiring{.show_ctf = true, .guy_row = true,
-                        .pager_visible = {true, true, false, false}},
-        "allied_local_ctf");
-    // Allied networked classic: BACK, READY, CROSS-CONTROL, and one lone
-    // pager (no join anchors — cross-control chains off the pager row and
-    // down into READY).
+    // Bare network spectator/joiner still reaches cross-control.
     check_teams_menu_wiring(
         TeamsMenuWiring{.networked = true,
-                        .cross_control = true,
-                        .pager_visible = {true, false, false, false}},
-        "allied_networked_classic");
-    // Allied networked spectator with NO paged rows: the §2.7 row is
-    // reachable purely through the bottom row (READY.up).
-    check_teams_menu_wiring(
-        TeamsMenuWiring{.networked = true, .cross_control = true},
-        "allied_networked_bare");
-    // Empty local roster, classic: joins but no guy row (and no pagers —
-    // an empty roster can never overflow a detail line).
-    check_teams_menu_wiring(
-        TeamsMenuWiring{.join_visible = {true, true, true, true}},
-        "local_empty_roster");
+                        .cross_control = true},
+        "networked_bare");
     // Degenerate: BACK alone.
     check_teams_menu_wiring(TeamsMenuWiring{}, "back_only");
 }

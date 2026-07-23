@@ -249,6 +249,45 @@ TEST(UxShots, b_mainmenu_with_company) {
   ASSERT_EQ(1, state.captures);
 }
 
+// --- 2a. player settings ----------------------------------------------------
+
+int player_settings_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_interactable("player_settings", 5000)) {
+    SDL_Delay(1500);
+    interact("player_settings");
+    if (wait_for_interactable("player_settings_back", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("player_settings");
+      interact("player_settings_back");
+    }
+  }
+  if (wait_for_interactable("quit", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, b2_player_settings) {
+  trace_clear();
+  reap_all_companies();
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(player_settings_injector, "ux_players", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 1;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(1, state.captures);
+}
+
 // --- 3. name entry ----------------------------------------------------------
 
 int name_entry_injector(void *data) {
@@ -625,11 +664,17 @@ struct ActiveLobbyGuard {
 og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
                                      const char *company, bool is_host,
                                      bool ready,
-                                     const std::vector<RosterSeed> &roster) {
+                                     const std::vector<RosterSeed> &roster,
+                                     short team = 0,
+                                     og::sim::LobbyMachineId machine_id =
+                                         og::sim::kInvalidLobbyMachineId) {
   og::sim::LobbyPlayer player;
   player.player_index = index;
+  player.seat_id = static_cast<og::sim::LobbySeatId>(index) + 1;
+  player.machine_id = machine_id;
   player.name = name;
   player.company = company;
+  player.team = team;
   player.is_host = is_host;
   player.ready = ready;
   std::uint8_t i = 0;
@@ -640,6 +685,7 @@ og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
     slot.character.name = seed.name;
     slot.character.family = static_cast<std::int8_t>(seed.family);
     slot.character.level = seed.level;
+    slot.character.teamnum = team;
     player.character_slots.push_back(std::move(slot));
   }
   return player;
@@ -698,9 +744,10 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   client.alert = std::move(alert);
   if (host_view) {
     client.players = {
-        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false, {}),
+        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false, {},
+                        0, 1),
         make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false,
-                        foreign_roster()),
+                        foreign_roster(), 0, 2),
     };
     client.local_indices = {0};
   } else {
@@ -710,8 +757,9 @@ void run_basecamp_net_shot(const char *name, bool host_view,
         "JOIN RIVER BAND";
     client.players = {
         make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false,
-                        foreign_roster()),
-        make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false, {}),
+                        foreign_roster(), 0, 1),
+        make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false, {},
+                        0, 2),
     };
     client.local_indices = {1};
   }
@@ -738,6 +786,62 @@ TEST(UxShots, k_basecamp_net_join) {
 TEST(UxShots, l_basecamp_net_alert) {
   run_basecamp_net_shot("basecamp_net_alert", false,
                         std::optional<std::string>("Status: connection lost"));
+}
+
+// Seven authoritative seats exercise the compact four-card rail, its pager,
+// and the MATCHUP overview reached through the SEATS label. Internal network
+// names intentionally differ from public company names so the screenshots
+// catch any accidental transport-identity leak.
+int basecamp_many_seats_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_team_menu()) {
+    SDL_Delay(1500);
+    state->captures += capture_frame("basecamp_net_seats_p1");
+    if (wait_for_interactable("seat_page_next", 5000)) {
+      interact("seat_page_next");
+      SDL_Delay(750);
+      state->captures += capture_frame("basecamp_net_seats_p2");
+    }
+    interact("seats");
+    if (wait_for_interactable("cross_control", 5000)) {
+      SDL_Delay(1000);
+      state->captures += capture_frame("matchup_network_seats");
+      interact("back");
+      if (wait_for_team_menu(5000)) {
+        SDL_Delay(250);
+        interact("back");
+      }
+    }
+  }
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, m_basecamp_many_seats_and_matchup) {
+  trace_clear();
+  seed_session_save_for_net();
+  FakeNetLobbyClient client;
+  client.players = {
+      make_probe_seat(0, "net-a0", "IRON KETTLE BAND", true, true, {}, 0, 1),
+      make_probe_seat(1, "net-a1", "IRON KETTLE BAND", false, true, {}, 0, 1),
+      make_probe_seat(2, "net-b0", "RED LANTERN CREW", false, true, {}, 1, 2),
+      make_probe_seat(3, "net-b1", "RED LANTERN CREW", false, true, {}, 1, 2),
+      make_probe_seat(4, "net-c0", "COPPER SHIELDS", false, false, {}, 2, 3),
+      make_probe_seat(5, "net-d0", "BLACK BANNERS", false, true, {}, 2, 4),
+      make_probe_seat(6, "net-d1", "BLACK BANNERS", false, true, {}, 3, 4),
+  };
+  client.local_indices = {0, 1};
+  ActiveLobbyGuard guard(&client);
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_many_seats_injector, "ux_seats", &state);
+  ASSERT_TRUE(thread != nullptr);
+  create_team_menu(0);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(3, state.captures);
 }
 
 TEST(UxShots, i_basecamp_paged) {

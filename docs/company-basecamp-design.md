@@ -76,10 +76,21 @@ level, and experience fields.
 - Tap the deploy box to deploy or bench a character.
 - Tap the team box to cycle the character's combat team.
 - Tap the name or row body to train that character.
+- Use the **SEATS** rail to assign each player seat to a team for the next
+  level. Four seats are shown at a time; **<** and **>** page the rail when a
+  lobby has more than four.
+- Player numbers are lobby-wide. A local card says **YOU**; a remote card uses
+  a short company abbreviation. Tapping a local card cycles its team, while a
+  remote card is read-only and identifies the company that controls it.
+- Multiple seats may deliberately choose the same team for co-op or team
+  matchups. Seats on different teams oppose one another.
+- Tap **SEATS** to open the full **MATCHUP** overview.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
-![Base Camp](media/company-basecamp/base-camp.png)
+| Seats 1–4 | Seats 5–7 |
+|---|---|
+| ![Base Camp seat page one](media/team-selection/basecamp-seats-page-1.png) | ![Base Camp seat page two](media/team-selection/basecamp-seats-page-2.png) |
 
 ### 2.6 GO and READY
 
@@ -95,8 +106,10 @@ Denials are shown instead of silently ignoring the request.
 ### 2.7 Cross-control
 
 The host may allow players to control eligible characters owned by other
-machines. Changing this session-only setting clears guest readiness. It does
-not alter character colors or company ownership.
+machines from **MATCHUP**. Changing this session-only setting clears guest
+readiness. It does not alter character colors or company ownership.
+
+![Matchup overview](media/team-selection/matchup.png)
 
 ### 2.8 Follow mode
 
@@ -163,7 +176,9 @@ then replaces it atomically. Backup retention is bounded per company.
 Roster mutations autosave at their commit point: deploy, team change, hire,
 training acceptance, rename, and promotion. Persisted match settings autosave
 as well. In a lobby, a roster mutation republishes the roster and clears that
-machine's ready state.
+machine's ready state. Player-seat assignments and cross-control remain
+session state: they are synchronized through the lobby but are not written
+into a private company roster.
 
 ## 4. Multiplayer
 
@@ -171,9 +186,9 @@ machine's ready state.
 
 Company/Base Camp multiplayer uses:
 
-- lobby and gameplay protocol v8;
+- lobby and gameplay protocol v9;
 - world snapshot format v9;
-- replay format v10.
+- replay format v11.
 
 Peers reject incompatible protocol versions during the handshake. Snapshot and
 replay readers reject unsupported payload versions independently.
@@ -196,16 +211,28 @@ the roster cannot satisfy the requested local views.
 ### 4.4 Ownership and controls
 
 `guy::teamnum` is combat allegiance. Player index and owner tags identify input
-and persistence authority. Together/Split seat mode changes which team a view
-drives; it never recolors a character. With cross-control disabled, input may
-claim only eligible characters owned by that player or machine.
+and persistence authority. A Base Camp seat card assigns that player and view
+to a team for the next level; several seats may intentionally share one team.
+Changing a seat assignment never recolors a character. With cross-control
+disabled, input may claim only eligible characters owned by that player or
+machine.
+
+The visible `P#` is a dense lobby-wide display ordinal and may change when a
+machine leaves. Team-change commands therefore target a separate stable,
+server-issued seat token. The server also assigns every connected machine an
+identity shared by all of its seats; readiness and census grouping use that
+identity instead of matching mutable display names. Each lobby-state echo also
+carries a recipient-specific list of owned seat tokens, so **YOU**, edit
+rights, and runtime bindings never depend on a player or company name being
+unique.
 
 ### 4.5 Follow and lobby changes
 
 Follow targets are selected from the authoritative display world. Changing
-cross-control or another start-relevant lobby setting clears guest readiness.
-The first active authoritative team supplies the shared Together-mode control
-team, including the spectator-host case.
+a player-seat assignment, cross-control, or another start-relevant lobby
+setting clears guest readiness. At match start, each global player index uses
+its authoritative seat assignment rather than deriving a shared control team
+from another player.
 
 ### 4.6 Win shares
 
@@ -253,8 +280,8 @@ down the roster.
 
 ### 9.10 Header spacing
 
-The company line, scenario/status line, help line, column header, and roster
-have separate vertical bands.
+The company line, scenario/status line, column header, roster, player-seat
+rail, and command strip have separate vertical bands.
 
 ### 9.11 Row-body training
 
@@ -268,8 +295,9 @@ A degraded-link alert takes the same line and its warning color.
 
 ### 9.14 Eight-row page
 
-Eight roster rows leave clear space around the instruction and column header.
-The scenario summary is a direct click target.
+Eight roster rows fit above the independent player-seat rail while leaving the
+column header clear. The scenario summary and **SEATS** label are direct click
+targets.
 
 ### 9.19 Company List geometry
 

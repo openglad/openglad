@@ -26,6 +26,7 @@ all the work that was saved.
 
 * [Install / Build](docs/INSTALL.md)
 * [Playing](#Playing)
+    * [Multiplayer setup](#multiplayer-setup)
 * [Editing with Openscen](docs/scen.txt)
 * [Cheats](docs/cheats.txt)
 * [Gladiator ver. 3.8 Readme](#gladiator-version-38-readme) (written by FSGames)
@@ -43,6 +44,21 @@ all the work that was saved.
 ## Playing
 
 Read the in-game help for help on how to play (press f1 in a level or read [glad.hlp](docs/glad.hlp)).
+
+### Multiplayer setup
+
+Choose the number of local players in **Player Settings**. In Base Camp, each
+**P#** card in the **SEATS** rail controls that player's team for the next
+level. Put seats on the same team for co-op, or choose different teams for a
+versus or mixed-team match. Use **<** and **>** when more than four seats are
+connected.
+
+Player numbers are shared across the lobby. Your cards say **YOU**; cards
+owned by another network client show its company abbreviation and are
+read-only. Open **SCENARIO → MATCHUP** for the complete team overview and the
+host's CTF and cross-control settings. See
+[Companies and Base Camp](docs/company-basecamp-design.md) for the full
+multiplayer behavior.
 
 ## Gladiator version 3.8 Readme.
 

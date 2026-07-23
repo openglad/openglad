@@ -27,6 +27,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -61,6 +62,9 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+og::sim::LobbySaveDataEquivalent
+curses_network_testing_build_join_save_equivalent(
+    const og::sim::LobbyState& state);
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                             std::uint32_t pinned_team0_score);
 int curses_network_testing_clear_server_team(CursesGameSession& session,
@@ -84,6 +88,39 @@ void init_team_save(SaveData& save, short team, char family, const char* name)
                 member->name = name;
         }
     }
+}
+
+og::sim::LobbyCharacterSlot make_network_roster_slot(
+    std::uint8_t slot_index,
+    std::int32_t guy_id,
+    std::string name,
+    std::int8_t family)
+{
+    return og::sim::LobbyCharacterSlot{
+        .slot_index = slot_index,
+        .character = og::sim::LobbyCharacterData{
+            .guy_id = guy_id,
+            .name = std::move(name),
+            .family = family,
+        },
+    };
+}
+
+og::sim::LobbyMessage make_network_join(
+    std::string name,
+    short team,
+    std::vector<og::sim::LobbyCharacterSlot> slots)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyJoinMessage{
+        .player = og::sim::LobbyPlayer{
+            .name = std::move(name),
+            .company = {},
+            .team = team,
+            .character_slots = std::move(slots),
+        },
+    };
+    return message;
 }
 
 // Snapshot of a world's living/object entities keyed by id, for convergence.
@@ -294,6 +331,10 @@ TEST(CursesNetwork, roster_reflects_two_players)
     EXPECT_TRUE(status_contains(*join_lobby, "<HOST CURSES CO>"))
         << "the joiner sees the host's company off the wire";
     EXPECT_TRUE(status_contains(*join_lobby, "Deployed: 1/2"));
+    EXPECT_TRUE(status_contains(*host_lobby, "(RED)"));
+    EXPECT_TRUE(status_contains(*host_lobby, "(GREEN)"));
+    EXPECT_FALSE(status_contains(*host_lobby, "(team 0)"))
+        << "the roster must identify teams with their player-facing colors";
 
     // §9.12 (G5) census parity: the terminal lobby carries the same
     // session-status line as the SDL base camp header — role + machine/
@@ -310,6 +351,74 @@ TEST(CursesNetwork, roster_reflects_two_players)
             join_sees_lobby = true;
     }
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
+}
+
+TEST(CursesNetwork,
+     join_game_start_assembly_matches_host_with_private_slot_and_id_collisions)
+{
+    auto transport = og::sim::InProcessTransport::create_server();
+    transport->accept_connections();
+    auto host_client = transport->create_client_transport();
+    auto join_client = transport->create_client_transport();
+    og::sim::LobbyServer authority(*transport);
+
+    const auto send_join =
+        [](const std::shared_ptr<og::sim::InProcessTransport>& client,
+           og::sim::LobbyMessage message) {
+            client->send_lobby_message(
+                client->local_peer_id(),
+                std::make_shared<og::sim::LobbyMessage>(std::move(message)));
+        };
+
+    // Both private companies use slots 0 and 3, and both independently gave
+    // their first member guy id 6. The joiner's second id is invalid too.
+    // Authority and curses joiner must derive one identical, dense match
+    // roster while retaining the original owner/save coordinates.
+    send_join(
+        host_client,
+        make_network_join(
+            "Host",
+            0,
+            {make_network_roster_slot(
+                 0, 6, "Host Zero", FAMILY_SOLDIER),
+             make_network_roster_slot(
+                 3, 1, "Host Three", FAMILY_ARCHER)}));
+    send_join(
+        join_client,
+        make_network_join(
+            "Joiner",
+            1,
+            {make_network_roster_slot(
+                 0, 6, "Join Zero", FAMILY_MAGE),
+             make_network_roster_slot(
+                 3, -1, "Join Three", FAMILY_CLERIC)}));
+    authority.poll_incoming_messages();
+
+    ASSERT_EQ(2u, authority.state().players.size());
+    const og::sim::LobbySaveDataEquivalent host_equivalent =
+        authority.build_save_data_equivalent();
+    const og::sim::LobbySaveDataEquivalent join_equivalent =
+        curses_network_testing_build_join_save_equivalent(authority.state());
+    EXPECT_EQ(host_equivalent, join_equivalent)
+        << "host authority and curses joiner must seed the same world";
+
+    ASSERT_EQ(4u, join_equivalent.team_list.size());
+    const std::vector<std::string> expected_names{
+        "Host Zero", "Join Zero", "Host Three", "Join Three"};
+    const std::vector<std::int32_t> expected_ids{6, 0, 1, 2};
+    const std::vector<std::uint8_t> expected_owners{0, 1, 0, 1};
+    const std::vector<std::uint8_t> expected_private_slots{0, 0, 3, 3};
+    for (std::size_t index = 0; index < join_equivalent.team_list.size();
+         ++index)
+    {
+        const og::sim::LobbyCharacterSlot& slot =
+            join_equivalent.team_list[index];
+        EXPECT_EQ(index, slot.slot_index);
+        EXPECT_EQ(expected_names[index], slot.character.name);
+        EXPECT_EQ(expected_ids[index], slot.character.guy_id);
+        EXPECT_EQ(expected_owners[index], slot.owner_player_index);
+        EXPECT_EQ(expected_private_slots[index], slot.owner_save_slot);
+    }
 }
 
 // §2.7 curses parity (stage ready-go-slot): the lobby is the curses MP
@@ -577,6 +686,55 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
     EXPECT_FALSE(join_started);
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
+}
+
+TEST(CursesNetwork, host_start_denial_is_correlated_before_retry)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+
+    // Request 1 is denied because the joiner is not ready. The matching
+    // request id releases the pending state and surfaces the real reason.
+    host_lobby->request_start();
+    for (int i = 0; i < 100; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(status_contains(
+        *host_lobby, "Waiting for other machines"));
+    EXPECT_EQ(host_lobby->take_session(), nullptr);
+
+    // Request 2 has a fresh id; after readiness it starts both peers.
+    ready_curses_joiner(
+        *host_lobby, *join_lobby, host_term, join_term, clock);
+    host_lobby->request_start();
+    bool host_started = false;
+    bool join_started = false;
+    for (int i = 0; i < 200 && !(host_started && join_started); ++i) {
+        host_started = host_lobby->poll(host_term, clock) || host_started;
+        join_started = join_lobby->poll(join_term, clock) || join_started;
+    }
+    EXPECT_TRUE(host_started);
+    EXPECT_TRUE(join_started);
 }
 
 TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
@@ -1208,8 +1366,77 @@ TEST(CursesNetwork, host_lobby_status_uses_default_campaign_and_team_fallback)
     // The empty campaign id falls back to the default campaign, shown by its
     // human title (io_init installed the package, so the lookup succeeds).
     EXPECT_TRUE(status_contains(*lobby, "Campaign: Gladiator"));
-    EXPECT_TRUE(status_contains(*lobby, "team 2"));
+    EXPECT_TRUE(status_contains(*lobby, "(BLUE)"));
     EXPECT_TRUE(status_contains(*lobby, "[host]"));
+}
+
+TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Keyboard");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 90);
+    FakeClock clock;
+    lobby->poll(term, clock);
+    const std::vector<std::uint8_t> local = lobby->local_player_indices();
+    ASSERT_EQ(1u, local.size());
+
+    term.push_char(U't');
+    lobby->poll(term, clock);
+    const auto players = lobby->players();
+    const auto mine = std::find_if(
+        players.begin(), players.end(),
+        [&local](const og::sim::LobbyPlayer& player) {
+            return player.player_index == local.front();
+        });
+    ASSERT_NE(mine, players.end());
+    EXPECT_EQ(1, mine->team);
+    EXPECT_NE(term.text_row(term.rows() - 1).find("[</>] seat"),
+              std::string::npos);
+}
+
+TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
+    save.current_campaign = "org.openglad.ctf";
+    save.ctf_team_count = 2;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 90);
+    FakeClock clock;
+    lobby->poll(term, clock);
+    const std::vector<std::uint8_t> local = lobby->local_player_indices();
+    ASSERT_EQ(1u, local.size());
+
+    const auto local_team = [&]() -> short {
+        for (const og::sim::LobbyPlayer& player : lobby->players()) {
+            if (player.player_index == local.front())
+                return player.team;
+        }
+        return -1;
+    };
+
+    term.push_char(U't');
+    lobby->poll(term, clock);
+    EXPECT_EQ(1, local_team());
+    term.push_char(U't');
+    lobby->poll(term, clock);
+    EXPECT_EQ(0, local_team())
+        << "explicit two-team CTF must skip teams 2 and 3";
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
@@ -1256,9 +1483,9 @@ TEST(CursesNetwork, malformed_join_url_reports_error)
     EXPECT_FALSE(error.empty());
 }
 
-// Classic lobbies keep one human per team: a joiner's request for the host's
-// team bounces and the roster keeps the original assignment.
-TEST(CursesNetwork, classic_lobby_bounces_shared_team_request)
+// Classic lobbies allow cooperative seat assignments: a joiner can choose the
+// host's team and the authoritative roster replicates that shared assignment.
+TEST(CursesNetwork, classic_lobby_allows_shared_team_request)
 {
     SaveData host_save;
     SaveData join_save;
@@ -1304,14 +1531,177 @@ TEST(CursesNetwork, classic_lobby_bounces_shared_team_request)
             join_team = static_cast<short>(player.team);
     }
     EXPECT_EQ(0, host_team);
-    EXPECT_EQ(1, join_team) << "classic lobbies keep exclusive teams";
+    EXPECT_EQ(0, join_team) << "classic lobbies allow cooperative seats";
 
     host_lobby->cancel();
     join_lobby->cancel();
 }
 
-// CTF-campaign lobbies allow shared teams; the ready flag round-trips and
-// shows up as a [ready] tag in the status lines.
+// The terminal lobby exposes the same exact-seat operation as SDL Base Camp:
+// a client may target its current global P#, but a foreign P# is rejected
+// locally and never turns into a first-seat fallback on the server.
+TEST(CursesNetwork, exact_seat_team_request_rejects_foreign_player)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200 && host_lobby->players().size() != 2; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ASSERT_EQ(2u, host_lobby->players().size());
+
+    const std::vector<std::uint8_t> join_indices =
+        join_lobby->local_player_indices();
+    ASSERT_EQ(1u, join_indices.size());
+    const std::uint8_t join_index = join_indices.front();
+    const auto initial_players = host_lobby->players();
+    const auto host_it = std::find_if(
+        initial_players.begin(), initial_players.end(),
+        [join_index](const og::sim::LobbyPlayer& player) {
+            return player.player_index != join_index;
+        });
+    ASSERT_NE(host_it, initial_players.end());
+
+    EXPECT_FALSE(join_lobby->request_seat_team_change(
+        host_it->player_index, 2));
+    for (int i = 0; i < 20; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    const auto after_foreign = host_lobby->players();
+    ASSERT_EQ(initial_players.size(), after_foreign.size());
+    for (std::size_t i = 0; i < initial_players.size(); ++i)
+        EXPECT_EQ(initial_players[i].team, after_foreign[i].team);
+
+    // A joiner's send is asynchronous, so the immediate bool may be false;
+    // the authoritative state after both sides poll must move only its seat.
+    (void)join_lobby->request_seat_team_change(join_index, 2);
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    for (const og::sim::LobbyPlayer& player : host_lobby->players()) {
+        if (player.player_index == join_index)
+            EXPECT_EQ(2, player.team);
+        else
+            EXPECT_EQ(host_it->team, player.team);
+    }
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
+// P# is global, not capped at the four per-machine input slots. Five terminal
+// clients prove that exact targeting still reaches P5 and leaves P1-P4 alone.
+TEST(CursesNetwork, five_clients_can_change_global_player_five_exactly)
+{
+    constexpr int kClientCount = 5;
+    std::vector<std::unique_ptr<SaveData>> saves;
+    std::vector<std::shared_ptr<og::sim::InProcessTransport>> clients;
+    std::vector<std::unique_ptr<CursesLobby>> lobbies;
+    std::vector<std::unique_ptr<HeadlessTerminal>> terminals;
+    saves.reserve(kClientCount);
+    clients.reserve(kClientCount);
+    lobbies.reserve(kClientCount);
+    terminals.reserve(kClientCount);
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    for (int i = 0; i < kClientCount; ++i) {
+        auto save = std::make_unique<SaveData>();
+        const std::string name = "Client" + std::to_string(i + 1);
+        init_team_save(
+            *save, static_cast<short>(i % MAX_PLAYERS),
+            static_cast<char>(FAMILY_SOLDIER + (i % 2)), name.c_str());
+        saves.push_back(std::move(save));
+        clients.push_back(server->create_client_transport());
+        terminals.push_back(std::make_unique<HeadlessTerminal>(24, 80));
+    }
+
+    lobbies.push_back(make_host_lobby_over_transport_for_testing(
+        *saves[0], 1, server, clients[0]));
+    for (int i = 1; i < kClientCount; ++i) {
+        lobbies.push_back(make_join_lobby_over_transport_for_testing(
+            *saves[static_cast<std::size_t>(i)], 1,
+            clients[static_cast<std::size_t>(i)],
+            clients[static_cast<std::size_t>(i)]->local_peer_id()));
+    }
+
+    FakeClock clock;
+    for (int attempt = 0;
+         attempt < 500 &&
+             lobbies.front()->players().size() != kClientCount;
+         ++attempt)
+    {
+        for (int i = 0; i < kClientCount; ++i) {
+            lobbies[static_cast<std::size_t>(i)]->poll(
+                *terminals[static_cast<std::size_t>(i)], clock);
+        }
+    }
+    ASSERT_EQ(kClientCount, lobbies.front()->players().size());
+
+    const std::vector<std::uint8_t> fifth_indices =
+        lobbies.back()->local_player_indices();
+    ASSERT_EQ(1u, fifth_indices.size());
+    ASSERT_GT(fifth_indices.front(), 3u);
+
+    const auto before = lobbies.front()->players();
+    const auto target_before = std::find_if(
+        before.begin(), before.end(),
+        [&fifth_indices](const og::sim::LobbyPlayer& player) {
+            return player.player_index == fifth_indices.front();
+        });
+    ASSERT_NE(target_before, before.end());
+    const short target_team =
+        static_cast<short>((target_before->team + 1) % MAX_PLAYERS);
+
+    (void)lobbies.back()->request_seat_team_change(
+        fifth_indices.front(), target_team);
+    for (int attempt = 0; attempt < 300; ++attempt) {
+        for (int i = 0; i < kClientCount; ++i) {
+            lobbies[static_cast<std::size_t>(i)]->poll(
+                *terminals[static_cast<std::size_t>(i)], clock);
+        }
+    }
+
+    const auto after = lobbies.front()->players();
+    ASSERT_EQ(before.size(), after.size());
+    for (const og::sim::LobbyPlayer& old_player : before) {
+        const auto current = std::find_if(
+            after.begin(), after.end(),
+            [&old_player](const og::sim::LobbyPlayer& player) {
+                return player.seat_id == old_player.seat_id;
+            });
+        ASSERT_NE(current, after.end());
+        EXPECT_EQ(
+            old_player.player_index == fifth_indices.front()
+                ? target_team
+                : old_player.team,
+            current->team);
+    }
+
+    for (auto& lobby : lobbies)
+        lobby->cancel();
+}
+
+// CTF-campaign lobbies use the same shared-team rule; the ready flag
+// round-trips and shows up as a [ready] tag in the status lines.
 TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 {
     SaveData host_save;
@@ -1374,6 +1764,11 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     }
     EXPECT_TRUE(join_ready_seen) << "the joiner's ready flag should replicate";
     EXPECT_TRUE(status_contains(*host_lobby, "[ready]"));
+
+    // Any exact team change clears every ready seat on that machine.
+    EXPECT_TRUE(host_lobby->local_ready());
+    EXPECT_TRUE(host_lobby->request_team_change(0));
+    EXPECT_FALSE(host_lobby->local_ready());
 
     host_lobby->cancel();
     join_lobby->cancel();

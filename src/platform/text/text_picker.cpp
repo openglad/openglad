@@ -642,17 +642,20 @@ private:
             show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
-            set_player_count(save_data_, item.arg);
-            std::printf("Player mode set to %d.\n", item.arg);
+            if (item.arg > 1) {
+                set_player_count(save_data_, 1);
+                std::printf("The text simulator has no player controls; "
+                            "player mode remains 1.\n");
+            } else {
+                set_player_count(save_data_, item.arg);
+                std::printf("Player mode set to %d.\n", item.arg);
+            }
             break;
         case PickerMenuCommand::ToggleAlliedMode:
-            toggle_allied_mode(save_data_);
-            std::printf("Seat mode set to %s.\n",
-                is_allied_mode(save_data_) ? "Together" : "Split");
-            // §3.8 settings tail: persisted match settings autosave like any
-            // other base-camp mutation (E4 — a toggled setting must survive
-            // quit without an explicit save).
-            autosave_company_after_mutation();
+            // Compatibility-only command: no current menu exposes it. Match
+            // the curses client and direct old callers to the replacement
+            // surface without changing the legacy persisted bit.
+            std::printf("Choose this player's team from Matchup.\n");
             break;
         case PickerMenuCommand::LevelEdit:
             std::printf("Level Editor is not available in the headless text client.\n");
@@ -794,14 +797,18 @@ private:
         wait_for_enter();
     }
 
-    // Roster grouped by team plus a sub-prompt: "play N" re-seats P1
-    // (my_team), "move S N" moves roster slot S to team N. Teams are 1-based
-    // in the prompt, matching the train menu's "Playing on Team N" wording.
+    // MATCHUP groups the roster by team. The historical "play N" spelling is
+    // retained as preferred-team metadata only: the headless text protocol
+    // has no playable seats or input routing. "move S N" moves roster slot S
+    // to team N. Teams are 1-based in the prompt, matching the train menu's
+    // "Playing on Team N" wording.
     void teams_screen()
     {
         for (;;) {
             print_team_rows();
-            std::printf("Teams: 'play N' | 'move SLOT N' | blank line exits: ");
+            std::printf("Matchup (simulation has no player controls): "
+                        "'play TEAM' (preferred metadata) | "
+                        "'move SLOT TEAM' | blank line exits: ");
             std::fflush(stdout);
 
             std::string line;
@@ -810,13 +817,21 @@ private:
 
             int value = 0;
             int slot = 0;
-            if (std::sscanf(line.c_str(), "play %d", &value) == 1) {
+            int seat = 0;
+            if (std::sscanf(line.c_str(), "play %d %d", &seat, &value) == 2) {
+                std::printf("Player-seat assignments are unavailable in "
+                            "the text simulator.\n");
+                continue;
+            }
+            char extra = '\0';
+            if (std::sscanf(line.c_str(), "play %d %c", &value, &extra) == 1) {
                 if (value < 1 || value > 4 ||
                     !set_preferred_team(save_data_,
                         static_cast<short>(value - 1))) {
                     std::printf("No heroes on team %d.\n", value);
                 } else {
-                    std::printf("Playing on %s.\n",
+                    std::printf("Preferred-team metadata is now %s; "
+                                "the text simulator has no player controls.\n",
                         og::sim::ctf_team_color_name(value - 1));
                 }
                 continue;
@@ -846,19 +861,8 @@ private:
 
     void print_team_rows()
     {
-        const std::vector<short> seats = derive_local_seat_teams(save_data_);
-        std::printf("\n--- Teams ---\n");
-        // Only seats below numplayers materialize in-game (game.cpp
-        // truncates the derivation at numviews); never tag the rest.
-        const std::size_t seat_limit = std::min<std::size_t>(
-            seats.size(), static_cast<std::size_t>(save_data_.numplayers));
+        std::printf("\n--- Matchup ---\n");
         for (short t = 0; t < 4; ++t) {
-            std::string seat_tag;
-            for (std::size_t seat = 0; seat < seat_limit; ++seat) {
-                if (seats[seat] == t)
-                    seat_tag = std::format("(P{})", seat + 1);
-            }
-
             int hero_count = 0;
             std::string members;
             for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
@@ -873,8 +877,8 @@ private:
             // No world is loaded in the text picker, so no map tags
             // (authored/BOTS) — is_ctf=false keeps the label honest.
             std::printf("%s\n",
-                format_team_row_label(t, hero_count, false, false, false,
-                    seat_tag).c_str());
+                format_team_row_label(
+                    t, hero_count, false, false, false, "").c_str());
             std::printf("%s", members.c_str());
         }
         if (is_ctf_campaign(save_data_))
@@ -1297,18 +1301,21 @@ int text_picker_testing_exercise_internal_paths()
     if (const PickerMenuItem* item =
             find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2)) {
         client.handle_menu_item(PickerMenuId::Main, *item);
-        check(save.numplayers == 2);
+        check(save.numplayers == 1);
     } else {
         check(false);
     }
-    if (const PickerMenuItem* item =
-            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode)) {
-        const bool previous = is_allied_mode(save);
-        client.handle_menu_item(PickerMenuId::Main, *item);
-        check(is_allied_mode(save) != previous);
-    } else {
-        check(false);
-    }
+    // Seat assignment moved to Base Camp. Keep the legacy dispatch branch
+    // covered for old callers, but assert that the terminal menu no longer
+    // exposes it as a selectable main-menu row.
+    check(find_picker_menu_item(
+              PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode) == nullptr);
+    const bool previous_allied_mode = is_allied_mode(save);
+    const PickerMenuItem legacy_allied_mode{
+        "legacy-allied-mode", "Legacy Allied Mode",
+        PickerMenuCommand::ToggleAlliedMode, 0};
+    client.handle_menu_item(PickerMenuId::Main, legacy_allied_mode);
+    check(is_allied_mode(save) == previous_allied_mode);
     if (const PickerMenuItem* item =
             find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::LevelEdit)) {
         const int previous_level = config.level;

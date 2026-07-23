@@ -2,6 +2,7 @@
 
 #include <openglad/gameplay/lobby_server.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,9 +25,9 @@ struct PickerLobbyGameStartConfig
     std::uint8_t local_player_index = 0xff;
     // All of this machine's seats, in local seat order (seat 0 first), captured
     // from the FINAL authoritative lobby state when the start was accepted:
-    // the global player_index each seat was assigned, and the GAMEPLAY team its
-    // view renders for (Together mode shares the first active authoritative
-    // team, while character roster colors remain independent combat teams).
+    // the global player_index each seat was assigned, and the explicit
+    // GAMEPLAY team its view renders for. Character roster colors remain
+    // independent combat teams.
     // Empty for local (non-networked) games.
     std::vector<std::uint8_t> local_player_indices = {};
     std::vector<short> local_seat_teams = {};
@@ -97,14 +98,45 @@ public:
         (void)slot_index;
         return true;
     }
-    // Ask the lobby to move THIS peer (all of its characters) to `team`.
-    // Local sessions validate roster membership and re-seat P1 (my_team);
-    // networked sessions send LobbyTeamChangeMessage for themselves. Returns
-    // true when the lobby landed on the requested team.
+    // Compatibility shorthand for changing this machine's first seat.
     virtual bool request_team_change(short team)
     {
         (void)team;
         return false;
+    }
+    // Ask the lobby to assign one owned seat to a gameplay team. The global
+    // player_index is the current display handle; network clients resolve it
+    // to the server-issued LobbySeatId granted in their personalized state
+    // before sending, and reject foreign/stale indexes. Returns true when the
+    // lobby echo confirms the requested assignment.
+    virtual bool request_seat_team_change(std::uint8_t player_index, short team)
+    {
+        const std::vector<std::uint8_t> local_indices = local_player_indices();
+        if (!local_indices.empty() && local_indices.front() != player_index)
+            return false;
+        return request_team_change(team);
+    }
+    // Stable-token form used by live seat controls. Both values come from the
+    // same displayed LobbyPlayer; if a disconnect/rejoin reindexed the lobby
+    // before the click lands, the pair no longer matches and the request is
+    // refused instead of aliasing another owned seat.
+    virtual bool request_seat_team_change(std::uint8_t player_index,
+                                          og::sim::LobbySeatId seat_id,
+                                          short team)
+    {
+        if (seat_id != og::sim::kInvalidLobbySeatId)
+        {
+            const std::vector<og::sim::LobbyPlayer> players = lobby_players();
+            const auto seat = std::find_if(
+                players.begin(), players.end(),
+                [player_index, seat_id](const og::sim::LobbyPlayer& player) {
+                    return player.player_index == player_index &&
+                        player.seat_id == seat_id;
+                });
+            if (seat == players.end())
+                return false;
+        }
+        return request_seat_team_change(player_index, team);
     }
     // Networked-only informational ready flag (LobbyReadyMessage).
     virtual bool set_ready(bool ready)
@@ -117,7 +149,7 @@ public:
         return false;
     }
     // The most recent StartGame denial the server echoed to this client
-    // (protocol v8, §4.3). None for local/solo sessions (never gated) and
+    // (protocol v9, §4.3). None for local/solo sessions (never gated) and
     // until the host's first denied GO. The go_menu / dedicated-server host
     // reads this to surface WHO is blocking the start.
     [[nodiscard]] virtual og::sim::StartDenialReason last_start_denial()
@@ -130,6 +162,14 @@ public:
     [[nodiscard]] virtual std::vector<og::sim::LobbyPlayer> lobby_players() const
     {
         return {};
+    }
+    // Effective team domain from the latest authoritative lobby settings.
+    // nullopt before a state echo; consumers may use their locally loaded map
+    // as a temporary fallback.
+    [[nodiscard]] virtual std::optional<std::uint8_t>
+    authoritative_team_mask() const noexcept
+    {
+        return std::nullopt;
     }
     // THIS machine's seats' global player indexes in the replicated lobby
     // state, in local seat order. Empty for local sessions and before the
@@ -174,10 +214,16 @@ std::optional<std::string> picker_lobby_connection_alert();
 std::string picker_lobby_session_room_code();
 bool picker_lobby_host_controls_visible();
 bool picker_lobby_request_team_change(short team);
+bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
+                                           short team);
+bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
+                                           og::sim::LobbySeatId seat_id,
+                                           short team);
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();
 std::vector<og::sim::LobbyPlayer> picker_lobby_players();
+std::optional<std::uint8_t> picker_lobby_authoritative_team_mask();
 std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
 inline bool picker_lobby_save_slot_editable(int slot_index)

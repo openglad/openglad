@@ -15,19 +15,23 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 # Drive sequence (1-based menu indices):
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
-#     name entry); blank keeps the campaign.
+#     name entry); blank keeps the campaign. Back, then 3 verifies that the
+#     unsupported 4 Player choice stays at one; 2=Continue returns to Base Camp.
 #   Base camp / Team Build (12 items, §2.5 substitution): 3=Hire Troops
 #     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster
 #     (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys row 2),
 #     9=Scenario, 6=GO!, 7=Back.
-#   Scenario submenu (6 items): 4=Teams (play 1, blank exits),
-#     3=View Scenario (blank dismisses), 6=Back.
+#   Scenario submenu (6 items): 4=Matchup (set preferred-team metadata, blank
+#     exits), 3=View Scenario (blank dismisses), 6=Back.
 #   Protocol session after GO!: state, quit.
 #   Main: 11=Quit.
 cat > "$TMPIN" << 'INP'
 1
 
 
+7
+3
+2
 3
 n
 h
@@ -125,15 +129,21 @@ if not any('=== Scenario ===' in l for l in lines):
     print('FAIL: expected the Scenario submenu banner', file=sys.stderr)
     sys.exit(1)
 
-# Teams screen: roster rows grouped by team plus the play/move sub-prompt.
-if not any('--- Teams ---' in l for l in lines):
-    print('FAIL: expected the Teams screen roster header', file=sys.stderr)
+# Matchup screen: roster rows grouped by team plus the play/move sub-prompt.
+if not any('--- Matchup ---' in l for l in lines):
+    print('FAIL: expected the Matchup screen roster header', file=sys.stderr)
     sys.exit(1)
 if not any('RED TEAM' in l for l in lines):
     print('FAIL: expected a RED TEAM roster row', file=sys.stderr)
     sys.exit(1)
-if not any('Playing on RED.' in l for l in lines):
-    print('FAIL: expected the play command confirmation', file=sys.stderr)
+if not any('The text simulator has no player controls; player mode remains 1.' in l for l in lines):
+    print('FAIL: expected the unsupported multiplayer notice', file=sys.stderr)
+    sys.exit(1)
+if not any('Preferred-team metadata is now RED;' in l for l in lines):
+    print('FAIL: expected the honest preferred-team metadata confirmation', file=sys.stderr)
+    sys.exit(1)
+if any(' TEAM (P' in l or 'P1 plays' in l or 'P2 plays' in l for l in lines):
+    print('FAIL: text Matchup must not claim playable P# seats', file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

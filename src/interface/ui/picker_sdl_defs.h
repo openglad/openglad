@@ -193,7 +193,14 @@ inline constexpr int kCreateMenuGoIndex = 31;
 // §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
 // of the pair is visible per frame (host => GO, networked joiner => READY).
 inline constexpr int kCreateMenuReadyIndex = 32;
-inline constexpr int kCreateMenuButtonCount = 33;
+// Per-level player-seat assignment rail. Appended after the original
+// ordinals so every established Base Camp action index stays stable.
+inline constexpr int kBaseCampSeatsLabelIndex = 33;
+inline constexpr int kBaseCampSeatPagePrevIndex = 34;
+inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
+inline constexpr int kBaseCampSeatPageNextIndex = 39;
+inline constexpr int kBaseCampSeatCardsPerPage = 4;
+inline constexpr int kCreateMenuButtonCount = 40;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
@@ -207,7 +214,7 @@ inline constexpr int kScenarioMenuTeamsIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
 inline constexpr int kScenarioMenuButtonCount = 6;
 
-// --- TEAMS subscreen layout contract --------------------------------------
+// --- MATCHUP subscreen layout contract ------------------------------------
 // Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
 inline constexpr int kTeamsMenuBackIndex = 0;
 inline constexpr int kTeamsMenuCtfTeamsIndex = 1;
@@ -226,7 +233,7 @@ inline constexpr int kTeamsMenuPageFirstIndex = 12; // team_page_0..3 = 12..15
 inline constexpr int kTeamsMenuCrossControlIndex = 16;
 inline constexpr int kTeamsMenuButtonCount = 17;
 
-// One frame's visibility state for the TEAMS subscreen. Keyboard nav does not
+// One frame's visibility state for the MATCHUP subscreen. Keyboard nav does not
 // skip hidden buttons, so the nav graph is rewired from this state every
 // frame (picker_wire_teams_menu_nav) instead of routing around statically.
 struct TeamsMenuWiring
@@ -243,7 +250,7 @@ struct TeamsMenuWiring
     std::array<bool, 4> pager_visible = {false, false, false, false};
 };
 
-// Deterministically rewires the TEAMS subscreen nav graph so every visible
+// Deterministically rewires the MATCHUP nav graph so every visible
 // button is keyboard-reachable and no link points at a hidden button.
 void picker_wire_teams_menu_nav(button* buttons, int count,
                                 const TeamsMenuWiring& wiring);
@@ -256,7 +263,7 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
 void picker_wire_scenario_menu_nav(button* buttons, int count,
                                    bool host_controls_visible);
 
-// The TEAMS subscreen's selected roster slot, normalized onto an occupied
+// The retired MATCHUP roster cursor, normalized onto an occupied
 // slot (-1 when the roster is empty).
 int teams_menu_selected_guy_slot();
 

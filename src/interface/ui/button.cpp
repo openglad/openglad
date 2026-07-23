@@ -607,7 +607,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::TeamsCycleGuyTeam:
         return teams_cycle_guy_team(call_arg);
     case ButtonAction::ToggleLobbyReady:
-        // arg -1 = the TEAMS mirror; the base-camp READY twin passes its
+        // arg -1 = the retired MATCHUP mirror; the Base Camp READY twin passes
         // own button index (§2.6).
         return teams_toggle_ready(call_arg);
     case ButtonAction::DoLevelEdit:

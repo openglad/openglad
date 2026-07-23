@@ -1838,10 +1838,9 @@ void reset_network_host_transport_shadow(
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
 
     // This machine's local seats are the lobby bindings on the loopback peer,
-    // in local_slot order. The lobby has already applied the session policy:
-    // Together seats share the first active authoritative team. Character
-    // roster colors remain independent combat teams; a seat assignment never
-    // rewrites allegiance.
+    // in local_slot order. Each binding carries the session's explicit
+    // gameplay team. Character roster colors remain independent combat teams;
+    // a seat assignment never rewrites allegiance.
     const og::sim::PeerId loopback_peer_id =
         local_client_transport->local_peer_id();
     std::vector<LocalSeatBinding> host_seats;

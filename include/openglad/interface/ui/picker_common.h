@@ -161,6 +161,14 @@ void cycle_ctf_capture_limit(SaveData& save);
 // True when the save's current campaign is the CTF campaign.
 bool is_ctf_campaign(const SaveData& save);
 
+// Authored flag-team mask for a level known to match this save. Returns zero
+// when campaign/mount/scenario metadata is not yet synchronized; lobby
+// authority deliberately treats that as the temporary four-team fallback.
+std::uint8_t ctf_authored_team_mask_for_loaded_level(
+    const SaveData& save,
+    const GameWorld& world,
+    std::string_view mounted_campaign);
+
 // Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
 void toggle_ctf_scenario_troops(SaveData& save);
 
@@ -203,9 +211,9 @@ short cycle_guy_team(SaveData& save, int slot_index, int dir);
 // empty gameplay view.
 std::vector<short> derive_local_seat_teams(const SaveData& save);
 
-// The final local gameplay view teams for numplayers/allied_mode. Together
-// repeats Player 1's effective team; Split uses distinct deployed colors and
-// pads missing seats with otherwise-unused colors so validation can reject them.
+// Legacy seed for a newly opened local lobby: saved Together repeats Player
+// 1's team; saved Split uses distinct deployed colors and pads missing seats
+// with otherwise-unused colors. Base Camp then owns the live assignments.
 std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save);
 
 // True iff each requested seat can claim a distinct deployed character on its
@@ -321,16 +329,11 @@ struct BaseCampDeployCounts {
 BaseCampDeployCounts count_base_camp_display_deploys(
     const std::vector<BaseCampDisplaySlot>& slots, const SaveData& save);
 
-// Client-side machine grouping of the replicated lobby players. Seat
-// naming convention (the wire's find_local_seats contract): seat 0 keeps
-// the machine's base name, seat k is "base#k" — so the machine key is the
-// name up to the first '#'.
-std::string_view lobby_player_machine_key(std::string_view player_name);
-
 // READY n/m over NON-HOST machines only (a multi-seat host's extra seats
 // are is_host=false but never gate the start — §4.3; the server excludes
-// them by peer, this mirrors it by machine key). A machine counts ready
-// when ALL of its seats are ready.
+// them by peer, this mirrors it by the server-issued LobbyMachineId). A
+// machine counts ready when ALL of its seats are ready. Invalid IDs are
+// conservatively treated as distinct seats, never grouped by display names.
 struct BaseCampReadyCounts {
     int ready = 0;
     int machines = 0;
@@ -339,8 +342,8 @@ BaseCampReadyCounts count_base_camp_ready_machines(
     const std::vector<og::sim::LobbyPlayer>& players);
 
 // §9.12 (G5) lobby census over the replicated players: machines = distinct
-// machine keys (the HOST machine included, unlike BaseCampReadyCounts),
-// players = total seats.
+// server-issued machine IDs (the HOST machine included, unlike
+// BaseCampReadyCounts), players = total seats.
 struct BaseCampSessionCensus {
     int machines = 0;
     int players = 0;
@@ -349,10 +352,10 @@ BaseCampSessionCensus count_base_camp_session_census(
     const std::vector<og::sim::LobbyPlayer>& players);
 
 // The host machine's human identity for the joiner's "HOST:" display:
-// its company name (players carry machine-generated "net-<hex>" wire names),
-// falling back to the machine key when the company is empty — the
-// format_go_blockers naming convention. Clipped to the 16-char COMPANY
-// column budget. Empty until a host seat exists in the replicated state.
+// its company name, falling back to that seat's display name when the company
+// is empty. Neither string participates in identity or grouping. Clipped to
+// the 16-char COMPANY column budget. Empty until a host seat exists in the
+// replicated state.
 std::string base_camp_host_display_name(
     const std::vector<og::sim::LobbyPlayer>& players);
 
@@ -436,16 +439,17 @@ ReadyGoPresentation format_ready_go_button(bool networked,
                                            bool cross_control,
                                            bool spectator);
 
-// §2.6 state-3 popup body: the not-ready machines' company names (machine
-// key = seat-name convention; a machine's company = its first seat's
-// non-empty company, falling back to the machine key), one per line,
-// clipped to 26 chars, at most 4 lines with an "AND n MORE" tail.
+// §2.6 state-3 popup body: the not-ready machines' company names, grouped by
+// authoritative machine_id (an invalid ID is isolated defensively). A
+// machine's label is its first non-empty company, falling back to its display
+// name, one per line, clipped to 26 chars, at most 4 lines with an "AND n MORE"
+// tail.
 std::string format_go_blockers(
     const std::vector<og::sim::LobbyPlayer>& players);
 
 // §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
 // controls its characters) / "CTRL: ALL" (players may control others'
-// characters in-level). Shared by the SDL TEAMS row and the curses lobby
+// characters in-level). Shared by the SDL MATCHUP row and the curses lobby
 // status line.
 std::string format_cross_control_label(bool cross_control_enabled);
 
@@ -461,13 +465,14 @@ BaseCampNetRowText format_base_camp_net_row(std::string_view name,
                                             std::string_view company,
                                             int level);
 
-// Display-only guy copy of a replicated foreign character (derived-stat
-// input + family swatch). NOT the roster-assembly builder — no id/teamnum
-// semantics, never enters a save or a level.
+// Display-only guy copy of a replicated foreign character (derived-stat input,
+// family/team swatch). NOT the roster-assembly builder: it never enters a save
+// or a level and does not establish runtime identity.
 std::unique_ptr<guy> make_base_camp_display_guy(
     const og::sim::LobbyCharacterData& character);
 
-// One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
+// One MATCHUP-screen row label, <= 30 chars:
+// "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
 // team with no humans and no local heroes), or "{n} HEROES".
 std::string format_team_row_label(short team,
@@ -482,7 +487,7 @@ std::string format_team_row_label(short team,
 // clipped inside the budget with a trailing '..' marker (so truncation stays
 // visible even when everything fits one unpaged slice; budgets of <= 2 chars
 // just clip). Always returns at least one (possibly empty) page, so page
-// math never divides by zero. Drives the TEAMS screen's per-team pager.
+// math never divides by zero. Drives the MATCHUP screen's per-team pager.
 std::vector<std::string> paginate_team_detail_pages(
     const std::vector<std::string>& items, int max_chars);
 
@@ -575,8 +580,9 @@ bool is_spectator_mode(const SaveData& save);
 // Format the difficulty button label (e.g. "Difficulty: Battle").
 std::string format_difficulty_label(int difficulty);
 
-// Format the seat-assignment button label ("SEATS: TOGETHER" or
-// "SEATS: SPLIT"). Combat allegiance always comes from character colors.
+// Compatibility formatter for the retired AlliedMode binding
+// ("SEATS: TOGETHER" / "SEATS: SPLIT"). It is not exposed by current menus;
+// combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
 // Format the CTF team count label ("CTF Teams: N").

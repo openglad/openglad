@@ -1015,6 +1015,22 @@ void ctf_authored_flag_teams(const GameWorld& world, bool (&present)[4])
     }
 }
 
+std::uint8_t ctf_authored_flag_team_mask(const GameWorld& world) noexcept
+{
+    bool present[SCORE_TEAM_COUNT] = {};
+    ctf_authored_flag_teams(world, present);
+    std::uint8_t mask = 0;
+    for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
+    {
+        if (present[team])
+        {
+            mask = static_cast<std::uint8_t>(
+                mask | (1u << static_cast<unsigned>(team)));
+        }
+    }
+    return mask;
+}
+
 void ctf_run_tick(GameWorld& world)
 {
     CtfState& ctf = world.ctf;

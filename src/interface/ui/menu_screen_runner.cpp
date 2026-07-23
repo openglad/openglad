@@ -35,11 +35,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 
 // Shared picker loop helpers (defined in picker_input.cpp /
 // picker_team_build.cpp; declared locally by every consumer — repo pattern).
 Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
+void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
                      bool use_global_vbuttons = true);
 bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons,
@@ -71,6 +73,36 @@ namespace {
 inline PickerState& pks()
 {
     return *og::runtime::current_session->picker_;
+}
+
+void draw_menu_highlight(const MenuScreenSpec& spec,
+                         const button* buttons,
+                         int highlighted_button)
+{
+    // The compact Base Camp seat rail has only one- and two-pixel horizontal
+    // gutters. Its focus ring must stay inside the selected control so it
+    // cannot paint over the neighboring arrow, card, or numbered team chip.
+    if (std::string_view(spec.name) == "team_build" &&
+        highlighted_button >= kBaseCampSeatsLabelIndex)
+    {
+        if (highlighted_button >= kBaseCampSeatCardBase &&
+            highlighted_button <
+                kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
+        {
+            // The numbered chip occupies the final nine pixels of a seat
+            // card. Keep the pulsing ring around the label face so the
+            // highlight never erases the chip's border or glyph.
+            button label_face = buttons[highlighted_button];
+            label_face.sizex -= 10;
+            draw_highlight_interior(label_face);
+        }
+        else
+        {
+            draw_highlight_interior(buttons[highlighted_button]);
+        }
+        return;
+    }
+    draw_highlight(buttons[highlighted_button]);
 }
 
 MenuLabelContext build_label_context(const MenuScreenSpec& spec)
@@ -247,6 +279,15 @@ bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant
 
 } // namespace
 
+#ifdef TESTING
+void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
+                                        const button* buttons,
+                                        int highlighted_button)
+{
+    draw_menu_highlight(spec, buttons, highlighted_button);
+}
+#endif
+
 std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
     const MenuScreenSpec& spec, MenuBuildVariant variant)
 {
@@ -365,7 +406,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         draw_buttons(buttons, num_buttons);
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
-        draw_highlight(buttons[highlighted_button]);
+        draw_menu_highlight(spec, buttons, highlighted_button);
         scr->fadeblack(1);
         grab_mouse();
     }
@@ -431,7 +472,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (retvalue == MENU_EXIT)
             break;
 
-        // Subscreens whose BACK carries MENU_REDRAW (view team / TEAMS /
+        // Subscreens whose BACK carries MENU_REDRAW (view team / MATCHUP /
         // the slot menus) END here — the same point the legacy loops
         // checked, before reset_buttons could consume the value — and
         // return MENU_REDRAW to the parent loop. MENU_EXIT-bearing exits
@@ -494,7 +535,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         draw_buttons(buttons, num_buttons);
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
-        draw_highlight(buttons[highlighted_button]);
+        draw_menu_highlight(spec, buttons, highlighted_button);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         // The ONE asyncify yield per iteration (emscripten contract).
         og::input_native::sleep_ms(10);

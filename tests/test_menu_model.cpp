@@ -149,16 +149,16 @@ TEST(MenuModel, team_build_lookup)
     // The scenario-shaped commands moved OUT of the team-build menu, and
     // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
-         {"teams", "view_scenario", "set_level", "set_campaign", "progress",
-          "view_team", "load_team", "save_team"})
+         {"matchup", "teams", "view_scenario", "set_level", "set_campaign",
+          "progress", "view_team", "load_team", "save_team"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, moved_id) ==
                     nullptr)
             << moved_id << " must not resolve in the base camp";
     }
 
-    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)
-        << "teams never lives in the main menu";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "matchup") == nullptr)
+        << "matchup never lives in the main menu";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_troops") == nullptr)
         << "ctf_troops lives in the team build menu only";
 }
@@ -173,7 +173,7 @@ TEST(MenuModel, scenario_menu_lookup)
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
     ASSERT_EQ(6u, def.items.size())
-        << "scenario menu: campaign/level/viewer/teams/progress + back";
+        << "scenario menu: campaign/level/viewer/matchup/progress + back";
 
     const struct
     {
@@ -183,7 +183,7 @@ TEST(MenuModel, scenario_menu_lookup)
         {"set_campaign", PickerMenuCommand::SetCampaign},
         {"set_level", PickerMenuCommand::SetLevel},
         {"view_scenario", PickerMenuCommand::ViewScenario},
-        {"teams", PickerMenuCommand::Teams},
+        {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
         {"back", PickerMenuCommand::Back},
     };
@@ -391,9 +391,9 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(13u, main_def.items.size())
-        << "main menu exposes both Help and Quit plus the appended company "
-           "loader";
+    ASSERT_EQ(12u, main_def.items.size())
+        << "main menu exposes player count, both Help and Quit, and the "
+           "appended company loader without the retired seat-mode row";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -547,7 +547,7 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
 
     // §2.1: load_company remains at the end; Main now exposes both stable
     // Help and Quit actions. TeamBuild/Scenario/Difficulty are unchanged.
-    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::Main).items.size());
+    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());

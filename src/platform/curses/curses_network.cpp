@@ -68,6 +68,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -81,10 +82,10 @@ namespace {
 constexpr int kDefaultPort = 12345;
 constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
 
-// A unique-per-instance network player name. The LobbyServer keys players by
-// name (find_local_player), so every peer — including two ncurses peers in the
-// same process — must use a distinct name. Mirrors make_network_player_name()
-// in the SDL lobby clients.
+// A unique-per-instance network player name for readable diagnostics. The
+// server-issued LobbySeatId is the only ownership identity; names are
+// client-controlled display metadata and may collide. Mirrors
+// make_network_player_name() in the SDL lobby clients.
 std::string make_network_player_name()
 {
     static std::atomic<std::uint64_t> counter{0};
@@ -227,6 +228,22 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
     return message;
 }
 
+std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save)
+{
+    if (!og::ui::is_ctf_campaign(save) ||
+        get_mounted_campaign() != save.current_campaign)
+    {
+        return 0;
+    }
+
+    LevelRuntimeData scenario(save.scen_num, false,
+                              &headless_level_data_hooks());
+    if (!scenario.load())
+        return 0;
+    return og::ui::ctf_authored_team_mask_for_loaded_level(
+        save, scenario.world(), get_mounted_campaign());
+}
+
 og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty)
 {
     og::sim::LobbySettings settings;
@@ -237,6 +254,8 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.difficulty = static_cast<std::int16_t>(difficulty);
     settings.allied_mode = save.allied_mode;
     settings.ctf_team_count = save.ctf_team_count;
+    settings.ctf_authored_team_mask =
+        ctf_authored_team_mask_for_save(save);
     settings.ctf_capture_limit = save.ctf_capture_limit;
     settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
     settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
@@ -260,15 +279,142 @@ void send_lobby_message(og::sim::ITransport& transport, og::sim::PeerId peer_id,
         peer_id, std::make_shared<og::sim::LobbyMessage>(std::move(message)));
 }
 
-const og::sim::LobbyPlayer* find_local_player(const og::sim::LobbyState& state,
-                                              std::string_view player_name) noexcept
+const og::sim::LobbyPlayer* find_player_by_seat_id(
+    const og::sim::LobbyState& state,
+    og::sim::LobbySeatId seat_id) noexcept
 {
+    if (seat_id == og::sim::kInvalidLobbySeatId)
+        return nullptr;
     const auto it = std::find_if(
         state.players.begin(), state.players.end(),
-        [player_name](const og::sim::LobbyPlayer& player) {
-            return player.name == player_name;
+        [seat_id](const og::sim::LobbyPlayer& player) {
+            return player.seat_id == seat_id;
         });
     return it != state.players.end() ? &*it : nullptr;
+}
+
+std::vector<const og::sim::LobbyPlayer*> find_local_seats(
+    const og::sim::LobbyState& state)
+{
+    std::vector<const og::sim::LobbyPlayer*> seats;
+    seats.reserve(state.local_seat_ids.size());
+    for (const og::sim::LobbySeatId seat_id : state.local_seat_ids)
+    {
+        if (const og::sim::LobbyPlayer* const player =
+                find_player_by_seat_id(state, seat_id))
+        {
+            seats.push_back(player);
+        }
+    }
+    return seats;
+}
+
+const og::sim::LobbyPlayer* find_local_player(
+    const og::sim::LobbyState& state) noexcept
+{
+    const std::vector<const og::sim::LobbyPlayer*> seats =
+        find_local_seats(state);
+    return seats.empty() ? nullptr : seats.front();
+}
+
+struct OrderedLobbyGameplaySlot {
+    std::uint8_t private_slot_index = 0;
+    std::size_t player_order = 0;
+    std::size_t slot_order = 0;
+    const og::sim::LobbyCharacterSlot* slot = nullptr;
+};
+
+// Rebuild the joiner's game-start seed from the authoritative lobby echo.
+// Keep this byte-for-byte equivalent in shape to
+// LobbyServer::build_save_data_equivalent(): both sides sort colliding private
+// save slots by slot/player/source order, compact only when that combined order
+// is sparse, preserve ownership metadata, and canonicalize private guy-id
+// collisions before either side creates a world.
+og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
+    const og::sim::LobbyState& state)
+{
+    og::sim::LobbySaveDataEquivalent equivalent;
+    equivalent.current_campaign = state.settings.campaign_id.empty()
+        ? std::string(kDefaultCampaignId)
+        : state.settings.campaign_id;
+    equivalent.scen_num =
+        state.settings.scenario_id > 0 ? state.settings.scenario_id : 1;
+    equivalent.numplayers = static_cast<unsigned char>(
+        std::min<std::size_t>(state.players.size(), MAX_PLAYERS));
+    equivalent.allied_mode = state.settings.allied_mode;
+    equivalent.ctf_team_count = state.settings.ctf_team_count;
+    equivalent.ctf_capture_limit = state.settings.ctf_capture_limit;
+    equivalent.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
+    equivalent.ctf_strip_scenario_troops =
+        state.settings.ctf_strip_scenario_troops;
+    equivalent.respawn_mode = state.settings.respawn_mode;
+    equivalent.generator_rate = state.settings.generator_rate;
+    equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    equivalent.cross_control = state.settings.cross_control;
+
+    std::vector<OrderedLobbyGameplaySlot> ordered_slots;
+    for (std::size_t player_order = 0; player_order < state.players.size();
+         ++player_order)
+    {
+        const og::sim::LobbyPlayer& player = state.players[player_order];
+        for (std::size_t slot_order = 0;
+             slot_order < player.character_slots.size();
+             ++slot_order)
+        {
+            const og::sim::LobbyCharacterSlot& slot =
+                player.character_slots[slot_order];
+            if (!slot.deployed)
+                continue;
+            ordered_slots.push_back(OrderedLobbyGameplaySlot{
+                .private_slot_index = slot.slot_index,
+                .player_order = player_order,
+                .slot_order = slot_order,
+                .slot = &slot,
+            });
+        }
+    }
+
+    if (ordered_slots.size() > MAX_TEAM_SIZE)
+    {
+        throw std::runtime_error(
+            "Curses lobby exceeded the SaveData-equivalent 24-slot team limit");
+    }
+
+    std::sort(
+        ordered_slots.begin(),
+        ordered_slots.end(),
+        [](const OrderedLobbyGameplaySlot& lhs,
+           const OrderedLobbyGameplaySlot& rhs) {
+            if (lhs.private_slot_index != rhs.private_slot_index)
+                return lhs.private_slot_index < rhs.private_slot_index;
+            if (lhs.player_order != rhs.player_order)
+                return lhs.player_order < rhs.player_order;
+            return lhs.slot_order < rhs.slot_order;
+        });
+
+    const bool slots_are_dense = std::all_of(
+        ordered_slots.begin(),
+        ordered_slots.end(),
+        [&ordered_slots](const OrderedLobbyGameplaySlot& slot) {
+            return static_cast<std::size_t>(slot.private_slot_index) ==
+                static_cast<std::size_t>(&slot - ordered_slots.data());
+        });
+
+    equivalent.team_list.reserve(ordered_slots.size());
+    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
+    {
+        const OrderedLobbyGameplaySlot& ordered = ordered_slots[index];
+        og::sim::LobbyCharacterSlot gameplay_slot = *ordered.slot;
+        if (!slots_are_dense)
+            gameplay_slot.slot_index = static_cast<std::uint8_t>(index);
+        gameplay_slot.owner_player_index =
+            state.players[ordered.player_order].player_index;
+        gameplay_slot.owner_save_slot = ordered.private_slot_index;
+        equivalent.team_list.push_back(std::move(gameplay_slot));
+    }
+
+    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    return equivalent;
 }
 
 // Resolve the entity this peer's view follows. The client's controlled-entity
@@ -1228,22 +1374,50 @@ public:
                     team_status_ = "Host controls cross-control";
                 }
             }
+            if (key.code == KeyCode::Left || key.is_char(U'<') ||
+                key.is_char(U'[')) {
+                select_local_seat(-1);
+                continue;
+            }
+            if (key.code == KeyCode::Right || key.is_char(U'>') ||
+                key.is_char(U']')) {
+                select_local_seat(1);
+                continue;
+            }
             if (key.is_char(U't') || key.is_char(U'T')) {
-                // Cycle from the last REQUESTED target (wrapping), not the
-                // replicated team: a denied target is skipped on the next
-                // press instead of being re-requested forever.
-                const short base = last_team_request_ >= 0
+                const og::sim::LobbyPlayer* const selected =
+                    selected_local_player();
+                if (selected == nullptr)
+                    continue;
+
+                // Cycle from the last REQUESTED target, not a potentially
+                // stale replicated echo. The shared domain helper skips
+                // inactive authored CTF teams and obeys an explicit team
+                // count; classic/fallback lobbies retain all four colors.
+                const bool request_pending_for_selected =
+                    last_team_request_ >= 0 &&
+                    last_team_request_seat_id_ == selected->seat_id;
+                const short base = request_pending_for_selected
                     ? last_team_request_
-                    : local_team_;
-                const short target =
-                    static_cast<short>((base + 1) % MAX_PLAYERS);
+                    : selected->team;
+                const short target = state_.has_value()
+                    ? og::sim::lobby_next_selectable_team(
+                          state_->settings, base)
+                    : static_cast<short>((base + 1) % MAX_PLAYERS);
+                if (target < 0)
+                    continue;
+
                 last_team_request_ = target;
-                if (request_team_change(target)) {
+                last_team_request_seat_id_ = selected->seat_id;
+                team_status_ = "Requested P" +
+                    std::to_string(selected->player_index + 1) + " -> " +
+                    og::sim::ctf_team_color_name(target);
+                if (request_seat_team_change(
+                        selected->player_index, selected->seat_id, target)) {
                     last_team_request_ = -1;
+                    last_team_request_seat_id_ =
+                        og::sim::kInvalidLobbySeatId;
                     team_status_.clear();
-                } else {
-                    team_status_ =
-                        "Team " + std::to_string(target) + " taken";
                 }
             }
         }
@@ -1266,13 +1440,17 @@ public:
         if (!local_player_is_host())
             return;
 
-        const og::sim::LobbyPlayer* const local = find_local_player(*state_, player_name_);
+        const og::sim::LobbyPlayer* const local = find_local_player(*state_);
         if (local == nullptr)
             return;
 
         og::sim::LobbyMessage message;
+        pending_start_request_id_ = next_start_request_id_++;
+        if (next_start_request_id_ == 0)
+            next_start_request_id_ = 1;
         message.payload = og::sim::LobbyStartGameMessage{
             .player_index = local->player_index,
+            .request_id = pending_start_request_id_,
         };
         send_lobby_message(*host_client_transport_,
                            host_client_transport_->local_peer_id(),
@@ -1310,14 +1488,24 @@ public:
                                  : std::to_string(state_->settings.scenario_id)));
             int lobby_deployed = 0;
             int lobby_slots = 0;
+            const bool has_multiple_local_seats =
+                state_->local_seat_ids.size() > 1;
             for (const og::sim::LobbyPlayer& player : state_->players) {
-                const bool is_me = player.name == player_name_;
+                const bool is_me =
+                    std::find(state_->local_seat_ids.begin(),
+                              state_->local_seat_ids.end(),
+                              player.seat_id) != state_->local_seat_ids.end();
+                const bool is_selected =
+                    is_me && player.seat_id == selected_local_seat_id_;
                 std::string line =
                     "  Player " + std::to_string(player.player_index + 1) +
-                    " (team " + std::to_string(player.team) + ")" +
+                    " (" + og::sim::ctf_team_color_name(player.team) + ")" +
                     (player.is_host ? " [host]" : "") +
                     (player.ready ? " [ready]" : "") +
-                    (is_me ? " [you]" : "");
+                    (is_me ? " [you]" : "") +
+                    (is_selected && has_multiple_local_seats
+                         ? " [selected]"
+                         : "");
                 // §2.5 curses parity: the origin/company column + per-seat
                 // deploy counts (clipped to the SDL COMPANY budget).
                 if (!player.company.empty()) {
@@ -1352,7 +1540,7 @@ public:
             lines.push_back(og::ui::format_base_camp_session_status(
                 role_ == LobbyRole::Host, {}, state_->players));
             // §2.7: every peer sees the mode that changes its own rights
-            // (the SDL TEAMS row's shared label formatter).
+            // (the SDL MATCHUP row's shared label formatter).
             lines.push_back(
                 "Control: " + og::ui::format_cross_control_label(
                                   state_->settings.cross_control != 0));
@@ -1376,15 +1564,51 @@ public:
 
     bool request_team_change(short team) override
     {
+        return request_seat_team_change(local_player_index(), team);
+    }
+
+    bool request_seat_team_change(std::uint8_t player_index,
+                                  short team) override
+    {
+        if (!state_.has_value())
+            return false;
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            find_local_seats(*state_);
+        const auto target_it = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [player_index](const og::sim::LobbyPlayer* const seat) {
+                return seat->player_index == player_index;
+            });
+        if (target_it == local_seats.end())
+            return false;
+        return request_seat_team_change(
+            player_index, (*target_it)->seat_id, team);
+    }
+
+    bool request_seat_team_change(std::uint8_t player_index,
+                                  og::sim::LobbySeatId seat_id,
+                                  short team) override
+    {
         og::sim::ITransport* const client_link = role_ == LobbyRole::Host
             ? host_client_transport_.get()
             : transport_.get();
-        if (client_link == nullptr)
+        if (client_link == nullptr || !state_.has_value())
             return false;
 
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            find_local_seats(*state_);
+        const auto target_it = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [player_index, seat_id](const og::sim::LobbyPlayer* const seat) {
+                return seat->player_index == player_index &&
+                    seat->seat_id == seat_id;
+            });
+        if (target_it == local_seats.end())
+            return false;
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyTeamChangeMessage{
-            .player_index = local_player_index(),
+            .player_index = player_index,
+            .seat_id = seat_id,
             .team = team,
         };
         send_lobby_message(*client_link,
@@ -1393,7 +1617,24 @@ public:
                                : server_peer_id_,
                            std::move(message));
         pump_once();
-        return local_team_ == team;
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const echoed =
+            find_player_by_seat_id(*state_, seat_id);
+        return echoed != nullptr && echoed->team == team;
+    }
+
+    std::vector<std::uint8_t> local_player_indices() const override
+    {
+        if (!state_.has_value())
+            return {};
+        std::vector<std::uint8_t> indices;
+        for (const og::sim::LobbyPlayer* const seat :
+             find_local_seats(*state_))
+        {
+            indices.push_back(seat->player_index);
+        }
+        return indices;
     }
 
     bool set_ready(bool ready) override
@@ -1422,8 +1663,7 @@ public:
     {
         if (!state_.has_value())
             return false;
-        const og::sim::LobbyPlayer* const local =
-            find_local_player(*state_, player_name_);
+        const og::sim::LobbyPlayer* const local = find_local_player(*state_);
         return local != nullptr && local->ready;
     }
 
@@ -1456,8 +1696,8 @@ private:
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
         const char* hint = role_ == LobbyRole::Host
-            ? "[s] start (host)  [t] team  [r] ready  [c] control  [q] cancel"
-            : "[t] team  [r] ready  [q] cancel";
+            ? "[s] start  [</>] seat  [t] team  [r] ready  [c] control  [q] cancel"
+            : "[</>] seat  [t] team  [r] ready  [q] cancel";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
@@ -1467,7 +1707,7 @@ private:
     {
         if (!state_.has_value())
             return false;
-        const og::sim::LobbyPlayer* const local = find_local_player(*state_, player_name_);
+        const og::sim::LobbyPlayer* const local = find_local_player(*state_);
         return local != nullptr &&
                (local->is_host || local->player_index == state_->host_player_id);
     }
@@ -1477,9 +1717,64 @@ private:
         // Informational only: the LobbyServer keys on the sending peer.
         if (!state_.has_value())
             return 0xffu;
-        const og::sim::LobbyPlayer* const local =
-            find_local_player(*state_, player_name_);
+        const og::sim::LobbyPlayer* const local = find_local_player(*state_);
         return local != nullptr ? local->player_index : 0xffu;
+    }
+
+    const og::sim::LobbyPlayer* selected_local_player() const
+    {
+        if (!state_.has_value())
+            return nullptr;
+        if (const og::sim::LobbyPlayer* const selected =
+                find_player_by_seat_id(
+                    *state_, selected_local_seat_id_);
+            selected != nullptr &&
+            std::find(state_->local_seat_ids.begin(),
+                      state_->local_seat_ids.end(),
+                      selected->seat_id) != state_->local_seat_ids.end())
+        {
+            return selected;
+        }
+        return find_local_player(*state_);
+    }
+
+    void ensure_selected_local_seat()
+    {
+        const og::sim::LobbyPlayer* const selected =
+            selected_local_player();
+        selected_local_seat_id_ = selected != nullptr
+            ? selected->seat_id
+            : og::sim::kInvalidLobbySeatId;
+    }
+
+    void select_local_seat(int direction)
+    {
+        if (!state_.has_value())
+            return;
+        const std::vector<const og::sim::LobbyPlayer*> seats =
+            find_local_seats(*state_);
+        if (seats.empty())
+            return;
+
+        auto selected_it = std::find_if(
+            seats.begin(), seats.end(),
+            [this](const og::sim::LobbyPlayer* const seat) {
+                return seat->seat_id == selected_local_seat_id_;
+            });
+        std::size_t index = selected_it == seats.end()
+            ? 0u
+            : static_cast<std::size_t>(selected_it - seats.begin());
+        if (direction < 0)
+            index = (index + seats.size() - 1u) % seats.size();
+        else if (direction > 0)
+            index = (index + 1u) % seats.size();
+
+        selected_local_seat_id_ = seats[index]->seat_id;
+        last_team_request_ = -1;
+        last_team_request_seat_id_ = og::sim::kInvalidLobbySeatId;
+        team_status_ =
+            "Selected P" +
+            std::to_string(seats[index]->player_index + 1);
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -1488,21 +1783,62 @@ private:
         case og::sim::TypedReceivedMessageKind::LobbyState:
             if (message.lobby_state) {
                 state_ = *message.lobby_state;
+                ensure_selected_local_seat();
                 if (const og::sim::LobbyPlayer* const local =
-                        find_local_player(*state_, player_name_)) {
+                        find_local_player(*state_)) {
                     local_team_ = local->team;
-                    // A late accept (joiner echo) lands here: stop treating
-                    // the request as bounced.
-                    if (local_team_ == last_team_request_) {
-                        last_team_request_ = -1;
-                        team_status_.clear();
+                }
+                // A late accept (joiner echo) lands here. Resolve it by the
+                // stable seat token so another owned seat's update cannot
+                // masquerade as this request's result after P# reindexing.
+                if (const og::sim::LobbyPlayer* const requested =
+                        find_player_by_seat_id(
+                            *state_, last_team_request_seat_id_);
+                    requested != nullptr &&
+                    requested->team == last_team_request_) {
+                    last_team_request_ = -1;
+                    last_team_request_seat_id_ =
+                        og::sim::kInvalidLobbySeatId;
+                    team_status_.clear();
+                }
+                if (pending_start_request_id_ != 0 &&
+                    state_->last_start_request_id ==
+                        pending_start_request_id_ &&
+                    state_->last_start_denial !=
+                        og::sim::start_denial_reason_value(
+                            og::sim::StartDenialReason::None))
+                {
+                    switch (static_cast<og::sim::StartDenialReason>(
+                        state_->last_start_denial))
+                    {
+                    case og::sim::StartDenialReason::NotHost:
+                        team_status_ = "Only the host can start";
+                        break;
+                    case og::sim::StartDenialReason::MachinesNotReady:
+                        team_status_ = "Waiting for other machines";
+                        break;
+                    case og::sim::StartDenialReason::NoDeployedCharacters:
+                        team_status_ = "No one is deployed";
+                        break;
+                    default:
+                        break;
                     }
+                    pending_start_request_id_ = 0;
                 }
             }
             break;
         case og::sim::TypedReceivedMessageKind::LobbyMessage:
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
+                const auto& start =
+                    std::get<og::sim::LobbyStartGameMessage>(
+                        message.lobby_message->payload);
+                if (pending_start_request_id_ != 0 &&
+                    start.request_id != pending_start_request_id_)
+                {
+                    break;
+                }
+                pending_start_request_id_ = 0;
                 start_negotiated_ = true;
             }
             break;
@@ -1567,7 +1903,7 @@ private:
                 server_->build_player_bindings();
             std::uint8_t host_index = 0;
             if (const og::sim::LobbyPlayer* const local =
-                    state_.has_value() ? find_local_player(*state_, player_name_) : nullptr) {
+                    state_.has_value() ? find_local_player(*state_) : nullptr) {
                 host_index = local->player_index;
             }
             session_ = HostCursesSession::create(lobby_save, bindings, difficulty_,
@@ -1582,7 +1918,7 @@ private:
             og::sim::LobbySaveDataEquivalent lobby_save = build_join_save_equivalent();
             std::size_t join_index = 0;
             if (const og::sim::LobbyPlayer* const local =
-                    find_local_player(*state_, player_name_)) {
+                    find_local_player(*state_)) {
                 join_index = local->player_index;
             }
             session_ = JoinCursesSession::create(lobby_save, difficulty_,
@@ -1597,41 +1933,9 @@ private:
     // lobby-equivalent from the last LobbyState (campaign/scenario + full roster).
     og::sim::LobbySaveDataEquivalent build_join_save_equivalent() const
     {
-        og::sim::LobbySaveDataEquivalent eq;
         if (!state_.has_value())
-            return eq;
-        eq.current_campaign = state_->settings.campaign_id.empty()
-            ? std::string(kDefaultCampaignId)
-            : state_->settings.campaign_id;
-        eq.scen_num = state_->settings.scenario_id > 0 ? state_->settings.scenario_id : 1;
-        eq.allied_mode = state_->settings.allied_mode;
-        eq.ctf_team_count = state_->settings.ctf_team_count;
-        eq.ctf_capture_limit = state_->settings.ctf_capture_limit;
-        eq.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
-        eq.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
-        eq.respawn_mode = state_->settings.respawn_mode;
-        eq.generator_rate = state_->settings.generator_rate;
-        eq.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
-        eq.cross_control = state_->settings.cross_control;
-        eq.numplayers = static_cast<std::uint8_t>(
-            std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
-
-        std::uint8_t next_slot = 0;
-        for (const og::sim::LobbyPlayer& player : state_->players) {
-            for (const og::sim::LobbyCharacterSlot& slot : player.character_slots) {
-                // §4.2: assembly materializes only DEPLOYED slots — must
-                // match the host's LobbyServer::build_save_data_equivalent
-                // filter or the joiner's spawn diverges from the server.
-                if (!slot.deployed)
-                    continue;
-                if (next_slot >= MAX_TEAM_SIZE)
-                    break;
-                og::sim::LobbyCharacterSlot compacted = slot;
-                compacted.slot_index = next_slot++;
-                eq.team_list.push_back(std::move(compacted));
-            }
-        }
-        return eq;
+            return {};
+        return build_join_save_equivalent_from_state(*state_);
     }
 
     void teardown()
@@ -1649,17 +1953,24 @@ private:
         session_built_failed_ = false;
         session_taken_ = false;
         join_sent_ = false;
+        pending_start_request_id_ = 0;
     }
 
     LobbyRole role_;
     SaveData& save_;
     int difficulty_ = 1;
     short local_team_ = 0;
-    // 't'-cycle bookkeeping: last requested target (-1 = none pending) and
-    // the one-line bounce status surfaced in status_lines().
+    // 't'-cycle bookkeeping: selected/pending seats use server-issued tokens
+    // so dense P# changes cannot redirect an in-flight team choice.
+    og::sim::LobbySeatId selected_local_seat_id_ =
+        og::sim::kInvalidLobbySeatId;
+    og::sim::LobbySeatId last_team_request_seat_id_ =
+        og::sim::kInvalidLobbySeatId;
     short last_team_request_ = -1;
     std::string team_status_;
     std::string player_name_;
+    std::uint32_t next_start_request_id_ = 1;
+    std::uint32_t pending_start_request_id_ = 0;
 
     // Host transports.
     std::shared_ptr<og::sim::InProcessTransport> loopback_server_;
@@ -1775,10 +2086,19 @@ int curses_network_testing_exercise_internal_helpers()
     state.settings.scenario_id = 3;
     state.host_player_id = 0;
     player.player_index = 0;
+    player.seat_id = 701;
     player.is_host = true;
     state.players.push_back(player);
-    check(find_local_player(state, "local-player") != nullptr &&
-        find_local_player(state, "missing") == nullptr);
+    state.local_seat_ids = {player.seat_id};
+    check(find_local_player(state) != nullptr &&
+        find_local_player(state)->seat_id == player.seat_id);
+    og::sim::LobbyPlayer spoof = player;
+    spoof.player_index = 1;
+    spoof.seat_id = 702;
+    spoof.is_host = false;
+    state.players.insert(state.players.begin(), spoof);
+    check(find_local_player(state) != nullptr &&
+        find_local_player(state)->seat_id == player.seat_id);
 
     class RawTransport final : public og::sim::ITransport {
     public:
@@ -2018,6 +2338,13 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
 }
 
 #ifdef TESTING
+og::sim::LobbySaveDataEquivalent
+curses_network_testing_build_join_save_equivalent(
+    const og::sim::LobbyState& state)
+{
+    return build_join_save_equivalent_from_state(state);
+}
+
 bool curses_network_testing_inject_ctf(CursesGameSession& session,
                                        short requested_respawn_ticks)
 {

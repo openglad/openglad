@@ -1,9 +1,11 @@
 #pragma once
 
+#include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -15,6 +17,20 @@ namespace og::sim {
 // the 40-byte SaveData::save_name field the name comes from). The lobby-state
 // reader clamps longer strings instead of rejecting them.
 inline constexpr std::size_t kMaxLobbyCompanyNameLength = 40;
+
+// Server-issued identity for one lobby seat. Unlike player_index (the dense
+// P#/gameplay ordinal), this token survives unrelated peers leaving and the
+// resulting player-index rebuild. Zero is reserved for unjoined/client-authored
+// seats and is never accepted as a command target.
+using LobbySeatId = std::uint32_t;
+inline constexpr LobbySeatId kInvalidLobbySeatId = 0;
+
+// Server-issued identity for the network peer that owns one or more seats.
+// Every seat from the same peer shares this value, so clients can group seats
+// without inferring machine ownership from mutable display names. Zero is
+// reserved for unjoined/client-authored players.
+using LobbyMachineId = std::uint32_t;
+inline constexpr LobbyMachineId kInvalidLobbyMachineId = 0;
 
 // Reason a StartGame request was denied by the LobbyServer (protocol v8,
 // company-basecamp design §4.3). Serialized as the u8 LobbyState
@@ -81,8 +97,44 @@ struct LobbyCharacterSlot {
     bool operator==(const LobbyCharacterSlot&) const = default;
 };
 
+// A guy id is process-local until the lobby combines several private
+// companies. Different machines commonly load the same ids from otherwise
+// unrelated saves, while world snapshots require every in-level guy id to be
+// unique. Preserve the first occurrence of every valid client id, reserve all
+// other valid values so a remap never steals one, and assign invalid/repeated
+// entries the lowest available nonnegative ids. The stable slot order makes
+// host and joiner game-start configs derive the same mapping independently.
+inline void canonicalize_lobby_gameplay_guy_ids(
+    std::vector<LobbyCharacterSlot>& slots)
+{
+    std::set<std::int32_t> used_ids;
+    for (const LobbyCharacterSlot& slot : slots)
+    {
+        if (slot.character.guy_id >= 0)
+            used_ids.insert(slot.character.guy_id);
+    }
+
+    std::set<std::int32_t> kept_ids;
+    std::int32_t next_available = 0;
+    for (LobbyCharacterSlot& slot : slots)
+    {
+        const std::int32_t requested = slot.character.guy_id;
+        if (requested >= 0 && kept_ids.insert(requested).second)
+            continue;
+
+        while (used_ids.contains(next_available))
+            ++next_available;
+        slot.character.guy_id = next_available;
+        used_ids.insert(next_available);
+        kept_ids.insert(next_available);
+        ++next_available;
+    }
+}
+
 struct LobbyPlayer {
     std::uint8_t player_index = 0xff;
+    LobbySeatId seat_id = kInvalidLobbySeatId;
+    LobbyMachineId machine_id = kInvalidLobbyMachineId;
     std::string name;
     // The owning machine's active-company display name (protocol v8),
     // identical across all of one machine's seats. Serialized after name;
@@ -96,6 +148,42 @@ struct LobbyPlayer {
     bool operator==(const LobbyPlayer&) const = default;
 };
 
+// Content carried by a Join declaration. Server-issued identity, dense P#,
+// host/ready state, display names, and assembly-only ownership metadata are
+// intentionally excluded; roster slots, deploy choices, character data, and
+// the explicit seat team are the declaration that needs confirmation.
+inline bool lobby_join_seats_content_identical(
+    const std::vector<LobbyPlayer>& lhs,
+    const std::vector<LobbyPlayer>& rhs) noexcept
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    for (std::size_t seat = 0; seat < lhs.size(); ++seat)
+    {
+        if (lhs[seat].team != rhs[seat].team ||
+            lhs[seat].character_slots.size() !=
+                rhs[seat].character_slots.size())
+        {
+            return false;
+        }
+        for (std::size_t slot = 0;
+             slot < lhs[seat].character_slots.size(); ++slot)
+        {
+            const LobbyCharacterSlot& lhs_slot =
+                lhs[seat].character_slots[slot];
+            const LobbyCharacterSlot& rhs_slot =
+                rhs[seat].character_slots[slot];
+            if (lhs_slot.slot_index != rhs_slot.slot_index ||
+                lhs_slot.deployed != rhs_slot.deployed ||
+                lhs_slot.character != rhs_slot.character)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 struct LobbySettings {
     std::string campaign_id;
     std::int16_t scenario_id = 0;
@@ -103,6 +191,12 @@ struct LobbySettings {
     std::int16_t allied_mode = 0;
     // CTF match settings; only TYPE_CTF maps consume them (0 = map/default).
     std::int16_t ctf_team_count = 0; // 0 = Auto
+    // Lower SCORE_TEAM_COUNT bits identify the teams with authored flags in
+    // the selected CTF level (protocol v9). Zero means the level metadata is
+    // not available yet, so clients and authority behave as if all four were
+    // authored (Auto exposes all; explicit N still exposes numeric first N)
+    // until the host publishes the loaded map's mask.
+    std::uint8_t ctf_authored_team_mask = 0;
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep authored troops
@@ -119,22 +213,105 @@ struct LobbySettings {
     bool operator==(const LobbySettings&) const = default;
 };
 
-// CTF lobbies let multiple humans share a team (the mode has respawns and
-// per-team flags); classic lobbies keep one human per team.
+// Legacy helper name retained for the CTF-specific assignment rules (notably
+// the explicit team-count clamp). It originally distinguished modes where
+// cross-peer sharing was legal; explicit seat choices now share in all modes.
 inline bool lobby_settings_allow_shared_teams(const LobbySettings& settings) noexcept
 {
     return settings.campaign_id == og::kCtfCampaignId;
 }
 
-// Cross-peer team sharing: CTF campaigns (as before) plus allied lobbies,
-// where everyone plays one gameplay team anyway. Non-allied classic lobbies
-// keep one seat per team, which caps them at MAX_PLAYERS seats TOTAL (a
-// rules-driven cap, not an array cap). Within one peer, seats always keep
-// DISTINCT lobby teams regardless of this rule.
+inline constexpr std::uint8_t kAllLobbyTeamMask =
+    static_cast<std::uint8_t>((1u << SCORE_TEAM_COUNT) - 1u);
+
+// Team domain used by every lobby surface and by server authority. Gameplay
+// activates authored flag teams in numeric order, stopping after explicit N;
+// this therefore deliberately differs from a numeric [0,N) clamp on sparse
+// maps (authored {0,2,3}, N=2 means teams {0,2}).
+inline std::uint8_t
+lobby_effective_team_mask(const LobbySettings& settings) noexcept
+{
+    const std::uint8_t published_authored = static_cast<std::uint8_t>(
+        settings.ctf_authored_team_mask & kAllLobbyTeamMask);
+    if (!lobby_settings_allow_shared_teams(settings))
+        return kAllLobbyTeamMask;
+    const std::uint8_t authored = published_authored == 0
+        ? kAllLobbyTeamMask
+        : published_authored;
+    if (settings.ctf_team_count <= 0)
+        return authored;
+
+    int remaining = settings.ctf_team_count;
+    if (remaining < 2)
+        remaining = 2;
+    if (remaining > SCORE_TEAM_COUNT)
+        remaining = SCORE_TEAM_COUNT;
+
+    std::uint8_t effective = 0;
+    for (int team = 0; team < SCORE_TEAM_COUNT && remaining > 0; ++team)
+    {
+        const std::uint8_t bit =
+            static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
+        if ((authored & bit) == 0)
+            continue;
+        effective = static_cast<std::uint8_t>(effective | bit);
+        --remaining;
+    }
+    return effective;
+}
+
+inline bool lobby_team_is_selectable(const LobbySettings& settings,
+                                     std::int16_t team) noexcept
+{
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return false;
+    const auto bit =
+        static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
+    return (lobby_effective_team_mask(settings) & bit) != 0;
+}
+
+inline std::int16_t
+lobby_first_selectable_team(const LobbySettings& settings) noexcept
+{
+    for (std::int16_t team = 0; team < SCORE_TEAM_COUNT; ++team)
+    {
+        if (lobby_team_is_selectable(settings, team))
+            return team;
+    }
+    return -1;
+}
+
+inline std::int16_t lobby_next_selectable_team(
+    const LobbySettings& settings,
+    std::int16_t current_team) noexcept
+{
+    int normalized = current_team % SCORE_TEAM_COUNT;
+    if (normalized < 0)
+        normalized += SCORE_TEAM_COUNT;
+    for (int offset = 1; offset <= SCORE_TEAM_COUNT; ++offset)
+    {
+        const std::int16_t candidate = static_cast<std::int16_t>(
+            (normalized + offset) % SCORE_TEAM_COUNT);
+        if (lobby_team_is_selectable(settings, candidate))
+            return candidate;
+    }
+    return lobby_first_selectable_team(settings);
+}
+
+// Compatibility query retained for callers that still carry the legacy
+// allied_mode setting. Explicit per-seat assignments make every in-range team
+// shareable: seats on the same or different machines may intentionally choose
+// the same team (for example 1,1 versus 2,2). CTF's authored-map domain
+// remains a separate validity rule in lobby_effective_team_mask().
+//
+// Historically CTF and allied lobbies shared teams only across peers, while
+// non-allied classic lobbies kept one seat per team and sibling seats always
+// stayed distinct. Keep that old rule recorded here even though the picker now
+// expresses the player's intent directly.
 inline bool lobby_teams_shareable(const LobbySettings& settings) noexcept
 {
-    return lobby_settings_allow_shared_teams(settings) ||
-        settings.allied_mode != 0;
+    (void)settings;
+    return true;
 }
 
 struct LobbyState {
@@ -145,7 +322,21 @@ struct LobbyState {
     // so every peer (including a remote host elected on a dedicated server)
     // can render the precise reason instead of a poll timeout.
     std::uint8_t last_start_denial = 0;
+    // Correlates that echo with the host's latest StartGame request (protocol
+    // v9). Zero means no correlated request has been processed.
+    std::uint32_t last_start_request_id = 0;
     std::vector<LobbyPlayer> players;
+    // Recipient-specific ownership proof (protocol v9). The server fills this
+    // with only the seat tokens owned by the peer receiving this state; its
+    // canonical state keeps the vector empty. Clients use tokens rather than
+    // player/company names, which are display data and need not be unique.
+    std::vector<LobbySeatId> local_seat_ids;
+    // Recipient-specific acknowledgement of the most recent Join declaration
+    // processed for this peer (protocol v9). Zero means no correlated Join has
+    // been processed. The canonical server state keeps this zero; personalized
+    // echoes let a client distinguish its Join response from an unrelated
+    // ready/team/reset broadcast.
+    std::uint32_t last_join_request_id = 0;
 
     bool operator==(const LobbyState&) const = default;
 };
@@ -171,6 +362,11 @@ struct LobbyJoinMessage {
     // curses/text clients and pre-seat callers behave unchanged). Per-machine
     // seat count is capped at MAX_PLAYERS.
     std::vector<LobbyPlayer> extra_players = {};
+    // Client-issued correlation token (protocol v9). Correlated clients use a
+    // nonzero value and reuse it for retries; LobbyState::last_join_request_id
+    // echoes it only after the LobbyServer has processed that Join. Zero opts
+    // out for fire-and-forget local/host/terminal declarations.
+    std::uint32_t request_id = 0;
 
     bool operator==(const LobbyJoinMessage&) const = default;
 };
@@ -189,7 +385,10 @@ struct LobbyReadyMessage {
 };
 
 struct LobbyTeamChangeMessage {
+    // Dense P# captured when the request was made. Retained on the wire for
+    // diagnostics/display compatibility; seat_id is the authoritative target.
     std::uint8_t player_index = 0xff;
+    LobbySeatId seat_id = kInvalidLobbySeatId;
     std::int16_t team = 0;
 
     bool operator==(const LobbyTeamChangeMessage&) const = default;
@@ -197,6 +396,9 @@ struct LobbyTeamChangeMessage {
 
 struct LobbyStartGameMessage {
     std::uint8_t player_index = 0xff;
+    // Client-issued correlation token; authority echoes it in either the
+    // accepted StartGame or LobbyState::last_start_request_id on denial.
+    std::uint32_t request_id = 0;
 
     bool operator==(const LobbyStartGameMessage&) const = default;
 };

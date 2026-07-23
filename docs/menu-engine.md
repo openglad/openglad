@@ -13,7 +13,7 @@ legacy, or retired.
 | Screen family | Owner |
 |---|---|
 | Main, Players, Difficulty, Game Settings, Display, Effects, Controls | Runtime |
-| Base Camp, Hire, Train, Progress, View Level, Scenario, Teams | Runtime |
+| Base Camp, Hire, Train, Progress, View Level, Scenario, Matchup | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |
 | View Team and manual Save/Load slots | Retired |

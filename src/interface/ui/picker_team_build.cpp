@@ -52,6 +52,7 @@
 #include <openglad/core/test_trace.h>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -59,6 +60,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "picker_sdl_defs.h"
@@ -293,7 +295,7 @@ void ensure_highlighted_button_visible(const button* buttons,
 // The §2.5 base camp rewires its full roster graph per frame (pattern b) —
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
-// Rewire the always-visible VIEW LEVEL | TEAMS | PROGRESS row's up-links
+// Rewire the always-visible VIEW LEVEL | MATCHUP | PROGRESS row's up-links
 // around the host-gated SET CAMPAIGN / SET LEVEL column.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
@@ -317,7 +319,7 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         return;
 
     // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
-    // subscreen; VIEW LEVEL / TEAMS / PROGRESS stay visible for everyone.
+    // subscreen; VIEW LEVEL / MATCHUP / PROGRESS stay visible for everyone.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
@@ -417,9 +419,9 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
 // into the roster view.
 
 // ---------------------------------------------------------------------------
-// TEAMS subscreen: per-team JOIN (local my_team / networked TeamChange), the
-// host-gated CTF match settings, local per-character team cycling, and the
-// networked READY toggle.
+// MATCHUP subscreen: a detailed overview of player-seat assignments and
+// character allegiances, with host-gated CTF settings and cross-control.
+// Assignment itself lives in the Base Camp seat rail.
 // ---------------------------------------------------------------------------
 
 void picker_wire_teams_menu_nav(button* buttons, int count,
@@ -428,31 +430,26 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     if (buttons == nullptr || count < kTeamsMenuButtonCount)
         return;
 
-    // One vertical chain of "row anchors" through the team rows: the row's
-    // JOIN when visible, else its pager. A pager that shares a row with a
-    // visible JOIN hangs off horizontally and copies the JOIN's vertical
-    // links, so every visible pager stays reachable in every variant.
+    // One vertical chain of row anchors through visible team-detail pagers.
     std::vector<int> mids;
     for (int t = 0; t < 4; ++t)
     {
-        if (wiring.join_visible[t])
-            mids.push_back(kTeamsMenuJoinFirstIndex + t);
-        else if (wiring.pager_visible[t])
+        if (wiring.pager_visible[t])
             mids.push_back(kTeamsMenuPageFirstIndex + t);
     }
     const int first_mid = mids.empty() ? -1 : mids.front();
     const int last_mid = mids.empty() ? -1 : mids.back();
-    const int bottom_mid = wiring.networked ? kTeamsMenuReadyIndex : -1;
+    const int bottom_mid = -1;
     const int bottom_right = wiring.show_ctf ? kTeamsMenuCtfTroopsIndex : -1;
-    // §2.7: cross-control occupies the guy-row band when networked (the guy
-    // row itself is local-only — mutually exclusive by construction).
+    // §2.7 cross-control remains visible to every network peer and now sits
+    // in the bottom command row vacated by the duplicate READY control.
     const int cross =
         wiring.cross_control ? kTeamsMenuCrossControlIndex : -1;
 
     for (int index = 0; index < kTeamsMenuButtonCount; ++index)
         buttons[index].nav = MenuNav{};
 
-    // Bottom row: BACK | READY (networked) | TROOPS (CTF host).
+    // Bottom row: BACK | CROSS-CONTROL (networked) | TROOPS (CTF host).
     buttons[kTeamsMenuBackIndex].nav.right =
         bottom_mid >= 0 ? bottom_mid : bottom_right;
     if (bottom_mid >= 0)
@@ -467,13 +464,9 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     }
 
     // Row-anchor chain (visible rows only, top to bottom).
-    const int below_mids = wiring.guy_row
-        ? kTeamsMenuGuyTeamIndex
-        : (cross >= 0
-               ? cross
-               : (bottom_right >= 0
-                      ? bottom_right
-                      : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex)));
+    const int below_mids = cross >= 0
+        ? cross
+        : (bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex);
     for (std::size_t mid_order = 0; mid_order < mids.size(); ++mid_order)
     {
         buttons[mids[mid_order]].nav.up = mid_order == 0
@@ -484,20 +477,6 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
             : below_mids;
     }
 
-    // Pagers beside a visible JOIN: horizontal link plus the JOIN's
-    // vertical neighbors (both already point at visible buttons).
-    for (int t = 0; t < 4; ++t)
-    {
-        if (!wiring.pager_visible[t] || !wiring.join_visible[t])
-            continue;
-        const int pager = kTeamsMenuPageFirstIndex + t;
-        const int join = kTeamsMenuJoinFirstIndex + t;
-        buttons[pager].nav.right = join;
-        buttons[join].nav.left = pager;
-        buttons[pager].nav.up = buttons[join].nav.up;
-        buttons[pager].nav.down = buttons[join].nav.down;
-    }
-
     // CTF settings row.
     if (wiring.show_ctf)
     {
@@ -505,31 +484,10 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
         buttons[kTeamsMenuCtfCapsIndex].nav.left = kTeamsMenuCtfTeamsIndex;
         buttons[kTeamsMenuCtfTeamsIndex].nav.down = first_mid >= 0
             ? first_mid
-            : (wiring.guy_row ? kTeamsMenuGuyPrevIndex : kTeamsMenuBackIndex);
+            : (cross >= 0 ? cross : kTeamsMenuBackIndex);
         buttons[kTeamsMenuCtfCapsIndex].nav.down = first_mid >= 0
             ? first_mid
-            : (wiring.guy_row ? kTeamsMenuGuyTeamIndex : bottom_right);
-    }
-
-    // Local guy-cycling row.
-    if (wiring.guy_row)
-    {
-        buttons[kTeamsMenuGuyPrevIndex].nav.right = kTeamsMenuGuyNextIndex;
-        buttons[kTeamsMenuGuyNextIndex].nav.left = kTeamsMenuGuyPrevIndex;
-        buttons[kTeamsMenuGuyNextIndex].nav.right = kTeamsMenuGuyTeamIndex;
-        buttons[kTeamsMenuGuyTeamIndex].nav.left = kTeamsMenuGuyNextIndex;
-        const int above_guys = first_mid >= 0
-            ? first_mid
-            : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
-        buttons[kTeamsMenuGuyPrevIndex].nav.up = above_guys;
-        buttons[kTeamsMenuGuyNextIndex].nav.up = above_guys;
-        buttons[kTeamsMenuGuyTeamIndex].nav.up = last_mid >= 0
-            ? last_mid
-            : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
-        buttons[kTeamsMenuGuyPrevIndex].nav.down = kTeamsMenuBackIndex;
-        buttons[kTeamsMenuGuyNextIndex].nav.down = kTeamsMenuBackIndex;
-        buttons[kTeamsMenuGuyTeamIndex].nav.down =
-            bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex;
+            : (cross >= 0 ? cross : bottom_right);
     }
 
     // §2.7 cross-control row: chained between the team rows and the bottom
@@ -539,17 +497,18 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
         buttons[cross].nav.up = last_mid >= 0
             ? last_mid
             : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
-        buttons[cross].nav.down = bottom_mid >= 0
-            ? bottom_mid
-            : (bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex);
+        buttons[cross].nav.left = kTeamsMenuBackIndex;
+        buttons[cross].nav.right = bottom_right;
+        buttons[cross].nav.down = -1;
+        buttons[kTeamsMenuBackIndex].nav.right = cross;
+        if (bottom_right >= 0)
+            buttons[bottom_right].nav.left = cross;
     }
 
     // Bottom-row up links.
-    buttons[kTeamsMenuBackIndex].nav.up = wiring.guy_row
-        ? kTeamsMenuGuyPrevIndex
-        : (first_mid >= 0
-               ? first_mid
-               : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
+    buttons[kTeamsMenuBackIndex].nav.up = first_mid >= 0
+        ? first_mid
+        : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
     if (bottom_mid >= 0)
     {
         buttons[bottom_mid].nav.up = cross >= 0
@@ -560,24 +519,78 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     }
     if (bottom_right >= 0)
     {
-        buttons[bottom_right].nav.up = wiring.guy_row
-            ? kTeamsMenuGuyTeamIndex
-            : (cross >= 0
-                   ? cross
-                   : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex));
+        buttons[bottom_right].nav.up = cross >= 0
+            ? cross
+            : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex);
     }
 }
 
 namespace
 {
 
-// The TEAMS screen's detail-line budgets (6px/char from x=24): a single
-// slice may run to the readability bar's edge; a paged slice stops short of
-// the page indicator + '>' pager at the row's right edge.
-constexpr int kTeamsDetailCharsUnpaged = 34;
-constexpr int kTeamsDetailCharsPaged = 26;
+// MATCHUP's wide team bars use the full 304px panel. A paged slice stops
+// short of its page indicator and the in-row '>' button at x=297.
+constexpr int kTeamsDetailCharsUnpaged = 47;
+constexpr int kTeamsDetailCharsPaged = 39;
 
-// One frame's full TEAMS-subscreen state: the nav wiring inputs plus the CTF
+std::string matchup_company_abbreviation(std::string_view company)
+{
+    std::string result;
+    result.reserve(3);
+    for (const unsigned char ch : company)
+    {
+        if (!std::isalnum(ch))
+            continue;
+        result.push_back(static_cast<char>(std::toupper(ch)));
+        if (result.size() == 3)
+            break;
+    }
+    return result.empty() ? "NET" : result;
+}
+
+std::string matchup_seat_identity(
+    const og::sim::LobbyPlayer& player,
+    const std::vector<std::uint8_t>& local_indices)
+{
+    const bool local =
+        std::find(local_indices.begin(), local_indices.end(),
+                  player.player_index) != local_indices.end();
+    std::string result = std::format(
+        "P{} {}",
+        static_cast<int>(player.player_index) + 1,
+        local ? std::string("YOU")
+              : matchup_company_abbreviation(player.company));
+    if (player.ready)
+        result += " [RDY]";
+    return result;
+}
+
+std::string matchup_summary(const std::vector<og::sim::LobbyPlayer>& players)
+{
+    if (players.empty())
+        return "NO PLAYER SEATS";
+    std::array<int, SCORE_TEAM_COUNT> counts{};
+    for (const og::sim::LobbyPlayer& player : players)
+    {
+        if (player.team >= 0 && player.team < SCORE_TEAM_COUNT)
+            ++counts[static_cast<std::size_t>(player.team)];
+    }
+    const int occupied = static_cast<int>(std::count_if(
+        counts.begin(), counts.end(), [](int count) { return count > 0; }));
+    const int player_count = static_cast<int>(players.size());
+    if (occupied == 1)
+        return "CO-OP";
+    if (player_count == 4 && occupied == 2 &&
+        std::count(counts.begin(), counts.end(), 2) == 2)
+    {
+        return "2 VS 2";
+    }
+    if (occupied == player_count)
+        return "FREE-FOR-ALL";
+    return "MIXED TEAMS";
+}
+
+// One frame's full MATCHUP state: the nav wiring inputs plus the CTF
 // map context (authored flag teams from the LIVE picker world, scanned before
 // any CTF init could mutate flags — the picker never runs ctf init).
 struct TeamsMenuFrameState
@@ -585,12 +598,14 @@ struct TeamsMenuFrameState
     bool is_ctf = false;   // CTF campaign selected
     bool ctf_map = false;  // loaded picker world is a TYPE_CTF level
     bool campaign_mounted = true; // mounted campaign matches the save's
-    bool allied = false;
     bool authored[4] = {};
     // Per-team member/player detail line, paginated; detail_page is the
     // normalized current slice (the raw counter lives in PickerState).
     std::array<std::vector<std::string>, 4> detail_pages;
     std::array<int, 4> detail_page = {};
+    std::array<int, 4> hero_count = {};
+    std::array<int, 4> seat_count = {};
+    std::string summary;
     TeamsMenuWiring wiring;
 };
 
@@ -599,39 +614,96 @@ TeamsMenuFrameState compute_teams_menu_state()
     TeamsMenuFrameState state;
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     state.is_ctf = og::ui::is_ctf_campaign(save);
-    state.allied = save.allied_mode != 0;
     state.wiring.show_ctf =
         state.is_ctf && picker_lobby_host_controls_visible();
     state.wiring.networked = picker_lobby_is_networked();
-    state.wiring.guy_row = !state.wiring.networked && save.team_size > 0;
-    // §2.7: shown to ALL peers when networked (host-only actionable — the
-    // dispatch popups for non-hosts); shares the local guy row's rect.
+    state.wiring.guy_row = false;
+    // §2.7: shown to ALL peers when networked (host-only actionable).
     state.wiring.cross_control = state.wiring.networked;
 
-    // Per-team detail items: lobby players (networked) or roster members.
-    const std::vector<og::sim::LobbyPlayer> players =
-        state.wiring.networked ? picker_lobby_players()
-                               : std::vector<og::sim::LobbyPlayer>{};
+    // P# is the current lobby-wide display ordinal and may be redensified;
+    // exact local ownership comes from server-issued seat tokens. Remote cards
+    // show only the public company name, never the internal net-<hex>
+    // transport identity.
+    std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+    if (players.empty() && save.numplayers > 0)
+    {
+        const std::vector<short> teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        for (std::size_t index = 0; index < teams.size(); ++index)
+        {
+            players.push_back(og::sim::LobbyPlayer{
+                .player_index = static_cast<std::uint8_t>(index),
+                .name = std::format("Player {}", index + 1),
+                .company = save.save_name,
+                .team = teams[index],
+                .character_slots = {},
+                .ready = false,
+                .is_host = index == 0,
+            });
+        }
+    }
+    std::sort(players.begin(), players.end(),
+              [](const og::sim::LobbyPlayer& lhs,
+                 const og::sim::LobbyPlayer& rhs) {
+                  return lhs.player_index < rhs.player_index;
+              });
+    std::vector<std::uint8_t> local_indices =
+        picker_lobby_local_player_indices();
+    if (!state.wiring.networked)
+    {
+        local_indices.clear();
+        for (const og::sim::LobbyPlayer& player : players)
+            local_indices.push_back(player.player_index);
+    }
+    state.summary = matchup_summary(players);
+
+    // Seats group by LobbyPlayer::team. Heroes group independently by their
+    // character teamnum: changing a seat assignment must never appear to
+    // recolor or move that machine's company roster.
     for (int t = 0; t < 4; ++t)
     {
         std::vector<std::string> items;
-        if (state.wiring.networked)
+        std::vector<std::string> seat_items;
+        std::vector<std::string> hero_items;
+        for (const og::sim::LobbyPlayer& player : players)
         {
-            for (const og::sim::LobbyPlayer& player : players)
+            if (player.team == t)
+                seat_items.push_back(matchup_seat_identity(
+                    player, local_indices));
+            if (state.wiring.networked)
             {
-                if (player.team != t)
-                    continue;
-                items.push_back(player.ready ? player.name + " [RDY]"
-                                             : player.name);
+                for (const og::sim::LobbyCharacterSlot& slot :
+                     player.character_slots)
+                {
+                    if (slot.character.teamnum == t)
+                        hero_items.push_back(slot.character.name);
+                }
             }
         }
-        else
+        if (!state.wiring.networked)
         {
             for (const auto& member : save.team_list)
             {
                 if (member && member->teamnum == t)
-                    items.push_back(member->name);
+                    hero_items.push_back(member->name);
             }
+        }
+        state.seat_count[static_cast<std::size_t>(t)] =
+            static_cast<int>(seat_items.size());
+        state.hero_count[static_cast<std::size_t>(t)] =
+            static_cast<int>(hero_items.size());
+        if (!seat_items.empty())
+        {
+            items.push_back("SEATS: " + seat_items.front());
+            items.insert(items.end(), seat_items.begin() + 1,
+                         seat_items.end());
+        }
+        if (!hero_items.empty())
+        {
+            items.push_back("HEROES: " + hero_items.front());
+            items.insert(items.end(), hero_items.begin() + 1,
+                         hero_items.end());
         }
 
         // Fits one slice -> no pager; otherwise repack with room for the
@@ -665,21 +737,8 @@ TeamsMenuFrameState compute_teams_menu_state()
     if (state.ctf_map)
         og::sim::ctf_authored_flag_teams(world, state.authored);
 
-    int team_limit = MAX_PLAYERS;
-    if (state.is_ctf && save.ctf_team_count > 0)
-        team_limit = std::min<int>(MAX_PLAYERS, save.ctf_team_count);
-
-    const bool spectator = save.numplayers == 0;
     for (int t = 0; t < 4; ++t)
-    {
-        // A JOIN is offered only where joining is meaningful: never in allied
-        // mode (everyone fights together) or spectator mode, never beyond the
-        // explicit CTF team-count clamp, and never onto a team a CTF map does
-        // not author a flag for (alive there means no flag and no respawn).
-        state.wiring.join_visible[t] = !state.allied && !spectator &&
-            t < team_limit &&
-            (!state.is_ctf || !state.ctf_map || state.authored[t]);
-    }
+        state.wiring.join_visible[t] = false;
     return state;
 }
 
@@ -709,13 +768,12 @@ void sync_teams_menu_visibility(button* buttons,
     for (int t = 0; t < 4; ++t)
     {
         button& join = buttons[kTeamsMenuJoinFirstIndex + t];
-        join.hidden = !state.wiring.join_visible[t];
-        join.label = save.my_team == t ? "YOU" : "JOIN";
+        join.hidden = true;
     }
 
-    buttons[kTeamsMenuGuyPrevIndex].hidden = !state.wiring.guy_row;
-    buttons[kTeamsMenuGuyNextIndex].hidden = !state.wiring.guy_row;
-    buttons[kTeamsMenuGuyTeamIndex].hidden = !state.wiring.guy_row;
+    buttons[kTeamsMenuGuyPrevIndex].hidden = true;
+    buttons[kTeamsMenuGuyNextIndex].hidden = true;
+    buttons[kTeamsMenuGuyTeamIndex].hidden = true;
 
     for (int t = 0; t < 4; ++t)
     {
@@ -723,12 +781,7 @@ void sync_teams_menu_visibility(button* buttons,
             !state.wiring.pager_visible[t];
     }
 
-    buttons[kTeamsMenuReadyIndex].hidden = !state.wiring.networked;
-    if (state.wiring.networked)
-    {
-        buttons[kTeamsMenuReadyIndex].label =
-            picker_lobby_local_ready() ? "UNREADY" : "READY";
-    }
+    buttons[kTeamsMenuReadyIndex].hidden = true;
 
     buttons[kTeamsMenuCrossControlIndex].hidden =
         !state.wiring.cross_control;
@@ -759,7 +812,7 @@ std::string clip_to_width(std::string line, int max_chars)
 }
 
 // Pre-pass: the translucent row readability bars. These must render BENEATH
-// the buttons — the per-team '>' pager (219, 39+30t) is the only button whose
+// the buttons — the per-team '>' pager (297, 39+30t) is the only button whose
 // face sits inside a bar, and a bar painted after draw_buttons would dim it
 // to ~41% brightness unlike every other button. The frame loop draws this
 // before draw_buttons; all text/content stays in draw_teams_menu_content
@@ -770,19 +823,14 @@ void draw_teams_menu_row_bars()
     for (int t = 0; t < 4; ++t)
     {
         const int row_y = 32 + 30 * t;
-        myscreen->draw_rect_filled(8, row_y - 2, 226, 22, PURE_BLACK, 150);
+        myscreen->draw_rect_filled(8, row_y - 2, 304, 22, PURE_BLACK, 150);
     }
 }
 
 void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
 {
     screen* const myscreen = og::runtime::current_session->myscreen_;
-    const SaveData& save = myscreen->save_data;
-
-    mytext.write_xy(10, 8, "TEAMS", WHITE, 1);
-
-    const std::vector<short> seats = og::ui::derive_local_seat_teams(save);
-    const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+    mytext.write_xy(10, 8, "MATCHUP", WHITE, 1);
 
     for (int t = 0; t < 4; ++t)
     {
@@ -793,54 +841,13 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
         myscreen->draw_rect_filled(
             10, row_y, 10, 10, static_cast<unsigned char>(t * 16 + 40), 255);
 
-        int hero_count = 0;
-        if (state.wiring.networked)
-        {
-            for (const og::sim::LobbyPlayer& player : players)
-            {
-                if (player.team == t)
-                {
-                    hero_count += static_cast<int>(
-                        player.character_slots.size());
-                }
-            }
-        }
-        else
-        {
-            for (const auto& member : save.team_list)
-            {
-                if (member && member->teamnum == t)
-                    ++hero_count;
-            }
-        }
+        const int hero_count =
+            state.hero_count[static_cast<std::size_t>(t)];
+        const bool has_humans =
+            state.seat_count[static_cast<std::size_t>(t)] > 0;
 
-        std::string seat_tag;
-        bool has_humans = false;
-        if (state.wiring.networked)
-        {
-            for (const og::sim::LobbyPlayer& player : players)
-            {
-                if (player.team == t)
-                    has_humans = true;
-            }
-            if (save.my_team == t)
-                seat_tag = "(YOU)";
-        }
-        else
-        {
-            // Only seats below numplayers materialize in-game (game.cpp
-            // truncates the derivation at numviews); never tag the rest.
-            const std::size_t seat_limit = std::min<std::size_t>(
-                seats.size(), static_cast<std::size_t>(save.numplayers));
-            for (std::size_t seat = 0; seat < seat_limit; ++seat)
-            {
-                if (seats[seat] == t)
-                    seat_tag = std::format("(P{})", seat + 1);
-            }
-        }
-
-        // The pager column ('>' at x=219 and the p/N indicator ending at
-        // x=217) narrows both the label row and the detail line.
+        // The pager column ('>' at x=297 and the p/N indicator ending at
+        // x=295) narrows both the label row and the detail line.
         const bool paged = state.wiring.pager_visible[t];
         const std::string row_label = og::ui::format_team_row_label(
             static_cast<short>(t),
@@ -848,9 +855,9 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
             state.is_ctf && state.ctf_map,
             state.authored[t],
             has_humans,
-            seat_tag);
+            {});
         mytext.write_xy(24, row_y,
-                        clip_to_width(row_label, paged ? 32 : 34).c_str(),
+                        clip_to_width(row_label, paged ? 44 : 47).c_str(),
                         WHITE, 1);
 
         // Member-detail line: the current pre-clipped slice from the frame
@@ -865,7 +872,7 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
         {
             const std::string indicator = std::format(
                 "{}/{}", page + 1, static_cast<int>(pages.size()));
-            mytext.write_xy(217 - 6 * static_cast<int>(indicator.size()),
+            mytext.write_xy(295 - 6 * static_cast<int>(indicator.size()),
                             row_y + 9, indicator.c_str(), WHITE, 1);
         }
     }
@@ -874,38 +881,23 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
     // (height 15) and the rows' readability bars start at y=30 (row_y-2
     // with row_y=32), so the 23..29 band is free of buttons, row bars,
     // and detail lines (draw_rect_filled fills [y, y+h)).
-    if (state.allied)
+    if (!state.campaign_mounted)
     {
-        myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
-        mytext.write_xy(10, 24, "SEATS: PLAYERS SHARE ONE TEAM",
-                        YELLOW, 1);
-    }
-    else if (!state.campaign_mounted)
-    {
-        // The loaded picker world is some other map: JOIN gating could not
-        // be verified against the real level (authored-flag clamp skipped).
-        myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
+        // The loaded picker world is some other map, so authored flag/team
+        // details cannot be verified against the real level.
+        myscreen->draw_rect_filled(8, 23, 304, 7, PURE_BLACK, 150);
         mytext.write_xy(10, 24, "TEAM LIST UNVERIFIED", YELLOW, 1);
     }
-
-    if (state.wiring.guy_row)
+    else
     {
-        const int slot = teams_menu_selected_guy_slot();
-        if (slot >= 0 && save.team_list[slot])
-        {
-            const std::string guy_line = std::format(
-                "{} {}",
-                save.team_list[slot]->name,
-                og::sim::ctf_team_color_name(save.team_list[slot]->teamnum));
-            mytext.write_xy(30, 148, clip_to_width(guy_line, 14).c_str(),
-                            WHITE, 1);
-        }
+        myscreen->draw_rect_filled(8, 23, 304, 7, PURE_BLACK, 150);
+        mytext.write_xy(10, 24, state.summary.c_str(), YELLOW, 1);
     }
 }
 
 } // namespace
 
-// create_teams_menu (the TEAMS subscreen): engine-hosted — the spec and the
+// create_teams_menu (the MATCHUP subscreen): engine-hosted — the spec and the
 // entry wrapper live in menu_screen_specs.cpp; the per-frame machinery stays
 // here beside its helpers (compute_teams_menu_state and the draw passes are
 // file-local). One open screen's state is shared between the hooks: the
@@ -991,7 +983,7 @@ void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
                             og::runtime::current_session->myscreen_->text_normal);
 }
 
-// §2.7 cross-control dispatch (the TEAMS screen's one MenuSpecRow, G3).
+// §2.7 cross-control dispatch (the MATCHUP screen's one MenuSpecRow, G3).
 // Visible to every peer; host-only actionable. A host toggle is a SETTINGS
 // change: the sync propagates it over the wire and the server clears every
 // non-host machine's ready (§4.5 — the settings-clear-ready rule). The value
@@ -1031,7 +1023,7 @@ Sint32 picker_teams_menu_engine_on_spec_row(int row, void* /*screen_state*/)
 }
 
 #ifdef TESTING
-// Test hook: set up and render exactly one TEAMS-subscreen frame (the real
+// Test hook: set up and render exactly one MATCHUP frame (the real
 // draw order: backdrop -> row bars -> buttons -> content) and present it, so
 // pixel tests can probe button faces against the translucent row bars
 // without racing the blocking frame loop.
@@ -1075,7 +1067,7 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // menu_screen_specs.cpp, docs/menu-engine.md). The open screen's report and
 // PageModel live in the wrapper; the hooks read them through a file-static
 // pointer (the rewire and state-override signatures carry no screen_state —
-// the TEAMS pattern). Null state = no open screen (the G5 sweep and the
+// the MATCHUP pattern). Null state = no open screen (the G5 sweep and the
 // gate-lattice sweep drive the spec bare) and presents the single-page
 // shape: pagers hidden, BACK's right-link closed.
 struct ViewScenarioEngineState
@@ -1223,7 +1215,7 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen: SET CAMPAIGN / SET LEVEL (host-gated) with the
 // campaign-name / level-title strips alongside, plus the always-visible
-// VIEW LEVEL | TEAMS | PROGRESS row. Blocking-subscreen pattern: per-frame
+// VIEW LEVEL | MATCHUP | PROGRESS row. Blocking-subscreen pattern: per-frame
 // picker_lobby_poll, joiner remote-start honored (propagates MENU_EXIT with
 // the StartGame item), BACK returns MENU_REDRAW to the team-build screen.
 // ---------------------------------------------------------------------------
@@ -2437,8 +2429,24 @@ Sint32 go_menu(Sint32 arg1)
     {
         const SaveData& save =
             og::runtime::current_session->myscreen_->save_data;
-        const std::vector<short> seat_teams =
-            og::ui::derive_local_gameplay_seat_teams(save);
+        std::vector<og::sim::LobbyPlayer> lobby_players =
+            picker_lobby_players();
+        std::sort(lobby_players.begin(), lobby_players.end(),
+                  [](const og::sim::LobbyPlayer& lhs,
+                     const og::sim::LobbyPlayer& rhs) {
+                      return lhs.player_index < rhs.player_index;
+                  });
+        std::vector<short> seat_teams;
+        seat_teams.reserve(lobby_players.size());
+        for (const og::sim::LobbyPlayer& player : lobby_players)
+            seat_teams.push_back(player.team);
+        if (seat_teams.size() != save.numplayers)
+        {
+            // A not-yet-initialized lobby has no explicit state. Legacy save
+            // fields are only the seed for that narrow fallback; once the
+            // local lobby exists, its per-seat choices are authoritative.
+            seat_teams = og::ui::derive_local_gameplay_seat_teams(save);
+        }
         if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
         {
             popup_dialog("DEPLOY FOR EVERY PLAYER",
@@ -2911,6 +2919,7 @@ int picker_team_build_testing_exercise_internal_paths()
         remote_machine.ready = true;
         remote_machine.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = 0,
+            .character = {},
             .deployed = false,
         });
         client.players = {remote_machine};

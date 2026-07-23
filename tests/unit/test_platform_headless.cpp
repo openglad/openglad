@@ -558,7 +558,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
     // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
-    // (1=set_campaign, 2=set_level, 3=view_scenario, 4=teams, 5=progress,
+    // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
     // 6=back). Main 7=difficulty opens the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=back).
@@ -575,12 +575,11 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "4\n"       // main: 3 player
         "5\n"       // main: 2 player
         "6\n"       // main: 1 player
-        "8\n"       // main: allied toggle
-        "9\n"       // main: level edit (unavailable)
-        "10\n"      // main: options
+        "8\n"       // main: level edit (unavailable)
+        "9\n"       // main: options
         "newslot\n"
         "not-a-seed\n"
-        "10\n"      // main: options again
+        "9\n"       // main: options again
         "textslot\n"
         "123\n"
         "2\n"       // main: continue -> team build (base camp)
@@ -619,7 +618,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -667,7 +666,7 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         "\n"        //   name entry: blank accepts the generated company name
         "\n"        //   campaign select: blank keeps current (= default reset)
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -745,7 +744,7 @@ bool seed_headless_company(const std::string& slot, const std::string& name,
 
 } // namespace
 
-// The main-menu LOAD door (position 13) presents the company list: open by
+// The main-menu LOAD door (position 12) presents the company list: open by
 // row number ([SAVE-R2]: the terminal slot follows the load), the corrupt
 // row refuses to switch, deleting the ACTIVE company refuses with
 // switch-first, deleting another company needs the explicit "y" (NO-first),
@@ -766,13 +765,13 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 
     // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
     const std::string input =
-        "13\n"      // main: load company -> the company list
+        "12\n"      // main: load company -> the company list
         "1\n"       //   list: open company...
         "3\n"       //     #3 = corrupt -> damaged message, never switches
         "1\n"       //   list: open company...
         "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
         "7\n"       // team build: back -> main
-        "13\n"      // main: load company again (active is now wp3hlb)
+        "12\n"      // main: load company again (active is now wp3hlb)
         "3\n"       //   list: delete company...
         "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
         "3\n"       //   list: delete company...
@@ -784,7 +783,7 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -837,7 +836,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
     // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
     // 3 = seq 1 (OLD).
     const std::string input =
-        "13\n"      // main: load company -> the company list
+        "12\n"      // main: load company -> the company list
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlr (the only company)
         "1\n"       //     backups: restore...
@@ -855,7 +854,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
         "2\n"       //       #2 = seq 1 (OLD)...
         "y\n"       //       explicit yes -> rewound -> team build
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -963,7 +962,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "1\n"       //   entry 1 is always the default campaign
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1002,7 +1001,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1051,7 +1050,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "5\n"       // scenario: progress
         "6\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
-        "12\n";     // main: quit
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1094,7 +1093,7 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
         "b\n"        //   train: back to the roster
         "\n"         //   roster: blank exits
         "7\n"        // base camp: back -> main
-        "12\n";      // main: quit
+        "11\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1120,16 +1119,17 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
     og::data::set_active_company_slot("save0");
 }
 
-// §2.5 teams sub-prompt ('play N' / 'move SLOT N'): re-seat P1, move a
-// roster slot across teams (the §3.8 move autosave rides the valid move),
-// and every rejection wording. The teams screen previously had no test
-// surface at all (WP7 coverage pass); the roster/deploy legs bundle their
-// invalid-row rejections for the same reason.
-TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
+// §2.5 MATCHUP sub-prompt: the historical 'play N' spelling changes
+// preferred-team metadata only, while 'move SLOT N' moves a roster slot
+// across teams (the §3.8 move autosave rides the valid move). The former TEAMS
+// screen previously had no test surface at all (WP7 coverage pass); the
+// roster/deploy legs bundle their invalid-row rejections for the same reason.
+TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
 {
     restore_default_campaigns(); // order-independent: install the packages
 
     const std::string input =
+        "3\n"           // main: unsupported four-player setting stays at one
         "2\n"           // main: continue -> team build (base camp)
         "1\n"           // base camp: roster
         "deploy 99\n"   //   roster: deploy row out of range
@@ -1139,19 +1139,20 @@ TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
         "4\n"           // base camp: deploy prompt
         "abc\n"         //   non-numeric row rejected
         "9\n"           // base camp: Scenario submenu
-        "4\n"           // scenario: teams -> teams sub-prompt
+        "4\n"           // scenario: matchup -> matchup sub-prompt
         "play 9\n"      //   team out of range
         "play 4\n"      //   in range but no heroes on team 4
-        "play 1\n"      //   valid: P1 plays team 1
+        "play 1\n"      //   valid: preferred-team metadata only
+        "play 2 1\n"    //   playable-seat form is explicitly unavailable
         "move 0 1\n"    //   slot out of range
         "move 1 9\n"    //   team out of range
         "move 1 2\n"    //   valid: slot 1 -> team 2 (§3.8 autosave)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
-        "\n"            //   blank exits teams
+        "\n"            //   blank exits matchup
         "6\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
-        "12\n";         // main: quit
+        "11\n";         // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1164,12 +1165,30 @@ TEST(PlatformHeadless, text_picker_teams_screen_play_and_move_commands)
 
     const std::string out = stdout_capture.restore();
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("--- Matchup ---\n"));
+    EXPECT_EQ(std::string::npos, out.find("--- Teams ---\n"))
+        << "the retired TEAMS title must not remain user-visible";
+    EXPECT_NE(std::string::npos,
+              out.find("The text simulator has no player controls; "
+                       "player mode remains 1.\n"))
+        << "shared 2-4 player settings must be rejected honestly";
+    EXPECT_NE(std::string::npos,
+              out.find("Matchup (simulation has no player controls):"))
+        << "the Matchup prompt must not imply controllable seats";
     EXPECT_NE(std::string::npos, out.find("No heroes on team 9.\n"))
         << "an out-of-range 'play' team must be rejected";
     EXPECT_NE(std::string::npos, out.find("No heroes on team 4.\n"))
         << "'play' onto an unmanned team must be rejected";
-    EXPECT_NE(std::string::npos, out.find("Playing on "))
-        << "'play 1' must re-seat P1 on the starting team";
+    EXPECT_NE(std::string::npos,
+              out.find("Preferred-team metadata is now RED; "
+                       "the text simulator has no player controls.\n"))
+        << "'play 1' must be labeled as metadata, not a controllable seat";
+    EXPECT_NE(std::string::npos,
+              out.find("Player-seat assignments are unavailable in "
+                       "the text simulator.\n"))
+        << "the removed exact-seat form must be rejected clearly";
+    EXPECT_EQ(std::string::npos, out.find(" TEAM (P"))
+        << "text Matchup rows must never claim P# seat ownership";
     EXPECT_NE(std::string::npos, out.find("Invalid slot or team.\n"))
         << "out-of-range 'move' inputs must be rejected";
     EXPECT_NE(std::string::npos, out.find("Moved slot 1 to "))

@@ -89,7 +89,7 @@ public:
     // Display team building menu.
     virtual TeamBuildAction show_team_build();
 
-    // Display a shared submenu (SCENARIO: campaign/level/viewer/teams/
+    // Display a shared submenu (SCENARIO: campaign/level/viewer/matchup/
     // progress; DIFFICULTY: session difficulty + match rules) as a nested
     // presentation loop until Back. Terminal clients reach these from their
     // team-build/main items; the SDL client nests the equivalent blocking

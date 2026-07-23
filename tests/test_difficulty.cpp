@@ -41,7 +41,7 @@ static void cleanup_picker_state()
 // Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
 // (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3 — all
 // back to their defaults) -> BACK -> PLAYER SETTINGS -> exercise every local
-// player count and PVP -> BACK -> quit
+// player count -> BACK -> quit
 //
 // Verifies:
 //   1. The door opens the subscreen (its rows become interactable)
@@ -124,12 +124,8 @@ static int difficulty_injector(void* data)
         interact("1_player");
         SDL_Delay(150);
     }
-    if (has_interactable("pvp_allied")) {
-        interact("pvp_allied");
-        SDL_Delay(150);
-        interact("pvp_allied");
-        SDL_Delay(150);
-    }
+    EXPECT_FALSE(has_interactable("pvp_allied"))
+        << "per-level team choices belong to Base Camp";
     interact("player_settings_back");
     wait_for_interactable("continue_game", 5000);
 

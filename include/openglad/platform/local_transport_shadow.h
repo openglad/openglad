@@ -27,9 +27,9 @@ class GameSession;
 struct SessionState;
 
 // One local seat of a networked machine: the GLOBAL player_index this seat's
-// view follows and the GAMEPLAY team the view renders for. Together mode makes
-// seats share the first active authoritative team; it never recolors fighters.
-// Seat order == view order == InputState slot order.
+// view follows and the explicit GAMEPLAY team the view renders for. Assigning
+// a seat never recolors fighters. Seat order == view order == InputState slot
+// order.
 struct LocalSeatBinding {
     std::size_t player_index = 0;
     short team = 0;

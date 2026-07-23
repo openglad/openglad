@@ -32,21 +32,25 @@ SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 
 ## Match setup
 
-Two settings appear in the TEAMS screen (team build → SCENARIO → TEAMS)
-when the CTF campaign is active (host-only in networked play; they ride the
-lobby like the PVP toggle):
+Three CTF match settings appear in **MATCHUP**
+(Base Camp → SCENARIO → MATCHUP) when the CTF campaign is active. In
+networked play, only the host can change them, and the lobby synchronizes them
+to every client:
 
 - **CTF Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads.
 - **Capture Limit** — `Map default` uses the map's authored limit
   (3 unless the map says otherwise; the CROSSFIRE finale plays to 5),
   or force 1–10.
+- **Scenario Troops** — keep the level's authored fighters, or field only
+  the players' selected company fighters.
 
-**Seat Mode: Together** makes every human seat share the first active seat's
-control team; **Seat Mode: Split** lets each seat use its selected team. A fighter's
-color always remains its combat allegiance, independent of seat mode. All of
-it works locally, split-screen, networked, on the dedicated server, and in the
-text/curses clients.
+Assign player teams with the **SEATS** rail in Base Camp. Each local **P#**
+card cycles independently: put several seats on one team for co-op, or spread
+them across teams for a versus or mixed-team match. A fighter's color remains
+its combat allegiance; changing a player-seat assignment does not recolor the
+company roster. The assignments work locally, in split-screen and networked
+games, and through the dedicated server.
 
 ## The maps
 
@@ -68,8 +72,10 @@ walks and dense fights won):
 | 509 | CTF: CROSSFIRE | 4 | 60×60 | original — pinwheel alleys, the finale (plays to 5 caps) |
 
 Maps authored for more teams than the match fields simply mothball the extra
-bases. The campaign loops: winning CROSSFIRE (509) wraps the rotation back
-to FIRST BLOOD (500).
+bases. An explicit team count takes the first N authored flag teams in team-ID
+order, so a sparse custom map with flags on teams 0, 2, and 3 uses teams 0 and
+2 in a two-team match. The campaign loops: winning CROSSFIRE (509) wraps the
+rotation back to FIRST BLOOD (500).
 
 ## AI
 

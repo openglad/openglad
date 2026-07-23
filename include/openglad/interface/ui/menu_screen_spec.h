@@ -162,8 +162,8 @@ struct MenuScreenSpec {
     EnterTransition enter = EnterTransition::None;
     int default_highlight = 0;
     bool right_click_enabled = false;
-    // Subscreens whose BACK carries MENU_REDRAW (view team / TEAMS / the
-    // slot menus): the loop must END on a redraw-bearing retvalue — checked
+    // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM / MATCHUP / the
+    // retired slot menus): the loop must END on a redraw-bearing retvalue — checked
     // right where the legacy loops checked, after handle_menu_nav and
     // BEFORE reset_buttons could consume it — and run_menu_screen returns
     // MENU_REDRAW from that break. Screens whose nested subscreens return
@@ -282,9 +282,9 @@ const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
 
-// PLAYER SETTINGS: local player count, PVP relationship, and the door into
-// per-player control modes/keymaps, plus their scoped reset. Multiplayer-
-// disabled builds keep the same door and RESET CONTROLS, but omit seat/PVP.
+// PLAYER SETTINGS: local player count and the door into per-player control
+// modes/keymaps, plus their scoped reset. Team assignment lives in Base Camp;
+// multiplayer-disabled builds keep the same controls door and reset.
 const MenuScreenSpec& player_settings_menu_screen_spec();
 const MenuScreenSpec& player_settings_menu_screen_spec_mp();
 const MenuScreenSpec& player_settings_menu_screen_spec_nomp();
@@ -316,6 +316,13 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
+    // The live lobby's globally indexed player seats, sorted by player_index,
+    // plus a four-card page window for the Base Camp assignment rail. Unlike
+    // character TEAM colors above, these assignments are transient per-level
+    // player/view ownership and never rewrite a company roster.
+    std::vector<og::sim::LobbyPlayer> seats;
+    std::vector<std::uint8_t> local_seat_indices;
+    PageModel seat_page{};
     // A second accepted deploy toggle of
     // the same display row (same tapped rect resolving to the same save
     // slot) within 250 ms is silently ignored — every touch mistap

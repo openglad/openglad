@@ -29,6 +29,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include "test_interact.h"
@@ -68,7 +69,19 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     void shutdown() override {}
     void sync_from_save() override {}
     void sync_roster_from_save() override {}
-    void sync_settings_from_save() override {}
+    void sync_settings_from_save() override
+    {
+        ++settings_syncs;
+        const screen* const myscreen =
+            og::runtime::current_session->myscreen_;
+        synced_save_level = myscreen->save_data.scen_num;
+        synced_world_level = myscreen->world().id;
+        synced_ctf_team_mask =
+            og::ui::ctf_authored_team_mask_for_loaded_level(
+                myscreen->save_data,
+                myscreen->world(),
+                get_mounted_campaign());
+    }
     void poll_and_apply() override {}
     void set_player_mode(int) override {}
     bool request_start_game() override { return true; }
@@ -101,6 +114,11 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return networked;
     }
+
+    int settings_syncs = 0;
+    short synced_save_level = -1;
+    int synced_world_level = -1;
+    std::uint8_t synced_ctf_team_mask = 0;
 };
 
 // Restores every global a runner invocation can touch (shuffle hygiene).
@@ -560,6 +578,18 @@ bool sweep_keyboard_dead_is_legacy_faithful(const std::string& screen,
     return screen == "progress" && (id == "prev" || id == "next");
 }
 
+// MATCHUP retains these former TEAMS ordinals only as migration landmarks.
+// They are permanently hidden, so they are not live gate variants and do
+// not participate in same-geometry or keyboard-liveness bookkeeping.
+bool sweep_row_is_permanently_dormant(const std::string& screen,
+                                      const std::string& id)
+{
+    if (screen != "teams_menu")
+        return false;
+    return id == "ready" || id == "guy_prev" || id == "guy_next" ||
+        id == "guy_team" || id.starts_with("join_team_");
+}
+
 } // namespace
 
 TEST(MenuEngine, engine_screen_gate_lattice_sweep)
@@ -571,9 +601,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // hooks write hidden state through allbuttons_ when entries are non-null.
     clear_allbuttons();
 
-    // The same-geometry allowance must be EXERCISED, not vacuous: give the
-    // session a one-member roster so the TEAMS guy row (the local half of
-    // the guy_team/cross_control pair) can show in the local variants.
+    // Give Base Camp a real roster row so its dynamic graph exercises both
+    // the roster and the appended seat-assignment rail.
     SaveData& sweep_save = og::runtime::current_session->myscreen_->save_data;
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> sweep_saved_team;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
@@ -585,8 +614,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
 
     // G13 lattice axes: {host} x {networked}. host=false without a network
     // session is the degenerate legacy shape; production non-hosts are
-    // always networked — that variant is what drives the READY/cross-control
-    // halves of the same-geometry pairs.
+    // always networked — that variant drives the Base Camp READY twin and
+    // MATCHUP cross-control.
     struct SweepVariant {
         bool host;
         bool networked;
@@ -609,7 +638,6 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // axis below exercises both halves.
     const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
         {{"go", "ready"},
-         {"cross_control", "guy_team"},
          {"continue_game", "no_company_note"},
          {"load_company", "no_company_note"}};
 
@@ -633,6 +661,9 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                 for (int j = i + 1; j < fresh_count; ++j) {
                     const button& a = fresh[i];
                     const button& b = fresh[j];
+                    if (sweep_row_is_permanently_dormant(spec.name, a.id) ||
+                        sweep_row_is_permanently_dormant(spec.name, b.id))
+                        continue;
                     const bool overlap = a.x < b.x + b.sizex &&
                         b.x < a.x + a.sizex && a.y < b.y + b.sizey &&
                         b.y < a.y + a.sizey;
@@ -809,7 +840,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     og::ui::set_main_menu_company_view_for_tests(true, "");
     EXPECT_GE(engine_screens, 14)
         << "difficulty + the FX trio + display + controls + main options + "
-           "main menu + the team-build cluster (base camp, SCENARIO, TEAMS) "
+           "main menu + the team-build cluster (base camp, SCENARIO, MATCHUP) "
            "+ hire + train + progress + view level must be engine-hosted "
            "(VIEW TEAM and the slot menus RETIRED with WP4's base camp)";
 }
@@ -1398,19 +1429,73 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).kind);
 }
 
+TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
+{
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    screen& picker_screen = *og::runtime::current_session->myscreen_;
+    SaveData& save = picker_screen.save_data;
+    const std::string original_campaign = save.current_campaign;
+    const short original_level = save.scen_num;
+    const std::string original_mount = get_mounted_campaign();
+
+    struct RestorePickerLevel
+    {
+        screen& picker_screen;
+        SaveData& save;
+        std::string campaign;
+        short level;
+        std::string mount;
+
+        ~RestorePickerLevel()
+        {
+            save.current_campaign = campaign;
+            save.scen_num = level;
+            if (!mount.empty())
+                save.current_campaign = mount;
+            (void)og::ui::sync_campaign_mount_to_save(save);
+            save.current_campaign = campaign;
+            picker_screen.world().id = level;
+            (void)picker_screen.load_level();
+        }
+    } restore{picker_screen, save, original_campaign, original_level,
+              original_mount};
+
+    save.current_campaign = "org.openglad.ctf";
+    save.scen_num = 500;
+    ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
+
+    og::ui::BaseCampScreenState state;
+    state.last_level_id = original_level;
+    const og::ui::MenuScreenSpec* const spec =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec);
+    ASSERT_NE(nullptr, spec->frame_tick);
+    ASSERT_TRUE(spec->frame_tick(&state, 1));
+
+    EXPECT_EQ(1, lobby.settings_syncs);
+    EXPECT_EQ(save.scen_num, lobby.synced_save_level);
+    EXPECT_EQ(save.scen_num, lobby.synced_world_level)
+        << "the map-derived settings echo must run after load_level";
+    EXPECT_NE(0u, lobby.synced_ctf_team_mask)
+        << "CTF Auto must publish the selected map's authored flag teams";
+}
+
 // The exit_on_redraw contract on the migrated cluster: BACK on these
 // subscreens carries MENU_REDRAW and must END the screen (the parent loop
 // keeps running), while MENU_EXIT-bearing exits still propagate.
 TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
 {
-    // TEAMS: BACK carries MENU_REDRAW (redraw-exit); MENU_EXIT propagates.
+    // MATCHUP: BACK carries MENU_REDRAW (redraw-exit); MENU_EXIT propagates.
     const og::ui::MenuScreenSpec* teams =
         og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
     ASSERT_NE(nullptr, teams);
     EXPECT_TRUE(teams->exit_on_redraw);
     EXPECT_EQ(MENU_EXIT, teams->exit_value);
     EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, teams->remote_start);
-    EXPECT_NE(nullptr, teams->frame_tick) << "TEAMS level-reload guard";
+    EXPECT_NE(nullptr, teams->frame_tick) << "MATCHUP level-reload guard";
 
     // SCENARIO: nested subscreens return MENU_REDRAW for reset_buttons to
     // consume — exit_on_redraw must stay FALSE or every nested return would
@@ -1853,18 +1938,19 @@ TEST(MenuEngine, player_settings_registry_and_variant_shapes)
 
     const og::ui::MenuScreenSpec& mp =
         og::ui::player_settings_menu_screen_spec_mp();
-    ASSERT_EQ(8, mp.row_count);
+    ASSERT_EQ(7, mp.row_count);
     EXPECT_STREQ("player_settings_back", mp.rows[0].id);
     for (int i = 1; i <= 4; ++i) {
         EXPECT_EQ(ButtonAction::SetPlayerMode, mp.rows[i].action);
         EXPECT_EQ(i, mp.rows[i].arg);
     }
-    EXPECT_STREQ("pvp_allied", mp.rows[5].id);
-    EXPECT_EQ(ButtonAction::AlliedMode, mp.rows[5].action);
-    EXPECT_STREQ("player_controls", mp.rows[6].id);
-    EXPECT_EQ(ButtonAction::OpenControlSettings, mp.rows[6].action);
-    EXPECT_STREQ("reset_controls", mp.rows[7].id);
-    EXPECT_EQ(ButtonAction::RestoreDefaultControls, mp.rows[7].action);
+    EXPECT_STREQ("player_controls", mp.rows[5].id);
+    EXPECT_EQ(ButtonAction::OpenControlSettings, mp.rows[5].action);
+    EXPECT_STREQ("reset_controls", mp.rows[6].id);
+    EXPECT_EQ(ButtonAction::RestoreDefaultControls, mp.rows[6].action);
+    for (int i = 0; i < mp.row_count; ++i)
+        EXPECT_NE(ButtonAction::AlliedMode, mp.rows[i].action)
+            << "per-level seat allegiance belongs in Base Camp";
 
     const og::ui::MenuScreenSpec& nomp =
         og::ui::player_settings_menu_screen_spec_nomp();
@@ -1924,8 +2010,8 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
                              "mainmenu_nomp_web");
 }
 
-// The player-count/PVP bindings moved intact to PLAYER SETTINGS; the main
-// screen retains only the BEGIN NEW GAME pixie art face.
+// Player count remains in PLAYER SETTINGS; per-level team assignment lives
+// in Base Camp. The main screen retains only the BEGIN NEW GAME pixie art.
 TEST(MenuEngine, main_menu_binding_pins)
 {
     const og::ui::MenuScreenSpec& mp = og::ui::main_menu_screen_spec_mp();
@@ -1969,21 +2055,13 @@ TEST(MenuEngine, main_menu_binding_pins)
             << players.rows[i].id;
     }
 
-    // Seat mode remains SPECTATOR at numplayers==0, otherwise uses the shared
-    // control-seat formatter (combat allegiance comes from roster colors).
-    const og::ui::LabelFormatter pvp_formatter =
-        players.rows[5].label_binding.formatter;
-    ASSERT_NE(nullptr, pvp_formatter);
-    SaveData save;
-    og::ui::MenuLabelContext context;
-    context.save = &save;
-    save.numplayers = 0;
-    EXPECT_EQ("SPECTATOR", pvp_formatter(context));
-    save.numplayers = 1;
-    save.allied_mode = 1;
-    EXPECT_EQ("SEATS: TOGETHER", pvp_formatter(context));
-    save.allied_mode = 0;
-    EXPECT_EQ("SEATS: SPLIT", pvp_formatter(context));
+    // No Player Settings row owns a team-assignment formatter anymore.
+    for (int i = 0; i < players.row_count; ++i) {
+        EXPECT_EQ(nullptr, players.rows[i].label_binding.formatter)
+            << players.rows[i].id;
+        EXPECT_NE(ButtonAction::AlliedMode, players.rows[i].action)
+            << players.rows[i].id;
+    }
 
     // Main menu and no-MP player settings carry no player-specific bindings.
     for (const og::ui::MenuScreenSpec* spec :

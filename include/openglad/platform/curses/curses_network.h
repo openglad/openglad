@@ -10,6 +10,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -56,9 +57,18 @@ public:
     virtual void cancel() = 0;
     // True once the user has cancelled (so the lobby loop can stop polling).
     virtual bool cancelled() const { return false; }
-    // Move THIS peer (all of its characters) to `team` via
-    // LobbyTeamChangeMessage. Returns true when the lobby landed on it.
+    // Compatibility shorthand for moving this machine's first seat.
     virtual bool request_team_change(short team) = 0;
+    // Move one owned seat to `team`. player_index is the current display
+    // handle; implementations resolve it to the server-issued stable seat ID
+    // from the recipient-specific LobbyState and reject foreign/stale values.
+    virtual bool request_seat_team_change(std::uint8_t player_index,
+                                          short team) = 0;
+    virtual bool request_seat_team_change(std::uint8_t player_index,
+                                          og::sim::LobbySeatId seat_id,
+                                          short team) = 0;
+    // This machine's current global player indices, in local seat order.
+    virtual std::vector<std::uint8_t> local_player_indices() const = 0;
     // Toggle this peer's informational ready flag (LobbyReadyMessage).
     virtual bool set_ready(bool ready) = 0;
     // This peer's current replicated ready flag.

@@ -323,32 +323,46 @@ TEST(CursesPickerClient, difficulty_cycles_on_select)
 
 // --- player count --------------------------------------------------------
 
-// The "N Player" items set numplayers via the shared set_player_count.
-TEST(CursesPickerClient, player_count_cycles)
+// A terminal process owns one local player. Shared-menu choices for 2-4 are
+// retained for SDL parity, but curses must reject them clearly and stay at 1.
+TEST(CursesPickerClient, player_count_rejects_extra_local_players)
 {
     PickerFixture f;
-    for (int n : {4, 2, 1}) {
+    for (int n : {4, 3, 2}) {
         const auto* item = og::ui::find_picker_menu_item(
             PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, n);
         ASSERT_NE(item, nullptr) << "missing player-mode item for " << n;
         dismiss(f.t());
         f.client.handle_menu_item(PickerMenuId::Main, *item);
-        EXPECT_EQ(static_cast<int>(f.save().numplayers), n);
+        EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
+        EXPECT_NE(f.t().dump().find("supports one local player"),
+                  std::string::npos) << f.t().dump();
     }
+
+    const auto* one = og::ui::find_picker_menu_item(
+        PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 1);
+    ASSERT_NE(one, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Main, *one);
+    EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
+    EXPECT_NE(f.t().dump().find("Player mode set to 1"),
+              std::string::npos) << f.t().dump();
 }
 
-// --- allied mode ---------------------------------------------------------
+// --- seat assignment -----------------------------------------------------
 
-TEST(CursesPickerClient, allied_mode_toggles)
+// Seat teams are chosen per level from Base Camp now; Player Settings no
+// longer exposes the legacy Together/Split toggle.
+TEST(CursesPickerClient, main_menu_does_not_expose_seat_mode)
 {
     PickerFixture f;
-    const bool before = og::ui::is_allied_mode(f.save());
     const auto* item = og::ui::find_picker_menu_item(
         PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode);
-    ASSERT_NE(item, nullptr);
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::Main, *item);
-    EXPECT_NE(og::ui::is_allied_mode(f.save()), before);
+    EXPECT_EQ(item, nullptr);
+
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::Main);
+    EXPECT_EQ(f.t().dump().find("Seat Mode"), std::string::npos);
 }
 
 TEST(CursesPickerClient, level_edit_notice_renders)
@@ -1306,30 +1320,32 @@ TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
     EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
 }
 
-// --- Teams screen ----------------------------------------------------------
+// --- Matchup screen --------------------------------------------------------
 
-// Enter on a character cycles its team; "Play on {COLOR}" re-seats P1.
-// The Teams item lives in the Scenario submenu now.
-TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
+// Enter on a character cycles its team; the leading P# row independently
+// cycles that local seat. The Matchup item lives in the Scenario submenu.
+TEST(CursesPickerClient, matchup_screen_cycles_character_and_sets_my_team)
 {
     PickerFixture f;
-    const auto* teams_item = og::ui::find_picker_menu_item(
+    const auto* matchup_item = og::ui::find_picker_menu_item(
         PickerMenuId::Scenario, PickerMenuCommand::Teams);
-    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(matchup_item, nullptr);
+    EXPECT_EQ(matchup_item->label, "Matchup");
     ASSERT_EQ(1, team_count(f.save()));
     ASSERT_EQ(0, (int)f.save().team_list[0]->teamnum);
     ASSERT_EQ(0, (int)f.save().my_team);
 
-    // 1st selectable = "Play on RED", 2nd = the character: cycle the
-    // character onto GREEN, then take the GREEN seat, then leave.
+    // 1st selectable = "P1 plays RED", 2nd = the character: cycle the
+    // character onto GREEN, then cycle P1 onto GREEN, then leave.
     pick(f.t(), 1);                      // character row -> team 0 -> 1
-    pick(f.t(), 0);                      // "Play on GREEN" (team 1)
-    f.t().push_special(KeyCode::Escape); // leave the teams screen
-    f.client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+    pick(f.t(), 0);                      // "P1 plays GREEN" (team 1)
+    f.t().push_special(KeyCode::Escape); // leave the Matchup screen
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
 
     EXPECT_EQ(1, (int)f.save().team_list[0]->teamnum);
     EXPECT_EQ(1, (int)f.save().my_team);
     const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Matchup"), std::string::npos) << dump;
     EXPECT_NE(dump.find("GREEN TEAM (P1) 1 HEROES"), std::string::npos) << dump;
 
     // §3.8 hook inventory row "team cycle": the cycle AUTOSAVED the company
@@ -1344,28 +1360,88 @@ TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
         << "the cycled team must persist via the mutation autosave";
 }
 
-// Playing on an empty team is impossible: empty teams offer no Play entry.
-TEST(CursesPickerClient, teams_screen_offers_play_only_for_manned_teams)
+// A one-player local setup renders its one real, independently selectable seat.
+TEST(CursesPickerClient, matchup_screen_shows_single_real_local_seat)
 {
     PickerFixture f;
-    const auto* teams_item = og::ui::find_picker_menu_item(
+    const auto* matchup_item = og::ui::find_picker_menu_item(
         PickerMenuId::Scenario, PickerMenuCommand::Teams);
-    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(matchup_item, nullptr);
 
     f.t().push_special(KeyCode::Escape);
-    f.client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
 
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Play on RED"), std::string::npos) << dump;
-    EXPECT_EQ(dump.find("Play on BLUE"), std::string::npos)
-        << "no Play entry for an empty team";
+    EXPECT_NE(dump.find("Matchup"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("P1 plays RED"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("P2 plays"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("Play on"), std::string::npos)
+        << "the old P1-only action must not remain";
     EXPECT_NE(dump.find("BLUE TEAM 0 HEROES"), std::string::npos) << dump;
 }
 
-// The teams roster never truncates at the terminal: the list view scrolls
+// A spectator-shaped local save has no seat rows or P# tags.
+TEST(CursesPickerClient, matchup_screen_handles_zero_local_seats)
+{
+    PickerFixture f;
+    const auto* matchup_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(matchup_item, nullptr);
+    f.save().numplayers = 0;
+
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(dump.find("P1 plays"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("(P1)"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("RED TEAM 1 HEROES"), std::string::npos) << dump;
+}
+
+// A loaded SDL save can still say "4 players", but a curses process advertises
+// only its single real seat. Never turn the other three into phantom controls.
+TEST(CursesPickerClient, matchup_screen_ignores_extra_saved_local_seats)
+{
+    PickerFixture f;
+    const auto* matchup_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(matchup_item, nullptr);
+    f.save().numplayers = 4;
+
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("P1 plays RED"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("RED TEAM (P1) 1 HEROES"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("P2 plays"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("(P2"), std::string::npos) << dump;
+}
+
+// numplayers and my_team are old fields; damaged/legacy values still yield at
+// most one honest terminal seat, with an invalid team normalized safely.
+TEST(CursesPickerClient, matchup_screen_handles_damaged_legacy_seat_fields)
+{
+    PickerFixture f;
+    const auto* matchup_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(matchup_item, nullptr);
+    f.save().numplayers = 255;
+    f.save().my_team = 99;
+
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(f.save().my_team, 0);
+    EXPECT_NE(dump.find("P1 plays RED"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("P2 plays"), std::string::npos) << dump;
+}
+
+// The Matchup roster never truncates at the terminal: the list view scrolls
 // to follow the cursor, so a full 24-member team stays reachable AND
 // visible on a short terminal (the curses analogue of the SDL pager).
-TEST(CursesPickerClient, teams_screen_scrolls_to_keep_cursor_visible)
+TEST(CursesPickerClient, matchup_screen_scrolls_to_keep_cursor_visible)
 {
     HeadlessTerminal term{12, 60};
     FakeClock clock;
@@ -1386,16 +1462,16 @@ TEST(CursesPickerClient, teams_screen_scrolls_to_keep_cursor_visible)
         save.team_size++;
     }
 
-    const auto* teams_item = og::ui::find_picker_menu_item(
+    const auto* matchup_item = og::ui::find_picker_menu_item(
         PickerMenuId::Scenario, PickerMenuCommand::Teams);
-    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(matchup_item, nullptr);
 
-    // Cursor starts on "Play on RED"; 10 downs land on the 10th member
+    // Cursor starts on "P1 plays RED"; 10 downs land on the 10th member
     // (Grunt09), far past the 12-row terminal's first page.
     for (int i = 0; i < 10; ++i)
         term.push_char(U'j');
     term.push_special(KeyCode::Escape);
-    client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+    client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
 
     const std::string dump = term.dump();
     EXPECT_NE(dump.find("Grunt09"), std::string::npos)

@@ -1639,7 +1639,7 @@ static const button k_networking_menu_buttons[] =
 // create_save_menu / create_load_menu live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
 
-// TEAMS subscreen (create_teams_menu): engine-hosted — the spec, accessor
+// MATCHUP subscreen (create_teams_menu): engine-hosted — the spec, accessor
 // shim, and entry wrapper live in menu_screen_specs.cpp; the per-frame
 // machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
 // (docs/menu-engine.md).
@@ -2784,12 +2784,13 @@ Sint32 change_hire_teamnum(Sint32 arg)
 
 Sint32 change_allied()
 {
+   // Change our allied mode (on or off)
+   //
+   // Heritage compatibility: current menus no longer expose this global
+   // switch; Base Camp assigns every player seat explicitly. Old saves and
+   // replay/wire records still carry allied_mode, so the retired action stays
+   // callable for compatibility tests and older integrations.
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
-
-   // G8 sweep (design §1.2): the old raw allbuttons_[7] click-side label
-   // write is gone. PLAYER SETTINGS owns the pvp_allied LabelBinding and
-   // re-derives both label surfaces every frame, so the write stays
-   // redundant after the row's move off the main menu.
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -2800,7 +2801,7 @@ Sint32 change_allied()
    return MENU_OK;
 }
 
-// Refresh a TEAMS-subscreen settings button's label in both the live vbutton
+// Refresh a MATCHUP settings button's label in both the live vbutton
 // array and the mutable descriptor row that backs later redraws.
 static void refresh_teamsmenu_button_label(int button_index,
                                            const std::string& label)
@@ -3076,17 +3077,17 @@ Sint32 teams_join_team(Sint32 team)
    if (!picker_lobby_is_networked() &&
        !og::ui::team_has_members(save, static_cast<short>(team)))
    {
-       popup_dialog("TEAMS", "NO HEROES ON\nTHIS TEAM");
+       popup_dialog("MATCHUP", "NO HEROES ON\nTHIS TEAM");
        return MENU_OK;
    }
 
    if (!picker_lobby_request_team_change(static_cast<short>(team)))
-       popup_dialog("TEAMS", "TEAM TAKEN");
+       popup_dialog("MATCHUP", "CHANGE DENIED");
 
    return MENU_OK;
 }
 
-// Advance the TEAMS subscreen's selected roster slot to the next occupied
+// Advance the retired MATCHUP roster cursor to the next occupied
 // slot in `whichway` (+1/-1), wrapping. Returns the new slot, or -1 when the
 // roster is empty.
 static int advance_teams_menu_guy_slot(const SaveData& save, int whichway)
@@ -3141,7 +3142,7 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
        return MENU_OK;
    if (!picker_lobby_save_slot_editable(slot))
    {
-       popup_dialog("TEAMS", "LOCKED");
+       popup_dialog("TEAM", "LOCKED");
        return MENU_OK;
    }
 
@@ -3158,10 +3159,10 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
    return MENU_OK;
 }
 
-// Shared by the TEAMS mirror (origin_button_index < 0) and the base-camp
-// READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the same
-// lobby flag. The TEAMS mirror refreshes its label by index for the
-// same-frame flip; the base-camp twin is re-derived by the engine
+// Shared by the retired MATCHUP mirror (origin_button_index < 0) and the
+// base-camp READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the
+// same lobby flag. The compatibility mirror refreshes its label by index for
+// the same-frame flip; the base-camp twin is re-derived by the engine
 // label/color pass the same frame (a cross-screen index write here would
 // stamp a roster row instead).
 Sint32 teams_toggle_ready(Sint32 origin_button_index)
@@ -3193,7 +3194,7 @@ Sint32 teams_toggle_ready(Sint32 origin_button_index)
    return MENU_OK;
 }
 
-// TEAMS per-team member pager: advance the team's detail slice. The frame
+// MATCHUP per-team detail pager: advance the team's detail slice. The frame
 // loop (compute_teams_menu_state) wraps the raw counter onto the current
 // page count, so a shrinking roster can never strand the page out of range.
 Sint32 teams_page_flip(Sint32 team)

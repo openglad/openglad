@@ -165,6 +165,8 @@ og::sim::LobbyPlayer make_lobby_player_for_test()
 
     og::sim::LobbyPlayer player;
     player.player_index = 1u;
+    player.seat_id = 0x10203040u;
+    player.machine_id = 0x50607080u;
     player.name = "Player One";
     // v8: company display name rides the player; deployed rides the slot.
     player.company = "Ari's Company";
@@ -215,6 +217,7 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.difficulty = 2;
     state.settings.allied_mode = 1;
     state.settings.ctf_team_count = 3;
+    state.settings.ctf_authored_team_mask = 0b1101u;
     state.settings.ctf_capture_limit = 7;
     state.settings.ctf_respawn_ticks = 96;
     state.settings.ctf_strip_scenario_troops = 1;
@@ -224,7 +227,10 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.last_start_denial =
         og::sim::start_denial_reason_value(
             og::sim::StartDenialReason::MachinesNotReady);
+    state.last_start_request_id = 0xa1b2c3d4u;
     state.players.push_back(make_lobby_player_for_test());
+    state.local_seat_ids.push_back(state.players.front().seat_id);
+    state.last_join_request_id = 0x10293847u;
     return state;
 }
 
@@ -245,7 +251,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x08, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x09, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -329,7 +335,10 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
     std::vector<og::sim::LobbyMessage> messages;
 
     og::sim::LobbyMessage join;
-    join.payload = og::sim::LobbyJoinMessage{.player = make_lobby_player_for_test()};
+    join.payload = og::sim::LobbyJoinMessage{
+        .player = make_lobby_player_for_test(),
+        .request_id = 0xabcdef12u,
+    };
     messages.push_back(join);
 
     og::sim::LobbyMessage leave;
@@ -346,12 +355,16 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
     og::sim::LobbyMessage team_change;
     team_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 4u,
+        .seat_id = 0x55667788u,
         .team = 1,
     };
     messages.push_back(team_change);
 
     og::sim::LobbyMessage start_game;
-    start_game.payload = og::sim::LobbyStartGameMessage{.player_index = 5u};
+    start_game.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 5u,
+        .request_id = 0x12345678u,
+    };
     messages.push_back(start_game);
 
     og::sim::LobbyMessage settings_change;
@@ -405,6 +418,7 @@ TEST(NetTransport, lobby_state_roundtrip_and_decode_received_message)
         og::sim::deserialize_lobby_state_message(bytes);
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(expected, *decoded);
+    EXPECT_EQ(0x10293847u, decoded->last_join_request_id);
 
     const og::sim::TypedReceivedMessage typed =
         og::sim::decode_received_message({.peer_id = 6u, .data = bytes});
@@ -923,8 +937,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x08, 0x01, 0x17, 0x00,
-            0x08, 0x08, 0x03,
+            0x09, 0x01, 0x17, 0x00,
+            0x09, 0x09, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -1063,20 +1077,26 @@ TEST(NetTransport, initial_setup_rejects_oversized_controlled_id_count)
 
 TEST(NetTransport, lobby_join_extra_players_roundtrip)
 {
-    // Zero extra seats: byte-level shape is seat 0 plus a 0 count.
+    // Zero extra seats: byte-level shape is the Join nonce, seat 0, then a
+    // zero extra-seat count.
     og::sim::LobbyMessage single;
-    single.payload =
-        og::sim::LobbyJoinMessage{.player = make_lobby_player_for_test()};
+    single.payload = og::sim::LobbyJoinMessage{
+        .player = make_lobby_player_for_test(),
+        .request_id = 0x13572468u,
+    };
     const auto single_bytes = og::sim::serialize_lobby_message(single);
     const auto single_decoded = og::sim::deserialize_lobby_message(single_bytes);
     ASSERT_TRUE(single_decoded.has_value());
     EXPECT_EQ(single, *single_decoded);
-    EXPECT_TRUE(std::get<og::sim::LobbyJoinMessage>(single_decoded->payload)
-                    .extra_players.empty());
+    const auto& decoded_single =
+        std::get<og::sim::LobbyJoinMessage>(single_decoded->payload);
+    EXPECT_TRUE(decoded_single.extra_players.empty());
+    EXPECT_EQ(0x13572468u, decoded_single.request_id);
 
     // Three extra seats (a 4-seat machine) roundtrip in order.
     og::sim::LobbyJoinMessage join;
     join.player = make_lobby_player_for_test();
+    join.request_id = 0x24681357u;
     for (int seat = 1; seat <= 3; ++seat)
     {
         og::sim::LobbyPlayer extra = make_lobby_player_for_test();
@@ -1094,6 +1114,7 @@ TEST(NetTransport, lobby_join_extra_players_roundtrip)
     const auto& decoded_join =
         std::get<og::sim::LobbyJoinMessage>(decoded->payload);
     ASSERT_EQ(3u, decoded_join.extra_players.size());
+    EXPECT_EQ(0x24681357u, decoded_join.request_id);
     EXPECT_EQ("seat#1", decoded_join.extra_players[0].name);
     EXPECT_EQ(3, decoded_join.extra_players[2].team);
 
@@ -2468,11 +2489,18 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 
     og::sim::LobbyMessage team_change;
     team_change.payload =
-        og::sim::LobbyTeamChangeMessage{.player_index = 1u, .team = 3};
+        og::sim::LobbyTeamChangeMessage{
+            .player_index = 1u,
+            .seat_id = player.seat_id,
+            .team = 3,
+        };
     messages.push_back(team_change);
 
     og::sim::LobbyMessage start_game;
-    start_game.payload = og::sim::LobbyStartGameMessage{.player_index = 1u};
+    start_game.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 1u,
+        .request_id = 0x87654321u,
+    };
     messages.push_back(start_game);
 
     og::sim::LobbyMessage settings_change;
@@ -2502,21 +2530,43 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v8): 4-byte transport
+    // Wire layout of an empty LobbyState (protocol v9): 4-byte transport
     // header, then the settings block (4-byte empty campaign string + 11 i16
-    // fields: scenario, difficulty, allied mode, the four CTF settings, the
-    // three difficulty submenu settings, and cross_control = 26 bytes), then
-    // the 1-byte host player id and the 1-byte last_start_denial echo — so the
-    // player-count u32 sits at offset 32.
+    // fields and the authored-team-mask u8 = 27 bytes), then the 1-byte host
+    // player id, 1-byte last_start_denial echo, and u32 request correlation —
+    // so player-count sits at offset 37. A trailing u8 local-seat-id count
+    // follows the players, then a u32 recipient-specific Join acknowledgement.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 32, 0xffffffffu);
+    write_u32_le(oversized_player_count, 37, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
+
+    auto oversized_local_seat_count = empty_state_bytes;
+    ASSERT_GE(oversized_local_seat_count.size(), sizeof(std::uint32_t) + 1u);
+    const std::size_t local_seat_count_offset =
+        oversized_local_seat_count.size() - sizeof(std::uint32_t) - 1u;
+    oversized_local_seat_count[local_seat_count_offset] =
+        static_cast<std::uint8_t>(MAX_PLAYERS + 1);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(oversized_local_seat_count)
+            .has_value());
+
+    auto truncated_join_ack = empty_state_bytes;
+    truncated_join_ack.pop_back();
+    const std::uint16_t truncated_payload_size =
+        static_cast<std::uint16_t>(
+            truncated_join_ack.size() - og::sim::kTransportHeaderSize);
+    truncated_join_ack[2] =
+        static_cast<std::uint8_t>(truncated_payload_size & 0xffu);
+    truncated_join_ack[3] =
+        static_cast<std::uint8_t>((truncated_payload_size >> 8) & 0xffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(truncated_join_ack).has_value());
 
     og::sim::LobbyPlayer player;
     player.player_index = 0u;
@@ -2527,10 +2577,10 @@ TEST(NetTransport,
     auto oversized_slot_count =
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
-    // First player record (v8): index u8 + empty-name u32 + empty-company u32
-    // + team i16 + ready/host bools = 13 bytes after the count, putting its
-    // slot-count u32 at 49.
-    write_u32_le(oversized_slot_count, 49, 0xffffffffu);
+    // First player record (v9): index u8 + seat-id u32 + machine-id u32 +
+    // empty-name u32 + empty-company u32 + team i16 + ready/host bools =
+    // 21 bytes after the count, putting its slot-count u32 at 62.
+    write_u32_le(oversized_slot_count, 62, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
