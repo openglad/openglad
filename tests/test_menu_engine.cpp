@@ -824,6 +824,8 @@ TEST(MenuEngine, name_entry_spec_shape_and_nav)
     EngineTestGuard guard;
     clear_allbuttons();
     const og::ui::MenuScreenSpec& spec = og::ui::name_entry_menu_screen_spec();
+    EXPECT_TRUE(spec.polls_lobby)
+        << "name entry must not hide a remote host launch";
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
@@ -1967,7 +1969,8 @@ TEST(MenuEngine, main_menu_binding_pins)
             << players.rows[i].id;
     }
 
-    // PVP remains SPECTATOR at numplayers==0, otherwise the shared formatter.
+    // Seat mode remains SPECTATOR at numplayers==0, otherwise uses the shared
+    // control-seat formatter (combat allegiance comes from roster colors).
     const og::ui::LabelFormatter pvp_formatter =
         players.rows[5].label_binding.formatter;
     ASSERT_NE(nullptr, pvp_formatter);
@@ -1978,9 +1981,9 @@ TEST(MenuEngine, main_menu_binding_pins)
     EXPECT_EQ("SPECTATOR", pvp_formatter(context));
     save.numplayers = 1;
     save.allied_mode = 1;
-    EXPECT_EQ("PVP: Ally", pvp_formatter(context));
+    EXPECT_EQ("SEATS: TOGETHER", pvp_formatter(context));
     save.allied_mode = 0;
-    EXPECT_EQ("PVP: Enemy", pvp_formatter(context));
+    EXPECT_EQ("SEATS: SPLIT", pvp_formatter(context));
 
     // Main menu and no-MP player settings carry no player-specific bindings.
     for (const og::ui::MenuScreenSpec* spec :

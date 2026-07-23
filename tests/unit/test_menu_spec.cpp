@@ -92,11 +92,11 @@ TEST(MenuSpec, allied_mode_label_full_cycle)
     ASSERT_NE(nullptr, item);
 
     save.allied_mode = 0;
-    EXPECT_EQ("PVP: Enemy", og::ui::menu_item_label(*item, context_for(save)));
+    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*item, context_for(save)));
     og::ui::toggle_allied_mode(save);
-    EXPECT_EQ("PVP: Ally", og::ui::menu_item_label(*item, context_for(save)));
+    EXPECT_EQ("SEATS: TOGETHER", og::ui::menu_item_label(*item, context_for(save)));
     og::ui::toggle_allied_mode(save);
-    EXPECT_EQ("PVP: Enemy", og::ui::menu_item_label(*item, context_for(save)));
+    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*item, context_for(save)));
 }
 
 TEST(MenuSpec, ctf_setting_labels_full_cycles)
@@ -240,7 +240,7 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
 
     // A save-backed binding without a save falls back to the fixed label.
     MenuLabelContext no_save;
-    EXPECT_EQ("PVP Mode", og::ui::menu_item_label(*allied, no_save));
+    EXPECT_EQ("Seat Mode", og::ui::menu_item_label(*allied, no_save));
 
     // Spectator context does not alter any current label (documents Layer-E
     // behavior; Layer F adds spectator-aware bindings).
@@ -248,7 +248,7 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
     MenuLabelContext spectator = context_for(save);
     spectator.spectator = true;
     EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, spectator));
-    EXPECT_EQ("PVP: Enemy", og::ui::menu_item_label(*allied, spectator));
+    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*allied, spectator));
 }
 
 // --- cancel semantics -----------------------------------------------------

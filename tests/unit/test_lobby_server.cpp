@@ -128,7 +128,8 @@ private:
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
-                                      std::int8_t family)
+                                      std::int8_t family,
+                                      std::int16_t team = 0)
 {
     og::sim::LobbyCharacterData character;
     character.guy_id = guy_id;
@@ -140,6 +141,7 @@ og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
     character.intelligence = 13;
     character.armor = 14;
     character.level = 3;
+    character.teamnum = team;
 
     return {
         .slot_index = slot_index,
@@ -328,7 +330,8 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ("Archer", equivalent.team_list[2].character.name);
     EXPECT_EQ(0, equivalent.team_list[0].character.teamnum);
     EXPECT_EQ(0, equivalent.team_list[1].character.teamnum);
-    EXPECT_EQ(1, equivalent.team_list[2].character.teamnum);
+    EXPECT_EQ(0, equivalent.team_list[2].character.teamnum)
+        << "the guest seat team must not repaint its red fighter";
 }
 
 TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
@@ -564,14 +567,15 @@ TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_EQ(2, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ(2, server.state().players[1].character_slots[0].character.teamnum);
+    EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum)
+        << "changing a seat never changes combat allegiance";
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), server.state());
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
     ASSERT_EQ(2u, equivalent.team_list.size());
-    EXPECT_EQ(2, equivalent.team_list[1].character.teamnum);
+    EXPECT_EQ(0, equivalent.team_list[1].character.teamnum);
 
     transport.clear_sent_messages();
     og::sim::LobbyMessage leave_message;
@@ -875,7 +879,7 @@ TEST(LobbyServer, join_overflow_force_benches_instead_of_truncating)
     ASSERT_EQ(24u, equivalent.team_list.size());
     EXPECT_EQ(0u, equivalent.team_list.front().slot_index);
     EXPECT_EQ(23u, equivalent.team_list.back().slot_index);
-    EXPECT_EQ(1, equivalent.team_list.back().character.teamnum);
+    EXPECT_EQ(0, equivalent.team_list.back().character.teamnum);
 }
 
 TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_state)
@@ -993,7 +997,7 @@ TEST(LobbyServer,
               bindings[1]);
 }
 
-TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
+TEST(LobbyServer, allied_mode_preserves_combat_colors_but_shares_seat_team)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
@@ -1003,12 +1007,14 @@ TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
 
     transport.queue_lobby_message(
         11u,
-        make_join_message("Host", 2, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+        make_join_message("Host", 2,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 2)}));
     server.poll_incoming_messages();
 
     transport.queue_lobby_message(
         22u,
-        make_join_message("Guest", 3, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+        make_join_message("Guest", 3,
+                          {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER, 3)}));
     server.poll_incoming_messages();
 
     og::sim::LobbySettings allied_settings;
@@ -1032,14 +1038,14 @@ TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
         server.build_save_data_equivalent();
     ASSERT_EQ(2u, equivalent.team_list.size());
     EXPECT_EQ(1, equivalent.allied_mode);
-    EXPECT_EQ(0, equivalent.team_list[0].character.teamnum);
-    EXPECT_EQ(0, equivalent.team_list[1].character.teamnum);
+    EXPECT_EQ(2, equivalent.team_list[0].character.teamnum);
+    EXPECT_EQ(3, equivalent.team_list[1].character.teamnum);
 
     const std::vector<og::sim::LobbyPlayerBinding> bindings =
         server.build_player_bindings();
     ASSERT_EQ(2u, bindings.size());
-    EXPECT_EQ(0, bindings[0].team);
-    EXPECT_EQ(0, bindings[1].team);
+    EXPECT_EQ(2, bindings[0].team);
+    EXPECT_EQ(2, bindings[1].team);
 }
 
 TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
@@ -1057,7 +1063,7 @@ TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
                 11u,
                 make_join_message(
                     "Local", team,
-                    {make_slot(0u, 100, "Local Guy", FAMILY_SOLDIER)}));
+                    {make_slot(0u, 100, "Local Guy", FAMILY_SOLDIER, team)}));
             server.poll_incoming_messages();
 
             og::sim::LobbySettings settings;
@@ -1086,6 +1092,51 @@ TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
                 << "allied=" << allied_mode << " team=" << team;
         }
     }
+}
+
+TEST(LobbyServer, local_together_shares_first_seat_without_recoloring_roster)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Local P1", 0,
+                          {make_slot(0u, 100, "Red One", FAMILY_SOLDIER, 0),
+                           make_slot(2u, 300, "Red Two", FAMILY_CLERIC, 0)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Local P2", 1,
+                          {make_slot(1u, 200, "Yellow", FAMILY_ARCHER, 1)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings settings;
+    settings.campaign_id = "org.openglad.gladiator";
+    settings.scenario_id = 1;
+    settings.difficulty = 1;
+    settings.allied_mode = 1;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(settings),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
+    const auto equivalent = server.build_save_data_equivalent();
+    ASSERT_EQ(3u, equivalent.team_list.size());
+    EXPECT_EQ(0, equivalent.team_list[0].character.teamnum);
+    EXPECT_EQ(1, equivalent.team_list[1].character.teamnum);
+    EXPECT_EQ(0, equivalent.team_list[2].character.teamnum);
+
+    const auto bindings = server.build_player_bindings();
+    ASSERT_EQ(2u, bindings.size());
+    EXPECT_EQ(0, bindings[0].team);
+    EXPECT_EQ(0, bindings[1].team)
+        << "Together gives P2 another red controller, never the yellow fighter";
 }
 
 namespace {
@@ -1343,7 +1394,7 @@ TEST(LobbyServer, classic_lobby_keeps_exclusive_teams)
     EXPECT_EQ(0, server.state().players[0].team);
     EXPECT_EQ(1, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ(1, server.state().players[1].character_slots[0].character.teamnum);
+    EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
 }
 
 TEST(LobbyServer, ctf_team_count_clamps_team_choice)
@@ -1399,7 +1450,7 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     ASSERT_EQ(3, server.state().players[1].team);
 
     // Lowering the CTF team count to 2 strands the guest on team 3: the
-    // server re-resolves it into range and re-stamps the guest's slots.
+    // server re-resolves the seat into range without repainting the fighter.
     transport.clear_sent_messages();
     transport.queue_lobby_message(
         11u, make_settings_change_message(make_ctf_lobby_settings(2)));
@@ -1409,8 +1460,7 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     EXPECT_GE(server.state().players[1].team, 0);
     EXPECT_LT(server.state().players[1].team, 2);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ(server.state().players[1].team,
-              server.state().players[1].character_slots[0].character.teamnum);
+    EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), server.state());
 }
@@ -1441,7 +1491,7 @@ TEST(LobbyServer, settings_change_to_classic_deshares_teams)
 
     // Host switches the campaign back to classic: exclusivity returns, so
     // the later-connected player must be moved off the shared team (with
-    // slots re-stamped) and the new state broadcast.
+    // its fighter color unchanged) and the new state broadcast.
     og::sim::LobbySettings classic = make_ctf_lobby_settings();
     classic.campaign_id = "org.openglad.gladiator";
     transport.clear_sent_messages();
@@ -1455,8 +1505,7 @@ TEST(LobbyServer, settings_change_to_classic_deshares_teams)
     EXPECT_GE(server.state().players[1].team, 0);
     EXPECT_LT(server.state().players[1].team, 4);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ(server.state().players[1].team,
-              server.state().players[1].character_slots[0].character.teamnum);
+    EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), server.state());
 }
@@ -1485,7 +1534,8 @@ og::sim::LobbyMessage make_multi_seat_join_message(
             static_cast<std::uint8_t>(first_slot_index + seat),
             first_guy_id + static_cast<std::int32_t>(seat),
             "Guy",
-            FAMILY_SOLDIER)};
+            FAMILY_SOLDIER,
+            seat_teams[seat])};
         if (seat == 0)
             join.player = std::move(player);
         else
@@ -1572,10 +1622,11 @@ TEST(LobbyServer, multi_seat_join_enforces_within_peer_distinct_teams)
     EXPECT_NE(state.players[0].team, state.players[1].team);
     EXPECT_GE(state.players[1].team, 0);
     EXPECT_LT(state.players[1].team, MAX_PLAYERS);
-    // Character slots are re-stamped with the resolved seat team.
+    // Resolving a duplicate seat must not repaint its fighter. The crafted
+    // shape is unstartable until the roster is fixed, rather than silently
+    // turning the second red fighter yellow.
     ASSERT_EQ(1u, state.players[1].character_slots.size());
-    EXPECT_EQ(state.players[1].team,
-              state.players[1].character_slots[0].character.teamnum);
+    EXPECT_EQ(0, state.players[1].character_slots[0].character.teamnum);
 }
 
 TEST(LobbyServer, non_allied_lobby_truncates_seats_beyond_the_team_range)
@@ -1779,9 +1830,10 @@ TEST(LobbyServer, save_data_equivalent_tags_owner_per_seat)
     EXPECT_EQ(0u, equivalent.team_list[0].owner_save_slot);
     EXPECT_EQ(1u, equivalent.team_list[1].owner_save_slot);
     EXPECT_EQ(2u, equivalent.team_list[2].owner_save_slot);
-    // Allied gameplay folds every seat onto team 0.
-    for (const auto& slot : equivalent.team_list)
-        EXPECT_EQ(0, slot.character.teamnum);
+    // Allied mode changes seat assignment, never the character's combat team.
+    EXPECT_EQ(0, equivalent.team_list[0].character.teamnum);
+    EXPECT_EQ(1, equivalent.team_list[1].character.teamnum);
+    EXPECT_EQ(2, equivalent.team_list[2].character.teamnum);
 }
 
 // ---------------------------------------------------------------------------
@@ -2300,10 +2352,13 @@ TEST(LobbyServer, zero_deploy_host_starts_when_another_machine_deploys)
     og::sim::LobbyCharacterSlot benched_host =
         make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER);
     benched_host.deployed = false;
+    og::sim::LobbyCharacterSlot deployed_guest =
+        make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER);
+    deployed_guest.character.teamnum = 1;
     transport.queue_lobby_message(
         11u, make_join_message("Host", 0, {benched_host}));
     transport.queue_lobby_message(
-        22u, make_join_message("Guest", 1, {make_slot(0u, 200, "Guest Guy", FAMILY_ARCHER)}));
+        22u, make_join_message("Guest", 1, {deployed_guest}));
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
 
@@ -2321,6 +2376,12 @@ TEST(LobbyServer, zero_deploy_host_starts_when_another_machine_deploys)
         << "only the guest's deployed character enters the match";
     EXPECT_EQ(server.state().players[1].player_index,
               equivalent.team_list[0].owner_player_index);
+
+    const auto bindings = server.build_player_bindings();
+    ASSERT_EQ(2u, bindings.size());
+    EXPECT_EQ(1, bindings[0].team);
+    EXPECT_EQ(1, bindings[1].team)
+        << "Together must use the deployed guest's color when the host is benched";
 }
 
 // §4.3 rule 4 stays GLOBAL under cross-control: an all-benched lobby is

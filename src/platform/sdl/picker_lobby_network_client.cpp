@@ -789,9 +789,11 @@ short resolve_initial_local_team(const SaveData& save)
     return 0;
 }
 
-short gameplay_start_team(short allied_mode, short requested_team) noexcept
+short gameplay_start_team(short allied_mode,
+                          short requested_team,
+                          short shared_team) noexcept
 {
-    return allied_mode != 0 ? 0 : requested_team;
+    return allied_mode != 0 ? shared_team : requested_team;
 }
 
 std::vector<std::string> split_top_level_json_objects(std::string_view text)
@@ -1210,7 +1212,7 @@ og::sim::LobbyPlayer build_local_lobby_player(
             continue;
 
         const auto& member = save.team_list[slot_index];
-        if (member == nullptr || member->teamnum != local_team)
+        if (member == nullptr)
             continue;
 
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
@@ -1275,9 +1277,11 @@ std::vector<short> resolve_local_seat_declaration_teams(
     return teams;
 }
 
-// Build this machine's whole seat list (one LobbyPlayer per local seat). Seat
-// k contributes the save's members on its seat team, so within one machine
-// every roster member lands on exactly one seat.
+// Build this machine's whole seat list (one LobbyPlayer per local seat).
+// Character TEAM is combat allegiance, not ownership or seat assignment.
+// Prefer the matching-color seat for stable ownership tags; colors with no
+// matching local seat belong to seat 0 so every private roster member still
+// enters the lobby exactly once.
 std::vector<og::sim::LobbyPlayer> build_local_lobby_seats(
     const SaveData& save,
     std::string_view base_name,
@@ -1299,6 +1303,29 @@ std::vector<og::sim::LobbyPlayer> build_local_lobby_seats(
             derive_local_seat_name(base_name, seat),
             seat_teams[seat],
             excluded_slots));
+        seats.back().character_slots.clear();
+    }
+
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size();
+         ++slot_index)
+    {
+        if (excluded_slots != nullptr && (*excluded_slots)[slot_index])
+            continue;
+        const auto& member = save.team_list[slot_index];
+        if (member == nullptr)
+            continue;
+
+        const auto matching_seat = std::find(
+            seat_teams.begin(), seat_teams.end(), member->teamnum);
+        const std::size_t owner_seat = matching_seat == seat_teams.end()
+            ? 0u
+            : static_cast<std::size_t>(matching_seat - seat_teams.begin());
+        seats[owner_seat].character_slots.push_back(
+            og::sim::LobbyCharacterSlot{
+                .slot_index = static_cast<std::uint8_t>(slot_index),
+                .character = make_lobby_character_data(*member),
+                .deployed = member->deployed,
+            });
     }
     return seats;
 }
@@ -1325,46 +1352,6 @@ std::vector<const og::sim::LobbyPlayer*> find_local_seats(
         seats.push_back(player);
     }
     return seats;
-}
-
-// Between-levels resume: the go_menu disk reload restores the SOLO-shaped
-// private roster (the win merge banks WORLD-normalized teamnums — team 0
-// under allied) while this machine's lobby seats keep their session teams.
-// build_local_lobby_player partitions the re-joined slots by teamnum, so a
-// reloaded roster left on a non-seat team would re-join with NO character
-// slots and this machine's characters would vanish from the lobby (and the
-// next level). Restore the in-lobby invariant instead — the same member
-// stamping apply_lobby_state_to_save performs: members already on one of the
-// seat teams keep their partition; the rest collapse onto seat 0 (the reload
-// lost any finer multi-seat split; TEAMS can re-partition).
-void restamp_reloaded_members_to_seat_teams(
-    SaveData& save,
-    const std::optional<og::sim::LobbyState>& state,
-    std::string_view player_name,
-    short seat0_team)
-{
-    std::vector<short> seat_teams;
-    if (state.has_value())
-    {
-        for (const og::sim::LobbyPlayer* const seat :
-             find_local_seats(*state, player_name))
-        {
-            seat_teams.push_back(seat->team);
-        }
-    }
-    if (seat_teams.empty())
-        seat_teams.push_back(seat0_team);
-
-    for (auto& member : save.team_list)
-    {
-        if (member == nullptr)
-            continue;
-        if (std::find(seat_teams.begin(), seat_teams.end(),
-                      member->teamnum) == seat_teams.end())
-        {
-            member->teamnum = seat_teams.front();
-        }
-    }
 }
 
 std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
@@ -1480,9 +1467,6 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     {
         og::sim::LobbyCharacterSlot compacted = *slot.slot;
         compacted.slot_index = slot.save_slot_index;
-        compacted.character.teamnum = gameplay_start_team(
-            state.settings.allied_mode,
-            compacted.character.teamnum);
         compacted.owner_player_index =
             slot.player != nullptr ? slot.player->player_index : 0xffu;
         // slot_index is the owner's ORIGINAL private-save slot. The applied
@@ -1561,7 +1545,7 @@ LobbyStateApplyResult apply_lobby_state_to_save(
                     continue;
                 }
                 save.team_list[private_slot]->teamnum =
-                    static_cast<short>(seat->team);
+                    slot.character.teamnum;
                 // §4.2 [NET-F2] reconciliation: the server may have
                 // force-benched overflow slots (24-cap). Adopt the echoed
                 // authoritative deploy flag into the private roster so the
@@ -1887,9 +1871,6 @@ PendingLocalLobbyState build_pending_local_lobby_state(
         local_player.team = seat_team;
         local_player.ready = false;
         local_player.is_host = false;
-        for (auto& slot : local_player.character_slots)
-            slot.character.teamnum = seat_team;
-
         merged.state.players.push_back(std::move(local_player));
     }
     return merged;
@@ -2238,8 +2219,8 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(resolve_initial_local_team(save) == 2);
     SaveData empty_save;
     check(resolve_initial_local_team(empty_save) == 0);
-    check(gameplay_start_team(0, 3) == 3);
-    check(gameplay_start_team(1, 3) == 0);
+    check(gameplay_start_team(0, 3, 2) == 3);
+    check(gameplay_start_team(1, 3, 2) == 2);
 
     std::array<bool, MAX_TEAM_SIZE> excluded_slots{};
     excluded_slots.fill(false);
@@ -2247,8 +2228,9 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     og::sim::LobbyPlayer local_player =
         build_local_lobby_player(save, "local-player", 2, &excluded_slots);
     check(local_player.name == "local-player" &&
-          local_player.character_slots.size() == 1 &&
-          local_player.character_slots[0].slot_index == 0);
+          local_player.character_slots.size() == 2 &&
+          local_player.character_slots[0].slot_index == 0 &&
+          local_player.character_slots[1].slot_index == 3);
     og::sim::LobbyMessage join_message =
         make_join_message(save, "local-player", 2, &excluded_slots);
     check(join_message.kind() == og::sim::LobbyMessageKind::Join);
@@ -2284,43 +2266,8 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           multi_join.extra_players.size() == 1 &&
           multi_join.extra_players[0].name == "local-player#1");
 
-    // Between-levels restamp matrix (restamp_reloaded_members_to_seat_teams):
-    // the branch the live e2e cannot reach — no replicated state => every
-    // member collapses onto the seat-0 fallback — plus the two-seat shape
-    // (partition kept on seat teams, the rest collapse onto seat 0). The
-    // [NET-R5] editability-matrix self-check convention.
-    {
-        SaveData restamp_save;
-        restamp_save.team_list[0] = make_member(0, "Keep A", 2, 21);
-        restamp_save.team_list[1] = make_member(1, "Collapse", 5, 22);
-        restamp_save.team_list[2] = make_member(2, "Keep B", 3, 23);
-        restamp_save.team_size = 3;
-
-        restamp_reloaded_members_to_seat_teams(
-            restamp_save, std::nullopt, "rs", 2);
-        check(restamp_save.team_list[0]->teamnum == 2 &&
-              restamp_save.team_list[1]->teamnum == 2 &&
-              restamp_save.team_list[2]->teamnum == 2);
-
-        restamp_save.team_list[0]->teamnum = 2;
-        restamp_save.team_list[1]->teamnum = 5;
-        restamp_save.team_list[2]->teamnum = 3;
-        og::sim::LobbyState restamp_state;
-        og::sim::LobbyPlayer restamp_seat0;
-        restamp_seat0.player_index = 4;
-        restamp_seat0.name = "rs";
-        restamp_seat0.team = 2;
-        og::sim::LobbyPlayer restamp_seat1;
-        restamp_seat1.player_index = 5;
-        restamp_seat1.name = "rs#1";
-        restamp_seat1.team = 3;
-        restamp_state.players = {restamp_seat0, restamp_seat1};
-        restamp_reloaded_members_to_seat_teams(
-            restamp_save, restamp_state, "rs", 0);
-        check(restamp_save.team_list[0]->teamnum == 2 &&
-              restamp_save.team_list[1]->teamnum == 2 &&
-              restamp_save.team_list[2]->teamnum == 3);
-    }
+    // Keep the state-equivalent exercise below to one local + one remote slot.
+    local_player.character_slots.resize(1);
 
     og::sim::LobbyMessage settings_message = make_settings_message(save);
     check(settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
@@ -2353,7 +2300,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           equivalent.scen_num == 1 &&
           equivalent.numplayers == 1 &&
           equivalent.team_list.size() == 2 &&
-          equivalent.team_list[0].character.teamnum == 0 &&
+          equivalent.team_list[0].character.teamnum == 2 &&
           equivalent.team_list[0].slot_index == 0 &&
           equivalent.team_list[1].slot_index == 1 &&
           equivalent.team_list[0].owner_save_slot == 0 &&
@@ -2869,6 +2816,8 @@ public:
         // player indices are recomputed on every lobby edit, so an earlier
         // echo could silently drive the wrong walkers.
         const og::sim::LobbyState& authoritative_state = server_->state();
+        const short shared_team =
+            og::sim::shared_allied_gameplay_team(authoritative_state);
         const std::vector<const og::sim::LobbyPlayer*> local_seats =
             og::ui::detail::find_local_seats(authoritative_state, player_name_);
         config.save_data.numplayers = spectator_mode_
@@ -2880,7 +2829,7 @@ public:
             ? static_cast<std::int16_t>(state_->settings.difficulty)
             : static_cast<std::int16_t>(authoritative_state.settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
-                                             local_team_);
+                                             local_team_, shared_team);
         config.is_networked = true;
         config.local_player_index =
             static_cast<std::uint8_t>(authoritative_state.host_player_id);
@@ -2891,7 +2840,7 @@ public:
                 config.local_player_indices.push_back(seat->player_index);
                 config.local_seat_teams.push_back(gameplay_start_team(
                     config.save_data.allied_mode,
-                    static_cast<short>(seat->team)));
+                    static_cast<short>(seat->team), shared_team));
             }
         }
         return config;
@@ -3100,20 +3049,6 @@ public:
         // The LobbyServer locked itself when the previous level started; re-open
         // it so the next round's settings/joins are accepted again.
         server_->unlock_for_new_round();
-
-        // The go_menu disk reload restored the SOLO-shaped private company
-        // (the win merge banks world-normalized teamnums — team 0 under
-        // allied), while this machine's lobby seats keep their session
-        // teams. Restore the in-lobby invariant (private members carry the
-        // session team — the same stamping apply_lobby_state_to_save does)
-        // before re-joining, or build_local_lobby_player's teamnum partition
-        // would filter the re-sent roster down to NOTHING and this machine's
-        // characters would vanish from the between-levels lobby.
-        if (SaveData* const save = current_picker_save())
-        {
-            og::ui::detail::restamp_reloaded_members_to_seat_teams(
-                *save, state_, player_name_, local_team_);
-        }
 
         // Reuse the live connection: re-broadcast the advanced campaign cursor
         // (scen_num) and this host's own roster from the reloaded save0, then
@@ -3512,6 +3447,8 @@ public:
         // lobby edit, so an earlier echo could drive the wrong walkers).
         const std::vector<const og::sim::LobbyPlayer*> local_seats =
             og::ui::detail::find_local_seats(*state_, player_name_);
+        const short shared_team =
+            og::sim::shared_allied_gameplay_team(*state_);
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data =
@@ -3522,7 +3459,7 @@ public:
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
-                                             local_team_);
+                                             local_team_, shared_team);
         config.is_networked = true;
         if (!local_seats.empty())
             config.local_player_index = local_seats.front()->player_index;
@@ -3533,7 +3470,7 @@ public:
                 config.local_player_indices.push_back(seat->player_index);
                 config.local_seat_teams.push_back(gameplay_start_team(
                     config.save_data.allied_mode,
-                    static_cast<short>(seat->team)));
+                    static_cast<short>(seat->team), shared_team));
             }
         }
         return config;
@@ -3728,18 +3665,22 @@ public:
 
         // One connection, one GameClient, N local seat bindings: view/input
         // slot k follows the global player_index its seat was assigned, and
-        // renders that seat's GAMEPLAY team (allied folds every seat to 0).
+        // renders that seat's gameplay team (Together shares the first active
+        // authoritative team without recoloring any fighter).
         std::vector<og::runtime::LocalSeatBinding> local_seats;
         if (state_.has_value())
         {
             const short allied_mode = state_->settings.allied_mode;
+            const short shared_team =
+                og::sim::shared_allied_gameplay_team(*state_);
             for (const og::sim::LobbyPlayer* const seat :
                  og::ui::detail::find_local_seats(*state_, player_name_))
             {
                 local_seats.push_back(og::runtime::LocalSeatBinding{
                     .player_index = seat->player_index,
                     .team = gameplay_start_team(
-                        allied_mode, static_cast<short>(seat->team)),
+                        allied_mode, static_cast<short>(seat->team),
+                        shared_team),
                 });
             }
         }
@@ -3788,20 +3729,6 @@ public:
         {
             initialize_from_save();
             return;
-        }
-
-        // The go_menu disk reload restored the SOLO-shaped private company
-        // (the win merge banks world-normalized teamnums — team 0 under
-        // allied), while this machine's lobby seats keep their session
-        // teams. Restore the in-lobby invariant (private members carry the
-        // session team — the same stamping apply_lobby_state_to_save does)
-        // before re-joining, or build_local_lobby_player's teamnum partition
-        // would filter the re-sent roster down to NOTHING and this machine's
-        // characters would vanish from the between-levels lobby.
-        if (SaveData* const save = current_picker_save())
-        {
-            og::ui::detail::restamp_reloaded_members_to_seat_teams(
-                *save, state_, player_name_, local_team_);
         }
 
         // Reuse the still-open socket: re-send this peer's join from the

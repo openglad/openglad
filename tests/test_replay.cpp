@@ -95,7 +95,10 @@ void configure_replay_team(SaveData& save, int player_count)
     save.scen_num = kReplayLevel;
     save.my_team = 0;
     save.numplayers = static_cast<unsigned char>(player_count);
-    save.allied_mode = 1;
+    // Exercise four distinct combat teams. Together mode intentionally shares
+    // one seat team and would reject this one-fighter-per-color roster at the
+    // picker because it cannot supply every local seat with a controller.
+    save.allied_mode = 0;
     save.team_size = 0;
 
     constexpr std::array<int, 4> families = {

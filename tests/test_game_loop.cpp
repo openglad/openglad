@@ -1098,7 +1098,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     EXPECT_NE("Yellow Middle",
               game_screen->viewob[1]->control->myguy->name);
     EXPECT_FALSE(game_screen->viewob[0]->control->is_friendly(yellow))
-        << "a yellow company hero must remain attackable by red in Ally mode";
+        << "a yellow company hero must remain attackable by red in Together mode";
     EXPECT_FALSE(yellow->is_friendly(game_screen->viewob[0]->control))
         << "hostility must be symmetric";
     EXPECT_TRUE(game_screen->viewob[0]->control->is_friendly(
@@ -1763,6 +1763,7 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
 
     GameWorld& world = game_screen->world();
     world.delete_objects();
+    const char saved_type = world.type;
 
     auto make_hero = [&world](int family, short team, int user) {
         walker* const actor = world.add_ob(Order::Living, family);
@@ -1818,6 +1819,35 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
     EXPECT_EQ(hero_c->entity_id(),
               og::sim::next_follow_target_id(world, hero_a, true));
 
+    // A selected foreign hero stays selected through its respawn window.
+    // The view points at the watched body, but that must not be mistaken for
+    // this spectator seat's own retained corpse and clear follow state.
+    world.type |= GameWorld::TYPE_CTF;
+    world.ctf.active = true;
+    view->control = hero_a;
+    hero_a->set_dead(1);
+    og::sim::CtfRespawnEntry respawn;
+    respawn.kind = 0;
+    respawn.team = 0;
+    respawn.ticks_left = 30;
+    respawn.walker_entity_id = hero_a->entity_id();
+    world.ctf.respawn_queue.push_back(respawn);
+    og::runtime::detail::update_display_view_follow(
+        follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(nullptr, og::runtime::detail::select_control_for_view(
+                           view, ids, &world, 3u, &follow));
+    hero_a->set_dead(0);
+    world.ctf.respawn_queue.clear();
+    og::runtime::detail::update_display_view_follow(
+        follow, view, 3u, ids, &world);
+    EXPECT_TRUE(follow.engaged);
+    EXPECT_EQ(hero_a->entity_id(), follow.target_entity_id);
+    EXPECT_EQ(hero_a, og::runtime::detail::select_control_for_view(
+                          view, ids, &world, 3u, &follow));
+    view->control = hero_a;
+
     // Dead-target auto-advance: the maintenance pass re-targets the next
     // preferred walker.
     follow.target_entity_id = hero_c->entity_id();
@@ -1853,6 +1883,8 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
         << "a genuinely mapped seat keeps today's authoritative tag stamp";
 
     view->control = saved_control;
+    world.ctf = og::sim::CtfState{};
+    world.type = saved_type;
     world.delete_objects();
 }
 

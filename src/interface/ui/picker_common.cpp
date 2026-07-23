@@ -849,7 +849,7 @@ std::vector<short> derive_local_seat_teams(const SaveData& save)
     teams.reserve(MAX_PLAYERS);
     for (const auto& member : save.team_list)
     {
-        if (!member)
+        if (!member || !member->deployed)
             continue;
         const short team = member->teamnum;
         if (team <= 0 || team >= MAX_PLAYERS)
@@ -859,14 +859,71 @@ std::vector<short> derive_local_seat_teams(const SaveData& save)
     }
 
     const short preferred = save.my_team;
-    if (preferred >= 0 && preferred < MAX_PLAYERS &&
-        team_has_members(save, preferred))
+    const bool preferred_has_deployed = std::any_of(
+        save.team_list.begin(), save.team_list.end(),
+        [preferred](const std::unique_ptr<guy>& member) {
+            return member != nullptr && member->deployed &&
+                member->teamnum == preferred;
+        });
+    if (preferred >= 0 && preferred < MAX_PLAYERS && preferred_has_deployed)
     {
         teams.erase(std::remove(teams.begin(), teams.end(), preferred),
                     teams.end());
         teams.insert(teams.begin(), preferred);
     }
     return teams;
+}
+
+std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
+{
+    const int required_players = std::clamp<int>(save.numplayers, 0, MAX_PLAYERS);
+    if (required_players == 0)
+        return {};
+
+    std::vector<short> teams = derive_local_seat_teams(save);
+    if (static_cast<int>(teams.size()) > required_players)
+        teams.resize(static_cast<std::size_t>(required_players));
+
+    for (short candidate = 0;
+         static_cast<int>(teams.size()) < required_players &&
+             candidate < MAX_PLAYERS;
+         ++candidate)
+    {
+        if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
+            teams.push_back(candidate);
+    }
+
+    if (teams.empty())
+        teams.push_back(0);
+    if (save.allied_mode != 0)
+        teams.assign(static_cast<std::size_t>(required_players), teams.front());
+    return teams;
+}
+
+bool local_seat_teams_have_controls(const SaveData& save,
+                                    std::span<const short> seat_teams)
+{
+    std::array<int, MAX_PLAYERS> available{};
+    for (const auto& member : save.team_list)
+    {
+        if (member == nullptr || !member->deployed || member->teamnum < 0 ||
+            member->teamnum >= MAX_PLAYERS)
+        {
+            continue;
+        }
+        ++available[static_cast<std::size_t>(member->teamnum)];
+    }
+
+    for (const short team : seat_teams)
+    {
+        if (team < 0 || team >= MAX_PLAYERS)
+            return false;
+        int& remaining = available[static_cast<std::size_t>(team)];
+        if (remaining <= 0)
+            return false;
+        --remaining;
+    }
+    return true;
 }
 
 og::data::CompanyAutosaveContext company_autosave_context(
@@ -878,9 +935,8 @@ og::data::CompanyAutosaveContext company_autosave_context(
         return context;
 
     // Owned wallets = every m_totalcash index this machine's mutations spend
-    // from. In a networked lobby the in-memory roster is private to this
-    // machine (apply_lobby_state_to_save stamps session teams onto LOCAL
-    // members only), so its in-range teamnums are the machine's seats;
+    // from. In a networked lobby the in-memory roster remains private to this
+    // machine and each in-range teamnum remains a combat/wallet color;
     // my_team covers hiring into an empty roster. Team 0 is a real wallet
     // index here — unlike derive_local_seat_teams, which is about SEATS.
     if (save.my_team >= 0 && save.my_team < SCORE_TEAM_COUNT)
@@ -969,8 +1025,25 @@ unsigned char base_camp_family_ramp_start(short family)
 
 std::string format_base_camp_gold_label(const SaveData& save)
 {
-    const int team =
-        (save.my_team >= 0 && save.my_team < MAX_PLAYERS) ? save.my_team : 0;
+    // The lobby may remap my_team to a shared seat/control team without
+    // changing this company's combat colors or wallets. Prefer the first
+    // wallet actually represented by the private
+    // roster; only an empty company falls back to the seat team.
+    int team = MAX_PLAYERS;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->teamnum >= 0 &&
+            member->teamnum < MAX_PLAYERS)
+        {
+            team = std::min(team, static_cast<int>(member->teamnum));
+        }
+    }
+    if (team == MAX_PLAYERS)
+    {
+        team = (save.my_team >= 0 && save.my_team < MAX_PLAYERS)
+            ? save.my_team
+            : 0;
+    }
     return clip_chars(
         std::format("GOLD {}",
                     static_cast<unsigned>(
@@ -1488,7 +1561,7 @@ std::string format_difficulty_label(int difficulty)
 
 std::string format_allied_mode_label(const SaveData& save)
 {
-    return is_allied_mode(save) ? "PVP: Ally" : "PVP: Enemy";
+    return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
 }
 
 std::string format_ctf_teams_label(const SaveData& save)

@@ -216,8 +216,8 @@ TEST(SimControlPolicy, policy_off_matches_legacy_across_the_four_shapes)
     fx.add({.team = 1, .user = -1, .hero = true, .owner = 2});
     expect_decisions_match_legacy(fx, "classic");
 
-    // Allied fold: everyone on team 0, one claimed teammate ([NET-R1] shape
-    // with the teammate still claimable-by-nobody), plus a troop.
+    // Shared-team seat shape: everyone is explicitly on team 0, with one
+    // claimed teammate ([NET-R1] shape, still claimable-by-nobody) and a troop.
     fx.clear_walkers();
     fx.world().allied_mode = 1;
     fx.add({.team = 0, .user = -1, .hero = true, .owner = 0, .dead = true});

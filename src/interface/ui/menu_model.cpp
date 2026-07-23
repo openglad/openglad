@@ -23,7 +23,7 @@ constexpr std::array<PickerMenuItem, 13> kMainMenuItems = {{
     // The DIFFICULTY entry is a door into the DIFFICULTY submenu
     // (kDifficultyMenuItems below); the in-place cycle moved in there.
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
-    {"pvp_allied", "PVP Mode", PickerMenuCommand::ToggleAlliedMode},
+    {"pvp_allied", "Seat Mode", PickerMenuCommand::ToggleAlliedMode},
     {"level_edit", "Level Editor", PickerMenuCommand::LevelEdit},
     {"options", "Game Settings", PickerMenuCommand::Options},
     // HELP and QUIT are separate, stable footer actions on the graphical

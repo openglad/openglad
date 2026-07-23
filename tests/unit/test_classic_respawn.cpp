@@ -651,7 +651,7 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
     w.allied_mode = 1;
     w.my_team = 3;
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
-        << "different-color company heroes stay hostile in every PVP mode";
+        << "different-color company heroes stay hostile in every seat mode";
 }
 
 TEST(ClassicRespawn, timeout_end_shape_flushes_pending_heroes)

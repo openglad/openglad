@@ -198,10 +198,20 @@ bool set_preferred_team(SaveData& save, short team);
 short cycle_guy_team(SaveData& save, int slot_index, int dir);
 
 // The local seat order gameplay derives (game.cpp view_teams): distinct
-// NONZERO roster teams in slot order, with my_team hoisted to the front when
-// it has members. Single source of truth for seat labels (P1..P4) and the
-// local lobby's synthetic peer teams.
+// NONZERO DEPLOYED roster teams in slot order, with my_team hoisted to the
+// front when it has a deployed member. Benched-only colors never create an
+// empty gameplay view.
 std::vector<short> derive_local_seat_teams(const SaveData& save);
+
+// The final local gameplay view teams for numplayers/allied_mode. Together
+// repeats Player 1's effective team; Split uses distinct deployed colors and
+// pads missing seats with otherwise-unused colors so validation can reject them.
+std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save);
+
+// True iff each requested seat can claim a distinct deployed character on its
+// gameplay team. Repeated Together seats consume one character each.
+bool local_seat_teams_have_controls(const SaveData& save,
+                                    std::span<const short> seat_teams);
 
 // --- Company autosave (design §3.8; §1.2 G12 autosave_on_mutation) ---
 
@@ -565,7 +575,8 @@ bool is_spectator_mode(const SaveData& save);
 // Format the difficulty button label (e.g. "Difficulty: Battle").
 std::string format_difficulty_label(int difficulty);
 
-// Format the allied mode button label ("PVP: Ally" or "PVP: Enemy").
+// Format the seat-assignment button label ("SEATS: TOGETHER" or
+// "SEATS: SPLIT"). Combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
 // Format the CTF team count label ("CTF Teams: N").

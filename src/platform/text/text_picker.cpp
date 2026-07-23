@@ -647,8 +647,8 @@ private:
             break;
         case PickerMenuCommand::ToggleAlliedMode:
             toggle_allied_mode(save_data_);
-            std::printf("PVP mode set to %s.\n",
-                is_allied_mode(save_data_) ? "Allied" : "Enemy");
+            std::printf("Seat mode set to %s.\n",
+                is_allied_mode(save_data_) ? "Together" : "Split");
             // §3.8 settings tail: persisted match settings autosave like any
             // other base-camp mutation (E4 — a toggled setting must survive
             // quit without an explicit save).

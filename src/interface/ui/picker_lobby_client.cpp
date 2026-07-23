@@ -288,6 +288,16 @@ public:
         if (!ensure_initialized() || peers_.empty())
             return false;
 
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const std::vector<short> seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
+        {
+            start_request_pending_ = false;
+            return false;
+        }
+
         pending_game_start_config_.reset();
         start_request_pending_ = true;
         og::sim::LobbyMessage message;
@@ -346,8 +356,11 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        const short shared_local_team = local_gameplay_start_team(
-            !peers_.empty() ? peers_.front().team : 0);
+        const std::vector<short> gameplay_seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        const short shared_local_team = gameplay_seat_teams.empty()
+            ? 0
+            : gameplay_seat_teams.front();
         config.my_team = shared_local_team;
         // Symmetry with the networked clients: one seat per local in-process
         // peer, in seat/view order. The local (is_networked == false) start
@@ -355,14 +368,13 @@ public:
         // by view index on its own.
         if (!spectator_mode_)
         {
-            for (std::size_t index = 0; index < peers_.size(); ++index)
+            for (std::size_t index = 0;
+                 index < gameplay_seat_teams.size(); ++index)
             {
                 config.local_player_indices.push_back(
                     static_cast<std::uint8_t>(index));
                 config.local_seat_teams.push_back(
-                    config.save_data.allied_mode != 0
-                        ? shared_local_team
-                        : local_gameplay_start_team(peers_[index].team));
+                    local_gameplay_start_team(gameplay_seat_teams[index]));
             }
         }
         return config;

@@ -1279,10 +1279,10 @@ TEST(PickerCommon, format_allied_mode_label)
 {
     SaveData save;
     save.allied_mode = 0;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Enemy");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: SPLIT");
 
     save.allied_mode = 1;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Ally");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: TOGETHER");
 }
 
 // --- collect_team_families ---
@@ -1500,6 +1500,103 @@ TEST(PickerCommon, derive_local_seat_teams_excludes_team_zero_unless_hoisted)
 
     save.my_team = 0;
     ASSERT_EQ((std::vector<short>{0, 1}), og::ui::derive_local_seat_teams(save));
+}
+
+TEST(PickerCommon, local_seat_derivation_ignores_benched_only_teams)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 1;
+
+    EXPECT_EQ((std::vector<short>{1}), og::ui::derive_local_seat_teams(save));
+
+    save.my_team = 2;
+    EXPECT_EQ((std::vector<short>{1}), og::ui::derive_local_seat_teams(save))
+        << "a preferred but benched-only color must not create an empty view";
+}
+
+TEST(PickerCommon, local_gameplay_seat_matrix_requires_one_deployed_control_per_view)
+{
+    // Exhaust every deployment subset, roster-color assignment, player count,
+    // preferred team, and Together/Split setting for a four-character company.
+    // The expected verdict is calculated only from the returned seat teams and
+    // independently counted deployed characters, so repeated Together seats
+    // and padded Split seats are both covered.
+    for (int encoded_teams = 0; encoded_teams < 256; ++encoded_teams)
+    {
+        for (int deployed_mask = 0; deployed_mask < 16; ++deployed_mask)
+        {
+            for (short preferred = 0; preferred < 4; ++preferred)
+            {
+                for (short allied : {short{0}, short{1}})
+                {
+                    for (int player_count = 1; player_count <= 4; ++player_count)
+                    {
+                        SaveData save;
+                        std::array<int, 4> available{};
+                        int encoded = encoded_teams;
+                        for (int slot = 0; slot < 4; ++slot)
+                        {
+                            const short team = static_cast<short>(encoded & 3);
+                            encoded >>= 2;
+                            auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+                            member->teamnum = team;
+                            member->deployed = (deployed_mask & (1 << slot)) != 0;
+                            if (member->deployed)
+                                ++available[static_cast<std::size_t>(team)];
+                            save.team_list[static_cast<std::size_t>(slot)] =
+                                std::move(member);
+                        }
+                        save.team_size = 4;
+                        save.my_team = preferred;
+                        save.allied_mode = allied;
+                        save.numplayers = static_cast<unsigned char>(player_count);
+
+                        const std::vector<short> seats =
+                            og::ui::derive_local_gameplay_seat_teams(save);
+                        ASSERT_EQ(static_cast<std::size_t>(player_count), seats.size());
+                        if (allied != 0)
+                        {
+                            EXPECT_TRUE(std::all_of(
+                                seats.begin(), seats.end(),
+                                [first = seats.front()](short team) {
+                                    return team == first;
+                                }));
+                        }
+                        else
+                        {
+                            std::set<short> distinct(seats.begin(), seats.end());
+                            EXPECT_EQ(seats.size(), distinct.size());
+                        }
+
+                        bool expected = true;
+                        for (const short team : seats)
+                        {
+                            if (team < 0 || team >= 4 ||
+                                available[static_cast<std::size_t>(team)]-- <= 0)
+                            {
+                                expected = false;
+                                break;
+                            }
+                        }
+                        EXPECT_EQ(expected,
+                                  og::ui::local_seat_teams_have_controls(save, seats))
+                            << "teams=" << encoded_teams
+                            << " deployed=" << deployed_mask
+                            << " preferred=" << preferred
+                            << " allied=" << allied
+                            << " players=" << player_count;
+                    }
+                }
+            }
+        }
+    }
 }
 
 TEST(PickerCommon, format_team_row_label_variants_fit_budget)
@@ -1949,7 +2046,7 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 
     EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
     EXPECT_EQ(2, report.your_team)
-        << "local Ally mode keeps the selected playing team";
+        << "local Together mode keeps the selected playing team";
 
     const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(team0 != nullptr);
@@ -3070,10 +3167,18 @@ TEST(BaseCampRoster, header_lines_budget_and_content)
     EXPECT_LE(og::ui::format_base_camp_gold_label(save).size(), 11u)
         << "the gold block clips to the 11-char right column";
 
-    // The gold label reads the player's wallet (my_team, clamped).
+    // An empty roster falls back to the player's seat wallet.
     save.my_team = 2;
     save.m_totalcash[2] = 777;
     EXPECT_EQ("GOLD 777", og::ui::format_base_camp_gold_label(save));
+
+    // Network Together seats can be red while the private company is yellow;
+    // the label follows the banked company wallet, not the remapped seat.
+    save.team_list[0] = make_base_camp_member("Yellow", FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.my_team = 0;
+    save.m_totalcash[1] = 888;
+    EXPECT_EQ("GOLD 888", og::ui::format_base_camp_gold_label(save));
 
     save.team_list[0] = make_base_camp_member("A", FAMILY_SOLDIER);
     save.team_list[1] = make_base_camp_member("B", FAMILY_MAGE);

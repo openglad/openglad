@@ -433,15 +433,17 @@ void put_named_member(SaveData& save,
 }
 
 // The seven-player fixture: each machine's members sit at DISTINCT original
-// save slots (host 0-1, joiner A 2-5, joiner B 6), one member per local seat
-// team, so per-seat owner_save_slot tags never collide across the machines
-// sharing this test process's one save0 file.
+// save slots (host 0-1, joiner A 2-5, joiner B 6), so per-seat
+// owner_save_slot tags never collide across the machines sharing this test
+// process's one save0 file. All seven fighters deliberately use combat team 0:
+// this is a seat-routing stress test, not a mixed-team combat test, and allied
+// seats must not repaint fighters merely to make the fixture controllable.
 void prepare_seven_player_host_save(SaveData& save)
 {
     reset_network_save_shell(save, /*numplayers=*/2, /*my_team=*/0,
                              /*allied_mode=*/1);
     put_named_member(save, 0, "HostAce", 0);
-    put_named_member(save, 1, "HostBee", 1);
+    put_named_member(save, 1, "HostBee", 0);
     save.m_totalcash[0] = 5000u;
 }
 
@@ -450,9 +452,9 @@ void prepare_seven_player_join_a_save(SaveData& save)
     reset_network_save_shell(save, /*numplayers=*/4, /*my_team=*/0,
                              /*allied_mode=*/1);
     put_named_member(save, 2, "JoinAOne", 0);
-    put_named_member(save, 3, "JoinATwo", 1);
-    put_named_member(save, 4, "JoinAThree", 2);
-    put_named_member(save, 5, "JoinAFour", 3);
+    put_named_member(save, 3, "JoinATwo", 0);
+    put_named_member(save, 4, "JoinAThree", 0);
+    put_named_member(save, 5, "JoinAFour", 0);
     save.m_totalcash[0] = 6000u;
 }
 
@@ -708,7 +710,7 @@ AlliedClaimObservation observe_allied_claim_mapping(
     observation.bravo =
         find_named_team_member(gameplay_screen.world(), "Bravo");
     observation.charlie =
-        find_named_team_member(gameplay_screen.world(), "Charlie");
+        find_named_team_member(gameplay_screen.world(), "Charlie", 1);
     observation.mapped_ids = non_zero_controlled_entity_ids(display_client);
 
     for (auto& uptr : gameplay_screen.world().oblist)
@@ -1442,10 +1444,10 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     EXPECT_EQ(0u, start_config->save_data.numplayers);
     EXPECT_EQ(1, start_config->save_data.allied_mode);
     EXPECT_EQ(6, start_config->difficulty);
-    EXPECT_EQ(0, start_config->my_team);
+    EXPECT_EQ(2, start_config->my_team);
     ASSERT_EQ(1u, start_config->save_data.team_list.size());
     EXPECT_EQ("Host Prime", start_config->save_data.team_list[0].character.name);
-    EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
+    EXPECT_EQ(2, start_config->save_data.team_list[0].character.teamnum);
     EXPECT_EQ(0, start_config->save_data.team_list[0].owner_player_index);
     EXPECT_EQ(0, start_config->save_data.team_list[0].owner_save_slot);
     EXPECT_FALSE(host_client->consume_game_start_config().has_value());
@@ -1820,7 +1822,8 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(0, start_config->my_team);
     ASSERT_EQ(2u, start_config->save_data.team_list.size());
     EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
-    EXPECT_EQ(0, start_config->save_data.team_list[1].character.teamnum);
+    EXPECT_EQ(1, start_config->save_data.team_list[1].character.teamnum)
+        << "Together shares the red seat without repainting the joiner";
 
     ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
@@ -2489,7 +2492,7 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
     PickerSaveStateGuard host_save_guard(host_save);
     PickerRuntimeGuard runtime_guard;
     GameplayRunGuard gameplay_run_guard;
-    // Allied co-op: both players are on team 0, so the foes we clear are NPCs
+    // Together co-op with both fighters explicitly on team 0, so the foes we clear are NPCs
     // (other teams), never a player character.
     prepare_allied_host_network_save(host_save);
     g_start_game_requested = false;
@@ -3012,9 +3015,10 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     prepare_allied_host_network_save(host_save);
     const std::string old_host_company = host_save.save_name;
     host_save.save_name = "IRON KETTLE BAND";
-    // §4.6 wallet baselines: allied play puts every hero on TEAM 0, so both
-    // machines contribute to (and split) the one team-0 pot; team 1 is a
-    // sentinel wallet that must never move in either file.
+    // §4.6 wallet baselines: this wallet-splitting fixture explicitly puts
+    // every hero on combat team 0, so both machines contribute to (and split)
+    // the one team-0 pot. Together seat assignment itself never recolors them;
+    // team 1 is a sentinel wallet that must never move in either file.
     host_save.m_totalcash[0] = 5000;
     host_save.m_totalcash[1] = 111;
     g_start_game_requested = false;
@@ -3033,11 +3037,10 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     join_cfg.install_legacy_globals = false;
     og::runtime::GameSession join_session(join_cfg);
     prepare_single_member_network_save(
-        join_session.myscreen_->save_data, 1, "Joiner");
+        join_session.myscreen_->save_data, 0, "Joiner");
     join_session.myscreen_->save_data.save_name = "JOIN RIVER BAND";
-    // The joiner's private company banks on team 0 too (allied play
-    // normalizes every hero onto team 0, and a reloaded solo save always
-    // reads my_team=0); team 1 is a sentinel that must never move.
+    // This fixture explicitly puts every fighter on team 0, so the joiner's
+    // private company banks there too; team 1 is a sentinel that must not move.
     join_session.myscreen_->save_data.m_totalcash[0] = 3000;
     join_session.myscreen_->save_data.m_totalcash[1] = 222;
 
@@ -3256,7 +3259,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     ASSERT_TRUE(both_ended) << "both peers must return to the menu after the win";
 
     // §4.6: derive each peer's team-0 fold delta from its own display save
-    // (post-fold minus level-start). Allied play put all three heroes on
+    // (post-fold minus level-start). The fixture put all three heroes on
     // team 0 — the host contributed TWO deployed characters and the joiner
     // ONE, so the one team-0 pot splits 2:1 below. Both mirrors must agree
     // on the delta (m_score is snapshot-synced).
@@ -3441,13 +3444,9 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         ASSERT_FALSE(state.slots[2].owned);
         EXPECT_EQ("IRON KETTLE BAND", state.slots[1].company);
         EXPECT_EQ("IRON KETTLE BAND", state.slots[2].company);
-        // Production shape, pinned as-is: the lobby re-stamps my_team to the
-        // SEAT team (1) on every poll, so the in-lobby GOLD label reads the
-        // session wallet — while the allied win share banked into the solo
-        // team-0 wallet (asserted on the file above). Recorded as a WP7
-        // follow-up (display source vs banking team under allied MP).
-        ASSERT_EQ(1, join_save.my_team);
-        EXPECT_EQ("GOLD 222", og::ui::format_base_camp_gold_label(join_save));
+        EXPECT_EQ(std::format("GOLD {}", join_save.m_totalcash[0]),
+                  og::ui::format_base_camp_gold_label(join_save))
+            << "the GOLD label follows the private roster's banked wallet";
         const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
             join_client->connection_alert(),
             join_client->host_controls_visible(),
@@ -3661,7 +3660,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         << "[NET-R8] host and joiner must capture the SAME deploy roster on "
            "the post-prune level";
     // Bravo was benched between levels: exactly Alpha (owner 0) and the
-    // joiner's hero (owner 1) contributed, both on the allied money team 0.
+    // joiner's hero (owner 1) contributed, both explicitly on money team 0.
     EXPECT_EQ((std::vector<std::pair<int, int>>{{0, 0}, {1, 0}}),
               normalized_deployed(host_capture));
 
@@ -3844,6 +3843,13 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
     // Bench Bravo (slot 1). Alpha stays deployed.
     ASSERT_NE(nullptr, host_save.team_list[1]);
     host_save.team_list[1]->deployed = false;
+    // Two Allied control seats share red, so provide a second deployed red
+    // fighter. The joiner's yellow fighter still spawns as a hostile combat
+    // participant, never as a substitute control target.
+    host_save.team_list[2] = std::make_unique<guy>(FAMILY_SOLDIER);
+    host_save.team_list[2]->name = "Red Reserve";
+    host_save.team_list[2]->teamnum = 0;
+    host_save.team_size = 3;
     // Host-only §4.4 setting: ON. (Not restored by PickerSaveStateGuard —
     // scoped restore below.)
     struct CrossControlRestore
@@ -3959,8 +3965,8 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
 
     const auto host_start_config = host_client->consume_game_start_config();
     ASSERT_TRUE(host_start_config.has_value());
-    // The equivalent itself is the assembly: Alpha + Joiner only.
-    ASSERT_EQ(2u, host_start_config->save_data.team_list.size())
+    // The equivalent itself is the assembly: Alpha + Red Reserve + Joiner.
+    ASSERT_EQ(3u, host_start_config->save_data.team_list.size())
         << "the benched slot must be filtered out of the game-start roster";
     EXPECT_EQ(1, host_start_config->save_data.cross_control);
     {
@@ -3974,7 +3980,7 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
         auto join_scope = join_session.activate();
         auto join_start_config = join_client->consume_game_start_config();
         ASSERT_TRUE(join_start_config.has_value());
-        ASSERT_EQ(2u, join_start_config->save_data.team_list.size())
+        ASSERT_EQ(3u, join_start_config->save_data.team_list.size())
             << "the joiner mirror must filter the benched slot identically";
         EXPECT_EQ(1, join_start_config->save_data.cross_control);
         ActivePickerLobbyClientGuard active_client(join_client.get());
@@ -4004,8 +4010,8 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
         return host_ready && join_ready;
     })) << "both runtimes should receive initial snapshots";
 
-    // The authoritative server world: deployed characters only (allied mode
-    // folds every hero onto gameplay team 0).
+    // The authoritative server world: deployed characters only. Together mode
+    // shares seat team 0, but the yellow joiner remains combat team 1.
     {
         screen* const server_screen =
             og::runtime::local_transport_shadow_testing_server_screen(
@@ -4015,14 +4021,22 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
         EXPECT_NE(nullptr,
                   find_named_team_member(server_screen->world(), "Alpha"))
             << "the deployed host character spawns";
-        EXPECT_NE(nullptr,
-                  find_named_team_member(server_screen->world(), "Joiner"))
-            << "the joiner's character spawns";
+        walker* const alpha =
+            find_named_team_member(server_screen->world(), "Alpha", 0);
+        walker* const joiner =
+            find_named_team_member(server_screen->world(), "Joiner", 1);
+        EXPECT_NE(nullptr, joiner) << "the yellow joiner spawns as yellow";
+        EXPECT_NE(nullptr, find_named_team_member(
+                               server_screen->world(), "Red Reserve", 0));
         EXPECT_EQ(nullptr,
                   find_named_team_member(server_screen->world(), "Bravo"))
             << "the benched character must never enter the level";
         EXPECT_EQ(1, static_cast<int>(server_screen->save_data.cross_control))
             << "cross_control must survive the headless save-data copy chain";
+        ASSERT_NE(nullptr, alpha);
+        ASSERT_NE(nullptr, joiner);
+        EXPECT_FALSE(alpha->is_friendly(joiner));
+        EXPECT_FALSE(joiner->is_friendly(alpha));
     }
 
     // Save isolation: the netsession seed carries only deployed characters;
@@ -4602,7 +4616,7 @@ TEST(PickerNetworkClient,
     EXPECT_EQ((std::vector<std::uint8_t>{0, 1}),
               host_config->local_player_indices);
     EXPECT_EQ((std::vector<short>{0, 0}), host_config->local_seat_teams)
-        << "allied mode folds every seat to gameplay team 0";
+        << "Together seats share the first active authoritative team";
     EXPECT_EQ(2, static_cast<int>(host_config->save_data.numplayers));
     {
         auto host_scope = cleanup.host_session->activate();
@@ -4728,10 +4742,15 @@ TEST(PickerNetworkClient,
                           dc->controlled_entity_ids()[player])
                     << who << " seat " << seat;
                 ASSERT_NE(nullptr, session.myscreen_->viewob[seat]) << who;
+                EXPECT_EQ(static_cast<short>(player),
+                          session.myscreen_->viewob[seat]
+                              ->global_player_index_)
+                    << who << " seat " << seat
+                    << ": radar/HUD ownership uses the global player index";
                 EXPECT_EQ(0, static_cast<int>(
                                  session.myscreen_->viewob[seat]->my_team))
                     << who << " seat " << seat
-                    << ": allied fold stamps every view team 0";
+                    << ": Together uses the first active authoritative team";
             }
         };
     check_display_mapping(*cleanup.host_session, {0, 1}, "host");
@@ -5359,7 +5378,7 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
 }
 
 TEST(PickerNetworkClient,
-     host_and_join_allied_level1_clear_stale_preclaim_and_keep_free_soldier_switchable)
+     allied_seats_keep_hostile_roster_member_unclaimed_when_switching)
 {
     IxNetSystemScope net_system;
 
@@ -5379,13 +5398,11 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(0, host_save.team_list[0]->teamnum);
     EXPECT_EQ("Bravo", host_save.team_list[1]->name);
     EXPECT_EQ(0, host_save.team_list[1]->teamnum);
-    // Cross-control ON (§4.4): this test pins the DELIBERATE v7 shared-pool
-    // bind/switch semantics — the joiner's seat rides the host's Bravo and
-    // the host steals the joiner's Charlie — which survive only under the
-    // legacy policy. The host-only setting propagates through the lobby, and
-    // the install derives control_policy 0 from the game-start config (the
-    // owner-locked default would give every machine its own characters
-    // instead; that shape is pinned by the game-loop install e2e).
+    // Cross-control ON (§4.4) keeps legacy shared-pool switching among
+    // fighters on the seat's combat team. Charlie is yellow, so neither red
+    // seat may claim him even though the seat-assignment mode is Allied. The
+    // host-only setting still propagates through the lobby and derives legacy
+    // control_policy 0 from the game-start config.
     host_save.cross_control = 1;
     g_start_game_requested = false;
 
@@ -5594,6 +5611,8 @@ TEST(PickerNetworkClient,
     const std::uint32_t alpha_id = host_observation.alpha->entity_id();
     const std::uint32_t bravo_id = host_observation.bravo->entity_id();
     const std::uint32_t charlie_id = host_observation.charlie->entity_id();
+    EXPECT_FALSE(host_observation.alpha->is_friendly(host_observation.charlie));
+    EXPECT_FALSE(host_observation.charlie->is_friendly(host_observation.alpha));
     const std::set<std::uint32_t> expected_initial_ids = {
         alpha_id,
         bravo_id,
@@ -5690,26 +5709,26 @@ TEST(PickerNetworkClient,
         ASSERT_NE(nullptr, host_after_switch.charlie);
         ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]);
         ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]->control);
-        ASSERT_EQ(host_after_switch.claimed_ids, host_after_switch.mapped_ids)
-            << claim_mapping_details(*cleanup.host_session->myscreen_,
-                                     host_after_switch);
         EXPECT_EQ(nullptr, host_after_switch.orphaned)
             << claim_mapping_details(*cleanup.host_session->myscreen_,
                                      host_after_switch);
-        const std::set<std::uint32_t> expected_after_switch = {
-            bravo_id,
-            charlie_id,
-        };
-        EXPECT_EQ(expected_after_switch, host_after_switch.mapped_ids);
-        EXPECT_EQ(charlie_id, host_display_client->controlled_entity_ids()[0]);
+        const std::uint32_t switched_id =
+            host_display_client->controlled_entity_ids()[0];
+        EXPECT_NE(0u, switched_id);
+        EXPECT_NE(alpha_id, switched_id);
+        EXPECT_NE(charlie_id, switched_id)
+            << "a Together seat must never claim a hostile-team fighter";
+        EXPECT_TRUE(host_after_switch.mapped_ids.contains(switched_id));
+        EXPECT_TRUE(host_after_switch.mapped_ids.contains(bravo_id));
+        EXPECT_EQ(2u, host_after_switch.mapped_ids.size());
         EXPECT_EQ(bravo_id, host_display_client->controlled_entity_ids()[1]);
-        EXPECT_EQ(host_display_client->controlled_entity_ids()[0],
+        EXPECT_EQ(switched_id,
                   cleanup.host_session->myscreen_->viewob[0]
                       ->control->entity_id());
-        EXPECT_EQ("Charlie",
-                  controlled_entity_name(
-                      *host_display_client,
-                      host_display_client->controlled_entity_ids()[0]));
+        walker* const switched = cleanup.host_session->myscreen_->world()
+                                     .find_by_id(switched_id);
+        ASSERT_NE(nullptr, switched);
+        EXPECT_EQ(0, switched->team_num());
         EXPECT_EQ("Bravo",
                   controlled_entity_name(
                       *host_display_client,
@@ -5730,25 +5749,25 @@ TEST(PickerNetworkClient,
         ASSERT_NE(nullptr, join_after_switch.charlie);
         ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]);
         ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]->control);
-        ASSERT_EQ(join_after_switch.claimed_ids, join_after_switch.mapped_ids)
-            << claim_mapping_details(*join_session.myscreen_,
-                                     join_after_switch);
         EXPECT_EQ(nullptr, join_after_switch.orphaned)
             << claim_mapping_details(*join_session.myscreen_,
                                      join_after_switch);
-        const std::set<std::uint32_t> expected_after_switch = {
-            bravo_id,
-            charlie_id,
-        };
-        EXPECT_EQ(expected_after_switch, join_after_switch.mapped_ids);
-        EXPECT_EQ(charlie_id, join_display_client->controlled_entity_ids()[0]);
+        const std::uint32_t switched_id =
+            join_display_client->controlled_entity_ids()[0];
+        EXPECT_NE(0u, switched_id);
+        EXPECT_NE(alpha_id, switched_id);
+        EXPECT_NE(charlie_id, switched_id)
+            << "the remote mirror must preserve the same hostile boundary";
+        EXPECT_TRUE(join_after_switch.mapped_ids.contains(switched_id));
+        EXPECT_TRUE(join_after_switch.mapped_ids.contains(bravo_id));
+        EXPECT_EQ(2u, join_after_switch.mapped_ids.size());
         EXPECT_EQ(bravo_id, join_display_client->controlled_entity_ids()[1]);
         EXPECT_EQ(join_display_client->controlled_entity_ids()[1],
                   join_session.myscreen_->viewob[0]->control->entity_id());
-        EXPECT_EQ("Charlie",
-                  controlled_entity_name(
-                      *join_display_client,
-                      join_display_client->controlled_entity_ids()[0]));
+        walker* const switched =
+            join_session.myscreen_->world().find_by_id(switched_id);
+        ASSERT_NE(nullptr, switched);
+        EXPECT_EQ(0, switched->team_num());
         EXPECT_EQ("Bravo",
                   controlled_entity_name(
                       *join_display_client,

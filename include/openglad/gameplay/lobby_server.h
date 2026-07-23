@@ -41,6 +41,12 @@ struct LobbyPlayerBinding {
     bool operator==(const LobbyPlayerBinding&) const = default;
 };
 
+// Together-mode control team. Normally this is the leading seat's selected
+// team; if that seat has no deployed fighter, use the first deployed combat
+// team so a zero-deploy host remains a spectator without stranding all seats.
+[[nodiscard]] std::int16_t shared_allied_gameplay_team(
+    const LobbyState& state) noexcept;
+
 class LobbyServer
 {
 public:

@@ -176,6 +176,10 @@ class viewscreen
 		std::uint32_t text_expire_ticks[MAX_MESSAGES];
 
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
+		// Global simulation player mapped to this local view. Network joins can
+		// map local view 0 to global player 6, so HUD ownership must never alias
+		// this with mynum. -1 means spectator/no seat.
+		short global_player_index_ = -1;
 		short my_team;         // used for Player-v-Player mode
 			int* mykeys;     // holds the keyboard mapping
 			walker  *control;  // the user

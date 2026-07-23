@@ -2176,6 +2176,72 @@ TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)
     save.allied_mode = orig_allied;
 }
 
+TEST(PickerFuncs, local_lobby_rejects_every_uncontrollable_seat_shape)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+    const bool orig_start_requested = g_start_game_requested;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Red One";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Second";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = false;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+
+    {
+        g_start_game_requested = false;
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_FALSE(client->request_start_game())
+            << "two Together seats require two deployed fighters on their "
+               "shared control team";
+        save.team_list[1]->deployed = true;
+        client->sync_roster_from_save();
+        EXPECT_TRUE(client->request_start_game());
+        client->shutdown();
+    }
+
+    // Split seats require a deployed fighter for each derived team. A yellow
+    // reserve must not count merely because it still exists in the company.
+    save.allied_mode = 0;
+    save.team_list[1]->teamnum = 1;
+    save.team_list[1]->deployed = false;
+    {
+        g_start_game_requested = false;
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_FALSE(client->request_start_game());
+        save.team_list[1]->deployed = true;
+        client->sync_roster_from_save();
+        EXPECT_TRUE(client->request_start_game());
+        client->shutdown();
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+    g_start_game_requested = orig_start_requested;
+}
+
 // Player seats are control assignments, not roster filters. A one-player
 // local mission must carry deployed and benched members from every company
 // color into its isolated start seed, preserving their original private slots.

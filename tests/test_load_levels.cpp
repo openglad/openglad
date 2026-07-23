@@ -290,6 +290,7 @@ TEST(LoadLevels, load_saved_game_maps_views_to_saved_team_ids) {
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 2;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     auto team1 = std::make_unique<guy>(FAMILY_SOLDIER);
     team1->name = "TEAM1";

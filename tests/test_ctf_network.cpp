@@ -750,8 +750,8 @@ TEST(CtfNetwork, allied_claimed_teammate_alive_suppresses_endgame_seat_stays_nul
         << "both fixture players bind onto the level's my_team";
     const std::uint32_t id1 = player1->entity_id();
     fixture.with_server_context([&] {
-        // The networked-allied shape: the world is allied-folded onto the
-        // shared bound team and both heroes are OWNED (myguy attached).
+        // The shared-seat shape: both fixture players are already on the same
+        // bound team and both heroes are OWNED (myguy attached).
         fixture.server_world().allied_mode = 1;
         player0->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
         player0->myguy->id = 51;

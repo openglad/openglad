@@ -1773,24 +1773,12 @@ grafts from all six judges folded in; resolutions where they conflicted:
     slot authority predates the company layer and terminal users address slots
     explicitly; silently multiplying files under a fixed-slot CLI contract would be
     the surprising behavior.
-14. **Accepted WP7 residue (known quirks, not merge blockers)**:
-    - A follow camera can retain a foreign hero's corpse through its revive window,
-      then re-enter follow on the default target rather than the previously selected
-      one (E1). Fixing it changes null-seat spectator semantics and needs a dedicated
-      follow-flow re-pin pass.
-    - The radar's `controlob->user() == mynum` gate retains a pre-existing
-      global/local-seat alias that follow mode can now expose (E2). A correct fix
-      requires plumbing the view's global seat into that gate.
-    - Local multi-view counts benched members when deciding which team views exist;
-      an only-benched team can therefore receive a view with nothing to control (E5).
-    - In allied network play, the between-level GOLD label reads the session-team
-      wallet while the machine's awarded share is banked in team 0, so a joiner's
-      freshly banked share may not be visible in that label until later (E6).
-    - Networked spectators may open the local preferences menu (E8). This is a
-      client-local side effect and does not grant simulation authority.
-    - The new-company name-entry screen intentionally has no lobby-poll or
-      remote-start obligation (E9): a joiner parked there observes a host launch only
-      after leaving the screen. The engine contract records the same exception.
+14. **WP7 full-review closure**: the formerly accepted E1/E2/E5/E6/E8/E9
+    residue is resolved. Follow selection survives a watched hero's revive;
+    radar ownership uses the view's global player index; only deployed members
+    derive local seats; GOLD follows the private roster's banked wallet rather
+    than a remapped lobby seat; network spectators cannot open player-specific
+    preferences; and company-name entry continues polling for a remote launch.
 
 ---
 
@@ -2545,17 +2533,28 @@ out of the primary text into a compact homage to View Team's palette.
 
 ### 9.24 Runtime correction (2026-07-22) — roster colors are not player seats [FINAL]
 
-Local mission assembly treats company membership and player control as two
-separate decisions.
+Mission assembly treats company membership, combat allegiance, and player
+control as three separate decisions on every client.
 
 - The isolated local start seed carries every company slot and preserves each
   member's team and deploy flag. Every deployed member spawns even when no
   player view is assigned to that color; benched members remain in the seed
   but do not spawn.
-- In Ally mode, every local view uses Player 1's preferred team and claims a
-  different unclaimed hero from that team. Roster order cannot assign Player 2
-  to a differently colored member. Enemy mode retains its distinct per-color
-  view assignment.
+- In Together mode, every view uses Player 1's preferred team and claims a
+  different unclaimed hero from that team. Network play shares the first
+  active authoritative team rather than hard-coding red; if the leading peer
+  has no deployed fighter, the first deployed team wins so a spectator host
+  cannot strand every controller. Roster order cannot assign Player 2 to a
+  differently colored member. Split mode retains distinct per-color view
+  assignment.
+- Character colors survive local, SDL network, dedicated-server, and curses
+  lobby assembly unchanged. Color equality alone controls combat friendship;
+  the seat setting never recolors a fighter.
+- Local GO is rejected when any couch seat lacks a distinct deployed fighter
+  on its effective control team. Benched fighters do not satisfy the gate.
+  Network machines retain the deliberate zero-deploy follow/spectator flow;
+  no remote seat is ever satisfied by recoloring a hostile fighter.
 - End-to-end regressions cover a one-player company spanning all four colors,
-  abort preservation, and the ordered `Team 1 / Team 2 / Team 1` two-player
-  Ally case.
+  abort preservation, the ordered `Team 1 / Team 2 / Team 1` two-player
+  Together case, mixed-color network hostility, and exhaustive local seat/team/
+  deploy combinations.

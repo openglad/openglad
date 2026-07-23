@@ -251,7 +251,8 @@ void update_display_view_follow(
 
     // A respawn-retained corpse keeps the camera home (the RESPAWN IN
     // countdown view); follow engages only once nothing is retained.
-    if (respawn_retained_control(view, world, player_index) != nullptr)
+    if (!follow.engaged &&
+        respawn_retained_control(view, world, player_index) != nullptr)
     {
         follow = {};
         return;
@@ -273,6 +274,16 @@ void update_display_view_follow(
     {
         follow.target_entity_id =
             og::sim::default_follow_target_id(*world, controlled_entity_ids);
+    }
+    else if (target->dead() && target->myguy != nullptr &&
+             og::sim::ctf_pending_player_respawn(world->ctf,
+                                                 target->entity_id()))
+    {
+        // A spectator may be following somebody else's respawning hero.
+        // Preserve that explicit selection through the corpse/revive window;
+        // respawn_retained_control is for the seat's OWN corpse and must not
+        // clear follow state merely because view->control points at this one.
+        return;
     }
     else if (target->dead())
     {
@@ -995,6 +1006,9 @@ void sync_display_controls(
                 ? std::optional<std::size_t>(display_seats[index].player_index)
                 : std::nullopt;
         }
+        view->global_player_index_ = player_index.has_value()
+            ? static_cast<short>(*player_index)
+            : static_cast<short>(-1);
 
         // §4.5: only genuine networked sessions engage the follow camera —
         // local shadows (splitscreen, demo spectator) keep today's paths.
@@ -1112,7 +1126,7 @@ void configure_display_game_client(
                 return;
             }
 
-            // The transition rebuilt the views; re-stamp multi-seat teams.
+            // The transition rebuilt the views; restore multi-seat view teams.
             stamp_display_seat_teams(gameplay_screen, display_seats);
             if (runtime_ptr != nullptr)
             {
@@ -1825,8 +1839,9 @@ void reset_network_host_transport_shadow(
 
     // This machine's local seats are the lobby bindings on the loopback peer,
     // in local_slot order. The lobby has already applied the session policy:
-    // network allied seats are shared team 0, while local seats retain each
-    // roster member's selected display/gameplay team.
+    // Together seats share the first active authoritative team. Character
+    // roster colors remain independent combat teams; a seat assignment never
+    // rewrites allegiance.
     const og::sim::PeerId loopback_peer_id =
         local_client_transport->local_peer_id();
     std::vector<LocalSeatBinding> host_seats;

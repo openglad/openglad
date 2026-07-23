@@ -19,7 +19,6 @@ using og::kDefaultCampaignId;
 constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
-constexpr std::int16_t kSharedAlliedGameplayTeam = 0;
 constexpr std::size_t kMaxLobbyTeamSize = 24;
 
 og::sim::LobbySettings make_default_lobby_settings()
@@ -117,20 +116,19 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
             continue;
 
         og::sim::LobbyCharacterSlot next = slot;
-        next.character.teamnum = team;
+        if (next.character.teamnum < 0 || next.character.teamnum >= MAX_PLAYERS)
+            next.character.teamnum = team;
         sanitized.push_back(std::move(next));
     }
 
     return sanitized;
 }
 
-std::int16_t gameplay_team_for_mode(std::int16_t allied_mode,
-                                    std::int16_t team,
-                                    bool preserve_roster_team) noexcept
+std::int16_t gameplay_seat_team_for_mode(std::int16_t allied_mode,
+                                         std::int16_t team,
+                                         std::int16_t shared_team) noexcept
 {
-    return allied_mode != 0 && !preserve_roster_team
-        ? kSharedAlliedGameplayTeam
-        : team;
+    return allied_mode != 0 ? shared_team : team;
 }
 
 std::string default_player_name(std::size_t ordinal)
@@ -282,6 +280,48 @@ bool lobby_seats_content_identical(
 } // namespace
 
 namespace og::sim {
+
+std::int16_t shared_allied_gameplay_team(const LobbyState& state) noexcept
+{
+    // Prefer the first seat that can actually control one of its deployed
+    // fighters. This keeps an empty/fully-benched host a spectator instead of
+    // forcing every Together seat onto the host's empty color.
+    for (const LobbyPlayer& player : state.players)
+    {
+        if (player.team < 0 || player.team >= MAX_PLAYERS)
+            continue;
+        if (std::any_of(
+                player.character_slots.begin(), player.character_slots.end(),
+                [&player](const LobbyCharacterSlot& slot) {
+                    return slot.deployed &&
+                        slot.character.teamnum == player.team;
+                }))
+        {
+            return player.team;
+        }
+    }
+
+    // A stale seat preference may not match any of its roster colors. A
+    // deployed fighter is still a better shared control team than an empty one.
+    for (const LobbyPlayer& player : state.players)
+    {
+        for (const LobbyCharacterSlot& slot : player.character_slots)
+        {
+            if (slot.deployed && slot.character.teamnum >= 0 &&
+                slot.character.teamnum < MAX_PLAYERS)
+            {
+                return slot.character.teamnum;
+            }
+        }
+    }
+
+    if (!state.players.empty() && state.players.front().team >= 0 &&
+        state.players.front().team < MAX_PLAYERS)
+    {
+        return state.players.front().team;
+    }
+    return 0;
+}
 
 LobbyServer::LobbyServer(ITransport& transport, bool local_session)
     : transport_(transport)
@@ -795,8 +835,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
             if (team >= 0 && team != current)
             {
                 seat.team = team;
-                for (auto& slot : seat.character_slots)
-                    slot.character.teamnum = team;
                 // §4.3: a team change is a roster change for that machine —
                 // clear its ready (all seats share one machine's ready).
                 for (LobbyPlayer& machine_seat : seats)
@@ -883,8 +921,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     if (reteamed < 0)
                         continue;
                     seat.team = reteamed;
-                    for (auto& slot : seat.character_slots)
-                        slot.character.teamnum = reteamed;
                     rebuild_needed = true;
                 }
             }
@@ -954,8 +990,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     if (reteamed < 0 || reteamed == seat.team)
                         continue;
                     seat.team = reteamed;
-                    for (auto& slot : seat.character_slots)
-                        slot.character.teamnum = reteamed;
                     rebuild_needed = true;
                 }
             }
@@ -1133,10 +1167,6 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         for (const OrderedLobbySlot& slot : ordered_slots)
         {
             LobbyCharacterSlot gameplay_slot = *slot.slot;
-            gameplay_slot.character.teamnum = gameplay_team_for_mode(
-                equivalent.allied_mode,
-                gameplay_slot.character.teamnum,
-                local_session_);
             gameplay_slot.owner_player_index =
                 state_.players[slot.player_order].player_index;
             gameplay_slot.owner_save_slot = slot.slot_index;
@@ -1149,10 +1179,6 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     {
         LobbyCharacterSlot compacted = *ordered_slots[index].slot;
         compacted.slot_index = static_cast<std::uint8_t>(index);
-        compacted.character.teamnum = gameplay_team_for_mode(
-            equivalent.allied_mode,
-            compacted.character.teamnum,
-            local_session_);
         compacted.owner_player_index =
             state_.players[ordered_slots[index].player_order].player_index;
         compacted.owner_save_slot = ordered_slots[index].slot_index;
@@ -1167,6 +1193,8 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
     std::vector<LobbyPlayerBinding> bindings;
     bindings.reserve(peers_.size());
 
+    const std::int16_t shared_team = shared_allied_gameplay_team(state_);
+
     for (const auto& [peer_id, peer] : peers_)
     {
         for (std::size_t seat_order = 0; seat_order < peer.seats.size();
@@ -1177,9 +1205,8 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
                 .peer_id = peer_id,
                 .local_slot = static_cast<std::uint8_t>(seat_order),
                 .player_index = seat.player_index,
-                .team = gameplay_team_for_mode(state_.settings.allied_mode,
-                                               seat.team,
-                                               local_session_),
+                .team = gameplay_seat_team_for_mode(
+                    state_.settings.allied_mode, seat.team, shared_team),
             });
         }
     }

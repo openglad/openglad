@@ -2242,7 +2242,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	//
 	// Team color is the single combat-alliance authority. `myguy` means that
 	// a walker persists in a company save; it must never make different colors
-	// friendly. Likewise, PVP Ally/Enemy controls how player seats are assigned
+	// friendly. Likewise, Together/Split controls how player seats are assigned
 	// before a mission, not whether a red walker can attack a yellow walker once
 	// both are in the world. Following owner chains keeps weapons, summons, and
 	// effects on their living owner's current team (including charm changes).

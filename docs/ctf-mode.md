@@ -42,10 +42,11 @@ lobby like the PVP toggle):
   (3 unless the map says otherwise; the CROSSFIRE finale plays to 5),
   or force 1–10.
 
-Allied and PvP play work exactly like the classic game: **PVP: Ally** puts
-every human on one team against AI squads; **PVP: Enemy** gives each player
-their own team. All of it works locally, split-screen, networked, on the
-dedicated server, and in the text/curses clients.
+**Seat Mode: Together** makes every human seat share the first active seat's
+control team; **Seat Mode: Split** lets each seat use its selected team. A fighter's
+color always remains its combat allegiance, independent of seat mode. All of
+it works locally, split-screen, networked, on the dedicated server, and in the
+text/curses clients.
 
 ## The maps
 

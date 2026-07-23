@@ -188,7 +188,8 @@ short resolve_initial_local_team(const SaveData& save)
     return 0;
 }
 
-// Build this peer's roster (the characters whose teamnum == local_team).
+// Build this peer's complete roster. The player's seat team chooses the view;
+// each character's own teamnum remains its combat allegiance.
 og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
                                               std::string_view player_name,
                                               short local_team)
@@ -203,7 +204,7 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
 
     for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index) {
         const auto& member = save.team_list[slot_index];
-        if (member == nullptr || member->teamnum != local_team)
+        if (member == nullptr)
             continue;
         player.character_slots.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
@@ -1627,8 +1628,6 @@ private:
                     break;
                 og::sim::LobbyCharacterSlot compacted = slot;
                 compacted.slot_index = next_slot++;
-                if (eq.allied_mode != 0)
-                    compacted.character.teamnum = 0;
                 eq.team_list.push_back(std::move(compacted));
             }
         }

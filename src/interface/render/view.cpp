@@ -386,6 +386,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
+	global_player_index_ = whatnum; // local games map views 1:1
 	my_team = 0;
 	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
@@ -942,7 +943,10 @@ bool viewscreen::redraw()
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
-		if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+		if (!following_ && controlob && !controlob->dead() &&
+		    global_player_index_ >= 0 &&
+		    controlob->user() == global_player_index_ &&
+		    prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw();
 		display_text();
 	}
@@ -1205,7 +1209,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
 		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
-		if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+		if (draw_radar && !following_ && controlob && !controlob->dead() &&
+		    global_player_index_ >= 0 &&
+		    controlob->user() == global_player_index_ &&
+		    prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw(data);
 		display_text();
 	}
@@ -1408,7 +1415,11 @@ void viewscreen::process_input(const InputState& input_state)
 	}
 
 	// --- Prefs key (render-layer concern: opens a UI menu) ---
-	if (!pi.is_held(InputAction::Cheat))
+	// A genuine network spectator has no local player seat. Do not let its
+	// otherwise-unconsumed key open a player-specific preferences menu.
+	const bool networked_spectator = networked_shadow &&
+	    og::runtime::current_session->own_player_indices_.empty();
+	if (!networked_spectator && !pi.is_held(InputAction::Cheat))
 	{
 		if (pi.was_pressed(InputAction::OpenPrefs))
 		{

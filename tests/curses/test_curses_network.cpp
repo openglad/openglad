@@ -745,9 +745,9 @@ TEST(CursesNetwork, benched_member_never_enters_the_level)
 // §4.6/§4.8 "curses share persists": a WON networked curses session banks
 // baseline + this machine's deploy-ratio SHARE into the active-company slot
 // on disk, through the exact production call (run_level_loop ends the level
-// and invokes commit_result_to_save -> persist_curses_networked_win). Allied
-// co-op puts BOTH machines' heroes on money team 0 (owners 0 and 1, one
-// deployed character each), so the pot splits 2 ways with the remainder going
+// and invokes commit_result_to_save -> persist_curses_networked_win). This
+// fixture explicitly puts BOTH machines' heroes on money team 0 (owners 0 and
+// 1, one deployed character each), so the pot splits 2 ways with the remainder going
 // to the lowest player index (the host) — and the two shares CONSERVE to
 // exactly the whole pot on the (process-shared) save0 file.
 TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
@@ -786,9 +786,9 @@ TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
     SaveData host_save;
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host Hero");
-    init_team_save(join_save, 1, FAMILY_ELF, "Join Hero");
-    // Allied mode is a HOST setting (the lobby settings ride the host save);
-    // in-level every hero folds to gameplay/money team 0.
+    init_team_save(join_save, 0, FAMILY_ELF, "Join Hero");
+    // Together mode is a HOST setting (the lobby settings ride the host save).
+    // It shares seat controls, but each fighter keeps its combat/team color.
     host_save.allied_mode = 1;
     // Distinct private save slots (host slot 0, joiner slot 1) so the two
     // machines' roster merges land side by side in the shared save0 file.

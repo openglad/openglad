@@ -30,8 +30,7 @@ class GameWorld;
 namespace og::progression {
 
 // One deployed character (dead or alive) at deploy time. team is the in-level
-// (allied-folded) gameplay team — the same index the fold credited the money
-// to — never the roster's original teamnum.
+// combat team — the same index the fold credited the money to.
 struct WinShareContributor {
     std::uint8_t owner = 0xff; // global player index; >= kMaxGlobalPlayers ignored
     short team = 0;            // 0..3

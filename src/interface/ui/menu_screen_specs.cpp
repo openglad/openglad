@@ -839,17 +839,17 @@ const MenuScreenSpec& main_options_menu_screen_spec()
 #endif
 
 // ---------------------------------------------------------------------------
-// PLAYER SETTINGS: the local seat count and PVP relationship used to consume
+// PLAYER SETTINGS: the local seat count and seat relationship used to consume
 // three disconnected bands on the main menu, while keymaps lived behind the
 // old options wrench. They now form one centered setup screen. The four seat faces
-// read as a segmented selector; PVP and CONTROLS share the same full-width
+// read as a segmented selector; SEATS and CONTROLS share the same full-width
 // column below it, followed by the controls-only reset. Multiplayer-disabled
-// builds retain CONTROLS and RESET CONTROLS without unavailable seat/PVP.
+// builds retain CONTROLS and RESET CONTROLS without unavailable seat controls.
 
 std::string pvp_allied_row_label(const MenuLabelContext& context)
 {
     if (context.save == nullptr)
-        return "PVP: Allied";
+        return "SEATS: TOGETHER";
     if (context.save->numplayers == 0)
         return "SPECTATOR";
     return format_allied_mode_label(*context.save);
@@ -881,7 +881,7 @@ constexpr MenuButtonSpec kPlayerSettingsRowsMP[] = {
      .action = ButtonAction::SetPlayerMode, .arg = 4,
      .nav = {.up = 0, .down = 5, .left = 3},
      .outline = MenuOutlineBinding::PlayerCountEquals, .outline_arg = 4},
-    {.id = "pvp_allied", .label = "PVP: Allied",
+    {.id = "pvp_allied", .label = "SEATS: TOGETHER",
      .x = 90, .y = 105, .w = 140, .h = 18,
      .action = ButtonAction::AlliedMode, .arg = -1,
      .nav = {.up = 1, .down = 6},
@@ -3640,6 +3640,10 @@ const MenuScreenSpec& name_entry_menu_screen_spec()
         .enter = EnterTransition::FadeAroundEntry,
         // Initial highlight: ACCEPT (§2.2).
         .default_highlight = kNameEntryAcceptIndex,
+        // A joiner can still receive the host's launch while this modal is
+        // open; keep the shared lobby/start pump alive like every other
+        // engine-hosted picker screen.
+        .polls_lobby = true,
         .draw_background = &picker_backdrop_draw_background,
         .draw_content = &name_entry_draw_content,
         // G3 generic row dispatch: BACK/edit/REROLL/ACCEPT.

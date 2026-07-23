@@ -3130,8 +3130,8 @@ Sint32 teams_cycle_guy(Sint32 whichway)
 
 Sint32 teams_cycle_guy_team(Sint32 whichway)
 {
-   // Per-character moves are a local-session surface: networked lobbies stamp
-   // every slot to the owning player's team (the button is hidden there).
+   // Per-character moves are a local-session surface; the button stays hidden
+   // in networked lobbies, where roster ownership is server-authoritative.
    if (picker_lobby_is_networked())
        return MENU_OK;
 

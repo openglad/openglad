@@ -25,8 +25,9 @@ struct PickerLobbyGameStartConfig
     // All of this machine's seats, in local seat order (seat 0 first), captured
     // from the FINAL authoritative lobby state when the start was accepted:
     // the global player_index each seat was assigned, and the GAMEPLAY team its
-    // view renders for (network allied mode folds every seat to team 0; local
-    // play retains the roster color). Empty for local (non-networked) games.
+    // view renders for (Together mode shares the first active authoritative
+    // team, while character roster colors remain independent combat teams).
+    // Empty for local (non-networked) games.
     std::vector<std::uint8_t> local_player_indices = {};
     std::vector<short> local_seat_teams = {};
 };

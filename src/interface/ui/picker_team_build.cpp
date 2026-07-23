@@ -877,7 +877,7 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
     if (state.allied)
     {
         myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
-        mytext.write_xy(10, 24, "ALLIED: ALL PLAYERS FIGHT TOGETHER",
+        mytext.write_xy(10, 24, "SEATS: PLAYERS SHARE ONE TEAM",
                         YELLOW, 1);
     }
     else if (!state.campaign_mounted)
@@ -2430,6 +2430,21 @@ Sint32 go_menu(Sint32 arg1)
             popup_dialog("DEPLOY AT LEAST ONE", "Deploy at least\none character\nbefore starting");
 
         return MENU_REDRAW;
+    }
+
+    if (!picker_lobby_is_networked() &&
+        og::runtime::current_session->myscreen_->save_data.numplayers > 0)
+    {
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const std::vector<short> seat_teams =
+            og::ui::derive_local_gameplay_seat_teams(save);
+        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
+        {
+            popup_dialog("DEPLOY FOR EVERY PLAYER",
+                         "Each player needs\na deployed hero on\ntheir playing team");
+            return MENU_REDRAW;
+        }
     }
 
     // Tier-B progression hook (tower-triple §5.9): the mounted mode

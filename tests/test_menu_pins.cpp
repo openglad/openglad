@@ -169,7 +169,7 @@ TEST(MenuEnginePins, player_settings_exact_table)
         {"4_player", "4 PLAYER", KEYSTATE_4, 231, 70, 62, 20,
          button_action_id(ButtonAction::SetPlayerMode), 4,
          MenuNav{.up = 0, .down = 5, .left = 3}},
-        {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 90, 105, 140, 18,
+        {"pvp_allied", "SEATS: TOGETHER", KEYSTATE_UNKNOWN, 90, 105, 140, 18,
          button_action_id(ButtonAction::AlliedMode), -1,
          MenuNav{.up = 1, .down = 6}},
         {"player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 90, 132, 140, 18,

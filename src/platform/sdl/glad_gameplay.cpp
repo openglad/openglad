@@ -186,7 +186,7 @@ void apply_lobby_seat_assignments(
 
     // load_saved_game performs the legacy distinct-color assignment first.
     // A lobby has an explicit seat map, so release those provisional claims
-    // before applying it. In local Ally mode every entry is Player 1's
+    // before applying it. In local Together mode every entry is Player 1's
     // preferred team; sequential find_next_control calls then claim distinct
     // unclaimed heroes from that shared pool.
     for (short view_index = 0; view_index < numviews; ++view_index)

@@ -1054,7 +1054,7 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
     ASSERT_TRUE(actor->is_friendly(target) != 0)
         << "same-team owner roots should be friendly regardless of ownership";
 
-    // Both roots without myguy: allied mode should compare teams only.
+    // Both roots without myguy: seat mode must not override combat teams.
     actor_root->clear_myguy();
     target_owner->clear_myguy();
     actor_root->set_team_num(2);
@@ -1200,7 +1200,7 @@ TEST(WalkerCoreMore, walker_round14_distance_color_and_friendliness_modes_1480_1
     ASSERT_EQ(1, (int)a->is_friendly_to_team(1)) << "enemy mode should match own team";
     ASSERT_EQ(0, (int)a->is_friendly_to_team(0)) << "enemy mode should reject other teams";
 
-    // PVP mode and company ownership never override different team colors.
+    // Seat mode and company ownership never override different team colors.
     world.allied_mode = 1;
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));

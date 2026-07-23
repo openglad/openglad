@@ -779,9 +779,9 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             break;
         case PickerMenuCommand::ToggleAlliedMode:
             og::ui::toggle_allied_mode(save_data_);
-            menu.show_text("PVP Mode",
-                {std::format("PVP mode set to {}.",
-                    og::ui::is_allied_mode(save_data_) ? "Allied" : "Enemy")});
+            menu.show_text("Seat Mode",
+                {std::format("Seat mode set to {}.",
+                    og::ui::is_allied_mode(save_data_) ? "Together" : "Split")});
             // §3.8 settings tail: persisted match settings autosave like any
             // other base-camp mutation (E4 — a toggled setting must survive
             // quit without an explicit save).
