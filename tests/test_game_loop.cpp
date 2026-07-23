@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <set>
 #include <string>
@@ -843,17 +844,48 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 3;
     ASSERT_TRUE(game_screen->save_data.save("save0"));
+    EXPECT_EQ(3, static_cast<int>(game_screen->save_data.numplayers));
+
+    const std::filesystem::path save_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    std::ifstream save_file(save_path, std::ios::binary);
+    ASSERT_TRUE(save_file.is_open());
+    save_file.seekg(132);
+    char legacy_player_count = 0;
+    ASSERT_TRUE(save_file.read(&legacy_player_count, 1));
+    EXPECT_EQ(1, static_cast<unsigned char>(legacy_player_count))
+        << "the GTL carries only the compatibility marker, not the live count";
 
     game_screen->ready_for_battle(1);
     ASSERT_EQ(1, game_screen->numviews);
 
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
     EXPECT_EQ(3u,
-              og::runtime::local_transport_client_count(
-                  *og::runtime::current_game_session));
+              og::runtime::local_transport_client_count(gameplay_session));
 
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_NE(game_screen, server_screen)
+        << "the authority must use its own freshly loaded screen";
+    EXPECT_EQ(3, static_cast<int>(server_screen->save_data.numplayers));
+    EXPECT_EQ(3, server_screen->numviews);
+    for (int view_index = 0; view_index < 3; ++view_index)
+    {
+        EXPECT_NE(nullptr, server_screen->viewob[view_index])
+            << "missing authoritative view " << view_index;
+    }
+    for (int view_index = 3; view_index < MAX_VIEWS; ++view_index)
+    {
+        EXPECT_EQ(nullptr, server_screen->viewob[view_index])
+            << "unexpected authoritative view " << view_index;
+    }
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
 }
 

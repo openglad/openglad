@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/resources/company.h>
@@ -313,8 +314,11 @@ TEST(SaveDataVersions, save_data_load_v7_reads_allied_and_scores)
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
+    tmp.numplayers = 3;
     ASSERT_TRUE(tmp.load("ver7_allied")) << "v7 load should succeed";
-    ASSERT_EQ(2, (int)tmp.numplayers) << "v7 should load numplayers";
+    ASSERT_EQ(3, (int)tmp.numplayers)
+        << "the legacy byte is consumed, but player count remains live "
+           "session state";
     ASSERT_EQ(0, (int)tmp.allied_mode) << "v7 should load allied_mode";
     ASSERT_TRUE(tmp.is_level_completed(10)) << "v7 should mark cleared levels from 500-byte status array";
 }
@@ -858,7 +862,7 @@ TEST(SaveDataVersions, save_data_load_rejects_negative_team_size)
 }
 
 
-TEST(SaveDataVersions, save_data_load_rejects_unbounded_numplayers)
+TEST(SaveDataVersions, save_data_load_rejects_invalid_legacy_player_byte)
 {
     write_save_file("ver9_unbounded_numplayers",
                     /*version=*/9,
@@ -876,8 +880,11 @@ TEST(SaveDataVersions, save_data_load_rejects_unbounded_numplayers)
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
-    ASSERT_TRUE(!tmp.load("ver9_unbounded_numplayers")) << "load should fail when numplayers exceeds fixed score/view arrays";
-    ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(tmp.last_io_error())) << "invalid numplayers should report ReadFailed";
+    ASSERT_TRUE(!tmp.load("ver9_unbounded_numplayers"))
+        << "load should reject an out-of-range retired compatibility byte";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed),
+              static_cast<int>(tmp.last_io_error()))
+        << "an invalid legacy player byte should report ReadFailed";
 }
 
 
@@ -1075,6 +1082,82 @@ static std::vector<uint8_t> read_save_bytes(const char* fname)
     }
     SDL_CloseIO(in);
     return bytes;
+}
+
+TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.save_name = "COUNT-INDEPENDENT";
+    src.last_played_unix_s = 123456789;
+
+    std::vector<uint8_t> canonical_bytes;
+    for (const unsigned char live_count :
+         std::array<unsigned char, 5>{0, 1, 2, 3, 4}) {
+        SCOPED_TRACE("live player count " + std::to_string(live_count));
+        src.numplayers = live_count;
+        const std::string slot =
+            "typed_save_retired_player_count_" + std::to_string(live_count);
+
+        ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                  static_cast<int>(src.save_with_error(slot)));
+        const std::vector<uint8_t> bytes =
+            read_save_bytes((slot + ".gtl").c_str());
+        ASSERT_GT(bytes.size(), 132u) << "complete GTL header expected";
+        EXPECT_EQ(14, static_cast<int>(bytes[3]))
+            << "retiring the field does not change the GTL layout version";
+        EXPECT_EQ(1, static_cast<int>(bytes[132]))
+            << "old readers still need the canonical one-player marker";
+
+        if (canonical_bytes.empty())
+            canonical_bytes = bytes;
+        else
+            EXPECT_EQ(canonical_bytes, bytes)
+                << "transient player count must not leak anywhere in a "
+                   "company file";
+    }
+}
+
+TEST(SaveDataVersions, save_data_load_does_not_adopt_legacy_player_count)
+{
+    // Every value old writers could legally place at offset 132 remains
+    // readable, but none becomes the live count. Normal builds preserve the
+    // receiver; touch-only builds force their sole supported player count.
+    for (const unsigned char legacy_count :
+         std::array<unsigned char, 5>{0, 1, 2, 3, 4}) {
+        SCOPED_TRACE("legacy player count " +
+                     std::to_string(legacy_count));
+        const std::string slot =
+            "ver14_legacy_player_count_" + std::to_string(legacy_count);
+        write_save_file(slot,
+                        /*version=*/14,
+                        /*campaign_id=*/"org.openglad.gladiator",
+                        /*scen_num=*/1,
+                        /*cash=*/100,
+                        /*score=*/200,
+                        /*allied_mode=*/1,
+                        /*numplayers=*/legacy_count,
+                        /*guys=*/nullptr,
+                        /*listsize=*/0,
+                        /*use_v8plus_campaigns=*/true,
+                        /*v5plus_levelstatus=*/true,
+                        /*levelstatus_500=*/nullptr,
+                        /*levelstatus_200=*/nullptr);
+
+        SaveData loaded;
+        const unsigned char live_count =
+            static_cast<unsigned char>((legacy_count + 2) % 5);
+        loaded.numplayers = live_count;
+        ASSERT_TRUE(loaded.load(slot));
+#ifdef USE_TOUCH_INPUT
+        EXPECT_EQ(1, static_cast<int>(loaded.numplayers))
+            << "touch-only builds force their single supported live player";
+#else
+        EXPECT_EQ(static_cast<int>(live_count),
+                  static_cast<int>(loaded.numplayers))
+            << "company loading must preserve the runtime seat projection";
+#endif
+    }
 }
 
 TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_flags)
@@ -1279,12 +1362,14 @@ TEST(SaveDataVersions, save_data_load_v7_ladder_defaults_v14_fields)
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
+    tmp.numplayers = 4;
     tmp.last_played_unix_s = 777; // must be reset by the load
     ASSERT_TRUE(tmp.load("ver7_ladder_company")) << "v7 load should succeed";
     ASSERT_EQ(5, (int)tmp.scen_num) << "scen_num at the v7 ladder position";
     ASSERT_EQ(300u, tmp.totalcash);
     ASSERT_EQ(1, (int)tmp.allied_mode) << "v7 allied field read";
-    ASSERT_EQ(2, (int)tmp.numplayers);
+    ASSERT_EQ(4, (int)tmp.numplayers)
+        << "the historical player-count byte no longer owns session state";
     ASSERT_EQ(static_cast<std::int64_t>(0), tmp.last_played_unix_s)
         << "v7 saves default last_played_unix_s to 0";
     ASSERT_EQ(1, (int)tmp.team_size);

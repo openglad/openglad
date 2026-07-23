@@ -51,7 +51,8 @@ Choose the number of local players in **Player Settings**. In Base Camp, each
 **P#** card in the **SEATS** rail controls that player's team for the next
 level. Put seats on the same team for co-op, or choose different teams for a
 versus or mixed-team match. Use **<** and **>** when more than four seats are
-connected.
+connected. The local player count belongs to the current session and is not
+stored in a company save.
 
 Player numbers are shared across the lobby. Your cards say **YOU**; cards
 owned by another network client show its company abbreviation and are

@@ -92,6 +92,11 @@ level, and experience fields.
 |---|---|
 | ![Base Camp seat page one](media/team-selection/basecamp-seats-page-1.png) | ![Base Camp seat page two](media/team-selection/basecamp-seats-page-2.png) |
 
+The local player count survives leaving Base Camp and returning through
+**CONTINUE**, because it belongs to the session rather than the company file.
+
+![Three local seats after Continue](media/team-selection/basecamp-three-local-seats.png)
+
 ### 2.6 GO and READY
 
 Solo games show **GO**. In a network lobby, guests see **READY** and the host
@@ -131,6 +136,12 @@ areas now carry:
 The remaining bytes are zero-filled. Older fields and offsets are unchanged.
 Version 13 readers can still traverse a v14 file because no tail was inserted
 into the roster. Version 14 readers default older characters to deployed.
+
+The historical player-count byte at offset 132 is retained only so older
+readers can traverse the unchanged GTL layout. Writers put the canonical
+single-player compatibility value there, while current readers ignore valid
+legacy values. The live local player count and per-seat team choices are
+session state and do not belong to a company.
 
 ### 3.2 Slot names
 

@@ -622,10 +622,13 @@ save_data
 ├── current_level           — next level to play
 ├── completed_levels        — set of finished level IDs
 ├── score, cash             — team resources
-└── numplayers              — 0–4 player count (0 = spectator mode)
+└── numplayers              — runtime-only 0–4 local seat/view projection
 ```
 
 Save slots are numbered 0–9. Slot 0 is the auto-save. The game saves after each completed level.
+The local player count (including spectator mode at 0) is session state and
+is not restored from or persisted in a company save. The unchanged GTL layout
+retains a fixed one-player marker for older readers.
 
 ### Campaign Packages
 

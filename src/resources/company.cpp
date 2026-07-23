@@ -280,10 +280,13 @@ std::optional<CompanyInfo> read_header_from(const char* dir,
     if (listsize < 0 || listsize > MAX_TEAM_SIZE)
         return info; // the reader rejects this header
 
-    std::uint8_t numplayers = 0;
-    if (!read_exact(&numplayers, 1))
+    // Player count is session state now, but old GTL readers still require
+    // this byte at offset 132. Validate the legacy value exactly as the full
+    // reader does; it is not company metadata.
+    std::uint8_t legacy_numplayers = 0;
+    if (!read_exact(&legacy_numplayers, 1))
         return info;
-    if (numplayers > kMaxSavePlayers)
+    if (legacy_numplayers > kMaxLegacySavePlayers)
         return info; // mirrors the reader's reject (save_data.cpp)
 
     if (info.version >= 14)
@@ -775,9 +778,10 @@ private:
 // client's solo cursor and settings on disk. So: load the private company
 // file, overlay ONLY the machine's own roster and its owned teams' wallets,
 // stamp, atomic-save. Everything else — current_campaign, scen_num,
-// current_levels, difficulty, ctf_*/respawn_*/tower_* settings, numplayers,
-// my_team, allied_mode — stays as the disk holds it, simply by never being
-// touched on the loaded copy.
+// current_levels, difficulty, ctf_*/respawn_*/tower_* settings, my_team,
+// allied_mode — stays as the disk holds it, simply by never being touched on
+// the loaded copy. The local player-count choice is session-only and is never
+// derived from or encoded by the file's fixed legacy marker.
 SaveDataIoError company_autosave_merge_networked_lobby(
     const SaveData& session_save,
     const CompanyAutosaveContext& context,

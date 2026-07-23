@@ -30,9 +30,12 @@ class guy;
 class walker;
 
 inline constexpr int MAX_TEAM_SIZE = 24; // max # of guys on a team
-// Max # of player seats a save may claim; the GTL reader and the company
-// header scanner both reject anything larger.
-inline constexpr unsigned char kMaxSavePlayers = 4;
+// Largest value accepted from GTL's retired player-count byte. The full
+// reader and header scanner keep this legacy corruption check even though
+// current sessions no longer adopt the value.
+inline constexpr unsigned char kMaxLegacySavePlayers = 4;
+// Preserve the public spelling used by older source integrations.
+inline constexpr unsigned char kMaxSavePlayers = kMaxLegacySavePlayers;
 
 enum class SaveDataIoError
 {
@@ -65,6 +68,9 @@ public:
     // Guys used for training and stuff.  After a mission, the team is picked from the LevelRuntimeData's oblist for saving.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> team_list;
     unsigned char team_size;
+    // Runtime-only local seat/view count. Company files retain one legacy
+    // compatibility byte at this field's old offset, but load only validates
+    // it and save always writes the canonical single-player marker.
     unsigned char numplayers; //numviews
     short allied_mode;
     // CTF match settings (only TYPE_CTF maps read them; 0 = map/default value).

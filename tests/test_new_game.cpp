@@ -10,6 +10,8 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include <openglad/resources/company.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -308,4 +310,186 @@ TEST(NewGame, name_entry_edit_strip_sets_company_name) {
         << "the strip edit should capture the typed name";
     ASSERT_EQ("MY GUILD", og::runtime::current_session->myscreen_->save_data.save_name)
         << "the edited name should become the founded company's display name";
+}
+
+// Regression for the exact user flow:
+//   BEGIN NEW GAME -> Base Camp BACK -> PLAYERS -> 3 PLAYER -> BACK
+//   -> CONTINUE -> Base Camp.
+//
+// The player count is a live machine/session choice, not company state.
+// CONTINUE still reloads the most-recent company, so that load must preserve
+// the live choice and rebuild all three local lobby seats. The company file
+// keeps its canonical one-player compatibility byte for old GTL readers.
+struct ContinuePlayerCountState {
+    bool started = false;
+    bool finished = false;
+    bool saw_initial_base_camp = false;
+    bool saw_player_settings = false;
+    bool saw_continued_base_camp = false;
+    bool saw_three_seats = false;
+    unsigned char live_count_after_continue = 0;
+    std::array<bool, 4> visible_seat_cards{};
+    std::string founded_slot;
+    std::string continued_slot;
+};
+
+static int continue_player_count_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<ContinuePlayerCountState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("begin_new_game", 5000))
+        return 0;
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] founding company for player-count Continue flow\n");
+    interact("begin_new_game");
+
+    if (!accept_generated_company_name())
+        return 0;
+
+    // picker_prepare_new_game_setup blocks on the campaign intro.
+    SDL_Delay(1000);
+    inject_key_press(SDLK_ESCAPE);
+
+    if (!wait_for_team_menu())
+        return 0;
+    state->saw_initial_base_camp = true;
+    state->founded_slot = og::data::active_company_slot();
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] backing out of the new company's Base Camp\n");
+    interact("back");
+
+    if (!wait_for_interactable("player_settings", 10000))
+        return 0;
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] opening PLAYERS\n");
+    interact("player_settings");
+
+    if (!wait_for_interactable("3_player", 5000))
+        return 0;
+    state->saw_player_settings = true;
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] choosing 3 PLAYER\n");
+    interact("3_player");
+
+    // Let the 3 PLAYER release edge clear before injecting the next press.
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] backing out of PLAYERS\n");
+    interact("player_settings_back");
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return 0;
+    SDL_Delay(750);
+    fprintf(stderr, "  [test] continuing the founded company\n");
+    interact("continue_game");
+
+    if (!wait_for_team_menu())
+        return 0;
+    state->saw_continued_base_camp = true;
+    state->continued_slot = og::data::active_company_slot();
+    const auto wait_for_three_seat_cards = [&] {
+        int elapsed = 0;
+        constexpr int poll_interval = 50;
+        while (elapsed < 5000) {
+            const bool first = has_interactable("seat_card_0");
+            const bool second = has_interactable("seat_card_1");
+            const bool third = has_interactable("seat_card_2");
+            const bool fourth = has_interactable("seat_card_3");
+            if (first && second && third && !fourth)
+                return true;
+            SDL_Delay(poll_interval);
+            elapsed += poll_interval;
+        }
+        return false;
+    };
+    state->saw_three_seats = wait_for_three_seat_cards();
+    for (std::size_t index = 0; index < state->visible_seat_cards.size();
+         ++index) {
+        state->visible_seat_cards[index] =
+            has_interactable("seat_card_" + std::to_string(index));
+    }
+
+    // Let CONTINUE's click-release edge clear before clicking BACK; otherwise
+    // the synthetic second click can be swallowed and leave picker_main open.
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] backing out of the continued Base Camp\n");
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+TEST(NewGame, player_count_survives_back_then_continue)
+{
+    struct ClockReset {
+        ~ClockReset()
+        {
+            og::data::set_company_clock_for_tests(std::nullopt);
+        }
+    } clock_reset;
+    struct FoundedCompanyCleanup {
+        std::string slot;
+        ~FoundedCompanyCleanup()
+        {
+            if (slot.empty() || slot == "save0")
+                return;
+            (void)og::data::set_active_company_slot("save0");
+            (void)og::data::delete_company(slot);
+        }
+    } company_cleanup;
+
+    trace_clear();
+    // Outrank any save0 or opt-in stray company created earlier in this
+    // process, including when the suite runs shuffled within the same second.
+    og::data::set_company_clock_for_tests(4102444800LL); // 2100-01-01 UTC
+
+    ContinuePlayerCountState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        continue_player_count_injector, "continue_player_count", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    // First main menu founds the company. The second hosts PLAYERS and
+    // CONTINUE; after the second Base Camp BACK, the test gate quits.
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+
+    // The injector synchronizes through the locked interactable registry and
+    // never reads the SaveData/lobby model. Inspect that model here, after the
+    // UI and injector have both stopped, so the regression remains race-free.
+    state.live_count_after_continue =
+        og::runtime::current_session->myscreen_->save_data.numplayers;
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    company_cleanup.slot = state.founded_slot;
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished) << "the complete user flow should unwind";
+    ASSERT_TRUE(state.saw_initial_base_camp);
+    ASSERT_TRUE(state.saw_player_settings);
+    ASSERT_TRUE(state.saw_continued_base_camp);
+    EXPECT_EQ(state.founded_slot, state.continued_slot)
+        << "Continue should reopen the company just founded";
+    EXPECT_EQ(3, static_cast<int>(state.live_count_after_continue))
+        << "loading the company must preserve the machine's live seat count";
+    EXPECT_TRUE(state.saw_three_seats)
+        << "continued Base Camp must expose exactly the three selected seats";
+    EXPECT_TRUE(state.visible_seat_cards[0]);
+    EXPECT_TRUE(state.visible_seat_cards[1]);
+    EXPECT_TRUE(state.visible_seat_cards[2]);
+    EXPECT_FALSE(state.visible_seat_cards[3])
+        << "three local players must render exactly three seat cards";
+
+    // The session setting must not leak into the company file. Offset 132 is
+    // retained solely so historical GTL readers see a valid one-player save.
+    auto company_file = og::io::og_open_read(
+        "save/", (state.founded_slot + ".gtl").c_str());
+    ASSERT_NE(nullptr, company_file);
+    ASSERT_EQ(132, company_file->seek(132, 0));
+    std::uint8_t legacy_player_count = 0;
+    ASSERT_TRUE(og::io::og_read_exact(
+        *company_file, &legacy_player_count, 1, 1));
+    EXPECT_EQ(1, static_cast<int>(legacy_player_count))
+        << "GTL must retain only its canonical compatibility marker";
 }

@@ -99,9 +99,10 @@ std::string derive_company_slot(const std::string& display_name);
 // Company identity summarized from the first <= 164 bytes of a GTL file.
 // `valid` mirrors what SaveData::load would decide about the header: bad
 // magic, an unsupported version, a truncated header, or out-of-range
-// listsize/numplayers all mark the entry corrupt (but still listable, so the
-// UI can surface it — the never-silently-switch policy). A corrupt header
-// keeps whatever fields were parsed before the failure and last_played 0.
+// listsize/legacy player-count compatibility byte all mark the entry corrupt
+// (but still listable, so the UI can surface it — the
+// never-silently-switch policy). A corrupt header keeps whatever fields were
+// parsed before the failure and last_played 0.
 struct CompanyInfo
 {
     std::string slot;
@@ -284,12 +285,14 @@ struct CompanyAutosaveContext
 // (b) the owned session teams' m_totalcash/m_totalscore plus their legacy
 // scalar mirrors are overlaid from `save`; current_campaign, scen_num,
 // current_levels, difficulty and all ctf_*/respawn_*/tower_* settings,
-// numplayers, my_team and allied_mode stay as the DISK holds them. The
-// timestamp is stamped on the merged copy (the in-memory session save is
-// left untouched), and the campaign mount is restored afterwards, so the
-// open lobby menu never loses its session campaign. A missing/unreadable
-// private file aborts with the load error — the merge never clobbers
-// (the [SAVE-R7] baseline guarantees the file exists in real flows).
+// my_team and allied_mode stay as the DISK holds them. The local player-count
+// choice is session-only and is never derived from or encoded by the file's
+// fixed legacy marker. The timestamp is stamped on the merged copy (the
+// in-memory session save is left untouched), and the campaign mount is
+// restored afterwards, so the open lobby menu never loses its session
+// campaign. A missing/unreadable private file aborts with the load error —
+// the merge never clobbers (the [SAVE-R7] baseline guarantees the file exists
+// in real flows).
 [[nodiscard]] SaveDataIoError company_autosave(SaveData& save,
                                                CompanyAutosaveKind kind);
 [[nodiscard]] SaveDataIoError company_autosave(

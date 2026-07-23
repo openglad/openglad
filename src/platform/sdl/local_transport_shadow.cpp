@@ -1623,11 +1623,17 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr ||
-            load_saved_game(runtime->networked || runtime->isolated_company
-                                ? "netsession"
-                                : og::data::active_company_slot().c_str(),
-                            server_screen) == 0)
+        if (server_screen == nullptr)
+            return;
+        // A GTL no longer owns the local player count. This fresh
+        // authoritative screen must inherit the live launch configuration
+        // before load_saved_game uses that runtime projection to build views.
+        server_screen->save_data.numplayers =
+            gameplay_screen.save_data.numplayers;
+        if (load_saved_game(runtime->networked || runtime->isolated_company
+                               ? "netsession"
+                               : og::data::active_company_slot().c_str(),
+                           server_screen) == 0)
         {
             return;
         }
@@ -1894,11 +1900,17 @@ void reset_network_host_transport_shadow(
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr ||
-            load_saved_game(runtime->networked
-                                ? "netsession"
-                                : og::data::active_company_slot().c_str(),
-                            server_screen) == 0)
+        if (server_screen == nullptr)
+            return;
+        // A GTL no longer owns the local player count. This fresh
+        // authoritative screen must inherit the live launch configuration
+        // before load_saved_game uses that runtime projection to build views.
+        server_screen->save_data.numplayers =
+            gameplay_screen.save_data.numplayers;
+        if (load_saved_game(runtime->networked
+                               ? "netsession"
+                               : og::data::active_company_slot().c_str(),
+                           server_screen) == 0)
         {
             return;
         }

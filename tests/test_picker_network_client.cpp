@@ -4851,6 +4851,12 @@ TEST(PickerNetworkClient,
         og::runtime::local_transport_shadow_testing_server_screen(
             *cleanup.host_session);
     ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.numplayers))
+        << "the authoritative host reload must preserve the live two-seat "
+           "configuration instead of importing the retired GTL byte";
+    EXPECT_EQ(2, static_cast<int>(server_screen->numviews));
+    ASSERT_NE(nullptr, server_screen->viewob[0]);
+    ASSERT_NE(nullptr, server_screen->viewob[1]);
 
     // All 7 global players hold a distinct living walker on the server, and
     // the host display's controlled-ids table mirrors the same mapping.
