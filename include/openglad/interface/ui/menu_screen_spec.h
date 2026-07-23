@@ -7,19 +7,17 @@
  */
 #pragma once
 
-// MenuScreen Runtime — declarative SDL menu-screen specs (menu engine,
-// docs/menu-engine.md, design docs/company-basecamp-design.md §1.3-§1.5).
+// Declarative SDL menu-screen specs. See docs/menu-engine.md.
 //
 // A MenuScreenSpec describes one blocking picker screen: its rows (geometry,
-// action, nav transcribed VERBATIM from the legacy k_* table), per-row label
+// action, and hand-authored navigation), per-row label
 // and gate bindings, the screen's frame obligations (lobby poll, remote-start
 // preemption scope), and its draw hooks. run_menu_screen() is the single
-// frame skeleton that hosts every migrated screen; menu_screen_host() is the
-// registry that answers "which system owns this screen" while legacy loops
-// remain.
+// frame skeleton for runtime-owned screens; menu_screen_host() records which
+// system owns each screen.
 //
 // SDL-side only (og_interface): terminal clients consume the shared
-// menu_binding/terminal_menu_model layer instead (design D4).
+// menu_binding/terminal_menu_model layer instead.
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/menu_binding.h>
@@ -32,9 +30,9 @@
 
 namespace og::ui {
 
-// Build-variant row filter (§1.6): rows are dropped at materialization when
-// they do not apply to the compiled platform. NOTE: until id-keyed nav (G9)
-// lands, a spec whose variants actually filter rows must keep nav indices
+// Rows that do not apply to the target platform are dropped at
+// materialization. Until navigation uses stable row IDs, a spec whose
+// variants filter rows must keep nav indices
 // valid for every variant it compiles into (the main-menu enabled/disabled
 // QUIT fork satisfies this by construction: exactly one QUIT row survives,
 // at the same materialized index, with identical nav links).
@@ -45,8 +43,8 @@ enum class MenuBuildGate : std::uint8_t {
 };
 
 // The platform a materialization filters for. Runtime-parameterized so a
-// native test can pin the web shape of a build-gated spec (G9: the touch/web
-// variants have no other oracle); production paths use the compiled default.
+// native test can pin the web shape of a build-gated spec; production paths
+// use the compiled default.
 enum class MenuBuildVariant : std::uint8_t {
     Native,
     Web,
@@ -60,7 +58,7 @@ enum class MenuOutlineBinding : std::uint8_t {
 };
 
 // Live-vbutton face-color binding, applied every frame in the label-sync
-// pass (Layer F: READY/GO state faces).
+// pass (for example, READY/GO state faces).
 using MenuColorFormatter = unsigned char (*)(const MenuLabelContext&);
 
 // Full custom per-row state (overrides the GateBinding when set). This is
@@ -80,8 +78,8 @@ struct MenuButtonSpec {
     Sint32 h = 0;
     ButtonAction action = ButtonAction::Invalid;
     Sint32 arg = 0;
-    // Hand-wired nav links, transcribed VERBATIM (design D1: auto-derived
-    // nav is proof-gated and never the source of truth for legacy screens).
+    // Hand-wired nav links. Auto-derived navigation is not the source of
+    // truth for classic screens.
     MenuNav nav{};
     // Per-frame dynamic label; written to BOTH surfaces (descriptor row and
     // live vbutton) by the runner's label-sync pass.
@@ -104,10 +102,8 @@ struct MenuButtonSpec {
     MenuBuildGate build = MenuBuildGate::Always;
 };
 
-// Nav application program, in engine precedence order (§1.5): a legacy
-// rewire hook wins; otherwise the verbatim static links stand; RouteAround
-// (generic transitive-skip over the base graph) is reserved for screens that
-// prove equivalence first (G1) — not implemented yet.
+// Navigation precedence: a rewire hook wins; otherwise the static links
+// stand. RouteAround is reserved for screens that prove equivalence first.
 enum class NavProgramKind : std::uint8_t {
     Static,
     Rewire,
@@ -116,20 +112,20 @@ enum class NavProgramKind : std::uint8_t {
 
 struct NavProgram {
     NavProgramKind kind = NavProgramKind::Static;
-    // G1: the legacy hand-wired rewire function, plugged verbatim. Runs every
+    // A hand-wired rewire function. Runs every
     // frame after gates apply; may also re-assert visibility and pull the
     // highlight (the legacy sync_* functions do all three).
     void (*rewire)(button* buttons, int count, int& highlighted_button) = nullptr;
 };
 
-// Which remote-start (host GO) preemption check the frame loop runs (§1.4).
+// Which remote-start (host GO) preemption check the frame loop runs.
 enum class RemoteStartScope : std::uint8_t {
     None,
     MainScope,       // picker_main_scope_remote_start_requested
     TeamBuildScope,  // team_build_remote_start_requested
 };
 
-// Both remote-start exit shapes (§1.4): subscreens RETURN the remote
+// Both remote-start exit shapes: subscreens return the remote
 // MENU_EXIT; the main menu breaks and lets present_menu act on
 // pks().selected_menu_item, returning spec.exit_value.
 enum class RemoteStartExit : std::uint8_t {
@@ -145,14 +141,14 @@ enum class EnterTransition : std::uint8_t {
     FadeWithInitialDraw,
 };
 
-// Dynamic row-template screens (Layer F, §1.7). Not defined yet.
+// Reserved for a future dynamic row-template consumer.
 struct RowTemplateSpec;
 
 struct MenuScreenSpec {
     const char* name = "";
     const MenuButtonSpec* rows = nullptr;
     int row_count = 0;
-    // D3 materialization shims: the legacy accessor pair. buttons() fills the
+    // Materialization shims for the accessor pair. buttons() fills the
     // per-session mutable vector the count() reads — always call buttons()
     // first (the accessors keep this contract for every legacy consumer).
     button* (*buttons_accessor)() = nullptr;
@@ -176,11 +172,11 @@ struct MenuScreenSpec {
     bool exit_on_redraw = false;
     // Draw the picker backdrop (draw_backdrop()) before draw_background.
     bool backdrop = false;
-    // Frame obligations (single-point, §1.4/G12).
+    // Frame obligations.
     bool polls_lobby = false;
-    bool level_reload_guard = false;          // Layer E: via frame_tick hooks
-    bool autosave_on_mutation = false;        // Layer F
-    bool ready_reset_on_mutation = false;     // Layer F
+    bool level_reload_guard = false;
+    bool autosave_on_mutation = false;
+    bool ready_reset_on_mutation = false;
     bool sync_settings_after_mutation = false; // after handled MenuSpecRow clicks
     // Per-screen hooks (screen_state is run_menu_screen's opaque argument).
     // Entry-time descriptor fix-ups, run ONCE after materialization and
@@ -190,7 +186,7 @@ struct MenuScreenSpec {
     void (*prepare_buttons)(button* buttons, int num_buttons,
                             void* screen_state) = nullptr;
     void (*draw_background)(void* screen_state) = nullptr; // full pre-buttons pass, incl. clear
-    void (*draw_content)(void* screen_state) = nullptr;    // after draw_buttons (G14 hooks here)
+    void (*draw_content)(void* screen_state) = nullptr;    // after draw_buttons
     bool (*frame_tick)(void* screen_state, int frame) = nullptr; // false => exit loop
     void (*on_reset)(void* screen_state) = nullptr;        // after reset_buttons re-init
     // Post-nav click consumption for screens whose legacy loops interpreted
@@ -200,7 +196,7 @@ struct MenuScreenSpec {
     // after the exit_on_redraw check, at the legacy consumption point;
     // returns the frame's new retvalue.
     Sint32 (*consume_click)(Sint32 retvalue, void* screen_state) = nullptr;
-    // G3 generic row dispatch: consumes the ButtonAction::MenuSpecRow stash.
+    // Generic row dispatch: consumes the ButtonAction::MenuSpecRow stash.
     // Return value is the frame's new retvalue (MENU_OK/MENU_REDRAW/0, or
     // MENU_EXIT for a structural exit).
     Sint32 (*on_spec_row)(int row, void* screen_state) = nullptr;
@@ -211,7 +207,7 @@ struct MenuScreenSpec {
 };
 
 // Fill `out` with button rows materialized from the spec (build-gate
-// filtered). The D3 accessors call this into their PickerState vector; tests
+// filtered). Accessors call this into their PickerState vector; tests
 // may call it into their own storage.
 void materialize_menu_buttons(const MenuScreenSpec& spec,
                               std::vector<button>& out);
@@ -228,15 +224,14 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows(
 std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
     const MenuScreenSpec& spec, MenuBuildVariant variant);
 
-// The single frame skeleton (§1.4). Blocks until the screen exits; returns
+// The single frame skeleton. Blocks until the screen exits; returns
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
-// G4 registry: which system owns each picker screen during the migration
-// window. Engine screens carry their spec; legacy screens carry their
-// blocking entry point (nullptr when the screen is owned by the
-// SdlPickerClient state machine — NETWORKING, legacy by the exercised V2
-// valve; docs/menu-engine.md "V2 decision record").
+// Registry of picker-screen ownership. Runtime screens carry their spec;
+// legacy screens carry their blocking entry point. NETWORKING is owned by
+// the SdlPickerClient state machine and therefore has a null entry point
+// here; docs/menu-engine.md explains why.
 enum class MenuScreenId : std::uint8_t {
     MainMenu,
     PlayerSettings,
@@ -267,24 +262,22 @@ struct MenuScreenHost {
 
 const MenuScreenHost& menu_screen_host(MenuScreenId id);
 
-// The first migrated screen (§1.8 step 2).
 const MenuScreenSpec& difficulty_menu_screen_spec();
 
-// The content-hook-heavy screens (§1.8 step 6). Their per-frame hooks and
-// entry wrappers live beside their file-local helpers in
-// picker_team_build.cpp; the wrappers call run_menu_screen on these.
+// These screens keep their hooks beside their file-local helpers in
+// picker_team_build.cpp.
 const MenuScreenSpec& hire_menu_screen_spec();
 const MenuScreenSpec& train_menu_screen_spec();
 const MenuScreenSpec& progress_menu_screen_spec();
 const MenuScreenSpec& view_scenario_menu_screen_spec();
 
-// The main menu (§1.8 step 4). §1.6 retains one MP spec and one no-MP spec,
-// now sharing the reflowed main geometry; their nested PLAYER SETTINGS specs
+// The MP and no-MP main-menu specs share the same geometry; their nested
+// PLAYER SETTINGS specs
 // carry the actual multiplayer shape difference. DISABLE_MULTIPLAYER selects
 // both compiled variants (including the USE_TOUCH_INPUT mapping). The
 // web/native fork inside each main spec is the build-gated enabled/disabled
 // QUIT row; HELP is present in both. Both specs exist on every build so
-// uncompiled shapes stay unit-pinnable (G9).
+// uncompiled shapes remain unit-testable.
 const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
@@ -315,7 +308,7 @@ void set_main_menu_company_view_for_tests(bool present, std::string display_name
 // multi-page} × {host} × {ownership mix} × {networked}); production state
 // is owned by create_team_menu.
 struct BaseCampScreenState {
-    // The team-build family's level-reload obligation (§1.4 frame_tick).
+    // Cursor used by the team-build family's level-reload frame hook.
     short last_level_id = -1;
     bool was_reset = false;
     // Display row i (page-relative windowing via `page`) shows
@@ -323,7 +316,7 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
-    // §2.0 U6 roster-row tap debounce: a second ACCEPTED deploy toggle of
+    // A second accepted deploy toggle of
     // the same display row (same tapped rect resolving to the same save
     // slot) within 250 ms is silently ignored — every touch mistap
     // double-toggle would otherwise be a spurious MP ready-clear. Denied /
@@ -343,10 +336,9 @@ void install_base_camp_state_for_screen(BaseCampScreenState* state);
 // (§3.3 positional-refresh rule; called every frame tick and by tests).
 void base_camp_refresh_rows(BaseCampScreenState& state);
 
-// §2.2 new-company name entry (Layer F engine screen): a generated fantasy
-// default shown in an editable strip, REROLL, a slug preview teaching the
-// display-name/filename split, and a NO-first-confirm-free ACCEPT/BACK pair
-// (BACK creates nothing). All rows route through ButtonAction::MenuSpecRow.
+// §2.2 new-company name entry: a generated fantasy default shown in an
+// editable strip, REROLL, and an ACCEPT/BACK pair. The internal filename is
+// deliberately not shown; BACK creates nothing.
 const MenuScreenSpec& name_entry_menu_screen_spec();
 
 // Runs the name-entry screen (blocking). On ACCEPT, fills `out_name` with the
@@ -355,7 +347,7 @@ const MenuScreenSpec& name_entry_menu_screen_spec();
 bool run_new_company_name_entry(std::string& out_name);
 
 // §2.3 Company List (Load) screen state: the header-scanned company set
-// (WP2's list_companies — most-recent-first, NEVER a full SaveData::load per
+// (list_companies — most-recent-first, never a full SaveData::load per
 // row), the PageModel window over it, and the verdicts the wrapper reads.
 // Public so tests can drive the per-frame rewire's visibility variants
 // ({0 rows, partial page, multi page, corrupt rows}); production state is
@@ -372,7 +364,7 @@ struct CompanyListScreenState {
     std::string backups_slot;
 };
 
-// §2.3 Company List (Layer F engine screen): 8 pageable rows with per-row
+// §2.3 Company List: 8 pageable rows with per-row
 // BK (Backups door) and X (delete, NO-first confirm) buttons, BACK, and
 // PageModel PREV/NEXT pagers (hidden when one page fits everything).
 const MenuScreenSpec& company_list_menu_screen_spec();
@@ -388,7 +380,7 @@ void install_company_list_state_for_screen(CompanyListScreenState* state);
 // to a main menu whose gate then hides CONTINUE/LOAD.
 bool run_company_list_screen();
 
-// §2.4 Backups sub-view state: one company's header-scanned snapshots (WP2's
+// §2.4 Backups sub-view state: one company's header-scanned snapshots
 // list_company_backups — newest seq first, never mounted), the PageModel
 // window over them, and the restore verdict the wrapper reads. Public so
 // tests can drive the per-frame rewire's visibility variants; production
@@ -406,7 +398,7 @@ struct CompanyBackupsScreenState {
     bool opened = false;
 };
 
-// §2.4 Backups sub-view (Layer F engine screen): 10 pageable snapshot rows
+// §2.4 Backups sub-view: 10 pageable snapshot rows
 // (click = restore behind the NO-first confirm; corrupt rows refuse), BACK
 // to the Company List, and PageModel PREV/NEXT pagers (retention 20 => at
 // most 2 pages).

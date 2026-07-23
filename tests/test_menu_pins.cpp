@@ -1,15 +1,9 @@
-// WP1 step 0 — G2 "pin-then-migrate" exact-table pins
-// (docs/company-basecamp-design.md §1.2 G2, §1.8 step 0).
+// Exact-table pins for the menu runtime. Each hand-owned kExpected table
+// records every row field (id, label, hotkey, rect, action, arg, nav, hidden).
+// The tables are independent oracles: a spec transcription error fails here
+// instead of validating itself against another projection of the same spec.
 //
-// Before the menu engine re-hosts ANY screen whose test_menu_layout coverage
-// is only overlap/bounds today, the CURRENT static k_* table is transcribed
-// here as a hand-owned kExpected pin: every field of every row (id, label,
-// hotkey, rect, action, arg, nav, hidden). These tables are the differential
-// oracle every later migration step is judged against — when the engine
-// materializes the same screen from a spec, a transcription typo fails one of
-// these pins, not a new self-referential spec test (G11).
-//
-// Pinned screens (the "thinly-pinned" set named by G2): main menu (the
+// Pinned screens: main menu (the
 // compiled build variant — all four k_mainmenu_buttons variants are
 // transcribed under the same preprocessor selection picker.cpp uses, so
 // whichever variant a build compiles is the one pinned), hire, train, the
@@ -17,9 +11,7 @@
 // function-local in create_progress_menu; it is pinned through the live
 // vbutton surface instead of an accessor).
 //
-// DO NOT relax or re-pin these tables during WP1 (Layer E). They change only
-// in the Layer-F commits that intentionally reshape a screen, atomically with
-// that screen's re-pin (§7).
+// Change a pin only with an intentional screen change, in the same commit.
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
@@ -229,7 +221,7 @@ TEST(MenuEnginePins, name_entry_exact_table)
     check_exact_table(buttons, count, kExpected,
                       static_cast<int>(std::size(kExpected)), "name_entry");
 
-    // §2.0 U5 soft-keyboard lint: an in-place-editable field must sit with
+    // Soft-keyboard lint: an in-place-editable field must sit with
     // y+h <= 100 so a web soft keyboard never covers it. The box (row 1) is
     // the editable field; the in-place editor opens at y=82 inside it.
     EXPECT_LE(buttons[1].y + buttons[1].sizey, 100)
@@ -237,9 +229,9 @@ TEST(MenuEnginePins, name_entry_exact_table)
 }
 
 // ---------------------------------------------------------------------------
-// §2.3 Company List (Load): a Layer-F engine screen. 8 visual rows, each a
-// (row, BK, X) triple inside the centered 220px slot column — rects transcribed
-// from the design amendment INDEPENDENTLY of the spec's macro: company
+// §2.3 Company List (Load): 8 visual rows, each a (row, BK, X) triple
+// inside the centered 220px slot column. The rects are transcribed
+// independently of the spec's macro: company
 // (50,35+17i,164,10), BK (218,35+17i,24,10), and X
 // (246,35+17i,24,10), followed by the centered footer controls. Every row
 // dispatches through MenuSpecRow with arg == spec ordinal (rows 0-7,
@@ -439,8 +431,7 @@ TEST(MenuEnginePins, trainmenu_exact_table)
 
 // ---------------------------------------------------------------------------
 // Hire (k_hiremenu_buttons): PREV/NEXT candidate cyclers, the hire-team
-// cycler (label rewritten by change_hire_teamnum via index 2 — the G8 raw
-// allbuttons_[2] write), HIRE ME, BACK.
+// cycler (label rewritten by change_hire_teamnum via index 2), HIRE ME, BACK.
 // ---------------------------------------------------------------------------
 
 TEST(MenuEnginePins, hiremenu_exact_table)
@@ -474,11 +465,10 @@ TEST(MenuEnginePins, hiremenu_exact_table)
 // live vbutton surface instead: enter the screen for real, snapshot
 // allbuttons via the interaction API, and compare against the transcription.
 //
-// Fields not observable through the live surface, transcribed here for the
-// migration-time differential — VERIFIED at migration time against the
-// deleted function-local table and now carried by kProgressMenuRows
+// Fields not observable through the live surface, verified against the
+// retired function-local table and now carried by kProgressMenuRows
 // (menu_screen_specs.cpp):
-//   prev: myfun=0 (keyboard-dead by design at Layer E), arg=-1,
+//   prev: myfun=0 (keyboard-dead by design), arg=-1,
 //         nav{.right=1}, hotkey=KEYSTATE_UNKNOWN
 //   next: myfun=0, arg=-1, nav{.left=0, .right=2}, hotkey=KEYSTATE_UNKNOWN
 //   back: myfun=ReturnMenu, arg=MENU_EXIT, nav{.left=1},
