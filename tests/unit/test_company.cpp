@@ -318,6 +318,13 @@ TEST(CompanySlug, exhausted_suffixes_fall_back_to_epoch)
     ScopedCompanyClock pin(987654);
     EXPECT_EQ("beta-987654", og::data::derive_company_slot("Beta"))
         << "the epoch fallback must come from the pinnable company clock";
+
+    sandbox.write_raw("beta-987654.gtl", "GTL");
+    EXPECT_EQ("beta-987654-2", og::data::derive_company_slot("Beta"))
+        << "an existing same-second fallback must never be reused";
+    sandbox.write_raw("beta-987654-2.gtl", "GTL");
+    EXPECT_EQ("beta-987654-3", og::data::derive_company_slot("Beta"))
+        << "same-second collisions keep probing instead of overwriting";
 }
 
 // --- Header-only scan (§3.5) ---------------------------------------------
@@ -1108,8 +1115,8 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     }
 
     // The lobby-held session save: HOST campaign/cursor/settings, this
-    // machine's PRIVATE roster stamped onto session team 2, post-hire/train
-    // wallet on team 2.
+    // machine's PRIVATE roster on combat/wallet team 2, post-hire/train wallet
+    // on team 2.
     SaveData session;
     session.current_campaign = "org.openglad.ctf";
     session.scen_num = 502;

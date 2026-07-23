@@ -44,6 +44,7 @@ namespace {
 constexpr std::string_view kNetsessionSlot = "netsession";
 constexpr std::string_view kDefaultCompanySlot = "save0";
 constexpr std::size_t kMaxCompanySlugLength = 40;
+constexpr std::size_t kMaxVirtualBasenameLength = 64;
 
 std::optional<std::int64_t>& company_clock_override()
 {
@@ -157,8 +158,29 @@ std::string derive_company_slot(const std::string& display_name)
             return candidate;
     }
     // 98 collisions deep: fall back to a wall-clock suffix (test-pinnable via
-    // the company clock seam).
-    return collapsed + "-" + std::to_string(company_clock_now_s());
+    // the company clock seam), but keep probing. A timestamp is not unique:
+    // two companies can be founded in the same second, and an older save may
+    // already carry that suffix. Returning the unchecked timestamp candidate
+    // would repoint the active company at an existing file and overwrite it.
+    const std::string epoch = std::to_string(company_clock_now_s());
+    for (std::uint64_t retry = 1;; ++retry)
+    {
+        std::string tail = "-" + epoch;
+        if (retry > 1)
+            tail += "-" + std::to_string(retry);
+
+        std::string base = collapsed;
+        if (base.size() + tail.size() > kMaxVirtualBasenameLength)
+            base.resize(kMaxVirtualBasenameLength - tail.size());
+        while (!base.empty() && base.back() == '-')
+            base.pop_back();
+        if (base.empty())
+            base = "company";
+
+        const std::string candidate = base + tail;
+        if (!taken(candidate))
+            return candidate;
+    }
 }
 
 // ---------------------------------------------------------------------------
