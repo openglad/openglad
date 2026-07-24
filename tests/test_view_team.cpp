@@ -4,6 +4,8 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -35,6 +37,37 @@ constexpr int kViewMenuTransitionTimeoutMs = 15000;
 constexpr int kGameStartTimeoutMs = 20000;
 constexpr int kGameFinishTimeoutMs = 90000;
 constexpr int kTeamBuildInterceptScope = 2;
+
+struct InputHardwareSnapshotGuard
+{
+    InputHardwareState state = input_hardware_state();
+    int active[4][NUM_KEYS]{};
+
+    InputHardwareSnapshotGuard()
+    {
+        for (int p = 0; p < 4; ++p)
+        {
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                active[p][k] =
+                    og::runtime::current_session->player_keys_[p][k];
+            }
+        }
+    }
+
+    ~InputHardwareSnapshotGuard()
+    {
+        input_hardware_state() = state;
+        for (int p = 0; p < 4; ++p)
+        {
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                og::runtime::current_session->player_keys_[p][k] =
+                    active[p][k];
+            }
+        }
+    }
+};
 }
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -2555,6 +2588,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 #if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
     GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
 #else
+    InputHardwareSnapshotGuard input_guard;
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     set_player_control_mode(
@@ -2616,13 +2650,94 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     EXPECT_EQ(std::vector<std::uint8_t>({4}), lobby.local_indices);
 
     // Local profile 2 follows its surviving seat down to profile 1; the
-    // vacated tail returns to the defaults instead of leaking old controls.
+    // removed profile rotates to the inactive tail for the next added seat.
     EXPECT_EQ(
         static_cast<int>(ControlDirectionMode::EightDirection),
         get_player_control_mode(0));
     EXPECT_EQ(
         static_cast<int>(ControlDirectionMode::FourDirection),
         get_player_control_mode(1));
+    EXPECT_EQ(
+        static_cast<int>(SDLK_UP),
+        get_player_key_binding_for_mode(
+            0, static_cast<int>(ControlDirectionMode::EightDirection),
+            KEY_UP));
+    EXPECT_EQ(
+        static_cast<int>(SDLK_W),
+        get_player_key_binding_for_mode(
+            1, static_cast<int>(ControlDirectionMode::FourDirection),
+            KEY_UP));
+
+    // Drive the real Base Camp [+] boundary. Authority appends the
+    // replacement to this machine's local-seat order, so it must resolve to
+    // the freed tail profile (WASD), not clone the surviving arrow profile.
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+    lobby.seat_to_publish_on_add =
+        make_foreign_lobby_player(
+            7, "net-readded", "MY COMPANY", 0, 0);
+    og::ui::BaseCampScreenState base_state;
+    og::ui::base_camp_refresh_rows(base_state);
+    og::ui::install_base_camp_state_for_screen(&base_state);
+    const og::ui::MenuScreenSpec& base_spec =
+        *og::ui::menu_screen_host(
+             og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, base_spec.on_spec_row);
+    EXPECT_EQ(
+        MENU_OK,
+        base_spec.on_spec_row(kBaseCampAddSeatIndex, &base_state));
+    ASSERT_TRUE(lobby.active_local_count.has_value());
+    EXPECT_EQ(2u, *lobby.active_local_count);
+    EXPECT_EQ(
+        std::vector<std::uint8_t>({4, 7}), lobby.local_indices);
+    EXPECT_EQ(1, lobby.add_seat_calls);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    const auto replacement = std::find_if(
+        lobby.players.begin(), lobby.players.end(),
+        [](const og::sim::LobbyPlayer& candidate) {
+            return candidate.player_index == 7;
+        });
+    ASSERT_NE(lobby.players.end(), replacement);
+    og::ui::SeatSettingsScreenState replacement_state{
+        .seat_id = replacement->seat_id,
+        .player_index = replacement->player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(
+        &replacement_state);
+    buttons = spec.buttons_accessor();
+    highlighted = kSeatSettingsModeIndex;
+    spec.nav.rewire(buttons, spec.count_accessor(), highlighted);
+    EXPECT_EQ(1, replacement_state.local_slot);
+    EXPECT_EQ(
+        static_cast<int>(SDLK_W),
+        get_player_key_binding_for_mode(
+            replacement_state.local_slot,
+            static_cast<int>(ControlDirectionMode::FourDirection),
+            KEY_UP));
+    EXPECT_EQ(
+        static_cast<int>(SDLK_D),
+        get_player_key_binding_for_mode(
+            replacement_state.local_slot,
+            static_cast<int>(ControlDirectionMode::FourDirection),
+            KEY_RIGHT));
+    EXPECT_EQ(
+        MENU_OK,
+        spec.on_spec_row(
+            kSeatSettingsResetIndex, &replacement_state));
+    EXPECT_EQ(
+        static_cast<int>(SDLK_W),
+        get_player_key_binding_for_mode(
+            replacement_state.local_slot,
+            static_cast<int>(ControlDirectionMode::FourDirection),
+            KEY_UP))
+        << "RESET must follow the freed profile's factory identity";
+    EXPECT_EQ(
+        static_cast<int>(SDLK_D),
+        get_player_key_binding_for_mode(
+            replacement_state.local_slot,
+            static_cast<int>(ControlDirectionMode::FourDirection),
+            KEY_RIGHT));
 
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();

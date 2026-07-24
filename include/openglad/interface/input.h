@@ -261,6 +261,8 @@ enum class ControlDirectionMode : int
 class cfg_store;
 
 bool reset_default_player_controls_for_player(int player_index);
+// Compact active profiles after a seat leaves and rotate the freed profile to
+// the inactive tail, ready for the next seat added on this machine.
 bool compact_player_controls_after_removal(int removed_player_index, int active_player_count);
 void reset_default_player_controls();
 int get_player_control_mode(int player_index);

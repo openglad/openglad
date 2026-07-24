@@ -108,7 +108,11 @@ Adding or removing seats and choosing their teams changes the current session.
 Those choices survive leaving Base Camp and returning through **CONTINUE**, but
 they are neither loaded from nor written to a company file. Direction modes
 and key bindings belong to the shared control configuration instead, so they
-remain available across companies.
+remain available across companies. Removing a seat moves its complete control
+profile to the first unused local slot; adding a replacement seat therefore
+reuses that profile instead of duplicating one of the surviving players'
+bindings. Its factory-layout identity moves with it, so **RESET** and later
+config reloads restore the same distinct layout.
 
 ![Three local seats after Continue](media/team-selection/basecamp-three-local-seats.png)
 

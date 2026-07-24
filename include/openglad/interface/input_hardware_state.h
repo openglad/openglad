@@ -13,6 +13,9 @@ struct InputHardwareState {
     MouseState mouse{};
     JoyData player_joy[4]{};
     int player_control_modes[4]{};
+    // Factory keymap identity follows a profile when seats compact. This lets
+    // per-seat RESET restore that profile's own layout after remove/add.
+    int player_control_default_profiles[4]{0, 1, 2, 3};
     int player_mode_keys[4][2][17]{};  // [player][mode][key] — key dim == NUM_KEYS
     // Diagonal release retention (input_state_from_sdl); per player.
     DirectionGraceState direction_grace[4]{};
