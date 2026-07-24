@@ -2035,6 +2035,10 @@ std::vector<std::uint8_t> seat_settings_local_indices(
     indices.reserve(players.size());
     for (const og::sim::LobbyPlayer& player : players)
         indices.push_back(player.player_index);
+    // Local/offline P# is the controller-profile ordinal. Lobby snapshots
+    // normally arrive dense and ordered, but never let transient message
+    // order turn displayed P1 into profile 3 (whose 4-dir YELL is U).
+    std::sort(indices.begin(), indices.end());
     return indices;
 }
 
@@ -2100,39 +2104,39 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 8, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
-     .nav = {.up = kSeatSettingsResetIndex,
-             .down = kSeatSettingsTeamIndex}},
+     .nav = {.up = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 16, .y = 38, .w = 86, .h = 18,
+     .x = 16, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsResetIndex,
-             .right = kSeatSettingsModeIndex}},
+     .nav = {.up = kSeatSettingsModeIndex,
+             .down = kSeatSettingsBackIndex,
+             .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 111, .y = 38, .w = 98, .h = 18,
+     .x = 16, .y = 38, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsResetIndex,
-             .left = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsTeamIndex,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsRemoveIndex,
-             .left = kSeatSettingsModeIndex}},
-    {.id = "seat_reset", .label = "RESET THIS PLAYER",
-     .x = 16, .y = 169, .w = 138, .h = 18,
+             .left = kSeatSettingsModeIndex,
+             .right = kSeatSettingsResetIndex}},
+    {.id = "seat_reset", .label = "RESET",
+     .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
-     .nav = {.up = kSeatSettingsTeamIndex,
-             .down = kSeatSettingsBackIndex,
-             .right = kSeatSettingsRemoveIndex}},
+     .nav = {.up = kSeatSettingsBackIndex,
+             .down = kSeatSettingsRemoveIndex,
+             .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
      .x = 166, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
-     .nav = {.up = kSeatSettingsRemapIndex,
+     .nav = {.up = kSeatSettingsResetIndex,
              .down = kSeatSettingsBackIndex,
-             .left = kSeatSettingsResetIndex},
+             .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
 };
 
@@ -2141,32 +2145,32 @@ constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 8, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
-     .nav = {.up = kSeatSettingsResetIndex,
-             .down = kSeatSettingsTeamIndex}},
+     .nav = {.up = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 16, .y = 38, .w = 86, .h = 18,
+     .x = 91, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsResetIndex,
-             .right = kSeatSettingsModeIndex}},
+     .nav = {.up = kSeatSettingsRemapIndex,
+             .down = kSeatSettingsBackIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 111, .y = 38, .w = 98, .h = 18,
+     .x = 16, .y = 38, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsResetIndex,
-             .left = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsTeamIndex,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsResetIndex,
-             .left = kSeatSettingsModeIndex}},
-    {.id = "seat_reset", .label = "RESET THIS PLAYER",
-     .x = 91, .y = 169, .w = 138, .h = 18,
+             .down = kSeatSettingsTeamIndex,
+             .left = kSeatSettingsModeIndex,
+             .right = kSeatSettingsResetIndex}},
+    {.id = "seat_reset", .label = "RESET",
+     .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
-     .nav = {.up = kSeatSettingsTeamIndex,
-             .down = kSeatSettingsBackIndex}},
+     .nav = {.up = kSeatSettingsBackIndex,
+             .down = kSeatSettingsTeamIndex,
+             .left = kSeatSettingsRemapIndex}},
 };
 
 void sync_seat_settings_label(button* buttons, int index,
@@ -2242,18 +2246,6 @@ void seat_settings_draw_content(void* screen_state)
         std::format("LOCAL PLAYER {} / P{}", state->local_slot + 1,
                     static_cast<int>(player.player_index) + 1)
             .c_str());
-
-    const int team = std::clamp(
-        static_cast<int>(player.team), 0,
-        static_cast<int>(SCORE_TEAM_COUNT) - 1);
-    constexpr int chip_x = 93;
-    constexpr int chip_y = 43;
-    game->fastbox(chip_x, chip_y, 8, 8, PURE_BLACK);
-    game->fastbox(chip_x + 1, chip_y + 1, 6, 6,
-                  static_cast<unsigned char>(team * 16 + 40));
-    const char number[] = {static_cast<char>('1' + team), '\0'};
-    mytext.write_xy_flat(chip_x + (team == 0 ? 3 : 2), chip_y + 1,
-                         number, PURE_BLACK, 1);
 
     game->draw_button(12, 62, 308, 159, 2, 1);
     mytext.write_xy(20, 66, DARK_BLUE, "%s", "MOVEMENT");
@@ -2458,7 +2450,7 @@ constexpr MenuScreenSpec make_seat_settings_spec(
                 .rewire = &seat_settings_rewire};
     spec.remote_start = RemoteStartScope::TeamBuildScope;
     spec.remote_start_exit = RemoteStartExit::ReturnMenuExit;
-    spec.default_highlight = kSeatSettingsTeamIndex;
+    spec.default_highlight = kSeatSettingsModeIndex;
     spec.exit_on_redraw = true;
     spec.polls_lobby = true;
     spec.draw_background = &options_panel_draw_background;

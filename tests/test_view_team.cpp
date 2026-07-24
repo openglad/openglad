@@ -2398,7 +2398,9 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     og::ui::SeatSettingsScreenState state{
         .seat_id = lobby.players.front().seat_id,
         .player_index = lobby.players.front().player_index,
-        .local_slot = 0,
+        // Deliberately stale/global-looking: the live seat token must resolve
+        // global P7 back to this machine's first controller profile.
+        .local_slot = 2,
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
@@ -2428,10 +2430,34 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     };
 
     const int old_mode = get_player_control_mode(0);
+    const int old_four_yell = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_YELL);
+    const int old_eight_yell = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_S);
     set_player_control_mode(
         0, static_cast<int>(ControlDirectionMode::FourDirection));
     output->clearbuffer();
     spec.draw_content(&state);
+    EXPECT_EQ(0, state.local_slot)
+        << "global P7 must use local controller profile 1, not profile 3";
+    EXPECT_EQ(static_cast<int>(SDLK_E),
+              og::runtime::current_session->player_keys_[0][KEY_YELL])
+        << "local player 1 uses E to yell in 4-direction mode";
+    for (int y = 43; y < 51; ++y) {
+        for (int x = 93; x < 101; ++x) {
+            int pixel = -1;
+            output->get_pixel(x, y, &pixel);
+            EXPECT_EQ(PURE_BLACK, pixel)
+                << "the TEAM face owns its whole label; no color chip at "
+                << x << "," << y;
+        }
+    }
     const std::uint64_t selected_identity = identity_band_hash();
     EXPECT_EQ(expected_identity_hash("LOCAL PLAYER 1 / P7"),
               selected_identity);
@@ -2447,13 +2473,88 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
         0, static_cast<int>(ControlDirectionMode::EightDirection));
     spec.nav.rewire(buttons, count, highlighted);
     EXPECT_EQ("8-DIRECTION", buttons[kSeatSettingsModeIndex].label);
+    EXPECT_EQ(static_cast<int>(SDLK_S),
+              og::runtime::current_session->player_keys_[0][KEY_YELL])
+        << "local player 1 uses S to yell in 8-direction mode";
 
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, old_four_yell);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_YELL, old_eight_yell);
+    set_player_control_mode(0, old_mode);
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+}
+
+TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_order)
+{
+    NetworkedRosterLobbyClient lobby;
+    lobby.networked = false;
+    lobby.active_local_count = 3;
+    lobby.players.push_back(
+        make_foreign_lobby_player(1, "local-two", "MY COMPANY", 0, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(2, "local-three", "MY COMPANY", 0, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "local-one", "MY COMPANY", 0, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const int old_mode = get_player_control_mode(0);
+    const int old_four_yell = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_YELL);
+    const int old_eight_yell = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_S);
+
+    const og::sim::LobbyPlayer& p1 = lobby.players.back();
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = p1.seat_id,
+        .player_index = p1.player_index,
+        .local_slot = 2,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kSeatSettingsModeIndex;
+
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ(0, state.local_slot)
+        << "offline displayed P1 must resolve by dense P# order";
+    EXPECT_EQ(static_cast<int>(SDLK_E),
+              og::runtime::current_session->player_keys_[0][KEY_YELL]);
+
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ(0, state.local_slot);
+    EXPECT_EQ(static_cast<int>(SDLK_S),
+              og::runtime::current_session->player_keys_[0][KEY_YELL]);
+
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, old_four_yell);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_YELL, old_eight_yell);
     set_player_control_mode(0, old_mode);
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
 TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 {
+#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
+    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
+#else
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     set_player_control_mode(
@@ -2526,6 +2627,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     og::ui::install_seat_settings_state_for_screen(nullptr);
+#endif
 }
 
 TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)

@@ -2022,6 +2022,46 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
     EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
     EXPECT_STREQ("seat_remove", seat_mp.rows[kSeatSettingsRemoveIndex].id);
     EXPECT_STREQ("seat_reset", seat_nomp.rows[kSeatSettingsResetIndex].id);
+    EXPECT_EQ(kSeatSettingsModeIndex, seat_mp.default_highlight);
+    EXPECT_EQ(kSeatSettingsModeIndex, seat_nomp.default_highlight);
+
+    const auto expect_geometry = [](const og::ui::MenuButtonSpec& row,
+                                    int x, int y, int w, int h) {
+        EXPECT_EQ(x, row.x) << row.id;
+        EXPECT_EQ(y, row.y) << row.id;
+        EXPECT_EQ(w, row.w) << row.id;
+        EXPECT_EQ(h, row.h) << row.id;
+    };
+    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+        expect_geometry(spec->rows[kSeatSettingsModeIndex],
+                        16, 38, 98, 18);
+        expect_geometry(spec->rows[kSeatSettingsRemapIndex],
+                        123, 38, 86, 18);
+        expect_geometry(spec->rows[kSeatSettingsResetIndex],
+                        218, 38, 86, 18);
+        EXPECT_STREQ("RESET",
+                     spec->rows[kSeatSettingsResetIndex].label);
+        EXPECT_EQ(kSeatSettingsModeIndex,
+                  spec->rows[kSeatSettingsBackIndex].nav.down);
+        EXPECT_EQ(kSeatSettingsRemapIndex,
+                  spec->rows[kSeatSettingsModeIndex].nav.right);
+        EXPECT_EQ(kSeatSettingsResetIndex,
+                  spec->rows[kSeatSettingsRemapIndex].nav.right);
+        EXPECT_EQ(kSeatSettingsRemapIndex,
+                  spec->rows[kSeatSettingsResetIndex].nav.left);
+    }
+    expect_geometry(seat_mp.rows[kSeatSettingsTeamIndex],
+                    16, 169, 138, 18);
+    expect_geometry(seat_mp.rows[kSeatSettingsRemoveIndex],
+                    166, 169, 138, 18);
+    EXPECT_EQ(kSeatSettingsRemoveIndex,
+              seat_mp.rows[kSeatSettingsTeamIndex].nav.right);
+    EXPECT_EQ(kSeatSettingsTeamIndex,
+              seat_mp.rows[kSeatSettingsRemoveIndex].nav.left);
+    expect_geometry(seat_nomp.rows[kSeatSettingsTeamIndex],
+                    91, 169, 138, 18);
+    EXPECT_EQ(kSeatSettingsRemapIndex,
+              seat_nomp.rows[kSeatSettingsTeamIndex].nav.up);
 
     const og::ui::MenuScreenHost& controls_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);

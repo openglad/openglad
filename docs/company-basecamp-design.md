@@ -84,11 +84,11 @@ level, and experience fields.
   machine may contribute four active seats and a network lobby may contain
   sixteen. Four cards are shown at a time; **<** and **>** page the rail when
   it grows past the visible window.
-- Open an owned seat card to edit that player. The editor contains **TEAM**,
-  **4-DIRECTION**/**8-DIRECTION**, **REMAP**, **RESET THIS PLAYER**, and
-  **REMOVE PLAYER**. In a network lobby the last action becomes **SPECTATE**
-  when it removes the machine's final active seat. Use **+** to return from
-  spectator mode.
+- Open an owned seat card to edit that player. The top row contains
+  **4-DIRECTION**/**8-DIRECTION**, **REMAP**, and **RESET**. The bottom row
+  contains **TEAM** and **REMOVE PLAYER**. In a network lobby the last action
+  becomes **SPECTATE** when it removes the machine's final active seat. Use
+  **+** to return from spectator mode.
 - Player numbers are lobby-wide. A local card says **YOU**; a remote card uses
   a short company abbreviation. Remote cards are read-only and identify the
   company that controls them.
