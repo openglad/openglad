@@ -2871,14 +2871,16 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             TIMEOUT 420
         )
 
-        # The level-data suite rewrites temp/scen/scen99.fss while the parity
-        # bootstrap mounts the same source-tree scenario directory. Keep those
-        # read/write windows from overlapping in every parallel CTest lane.
+        # The level-data suite produces and rewrites temp/scen/scen99.fss while
+        # the parity bootstrap mounts the same source-tree scenario directory.
+        # Preserve the serial suite's producer-before-consumer ordering and
+        # keep those read/write windows from overlapping in parallel lanes.
         set_tests_properties(
             og_test_level
             og_test_parity
             PROPERTIES RESOURCE_LOCK source_scenario_fixtures
         )
+        set_tests_properties(og_test_parity PROPERTIES DEPENDS og_test_level)
 
         if(ENABLE_COVERAGE)
             # These two binaries temporarily replace config fixtures in shared
