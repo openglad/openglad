@@ -28,8 +28,10 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
+#include <algorithm>
 #include <format>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <vector>
@@ -45,6 +47,12 @@ inline constexpr int OG_OK = 4;
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
+#ifdef TESTING
+bool campaign_picker_testing_take_abort();
+void campaign_picker_testing_mark_entered();
+void campaign_picker_testing_mark_action();
+#endif
 
 namespace
 {
@@ -411,8 +419,15 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	buttons[id_index].nav.right = (buttons[delete_index].hidden? reset_index : delete_index);
 
     bool done = false;
+#ifdef TESTING
+    campaign_picker_testing_mark_entered();
+#endif
     while (!done)
     {
+#ifdef TESTING
+        if (campaign_picker_testing_take_abort())
+            break;
+#endif
         // Reset the timer count to zero ...
         reset_timer();
 
@@ -448,7 +463,14 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                && reset_button.y <= my && my <= reset_button.y + reset_button.h) || (retvalue == OG_OK && highlighted_button == reset_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
-        
+#ifdef TESTING
+        if (do_prev || do_next || do_choose || do_cancel || do_delete ||
+            do_reset || do_id)
+        {
+            campaign_picker_testing_mark_action();
+        }
+#endif
+
 			if (mymouse.left)
 			{
 			    wait_for_mouse_release();
@@ -648,3 +670,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
 	    return ret_value;
 }
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/campaign_picker_internal.inc"
+#endif

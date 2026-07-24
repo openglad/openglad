@@ -42,6 +42,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -1003,11 +1004,13 @@ public:
                              int create_status_code = 200,
                              std::string create_response_body =
                                  R"({"room_code":"glad-xkcd"})",
-                             std::string room_list_response_body = "[]")
+                             std::string room_list_response_body = "[]",
+                             int room_list_status_code = 200)
         : server_(port, "127.0.0.1", 5, 16)
         , create_status_code_(create_status_code)
         , create_response_body_(std::move(create_response_body))
         , room_list_response_body_(std::move(room_list_response_body))
+        , room_list_status_code_(room_list_status_code)
     {
         server_.setOnConnectionCallback(
             [this](const ix::HttpRequestPtr& request,
@@ -1032,17 +1035,30 @@ public:
                 if (request && request->method == "GET" &&
                     request->uri.rfind("/api/rooms", 0) == 0)
                 {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    last_room_list_uri_ = request->uri;
+                    int status_code = 0;
+                    std::string response_body;
+                    {
+                        std::unique_lock<std::mutex> lock(mutex_);
+                        last_room_list_uri_ = request->uri;
+                        status_code = room_list_status_code_;
+                        response_body = room_list_response_body_;
+                        ++room_list_request_count_;
+                        room_list_condition_.notify_all();
+                        room_list_condition_.wait(lock, [this] {
+                            return !room_list_responses_blocked_;
+                        });
+                    }
 
                     ix::WebSocketHttpHeaders headers;
                     headers["Content-Type"] = "application/json";
                     return std::make_shared<ix::HttpResponse>(
-                        200,
-                        "OK",
+                        status_code,
+                        status_code >= 200 && status_code < 300
+                            ? "OK"
+                            : "ERROR",
                         ix::HttpErrorCode::Ok,
                         headers,
-                        room_list_response_body_);
+                        response_body);
                 }
 
                 return std::make_shared<ix::HttpResponse>(
@@ -1066,7 +1082,72 @@ public:
 
     ~FakeRelayServer()
     {
+        stop();
+    }
+
+    // IXWebSocket's server shutdown snapshots its registered websocket
+    // clients before joining accepted connection threads. If shutdown races a
+    // handshake, the new thread is absent from that snapshot and the join can
+    // wait forever. Callers that intentionally drop a live relay first wait
+    // for connected_peer_count(), which is populated by the post-handshake
+    // Open callback. Keep a watchdog here as a hard test-process bound and as
+    // actionable diagnostics if upstream shutdown ever regresses again.
+    void stop(std::chrono::milliseconds timeout = 10s)
+    {
+        if (stopped_)
+            return;
+
+        release_room_list_responses();
+
+        const std::size_t initial_client_count = server_.getClients().size();
+        const std::size_t initial_peer_count = connected_peer_count();
+        const std::string create_uri = last_create_uri();
+        std::mutex shutdown_mutex;
+        std::condition_variable shutdown_condition;
+        bool shutdown_completed = false;
+
+        std::thread watchdog([&] {
+            std::unique_lock<std::mutex> lock(shutdown_mutex);
+            if (shutdown_condition.wait_for(
+                    lock,
+                    timeout,
+                    [&] { return shutdown_completed; }))
+            {
+                return;
+            }
+
+            std::fprintf(
+                stderr,
+                "FakeRelayServer::stop exceeded %lld ms "
+                "(IX clients before stop=%zu, relay peers before stop=%zu, "
+                "create URI=%s)\n",
+                static_cast<long long>(timeout.count()),
+                initial_client_count,
+                initial_peer_count,
+                create_uri.c_str());
+            std::fflush(stderr);
+            std::abort();
+        });
+
         server_.stop();
+        stopped_ = true;
+        {
+            std::lock_guard<std::mutex> lock(shutdown_mutex);
+            shutdown_completed = true;
+        }
+        shutdown_condition.notify_one();
+        watchdog.join();
+    }
+
+    [[nodiscard]] std::size_t connected_client_count()
+    {
+        return server_.getClients().size();
+    }
+
+    [[nodiscard]] std::size_t connected_peer_count() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return peers_.size();
     }
 
     [[nodiscard]] std::string last_create_uri() const
@@ -1079,6 +1160,32 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return last_room_list_uri_;
+    }
+
+    [[nodiscard]] std::size_t block_room_list_responses()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        room_list_responses_blocked_ = true;
+        return room_list_request_count_;
+    }
+
+    [[nodiscard]] bool wait_for_room_list_request_after(
+        std::size_t previous_request_count,
+        std::chrono::milliseconds timeout = 5s)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return room_list_condition_.wait_for(lock, timeout, [&] {
+            return room_list_request_count_ > previous_request_count;
+        });
+    }
+
+    void release_room_list_responses()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            room_list_responses_blocked_ = false;
+        }
+        room_list_condition_.notify_all();
     }
 
 private:
@@ -1392,8 +1499,13 @@ private:
     int create_status_code_ = 200;
     std::string create_response_body_;
     std::string room_list_response_body_;
+    int room_list_status_code_ = 200;
+    std::condition_variable room_list_condition_;
+    std::size_t room_list_request_count_ = 0;
+    bool room_list_responses_blocked_ = false;
     std::string last_create_uri_;
     std::string last_room_list_uri_;
+    bool stopped_ = false;
 };
 
 } // namespace
@@ -1530,6 +1642,9 @@ TEST(PickerNetworkClient,
         << "a connected spectator is not an authoritative LobbyPlayer";
     EXPECT_TRUE(host_client->host_controls_visible())
         << "host authority belongs to the connected peer, not its seat";
+    host_client->set_player_mode(0);
+    EXPECT_EQ(0u, host_client->local_seat_count());
+    EXPECT_TRUE(host_client->lobby_players().empty());
 
     EXPECT_TRUE(host_client->add_local_seat());
     EXPECT_EQ(1u, host_client->local_seat_count());
@@ -1571,6 +1686,7 @@ TEST(PickerNetworkClient,
     og::ui::PickerHostGameOptions host_options;
     host_options.port = ix::getFreePort();
     auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    EXPECT_FALSE(host_client->authoritative_team_mask().has_value());
     host_client->initialize_from_save();
 
     og::runtime::GameSession::Config join_cfg;
@@ -1589,6 +1705,7 @@ TEST(PickerNetworkClient,
     {
         auto join_scope = join_session.activate();
         join_client = og::ui::create_join_picker_lobby_client(join_options);
+        EXPECT_FALSE(join_client->authoritative_team_mask().has_value());
         join_client->initialize_from_save();
     }
 
@@ -2092,7 +2209,8 @@ TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
         R"({"code":"glad-xkcd"})",
         std::format(
             R"([{{"code":"glad-xkcd","campaign_hash":"{}","campaign_name":"Relay Filter","host_name":"Host","player_count":2,"created_at":1234}}])",
-            expected_hash));
+            expected_hash),
+        200);
 
     const auto rooms = og::ui::list_relay_rooms(
         std::format("http://127.0.0.1:{}", relay_port),
@@ -2109,6 +2227,52 @@ TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
     EXPECT_EQ("Host", rooms.front().host_name);
     EXPECT_EQ(2u, rooms.front().player_count);
     EXPECT_EQ(1234, rooms.front().created_at_ms);
+
+    // The picker uses the asynchronous variant so backing out of discovery
+    // never blocks on native HTTP. Hold the server response behind an explicit
+    // latch so the pending assertion has no scheduler or wall-clock premise.
+    const std::size_t completed_room_list_requests =
+        relay_server.block_room_list_responses();
+    auto request = og::ui::begin_list_relay_rooms(
+        std::format("http://127.0.0.1:{}", relay_port),
+        campaign_id);
+    ASSERT_NE(nullptr, request);
+    ASSERT_TRUE(relay_server.wait_for_room_list_request_after(
+        completed_room_list_requests));
+    EXPECT_FALSE(request->poll().has_value());
+    relay_server.release_room_list_responses();
+
+    std::optional<og::ui::PickerRelayRoomListResult> async_result;
+    ASSERT_TRUE(wait_until([&] {
+        async_result = request->poll();
+        return async_result.has_value();
+    }));
+    ASSERT_TRUE(async_result->error.empty());
+    ASSERT_EQ(1u, async_result->rooms.size());
+    EXPECT_EQ("GLAD-XKCD", async_result->rooms.front().code);
+    EXPECT_EQ(expected_hash, async_result->rooms.front().campaign_hash);
+
+    // A terminal HTTP error is delivered through the same non-throwing poll
+    // contract; this also exercises worker cleanup between consecutive
+    // discovery requests.
+    const int failed_relay_port = ix::getFreePort();
+    FakeRelayServer failed_relay_server(
+        failed_relay_port,
+        200,
+        R"({"code":"unused"})",
+        "room listing unavailable",
+        503);
+    auto failed_request = og::platform::begin_platform_list_relay_rooms(
+        std::format("http://127.0.0.1:{}", failed_relay_port),
+        campaign_id);
+    ASSERT_NE(nullptr, failed_request);
+    std::optional<og::ui::PickerRelayRoomListResult> failed_result;
+    ASSERT_TRUE(wait_until([&] {
+        failed_result = failed_request->poll();
+        return failed_result.has_value();
+    }));
+    EXPECT_TRUE(failed_result->rooms.empty());
+    EXPECT_NE(std::string::npos, failed_result->error.find("HTTP 503"));
 }
 
 TEST(PickerNetworkClient, host_status_builder_reports_direct_and_relay_errors)
@@ -6817,6 +6981,18 @@ TEST(PickerNetworkClient,
     auto host_client = og::ui::create_host_picker_lobby_client(options);
     host_client->initialize_from_save();
 
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return relay_server->connected_peer_count() == 1;
+    },
+    10s)) << "the hosted relay websocket must finish its handshake before "
+             "the drop is exercised"
+          << "\ncreate URI: " << relay_server->last_create_uri()
+          << "\nIX clients: " << relay_server->connected_client_count()
+          << "\nrelay peers: " << relay_server->connected_peer_count()
+          << "\nstatus lines: "
+          << ::testing::PrintToString(host_client->status_lines());
+
     EXPECT_TRUE(status_lines_contain_exact(
         host_client->status_lines(),
         "Room: GLAD-XKCD"));
@@ -6835,6 +7011,7 @@ TEST(PickerNetworkClient,
             << "a healthy hosted room shows role + room + census";
     }
 
+    relay_server->stop();
     relay_server.reset();
 
     ASSERT_TRUE(wait_until([&] {
@@ -6959,6 +7136,36 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
               og::ui::normalize_relay_base_url(" https://relay.invalid/// "));
     EXPECT_THROW(og::ui::normalize_relay_base_url("ftp://relay.invalid"),
                  std::invalid_argument);
+
+    // A constructed client has a useful, non-throwing pre-initialization
+    // contract. Exercise both implementations through the public interface so
+    // menu code can inspect or poll them before a transport is installed.
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    EXPECT_EQ(1u, host_client->local_seat_count());
+    EXPECT_TRUE(host_client->lobby_players().empty());
+    EXPECT_TRUE(host_client->local_player_indices().empty());
+    EXPECT_FALSE(host_client->build_game_start_config().has_value());
+    EXPECT_FALSE(host_client->request_start_game());
+    EXPECT_FALSE(host_client->request_team_change(0));
+    EXPECT_FALSE(host_client->set_ready(true));
+    host_client->sync_from_save();
+    EXPECT_TRUE(host_client->status_lines().empty());
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint = "127.0.0.1:1";
+    auto join_client = og::ui::create_join_picker_lobby_client(join_options);
+    EXPECT_EQ(1u, join_client->local_seat_count());
+    EXPECT_TRUE(join_client->local_player_indices().empty());
+    EXPECT_FALSE(join_client->build_game_start_config().has_value());
+    EXPECT_FALSE(join_client->request_start_game());
+    EXPECT_FALSE(join_client->request_team_change(0));
+    EXPECT_FALSE(join_client->set_ready(true));
+    join_client->poll_and_apply();
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connecting", *join_client->connection_alert());
 }
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
@@ -7045,6 +7252,14 @@ TEST(PickerNetworkClient,
                                           "Lobby: 3 players") &&
             join_lobby_ready;
     })) << "host and two-seat joiner should converge on three players";
+
+    ASSERT_TRUE(host_client->authoritative_team_mask().has_value());
+    EXPECT_TRUE(host_client->request_team_change(0));
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(join_client->authoritative_team_mask().has_value());
+        EXPECT_TRUE(join_client->request_team_change(1));
+    }
 
     const std::vector<std::uint8_t> host_indices =
         host_client->local_player_indices();

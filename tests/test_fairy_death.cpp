@@ -66,21 +66,25 @@ bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kFairyPollMs)
 bool wait_for_team_menu(int timeout_ms = kGameStartTimeoutMs)
 {
     int elapsed = 0;
-    int since_last_retry = 250;
+    int stable_team_menu_polls = 0;
     const int poll_ms = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("hire_troops") && has_interactable("go"))
-            return true;
-
-        if (since_last_retry >= 250 && has_interactable("hire_me")) {
-            fprintf(stderr, "  [test] retry clicking back from hire menu\n");
-            interact("back");
-            since_last_retry = 0;
+        bool has_hire_troops = false;
+        bool has_go = false;
+        for (const std::string& id : get_button_ids()) {
+            has_hire_troops = has_hire_troops || id == "hire_troops";
+            has_go = has_go || id == "go";
+        }
+        if (has_hire_troops && has_go) {
+            ++stable_team_menu_polls;
+            if (stable_team_menu_polls >= 2)
+                return true;
+        } else {
+            stable_team_menu_polls = 0;
         }
 
         SDL_Delay(poll_ms);
         elapsed += poll_ms;
-        since_last_retry += poll_ms;
     }
     return false;
 }
@@ -278,6 +282,10 @@ static int fairy_injector(void* data)
                               "expected hired fairy before starting level");
     }
 
+    // The roster size becomes visible before add_guy's main-thread callback
+    // finishes its input reset, recruit sync, and autosave tail. Let that real
+    // callback finish before sending the one BACK click that exits Hire.
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from hire menu\n");
     interact("back");
 

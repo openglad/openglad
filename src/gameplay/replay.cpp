@@ -948,7 +948,9 @@ bool ReplayPlayer::load_file(const std::filesystem::path& path,
 {
     clear();
 
-    if (!std::filesystem::exists(path))
+    std::error_code file_status_error;
+    if (!std::filesystem::is_regular_file(path, file_status_error) ||
+        file_status_error)
     {
         set_error(out_error, ReplayIoError::OpenReadFailed);
         return false;

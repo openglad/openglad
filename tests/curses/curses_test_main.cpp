@@ -31,27 +31,8 @@
 void io_init(int argc, char* argv[]);
 void io_exit();
 
-namespace og::runtime {
-
-static SessionState s_headless_session{};
-thread_local SessionState* current_session = &s_headless_session;
-std::atomic<SessionState*> primary_session{&s_headless_session};
-std::atomic<GameplayContext*> primary_game{&s_headless_session.game_};
-
-} // namespace og::runtime
-
-void popup_dialog(const char* title, const char* message)
-{
-    std::fprintf(stderr, "[%s] %s\n", title, message);
-}
-
-std::uint32_t random(std::uint32_t x)
-{
-    static std::uint32_t state = 12345;
-    if (x == 0)
-        return 0;
-    state = state * 1103515245u + 12345u;
-    return (state >> 16) % x;
+namespace og::curses {
+int curses_terminal_testing_fatal_signal_probe();
 }
 
 namespace {
@@ -97,6 +78,16 @@ private:
 
 int main(int argc, char** argv)
 {
+    if (std::getenv("OPENGLAD_CURSES_FATAL_SIGNAL_PROBE") != nullptr)
+        return og::curses::curses_terminal_testing_fatal_signal_probe();
+
+    std::error_code executable_error;
+    const std::filesystem::path executable =
+        std::filesystem::weakly_canonical(argv[0], executable_error);
+    if (!executable_error)
+        (void)setenv("OPENGLAD_CURSES_TEST_EXECUTABLE",
+                     executable.c_str(), 1);
+
     ::testing::InitGoogleTest(&argc, argv);
 
     const auto test_config_dir = std::filesystem::temp_directory_path() /
@@ -112,7 +103,7 @@ int main(int argc, char** argv)
     static FixedRandom test_rng{0};
     static GameWorld fallback_world(0);
     static SaveData fallback_save;
-    og::runtime::SessionState& session = og::runtime::s_headless_session;
+    og::runtime::SessionState& session = *og::runtime::current_session;
     session.ctx_.rng = &test_rng;
     session.game_.world = &fallback_world;
     session.game_.save = &fallback_save;

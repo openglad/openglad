@@ -34,6 +34,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -49,6 +50,9 @@ bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons,
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
+#ifdef TESTING
+std::mutex& get_allbuttons_mutex();
+#endif
 
 // Engine invariants are enforced in TESTING builds regardless of NDEBUG
 // (assert() would vanish in release-flavored test configs).
@@ -358,8 +362,12 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     RowState states[MAX_BUTTONS] = {};
     {
         // Initial visibility + nav, before the first frame (the legacy
-        // pre-loop sync_* call).
+        // pre-loop sync_* call). Publish the generic gate pass and the
+        // screen-specific rewire atomically to injector-thread observers.
         const MenuLabelContext context = build_label_context(spec);
+#ifdef TESTING
+        std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
         apply_row_states(spec_rows, buttons, num_buttons, context, states);
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
     }
@@ -421,8 +429,17 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // lobby changes). Both surfaces, then the nav program, then the
         // highlight pull.
         const MenuLabelContext context = build_label_context(spec);
-        apply_row_states(spec_rows, buttons, num_buttons, context, states);
-        apply_nav_program(spec, buttons, num_buttons, highlighted_button);
+        {
+#ifdef TESTING
+            // Rewire screens deliberately start some rows hidden, while the
+            // generic Always gate briefly marks them visible before their
+            // rewire restores the final frame state. Injector threads must
+            // never observe that incomplete publication.
+            std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
+            apply_row_states(spec_rows, buttons, num_buttons, context, states);
+            apply_nav_program(spec, buttons, num_buttons, highlighted_button);
+        }
 
         // Remote-start preemption: a host GO must launch a peer parked in
         // this screen. Subscreens RETURN the remote MENU_EXIT (with CONTINUE

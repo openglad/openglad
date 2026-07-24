@@ -2,11 +2,16 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -19,6 +24,189 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+
+namespace {
+
+class ScopedTemporaryTree
+{
+public:
+    explicit ScopedTemporaryTree(std::filesystem::path path)
+        : path_(std::move(path))
+    {
+        std::filesystem::remove_all(path_, error_);
+    }
+
+    ~ScopedTemporaryTree()
+    {
+        std::error_code error;
+        std::filesystem::remove_all(path_, error);
+        if (error)
+            ADD_FAILURE() << "temporary tree cleanup failed for " << path_
+                          << ": " << error.message();
+    }
+
+    [[nodiscard]] bool ready() const noexcept { return !error_; }
+    [[nodiscard]] const std::error_code& error() const noexcept
+    {
+        return error_;
+    }
+
+private:
+    std::filesystem::path path_;
+    std::error_code error_;
+};
+
+struct ZipDiscard
+{
+    void operator()(zip* archive) const noexcept
+    {
+        if (archive != nullptr)
+            zip_discard(archive);
+    }
+};
+
+using ScopedZipArchive = std::unique_ptr<zip, ZipDiscard>;
+
+bool write_single_entry_zip(const std::filesystem::path& archive_path,
+                            const std::string& entry_name,
+                            std::string_view payload)
+{
+    int error = 0;
+    ScopedZipArchive archive(zip_open(
+        archive_path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error));
+    if (archive == nullptr)
+        return false;
+
+    zip_source* source = zip_source_buffer(
+        archive.get(), payload.data(), payload.size(), 0);
+    if (source == nullptr)
+        return false;
+    if (zip_file_add(archive.get(), entry_name.c_str(), source,
+                     ZIP_FL_OVERWRITE) < 0)
+    {
+        zip_source_free(source);
+        return false;
+    }
+
+    zip* const raw_archive = archive.release();
+    const int close_result = zip_close(raw_archive);
+    if (close_result != 0)
+        zip_discard(raw_archive);
+    return close_result == 0;
+}
+
+bool write_special_entry_zip(const std::filesystem::path& archive_path,
+                             const std::string& entry_name,
+                             std::string_view payload,
+                             const char* password = nullptr)
+{
+    int error = 0;
+    ScopedZipArchive archive(zip_open(
+        archive_path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error));
+    if (archive == nullptr)
+        return false;
+
+    zip_source* source = zip_source_buffer(
+        archive.get(), payload.data(), payload.size(), 0);
+    if (source == nullptr)
+        return false;
+    const zip_int64_t index = zip_file_add(
+        archive.get(), entry_name.c_str(), source, ZIP_FL_OVERWRITE);
+    if (index < 0)
+    {
+        zip_source_free(source);
+        return false;
+    }
+    if (zip_set_file_compression(
+            archive.get(), static_cast<zip_uint64_t>(index),
+            ZIP_CM_DEFLATE, 9) != 0)
+    {
+        return false;
+    }
+    if (password != nullptr &&
+        zip_file_set_encryption(
+            archive.get(), static_cast<zip_uint64_t>(index),
+            ZIP_EM_TRAD_PKWARE, password) != 0)
+    {
+        return false;
+    }
+    zip* const raw_archive = archive.release();
+    const int close_result = zip_close(raw_archive);
+    if (close_result != 0)
+        zip_discard(raw_archive);
+    return close_result == 0;
+}
+
+std::vector<std::uint8_t> read_binary_file(
+    const std::filesystem::path& path)
+{
+    FILE* file = std::fopen(path.string().c_str(), "rb");
+    if (file == nullptr)
+        return {};
+    std::vector<std::uint8_t> bytes;
+    std::array<std::uint8_t, 4096> buffer{};
+    while (true)
+    {
+        const std::size_t count =
+            std::fread(buffer.data(), 1, buffer.size(), file);
+        bytes.insert(bytes.end(), buffer.begin(), buffer.begin() +
+                     static_cast<std::ptrdiff_t>(count));
+        if (count != buffer.size())
+            break;
+    }
+    std::fclose(file);
+    return bytes;
+}
+
+bool write_binary_file(const std::filesystem::path& path,
+                       const std::vector<std::uint8_t>& bytes)
+{
+    FILE* file = std::fopen(path.string().c_str(), "wb");
+    if (file == nullptr)
+        return false;
+    const std::size_t count =
+        std::fwrite(bytes.data(), 1, bytes.size(), file);
+    return std::fclose(file) == 0 && count == bytes.size();
+}
+
+std::uint16_t read_le16(const std::vector<std::uint8_t>& bytes,
+                        std::size_t offset)
+{
+    return static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(bytes[offset]) |
+        (static_cast<std::uint16_t>(bytes[offset + 1]) << 8));
+}
+
+std::uint32_t read_le32(const std::vector<std::uint8_t>& bytes,
+                        std::size_t offset)
+{
+    return static_cast<std::uint32_t>(bytes[offset]) |
+        (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+        (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+        (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
+void write_le32(std::vector<std::uint8_t>& bytes, std::size_t offset,
+                std::uint32_t value)
+{
+    bytes[offset] = static_cast<std::uint8_t>(value & 0xffu);
+    bytes[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    bytes[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
+    bytes[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+}
+
+std::size_t find_zip_signature(const std::vector<std::uint8_t>& bytes,
+                               std::uint32_t signature)
+{
+    for (std::size_t i = 0; i + sizeof(signature) <= bytes.size(); ++i)
+    {
+        if (read_le32(bytes, i) == signature)
+            return i;
+    }
+    return bytes.size();
+}
+
+} // namespace
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -293,6 +481,195 @@ TEST(IoZipUnzip, io_unzip_rejects_zip_slip_paths)
     ASSERT_TRUE(!fs::exists(outside)) << "zip slip output path outside extraction root must not be created";
 }
 
+TEST(IoZipUnzip, io_unzip_rejects_root_only_and_symlink_escape_names)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() /
+        ("openglad_io_zip_path_edges_" + std::to_string(::getpid()));
+    const fs::path root_zip = base / "root_only.zip";
+    const fs::path symlink_zip = base / "symlink_escape.zip";
+    const fs::path out = base / "out";
+    const fs::path outside = base / "outside";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(fs::create_directories(base));
+
+    ASSERT_TRUE(write_single_entry_zip(root_zip, "/", "IGNORED"));
+    EXPECT_EQ(ArchiveIoError::OpenEntryFailed,
+              unzip_into_with_error(root_zip.string(), out.string()));
+    EXPECT_TRUE(fs::is_empty(out))
+        << "a root-only archive name has no safe extraction destination";
+
+#if !defined(_WIN32)
+    std::error_code ec;
+    ASSERT_TRUE(fs::is_directory(out));
+    ASSERT_TRUE(fs::create_directories(outside));
+    fs::create_directory_symlink(outside, out / "link", ec);
+    ASSERT_FALSE(ec) << ec.message();
+    ASSERT_TRUE(write_single_entry_zip(
+        symlink_zip, "link/escaped.txt", "MUST NOT ESCAPE"));
+
+    EXPECT_EQ(ArchiveIoError::OpenEntryFailed,
+              unzip_into_with_error(symlink_zip.string(), out.string()));
+    EXPECT_FALSE(fs::exists(outside / "escaped.txt"))
+        << "canonical destination checks must reject symlink traversal";
+#endif
+}
+
+TEST(IoZipUnzip, io_unzip_reports_encrypted_and_corrupt_entry_failures)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() /
+        ("openglad_io_zip_entry_errors_" + std::to_string(::getpid()));
+    const fs::path encrypted_zip = base / "encrypted.zip";
+    const fs::path corrupt_zip = base / "corrupt_deflate.zip";
+    const fs::path encrypted_out = base / "encrypted_out";
+    const fs::path corrupt_out = base / "corrupt_out";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(fs::create_directories(base));
+
+    ASSERT_EQ(1, zip_encryption_method_supported(ZIP_EM_TRAD_PKWARE, 1));
+    ASSERT_TRUE(write_special_entry_zip(
+        encrypted_zip, "secret.txt", "classified payload",
+        "resource-test-password"));
+    EXPECT_EQ(ArchiveIoError::OpenEntryFailed,
+              unzip_into_with_error(encrypted_zip.string(),
+                                    encrypted_out.string()));
+    EXPECT_FALSE(fs::exists(encrypted_out / "secret.txt"))
+        << "an entry that cannot be opened must not create an output file";
+
+    const std::string payload(16384, 'A');
+    ASSERT_TRUE(write_special_entry_zip(
+        corrupt_zip, "broken.txt", payload));
+    std::vector<std::uint8_t> bytes = read_binary_file(corrupt_zip);
+    ASSERT_FALSE(bytes.empty());
+    constexpr std::uint32_t kLocalFileHeader = 0x04034b50u;
+    const std::size_t local = find_zip_signature(bytes, kLocalFileHeader);
+    ASSERT_LT(local + 30u, bytes.size());
+    ASSERT_EQ(ZIP_CM_DEFLATE, static_cast<int>(read_le16(bytes, local + 8u)));
+    const std::size_t compressed_size = read_le32(bytes, local + 18u);
+    const std::size_t data_offset =
+        local + 30u + read_le16(bytes, local + 26u) +
+        read_le16(bytes, local + 28u);
+    ASSERT_GT(compressed_size, 0u);
+    ASSERT_LE(data_offset + compressed_size, bytes.size());
+    // Raw DEFLATE reserves BTYPE=3 as invalid. Preserve BFINAL while making
+    // the first block structurally undecodable rather than merely changing
+    // payload bytes and relying on an end-of-stream CRC check.
+    bytes[data_offset] =
+        static_cast<std::uint8_t>((bytes[data_offset] & 0xf9u) | 0x06u);
+    ASSERT_TRUE(write_binary_file(corrupt_zip, bytes));
+
+    EXPECT_EQ(ArchiveIoError::ReadEntryFailed,
+              unzip_into_with_error(corrupt_zip.string(),
+                                    corrupt_out.string()));
+    ASSERT_TRUE(fs::is_regular_file(corrupt_out / "broken.txt"));
+    EXPECT_EQ(0u, fs::file_size(corrupt_out / "broken.txt"))
+        << "the invalid first block must fail before emitting any bytes";
+}
+
+TEST(IoZipUnzip, io_unzip_rejects_declared_entry_size_above_limit)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() /
+        ("openglad_io_zip_size_limit_" + std::to_string(::getpid()));
+    const fs::path archive = base / "oversized_stat.zip";
+    const fs::path out = base / "out";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(fs::create_directories(base));
+    ASSERT_TRUE(write_single_entry_zip(archive, "oversized.bin", "x"));
+
+    std::vector<std::uint8_t> bytes = read_binary_file(archive);
+    ASSERT_FALSE(bytes.empty());
+    constexpr std::uint32_t kCentralFileHeader = 0x02014b50u;
+    const std::size_t central = find_zip_signature(bytes, kCentralFileHeader);
+    ASSERT_LT(central + 28u, bytes.size());
+    write_le32(bytes, central + 24u, (64u * 1024u * 1024u) + 1u);
+    ASSERT_TRUE(write_binary_file(archive, bytes));
+
+    EXPECT_EQ(ArchiveIoError::ResourceLimitExceeded,
+              unzip_into_with_error(archive.string(), out.string()));
+    EXPECT_FALSE(fs::exists(out / "oversized.bin"))
+        << "the declared size limit is enforced before opening output";
+}
+
+TEST(IoZipUnzip, io_zip_skips_an_existing_output_archive_inside_input)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_self_archive_" + std::to_string(::getpid()));
+    const fs::path input = base / "input";
+    const fs::path archive = input / "bundle.zip";
+    const fs::path output = base / "output";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+
+    ASSERT_TRUE(create_dir(input.string()));
+    ASSERT_TRUE(write_file_bytes((input / "payload.txt").string(), "PAYLOAD"));
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(input.string(), archive.string()));
+    ASSERT_TRUE(fs::is_regular_file(archive));
+
+    // On the second write the archive is already one of the recursively
+    // enumerated input files. It must be recognized as the output itself and
+    // omitted, rather than recursively embedding its previous bytes.
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(input.string(), archive.string()));
+    ASSERT_EQ(ArchiveIoError::None,
+              unzip_into_with_error(archive.string(), output.string()));
+
+    std::string payload;
+    ASSERT_TRUE(read_file_all((output / "payload.txt").string(), &payload));
+    EXPECT_EQ("PAYLOAD", payload);
+    EXPECT_FALSE(fs::exists(output / "bundle.zip"));
+
+}
+
+TEST(IoZipUnzip, io_unzip_normalizes_backslashes)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_normalized_names_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "names.zip";
+    const fs::path outdir = base / "out";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(create_dir(base.string()));
+
+    ASSERT_TRUE(write_single_entry_zip(
+        zipfile, "nested\\payload.txt", "NORMALIZED"));
+    EXPECT_EQ(ArchiveIoError::None,
+              unzip_into_with_error(zipfile.string(), outdir.string()));
+    std::string payload;
+    ASSERT_TRUE(
+        read_file_all((outdir / "nested" / "payload.txt").string(), &payload));
+    EXPECT_EQ("NORMALIZED", payload);
+}
+
+TEST(IoZipUnzip, io_unzip_rejects_absolute_names_without_writing_outside)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_absolute_name_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "absolute.zip";
+    const fs::path outdir = base / "out";
+    const fs::path outside = base / "outside.txt";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(create_dir(base.string()));
+
+    ASSERT_TRUE(write_single_entry_zip(
+        zipfile, outside.generic_string(), "REJECTED"));
+    EXPECT_EQ(ArchiveIoError::OpenEntryFailed,
+              unzip_into_with_error(zipfile.string(), outdir.string()));
+    EXPECT_FALSE(fs::exists(outside))
+        << "an absolute archive name cannot write outside the extraction root";
+}
 
 TEST(IoZipUnzip, io_unzip_rejects_archives_exceeding_entry_limit)
 {

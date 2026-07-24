@@ -30,20 +30,6 @@ std::atomic<GameplayContext*> primary_game{&s_headless_session.game_};
 
 } // namespace og::runtime
 
-void popup_dialog(const char* title, const char* message)
-{
-    std::fprintf(stderr, "[%s] %s\n", title, message);
-}
-
-std::uint32_t random(std::uint32_t x)
-{
-    static std::uint32_t state = 12345;
-    if (x == 0)
-        return 0;
-    state = state * 1103515245u + 12345u;
-    return (state >> 16) % x;
-}
-
 namespace {
 
 bool init_unit_filesystem(const std::filesystem::path& test_config_dir,

@@ -152,6 +152,12 @@ private:
 
 static OgFilePtr try_physfs_read(const char* path)
 {
+    // Company discovery is explicitly available before io_init(), where the
+    // stdio user-path fallback below is the only backend. PhysFS does not
+    // permit PHYSFS_openRead before PHYSFS_init on every supported build, so
+    // avoid invoking it until the library reports a live instance.
+    if (!PHYSFS_isInit())
+        return nullptr;
     PHYSFS_File* f = PHYSFS_openRead(path);
     if (f)
         return std::make_unique<PhysfsOgFile>(f);
@@ -202,7 +208,7 @@ OgFilePtr og_open_read(const char* path, const char* file)
 
 OgFilePtr og_open_write(const char* file)
 {
-    PHYSFS_File* f = PHYSFS_openWrite(file);
+    PHYSFS_File* f = PHYSFS_isInit() ? PHYSFS_openWrite(file) : nullptr;
     if (f)
         return std::make_unique<PhysfsOgFile>(f);
 

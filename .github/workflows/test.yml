@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
 
 permissions:
@@ -152,6 +152,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-asan
+          max-size: 2G
 
       - name: Configure (ci-asan preset)
         run: cmake --preset ci-asan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -160,7 +161,9 @@ jobs:
         run: cmake --build --preset ci-asan -j"$(nproc)"
 
       - name: Run tests
-        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
+        # Sanitizer failures must stay visible. In particular, do not retry a
+        # relay-shutdown regression after its test-local watchdog fails fast.
+        run: ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error
 
   tsan:
     name: TSan

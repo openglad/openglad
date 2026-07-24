@@ -1,6 +1,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
+#include "test_save_state_guard.h"
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -250,6 +251,61 @@ TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
     ASSERT_EQ("off", local_cfg.get_setting("sound", "sound"));
     ASSERT_EQ("eagle", local_cfg.get_setting("graphics", "render"));
     ASSERT_EQ("off", local_cfg.get_setting("graphics", "fullscreen"));
+}
+
+TEST(GparserUnit, gparser_load_settings_reports_malformed_yaml_after_open)
+{
+    og::test::ScopedPhysicalFileState config_state(unit_config_file());
+    ASSERT_TRUE(config_state.ready()) << config_state.error().message();
+    heal_unit_filesystem();
+    write_unit_config(
+        "graphics:\n"
+        "  render: [unterminated\n");
+
+    cfg_store local_cfg;
+    testing::internal::CaptureStderr();
+    const bool loaded = local_cfg.load_settings();
+    const std::string reported = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(loaded)
+        << "the return value distinguishes an opened config from a missing one";
+    EXPECT_NE(std::string::npos,
+              reported.find("Parsing error in config file."))
+        << reported;
+    EXPECT_EQ("normal", local_cfg.get_setting("graphics", "render"))
+        << "a malformed value cannot overwrite the built-in default";
+    EXPECT_EQ("on", local_cfg.get_setting("sound", "sound"));
+    EXPECT_EQ("fog", local_cfg.get_setting("effects", "depth_fx"))
+        << "post-load migration still runs after a parse error";
+}
+
+TEST(GparserUnit, gparser_load_settings_ignores_nonmapping_and_complex_nodes)
+{
+    og::test::ScopedPhysicalFileState config_state(unit_config_file());
+    ASSERT_TRUE(config_state.ready()) << config_state.error().message();
+    heal_unit_filesystem();
+    write_unit_config("standalone scalar document\n");
+
+    cfg_store scalar_root;
+    ASSERT_TRUE(scalar_root.load_settings());
+    EXPECT_EQ("normal", scalar_root.get_setting("graphics", "render"));
+    EXPECT_EQ("on", scalar_root.get_setting("sound", "sound"));
+
+    write_unit_config(
+        "? [complex, root]\n"
+        ": ignored\n"
+        "category:\n"
+        "  simple: [one, two]\n"
+        "  ? [nested, key]\n"
+        "  : ignored\n"
+        "graphics:\n"
+        "  render: eagle\n");
+
+    cfg_store complex_nodes;
+    ASSERT_TRUE(complex_nodes.load_settings());
+    EXPECT_EQ("eagle", complex_nodes.get_setting("graphics", "render"))
+        << "valid scalar pairs still apply beside ignored complex nodes";
+    EXPECT_TRUE(complex_nodes.get_setting("category", "simple").empty());
+    EXPECT_TRUE(complex_nodes.get_setting("", "ignored").empty());
 }
 
 TEST(GparserUnit, gparser_load_settings_tolerates_stale_floor_ghost_key)

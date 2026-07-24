@@ -22,6 +22,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/gloader.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -328,6 +329,59 @@ TEST(MapgenPlacement, scatters_keep_entity_and_stair_clearance)
     EXPECT_GT(littered, 100) << "modulus-1 scatter barely painted";
 }
 
+TEST(MapgenPlacement, allied_guards_hold_their_authored_posts)
+{
+    GameWorld w(15u);
+    init_world(w, 1, 8, 6);
+    wire_entity_services(w);
+
+    walker* allied =
+        place_living(w, FAMILY_SOLDIER, 1, 0, 2, 2, 1, /*guard=*/true);
+    walker* enemy =
+        place_living(w, FAMILY_SOLDIER, 2, 0, 5, 2, 1, /*guard=*/true);
+    ASSERT_NE(allied, nullptr);
+    ASSERT_NE(enemy, nullptr);
+
+    EXPECT_EQ(ACT_GUARD, allied->act_type());
+    EXPECT_TRUE(allied->guard_hold_post())
+        << "allied authored guards are stationary posts";
+    EXPECT_EQ(ACT_GUARD, enemy->act_type());
+    EXPECT_FALSE(enemy->guard_hold_post())
+        << "enemy guards keep the sight-triggered ambush policy";
+}
+
+TEST(MapgenScatters, invalid_bounds_modulus_zero_and_litter_decor_replacement)
+{
+    GameWorld w(16u);
+    init_world(w, 1, 3, 3);
+    ASSERT_TRUE(paint_decor(w, 0, 0, 0, DECOR_BONES));
+
+    const std::vector<unsigned char> original_grid = grid_bytes(w, 0);
+    scatter_boulders(w, 101u, 0, 0, 0, 2, 2, 0);
+    EXPECT_EQ(original_grid, grid_bytes(w, 0))
+        << "a disabled boulder scatter must not mutate base terrain";
+    EXPECT_EQ(DECOR_BONES, w.decor_for_floor(0).data[0]);
+
+    scatter_boulders(w, 101u, 0, -1, -1, -1, -1, 1);
+    EXPECT_EQ(original_grid, grid_bytes(w, 0))
+        << "an entirely out-of-bounds boulder scatter must be inert";
+    EXPECT_EQ(DECOR_BONES, w.decor_for_floor(0).data[0]);
+
+    ASSERT_TRUE(scatter_decor(w, 101u, 0, -1, -1, -1, -1, 1,
+                              DECOR_PEBBLES, {ScatterGround::Grass}));
+    EXPECT_EQ(original_grid, grid_bytes(w, 0))
+        << "an out-of-bounds decor scatter must not touch base terrain";
+    EXPECT_EQ(DECOR_BONES, w.decor_for_floor(0).data[0])
+        << "an out-of-bounds decor scatter must not touch the decor plane";
+
+    scatter_litter(w, 101u, 0, -1, -1, 0, 0, 1);
+    const unsigned char litter = w.grid_for_floor(0).data[0];
+    EXPECT_GE(litter, PIX_JAGGED_GROUND_1);
+    EXPECT_LE(litter, PIX_JAGGED_GROUND_4);
+    EXPECT_EQ(DECOR_NONE, w.decor_for_floor(0).data[0])
+        << "a full-tile litter replacement clears prior decor";
+}
+
 // --- paint_decor / scatter_decor rules. ----------------------------------------
 
 TEST(MapgenDecor, paint_decor_refusals_and_lazy_plane)
@@ -378,6 +432,47 @@ TEST(MapgenDecor, scatter_decor_ambience_rules)
         << "grass corner cell dressed at modulus 1";
 }
 
+TEST(MapgenDecor, every_scatter_ground_class_accepts_its_interior_tile)
+{
+    struct GroundCase
+    {
+        ScatterGround ground;
+        unsigned char tile;
+        const char* label;
+    };
+    const std::array<GroundCase, 11> cases = {{
+        {ScatterGround::Grass, PIX_GRASS4, "grass"},
+        {ScatterGround::LightGrass, PIX_GRASS_LIGHT_1, "light grass"},
+        {ScatterGround::DarkGrass, PIX_GRASS_DARK_4, "dark grass"},
+        {ScatterGround::Dirt, PIX_DIRT_1, "dirt"},
+        {ScatterGround::DarkDirt, PIX_DIRT_DARK_1, "dark dirt"},
+        {ScatterGround::Snow, PIX_SNOW2, "snow"},
+        {ScatterGround::Marsh, PIX_MARSH2, "marsh"},
+        {ScatterGround::Ash, PIX_ASH2, "ash"},
+        {ScatterGround::Path, PIX_PATH_4, "path"},
+        {ScatterGround::Pavement, PIX_PAVEMENT3, "pavement"},
+        {ScatterGround::Cobble, PIX_COBBLE_4, "cobble"},
+    }};
+
+    GameWorld w(17u);
+    init_world(w, 1, static_cast<int>(cases.size()), 1);
+    for (std::size_t x = 0; x < cases.size(); ++x)
+        paint(w.grid, static_cast<int>(x), 0, cases[x].tile);
+
+    for (std::size_t x = 0; x < cases.size(); ++x)
+    {
+        ASSERT_TRUE(scatter_decor(w, 202u, 0, static_cast<int>(x), 0,
+                                  static_cast<int>(x), 0, 1, DECOR_PEBBLES,
+                                  {cases[x].ground}))
+            << cases[x].label;
+    }
+
+    const PixieData& decor = w.decor_for_floor(0);
+    ASSERT_TRUE(decor.valid());
+    for (std::size_t x = 0; x < cases.size(); ++x)
+        EXPECT_EQ(DECOR_PEBBLES, decor.data[x]) << cases[x].label;
+}
+
 // --- Audits: footing. -----------------------------------------------------------
 
 TEST(MapgenAudits, footing_pass_and_fail)
@@ -386,7 +481,8 @@ TEST(MapgenAudits, footing_pass_and_fail)
     init_world(w, 2, 12, 10);
     wire_entity_services(w);
     place_start(w, 0, 2, 2);
-    place_living(w, FAMILY_SOLDIER, 2, 0, 6, 6, 1);
+    walker* grounded = place_living(w, FAMILY_SOLDIER, 2, 0, 6, 6, 1);
+    ASSERT_NE(grounded, nullptr);
     EXPECT_TRUE(audit_footing(w).empty())
         << join_errors(audit_footing(w));
 
@@ -400,6 +496,27 @@ TEST(MapgenAudits, footing_pass_and_fail)
             << join_errors(errors);
     }
     paint(w.grid_for_floor(0), 8, 8, PIX_GRASS1);
+    EXPECT_TRUE(audit_footing(w).empty());
+
+    // Assert the specialized authoring diagnostic in addition to the generic
+    // passability failure. Use the footprint centre, exactly as the audit does.
+    const int grounded_tx =
+        (grounded->xpos() + grounded->sizex() / 2) / GRID_SIZE;
+    const int grounded_ty =
+        (grounded->ypos() + grounded->sizey() / 2) / GRID_SIZE;
+    ASSERT_TRUE(paint_decor(w, 0, grounded_tx, grounded_ty, DECOR_TORCH1));
+    {
+        const auto errors = audit_footing(w);
+        const std::string expected =
+            "ground unit family " + std::to_string(FAMILY_SOLDIER) +
+            " at tile (" + std::to_string(grounded_tx) + ", " +
+            std::to_string(grounded_ty) +
+            ") floor 0 spawns on blocking decor " +
+            std::to_string(DECOR_TORCH1);
+        EXPECT_TRUE(any_error_contains(errors, expected))
+            << join_errors(errors);
+    }
+    ASSERT_TRUE(paint_decor(w, 0, grounded_tx, grounded_ty, DECOR_NONE));
     EXPECT_TRUE(audit_footing(w).empty());
 
     // A ground troop over an upper-floor air hole: air-spawn violation.
@@ -454,6 +571,22 @@ TEST(MapgenAudits, stair_alignment_and_clearance)
     // Blocking decor on an arrival cell (either floor of the pair).
     ASSERT_TRUE(paint_decor(w, 1, 4, 5, DECOR_BOULDER_1));
     EXPECT_TRUE(any_error_contains(audit_stairs(w, true), "blocking decor"));
+}
+
+TEST(MapgenAudits, invalid_floor_grids_are_reported_or_safely_skipped)
+{
+    GameWorld w(18u);
+    init_world(w, 2, 6, 6);
+    w.grid_for_floor(1).free();
+
+    const auto required = audit_stairs(w, true);
+    ASSERT_EQ(1u, required.size());
+    EXPECT_EQ("stairs: invalid grid on floor boundary 0<->1",
+              required.front());
+    EXPECT_TRUE(audit_stairs(w, false).empty())
+        << "the optional stair audit must skip an invalid boundary";
+    EXPECT_TRUE(audit_fall_lines(w, 4).empty())
+        << "fall-line scanning must skip an invalid upper floor";
 }
 
 // --- Audits: fall lines + depth. ----------------------------------------------
@@ -557,6 +690,66 @@ TEST(MapgenAudits, reachability_requires_lead_marker)
     const auto errors = audit_reachability(w);
     ASSERT_EQ(errors.size(), 1u);
     EXPECT_TRUE(any_error_contains(errors, "lead start marker"));
+}
+
+TEST(MapgenAudits, reachability_reports_probe_creation_failure_and_restores_context)
+{
+    GameWorld w(19u);
+    init_world(w, 1, 10, 8);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    ASSERT_FALSE(w.oblist.empty());
+    ASSERT_NE(nullptr, w.myobmap);
+    ASSERT_NE(nullptr, current_game);
+
+    const std::vector<EntityRow> entities_before = entity_rows(w);
+    const int living_before = w.living_count;
+    GameWorld* const ambient_world = current_game->world;
+    w.entity_factory = nullptr;
+
+    const auto errors = audit_reachability(w);
+    GameWorld* const observed_world = current_game->world;
+    current_game->world = ambient_world;
+
+    ASSERT_EQ(1u, errors.size());
+    EXPECT_EQ("reachability: could not seed the probe", errors.front());
+    EXPECT_EQ(entities_before, entity_rows(w));
+    EXPECT_EQ(living_before, w.living_count);
+    EXPECT_EQ(ambient_world, observed_world)
+        << "the failed-probe path must restore the ambient context world";
+}
+
+TEST(MapgenAudits, colocated_goal_skips_pathfinding_without_leaking_probe)
+{
+    GameWorld w(20u);
+    init_world(w, 1, 10, 8);
+    wire_entity_services(w);
+    place_start(w, 0, 3, 3);
+    ASSERT_FALSE(w.oblist.empty());
+    walker* const lead = w.oblist.front().get();
+    place_exit(w, 0, 3, 3, 701);
+    ASSERT_FALSE(w.fxlist.empty());
+    walker* const colocated_exit = w.fxlist.front().get();
+    ASSERT_EQ(lead->xpos(), colocated_exit->xpos());
+    ASSERT_EQ(lead->ypos(), colocated_exit->ypos());
+    ASSERT_EQ(lead->floor(), colocated_exit->floor());
+    ASSERT_NE(nullptr, current_game);
+
+    const std::vector<EntityRow> entities_before = entity_rows(w);
+    const int living_before = w.living_count;
+    GameWorld* const ambient_world = current_game->world;
+
+    const auto errors = audit_reachability(w);
+    GameWorld* const observed_world = current_game->world;
+    current_game->world = ambient_world;
+
+    EXPECT_TRUE(errors.empty()) << join_errors(errors);
+    EXPECT_EQ(entities_before, entity_rows(w))
+        << "the reachability probe changed the authored entity list";
+    EXPECT_EQ(living_before, w.living_count)
+        << "probe cleanup must restore the living count";
+    EXPECT_EQ(ambient_world, observed_world)
+        << "the normal path must restore the ambient context world";
 }
 
 // The GO-time execution pattern (tower spec D8/§5.6): no gameplay context

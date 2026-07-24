@@ -3,13 +3,17 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io_common.h>
+#include <physfs.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -132,6 +136,18 @@ TEST(VideoModesMore, display_mode_sizes_are_reported_in_physical_pixels)
 	mode.pixel_density = 0.0f;
 	EXPECT_EQ(std::make_pair(1365, 767),
 	          og::platform::display_mode_pixel_size(mode));
+
+	mode.w = 0;
+	mode.h = -1;
+	EXPECT_EQ(std::make_pair(0, 0),
+	          og::platform::display_mode_pixel_size(mode));
+
+	mode.w = std::numeric_limits<int>::max();
+	mode.h = std::numeric_limits<int>::max();
+	mode.pixel_density = 2.0f;
+	EXPECT_EQ(std::make_pair(std::numeric_limits<int>::max(),
+	                        std::numeric_limits<int>::max()),
+	          og::platform::display_mode_pixel_size(mode));
 }
 
 TEST(VideoModesMore, exclusive_mode_switch_rejects_only_multi_display_x11)
@@ -160,6 +176,316 @@ TEST(VideoModesMore, native_window_requests_a_physical_hidpi_backbuffer)
 	EXPECT_GE(output_w, logical_w);
 	EXPECT_GE(output_h, logical_h);
 }
+
+TEST(VideoModesMore, css_mouse_events_scale_to_the_live_window_exactly)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->window);
+    ASSERT_FALSE(SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST))
+        << "the native event queue must be clean on test entry";
+
+    int window_w = 0;
+    int window_h = 0;
+    ASSERT_TRUE(SDL_GetWindowSize(
+        E_Screen->window, &window_w, &window_h));
+    ASSERT_GT(window_w, 0);
+    ASSERT_GT(window_h, 0);
+
+    og::input_native::push_mouse_button_event_css(
+        true, SDL_BUTTON_LEFT, window_w, window_h,
+        window_w * 2, window_h * 2);
+    const void* const event = og::input_native::poll_event();
+    ASSERT_NE(nullptr, event);
+    og::input_native::EventData decoded{};
+    ASSERT_TRUE(og::input_native::decode_event(event, decoded));
+    EXPECT_EQ(og::input_native::EventType::MouseButtonDown, decoded.type);
+    EXPECT_EQ(SDL_BUTTON_LEFT, decoded.button);
+    EXPECT_EQ(window_w / 2, decoded.button_x);
+    EXPECT_EQ(window_h / 2, decoded.button_y);
+    EXPECT_EQ(nullptr, og::input_native::poll_event());
+}
+
+TEST(VideoModesMore, text_input_falls_back_to_the_open_unfocused_window)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    SDL_Window* const window = E_Screen->window;
+    ASSERT_NE(nullptr, window);
+    const bool was_focusable =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_NOT_FOCUSABLE) == 0;
+    const bool was_hidden =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_HIDDEN) != 0;
+    const bool text_input_was_active = SDL_TextInputActive(window);
+    struct FocusRestore
+    {
+        SDL_Window* window;
+        bool focusable;
+        bool hidden;
+        bool text_input_active;
+        ~FocusRestore()
+        {
+            if (text_input_active)
+                og::input_native::start_text_input();
+            else
+                og::input_native::stop_text_input();
+            SDL_SetWindowFocusable(window, focusable);
+            if (!hidden)
+                SDL_ShowWindow(window);
+            SDL_PumpEvents();
+            SDL_FlushEvents(
+                SDL_EVENT_WINDOW_FIRST, SDL_EVENT_WINDOW_LAST);
+        }
+    } restore{window, was_focusable, was_hidden, text_input_was_active};
+
+    ASSERT_TRUE(SDL_SetWindowFocusable(window, false));
+    ASSERT_TRUE(SDL_HideWindow(window));
+    SDL_PumpEvents();
+    ASSERT_EQ(nullptr, SDL_GetKeyboardFocus());
+    og::input_native::start_text_input("initial", 12, "prompt", false);
+    EXPECT_TRUE(SDL_TextInputActive(window));
+    og::input_native::stop_text_input();
+    EXPECT_FALSE(SDL_TextInputActive(window));
+}
+
+TEST(VideoModesMore, virtual_joystick_events_decode_to_the_device_index)
+{
+    const bool joystick_was_initialized =
+        og::input_native::joystick_subsystem_initialized();
+    struct JoystickSubsystemRestore
+    {
+        bool was_initialized;
+        ~JoystickSubsystemRestore()
+        {
+            if (!was_initialized &&
+                og::input_native::joystick_subsystem_initialized())
+            {
+                og::input_native::joystick_quit_subsystem();
+            }
+        }
+    } subsystem_restore{joystick_was_initialized};
+    if (!joystick_was_initialized)
+        og::input_native::joystick_init_subsystem();
+    ASSERT_TRUE(og::input_native::joystick_subsystem_initialized());
+
+    SDL_VirtualJoystickDesc desc{};
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 2;
+    desc.nbuttons = 2;
+    desc.nhats = 1;
+    desc.name = "OpenGlad coverage virtual joystick";
+    const SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    struct JoystickRestore
+    {
+        SDL_JoystickID id;
+        ~JoystickRestore()
+        {
+            if (id == 0)
+                return;
+            SDL_DetachVirtualJoystick(id);
+            SDL_PumpEvents();
+            SDL_FlushEvent(SDL_EVENT_JOYSTICK_REMOVED);
+        }
+    } restore{id};
+    ASSERT_NE(0u, id);
+    SDL_PumpEvents();
+    SDL_FlushEvent(SDL_EVENT_JOYSTICK_ADDED);
+
+    struct JoystickIds
+    {
+        SDL_JoystickID* value;
+        ~JoystickIds() { SDL_free(value); }
+    };
+    int count = 0;
+    JoystickIds ids{SDL_GetJoysticks(&count)};
+    ASSERT_NE(nullptr, ids.value);
+    const SDL_JoystickID* const found =
+        std::find(ids.value, ids.value + count, id);
+    ASSERT_NE(ids.value + count, found);
+    const int expected_index = static_cast<int>(found - ids.value);
+
+    SDL_Event event{};
+    event.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
+    event.jaxis.which = id;
+    event.jaxis.axis = 1;
+    event.jaxis.value = 12345;
+    og::input_native::EventData decoded{};
+    ASSERT_TRUE(og::input_native::decode_event(&event, decoded));
+    EXPECT_EQ(og::input_native::EventType::JoyAxisMotion, decoded.type);
+    EXPECT_EQ(expected_index, decoded.joy_axis_which);
+    EXPECT_EQ(1, decoded.joy_axis_axis);
+    EXPECT_EQ(12345, decoded.joy_axis_value);
+}
+
+TEST(VideoModesMore, no_screen_paths_return_the_documented_canvas_defaults)
+{
+    sdl_video video(false);
+    std::unique_ptr<Screen> detached = std::move(E_Screen);
+    ASSERT_NE(nullptr, detached);
+    struct ScreenRestore
+    {
+        std::unique_ptr<Screen>& value;
+        ~ScreenRestore() { E_Screen = std::move(value); }
+    } restore{detached};
+
+    video.reapply_world_scale();
+    video.reflect_display_settings_from_window();
+    video.set_active_canvas(CanvasTarget::World);
+    EXPECT_EQ(kUiCanvasW, video.canvas_w());
+    EXPECT_EQ(kUiCanvasH, video.canvas_h());
+    EXPECT_EQ(kUiCanvasW, video.world_canvas_w());
+    EXPECT_EQ(kUiCanvasH, video.world_canvas_h());
+    EXPECT_EQ(kUiCanvasW, video.gameplay_ui_canvas_w());
+    EXPECT_EQ(kUiCanvasH, video.gameplay_ui_canvas_h());
+    EXPECT_TRUE(video.gameplay_ui_canvas_available());
+    EXPECT_EQ(CanvasTarget::UI, video.active_canvas());
+    EXPECT_EQ(CanvasTarget::UI, video.last_presented_canvas());
+}
+
+TEST(VideoModesMore, enumerated_display_resolutions_are_unique_and_sorted)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->window);
+    sdl_video video(false);
+    const std::vector<std::pair<int, int>> resolutions =
+        video.display_resolutions();
+    EXPECT_TRUE(std::is_sorted(
+        resolutions.begin(), resolutions.end(), std::greater<>()));
+    EXPECT_EQ(resolutions.end(),
+              std::adjacent_find(resolutions.begin(), resolutions.end()));
+    for (const auto& [width, height] : resolutions)
+    {
+        EXPECT_GE(width, 640);
+        EXPECT_GE(height, 400);
+    }
+
+    int display_count = 0;
+    struct DisplayIds
+    {
+        SDL_DisplayID* value;
+        ~DisplayIds() { SDL_free(value); }
+    } displays{SDL_GetDisplays(&display_count)};
+    ASSERT_NE(nullptr, displays.value);
+    ASSERT_GT(display_count, 0);
+    const char* const driver = SDL_GetCurrentVideoDriver();
+    const bool exclusive_safe =
+        og::platform::exclusive_mode_switch_is_safe(
+            driver != nullptr ? driver : "", display_count);
+    SDL_DisplayID display = SDL_GetDisplayForWindow(E_Screen->window);
+    if (display == 0)
+        display = SDL_GetPrimaryDisplay();
+    ASSERT_NE(0u, display);
+
+    std::vector<std::pair<int, int>> expected_resolutions;
+    if (exclusive_safe)
+    {
+        int mode_count = 0;
+        struct DisplayModes
+        {
+            SDL_DisplayMode** value;
+            ~DisplayModes() { SDL_free(value); }
+        } modes{SDL_GetFullscreenDisplayModes(display, &mode_count)};
+        if (modes.value != nullptr)
+        {
+            for (int i = 0; i < mode_count; ++i)
+            {
+                const auto dimensions =
+                    og::platform::display_mode_pixel_size(*modes.value[i]);
+                if (dimensions.first >= 640 &&
+                    dimensions.second >= 400 &&
+                    std::find(expected_resolutions.begin(),
+                              expected_resolutions.end(), dimensions) ==
+                        expected_resolutions.end())
+                {
+                    expected_resolutions.push_back(dimensions);
+                }
+            }
+            std::sort(expected_resolutions.begin(),
+                      expected_resolutions.end(), std::greater<>());
+        }
+    }
+    EXPECT_EQ(expected_resolutions, resolutions)
+        << "the selector must expose exactly SDL's safe physical modes";
+
+    const auto desktop = video.desktop_resolution();
+    const auto usable = video.windowed_desktop_resolution();
+    const SDL_DisplayMode* const desktop_mode =
+        SDL_GetDesktopDisplayMode(display);
+    const std::pair<int, int> expected_desktop =
+        desktop_mode != nullptr
+            ? og::platform::display_mode_pixel_size(*desktop_mode)
+            : std::pair<int, int>{0, 0};
+    EXPECT_EQ(expected_desktop, desktop);
+
+    SDL_Rect usable_bounds{};
+    const std::pair<int, int> expected_usable =
+        SDL_GetDisplayUsableBounds(display, &usable_bounds) &&
+                usable_bounds.w > 0 && usable_bounds.h > 0
+            ? std::pair<int, int>{usable_bounds.w, usable_bounds.h}
+            : std::pair<int, int>{0, 0};
+    EXPECT_EQ(expected_usable, usable);
+}
+
+#ifdef __linux__
+TEST(VideoModesMore, screenshot_open_failure_preserves_the_frame)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    screen* const value = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, value);
+    const CanvasTarget old_target = value->active_canvas();
+    struct CanvasTargetRestore
+    {
+        screen* value;
+        CanvasTarget target;
+        ~CanvasTargetRestore()
+        {
+            value->set_active_canvas(target);
+        }
+    } canvas_target_restore{value, old_target};
+    value->set_active_canvas(CanvasTarget::UI);
+    value->clearbuffer();
+    value->pointb(7, 9, 42);
+    const std::size_t bytes =
+        static_cast<std::size_t>(E_Screen->render->pitch) *
+        E_Screen->render->h;
+    const std::vector<Uint8> before(
+        static_cast<const Uint8*>(E_Screen->render->pixels),
+        static_cast<const Uint8*>(E_Screen->render->pixels) + bytes);
+
+    const char* const write_dir_ptr = PHYSFS_getWriteDir();
+    ASSERT_NE(nullptr, write_dir_ptr);
+    const std::string write_dir = write_dir_ptr;
+    const std::filesystem::path old_cwd =
+        std::filesystem::current_path();
+    {
+        struct StateRestore
+        {
+            std::string write_dir;
+            std::filesystem::path cwd;
+            CanvasTarget target;
+            ~StateRestore()
+            {
+                std::error_code ec;
+                std::filesystem::current_path(cwd, ec);
+                PHYSFS_setWriteDir(write_dir.c_str());
+                og::runtime::current_session->myscreen_->set_active_canvas(
+                    target);
+            }
+        } restore{write_dir, old_cwd, old_target};
+
+        ASSERT_NE(0, PHYSFS_setWriteDir(nullptr));
+        std::filesystem::current_path("/proc/self");
+        EXPECT_FALSE(value->save_screenshot());
+        EXPECT_EQ(0, std::memcmp(
+                         before.data(), E_Screen->render->pixels, bytes))
+            << "failing to open the output must not mutate the frame";
+    }
+
+    ASSERT_NE(nullptr, PHYSFS_getWriteDir());
+    EXPECT_EQ(write_dir, PHYSFS_getWriteDir());
+    EXPECT_EQ(old_cwd, std::filesystem::current_path());
+    EXPECT_EQ(old_target, value->active_canvas());
+}
+#endif
 
 TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
 {
@@ -215,6 +541,82 @@ TEST(VideoModesMore, video_clipping_and_accel_surface_edge_paths)
     og::runtime::current_session->myscreen_->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 128);
     og::runtime::current_session->myscreen_->walkputbuffertext_alpha(310, 190, 16, 16, 0, 0, 319, 199, span, 40, 128);
     og::runtime::current_session->myscreen_->walkputbuffertext_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 40, 128);
+}
+
+TEST(VideoModesMore, generic_pixel_format_blitters_preserve_transparency_and_team_colors)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->render);
+
+    // Normal gameplay renders into ARGB8888 and uses optimized row writers.
+    // SDL still permits other software-surface formats, so exercise the real
+    // generic paths against RGB24 and verify their observable pixel results.
+    SurfacePtr rgb24(SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGB24));
+    ASSERT_NE(nullptr, rgb24);
+    ASSERT_EQ(3, SDL_GetPixelFormatDetails(rgb24->format)->bytes_per_pixel);
+
+    SDL_Surface* const saved_render = E_Screen->render;
+    struct RenderSurfaceRestore
+    {
+        SDL_Surface*& slot;
+        SDL_Surface* saved;
+        ~RenderSurfaceRestore() { slot = saved; }
+    } restore{E_Screen->render, saved_render};
+    E_Screen->render = rgb24.get();
+
+    sdl_video video(false);
+    ASSERT_TRUE(SDL_FillSurfaceRect(rgb24.get(), nullptr, 0));
+
+    // Select the no-buffer overload: screen's virtual forwarding normally
+    // uses the legacy overload with an explicit destination flag.
+    video.draw_box(1, 1, 5, 4, 200, 1);
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    video.get_pixel(2, 2, &red, &green, &blue);
+    EXPECT_NE(0, static_cast<int>(red) + static_cast<int>(green) +
+                     static_cast<int>(blue));
+
+    std::array<unsigned char, 16> pixels{
+        0, 250, 42, 43,
+        44, 45, 0, 46,
+        47, 48, 49, 50,
+        51, 52, 53, 54,
+    };
+    const auto indexed = std::span<const unsigned char>(pixels);
+
+    // RGB24 selects putbuffer's format-independent conversion loop. The
+    // indexed tile blitter is opaque, including palette index zero.
+    video.putbuffer(2, 2, 4, 4, 0, 0, 16, 16, indexed);
+    int tile_index = -1;
+    EXPECT_EQ(250, video.get_pixel(3, 2, &tile_index));
+    EXPECT_EQ(250, tile_index) << "tile pixels retain their original palette index";
+
+    // Sprite zeroes are transparent and values above 247 are recolored from
+    // the supplied team ramp. RGB24 forces the non-ARGB optimized fallback.
+    ASSERT_TRUE(SDL_FillSurfaceRect(rgb24.get(), nullptr, 0));
+    video.walkputbuffer(2, 2, 4, 4, 0, 0, 16, 16, indexed, 40);
+    int transparent_index = -1;
+    EXPECT_EQ(0, video.get_pixel(2, 2, &transparent_index));
+    EXPECT_EQ(0, transparent_index);
+    int team_index = -1;
+    EXPECT_EQ(45, video.get_pixel(3, 2, &team_index));
+    EXPECT_EQ(45, team_index) << "250 maps to team color 40 + (255 - 250)";
+
+    // A negative destination that remains partly inside its clipping port
+    // selects walkputbuffer_alpha's bounds-safe generic loop.
+    video.walkputbuffer_alpha(-1, 7, 4, 4, -2, 0, 16, 16,
+                              indexed, 40, 255);
+    video.get_pixel(0, 7, &red, &green, &blue);
+    EXPECT_NE(0, static_cast<int>(red) + static_cast<int>(green) +
+                     static_cast<int>(blue));
+
+    // The mode-aware overload's NORMAL behavior has its own legacy loop.
+    // Pin both transparency and team remapping through visible pixels.
+    video.walkputbuffer(2, 11, 4, 4, 0, 0, 16, 16, indexed, 40,
+                        static_cast<unsigned char>(NORMAL_MODE), 0, 0, 0);
+    EXPECT_EQ(0, video.get_pixel(2, 11, &transparent_index));
+    EXPECT_EQ(45, video.get_pixel(3, 11, &team_index));
 }
 
 

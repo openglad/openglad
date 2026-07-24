@@ -170,7 +170,10 @@ screen* local_transport_shadow_testing_server_screen(GameSession& session);
 // the authoritative server, as if that player had touched an exit treasure.
 // Returns false (emitting nothing) if that player has no server-side control.
 bool local_transport_shadow_testing_open_exit_prompt(
-    GameSession& session, std::size_t player_index, int destination_level);
+    GameSession& session,
+    std::size_t player_index,
+    int destination_level,
+    bool withdraw = false);
 
 // Test-only: whether the authoritative server still has an unanswered exit prompt
 // (true means a peer was asked to confirm and the sim is frozen waiting on it).

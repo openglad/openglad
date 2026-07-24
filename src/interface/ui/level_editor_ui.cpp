@@ -18,6 +18,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <list>
 #include <string>
@@ -43,6 +45,64 @@ struct UiRect
 std::vector<std::string>& level_editor_testing_prompt_queue_ref();
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
+
+namespace {
+
+std::atomic<std::uint64_t> s_prompt_block_entered_count{0};
+std::atomic<std::uint64_t> s_prompt_block_input_observed_count{0};
+std::atomic<std::uint64_t> s_prompt_block_input_completed_count{0};
+std::atomic<int> s_prompt_block_held_key{-1};
+std::atomic<int> s_prompt_block_click_x{0};
+std::atomic<int> s_prompt_block_click_y{0};
+std::atomic<bool> s_prompt_block_click_pending{false};
+
+void prompt_block_testing_input_observed()
+{
+    s_prompt_block_input_observed_count.fetch_add(1, std::memory_order_release);
+}
+
+void prompt_block_testing_input_completed()
+{
+    s_prompt_block_input_completed_count.fetch_add(1, std::memory_order_release);
+}
+
+} // namespace
+
+void level_editor_testing_prompt_block_input_reset()
+{
+    s_prompt_block_entered_count.store(0, std::memory_order_release);
+    s_prompt_block_input_observed_count.store(0, std::memory_order_release);
+    s_prompt_block_input_completed_count.store(0, std::memory_order_release);
+    s_prompt_block_held_key.store(-1, std::memory_order_release);
+    s_prompt_block_click_pending.store(false, std::memory_order_release);
+}
+
+void level_editor_testing_prompt_block_set_held_key(int key_state)
+{
+    s_prompt_block_held_key.store(key_state, std::memory_order_release);
+}
+
+void level_editor_testing_prompt_block_click(int x, int y)
+{
+    s_prompt_block_click_x.store(x, std::memory_order_relaxed);
+    s_prompt_block_click_y.store(y, std::memory_order_relaxed);
+    s_prompt_block_click_pending.store(true, std::memory_order_release);
+}
+
+std::uint64_t level_editor_testing_prompt_block_entered_count()
+{
+    return s_prompt_block_entered_count.load(std::memory_order_acquire);
+}
+
+std::uint64_t level_editor_testing_prompt_block_input_observed_count()
+{
+    return s_prompt_block_input_observed_count.load(std::memory_order_acquire);
+}
+
+std::uint64_t level_editor_testing_prompt_block_input_completed_count()
+{
+    return s_prompt_block_input_completed_count.load(std::memory_order_acquire);
+}
 #endif
 
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result)
@@ -107,12 +167,39 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     
     bool cancel = false;
     bool done = false;
+    const auto prompt_key_down = [](int key_state) {
+        if (og::runtime::current_session->keystates_[key_state])
+            return true;
+#ifdef TESTING
+        return s_prompt_block_held_key.load(std::memory_order_acquire) ==
+            key_state;
+#else
+        return false;
+#endif
+    };
+#ifdef TESTING
+    s_prompt_block_entered_count.fetch_add(1, std::memory_order_release);
+#endif
 	while (!done)
 	{
         get_input_events(POLL);
+#ifdef TESTING
+        if (s_prompt_block_click_pending.exchange(
+                false, std::memory_order_acquire))
+        {
+            mymouse.x = static_cast<float>(
+                s_prompt_block_click_x.load(std::memory_order_relaxed));
+            mymouse.y = static_cast<float>(
+                s_prompt_block_click_y.load(std::memory_order_relaxed));
+            mymouse.left = true;
+        }
+#endif
         
 	        if(query_key_press_event())
 	        {
+#ifdef TESTING
+                prompt_block_testing_input_observed();
+#endif
 	            int c = query_key();
 	            clear_key_press_event();
             
@@ -156,9 +243,15 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                     s->erase(cursor_pos, 1);
                 }
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
         else if(mymouse.left)
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             mymouse.left = false;
             
             if(mymouse.in(done_button))
@@ -231,32 +324,50 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 }
             }
             #endif
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
         
-        if(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+        if(prompt_key_down(KEYSTATE_ESCAPE))
         {
-            while(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
+            while(prompt_key_down(KEYSTATE_ESCAPE))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
 
             done = true;
             break;
         }
-        if(og::runtime::current_session->keystates_[KEYSTATE_DELETE])
+        if(prompt_key_down(KEYSTATE_DELETE))
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             if(cursor_pos < s->size())
                 s->erase(cursor_pos, 1);
             
-            while(og::runtime::current_session->keystates_[KEYSTATE_DELETE])
+            while(prompt_key_down(KEYSTATE_DELETE))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
-        if(og::runtime::current_session->keystates_[KEYSTATE_UP])
+        if(prompt_key_down(KEYSTATE_UP))
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             if(current_line > 0)
             {
                 current_line--;
@@ -265,14 +376,20 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                     cursor_pos = s->size();
             }
             
-            while(og::runtime::current_session->keystates_[KEYSTATE_UP])
+            while(prompt_key_down(KEYSTATE_UP))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
-        if(og::runtime::current_session->keystates_[KEYSTATE_DOWN])
+        if(prompt_key_down(KEYSTATE_DOWN))
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             if(current_line+1 < result.size())
             {
                 current_line++;
@@ -284,14 +401,20 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             if(s->size() < cursor_pos)
                 cursor_pos = s->size();
             
-            while(og::runtime::current_session->keystates_[KEYSTATE_DOWN])
+            while(prompt_key_down(KEYSTATE_DOWN))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
-        if(og::runtime::current_session->keystates_[KEYSTATE_LEFT])
+        if(prompt_key_down(KEYSTATE_LEFT))
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             if(cursor_pos > 0)
                 cursor_pos--;
             else if(current_line > 0)
@@ -301,14 +424,20 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 cursor_pos = s->size();
             }
             
-            while(og::runtime::current_session->keystates_[KEYSTATE_LEFT])
+            while(prompt_key_down(KEYSTATE_LEFT))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
-        if(og::runtime::current_session->keystates_[KEYSTATE_RIGHT])
+        if(prompt_key_down(KEYSTATE_RIGHT))
         {
+#ifdef TESTING
+            prompt_block_testing_input_observed();
+#endif
             cursor_pos++;
             if(cursor_pos > s->size())
             {
@@ -323,11 +452,14 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                     cursor_pos = s->size();
             }
             
-            while(og::runtime::current_session->keystates_[KEYSTATE_RIGHT])
+            while(prompt_key_down(KEYSTATE_RIGHT))
             {
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
+#ifdef TESTING
+            prompt_block_testing_input_completed();
+#endif
         }
 
         if(query_text_input_event())
@@ -338,6 +470,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             {
                 s->insert(cursor_pos, temptext);
                 cursor_pos += strlen(temptext);
+#ifdef TESTING
+                prompt_block_testing_input_observed();
+                prompt_block_testing_input_completed();
+#endif
             }
         }
 		

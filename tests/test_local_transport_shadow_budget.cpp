@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -72,6 +73,64 @@ int count_shadow_overflow_traces(
 }
 
 } // namespace
+
+TEST(LocalTransportShadowBudget,
+     inactive_and_client_only_public_guards_preserve_state)
+{
+    og::runtime::GameSession::Config config;
+    config.create_display = false;
+    config.install_legacy_globals = false;
+    og::runtime::GameSession session(config);
+    auto session_scope = session.activate();
+    screen* const display = session.screen_ptr();
+    ASSERT_NE(nullptr, display);
+
+    display->world().end = 0;
+    display->redrawme = 0;
+    const std::array<std::pair<std::uint8_t, std::string>, 1> companies = {
+        std::pair<std::uint8_t, std::string>{0u, "Guard Company"}};
+    EXPECT_FALSE(og::runtime::display_follow_cycle_target(session, 0, false));
+    og::runtime::local_transport_shadow_set_player_companies(
+        session, companies);
+    EXPECT_EQ(nullptr,
+              og::runtime::local_transport_shadow_testing_server_screen(
+                  session));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_testing_server_pending_exit_prompt(
+            session));
+    EXPECT_TRUE(og::runtime::local_transport_shadow_abort_level(session));
+    EXPECT_FALSE(og::runtime::local_transport_active(session));
+    EXPECT_EQ(0, static_cast<int>(display->world().end));
+    EXPECT_EQ(0, static_cast<int>(display->redrawme));
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto client_transport = server_transport->create_client_transport();
+    session.networked_session_ = true;
+    og::runtime::reset_network_client_transport_shadow(
+        session,
+        *display,
+        client_transport,
+        client_transport->local_peer_id(),
+        0u);
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+
+    EXPECT_FALSE(og::runtime::display_follow_cycle_target(session, -1, false));
+    EXPECT_FALSE(og::runtime::display_follow_cycle_target(session, 0, true));
+    EXPECT_EQ(0, static_cast<int>(display->redrawme));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_abort_level(session));
+    EXPECT_EQ(0, static_cast<int>(display->world().end));
+
+    session.myscreen_ = nullptr;
+    og::runtime::local_transport_shadow_finish_tick(session);
+    EXPECT_EQ(1u, og::runtime::local_transport_client_count(session));
+    session.myscreen_ = display;
+
+    og::runtime::clear_local_transport_shadow(session);
+    EXPECT_FALSE(og::runtime::local_transport_active(session));
+    EXPECT_FALSE(session.networked_session_);
+}
 
 TEST(LocalTransportShadowBudget, client_drains_at_most_budget_per_call)
 {

@@ -53,20 +53,6 @@ std::atomic<GameplayContext*> primary_game{&s_headless_session.game_};
 
 } // namespace og::runtime
 
-void popup_dialog(const char* title, const char* message)
-{
-    std::fprintf(stderr, "[%s] %s\n", title, message);
-}
-
-std::uint32_t random(std::uint32_t x)
-{
-    static std::uint32_t state = 12345;
-    if (x == 0)
-        return 0;
-    state = state * 1103515245u + 12345u;
-    return (state >> 16) % x;
-}
-
 namespace {
 
 constexpr int kDefaultPort = 12345;
@@ -373,49 +359,13 @@ int main(int argc, char* argv[])
                                     binding.local_slot);
         }
 
-        game_server.on_save_sync = [&active_save, &level_data] {
-            og::server::sync_headless_server_save_data_from_world(
-                active_save, level_data.world());
-        };
-        game_server.on_level_transition =
-            [&level_data,
-             &active_save,
-             &checkpoint_save,
-             &session](int next_level) {
-                return og::server::complete_headless_level_and_load_next(
-                    level_data,
-                    active_save,
-                    checkpoint_save,
-                    session.current_difficulty_,
-                    *session.ctx_.sim_events,
-                    next_level);
-            };
-        game_server.on_exit_accepted =
-            [&level_data,
-             &active_save,
-             &checkpoint_save,
-             &session](int destination) {
-                return og::server::complete_headless_level_and_load_next(
-                    level_data,
-                    active_save,
-                    checkpoint_save,
-                    session.current_difficulty_,
-                    *session.ctx_.sim_events,
-                    destination);
-            };
-        game_server.on_withdraw_accepted =
-            [&level_data,
-             &active_save,
-             &checkpoint_save,
-             &session](int destination) {
-                return og::server::withdraw_headless_level(
-                    level_data,
-                    active_save,
-                    checkpoint_save,
-                    session.current_difficulty_,
-                    *session.ctx_.sim_events,
-                    destination);
-            };
+        og::server::install_headless_server_callbacks(
+            game_server,
+            level_data,
+            active_save,
+            checkpoint_save,
+            session.current_difficulty_,
+            *session.ctx_.sim_events);
 
         Log("headless_server_tick_interval_ms {}\n", frame_interval_ms);
 

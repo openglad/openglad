@@ -1,5 +1,6 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/resources/campaign_yaml.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/filesystem.h>
@@ -8,22 +9,289 @@
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/io_common.h>
 
+#include "test_save_state_guard.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <physfs.h>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
+#include "lodepng.h"
+
+std::string get_asset_path();
+
 namespace {
 
+class ScopedEnvVar
+{
+public:
+    explicit ScopedEnvVar(const char* name) : name_(name)
+    {
+        if (const char* value = std::getenv(name_))
+        {
+            had_value_ = true;
+            old_value_ = value;
+        }
+    }
+
+    ~ScopedEnvVar()
+    {
+        if (had_value_)
+            set(old_value_);
+        else
+            clear();
+    }
+
+    void set(const std::string& value) const
+    {
+#ifdef _WIN32
+        (void)_putenv_s(name_, value.c_str());
+#else
+        (void)setenv(name_, value.c_str(), 1);
+#endif
+    }
+
+    void clear() const
+    {
+#ifdef _WIN32
+        (void)_putenv_s(name_, "");
+#else
+        (void)unsetenv(name_);
+#endif
+    }
+
+private:
+    const char* name_;
+    bool had_value_ = false;
+    std::string old_value_;
+};
+
+class ScopedTraceBuffer
+{
+public:
+    ScopedTraceBuffer() { trace_clear(); }
+    ~ScopedTraceBuffer() { trace_clear(); }
+
+    ScopedTraceBuffer(const ScopedTraceBuffer&) = delete;
+    ScopedTraceBuffer& operator=(const ScopedTraceBuffer&) = delete;
+};
+
+std::vector<unsigned char> make_test_indexed_png(unsigned width,
+                                                  unsigned height,
+                                                  unsigned palette_entries)
+{
+    lodepng::State state;
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
+    state.info_png.color.colortype = LCT_PALETTE;
+    state.info_png.color.bitdepth = 8;
+    state.encoder.auto_convert = 0;
+
+    for (unsigned i = 0; i < palette_entries; ++i)
+    {
+        const auto component = static_cast<unsigned char>(i);
+        EXPECT_EQ(0u, lodepng_palette_add(&state.info_raw, component,
+                                          component, component, 255));
+        EXPECT_EQ(0u, lodepng_palette_add(&state.info_png.color, component,
+                                          component, component, 255));
+    }
+
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    for (std::size_t i = 0; i < pixels.size(); ++i)
+        pixels[i] = static_cast<unsigned char>(i % palette_entries);
+
+    std::vector<unsigned char> encoded;
+    EXPECT_EQ(0u, lodepng::encode(encoded, pixels, width, height, state));
+    return encoded;
+}
+
+void write_binary_file(const std::filesystem::path& path,
+                       const std::vector<unsigned char>& bytes)
+{
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(out.good()) << path;
+    if (!bytes.empty())
+    {
+        out.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+    ASSERT_TRUE(out.good()) << path;
+}
+
+void write_text_file(const std::filesystem::path& path, std::string_view text)
+{
+    write_binary_file(
+        path, std::vector<unsigned char>(text.begin(), text.end()));
+}
+
 } // namespace
+
+TEST(IoPlatformCoverage, user_path_and_open_write_stdio_fallback_are_exact)
+{
+    namespace fs = std::filesystem;
+    const fs::path output =
+        fs::path(get_user_path()) / "platform_io_second_pass" /
+        "absolute_stdio_fallback.bin";
+    og::test::ScopedPhysicalFileState output_state(output);
+    ASSERT_TRUE(output_state.ready()) << output_state.error().message();
+    std::error_code ec;
+    fs::create_directories(output.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    ScopedEnvVar config_dir("OPENGLAD_CONFIG_DIR");
+    ScopedEnvVar home("HOME");
+    config_dir.clear();
+    home.clear();
+    EXPECT_EQ("./", get_user_path())
+        << "without an explicit config directory or HOME, the cwd is used";
+
+    static constexpr unsigned char payload[] = {0x4f, 0x47, 0x21, 0x7f};
+    {
+        IostreamPtr out{open_write_file(output.string().c_str())};
+        ASSERT_TRUE(out != nullptr)
+            << "an absolute native path must use the stdio fallback";
+        ASSERT_EQ(sizeof(payload), SDL_WriteIO(out.get(), payload,
+                                               sizeof(payload)));
+        ASSERT_TRUE(SDL_FlushIO(out.get()));
+    }
+
+    std::ifstream in(output, std::ios::binary);
+    ASSERT_TRUE(in.good());
+    const std::vector<unsigned char> actual{
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>()};
+    EXPECT_EQ(std::vector<unsigned char>(std::begin(payload),
+                                         std::end(payload)),
+              actual);
+}
+
+TEST(IoPlatformCoverage,
+     io_init_rejects_double_initialization_without_state_mutation)
+{
+    ASSERT_TRUE(og::resources::is_initialized());
+    og::test::ScopedCampaignMountState mount_state;
+    const std::string mounted_before = get_mounted_campaign();
+    std::string argv0 =
+        (std::filesystem::path(get_asset_path()) / "og_test_io").string();
+    char* argv[] = {argv0.data()};
+
+    bool threw = false;
+    std::string message;
+    try
+    {
+        io_init(1, argv);
+    }
+    catch (const std::runtime_error& error)
+    {
+        threw = true;
+        message = error.what();
+    }
+
+    EXPECT_TRUE(threw);
+    EXPECT_EQ(0u, message.find("Fatal: Failed to initialize PhysFS:"))
+        << message;
+    EXPECT_TRUE(og::resources::is_initialized())
+        << "rejecting a second initialization leaves the live instance intact";
+    EXPECT_EQ(mounted_before, get_mounted_campaign());
+}
+
+TEST(IoPlatformCoverage,
+     io_init_reports_invalid_write_directory_and_recovers_canonical_state)
+{
+    namespace fs = std::filesystem;
+    ASSERT_TRUE(og::resources::is_initialized());
+    og::test::ScopedCampaignMountState mount_state;
+
+    const fs::path blocker =
+        fs::path(get_user_path()) / "platform_io_second_pass" /
+        "write_dir_parent_blocker";
+    og::test::ScopedPhysicalFileState blocker_state(blocker);
+    ASSERT_TRUE(blocker_state.ready()) << blocker_state.error().message();
+    std::error_code ec;
+    fs::create_directories(blocker.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(blocker, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good());
+        out << "parent is intentionally a regular file";
+    }
+    const fs::path invalid_config = blocker / "nested_config";
+
+    std::string argv0 =
+        (fs::path(get_asset_path()) / "og_test_io").string();
+    char* argv[] = {argv0.data()};
+    bool threw = false;
+    bool initialized_after_failure = false;
+    std::string failure_message;
+    std::string write_dir_after_failure;
+    {
+        ScopedEnvVar config_dir("OPENGLAD_CONFIG_DIR");
+        config_dir.set(invalid_config.string());
+        set_mounted_campaign_for_testing("");
+        io_exit();
+
+        try
+        {
+            io_init(1, argv);
+        }
+        catch (const std::runtime_error& error)
+        {
+            threw = true;
+            failure_message = error.what();
+        }
+        initialized_after_failure = og::resources::is_initialized();
+        if (const char* write_dir = PHYSFS_getWriteDir())
+            write_dir_after_failure = write_dir;
+        if (initialized_after_failure)
+            io_exit();
+    }
+
+    // Re-establish the integration test process contract before making any
+    // assertions, so even a failed expectation cannot strand sibling tests.
+    set_mounted_campaign_for_testing("");
+    bool recovered = true;
+    std::string recovery_error;
+    try
+    {
+        io_init(1, argv);
+    }
+    catch (const std::runtime_error& error)
+    {
+        recovered = false;
+        recovery_error = error.what();
+    }
+
+    ASSERT_TRUE(recovered) << recovery_error;
+    EXPECT_TRUE(threw);
+    EXPECT_NE(std::string::npos,
+              failure_message.find(
+                  "Fatal: Failed to set write directory " +
+                  invalid_config.string()))
+        << failure_message;
+    EXPECT_TRUE(initialized_after_failure)
+        << "PhysFS initialization succeeds before write-dir validation fails";
+    EXPECT_TRUE(write_dir_after_failure.empty());
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+
+    std::ifstream blocker_in(blocker, std::ios::binary);
+    ASSERT_TRUE(blocker_in.good());
+    const std::string blocker_bytes{
+        std::istreambuf_iterator<char>(blocker_in),
+        std::istreambuf_iterator<char>()};
+    EXPECT_EQ("parent is intentionally a regular file", blocker_bytes);
+    EXPECT_FALSE(fs::exists(invalid_config));
+}
 
 TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 {
@@ -186,6 +454,17 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
               og::data::read_campaign_yaml(bad_path.string().c_str(), partial));
     ASSERT_TRUE(partial.saw_title);
     ASSERT_EQ("Partial", partial.title);
+
+    const fs::path default_path =
+        fs::path("temp") / "io_platform_default_campaign.yaml";
+    ASSERT_TRUE(og::data::write_default_campaign_yaml(
+        default_path.string().c_str()));
+    og::data::CampaignYaml defaults;
+    ASSERT_EQ(og::data::CampaignYamlReadResult::Ok,
+              og::data::read_campaign_yaml(
+                  default_path.string().c_str(), defaults));
+    EXPECT_EQ("New Campaign", defaults.title);
+    EXPECT_EQ(1, defaults.first_level);
 }
 
 
@@ -392,6 +671,8 @@ TEST(IoPlatformCoverage, og_file_batch3_physfs_seek_and_path_overloads)
         ASSERT_TRUE(cur >= 1) << "physfs seek cur should advance";
         const std::int64_t end = phys->seek(0, 2);
         ASSERT_TRUE(end >= cur) << "physfs seek end should be >= current position";
+        ASSERT_EQ(-1, static_cast<int>(phys->seek(-1, 0)))
+            << "PhysFS must reject a negative absolute offset";
         ASSERT_EQ(-1, static_cast<int>(phys->seek(0, 99))) << "physfs invalid whence should fail";
     }
 
@@ -715,6 +996,39 @@ TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_
     set_mounted_campaign_for_testing(prev);
 }
 
+TEST(IoPlatformCoverage, restore_default_campaigns_ignores_nonpackages)
+{
+    namespace fs = std::filesystem;
+    const fs::path source =
+        fs::path(get_asset_path()) / "builtin" /
+        "coverage_nonpackage_marker.txt";
+    const fs::path destination =
+        fs::path(get_user_path()) / "campaigns" /
+        "coverage_nonpackage_marker.txt";
+    og::test::ScopedPhysicalFileState source_state(source);
+    og::test::ScopedPhysicalFileState destination_state(destination);
+    ASSERT_TRUE(source_state.ready()) << source_state.error().message();
+    ASSERT_TRUE(destination_state.ready())
+        << destination_state.error().message();
+
+    std::error_code ec;
+    fs::create_directories(source.parent_path(), ec);
+    ASSERT_FALSE(ec);
+    {
+        std::ofstream marker(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(marker.good());
+        marker << "not a campaign package";
+    }
+    fs::remove(destination, ec);
+    ASSERT_FALSE(ec);
+
+    restore_default_campaigns();
+
+    EXPECT_TRUE(fs::is_regular_file(source));
+    EXPECT_FALSE(fs::exists(destination))
+        << "only .glad packages may be restored into the user campaign dir";
+}
+
 
 TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
 {
@@ -737,6 +1051,228 @@ TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
     PixieData bad_header = read_pixie_file(pix_header_bad.string().c_str());
     ASSERT_TRUE(bad_header.data == nullptr) << "truncated pix header should fail";
     fs::remove(pix_header_bad, ec);
+}
+
+TEST(IoPlatformCoverage,
+     aseprite_sidecar_delimiters_and_size_limit_preserve_exact_fallback)
+{
+    ScopedTraceBuffer trace_guard;
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path("temp") / "io_platform_cov";
+    const fs::path png = dir / "resource_followup.png";
+    const fs::path json = dir / "resource_followup.json";
+    og::test::ScopedPhysicalFileState png_state(png);
+    og::test::ScopedPhysicalFileState json_state(json);
+    ASSERT_TRUE(png_state.ready()) << png_state.error().message();
+    ASSERT_TRUE(json_state.ready()) << json_state.error().message();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    constexpr int width = 4;
+    constexpr int height = 3;
+    const std::vector<unsigned char> expected = {
+        0, 1, 2, 3,
+        4, 5, 6, 7,
+        8, 9, 10, 11,
+    };
+    auto* source = new unsigned char[expected.size()];
+    std::copy(expected.begin(), expected.end(), source);
+    ASSERT_TRUE(write_pixie_png(
+        png.string().c_str(), PixieData(1, width, height, source)));
+
+    struct MalformedSidecar
+    {
+        const char* label;
+        const char* text;
+        const char* reason;
+        bool fatal;
+    };
+    const MalformedSidecar cases[] = {
+        {"top-level missing delimiter",
+         R"({"unknown":1 "next":2})",
+         "expected ',' or '}' at top level", false},
+        {"frames missing delimiter",
+         R"({"frames":{"a":{"frame":{"w":4,"h":3}} "b":{"frame":{"w":4,"h":3}}}})",
+         "expected ',' or '}' in frames", false},
+        {"frame entry missing delimiter",
+         R"({"frames":{"a":{"frame":{"w":4,"h":3} "duration":1}}})",
+         "expected ',' or '}' in frame entry", false},
+        {"frame rectangle missing delimiter",
+         R"({"frames":{"a":{"frame":{"w":4 "h":3}}}})",
+         "expected ',' or '}' in frame rect", false},
+        {"meta missing delimiter",
+         R"({"frames":{"a":{"frame":{"w":4,"h":3}}},"meta":{"size":{"w":4,"h":3} "app":"test"}})",
+         "expected ',' or '}' in meta", false},
+        {"meta size missing delimiter",
+         R"({"frames":{"a":{"frame":{"w":4,"h":3}}},"meta":{"size":{"w":4 "h":3}}})",
+         "expected ',' or '}' in meta.size", false},
+        {"nested unknown object missing delimiter",
+         R"({"unknown":{"x":1 "y":2}})",
+         "expected ',' or '}'", false},
+        {"footprint key is not a string",
+         R"({"footprint":{1:2}})",
+         "expected '\"'", true},
+        {"footprint height is not an integer",
+         R"({"footprint":{"w":4,"h":"3"}})",
+         "expected non-negative integer", true},
+        {"footprint missing delimiter",
+         R"({"footprint":{"w":4 "h":3}})",
+         "expected ',' or '}' in footprint", true},
+    };
+
+    for (const MalformedSidecar& row : cases)
+    {
+        SCOPED_TRACE(row.label);
+        write_text_file(json, row.text);
+        trace_clear();
+
+        PixieData loaded = read_pixie_file(png.string().c_str());
+        if (row.fatal)
+        {
+            EXPECT_FALSE(loaded.valid())
+                << "a malformed footprint is a fatal sprite contract error";
+            EXPECT_TRUE(trace_contains("io", "invalid footprint in sidecar"));
+        }
+        else
+        {
+            ASSERT_TRUE(loaded.valid())
+                << "ordinary metadata errors use the documented one-frame fallback";
+            ASSERT_EQ(width, static_cast<int>(loaded.w));
+            ASSERT_EQ(height, static_cast<int>(loaded.h));
+            ASSERT_EQ(1, static_cast<int>(loaded.frames));
+            ASSERT_NE(nullptr, loaded.data);
+            EXPECT_TRUE(std::equal(expected.begin(), expected.end(),
+                                   loaded.data.get()))
+                << "fallback must preserve every decoded palette index";
+            EXPECT_TRUE(trace_contains("io", "malformed Aseprite sidecar"));
+        }
+        EXPECT_TRUE(trace_contains("io", row.reason))
+            << "the diagnostic must identify the exact malformed construct";
+    }
+
+    write_text_file(
+        json,
+        R"({"frames":{"a":{"frame":{"w":4,"h":3}}},"meta":{"size":{"w":4,"h":3}},"footprint":{"w":256,"h":3}})");
+    trace_clear();
+    EXPECT_FALSE(read_pixie_file(png.string().c_str()).valid());
+    EXPECT_TRUE(trace_contains("io", "footprint out of range in sidecar"));
+
+    // Unknown metadata fields remain forward-compatible, including nested
+    // objects. This reaches the positive counterpart of the malformed-object
+    // cases above and pins exact pixels rather than only accepting the load.
+    write_text_file(
+        json,
+        R"({"frames":{"a":{"frame":{"w":4,"h":3}}},"meta":{"size":{"w":4,"h":3,"future":{"revision":2}}}})");
+    trace_clear();
+    PixieData forward_compatible = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(forward_compatible.valid());
+    ASSERT_EQ(width, static_cast<int>(forward_compatible.w));
+    ASSERT_EQ(height, static_cast<int>(forward_compatible.h));
+    ASSERT_EQ(1, static_cast<int>(forward_compatible.frames));
+    ASSERT_NE(nullptr, forward_compatible.data);
+    EXPECT_TRUE(std::equal(expected.begin(), expected.end(),
+                           forward_compatible.data.get()));
+    EXPECT_FALSE(trace_contains("io", "malformed Aseprite sidecar"));
+
+    // A sidecar over the documented 1 MiB resource limit must fall back
+    // without reading or allocating from its contents.
+    {
+        std::ofstream oversized(json, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(oversized.good());
+        oversized.seekp(1024 * 1024);
+        oversized.put('x');
+        ASSERT_TRUE(oversized.good());
+    }
+    ASSERT_EQ((1024u * 1024u) + 1u, fs::file_size(json));
+    trace_clear();
+    PixieData oversized_fallback = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(oversized_fallback.valid());
+    ASSERT_EQ(width, static_cast<int>(oversized_fallback.w));
+    ASSERT_EQ(height, static_cast<int>(oversized_fallback.h));
+    ASSERT_EQ(1, static_cast<int>(oversized_fallback.frames));
+    ASSERT_NE(nullptr, oversized_fallback.data);
+    EXPECT_TRUE(std::equal(expected.begin(), expected.end(),
+                           oversized_fallback.data.get()));
+    EXPECT_TRUE(trace_contains("io", "file too large"));
+}
+
+TEST(IoPlatformCoverage,
+     indexed_png_resource_limits_and_decode_failures_are_rejected)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::path("temp") / "io_platform_cov";
+    const fs::path path = dir / "resource_rejection.png";
+    og::test::ScopedPhysicalFileState path_state(path);
+    ASSERT_TRUE(path_state.ready()) << path_state.error().message();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    write_binary_file(path, {});
+    ASSERT_EQ(0u, fs::file_size(path));
+    EXPECT_FALSE(read_pixie_file(path.string().c_str()).valid());
+
+    {
+        std::ofstream oversized(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(oversized.good());
+        oversized.seekp(16 * 1024 * 1024);
+        oversized.put('x');
+        ASSERT_TRUE(oversized.good());
+    }
+    ASSERT_EQ((16u * 1024u * 1024u) + 1u, fs::file_size(path));
+    EXPECT_FALSE(read_pixie_file(path.string().c_str()).valid());
+
+    std::vector<unsigned char> too_wide =
+        make_test_indexed_png(256, 1, 256);
+    ASSERT_FALSE(too_wide.empty());
+    lodepng::State inspected_state;
+    inspected_state.decoder.color_convert = 0;
+    unsigned inspected_width = 0;
+    unsigned inspected_height = 0;
+    ASSERT_EQ(0u, lodepng_inspect(
+                      &inspected_width, &inspected_height, &inspected_state,
+                      too_wide.data(), too_wide.size()));
+    ASSERT_EQ(256u, inspected_width);
+    ASSERT_EQ(1u, inspected_height);
+    write_binary_file(path, too_wide);
+    EXPECT_FALSE(read_pixie_file(path.string().c_str()).valid());
+
+    std::vector<unsigned char> short_palette =
+        make_test_indexed_png(2, 2, 4);
+    ASSERT_FALSE(short_palette.empty());
+    lodepng::State decoded_state;
+    decoded_state.decoder.color_convert = 0;
+    std::vector<unsigned char> decoded;
+    unsigned decoded_width = 0;
+    unsigned decoded_height = 0;
+    ASSERT_EQ(0u, lodepng::decode(
+                      decoded, decoded_width, decoded_height, decoded_state,
+                      short_palette.data(), short_palette.size()));
+    ASSERT_EQ(4u, decoded_state.info_png.color.palettesize);
+    ASSERT_EQ(std::vector<unsigned char>({0, 1, 2, 3}), decoded);
+    write_binary_file(path, short_palette);
+    EXPECT_FALSE(read_pixie_file(path.string().c_str()).valid());
+
+    std::vector<unsigned char> missing_image_data =
+        make_test_indexed_png(2, 2, 4);
+    ASSERT_GE(missing_image_data.size(), 33u);
+    missing_image_data.resize(33); // signature + complete IHDR, no IDAT/IEND
+    lodepng::State header_state;
+    header_state.decoder.color_convert = 0;
+    inspected_width = 0;
+    inspected_height = 0;
+    ASSERT_EQ(0u, lodepng_inspect(
+                      &inspected_width, &inspected_height, &header_state,
+                      missing_image_data.data(), missing_image_data.size()))
+        << "fixture must pass the production inspection stage";
+    decoded.clear();
+    ASSERT_NE(0u, lodepng::decode(
+                      decoded, decoded_width, decoded_height, header_state,
+                      missing_image_data.data(), missing_image_data.size()))
+        << "fixture must fail only during the production decode stage";
+    write_binary_file(path, missing_image_data);
+    EXPECT_FALSE(read_pixie_file(path.string().c_str()).valid());
 }
 
 

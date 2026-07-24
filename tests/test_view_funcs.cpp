@@ -232,6 +232,36 @@ TEST(ViewFuncs, viewscreen_change_speed_increase)
     vs->change_speed(-1);
 }
 
+TEST(ViewFuncs, viewscreen_change_speed_clamps_at_both_supported_limits)
+{
+    viewscreen* const vs =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    auto& session = *og::runtime::current_session;
+    const bool previous_relay_active = session.relay_transport_active_;
+    const bool previous_warning_shown = session.relay_speed_warning_shown_;
+    const std::int8_t previous_pending_timer_wait =
+        session.pending_timer_wait_request_;
+    const signed char previous_timer_wait = session.myscreen_->world().timer_wait;
+
+    session.relay_transport_active_ = false;
+    session.myscreen_->world().timer_wait = 1;
+    EXPECT_EQ(11, vs->change_speed(1));
+    EXPECT_EQ(0, session.myscreen_->world().timer_wait);
+    EXPECT_EQ(0, session.pending_timer_wait_request_);
+
+    session.myscreen_->world().timer_wait = 19;
+    EXPECT_EQ(1, vs->change_speed(-1));
+    EXPECT_EQ(20, session.myscreen_->world().timer_wait);
+    EXPECT_EQ(20, session.pending_timer_wait_request_);
+
+    session.relay_transport_active_ = previous_relay_active;
+    session.relay_speed_warning_shown_ = previous_warning_shown;
+    session.pending_timer_wait_request_ = previous_pending_timer_wait;
+    session.myscreen_->world().timer_wait = previous_timer_wait;
+}
+
 TEST(ViewFuncs, viewscreen_change_speed_shows_relay_warning_only_below_threshold)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();

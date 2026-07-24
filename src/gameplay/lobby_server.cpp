@@ -20,6 +20,11 @@ constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
 constexpr std::size_t kMaxLobbyTeamSize = 24;
+constexpr auto compare_peer_connection_order =
+    [](const auto& lhs, const auto& rhs) {
+        return lhs.second->connection_order <
+               rhs.second->connection_order;
+    };
 
 og::sim::LobbySettings make_default_lobby_settings()
 {
@@ -491,20 +496,6 @@ std::int16_t LobbyServer::resolve_team(
     std::int16_t requested_team,
     std::optional<std::int16_t> current_team) const noexcept
 {
-    return resolve_seat_team(peer_id, requested_team, current_team, {});
-}
-
-std::int16_t LobbyServer::resolve_seat_team(
-    PeerId peer_id,
-    std::int16_t requested_team,
-    std::optional<std::int16_t> current_team,
-    const std::vector<std::int16_t>& sibling_teams) const noexcept
-{
-    // The argument remains in the private helper signature to keep the
-    // lowered-CTF-count and legacy call sites straightforward. Sibling teams
-    // are no longer exclusions: explicit assignments deliberately permit
-    // multiple seats of one machine to share a team.
-    (void)sibling_teams;
     const auto seat_available = [&](std::int16_t team) noexcept {
         return is_team_available(team, peer_id);
     };
@@ -521,6 +512,20 @@ std::int16_t LobbyServer::resolve_seat_team(
     }
 
     return current_team.value_or(static_cast<std::int16_t>(-1));
+}
+
+std::int16_t LobbyServer::resolve_seat_team(
+    PeerId peer_id,
+    std::int16_t requested_team,
+    std::optional<std::int16_t> current_team,
+    const std::vector<std::int16_t>& sibling_teams) const noexcept
+{
+    // The argument remains in the private helper signature to keep the
+    // lowered-CTF-count and legacy call sites straightforward. Sibling teams
+    // are no longer exclusions: explicit assignments deliberately permit
+    // multiple seats of one machine to share a team.
+    (void)sibling_teams;
+    return resolve_team(peer_id, requested_team, current_team);
 }
 
 std::size_t LobbyServer::remaining_team_capacity(PeerId peer_id) const noexcept
@@ -576,9 +581,7 @@ void LobbyServer::rebuild_state()
     }
 
     std::sort(ordered_peers.begin(), ordered_peers.end(),
-              [](const auto& lhs, const auto& rhs) {
-                  return lhs.second->connection_order < rhs.second->connection_order;
-              });
+              compare_peer_connection_order);
 
     // Flatten (connection_order, seat order): global player indices are
     // sequential across the flattened seat list.
@@ -1087,10 +1090,7 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                         ordered.emplace_back(other_peer_id, &peer);
                 }
                 std::sort(ordered.begin(), ordered.end(),
-                          [](const auto& lhs, const auto& rhs) {
-                              return lhs.second->connection_order <
-                                     rhs.second->connection_order;
-                          });
+                          compare_peer_connection_order);
                 std::vector<OrderedSeat> ordered_seats;
                 for (auto& [other_peer_id, peer] : ordered)
                 {

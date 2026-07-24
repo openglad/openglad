@@ -2048,10 +2048,126 @@ PendingLocalLobbyState build_pending_local_lobby_state(
     return merged;
 }
 
+std::string select_lan_ipv4_address(
+    const std::optional<std::string>& route_address,
+    const std::optional<std::string>& hostname_address)
+{
+    if (route_address.has_value())
+        return *route_address;
+    if (hostname_address.has_value())
+        return *hostname_address;
+    return "127.0.0.1";
+}
+
+#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
+std::optional<std::string> usable_lan_ipv4_string(const in_addr& address)
+{
+    const std::uint32_t host_order = ntohl(address.s_addr);
+    if (host_order == 0 || (host_order >> 24) == 127)
+        return std::nullopt;
+
+    std::array<char, INET_ADDRSTRLEN> buffer = {};
+    if (inet_ntop(AF_INET, &address, buffer.data(),
+                  static_cast<socklen_t>(buffer.size())) == nullptr)
+    {
+        return std::nullopt;
+    }
+    return std::string(buffer.data());
+}
+
+std::optional<std::string> detect_lan_ipv4_via_udp_route()
+{
+    const int descriptor = socket(AF_INET, SOCK_DGRAM, 0);
+    if (descriptor < 0)
+        return std::nullopt;
+
+    // descriptor is provably >= 0 here, so close it exactly once at scope
+    // exit; this removes the three hand-placed close() calls and their
+    // associated leak hazard on any future early return.
+    struct FdCloser {
+        int fd;
+        ~FdCloser() noexcept { close(fd); }
+    } fd_guard{descriptor};
+
+    sockaddr_in remote = {};
+    remote.sin_family = AF_INET;
+    remote.sin_port = htons(9);
+    if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
+        return std::nullopt;
+
+    const int connect_result = connect(
+        descriptor,
+        reinterpret_cast<const sockaddr*>(&remote),
+        sizeof(remote));
+    if (connect_result != 0)
+        return std::nullopt;
+
+    sockaddr_in local = {};
+    socklen_t local_size = sizeof(local);
+    const int name_result = getsockname(
+        descriptor,
+        reinterpret_cast<sockaddr*>(&local),
+        &local_size);
+    if (name_result != 0 || local.sin_family != AF_INET)
+        return std::nullopt;
+
+    return usable_lan_ipv4_string(local.sin_addr);
+}
+
+std::optional<std::string> detect_lan_ipv4_via_hostname()
+{
+    std::array<char, 256> hostname = {};
+    // Reserve the final byte: POSIX leaves NUL-termination unspecified when
+    // the name is truncated, but the zero-initialized buffer keeps [255]=='\0'.
+    if (gethostname(hostname.data(), hostname.size() - 1) != 0 ||
+        hostname[0] == '\0')
+    {
+        return std::nullopt;
+    }
+
+    addrinfo hints = {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    addrinfo* results = nullptr;
+    if (getaddrinfo(hostname.data(), nullptr, &hints, &results) != 0 ||
+        results == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    struct AddrInfoDeleter {
+        void operator()(addrinfo* p) const noexcept { freeaddrinfo(p); }
+    };
+    std::unique_ptr<addrinfo, AddrInfoDeleter> results_guard(results);
+
+    for (addrinfo* current = results; current != nullptr;
+         current = current->ai_next)
+    {
+        if (current->ai_addr == nullptr ||
+            current->ai_addrlen < sizeof(sockaddr_in))
+        {
+            continue;
+        }
+
+        const auto* const address =
+            reinterpret_cast<const sockaddr_in*>(current->ai_addr);
+        if (const auto detected = usable_lan_ipv4_string(address->sin_addr);
+            detected.has_value())
+        {
+            return detected;
+        }
+    }
+
+    return std::nullopt;
+}
+#endif
+
 std::string detect_lan_ipv4_address()
 {
 #ifdef __EMSCRIPTEN__
-    std::unique_ptr<char, decltype(&std::free)> hostname(current_browser_hostname_js(), &std::free);
+    std::unique_ptr<char, decltype(&std::free)> hostname(
+        current_browser_hostname_js(), &std::free);
     if (!hostname)
         return "127.0.0.1";
 
@@ -2060,106 +2176,14 @@ std::string detect_lan_ipv4_address()
         return "127.0.0.1";
     return value;
 #elif defined(__unix__) || defined(__APPLE__)
-    const auto is_usable_ipv4 = [](const in_addr& address) {
-        const std::uint32_t host_order = ntohl(address.s_addr);
-        return host_order != 0 && (host_order >> 24) != 127;
-    };
+    const std::optional<std::string> route_address =
+        detect_lan_ipv4_via_udp_route();
+    if (route_address.has_value())
+        return select_lan_ipv4_address(route_address, std::nullopt);
 
-    const auto to_ipv4_string = [&](const in_addr& address)
-        -> std::optional<std::string> {
-        if (!is_usable_ipv4(address))
-            return std::nullopt;
-
-        std::array<char, INET_ADDRSTRLEN> buffer = {};
-        if (inet_ntop(AF_INET, &address, buffer.data(),
-                      static_cast<socklen_t>(buffer.size())) == nullptr)
-            return std::nullopt;
-        return std::string(buffer.data());
-    };
-
-    const auto detect_via_udp_socket = [&]() -> std::optional<std::string> {
-        const int descriptor = socket(AF_INET, SOCK_DGRAM, 0);
-        if (descriptor < 0)
-            return std::nullopt;
-
-        // descriptor is provably >= 0 here, so close it exactly once at scope
-        // exit; this removes the three hand-placed close() calls and their
-        // associated leak hazard on any future early return.
-        struct FdCloser {
-            int fd;
-            ~FdCloser() noexcept { close(fd); }
-        } fd_guard{descriptor};
-
-        sockaddr_in remote = {};
-        remote.sin_family = AF_INET;
-        remote.sin_port = htons(9);
-        if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
-            return std::nullopt;
-
-        const int connect_result = connect(
-            descriptor,
-            reinterpret_cast<const sockaddr*>(&remote),
-            sizeof(remote));
-        if (connect_result != 0)
-            return std::nullopt;
-
-        sockaddr_in local = {};
-        socklen_t local_size = sizeof(local);
-        const int name_result = getsockname(
-            descriptor,
-            reinterpret_cast<sockaddr*>(&local),
-            &local_size);
-        if (name_result != 0 || local.sin_family != AF_INET)
-            return std::nullopt;
-
-        return to_ipv4_string(local.sin_addr);
-    };
-
-    const auto detect_via_hostname = [&]() -> std::optional<std::string> {
-        std::array<char, 256> hostname = {};
-        // Reserve the final byte: POSIX leaves NUL-termination unspecified when
-        // the name is truncated, but the zero-initialized buffer keeps [255]=='\0'.
-        if (gethostname(hostname.data(), hostname.size() - 1) != 0 || hostname[0] == '\0')
-            return std::nullopt;
-
-        addrinfo hints = {};
-        hints.ai_family = AF_INET;
-        hints.ai_socktype = SOCK_DGRAM;
-
-        addrinfo* results = nullptr;
-        if (getaddrinfo(hostname.data(), nullptr, &hints, &results) != 0 ||
-            results == nullptr)
-        {
-            return std::nullopt;
-        }
-
-        struct AddrInfoDeleter {
-            void operator()(addrinfo* p) const noexcept { freeaddrinfo(p); }
-        };
-        std::unique_ptr<addrinfo, AddrInfoDeleter> results_guard(results);
-
-        std::optional<std::string> detected_address;
-        for (addrinfo* current = results; current != nullptr;
-             current = current->ai_next)
-        {
-            if (current->ai_addr == nullptr || current->ai_addrlen < sizeof(sockaddr_in))
-                continue;
-
-            const auto* const address =
-                reinterpret_cast<const sockaddr_in*>(current->ai_addr);
-            detected_address = to_ipv4_string(address->sin_addr);
-            if (detected_address.has_value())
-                break;
-        }
-
-        return detected_address;
-    };
-
-    if (const auto address = detect_via_udp_socket(); address.has_value())
-        return *address;
-    if (const auto address = detect_via_hostname(); address.has_value())
-        return *address;
-    return "127.0.0.1";
+    return select_lan_ipv4_address(
+        route_address,
+        detect_lan_ipv4_via_hostname());
 #else
     return "127.0.0.1";
 #endif
@@ -2205,577 +2229,7 @@ void clear_active_gameplay_shadow() noexcept
 } // namespace
 
 #ifdef TESTING
-namespace og::ui::detail {
-
-// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
-int picker_lobby_network_testing_exercise_internal_helpers()
-{
-    int checks = 0;
-    int check_index = 0;
-    int failed_check = 0;
-    bool failed = false;
-    const auto check = [&checks, &check_index, &failed_check, &failed](bool condition) {
-        ++check_index;
-        if (condition)
-            ++checks;
-        else
-        {
-            failed = true;
-            if (failed_check == 0)
-                failed_check = check_index;
-        }
-    };
-
-    check(trim_copy(" \t host player \n ") == "host player");
-    check(trim_copy(" \t\n ") == "");
-    check(url_encode_component("a b+/~") == "a%20b%2B%2F~");
-    check(relay_api_base_url(" https://relay.example/api/// ") ==
-          "https://relay.example/api");
-    check(relay_api_base_url("https://relay.example/base") ==
-          "https://relay.example/base/api");
-    check(build_relay_room_websocket_url_impl(
-              "https://relay.example",
-              "ROOM-1",
-              "owner token") ==
-          "wss://relay.example/api/room/ROOM-1?owner_token=owner%20token");
-    check(build_relay_room_websocket_url_impl(
-              "http://relay.example/api",
-              "ROOM-2",
-              "") ==
-          "ws://relay.example/api/room/ROOM-2");
-    check(build_relay_room_create_url(
-              "wss://relay.example/",
-              "",
-              "Campaign One",
-              "Host+Name") ==
-          "https://relay.example/api/create?campaign_name=Campaign%20One&host=Host%2BName");
-    check(build_relay_room_list_url("ws://relay.example", "hash one") ==
-          "http://relay.example/api/rooms?campaign=hash%20one");
-
-    check(!find_json_field_value(R"({"code" "missing-colon"})", "code").has_value());
-    check(!find_json_field_value(R"({"other":1})", "code").has_value());
-    check(extract_json_string_field(R"({"text":"a\\b"})", "text").value_or("") ==
-          "a\\b");
-    check(!extract_json_string_field(R"({"text":123})", "text").has_value());
-    check(!extract_json_string_field(R"({"text":"unterminated})", "text").has_value());
-    check(extract_json_u32_field(R"({"count":42})", "count").value_or(0) == 42);
-    check(!extract_json_u32_field(R"({"count":"42"})", "count").has_value());
-    check(!extract_json_u32_field(
-              R"({"count":999999999999999999999999})",
-              "count").has_value());
-    check(extract_json_i64_field(R"({"created_at":123456})", "created_at").value_or(0) ==
-          123456);
-    check(!extract_json_i64_field(R"({"created_at":-1})", "created_at").has_value());
-
-    const auto created_from_code =
-        parse_relay_room_create_response_impl(
-            R"({"code":"ROOM-A","owner_token":"owner-a"})");
-    check(created_from_code.room_code == "ROOM-A" &&
-          created_from_code.owner_token == "owner-a");
-    const auto created_from_room_code =
-        parse_relay_room_create_response_impl(R"({"room_code":"ROOM-B"})");
-    check(created_from_room_code.room_code == "ROOM-B" &&
-          created_from_room_code.owner_token.empty());
-    const auto created_from_plain =
-        parse_relay_room_create_response_impl(" ROOM-C ");
-    check(created_from_plain.room_code == "ROOM-C");
-    try
-    {
-        (void)parse_relay_room_create_response_impl(" \n\t ");
-        failed = true;
-    }
-    catch (const std::runtime_error&)
-    {
-        ++checks;
-    }
-
-    check(split_top_level_json_objects("").empty());
-    check(split_top_level_json_objects(R"({"not_rooms":[]})").empty());
-    check(split_top_level_json_objects(R"(not-json)").empty());
-    const auto split_objects = split_top_level_json_objects(
-        R"([{"code":"A","note":"literal { brace }"},{"code":"B","note":"escaped \\ slash"}])");
-    check(split_objects.size() == 2);
-    const auto relay_rooms = parse_relay_room_list(
-        R"([{"campaign_hash":"skip"},{"code":" room-1 ","campaign_hash":"hash","campaign_name":"Campaign","host_name":"Host","player_count":3,"created_at":55}])");
-    check(relay_rooms.size() == 1 &&
-          relay_rooms[0].code == "ROOM-1" &&
-          relay_rooms[0].player_count == 3 &&
-          relay_rooms[0].created_at_ms == 55);
-    const auto wrapped_relay_rooms =
-        parse_relay_room_list(R"({"rooms":[{"code":"room-2"}]})");
-    check(wrapped_relay_rooms.size() == 1);
-    check(!wrapped_relay_rooms.empty() &&
-          wrapped_relay_rooms[0].code == "ROOM-2" &&
-          wrapped_relay_rooms[0].campaign_hash.empty() &&
-          wrapped_relay_rooms[0].player_count == 0 &&
-          wrapped_relay_rooms[0].created_at_ms == 0);
-
-    // [NET-R5] networked_save_slot_editable branch matrix: own untagged /
-    // own-tagged / foreign-tagged / empty / out-of-range / no-save /
-    // no-state shapes.
-    {
-        SaveData editability_save;
-        editability_save.team_list[0] = std::make_unique<guy>(0);
-        editability_save.team_list[1] = std::make_unique<guy>(0);
-        editability_save.team_list[1]->owner_player_index = 3;  // foreign
-        editability_save.team_list[2] = std::make_unique<guy>(0);
-        editability_save.team_list[2]->owner_player_index = 0;  // own seat
-        editability_save.team_size = 3;
-
-        og::sim::LobbyState editability_state;
-        og::sim::LobbyPlayer own_seat;
-        own_seat.player_index = 0;
-        own_seat.seat_id = 101;
-        own_seat.name = "editability-check";
-        editability_state.players.push_back(own_seat);
-        editability_state.local_seat_ids = {own_seat.seat_id};
-
-        check(!networked_save_slot_editable(
-            static_cast<std::size_t>(MAX_TEAM_SIZE),
-            &editability_save, &editability_state));
-        check(networked_save_slot_editable(  // untagged private row
-            0u, &editability_save, &editability_state));
-        check(networked_save_slot_editable(  // empty slot (hire may fill)
-            5u, &editability_save, &editability_state));
-        check(!networked_save_slot_editable(  // foreign-tagged row locks
-            1u, &editability_save, &editability_state));
-        check(networked_save_slot_editable(  // own-tagged (post-merge) row
-            2u, &editability_save, &editability_state));
-        check(!networked_save_slot_editable(  // tagged + no lobby view
-            2u, &editability_save, nullptr));
-        check(networked_save_slot_editable(  // no picker session yet
-            1u, nullptr, &editability_state));
-        editability_state.local_seat_ids.clear();
-        check(!networked_save_slot_editable(  // tagged + no ownership grant
-            2u, &editability_save, &editability_state));
-    }
-
-    SaveData save;
-    save.current_campaign = "campaign-one";
-    save.scen_num = 4;
-    save.allied_mode = 1;
-    save.my_team = 2;
-    auto make_member = [](int family,
-                          const std::string& name,
-                          short team,
-                          int id) {
-        auto member = std::make_unique<guy>(family);
-        member->name = name;
-        member->teamnum = team;
-        member->id = id;
-        member->strength = static_cast<short>(10 + id);
-        member->dexterity = static_cast<short>(11 + id);
-        member->constitution = static_cast<short>(12 + id);
-        member->intelligence = static_cast<short>(13 + id);
-        member->armor = static_cast<short>(14 + id);
-        member->exp = static_cast<std::uint32_t>(100 + id);
-        member->kills = static_cast<short>(id);
-        member->level_kills = id + 1;
-        member->total_damage = id + 2;
-        member->total_hits = id + 3;
-        member->total_shots = id + 4;
-        member->scen_damage = static_cast<float>(id + 5);
-        member->scen_kills = static_cast<short>(id + 6);
-        member->scen_damage_taken = static_cast<float>(id + 7);
-        member->scen_min_hp = static_cast<float>(id + 8);
-        member->scen_shots = static_cast<short>(id + 9);
-        member->scen_hits = static_cast<short>(id + 10);
-        member->level = static_cast<short>(id + 11);
-        return member;
-    };
-    save.team_list[0] = make_member(0, "Local A", 2, 1);
-    save.team_list[2] = make_member(1, "Local B", 2, 2);
-    save.team_list[3] = make_member(2, "Other Team", 3, 3);
-    save.team_size = 3;
-    save.numplayers = 1;
-
-    check(resolve_initial_local_team(save) == 2);
-    save.my_team = 7;
-    check(resolve_initial_local_team(save) == 2);
-    SaveData empty_save;
-    check(resolve_initial_local_team(empty_save) == 0);
-    check(gameplay_start_team(0, 3, 2) == 3);
-    check(gameplay_start_team(1, 3, 2) == 3);
-
-    std::array<bool, MAX_TEAM_SIZE> excluded_slots{};
-    excluded_slots.fill(false);
-    excluded_slots[2] = true;
-    og::sim::LobbyPlayer local_player =
-        build_local_lobby_player(save, "local-player", 2, &excluded_slots);
-    check(local_player.name == "local-player" &&
-          local_player.character_slots.size() == 2 &&
-          local_player.character_slots[0].slot_index == 0 &&
-          local_player.character_slots[1].slot_index == 3);
-    og::sim::LobbyMessage join_message =
-        make_join_message(save, "local-player", 2, &excluded_slots);
-    check(join_message.kind() == og::sim::LobbyMessageKind::Join);
-    check(std::get<og::sim::LobbyJoinMessage>(join_message.payload)
-              .extra_players.empty());
-
-    // Multi-seat declarations: derived names, distinct seat teams (tracked
-    // seat-0 team first, then the save's remaining teams, then free padding).
-    check(derive_local_seat_name("base", 0) == "base");
-    check(derive_local_seat_name("base", 2) == "base#2");
-    check(is_local_seat_name("base", "base"));
-    check(is_local_seat_name("base#3", "base"));
-    check(!is_local_seat_name("base3", "base"));
-    check(!is_local_seat_name("other", "base"));
-    const std::vector<short> declared_teams =
-        resolve_local_seat_declaration_teams(save, 2, 3);
-    check(declared_teams.size() == 3 &&
-          declared_teams[0] == 2 &&
-          declared_teams[1] == 3 &&
-          declared_teams[2] == 0);
-    const std::vector<og::sim::LobbyPlayer> declared_seats =
-        build_local_lobby_seats(save, "local-player", 2, 2, &excluded_slots);
-    check(declared_seats.size() == 2 &&
-          declared_seats[0].name == "local-player" &&
-          declared_seats[1].name == "local-player#1" &&
-          declared_seats[0].team == 2 &&
-          declared_seats[1].team == 3);
-    const og::sim::LobbyMessage multi_join_message =
-        make_join_message(save, "local-player", 2, &excluded_slots, 2);
-    const auto& multi_join =
-        std::get<og::sim::LobbyJoinMessage>(multi_join_message.payload);
-    check(multi_join.player.name == "local-player" &&
-          multi_join.extra_players.size() == 1 &&
-          multi_join.extra_players[0].name == "local-player#1");
-
-    // Keep the state-equivalent exercise below to one local + one remote slot.
-    local_player.character_slots.resize(1);
-
-    og::sim::LobbyMessage settings_message = make_settings_message(save);
-    check(settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
-
-    og::sim::LobbyState state;
-    state.settings.campaign_id = "";
-    state.settings.scenario_id = 0;
-    state.settings.difficulty = 5;
-    state.settings.allied_mode = 1;
-    state.host_player_id = 1;
-    local_player.player_index = 1;
-    local_player.seat_id = 201;
-    local_player.is_host = true;
-    og::sim::LobbyPlayer remote_player;
-    remote_player.player_index = 2;
-    remote_player.seat_id = 202;
-    remote_player.name = "remote-player";
-    remote_player.team = 3;
-    remote_player.character_slots.push_back(local_player.character_slots[0]);
-    remote_player.character_slots[0].slot_index = 5;
-    remote_player.character_slots[0].character.name = "Remote";
-    remote_player.character_slots[0].character.teamnum = 3;
-    state.players = {remote_player, local_player};
-    state.local_seat_ids = {local_player.seat_id};
-
-    check(find_local_player(state) != nullptr &&
-          find_local_player(state)->seat_id == local_player.seat_id);
-    check(local_player_is_host(state));
-    og::sim::LobbyState remote_view = state;
-    remote_view.local_seat_ids = {remote_player.seat_id};
-    check(!local_player_is_host(remote_view));
-
-    // Names and company/roster content are client-controlled. Even an exact
-    // spoof sorted before our player must not become editable, targetable, or
-    // eligible for the local gameplay binding.
-    og::sim::LobbyState spoofed_state = state;
-    spoofed_state.players.front().name = local_player.name;
-    spoofed_state.players.front().company = local_player.company;
-    check(find_local_player(spoofed_state) != nullptr &&
-          find_local_player(spoofed_state)->seat_id == local_player.seat_id);
-
-    // A reply from an older GO attempt may be queued immediately before a
-    // new request. Only the matching request ID may resolve the new pending
-    // attempt; followers with no local request still accept the broadcast.
-    og::sim::LobbyState stale_denial = state;
-    stale_denial.last_start_request_id = 40;
-    stale_denial.last_start_denial =
-        og::sim::start_denial_reason_value(
-            og::sim::StartDenialReason::MachinesNotReady);
-    check(!start_denial_matches_request(stale_denial, 41));
-    stale_denial.last_start_request_id = 41;
-    check(start_denial_matches_request(stale_denial, 41));
-    og::sim::LobbyMessage stale_confirmation;
-    stale_confirmation.payload = og::sim::LobbyStartGameMessage{
-        .player_index = local_player.player_index,
-        .request_id = 40,
-    };
-    check(!start_confirmation_matches_request(stale_confirmation, 41));
-    check(start_confirmation_matches_request(stale_confirmation, 0));
-    std::get<og::sim::LobbyStartGameMessage>(
-        stale_confirmation.payload).request_id = 41;
-    check(start_confirmation_matches_request(stale_confirmation, 41));
-
-    // Team/ready requests must likewise ignore an unrelated state queued
-    // before their own echo. The shared bounded waiter keeps polling until
-    // the requested authoritative value appears, and still terminates when a
-    // denial leaves it unchanged.
-    int echo_polls = 0;
-    bool requested_value = false;
-    check(wait_for_authoritative_lobby_value(
-        [&] {
-            ++echo_polls;
-            if (echo_polls == 2)
-                requested_value = true;
-        },
-        [&] { return requested_value; },
-        3,
-        false));
-    check(echo_polls == 2);
-    int denied_polls = 0;
-    check(!wait_for_authoritative_lobby_value(
-        [&] { ++denied_polls; },
-        [] { return false; },
-        3,
-        false));
-    check(denied_polls == 3);
-    const auto equivalent =
-        build_save_data_equivalent_from_state(state, false);
-    check(equivalent.current_campaign == std::string(kDefaultCampaignId) &&
-          equivalent.scen_num == 1 &&
-          equivalent.numplayers == 1 &&
-          equivalent.team_list.size() == 2 &&
-          equivalent.team_list[0].character.teamnum == 2 &&
-          equivalent.team_list[0].slot_index == 0 &&
-          equivalent.team_list[1].slot_index == 1 &&
-          equivalent.team_list[0].owner_save_slot == 0 &&
-          equivalent.team_list[1].owner_save_slot == 5 &&
-          equivalent.team_list[0].owner_player_index == 1 &&
-          equivalent.team_list[1].owner_player_index == 2);
-    og::sim::LobbyState colliding_private_slots = state;
-    colliding_private_slots.players[0].character_slots[0].slot_index = 0;
-    const auto collision_equivalent =
-        build_save_data_equivalent_from_state(colliding_private_slots, false);
-    check(collision_equivalent.team_list.size() == 2 &&
-          collision_equivalent.team_list[0].slot_index == 0 &&
-          collision_equivalent.team_list[1].slot_index == 1 &&
-          collision_equivalent.team_list[0].owner_save_slot == 0 &&
-          collision_equivalent.team_list[1].owner_save_slot == 0 &&
-          collision_equivalent.team_list[0].owner_player_index == 2 &&
-          collision_equivalent.team_list[1].owner_player_index == 1);
-    check(build_save_data_equivalent_from_state(state, true).numplayers == 0);
-    SaveData applied_save;
-    applied_save.team_list[0] = make_member(0, "Private", 0, 9);
-    applied_save.team_size = 1;
-    apply_lobby_state_to_save(state, applied_save, true, 4, 1u);
-    check(applied_save.current_campaign == std::string(kDefaultCampaignId) &&
-          applied_save.scen_num == 1 &&
-          applied_save.numplayers == 0 &&
-          applied_save.my_team == 4 &&
-          applied_save.team_size == 1 &&
-          applied_save.team_list[0] != nullptr &&
-          applied_save.team_list[0]->name == "Private" &&
-          applied_save.team_list[0]->teamnum == local_player.team);
-
-    og::sim::LobbyState oversized_state = state;
-    oversized_state.players.clear();
-    oversized_state.players.push_back(remote_player);
-    oversized_state.players[0].character_slots.clear();
-    for (std::uint8_t slot = 0; slot < MAX_TEAM_SIZE + 1; ++slot)
-    {
-        og::sim::LobbyCharacterSlot lobby_slot = local_player.character_slots[0];
-        lobby_slot.slot_index = slot;
-        oversized_state.players[0].character_slots.push_back(lobby_slot);
-    }
-    apply_lobby_state_to_save(oversized_state, applied_save, false, 1, 1u);
-    check(applied_save.team_size == 1 &&
-          applied_save.team_list[0] != nullptr &&
-          applied_save.team_list[0]->name == "Private");
-
-    // §4.2 [NET-F2] reconciliation: an echo whose own-seat deploy flag
-    // differs adopts the server's flag into the private roster and reports
-    // it (benched counted separately); a flag-identical re-apply reports
-    // nothing (the convergence loop terminates). Benched slots also drop
-    // out of the joiner-mirror equivalent (assembly filter).
-    og::sim::LobbyState benched_state = state;
-    for (og::sim::LobbyPlayer& benched_player : benched_state.players)
-    {
-        if (benched_player.name == "local-player")
-            benched_player.character_slots[0].deployed = false;
-    }
-    check(applied_save.team_list[0]->deployed);
-    const LobbyStateApplyResult reconciled = apply_lobby_state_to_save(
-        benched_state, applied_save, true, 4, 1u);
-    check(reconciled.deploy_flags_adopted == 1 &&
-          reconciled.deploy_benched == 1 &&
-          applied_save.team_list[0] != nullptr &&
-          !applied_save.team_list[0]->deployed);
-    const LobbyStateApplyResult reconciled_again = apply_lobby_state_to_save(
-        benched_state, applied_save, true, 4, 1u);
-    check(reconciled_again.deploy_flags_adopted == 0 &&
-          reconciled_again.deploy_benched == 0);
-    const auto benched_equivalent =
-        build_save_data_equivalent_from_state(benched_state, false);
-    check(benched_equivalent.team_list.size() == 1 &&
-          benched_equivalent.team_list[0].owner_player_index == 2);
-    applied_save.team_list[0]->deployed = true;
-
-    class RawTransport final : public og::sim::ITransport {
-    public:
-        std::vector<og::sim::ReceivedMessage> incoming;
-        std::vector<std::vector<std::uint8_t>> sent;
-
-        void send(og::sim::PeerId,
-                  const std::uint8_t* data,
-                  std::size_t len) override
-        {
-            sent.emplace_back(data, data + len);
-        }
-
-        std::vector<og::sim::ReceivedMessage> poll() override
-        {
-            auto result = std::move(incoming);
-            incoming.clear();
-            return result;
-        }
-
-        void accept_connections() override {}
-        void disconnect(og::sim::PeerId) override {}
-        std::vector<og::sim::PeerId> connected_peers() const override
-        {
-            return {7};
-        }
-    };
-
-    RawTransport raw_transport;
-    raw_transport.incoming.push_back({1, {0}});
-    std::vector<std::uint8_t> unknown_message;
-    og::sim::append_transport_header(unknown_message, 99, 0);
-    raw_transport.incoming.push_back({2, unknown_message});
-    std::vector<std::uint8_t> malformed_lobby;
-    og::sim::append_transport_header(
-        malformed_lobby,
-        og::sim::kLobbyMessageType,
-        0);
-    raw_transport.incoming.push_back({3, malformed_lobby});
-    raw_transport.incoming.push_back(
-        {4, og::sim::serialize_lobby_message(join_message)});
-    raw_transport.incoming.push_back(
-        {5, og::sim::serialize_lobby_state_message(state)});
-    const auto typed_from_raw = poll_lobby_transport_messages(raw_transport);
-    check(typed_from_raw.size() == 2 &&
-          typed_from_raw[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
-          typed_from_raw[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
-    send_lobby_message(raw_transport, 9, std::move(join_message));
-    check(!raw_transport.sent.empty());
-
-    class TypedTransport final : public og::sim::ITransport {
-    public:
-        std::vector<og::sim::TypedReceivedMessage> typed;
-
-        bool supports_typed_messages() const noexcept override
-        {
-            return true;
-        }
-
-        std::vector<og::sim::TypedReceivedMessage> poll_typed() override
-        {
-            return std::move(typed);
-        }
-
-        void send(og::sim::PeerId,
-                  const std::uint8_t*,
-                  std::size_t) override {}
-        std::vector<og::sim::ReceivedMessage> poll() override
-        {
-            return {};
-        }
-        void accept_connections() override {}
-        void disconnect(og::sim::PeerId) override {}
-        std::vector<og::sim::PeerId> connected_peers() const override
-        {
-            return {};
-        }
-    };
-
-    TypedTransport typed_transport;
-    og::sim::TypedReceivedMessage typed_message;
-    typed_message.peer_id = 1;
-    typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-    typed_message.lobby_state = std::make_shared<og::sim::LobbyState>(state);
-    typed_transport.typed.push_back(std::move(typed_message));
-    check(poll_lobby_transport_messages(typed_transport).size() == 1);
-
-    check(resolve_pending_local_team(state, -1) == 0);
-    og::sim::LobbyState full_state;
-    for (short team = 0; team < MAX_PLAYERS; ++team)
-    {
-        og::sim::LobbyPlayer player;
-        player.name = std::format("player-{}", team);
-        player.team = team;
-        full_state.players.push_back(std::move(player));
-    }
-    check(resolve_pending_local_team(full_state, 3) == 3);
-    og::sim::LobbyState sparse_ctf_state;
-    sparse_ctf_state.settings.campaign_id = std::string(og::kCtfCampaignId);
-    sparse_ctf_state.settings.ctf_team_count = 2;
-    sparse_ctf_state.settings.ctf_authored_team_mask = 0b1101u;
-    check(resolve_pending_local_team(sparse_ctf_state, 2) == 2);
-    check(resolve_pending_local_team(sparse_ctf_state, 1) == 0);
-    sparse_ctf_state.settings.ctf_team_count = 0;
-    check(resolve_pending_local_team(sparse_ctf_state, 3) == 3);
-    check(resolve_pending_local_team(sparse_ctf_state, 1) == 0);
-    og::sim::LobbyState pending_base_state = state;
-    pending_base_state.local_seat_ids.clear();
-    og::sim::LobbyPlayer empty_pending;
-    check(build_pending_local_lobby_state(
-              pending_base_state,
-              {empty_pending},
-              1).state.players.size() == pending_base_state.players.size());
-    og::sim::LobbyPlayer pending_player = local_player;
-    pending_player.name = "pending-player";
-    // Explicit assignments are shareable, so requested team 3 sticks even
-    // though "remote-player" holds it.
-    const auto pending_state = build_pending_local_lobby_state(
-        pending_base_state,
-        {pending_player},
-        3);
-    check(pending_state.state.players.size() ==
-              pending_base_state.players.size() + 1 &&
-          pending_state.local_team == 3 &&
-          pending_state.state.local_seat_ids.size() == 1 &&
-          find_local_player(pending_state.state) != nullptr &&
-          find_local_player(pending_state.state)->name == "pending-player");
-    check(build_pending_local_lobby_state(
-              state,
-              {pending_player},
-              3).state.players.size() == state.players.size());
-    // Classic non-allied lobbies also preserve the explicit shared choice.
-    og::sim::LobbyState exclusive_state = pending_base_state;
-    exclusive_state.settings.allied_mode = 0;
-    const auto exclusive_pending = build_pending_local_lobby_state(
-        exclusive_state,
-        {pending_player},
-        3);
-    check(exclusive_pending.local_team == 3);
-    // Multi-seat pending merges preserve an intentional same-team choice.
-    og::sim::LobbyPlayer pending_seat1 = pending_player;
-    pending_seat1.name = "pending-player#1";
-    pending_seat1.team = 3;
-    const auto multi_pending = build_pending_local_lobby_state(
-        pending_base_state,
-        {pending_player, pending_seat1},
-        3);
-    check(multi_pending.state.players.size() ==
-              pending_base_state.players.size() + 2 &&
-          multi_pending.local_team == 3 &&
-          multi_pending.state.local_seat_ids.size() == 2 &&
-          multi_pending.state.players.back().team == 3);
-
-    check(build_host_transport_failure_message("direct failed", "relay failed") ==
-          "Direct: direct failed\nRelay: relay failed");
-    check(build_host_transport_failure_message("direct failed", "") ==
-          "direct failed");
-    check(build_host_transport_failure_message("", "relay failed") ==
-          "relay failed");
-    check(build_host_transport_failure_message("", "") ==
-          "Unable to host a network lobby.");
-
-    return failed ? -failed_check : 0;
-}
-// GCOVR_EXCL_STOP
-
-} // namespace og::ui::detail
+#include "../../../tests/coverage_internal/picker_lobby_network_internal.inc"
 #endif
 
 namespace og::ui {

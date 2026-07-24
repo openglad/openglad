@@ -2,6 +2,7 @@
 #include <openglad/interface/native_input.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <algorithm>
 extern void wait_for_key(int somekey);
 extern void resetJoystick(int player_num);
 extern og::input_native::JoystickHandle joysticks[10];
@@ -43,6 +44,69 @@ struct JoystickHandleGuard
         for (int i = 0; i < 10; ++i)
             joysticks[i] = old[i];
     }
+};
+
+struct CompleteInputStateGuard
+{
+    InputHardwareState hardware = input_hardware_state();
+    int player_keys[4][NUM_KEYS]{};
+    const bool* keyboard_state = og::runtime::current_session->keystates_;
+    bool joystick_events_enabled = SDL_JoystickEventsEnabled();
+
+    CompleteInputStateGuard()
+    {
+        for (int player = 0; player < 4; ++player)
+            for (int key = 0; key < NUM_KEYS; ++key)
+                player_keys[player][key] =
+                    og::runtime::current_session->player_keys_[player][key];
+    }
+
+    ~CompleteInputStateGuard()
+    {
+        input_hardware_state() = hardware;
+        for (int player = 0; player < 4; ++player)
+            for (int key = 0; key < NUM_KEYS; ++key)
+                og::runtime::current_session->player_keys_[player][key] =
+                    player_keys[player][key];
+        og::runtime::current_session->keystates_ = keyboard_state;
+        SDL_SetJoystickEventsEnabled(joystick_events_enabled);
+    }
+};
+
+class VirtualJoystick
+{
+public:
+    VirtualJoystick(Uint16 axes, Uint16 buttons, Uint16 hats,
+                    const char* name)
+    {
+        SDL_VirtualJoystickDesc desc;
+        SDL_INIT_INTERFACE(&desc);
+        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+        desc.naxes = axes;
+        desc.nbuttons = buttons;
+        desc.nhats = hats;
+        desc.name = name;
+        instance_id_ = SDL_AttachVirtualJoystick(&desc);
+        if (instance_id_ != 0)
+            joystick_ = SDL_OpenJoystick(instance_id_);
+    }
+
+    ~VirtualJoystick()
+    {
+        if (joystick_ != nullptr)
+            SDL_CloseJoystick(joystick_);
+        if (instance_id_ != 0)
+            SDL_DetachVirtualJoystick(instance_id_);
+    }
+
+    VirtualJoystick(const VirtualJoystick&) = delete;
+    VirtualJoystick& operator=(const VirtualJoystick&) = delete;
+
+    SDL_Joystick* get() const { return joystick_; }
+
+private:
+    SDL_JoystickID instance_id_ = 0;
+    SDL_Joystick* joystick_ = nullptr;
 };
 } // namespace
 
@@ -280,6 +344,94 @@ TEST(InputJoystick, input_joydata_getState_handles_all_mapping_types_with_neutra
     ASSERT_FALSE(j.getState(KEY_FIRE)) << "unbound joystick should not be held";
 }
 
+TEST(InputJoystick, joydata_discovers_and_reads_real_virtual_joystick_capabilities)
+{
+    PlayerJoyGuard player_guard;
+    // SDL virtual devices exercise the same public joystick API as hardware,
+    // while remaining deterministic and self-contained on headless CI.
+    VirtualJoystick axes_device(2, 6, 0, "OpenGlad axes test pad");
+    VirtualJoystick hat_device(1, 0, 1, "OpenGlad hat test pad");
+    ASSERT_NE(nullptr, axes_device.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, hat_device.get()) << SDL_GetError();
+
+    // Restore every process-global handle exactly after the test.  Declare
+    // this guard after the virtual devices so restoration happens before the
+    // devices themselves are closed.
+    JoystickHandleGuard handle_guard;
+    joysticks[0] = axes_device.get();
+
+    JoyData axes(0);
+    ASSERT_EQ(0, axes.index);
+    ASSERT_EQ(2, axes.numAxes);
+    ASSERT_EQ(6, axes.numButtons);
+    ASSERT_EQ(0, axes.numHats);
+    EXPECT_EQ(JoyData::POS_AXIS, axes.key_type[KEY_RIGHT]);
+    EXPECT_EQ(JoyData::NEG_AXIS, axes.key_type[KEY_LEFT]);
+    EXPECT_EQ(JoyData::NEG_AXIS, axes.key_type[KEY_UP]);
+    EXPECT_EQ(JoyData::POS_AXIS, axes.key_type[KEY_DOWN]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_FIRE]);
+    EXPECT_EQ(0, axes.key_index[KEY_FIRE]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SPECIAL]);
+    EXPECT_EQ(1, axes.key_index[KEY_SPECIAL]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SPECIAL_SWITCH]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_YELL]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SHIFTER]);
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SWITCH]);
+
+    player_joy[0] = axes;
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(axes_device.get(), 0, true));
+    SDL_UpdateJoysticks();
+    EXPECT_TRUE(isPlayerHoldingKey(0, KEY_FIRE))
+        << "a held virtual button should flow through JoyData::getState";
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(axes_device.get(), 0, false));
+    SDL_UpdateJoysticks();
+    EXPECT_FALSE(isPlayerHoldingKey(0, KEY_FIRE));
+
+    // A one-axis controller falls back to its hat for all eight movement
+    // directions.  This is common for simple USB/D-pad-only controllers.
+    joysticks[0] = hat_device.get();
+    JoyData hat(0);
+    ASSERT_EQ(1, hat.numAxes);
+    ASSERT_EQ(0, hat.numButtons);
+    ASSERT_EQ(1, hat.numHats);
+    EXPECT_EQ(JoyData::HAT_UP, hat.key_type[KEY_UP]);
+    EXPECT_EQ(JoyData::HAT_UP_RIGHT, hat.key_type[KEY_UP_RIGHT]);
+    EXPECT_EQ(JoyData::HAT_RIGHT, hat.key_type[KEY_RIGHT]);
+    EXPECT_EQ(JoyData::HAT_DOWN_RIGHT, hat.key_type[KEY_DOWN_RIGHT]);
+    EXPECT_EQ(JoyData::HAT_DOWN, hat.key_type[KEY_DOWN]);
+    EXPECT_EQ(JoyData::HAT_DOWN_LEFT, hat.key_type[KEY_DOWN_LEFT]);
+    EXPECT_EQ(JoyData::HAT_LEFT, hat.key_type[KEY_LEFT]);
+    EXPECT_EQ(JoyData::HAT_UP_LEFT, hat.key_type[KEY_UP_LEFT]);
+}
+
+TEST(InputJoystick, init_input_opens_attached_virtual_devices)
+{
+    CompleteInputStateGuard input_guard;
+    VirtualJoystick device(2, 6, 1, "OpenGlad init test pad");
+    ASSERT_NE(nullptr, device.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+
+    init_input();
+
+    const int count = std::min(
+        og::input_native::num_joysticks(), 10);
+    ASSERT_GT(count, 0);
+    bool opened_device = false;
+    for (int i = 0; i < count; ++i)
+        opened_device = opened_device || joysticks[i] != nullptr;
+    EXPECT_TRUE(opened_device);
+    EXPECT_TRUE(SDL_JoystickEventsEnabled());
+
+    // init_input owns no shutdown phase, so close the handles acquired by
+    // this test before the global slot guard restores the process state.
+    for (int i = 0; i < 10; ++i)
+    {
+        if (joysticks[i] != nullptr)
+            SDL_CloseJoystick(static_cast<SDL_Joystick*>(joysticks[i]));
+        joysticks[i] = nullptr;
+    }
+}
+
 
 TEST(InputJoystick, input_didPlayerPressReleaseKey_uses_joystick_mapping_when_bound)
 {
@@ -309,11 +461,12 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
 {
     JoyData j;
     j.index = 2;
+    const void* const no_event = nullptr;
 
     j.key_type[KEY_FIRE] = JoyData::BUTTON;
     j.key_index[KEY_FIRE] = 4;
-    ASSERT_TRUE(!j.getPress(KEY_FIRE, nullptr)) << "null event should not press";
-    ASSERT_TRUE(!j.getRelease(KEY_FIRE, nullptr)) << "null event should not release";
+    ASSERT_TRUE(!j.getPress(KEY_FIRE, no_event)) << "null event should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_FIRE, no_event)) << "null event should not release";
 
     SDL_Event key{};
     key.type = SDL_EVENT_KEY_DOWN;
@@ -351,11 +504,18 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
     ASSERT_TRUE(!j.getPress(KEY_SPECIAL, hat)) << "NONE mapping should not press";
     ASSERT_TRUE(!j.getRelease(KEY_SPECIAL, hat)) << "NONE mapping should not release";
 
-    ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, nullptr)) << "null player press event should not press";
-    ASSERT_TRUE(!didPlayerReleaseKey(0, KEY_SPECIAL, nullptr)) << "null player release event should not release";
-    handle_joy_event(nullptr);
+    ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, no_event)) << "null player press event should not press";
+    ASSERT_TRUE(!didPlayerReleaseKey(0, KEY_SPECIAL, no_event)) << "null player release event should not release";
+    handle_joy_event(no_event);
 
     SDL_Event unknown{};
     unknown.type = SDL_EVENT_USER;
     handle_joy_event(unknown);
+
+    clear_keyboard();
+    axis.jaxis.which = 0;
+    axis.jaxis.value = -9000;
+    handle_joy_event(axis);
+    EXPECT_EQ(1, query_key_press_event())
+        << "crossing the negative joystick dead zone is an input press";
 }

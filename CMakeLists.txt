@@ -1274,6 +1274,7 @@ if(NOT EMSCRIPTEN)
     set(HEADLESS_SOURCES
         # text client
         ${SRC_DIR}/platform/text/main.cpp
+        ${SRC_DIR}/platform/text/text_platform_globals.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/platform/text/text_picker.cpp
@@ -1336,6 +1337,7 @@ if(NOT EMSCRIPTEN)
 
         set(HEADLESS_SERVER_SOURCES
             ${SRC_DIR}/server/server_main.cpp
+            ${SRC_DIR}/platform/text/text_platform_globals.cpp
             ${HEADLESS_SERVER_RUNTIME_SOURCES}
         )
 
@@ -1543,8 +1545,8 @@ if(NOT EMSCRIPTEN)
     # + headless platform glue) plus the shared menu model and the curses front
     # end, linking ncurses instead of SDL. See docs/ncurses-client.md.
     # The curses client implementation, minus main() and the process globals so
-    # the same translation units can be reused by the test binary (which supplies
-    # its own main + globals via curses_test_main.cpp).
+    # the same translation units can be reused by other targets. The curses test
+    # binary supplies its own main but links the production process globals.
     set(OG_CURSES_LIB_SOURCES
         ${SRC_DIR}/platform/curses/curses_app.cpp
         ${SRC_DIR}/platform/curses/curses_terminal.cpp
@@ -2177,6 +2179,60 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         enable_testing()
 
+        # Isolated lifecycle regression for the canonical owning sdl_video()
+        # constructor. Unlike the integration runner, this process begins with
+        # no existing E_Screen and can verify both boot-mode reapplication and
+        # owning teardown without disturbing another test's SDL globals.
+        add_executable(og_test_sdl_video_lifecycle
+            ${CMAKE_SOURCE_DIR}/tests/sdl_video_default_lifecycle.cpp
+        )
+        configure_openglad_library(og_test_sdl_video_lifecycle)
+        configure_openglad_sdl_target(og_test_sdl_video_lifecycle)
+        target_link_libraries(og_test_sdl_video_lifecycle PRIVATE og_game)
+        configure_openglad_runtime_target(og_test_sdl_video_lifecycle)
+        add_runtime_assets_dependency(og_test_sdl_video_lifecycle)
+        add_test(NAME og_test_sdl_video_lifecycle
+            COMMAND og_test_sdl_video_lifecycle
+        )
+        set_tests_properties(og_test_sdl_video_lifecycle PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 60
+        )
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            set_tests_properties(og_test_sdl_video_lifecycle PROPERTIES
+                ENVIRONMENT "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
+
+        # Run initialize -> owning session -> bootstrap exactly once in a
+        # dedicated process. This keeps process-global RNG, input, config, and
+        # SDL lifecycle mutations out of the shared integration-test runner.
+        add_executable(og_test_runtime_bootstrap_lifecycle
+            ${CMAKE_SOURCE_DIR}/tests/runtime_bootstrap_lifecycle.cpp
+        )
+        configure_openglad_library(og_test_runtime_bootstrap_lifecycle)
+        configure_openglad_sdl_target(og_test_runtime_bootstrap_lifecycle)
+        target_compile_definitions(og_test_runtime_bootstrap_lifecycle PRIVATE
+            TESTING
+        )
+        target_link_libraries(og_test_runtime_bootstrap_lifecycle PRIVATE
+            og_game_test
+        )
+        configure_openglad_runtime_target(og_test_runtime_bootstrap_lifecycle)
+        add_runtime_assets_dependency(og_test_runtime_bootstrap_lifecycle)
+        add_test(NAME og_test_runtime_bootstrap_lifecycle
+            COMMAND og_test_runtime_bootstrap_lifecycle
+        )
+        set_tests_properties(og_test_runtime_bootstrap_lifecycle PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 60
+        )
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            set_tests_properties(og_test_runtime_bootstrap_lifecycle PROPERTIES
+                ENVIRONMENT "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
+
         og_add_test_group(og_test_walker_combat FILES
             test_walker_combat.cpp
             test_walker_death.cpp
@@ -2542,6 +2598,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
@@ -2568,6 +2626,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
@@ -2626,6 +2685,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
@@ -2659,6 +2719,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_runtime.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_tick_interval.cpp
             ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
+            ${SRC_DIR}/platform/text/text_platform_globals.cpp
             ${HEADLESS_SERVER_RUNTIME_SOURCES}
         )
         configure_openglad_library(og_unit_server)
@@ -2722,7 +2783,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # --- og_test_curses (ncurses client test suite) ---
         # All curses tests are SDL-free and TTY-free (HeadlessTerminal + FakeClock),
         # so they run in CI like the headless unit binaries. Reuses the curses
-        # implementation TUs (minus main/globals) plus its own test main.
+        # implementation TUs (minus main) plus its own test main and the
+        # production process globals.
         if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
             add_executable(og_test_curses
                 ${CMAKE_SOURCE_DIR}/tests/curses/curses_test_main.cpp
@@ -2737,12 +2799,18 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_network.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
                 ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
+                ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
                 ${OG_CURSES_LIB_SOURCES}
                 ${OG_CURSES_MENU_SOURCES}
                 ${HEADLESS_SERVER_RUNTIME_SOURCES}
             )
             configure_openglad_library(og_test_curses)
-            target_compile_definitions(og_test_curses PRIVATE TESTING)
+            target_compile_definitions(og_test_curses PRIVATE
+                TESTING
+                OPENGLAD_CURSES_TEST_EXECUTABLE="$<TARGET_FILE:openglad_curses>"
+                OPENGLAD_SERVER_TEST_EXECUTABLE="$<TARGET_FILE:openglad_server>"
+            )
+            add_dependencies(og_test_curses openglad_curses openglad_server)
             target_include_directories(og_test_curses PRIVATE
                 ${CMAKE_SOURCE_DIR}/tests
             )
@@ -2797,6 +2865,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
                 LABELS "curses"
+                RESOURCE_LOCK native_network_stack
             )
         endif()
 
@@ -2812,6 +2881,11 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             og_unit_sim
             PROPERTIES RESOURCE_LOCK native_network_stack
         )
+        if(TARGET og_test_curses)
+            set_tests_properties(og_test_curses PROPERTIES
+                RESOURCE_LOCK native_network_stack
+            )
+        endif()
         # og_unit_sim now bundles the live IXWebSocket/relay transport tests. Run
         # alone it finishes in ~1s (loopback handshakes are instant), but the
         # RESOURCE_LOCK above only keeps it off the OTHER network suites — CTest
@@ -2871,7 +2945,28 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             TIMEOUT 420
         )
 
+        # The level-data suite produces and rewrites temp/scen/scen99.fss while
+        # the parity bootstrap mounts the same source-tree scenario directory.
+        # Preserve the serial suite's producer-before-consumer ordering and
+        # keep those read/write windows from overlapping in parallel lanes.
+        set_tests_properties(
+            og_test_level
+            og_test_parity
+            PROPERTIES RESOURCE_LOCK source_scenario_fixtures
+        )
+        set_tests_properties(og_test_parity PROPERTIES DEPENDS og_test_level)
+
         if(ENABLE_COVERAGE)
+            # These two binaries temporarily replace config fixtures in shared
+            # source/build asset trees to exercise missing/invalid-file paths.
+            # Coverage CTest now runs concurrently, so keep those mutation
+            # windows globally isolated from sibling process startup and the
+            # nested Emscripten build.
+            set_tests_properties(
+                og_test_io
+                og_unit_data
+                PROPERTIES RUN_SERIAL TRUE
+            )
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
             # runners when CTest schedules them all at once.
             set_tests_properties(
@@ -3018,6 +3113,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             set_tests_properties(openglad_server_cli PROPERTIES
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
+                RESOURCE_LOCK native_network_stack
             )
 
             if(CMAKE_GENERATOR MATCHES "Ninja")
@@ -3034,13 +3130,22 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             endif()
         endif()
 
+        add_test(NAME openglad_sdl_startup_error
+            COMMAND ${CMAKE_COMMAND} -E env
+                bash
+                ${CMAKE_SOURCE_DIR}/scripts/test_sdl_startup_error.sh
+                $<TARGET_FILE:openglad>
+        )
+        set_tests_properties(openglad_sdl_startup_error PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            TIMEOUT 60
+        )
+
         if(ENABLE_COVERAGE)
             add_test(NAME openglad_demo_smoke
                 COMMAND ${CMAKE_COMMAND} -E env
-                    SDL_VIDEODRIVER=dummy
-                    SDL_AUDIODRIVER=dummy
-                    SDL_RENDER_DRIVER=software
-                    OPENGLAD_DEMO_MAX_FRAMES=1
+                    bash
+                    ${CMAKE_SOURCE_DIR}/scripts/test_demo_smoke.sh
                     $<TARGET_FILE:openglad_demo>
             )
             set_tests_properties(openglad_demo_smoke PROPERTIES

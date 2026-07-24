@@ -51,6 +51,22 @@ inline std::vector<Interactable> get_interactables()
     return result;
 }
 
+// Snapshot immutable button IDs without touching labels or row state, which
+// engine menus may refresh between frames. This is the safe screen-identity
+// probe for injector threads during menu transitions.
+inline std::vector<std::string> get_button_ids()
+{
+    og::runtime::ensure_thread_session();
+    AllButtonsLock lock;
+    std::vector<std::string> result;
+    for (int i = 0; i < MAX_BUTTONS; ++i) {
+        if (og::runtime::current_session->allbuttons_[i])
+            result.push_back(
+                og::runtime::current_session->allbuttons_[i]->id);
+    }
+    return result;
+}
+
 // Check if an interactable with this ID exists and is not hidden
 inline bool has_interactable(const std::string& id)
 {

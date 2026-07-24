@@ -2,6 +2,7 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/pixien.h>
@@ -18,6 +19,7 @@
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
+Sint32 beginmenu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
@@ -238,6 +240,33 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
         << "cancel must not reset the loaded game";
     ASSERT_EQ("PRIOR COMPANY", og::runtime::current_session->myscreen_->save_data.save_name)
         << "cancel must not overwrite the loaded company name";
+}
+
+static int direct_beginmenu_cancel_injector(void*)
+{
+    og::runtime::ensure_thread_session();
+    if (!wait_for_interactable("company_name_reroll", 5000))
+        return 1;
+    SDL_Delay(250);
+    interact("back");
+    return 0;
+}
+
+TEST(NewGame, beginmenu_propagates_name_entry_cancel_without_resetting_save)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto saved_cash = save.totalcash;
+    const std::string saved_name = save.save_name;
+
+    SDL_Thread* thread = SDL_CreateThread(
+        direct_beginmenu_cancel_injector, "direct_beginmenu_cancel", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    EXPECT_EQ(MENU_REDRAW, beginmenu(99));
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(saved_cash, save.totalcash);
+    EXPECT_EQ(saved_name, save.save_name);
 }
 
 // §2.2: clicking the name strip opens an in-place editor; the typed name

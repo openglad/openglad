@@ -37,6 +37,7 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <openglad/core/util.h>
+#include "test_save_state_guard.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -3804,6 +3805,214 @@ TEST(GameLoop, exit_returns_to_continue_menu_single_player)
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, accepted_withdraw_ends_level_and_persists_destination_cursor)
+{
+    screen* const ambient_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, ambient_screen);
+    GameWorld& ambient_world = ambient_screen->world();
+    ASSERT_TRUE(ambient_world.oblist.empty());
+    ASSERT_TRUE(ambient_world.fxlist.empty());
+    ASSERT_TRUE(ambient_world.weaplist.empty());
+    ASSERT_TRUE(ambient_world.dead_list.empty());
+
+    struct ScopedAmbientWorldRestore
+    {
+        explicit ScopedAmbientWorldRestore(GameWorld& world_)
+            : world(world_)
+            , snapshot(og::sim::peek_keyframe_snapshot(world))
+            , serialized(og::sim::serialize_snapshot(snapshot))
+            , id(world.id)
+            , title(world.title)
+            , type(world.type)
+            , par_value(world.par_value)
+            , time_bonus_limit(world.time_bonus_limit)
+            , current_scenario(world.current_scenario)
+            , completion_events_emitted(world.completion_events_emitted)
+            , keep_fallen_heroes(world.keep_fallen_heroes)
+            , completed_levels(world.completed_levels)
+            , applying_snapshot(world.applying_snapshot_)
+            , grid_data(world.grid.data.get())
+            , decor_data(world.decor.data.get())
+            , obmap_ptr(world.myobmap.get())
+            , floor_count(world.floor_count())
+            , pixmaxx(world.pixmaxx)
+            , pixmaxy(world.pixmaxy)
+        {
+        }
+
+        ~ScopedAmbientWorldRestore()
+        {
+            const std::vector<std::uint8_t> after =
+                og::sim::serialize_snapshot(
+                    og::sim::peek_keyframe_snapshot(world));
+            const bool snapshot_changed = after != serialized;
+            EXPECT_EQ(serialized, after)
+                << "isolated withdraw test mutated the ambient synced world";
+            EXPECT_EQ(id, world.id);
+            EXPECT_EQ(title, world.title);
+            EXPECT_EQ(type, world.type);
+            EXPECT_EQ(par_value, world.par_value);
+            EXPECT_EQ(time_bonus_limit, world.time_bonus_limit);
+            EXPECT_EQ(current_scenario, world.current_scenario);
+            EXPECT_EQ(completion_events_emitted,
+                      world.completion_events_emitted);
+            EXPECT_EQ(keep_fallen_heroes, world.keep_fallen_heroes);
+            EXPECT_EQ(completed_levels, world.completed_levels);
+            EXPECT_EQ(applying_snapshot, world.applying_snapshot_);
+            EXPECT_EQ(grid_data, world.grid.data.get());
+            EXPECT_EQ(decor_data, world.decor.data.get());
+            EXPECT_EQ(obmap_ptr, world.myobmap.get());
+            EXPECT_EQ(floor_count, world.floor_count());
+            EXPECT_EQ(pixmaxx, world.pixmaxx);
+            EXPECT_EQ(pixmaxy, world.pixmaxy);
+            EXPECT_TRUE(world.dead_list.empty());
+
+            if (snapshot_changed || !world.dead_list.empty())
+            {
+                world.delete_objects();
+                if (!og::sim::apply_snapshot(world, snapshot))
+                    ADD_FAILURE() << "failed to restore ambient world snapshot";
+            }
+            world.id = id;
+            world.title = title;
+            world.type = type;
+            world.par_value = par_value;
+            world.time_bonus_limit = time_bonus_limit;
+            world.current_scenario = current_scenario;
+            world.completion_events_emitted = completion_events_emitted;
+            world.keep_fallen_heroes = keep_fallen_heroes;
+            world.completed_levels = completed_levels;
+            world.applying_snapshot_ = applying_snapshot;
+        }
+
+        GameWorld& world;
+        og::sim::WorldSnapshot snapshot;
+        std::vector<std::uint8_t> serialized;
+        int id;
+        std::string title;
+        char type;
+        short par_value;
+        short time_bonus_limit;
+        short current_scenario;
+        bool completion_events_emitted;
+        short keep_fallen_heroes;
+        std::set<int> completed_levels;
+        bool applying_snapshot;
+        unsigned char* grid_data;
+        unsigned char* decor_data;
+        obmap* obmap_ptr;
+        int floor_count;
+        std::int32_t pixmaxx;
+        std::int32_t pixmaxy;
+    } ambient_restore(ambient_world);
+
+    og::test::ScopedCampaignMountState mount_restore;
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+    const std::filesystem::path save0_staging_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.tmp.gtl";
+    og::test::ScopedPhysicalFileState save0_staging_restore(
+        save0_staging_path);
+    ASSERT_TRUE(save0_staging_restore.ready())
+        << "failed to snapshot save0 staging file: "
+        << save0_staging_restore.error().message();
+
+    og::runtime::GameSession::Config session_config;
+    session_config.numviews = 1;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const game_screen = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, game_screen);
+    ASSERT_NE(ambient_screen, game_screen);
+    SaveData& save = game_screen->save_data;
+
+    struct ScopedWithdrawCleanup
+    {
+        og::runtime::GameSession& session;
+        screen& game_screen;
+
+        ~ScopedWithdrawCleanup()
+        {
+            picker_testing_yes_or_no_queue_clear();
+            og::runtime::clear_local_transport_shadow(session);
+
+            for (auto& view : game_screen.viewob)
+            {
+                if (view != nullptr)
+                    view->control = nullptr;
+            }
+            game_screen.level_runtime_data().clear();
+            GameWorld& world = game_screen.world();
+            world.reset_level_progress();
+            world.delete_objects();
+            world.game_ended = false;
+            world.completion_events_emitted = false;
+            world.end = 0;
+            world.retry = false;
+            world.next_level = -1;
+            world.ending = 0;
+            world.level_done = 0;
+            world.withdraw_requested = false;
+            world.withdraw_level = -1;
+        }
+    } withdraw_cleanup{isolated_session, *game_screen};
+
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Withdrawer";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+
+    std::uint32_t tick = 0;
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_open_exit_prompt(
+        session,
+        /*player_index=*/0u,
+        /*destination_level=*/2,
+        /*withdraw=*/true));
+
+    for (int frame = 0; frame < 40; ++frame)
+        og::runtime::local_transport_shadow_finish_tick(session);
+
+    EXPECT_NE(0, game_screen->world().end);
+
+    SaveData persisted;
+    ASSERT_TRUE(persisted.load("save0"));
+    EXPECT_EQ("org.openglad.gladiator", persisted.current_campaign);
+    EXPECT_EQ(2, persisted.scen_num);
+    EXPECT_EQ(2, persisted.current_levels[persisted.current_campaign]);
+
 }
 
 static void setup_local_two_player_save(SaveData& save)

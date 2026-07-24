@@ -179,6 +179,7 @@ int run_curses_app(const AppOptions& options, int argc, char* argv[])
     picker_options.allow_unicode = options.allow_unicode;
     picker_options.allow_color = options.allow_color;
     picker_options.difficulty = options.difficulty;
+    picker_options.host_port = options.host_port;
 
     if (options.host || !options.join_url.empty()) {
         // Command-line shortcut straight into a networked game with a default

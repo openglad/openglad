@@ -164,6 +164,9 @@ TEST(CursesRenderer, message_log_trims_to_capacity)
     ASSERT_EQ(renderer.log().size(), 3u);
     EXPECT_EQ(renderer.log().front(), "b");
     EXPECT_EQ(renderer.log().back(), "d");
+
+    renderer.clear_log();
+    EXPECT_TRUE(renderer.log().empty());
 }
 
 // --- Frame plumbing ------------------------------------------------------
@@ -215,6 +218,25 @@ TEST(CursesRenderer, hud_shows_character_name_and_current_special)
         << "row 0 names the followed character; got: " << term.text_row(0);
     EXPECT_NE(term.text_row(1).find("CHARGE"), std::string::npos)
         << "row 1 shows the current special; got: " << term.text_row(1);
+}
+
+TEST(CursesRenderer, hud_omits_invalid_or_unregistered_specials)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(hero, nullptr);
+    hero->set_user(0);
+    hero->set_current_special(99);
+
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_EQ(term.text_row(1).find("Sp:"), std::string::npos);
+
+    hero->set_current_special(0);
+    hero->set_family(static_cast<char>(127));
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_EQ(term.text_row(1).find("Sp:"), std::string::npos);
 }
 
 // A level exit (Order::Treasure / FAMILY_EXIT) renders as '>' so the player can
@@ -834,6 +856,13 @@ TEST(CursesRenderer, message_log_shows_only_the_newest_lines_that_fit)
     }
     EXPECT_FALSE(found_oldest) << "the oldest line is trimmed past capacity";
     EXPECT_TRUE(found_newest) << "the newest line is always shown";
+
+    HeadlessTerminal narrow(10, 5);
+    CursesRenderer clipped(
+        CursesRenderer::Options{true, true, /*max_log_lines=*/1});
+    clipped.log_message("123456789");
+    clipped.draw(narrow, hw.world(), 0);
+    EXPECT_EQ("12345", narrow.text_row(narrow.rows() - 1));
 }
 
 // --- Robustness ----------------------------------------------------------
@@ -942,10 +971,15 @@ TEST(CursesRenderer, hud_line1_shows_floor_on_multifloor)
         w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
     }
     hero->set_floor(1);
+    walker* other_floor = hw.add_creature(10, 10, FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, other_floor);
+    other_floor->set_floor(0);
 
     HeadlessTerminal term(24, 60);
     CursesRenderer renderer;
     renderer.draw(term, hw.world(), hero->entity_id());
     EXPECT_NE(term.text_row(1).find("FLR: 2/3"), std::string::npos)
         << "row 1 shows the shared floor label; got: " << term.text_row(1);
+    EXPECT_EQ(0, count_in_viewport(term, U'o'))
+        << "entities on a different floor stay out of the viewport";
 }

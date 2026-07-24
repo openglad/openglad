@@ -1458,6 +1458,7 @@ bool CursesPickerClient::host_game()
     Menu menu(term_, clock_);
     HostOptions opt;
     opt.difficulty = options_.difficulty;
+    opt.port = options_.host_port;
     std::string error;
     std::unique_ptr<CursesLobby> lobby = make_host_lobby(save_data_, opt, &error);
     if (!lobby) {

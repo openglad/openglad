@@ -2,7 +2,7 @@ name: Coverage CI
 
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
 
 permissions:
@@ -52,6 +52,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-coverage
+          max-size: 2G
 
       - name: Configure (ci-coverage preset)
         run: cmake --preset ci-coverage -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -59,8 +60,26 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
+      - name: Reset pre-test coverage counters
+        run: |
+          find build/ci-coverage -type f -name '*.gcda' -delete
+          remaining_counters=$(find build/ci-coverage -type f -name '*.gcda' | wc -l)
+          if (( remaining_counters != 0 )); then
+            echo "Failed to reset pre-test coverage counters" >&2
+            exit 1
+          fi
+
       - name: Run tests with coverage
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3
+        # CTest continues to enforce the RUN_SERIAL, RESOURCE_LOCK, and
+        # PROCESSORS properties registered in CMakeLists.txt. Those processor
+        # reservations are calibrated for four-slot GitHub runners, so keep the
+        # parallel level at min(nproc, 4) on larger or smaller hosts.
+        run: |
+          parallel_jobs="$(nproc)"
+          if (( parallel_jobs > 4 )); then
+            parallel_jobs=4
+          fi
+          ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --no-tests=error
 
       - name: Typecheck relay worker
         working-directory: relay
@@ -70,32 +89,21 @@ jobs:
         working-directory: relay
         run: npm test
 
-      - name: Generate HTML coverage report
-        run: |
-          mkdir -p build/ci-coverage/coverage
-          python3 -m gcovr \
-            --root . \
-            --filter src/ \
-            --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
-            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --html-details \
-            --output build/ci-coverage/coverage/coverage.html \
-            build/ci-coverage
-
-      - name: Generate coverage summary report and enforce thresholds
+      - name: Generate coverage reports and enforce thresholds
         id: coverage_metrics
         run: |
-          LINE_THRESHOLD=90
-          FUNCTION_THRESHOLD=95
+          LINE_THRESHOLD=95
+          FUNCTION_THRESHOLD=100
 
+          mkdir -p build/ci-coverage/coverage
           set +e
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --txt \
-            --output build/ci-coverage/coverage/coverage-summary.txt \
+            --html-details build/ci-coverage/coverage/coverage.html \
+            --txt build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \
             --fail-under-line "${LINE_THRESHOLD}" \
             --fail-under-function "${FUNCTION_THRESHOLD}" \
@@ -105,52 +113,75 @@ jobs:
 
           cat build/ci-coverage/coverage/coverage-summary.txt
 
-          line_pct=$(python3 - <<'PY'
+          read -r line_covered line_total function_covered function_total \
+            line_pct function_pct < <(python3 - <<'PY'
           import json
           with open("build/ci-coverage/coverage/coverage-summary.json", "r", encoding="utf-8") as f:
               s = json.load(f)
-          print(f"{s['line_percent']:.1f}")
-          PY
-          )
-          function_pct=$(python3 - <<'PY'
-          import json
-          with open("build/ci-coverage/coverage/coverage-summary.json", "r", encoding="utf-8") as f:
-              s = json.load(f)
-          print(f"{s['function_percent']:.1f}")
+          line_covered = s["line_covered"]
+          line_total = s["line_total"]
+          function_covered = s["function_covered"]
+          function_total = s["function_total"]
+          line_pct = 100.0 * line_covered / line_total if line_total else 100.0
+          function_pct = 100.0 * function_covered / function_total if function_total else 100.0
+          print(line_covered, line_total, function_covered, function_total,
+                f"{line_pct:.3f}", f"{function_pct:.3f}")
           PY
           )
 
           line_status="FAIL"
           function_status="FAIL"
-          if awk "BEGIN {exit !($line_pct >= $LINE_THRESHOLD)}"; then line_status="PASS"; fi
-          if awk "BEGIN {exit !($function_pct >= $FUNCTION_THRESHOLD)}"; then function_status="PASS"; fi
+          exact_gate_status=0
+          # gcovr rounds its percentage before applying fail-under. Enforce the
+          # requested ratios against integer counts so 94.96% cannot pass as 95%.
+          if (( line_total > 0 &&
+                line_covered * 100 >= LINE_THRESHOLD * line_total )); then
+            line_status="PASS"
+          else
+            exact_gate_status=1
+          fi
+          # The requested function gate is literal: every measured function
+          # must execute, independent of percentage formatting or rounding.
+          if (( function_total > 0 && function_covered == function_total )); then
+            function_status="PASS"
+          else
+            exact_gate_status=1
+          fi
 
-          echo "line_pct=$line_pct" >> "$GITHUB_OUTPUT"
-          echo "function_pct=$function_pct" >> "$GITHUB_OUTPUT"
-          echo "line_status=$line_status" >> "$GITHUB_OUTPUT"
-          echo "function_status=$function_status" >> "$GITHUB_OUTPUT"
+          {
+            echo "line_pct=$line_pct"
+            echo "function_pct=$function_pct"
+            echo "line_counts=${line_covered}/${line_total}"
+            echo "function_counts=${function_covered}/${function_total}"
+            echo "line_status=$line_status"
+            echo "function_status=$function_status"
+          } >> "$GITHUB_OUTPUT"
 
           {
             echo "## Coverage Summary"
             echo
             echo "| Metric | Coverage | Threshold | Status |"
             echo "|---|---:|---:|---|"
-            echo "| Line | ${line_pct}% | ${LINE_THRESHOLD}% | ${line_status} |"
-            echo "| Function | ${function_pct}% | ${FUNCTION_THRESHOLD}% | ${function_status} |"
+            echo "| Line | ${line_pct}% (${line_covered}/${line_total}) | ${LINE_THRESHOLD}% | ${line_status} |"
+            echo "| Function | ${function_pct}% (${function_covered}/${function_total}) | ${FUNCTION_THRESHOLD}% | ${function_status} |"
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          exit "$gcovr_status"
+          if (( gcovr_status != 0 || exact_gate_status != 0 )); then
+            exit 1
+          fi
 
       - name: Comment coverage on pull request
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         env:
-          LINE_THRESHOLD: 90
-          FUNCTION_THRESHOLD: 95
+          LINE_THRESHOLD: 95
+          FUNCTION_THRESHOLD: 100
           LINE_PCT: ${{ steps.coverage_metrics.outputs.line_pct }}
           FUNCTION_PCT: ${{ steps.coverage_metrics.outputs.function_pct }}
+          LINE_COUNTS: ${{ steps.coverage_metrics.outputs.line_counts }}
+          FUNCTION_COUNTS: ${{ steps.coverage_metrics.outputs.function_counts }}
           LINE_STATUS: ${{ steps.coverage_metrics.outputs.line_status }}
           FUNCTION_STATUS: ${{ steps.coverage_metrics.outputs.function_status }}
         with:
@@ -160,6 +191,8 @@ jobs:
             const functionThreshold = process.env.FUNCTION_THRESHOLD || 'n/a';
             const linePct = process.env.LINE_PCT || 'n/a';
             const functionPct = process.env.FUNCTION_PCT || 'n/a';
+            const lineCounts = process.env.LINE_COUNTS || 'n/a';
+            const functionCounts = process.env.FUNCTION_COUNTS || 'n/a';
             const lineStatus = process.env.LINE_STATUS || 'UNKNOWN';
             const functionStatus = process.env.FUNCTION_STATUS || 'UNKNOWN';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -175,8 +208,8 @@ jobs:
               '',
               '| Metric | Coverage | Threshold | Status |',
               '|---|---:|---:|---|',
-              `| Line | ${linePct}% | ${lineThreshold}% | ${lineStatus} |`,
-              `| Function | ${functionPct}% | ${functionThreshold}% | ${functionStatus} |`,
+              `| Line | ${linePct}% (${lineCounts}) | ${lineThreshold}% | ${lineStatus} |`,
+              `| Function | ${functionPct}% (${functionCounts}) | ${functionThreshold}% | ${functionStatus} |`,
               '',
               `Run: ${runUrl}`,
             ].join('\n');

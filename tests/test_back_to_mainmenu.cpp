@@ -14,6 +14,7 @@
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
+void picker_mainmenu_loop();
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
@@ -105,6 +106,25 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
+static int single_mainmenu_loop_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    bool* const activated = static_cast<bool*>(data);
+    if (!wait_for_interactable("continue_game", 5000))
+        return 1;
+    SDL_Delay(300);
+    interact("continue_game");
+    if (!wait_for_interactable("hire_troops", 5000) ||
+        !wait_for_interactable("back", 5000))
+    {
+        return 2;
+    }
+    SDL_Delay(300);
+    interact("back");
+    *activated = true;
+    return 0;
+}
+
 TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     trace_clear();
 
@@ -130,6 +150,23 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
 
+    // Exercise the legacy loop entry itself against a live, initialized
+    // picker.  A natural CONTINUE -> team-build BACK round trip must complete
+    // one real legacy menu pass; the TESTING iteration cap then returns
+    // control without terminating the process.
+    bool loop_activated = false;
+    SDL_Thread* loop_thread = SDL_CreateThread(
+        single_mainmenu_loop_injector, "single_mainmenu_loop", &loop_activated);
+    ASSERT_TRUE(loop_thread != nullptr);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_mainmenu_loop();
+    int loop_thread_result = 0;
+    SDL_WaitThread(loop_thread, &loop_thread_result);
+    EXPECT_EQ(0, loop_thread_result);
+    EXPECT_TRUE(loop_activated);
+    EXPECT_EQ(1, g_picker_mainmenu_calls);
+
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
@@ -140,4 +177,3 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     // After the fix (loop): mainmenu appeared twice -> PASS
     ASSERT_TRUE(state.times_saw_mainmenu >= 2) << "main menu should reappear after Continue->Back (not exit the program)";
 }
-

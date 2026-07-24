@@ -281,12 +281,19 @@ TEST(CtfUi, score_panel_renders_ctf_captures_block)
     const int rm = v->endx;
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
-    EXPECT_TRUE(box_has_pixels(capture_rendered_frame(*s),
+    const auto taken_frame = capture_rendered_frame(*s);
+    EXPECT_TRUE(box_has_pixels(taken_frame,
                                rm - 92, tm + 3, rm - 59, tm + 12))
         << "the per-team captures block should paint right-aligned at rm-60";
-    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
+    EXPECT_FALSE(box_has_pixels(taken_frame,
                                 rm - 59, tm + 3, rm - 55, tm + 12))
         << "the group must end before the TEAM/FOES column at rm-55";
+
+    s->world().ctf.flags[1].state = og::sim::CtfFlagState::Dropped;
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_NE(taken_frame, capture_rendered_frame(*s))
+        << "the capture segment must distinguish a dropped flag from a taken one";
 
     // The block is gated on ctf.active: deactivated worlds draw nothing here.
     s->world().ctf.active = false;
@@ -358,6 +365,12 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
     entry.team = 0;
     entry.ticks_left = 60; // 5 s at 12 ticks/s
     entry.walker_entity_id = control->entity_id();
+    og::sim::CtfRespawnEntry unrelated;
+    unrelated.kind = 1;
+    unrelated.team = 1;
+    unrelated.ticks_left = 1;
+    unrelated.walker_entity_id = control->entity_id() + 1;
+    s->world().ctf.respawn_queue.push_back(unrelated);
     s->world().ctf.respawn_queue.push_back(entry);
 
     const int lm = v->xloc;

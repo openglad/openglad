@@ -114,7 +114,10 @@ private:
     friend screen* local_transport_shadow_testing_server_screen(
         GameSession& session);
     friend bool local_transport_shadow_testing_open_exit_prompt(
-        GameSession& session, std::size_t player_index, int destination_level);
+        GameSession& session,
+        std::size_t player_index,
+        int destination_level,
+        bool withdraw);
     friend bool local_transport_shadow_testing_server_pending_exit_prompt(
         GameSession& session) noexcept;
 #endif

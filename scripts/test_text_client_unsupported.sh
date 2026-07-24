@@ -77,3 +77,21 @@ for needle in expected:
 
 print("PASS: unsupported headless warnings emitted exactly once")
 PY
+
+if printf '2\n6\n7\n7\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" \
+    "$TEXT_BIN" --level 9999 > "$TMPOUT" 2> "$TMPOERR"; then
+    echo "FAIL: invalid-level picker run unexpectedly succeeded" >&2
+    exit 1
+else
+    rc=$?
+fi
+if [ $rc -ne 1 ]; then
+    echo "FAIL: invalid-level picker run exited with code $rc instead of 1" >&2
+    exit 1
+fi
+if ! grep -Fq 'picker error: protocol session failed with code 1' "$TMPOERR"; then
+    echo "FAIL: invalid-level picker error was not propagated by main" >&2
+    exit 1
+fi
+
+echo "PASS: text picker propagates protocol startup failures"

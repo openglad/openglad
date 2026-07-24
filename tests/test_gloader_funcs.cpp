@@ -318,6 +318,21 @@ TEST(GloaderFuncs, gloader_respects_optional_attach_render_callback)
     ASSERT_TRUE(!w->has_render()) << "empty attach_render callback must not attach render components";
 }
 
+TEST(GloaderFuncs, gloader_default_error_reporter_handles_missing_graphics)
+{
+    loader default_loader;
+    const int index = PIX(Order::Special, FAMILY_RESERVED_TEAM);
+    default_loader.graphics[index].free();
+
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(nullptr,
+              default_loader.create_walker_owned(
+                  Order::Special, FAMILY_RESERVED_TEAM));
+    EXPECT_NE(std::string::npos,
+              testing::internal::GetCapturedStderr().find(
+                  "No valid graphics for walker!"));
+}
+
 
 TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
 {

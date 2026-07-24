@@ -2,6 +2,7 @@
 #include <utility>
 
 #include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
@@ -67,6 +68,41 @@ TEST(Input, handle_mouse_motion_scales_to_game_coords)
 
     ASSERT_EQ(160, (int)mouse_state.x) << "mouse x should be scaled to 320-wide game coords";
     ASSERT_EQ(100, (int)mouse_state.y) << "mouse y should be scaled to 200-tall game coords";
+}
+
+TEST(Input, gameplay_ui_pointer_mapping_tracks_the_active_canvas_contract)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    const CanvasTarget saved_target = s->active_canvas();
+    struct CanvasGuard
+    {
+        screen* value;
+        CanvasTarget target;
+        ~CanvasGuard() { value->set_active_canvas(target); }
+    } guard{s, saved_target};
+
+    s->set_active_canvas(CanvasTarget::UI);
+    const og::CanvasViewport ui_viewport = gameplay_ui_canvas_viewport();
+    EXPECT_EQ(active_canvas_viewport().x, ui_viewport.x);
+    EXPECT_EQ(active_canvas_viewport().y, ui_viewport.y);
+    EXPECT_EQ(active_canvas_viewport().w, ui_viewport.w);
+    EXPECT_EQ(active_canvas_viewport().h, ui_viewport.h);
+
+    const auto window_center = ui_canvas_to_window(160.0f, 100.0f);
+    const auto ui_center = window_to_gameplay_ui_canvas(
+        window_center.first, window_center.second);
+    EXPECT_NEAR(160.0f, ui_center.first, 0.6f);
+    EXPECT_NEAR(100.0f, ui_center.second, 0.6f);
+    EXPECT_TRUE(window_point_in_gameplay_ui_canvas(
+        window_center.first, window_center.second));
+
+    // During a gameplay frame the HUD uses its independently fitted overlay
+    // canvas even though world rendering is active.
+    s->set_active_canvas(CanvasTarget::World);
+    const og::CanvasViewport overlay_viewport = gameplay_ui_canvas_viewport();
+    EXPECT_GT(overlay_viewport.w, 0);
+    EXPECT_GT(overlay_viewport.h, 0);
 }
 
 

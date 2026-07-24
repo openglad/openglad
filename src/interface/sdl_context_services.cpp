@@ -87,13 +87,12 @@ void input_state_from_sdl(InputState& out)
     }
 }
 
-// Called from the SDL client initialization to populate GameContext fields.
-// The production main() or GameSession should call this after io_init.
+// Compatibility hook retained for callers that initialize platform services
+// explicitly. SDL services now live in immutable provider tables and the
+// active GameSession, so installation must preserve all existing state.
 namespace og::runtime {
 void install_sdl_context_services()
 {
-    // Fields game_screen, prefs, config removed from GameContext.
-    // Callers use myscreen, theprefs, cfg globals directly.
 }
 } // namespace og::runtime
 

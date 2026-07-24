@@ -8,15 +8,31 @@
 #include <openglad/core/test_trace.h>
 
 #include "lodepng.h"
+#include "test_save_state_guard.h"
 
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
+#include <physfs.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
 #include <random>
 #include <string>
+#ifdef __linux__
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
 #include <vector>
+
+namespace og::io {
+SDL_IOStream* physfsio_open_read(const char* path);
+SDL_IOStream* physfsio_open_write(const char* path);
+} // namespace og::io
 
 namespace {
 
@@ -36,6 +52,61 @@ struct CampaignFixture {
             (void)mount_campaign_package_with_error(old_campaign);
     }
 };
+
+struct SdlIoStreamCloser
+{
+    void operator()(SDL_IOStream* stream) const
+    {
+        if (stream != nullptr)
+            (void)SDL_CloseIO(stream);
+    }
+};
+
+using ScopedSdlIoStream =
+    std::unique_ptr<SDL_IOStream, SdlIoStreamCloser>;
+
+struct SdlErrorClearGuard
+{
+    SdlErrorClearGuard() { SDL_ClearError(); }
+    ~SdlErrorClearGuard() { SDL_ClearError(); }
+};
+
+#ifdef __linux__
+int descriptor_for_file(const std::filesystem::path& expected)
+{
+    std::error_code ec;
+    for (const auto& entry :
+         std::filesystem::directory_iterator("/proc/self/fd", ec))
+    {
+        if (ec)
+            break;
+        const std::filesystem::path target =
+            std::filesystem::read_symlink(entry.path(), ec);
+        if (ec)
+        {
+            ec.clear();
+            continue;
+        }
+        if (std::filesystem::equivalent(target, expected, ec))
+        {
+            const std::optional<int> descriptor = [&]() -> std::optional<int> {
+                try
+                {
+                    return std::stoi(entry.path().filename().string());
+                }
+                catch (...)
+                {
+                    return std::nullopt;
+                }
+            }();
+            if (descriptor)
+                return *descriptor;
+        }
+        ec.clear();
+    }
+    return -1;
+}
+#endif
 
 } // namespace
 
@@ -143,6 +214,192 @@ TEST(PngConversion, stale_campaign_overwritten)
     PixieData grid = read_pixie_file("scen1.png");
     ASSERT_TRUE(grid.valid()) << "scen1.png should be loadable after campaign restore";
 }
+
+#ifdef __linux__
+TEST(PngConversion, physfs_sdl_bridge_reports_broken_file_descriptors)
+{
+    SdlErrorClearGuard error_guard;
+    namespace fs = std::filesystem;
+    const std::string read_name =
+        "physfs_bridge_read_" + std::to_string(getpid()) + ".bin";
+    const std::string write_name =
+        "physfs_bridge_write_" + std::to_string(getpid()) + ".bin";
+    const std::string short_write_name =
+        "physfs_bridge_short_write_" + std::to_string(getpid()) + ".bin";
+    const fs::path read_path = fs::path(get_user_path()) / read_name;
+    const fs::path write_path = fs::path(get_user_path()) / write_name;
+    const fs::path short_write_path =
+        fs::path(get_user_path()) / short_write_name;
+    struct Cleanup
+    {
+        fs::path read_path;
+        fs::path write_path;
+        fs::path short_write_path;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            fs::remove(read_path, ec);
+            fs::remove(write_path, ec);
+            fs::remove(short_write_path, ec);
+        }
+    } cleanup{read_path, write_path, short_write_path};
+
+    {
+        std::ofstream output(read_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(output.good());
+        const std::array<unsigned char, 8> payload{
+            0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87};
+        output.write(
+            reinterpret_cast<const char*>(payload.data()), payload.size());
+        ASSERT_TRUE(output.good());
+    }
+
+    const auto broken_read_stream = [&]() {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_read(read_name.c_str()));
+        EXPECT_NE(nullptr, stream);
+        if (stream == nullptr)
+            return stream;
+        const int descriptor = descriptor_for_file(read_path);
+        EXPECT_GE(descriptor, 0);
+        if (descriptor < 0)
+            return ScopedSdlIoStream{};
+        EXPECT_EQ(0, close(descriptor));
+        return stream;
+    };
+    const auto close_broken_stream = [](ScopedSdlIoStream& stream,
+                                        bool expect_close_error) {
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        const bool closed = SDL_CloseIO(stream.release());
+        if (expect_close_error)
+        {
+            EXPECT_FALSE(closed);
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        else
+        {
+            EXPECT_TRUE(closed)
+                << "read handles release their wrapper after an earlier "
+                   "descriptor failure";
+        }
+    };
+
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_CUR));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find position in file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_END));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find end of file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_SET));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        std::array<unsigned char, 4> bytes{
+            0xA5, 0xA5, 0xA5, 0xA5};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_ReadIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_EQ((std::array<unsigned char, 4>{
+                      0xA5, 0xA5, 0xA5, 0xA5}),
+                  bytes)
+            << "a failed read must not claim or fabricate bytes";
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        const int descriptor = descriptor_for_file(write_path);
+        ASSERT_GE(descriptor, 0);
+        ASSERT_EQ(0, close(descriptor));
+
+        const std::array<unsigned char, 4> bytes{
+            0xDE, 0xAD, 0xBE, 0xEF};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_WriteIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, true);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(short_write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        struct FileSizeLimitRestore
+        {
+            rlimit old_limit{};
+            using SignalHandler = void (*)(int);
+            SignalHandler old_handler = SIG_DFL;
+            bool limit_changed = false;
+            bool handler_changed = false;
+            ~FileSizeLimitRestore()
+            {
+                if (limit_changed &&
+                    setrlimit(RLIMIT_FSIZE, &old_limit) != 0)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the process file-size limit";
+                }
+                if (handler_changed &&
+                    std::signal(SIGXFSZ, old_handler) == SIG_ERR)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the SIGXFSZ handler";
+                }
+            }
+        };
+        {
+            FileSizeLimitRestore restore;
+            ASSERT_EQ(0, getrlimit(RLIMIT_FSIZE, &restore.old_limit));
+            restore.old_handler = std::signal(SIGXFSZ, SIG_IGN);
+            ASSERT_NE(SIG_ERR, restore.old_handler);
+            restore.handler_changed = true;
+            rlimit one_byte = restore.old_limit;
+            one_byte.rlim_cur = 1;
+            ASSERT_EQ(0, setrlimit(RLIMIT_FSIZE, &one_byte));
+            restore.limit_changed = true;
+
+            const std::array<unsigned char, 4> bytes{
+                0x10, 0x20, 0x30, 0x40};
+            SDL_ClearError();
+            EXPECT_EQ(1u, SDL_WriteIO(
+                              stream.get(), bytes.data(), bytes.size()));
+            EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        EXPECT_TRUE(SDL_CloseIO(stream.release()));
+        EXPECT_EQ(1u, fs::file_size(short_write_path));
+    }
+}
+#endif
 
 namespace {
 
@@ -490,4 +747,110 @@ TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
 
     fs::remove(png, ec);
     fs::remove(json, ec);
+}
+
+TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    const fs::path png = tmp_dir / "malformed_variants.png";
+    const fs::path json = tmp_dir / "malformed_variants.json";
+    og::test::ScopedPhysicalFileState png_state(png);
+    og::test::ScopedPhysicalFileState json_state(json);
+    ASSERT_TRUE(png_state.ready()) << png_state.error().message();
+    ASSERT_TRUE(json_state.ready()) << json_state.error().message();
+
+    constexpr int W = 10;
+    constexpr int H = 7;
+    write_indexed_png_strip(png.string(), W, H, 1);
+
+    struct BadSidecar {
+        const char* description;
+        const char* text;
+        const char* reason;
+    };
+    const BadSidecar cases[] = {
+        {"empty file", "", "empty file"},
+        {"empty top-level object", "{}", "empty top-level object"},
+        {"top-level array", "[]", "expected top-level object"},
+        {"missing unknown value", R"({"unknown":})",
+         "unexpected character in value"},
+        {"invalid keyword", R"({"unknown":tru})", "unknown keyword"},
+        {"unsupported string escape", R"({"unknown":"bad\\escape"})",
+         "backslash escape unsupported"},
+        {"unterminated string", R"({"unknown":"unterminated})",
+         "unterminated string"},
+        {"array missing comma", R"({"unknown":[1 2]})",
+         "expected ',' or ']'"},
+        {"object missing colon", R"({"unknown":{"a" 1}})",
+         "expected ':'"},
+        {"frames is an array", R"({"frames":[]})",
+         "\"frames\" not an object"},
+        {"frame entry is an array", R"({"frames":{"a":[]}})",
+         "frame entry not an object"},
+        {"empty frame entry", R"({"frames":{"a":{}}})",
+         "frame entry empty"},
+        {"missing frame rectangle", R"({"frames":{"a":{"other":1}}})",
+         "missing \"frame\" rectangle"},
+        {"frame rectangle is an array",
+         R"({"frames":{"a":{"frame":[]}}})",
+         "\"frame\" rect not an object"},
+        {"empty frame rectangle", R"({"frames":{"a":{"frame":{}}}})",
+         "empty frame rect"},
+        {"string frame width",
+         R"({"frames":{"a":{"frame":{"w":"10","h":7}}}})",
+         "expected non-negative integer"},
+        {"fractional frame width",
+         R"({"frames":{"a":{"frame":{"w":1.5,"h":7}}}})",
+         "non-integer numeric not supported"},
+        {"overflowing frame width",
+         R"({"frames":{"a":{"frame":{"w":1000000001,"h":7}}}})",
+         "integer overflow"},
+        {"meta is an array", R"({"meta":[]})",
+         "\"meta\" not an object"},
+        {"meta size is an array", R"({"meta":{"size":[]}})",
+         "\"meta.size\" not an object"},
+        {"empty meta size", R"({"meta":{"size":{}}})",
+         "empty meta.size"},
+        {"missing meta size",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}}})",
+         "missing \"meta.size\""},
+        {"no frames",
+         R"({"frames":{},"meta":{"size":{"w":10,"h":7}}})",
+         "no frames"},
+        {"zero frame width",
+         R"({"frames":{"a":{"frame":{"w":0,"h":7}}},"meta":{"size":{"w":0,"h":7}}})",
+         "invalid frame dimensions"},
+        {"frame width above format limit",
+         R"({"frames":{"a":{"frame":{"w":256,"h":7}}},"meta":{"size":{"w":256,"h":7}}})",
+         "frame metadata out of range"},
+        {"stacked size mismatch",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}},"meta":{"size":{"w":9,"h":7}}})",
+         "size mismatch between meta.size and frames*frame"},
+    };
+
+    for (const BadSidecar& row : cases) {
+        SCOPED_TRACE(row.description);
+        write_text_file(json.string(), row.text);
+        trace_clear();
+
+        PixieData round = read_pixie_file(png.string().c_str());
+
+        ASSERT_TRUE(round.valid())
+            << "ordinary sidecar errors must retain the documented "
+               "single-frame PNG fallback";
+        EXPECT_EQ(1, static_cast<int>(round.frames));
+        EXPECT_EQ(W, static_cast<int>(round.w));
+        EXPECT_EQ(H, static_cast<int>(round.h));
+        ASSERT_NE(nullptr, round.data);
+        EXPECT_EQ(3, static_cast<int>(round.data[0]))
+            << "fallback must preserve decoded palette indices";
+        EXPECT_TRUE(trace_contains("io", "malformed Aseprite sidecar"));
+        EXPECT_TRUE(trace_contains("io", row.reason))
+            << "diagnostic should identify the rejected construct";
+    }
 }

@@ -142,6 +142,9 @@ struct OptionsState {
     bool cycled_display_mode;
     bool cycled_resolution;
     bool resolution_applied_to_window;
+    int zoom_window_w;
+    int zoom_window_h;
+    int minimum_zoom_steps;
     bool exited_display;
     bool used_options_back;
     // Labels the ZOOM / SMOOTH rows show while their cfg keys are the empty
@@ -222,10 +225,9 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
 // window, each click live-applied to the renderer's world canvas. The absent
 // key normalizes to 1.0; compute the same dynamic minimum as the live button
 // and finish the lap deadline-bounded if a re-click double-steps.
-static bool cycle_zoom_and_check_lap(const char* button_id)
+static bool cycle_zoom_and_check_lap(const char* button_id,
+                                     int minimum_steps)
 {
-    const int minimum_steps =
-        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
     const int lap_steps = og::kZoomStepsMax - minimum_steps + 1;
     std::string expected = cfg.get_setting("graphics", "zoom");
     for (int i = 0; i < lap_steps; ++i)
@@ -289,13 +291,23 @@ static bool cycle_display_mode_and_check_lap(const char* button_id)
 static bool select_windowed_mode(const char* button_id)
 {
     for (int i = 0; i < 3; ++i) {
-        if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
+        if (og::ui::parse_display_mode(
+                cfg.get_setting("graphics", "fullscreen")) ==
             og::ui::DisplayMode::Windowed)
             return true;
         if (!click_cycle_step(button_id, "graphics", "fullscreen"))
             return false;
     }
     return false;
+}
+
+static std::string latest_trace_message(const char* category)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (auto it = g_trace_buffer.rbegin(); it != g_trace_buffer.rend(); ++it)
+        if (it->category == category)
+            return it->message;
+    return {};
 }
 
 // Click the resolution selector around one full lap and verify cfg
@@ -450,32 +462,47 @@ static int options_injector(void* data)
                 cfg.apply_setting("graphics", "render", prev_render);
                 SDL_Delay(150);
             }
-			// Menu.button_misc_paths intentionally leaves the retired legacy
-			// graphics/render value at "sai". Pin this test's new selector to
-			// explicit Off so its zoom traces are order-independent and exercise
-			// the nearest path before the separate smoothing lap below.
-			cfg.apply_setting("graphics", "smoothing", "off");
-
             fprintf(stderr, "  [test] cycling display mode\n");
             state->cycled_display_mode = cycle_display_mode_and_check_lap("display_mode");
             SDL_Delay(300);
             fprintf(stderr, "  [test] cycling resolution\n");
+            trace_clear();
             state->cycled_resolution = select_windowed_mode("display_mode") &&
                 cycle_resolution_and_check_lap("display_resolution");
             SDL_Delay(300);
-            // Each click live-applies: the REAL window (session bookkeeping
-            // fed from SDL_GetWindowSize after the apply) must match
-            // whatever the lap ended on.
+            // The menu-thread trace records the normalized cfg and the REAL
+            // session size after every resolution callback. Reading those
+            // fields directly from this injector would race SDL window events.
             state->resolution_applied_to_window =
-                std::to_string(static_cast<int>(og::runtime::current_session->window_w_)) ==
-                    cfg.get_setting("graphics", "width") &&
-                std::to_string(static_cast<int>(og::runtime::current_session->window_h_)) ==
-                    cfg.get_setting("graphics", "height");
-            // Leave the classic boot size behind for the rest of the flow.
-            cfg.apply_setting("graphics", "width", "640");
-            cfg.apply_setting("graphics", "height", "400");
-            og::runtime::current_session->myscreen_->apply_display_settings_from_cfg();
-            SDL_Delay(150);
+                trace_count("display_resolution_apply") > 0 &&
+                !trace_contains("display_resolution_apply", "match=0");
+            const std::string applied =
+                latest_trace_message("display_resolution_apply");
+            int requested_w = 0;
+            int requested_h = 0;
+            int normalized_w = 0;
+            int normalized_h = 0;
+            int match = 0;
+            if (std::sscanf(
+                    applied.c_str(),
+                    "requested=%dx%d normalized=%dx%d actual=%dx%d "
+                    "min_zoom=%d match=%d",
+                    &requested_w, &requested_h, &normalized_w, &normalized_h,
+                    &state->zoom_window_w, &state->zoom_window_h,
+                    &state->minimum_zoom_steps, &match) != 8 ||
+                match != 1) {
+                state->resolution_applied_to_window = false;
+            }
+
+            // Menu.button_misc_paths intentionally leaves the retired legacy
+            // graphics/render value at "sai". Pin this selector to explicit
+            // Off so the zoom traces are order-independent and exercise the
+            // nearest path before the separate smoothing lap below.
+            cfg.apply_setting("graphics", "smoothing", "off");
+            // Resolution application may have emitted canvas traces using a
+            // legacy order-dependent smoothing value. From here onward only
+            // the explicit zoom/smoothing laps may satisfy renderer checks.
+            trace_clear();
 
             fprintf(stderr, "  [test] adjusting overscan\n");
             interact("overscan_plus");
@@ -487,7 +514,8 @@ static int options_injector(void* data)
             // graphics/zoom AND live-applies it to the world canvas (the
             // menu keeps presenting the 320x200 UI canvas).
             fprintf(stderr, "  [test] cycling zoom through a full lap\n");
-            state->cycled_zoom = cycle_zoom_and_check_lap("display_zoom");
+            state->cycled_zoom = cycle_zoom_and_check_lap(
+                "display_zoom", state->minimum_zoom_steps);
             SDL_Delay(300);
             fprintf(stderr, "  [test] cycling smoothing through a full lap\n");
             state->cycled_smoothing =
@@ -798,19 +826,31 @@ TEST(OptionsMenu, options_menu) {
     // (apply_world_scale_from_cfg traces the parsed values).
     EXPECT_TRUE(trace_contains("canvas", "zoom steps=9"))
         << "the first zoom-out step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=640x400"))
+    ASSERT_GT(state.zoom_window_w, 0);
+    ASSERT_GT(state.zoom_window_h, 0);
+    ASSERT_GT(state.minimum_zoom_steps, 0);
+    const og::WorldCanvasDims half_zoom = og::compute_zoom_canvas_dims(
+        state.zoom_window_w, state.zoom_window_h, 5);
+    const std::string half_zoom_trace =
+        "zoom steps=5 smoothing=1 canvas=" + std::to_string(half_zoom.w) +
+        "x" + std::to_string(half_zoom.h);
+    EXPECT_TRUE(trace_contains("canvas", half_zoom_trace.c_str()))
         << "the 0.5 step must double the classic-density canvas";
-    const int minimum_zoom_steps =
-        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
     const og::WorldCanvasDims deepest = og::compute_zoom_canvas_dims(
-        640, 400, minimum_zoom_steps);
+        state.zoom_window_w, state.zoom_window_h, state.minimum_zoom_steps);
     const std::string deepest_trace =
-        "zoom steps=" + std::to_string(minimum_zoom_steps) +
+        "zoom steps=" + std::to_string(state.minimum_zoom_steps) +
         " smoothing=1 canvas=" + std::to_string(deepest.w) + "x" +
         std::to_string(deepest.h);
     EXPECT_TRUE(trace_contains("canvas", deepest_trace.c_str()))
         << "the deepest resource-safe step must reach its derived canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=320x200"))
+    const og::WorldCanvasDims classic_zoom = og::compute_zoom_canvas_dims(
+        state.zoom_window_w, state.zoom_window_h, 10);
+    const std::string classic_zoom_trace =
+        "zoom steps=10 smoothing=1 canvas=" +
+        std::to_string(classic_zoom.w) + "x" +
+        std::to_string(classic_zoom.h);
+    EXPECT_TRUE(trace_contains("canvas", classic_zoom_trace.c_str()))
         << "the closing wrap to 1.0 must restore classic density";
     EXPECT_TRUE(trace_contains("canvas", "smoothing=2"))
         << "the sai smoothing step must reach the renderer";

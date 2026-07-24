@@ -60,23 +60,25 @@ static void cleanup_picker_state()
 static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
 {
     int elapsed = 0;
-    int since_last_retry = 250;
+    int stable_team_menu_polls = 0;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable("hire_troops") && has_interactable("go"))
-        {
-            return true;
+        bool has_hire_troops = false;
+        bool has_go = false;
+        for (const std::string& id : get_button_ids()) {
+            has_hire_troops = has_hire_troops || id == "hire_troops";
+            has_go = has_go || id == "go";
         }
-
-        if (since_last_retry >= 250 && has_interactable("hire_me")) {
-            fprintf(stderr, "  [test] retry clicking back from hire menu\n");
-            interact("back");
-            since_last_retry = 0;
+        if (has_hire_troops && has_go) {
+            ++stable_team_menu_polls;
+            if (stable_team_menu_polls >= 2)
+                return true;
+        } else {
+            stable_team_menu_polls = 0;
         }
 
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
-        since_last_retry += poll_interval;
     }
 
     fprintf(stderr, "  [interact] TIMEOUT entering team menu (%d ms)\n", timeout_ms);
@@ -147,6 +149,10 @@ static int op_injector(void* data)
         }
     }
 
+    // The final roster update becomes visible before add_guy's main-thread
+    // callback finishes its input reset, recruit sync, and autosave tail.
+    // Do not let BACK overlap that callback.
+    SDL_Delay(750);
     fprintf(stderr, "  [test] done hiring, clicking back\n");
     interact("back");
 

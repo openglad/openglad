@@ -3695,6 +3695,8 @@ int sdl_video::FadeBetween(
 
 	//Set nullptr pointers to temporary black screens
 	//(for simple fade-in/out effects).
+	if (!pOldSurface && !pNewSurface)
+		return 0; //nothing to do; avoid allocating two unused temporaries
 	if (!pOldSurface)
 	{
 		bOldNull = true;
@@ -3711,8 +3713,6 @@ int sdl_video::FadeBetween(
 		if (!pNewSurface) { if (bOldNull) SDL_DestroySurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillSurfaceRect(pNewSurface,nullptr,0);
 	}
-	if (bOldNull && bNewNull) return 0;	//nothing to do
-
 	/* Lock the screen for direct access to the pixels */
     bool old_locked = false;
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
@@ -3737,6 +3737,13 @@ int sdl_video::FadeBetween(
 	//The new surface shouldn't need a lock unless it is somehow a screen surface.
 	if(SDL_MUSTLOCK(pNewSurface))
         return fail("pNewSurface requires lock");
+	// FadeBetween24 writes directly into the destination's pixel storage.
+	// Reject surfaces that require locking instead of writing through an
+	// unlocked RLE buffer.
+	if(!DestSurface)
+        return fail("dest size mismatch");
+	if(SDL_MUSTLOCK(DestSurface))
+        return fail("DestSurface requires lock");
 
 	//The dimensions and format of the old and new surface must match exactly.
 	if(pOldSurface->pitch != pNewSurface->pitch)
@@ -3748,13 +3755,15 @@ int sdl_video::FadeBetween(
 	// DestSurface drives the FadeBetween24 write/read loop; colorsf/colorst are
 	// sized to pOldSurface, so a larger dest would read past them. Require an
 	// exact dimension match (and non-null dest) to bound the loop.
-	if(!DestSurface || DestSurface->pitch != pOldSurface->pitch
+	if(DestSurface->pitch != pOldSurface->pitch
 	   || DestSurface->w != pOldSurface->w || DestSurface->h != pOldSurface->h)
         return fail("dest size mismatch");
 	// SDL3: SDL_Surface::format is an SDL_PixelFormat enum — a single equality
 	// check subsumes every legacy mask/shift/loss/BytesPerPixel comparison.
 	if(pOldSurface->format != pNewSurface->format)
         return fail("pixel format mismatch");
+	if(DestSurface->format != pOldSurface->format)
+        return fail("dest pixel format mismatch");
 
 	//Extract RGB pixel values from each image.
 	const int bpp = SDL_GetPixelFormatDetails(pNewSurface->format)->bytes_per_pixel;
@@ -3768,6 +3777,11 @@ int sdl_video::FadeBetween(
 	Uint8 *prf = static_cast<Uint8*>(pOldSurface->pixels), *prt = static_cast<Uint8*>(pNewSurface->pixels);
 	memcpy(colorsf.data(), prf, size);
 	memcpy(colorst.data(), prt, size);
+	if(old_locked)
+	{
+		SDL_UnlockSurface(pOldSurface);
+		old_locked = false;
+	}
 
 	//Fade from old to new surface.  Effect takes constant time.
 #ifdef TESTING
@@ -3794,12 +3808,19 @@ int sdl_video::FadeBetween(
 	} while (dwNow - dwFirstPaint + 50 < static_cast<Uint64>(fadeDuration));	// constant-time effect
 #endif
 
-	if ( SDL_MUSTLOCK(pNewSurface) ) {
-		SDL_UnlockSurface(pNewSurface);
-	}
-
 	//Show new screen entirely.
-	SDL_BlitSurface(pNewSurface, nullptr, pOldSurface, nullptr);
+	// The destination may alias pNewSurface (fadeblack(true) does exactly
+	// that), so the animation may have already
+	// overwritten pNewSurface with its final partial blend. Restore the
+	// snapshot captured before the animation in that case.
+	if (pNewSurface == DestSurface)
+		memcpy(DestSurface->pixels, colorst.data(), size);
+	else
+		SDL_BlitSurface(pNewSurface, nullptr, DestSurface, nullptr);
+	// Preserve the historical contract that the old surface advances to the
+	// new frame too, unless it is already the destination restored above.
+	if (pOldSurface != DestSurface)
+		SDL_BlitSurface(pNewSurface, nullptr, pOldSurface, nullptr);
 	// Screen::Swap() does the work
 	E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
 	

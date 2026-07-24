@@ -304,7 +304,8 @@ void apply_world_scale_from_cfg();
 
 // SDL3's Emscripten resize callback can replace the browser-selected logical
 // backing while a fullscreen exit is still in flight. Reassert the fitted CSS
-// logical size (and its HiDPI physical backing) after browser events.
+// logical size (and its HiDPI physical backing) after browser events. Native
+// builds retain this compatibility entry point as a strict no-op.
 void restore_web_canvas_backing_size(int logical_w, int logical_h);
 
 // Flag that the rendering device was lost and restored (the browser

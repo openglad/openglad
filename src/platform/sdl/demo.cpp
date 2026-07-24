@@ -49,6 +49,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -61,6 +62,7 @@
 #include <random>
 #include <stdexcept>
 #include <thread>
+#include <string_view>
 #include <vector>
 
 // External declarations
@@ -295,26 +297,36 @@ int main(int argc, char* argv[])
         if (const char* max_frames_env = std::getenv("OPENGLAD_DEMO_MAX_FRAMES")) {
             max_frames = std::max(0, std::atoi(max_frames_env));
         }
-        const bool smoke_mode = max_frames > 0;
 
-        // Coverage/demo smoke only needs one startup-tick-shutdown pass.
-        // Clamping to a single cell avoids stressing gcov with a 3x3 session grid.
-        SDL_Init(SDL_INIT_VIDEO);
-        int display_w = 0;
-        int display_h = 0;
-        if (smoke_mode) {
-            display_w = CELL_W;
-            display_h = CELL_H;
-        } else {
-            const SDL_DisplayMode* dm =
-                SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
-            if (!dm) {
-                LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
-                return 1;
-            } else {
-                display_w = dm->w;
-                display_h = dm->h;
+        unsigned int demo_seed = static_cast<unsigned int>(time(nullptr));
+        if (const char* seed_env = std::getenv("OPENGLAD_DEMO_SEED")) {
+            const std::string_view seed_text(seed_env);
+            const auto parsed = std::from_chars(
+                seed_text.data(), seed_text.data() + seed_text.size(),
+                demo_seed);
+            if (parsed.ec != std::errc{} ||
+                parsed.ptr != seed_text.data() + seed_text.size()) {
+                throw std::runtime_error(std::format(
+                    "OPENGLAD_DEMO_SEED must be an unsigned integer, got '{}'",
+                    seed_text));
             }
+        }
+        Log("openglad_demo: seed {}\n", demo_seed);
+
+        // OPENGLAD_DEMO_MAX_FRAMES bounds only the main loop. Grid sizing and
+        // scenario selection remain the real demo paths; automation can pick a
+        // cheap topology explicitly with OPENGLAD_DEMO_GRID=1x1.
+        SDL_Init(SDL_INIT_VIDEO);
+        int display_w;
+        int display_h;
+        const SDL_DisplayMode* dm =
+            SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+        if (!dm) {
+            LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
+            return 1;
+        } else {
+            display_w = dm->w;
+            display_h = dm->h;
         }
         int grid_cols = display_w / CELL_W;
         int grid_rows = display_h / CELL_H;
@@ -351,7 +363,7 @@ int main(int argc, char* argv[])
         cfg.apply_setting("graphics", "smoothing", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");
 
-        srand(static_cast<unsigned int>(time(nullptr)));
+        srand(demo_seed);
 
         // --- Create the display-owning "host" session ---
         og::runtime::GameSession::Config host_cfg;
@@ -406,7 +418,7 @@ int main(int argc, char* argv[])
         }
 
         // Build a shuffled list of scenario IDs.
-        std::mt19937 demo_rng(static_cast<unsigned>(time(nullptr)));
+        std::mt19937 demo_rng(demo_seed);
         auto pick_scenarios = [&]() {
             std::vector<int> picks;
             std::vector<int> pool(SCENARIO_POOL.begin(), SCENARIO_POOL.end());
@@ -417,9 +429,7 @@ int main(int argc, char* argv[])
         };
 
         // Initialize each session with a unique scenario (main thread).
-        std::vector<int> chosen = smoke_mode
-            ? std::vector<int>{1}
-            : pick_scenarios();
+        std::vector<int> chosen = pick_scenarios();
         E_Screen->suppress_present = true;
         for (int i = 0; i < num_sessions; i++) {
             init_session_game(demos[static_cast<size_t>(i)],

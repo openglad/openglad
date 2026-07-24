@@ -8,9 +8,14 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
+#include <filesystem>
+#include <vector>
+
+#include "test_save_state_guard.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -73,6 +78,32 @@ static int injector_thread_options_menu(void* data)
     SDL_Delay(30);
     ks->fake[KEYSTATE_ESCAPE] = 0;
     SDL_Delay(10);
+    return 0;
+}
+
+struct OptionsSequenceState
+{
+    KeyStateGuard* keys = nullptr;
+    std::vector<int> sequence;
+    std::atomic<bool> done{false};
+};
+
+static int injector_thread_options_sequence(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<OptionsSequenceState*>(data);
+    SDL_Delay(60);
+    for (const int key : state->sequence)
+        state->keys->pulse(key, 45);
+
+    while (!state->done.load(std::memory_order_relaxed))
+    {
+        state->keys->fake[KEYSTATE_ESCAPE] = true;
+        SDL_Delay(25);
+        state->keys->fake[KEYSTATE_ESCAPE] = false;
+        SDL_Delay(10);
+    }
+    state->keys->fake[KEYSTATE_ESCAPE] = false;
     return 0;
 }
 
@@ -158,6 +189,137 @@ TEST(ViewOptionsMenuDriven, viewscreen_options_menu_driven_exercises_hotkeys)
         vs->prefs[i] = saved_prefs[i];
     vs->resize(vs->prefs[PREF_VIEW]);
     og::runtime::current_session->theprefs_->save(vs);
+}
+
+TEST(ViewOptionsMenuDriven, hotkey_labels_cover_every_reachable_preference_value)
+{
+    FixedRandom fixed_rng(1);
+    GameContext context;
+    context.rng = &fixed_rng;
+    GlobalContextGuard context_guard(&context);
+
+    auto& session = *og::runtime::current_session;
+    screen* const game = session.myscreen_;
+    ASSERT_NE(nullptr, game);
+    viewscreen* const vs = game->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    og::test::ScopedPhysicalFileState keyprefs_file(
+        std::filesystem::path(get_user_path()) / "keyprefs.dat");
+    ASSERT_TRUE(keyprefs_file.ready())
+        << keyprefs_file.error().message();
+
+    walker* const saved_control = vs->control;
+    walker* created_control = nullptr;
+    if (vs->control == nullptr)
+    {
+        created_control = game->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, created_control);
+        created_control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+        created_control->set_team_num(0);
+        vs->control = created_control;
+    }
+
+    std::array<signed char, 10> saved_prefs{};
+    std::copy(std::begin(vs->prefs), std::end(vs->prefs), saved_prefs.begin());
+    const signed char saved_timer_wait = game->world().timer_wait;
+    const std::int8_t saved_pending_timer_wait =
+        session.pending_timer_wait_request_;
+    const short saved_cyclemode = game->cyclemode;
+    const short saved_redrawme = game->redrawme;
+    const bool saved_relay_active = session.relay_transport_active_;
+    const bool saved_relay_warning = session.relay_speed_warning_shown_;
+    session.relay_transport_active_ = false;
+
+    KeyStateGuard keys;
+    const auto run_sequence = [&](std::vector<int> sequence) {
+        OptionsSequenceState state{&keys, std::move(sequence)};
+        SDL_Thread* const thread = SDL_CreateThread(
+            injector_thread_options_sequence,
+            "opts_preference_sequence",
+            &state);
+        EXPECT_NE(nullptr, thread);
+        if (thread == nullptr)
+            return false;
+
+        vs->options_menu();
+        state.done.store(true, std::memory_order_relaxed);
+        int thread_code = -1;
+        SDL_WaitThread(thread, &thread_code);
+        keys.fake.fill(false);
+        EXPECT_EQ(0, thread_code);
+        return thread_code == 0;
+    };
+
+    // Starting below the valid range makes successive '[' presses render
+    // Full, Large, Medium, Small, and Tiny, then exercise the upper clamp.
+    vs->prefs[PREF_VIEW] = -1;
+    vs->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    EXPECT_TRUE(run_sequence({
+        KEYSTATE_LEFTBRACKET,
+        KEYSTATE_LEFTBRACKET,
+        KEYSTATE_LEFTBRACKET,
+        KEYSTATE_LEFTBRACKET,
+        KEYSTATE_LEFTBRACKET,
+        KEYSTATE_LEFTBRACKET,
+    }));
+    EXPECT_EQ(PREF_VIEW_3, vs->prefs[PREF_VIEW]);
+
+    // Starting one above the range does the reverse and reaches the lower
+    // clamp on the final ']'.
+    vs->prefs[PREF_VIEW] = 5;
+    vs->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    EXPECT_TRUE(run_sequence({
+        KEYSTATE_RIGHTBRACKET,
+        KEYSTATE_RIGHTBRACKET,
+        KEYSTATE_RIGHTBRACKET,
+        KEYSTATE_RIGHTBRACKET,
+        KEYSTATE_RIGHTBRACKET,
+        KEYSTATE_RIGHTBRACKET,
+    }));
+    EXPECT_EQ(PREF_VIEW_FULL, vs->prefs[PREF_VIEW]);
+
+    // The five-state HP display must present each label exactly once before
+    // wrapping back to Off.
+    vs->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    EXPECT_TRUE(run_sequence({
+        KEYSTATE_h,
+        KEYSTATE_h,
+        KEYSTATE_h,
+        KEYSTATE_h,
+        KEYSTATE_h,
+    }));
+    EXPECT_EQ(PREF_LIFE_OFF, vs->prefs[PREF_LIFE]);
+
+    // Binary display preferences render both their OFF and ON labels.
+    vs->prefs[PREF_RADAR] = PREF_RADAR_OFF;
+    vs->prefs[PREF_FOES] = PREF_FOES_OFF;
+    vs->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    vs->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    vs->prefs[PREF_LIFE] = PREF_LIFE_SMALL;
+    EXPECT_TRUE(run_sequence({
+        KEYSTATE_r, KEYSTATE_f, KEYSTATE_s, KEYSTATE_b,
+        KEYSTATE_r, KEYSTATE_f, KEYSTATE_s, KEYSTATE_b,
+    }));
+    EXPECT_EQ(PREF_RADAR_OFF, vs->prefs[PREF_RADAR]);
+    EXPECT_EQ(PREF_FOES_OFF, vs->prefs[PREF_FOES]);
+    EXPECT_EQ(PREF_SCORE_OFF, vs->prefs[PREF_SCORE]);
+    EXPECT_EQ(PREF_OVERLAY_OFF, vs->prefs[PREF_OVERLAY]);
+
+    std::copy(saved_prefs.begin(), saved_prefs.end(), std::begin(vs->prefs));
+    vs->resize(vs->prefs[PREF_VIEW]);
+    session.theprefs_->save(vs);
+    game->world().timer_wait = saved_timer_wait;
+    session.pending_timer_wait_request_ = saved_pending_timer_wait;
+    game->cyclemode = saved_cyclemode;
+    game->redrawme = saved_redrawme;
+    session.relay_transport_active_ = saved_relay_active;
+    session.relay_speed_warning_shown_ = saved_relay_warning;
+    vs->control = saved_control;
+    if (created_control != nullptr)
+    {
+        EXPECT_TRUE(game->world().remove_ob(created_control));
+    }
 }
 
 TEST(ViewOptionsMenuDriven, team_info_return_redraws_the_split_world_canvas)

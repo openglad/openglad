@@ -23,6 +23,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -57,6 +58,8 @@ bool save_settings();
 bool load_settings();
 void io_init(int argc, char* argv[]);
 void io_exit();
+void popup_dialog(const char* title, const char* message);
+std::uint32_t random(std::uint32_t x);
 
 namespace {
 
@@ -245,6 +248,19 @@ int text_picker_testing_exercise_internal_paths();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 }
 
+TEST(PlatformHeadless, production_platform_globals_preserve_headless_contracts)
+{
+    testing::internal::CaptureStderr();
+    popup_dialog("Network", "Connection lost");
+    EXPECT_EQ("[Network] Connection lost\n",
+              testing::internal::GetCapturedStderr());
+
+    EXPECT_EQ(0u, random(0));
+    EXPECT_EQ(0u, random(1));
+    for (int sample = 0; sample < 128; ++sample)
+        EXPECT_LT(random(17), 17u);
+}
+
 TEST(PlatformHeadless, user_and_asset_paths_cover_normalization)
 {
     EnvGuard config_guard("OPENGLAD_CONFIG_DIR");
@@ -316,6 +332,8 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
     render.init_tiles(nullptr);
     render.reset_tiles(nullptr);
     render.draw_tile(0, 1, 2, nullptr);
+    render.init_decor(nullptr);
+    render.draw_decor(0, 1, 2, nullptr);
     og::runtime::VButtonDeleter{}(nullptr);
 }
 
@@ -449,7 +467,19 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
               mount_campaign_package_with_error("org.openglad.gladiator"));
 
     {
-        StdinRedirect input("tick 0\ntick -5\nevents\nstate\r\nunknown\nquit\n");
+        StdinRedirect input(
+            "path 0\n"       // missing entity diagnostic
+            "path 1\n"       // known entity before AI selects a foe
+            "tick 0\n"
+            "tick -5\n"
+            "events\n"
+            "state\r\n"
+            "path 1\n"       // same entity after AI selects a foe
+            "grid 0 -1 -1 1 1\n" // clips negative cells from the query
+            "obat 0 0 0\n"   // valid, empty collision-map cell
+            "obat 0 24 58\n" // player start cell contains an entity
+            "unknown\n"
+            "quit\n");
         CoutRedirect output;
 
         og::ui::TextProtocolArgs args;
@@ -463,6 +493,32 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         EXPECT_NE(std::string::npos, text.find("\"cmd\":\"tick\",\"count\":1"));
         EXPECT_NE(std::string::npos, text.find("\"cmd\":\"events\""));
         EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"path\",\"eid\":0,\"error\":"))
+            << "path must report a missing entity as a protocol error";
+        const std::size_t known_path =
+            text.find("\"cmd\":\"path\",\"eid\":1,");
+        ASSERT_NE(std::string::npos, known_path)
+            << "path must inspect a known entity without mutating it";
+        EXPECT_NE(std::string::npos, text.find("\"foe\":", known_path))
+            << "a known entity path report must include its target state";
+        EXPECT_NE(std::string::npos, text.find("\"foe\":null"))
+            << "the diagnostic must represent an entity with no target";
+        EXPECT_NE(std::string::npos, text.find("\"foe\":{\"eid\":"))
+            << "the diagnostic must represent an entity's selected target";
+        EXPECT_NE(std::string::npos, text.find("\"path_len\":"))
+            << "a selected target must produce a pathfinding report";
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"grid\",\"floor\":0,\"rows\":["));
+        EXPECT_NE(std::string::npos, text.find("\"y\":0,\"cells\":[[0,"))
+            << "negative grid bounds must be clipped";
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"obat\",\"floor\":0,\"cx\":0,"
+                            "\"cy\":0,\"entries\":[]"));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"cmd\":\"obat\",\"floor\":0,\"cx\":24,"
+                            "\"cy\":58,\"entries\":[{"))
+            << "the deployed player must be registered in the collision map";
         EXPECT_NE(std::string::npos, text.find("unknown command: unknown"));
         EXPECT_NE(std::string::npos, text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
     }
@@ -474,6 +530,17 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         og::ui::TextProtocolArgs args;
         args.level = 9999;
         EXPECT_EQ(1, og::ui::run_text_protocol_session(args));
+    }
+
+    {
+        StdinRedirect input("quit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "org.openglad.missing-protocol-campaign";
+        args.level = 1;
+        EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
+            << "a missing campaign package must fail before level loading";
     }
 }
 
@@ -535,6 +602,56 @@ TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
 
     // Leave the default campaign mounted for order-independence.
     ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+TEST(PlatformHeadless, text_protocol_serializes_shipped_ctf_state)
+{
+    restore_default_campaigns();
+    struct RestoreDefaultCampaignMount
+    {
+        ~RestoreDefaultCampaignMount()
+        {
+            (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        }
+    } restore_default_campaign_mount;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"));
+
+    StdinRedirect input("tick 1\nstate\nquit\n");
+    CoutRedirect output;
+
+    og::ui::TextProtocolArgs args;
+    args.campaign = "org.openglad.ctf";
+    args.level = 500;
+    args.team_families = {FAMILY_SOLDIER};
+    args.seed = 7;
+    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+    const std::string text = output.str();
+    EXPECT_NE(std::string::npos,
+              text.find("\"status\":\"ready\",\"level\":500,"
+                        "\"title\":\"CTF: FIRST BLOOD\""));
+    EXPECT_NE(std::string::npos,
+              text.find("\"cmd\":\"tick\",\"count\":1"));
+    EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+
+    const std::string expected_ctf =
+        "\"ctf\":{\"active\":true,\"team_count\":2,"
+        "\"capture_limit\":3,\"winner_team\":-1,"
+        "\"captures\":[0,0,0,0],"
+        "\"flags\":[{\"team\":0,\"state\":0,\"carrier\":0,"
+        "\"x\":80,\"y\":240},{\"team\":1,\"state\":0,"
+        "\"carrier\":0,\"x\":544,\"y\":240}],"
+        "\"cps\":[{\"owner\":-1,\"x\":320,\"y\":240}]}";
+    EXPECT_NE(std::string::npos, text.find(expected_ctf))
+        << "the shipped two-flag/one-control-point arena must retain the "
+           "protocol's complete CTF JSON shape";
+    EXPECT_NE(std::string::npos,
+              text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
+
+    EXPECT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
 }
 
@@ -563,7 +680,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=back).
     const std::string input =
-        "bad\n"     // main: invalid choice
+        "bad\r\n"   // main: invalid choice; terminal CR is trimmed
         "3\n"       // main: difficulty -> DIFFICULTY submenu
         "1\n"       // difficulty: cycle difficulty
         "2\n"       // difficulty: cycle respawns
@@ -644,6 +761,38 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0,
               og::ui::text_picker_testing_exercise_internal_paths());
+
+    StdinRedirect empty_input("");
+    og::ui::TextPickerConfig default_config;
+    og::ui::run_text_picker(default_config, nullptr);
+    ASSERT_EQ(1u, default_config.team_families.size());
+    EXPECT_EQ(FAMILY_SOLDIER, default_config.team_families.front())
+        << "an empty text-client team must receive the documented default";
+}
+
+TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
+    StdinRedirect input(
+        "2\n"  // main: continue -> team build
+        "6\n"  // team build: GO! attempts the invalid level
+        "7\n"  // failed session returns to team build: back
+        "7\n"); // main: quit
+    CoutRedirect output;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.level = 9999;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::Unsupported, error.code);
+    EXPECT_NE(std::string::npos,
+              error.detail.find("protocol session failed with code 1"));
 }
 
 // Begin New Game must drop a previously selected campaign back to the

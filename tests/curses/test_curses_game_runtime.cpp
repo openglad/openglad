@@ -30,8 +30,15 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 
 using namespace og::curses;
+
+namespace og::curses {
+bool curses_game_runtime_testing_inject_exit_prompt(
+    CursesGameSession& session, std::string prompt,
+    std::uint32_t synchronized_score);
+} // namespace og::curses
 
 namespace {
 
@@ -57,17 +64,25 @@ public:
     bool pending_ = true;
     bool responded_ = false;
     bool last_response_ = false;
+    bool ended_ = false;
+    int ending_ = 0;
+    int next_level_ = -1;
+    std::uint32_t followed_id_ = 0;
+    std::vector<std::string> messages_;
 
     void send_input(const InputState&) override {}
     void advance() override {}
     GameWorld& mirror_world() override { return world_; }
-    std::uint32_t followed_entity_id() const override { return 0; }
+    std::uint32_t followed_entity_id() const override { return followed_id_; }
     std::uint32_t next_input_tick() const override { return 0; }
-    bool ended() const override { return false; }
-    int ending() const override { return 0; }
-    int next_level() const override { return -1; }
+    bool ended() const override { return ended_; }
+    int ending() const override { return ending_; }
+    int next_level() const override { return next_level_; }
     void request_abort() override {}
-    std::vector<std::string> drain_messages() override { return {}; }
+    std::vector<std::string> drain_messages() override
+    {
+        return std::exchange(messages_, {});
+    }
 
     bool exit_prompt_pending() const override { return pending_; }
     std::string exit_prompt_text() const override { return "Exit to Level 2?"; }
@@ -156,6 +171,52 @@ TEST(CursesGameRuntimeLocal, session_loads_level_and_populates_mirror)
     GameWorld& world = session->mirror_world();
     EXPECT_GT(world.oblist.size(), 0u) << "mirror world should have entities";
     EXPECT_GT(world.grid.w, 0) << "mirror world should have a tile grid";
+
+    EXPECT_LT(session->next_level(), 0)
+        << "a fresh level has no requested transition";
+    EXPECT_TRUE(session->exit_prompt_text().empty());
+    session->respond_to_exit_prompt(false);
+}
+
+TEST(CursesGameRuntimeLocal,
+     transport_exit_prompt_callback_latches_text_and_sends_responses)
+{
+    SaveData save;
+    init_test_save(save);
+    std::string err;
+    auto session = make_local_session(save, 1, &err);
+    ASSERT_NE(session, nullptr) << err;
+
+    ASSERT_TRUE(curses_game_runtime_testing_inject_exit_prompt(
+        *session, "Enter the next arena?", 314u));
+    EXPECT_TRUE(session->exit_prompt_pending());
+    EXPECT_EQ("Enter the next arena?", session->exit_prompt_text());
+    EXPECT_EQ(std::vector<std::string>{"Runtime callback notification"},
+              session->drain_messages());
+    session->respond_to_exit_prompt(false);
+    EXPECT_FALSE(session->exit_prompt_pending());
+    EXPECT_TRUE(session->exit_prompt_text().empty());
+
+    ASSERT_TRUE(curses_game_runtime_testing_inject_exit_prompt(
+        *session, "", 271u));
+    EXPECT_TRUE(session->exit_prompt_pending());
+    EXPECT_EQ("Exit the level?", session->exit_prompt_text())
+        << "an empty wire prompt uses the production fallback";
+    session->respond_to_exit_prompt(true);
+    EXPECT_FALSE(session->exit_prompt_pending());
+}
+
+TEST(CursesGameRuntimeLocal, invalid_campaign_reports_real_load_failure)
+{
+    SaveData save;
+    init_test_save(save);
+    save.current_campaign = "org.openglad.missing-curses-test";
+    std::string err;
+
+    auto session = make_local_session(save, 1, &err);
+
+    EXPECT_EQ(session, nullptr);
+    EXPECT_EQ(err, "failed to load level for local game");
 }
 
 TEST(CursesGameRuntimeLocal, followed_avatar_resolves_to_player)
@@ -349,6 +410,82 @@ TEST(CursesGameRuntimeLocal, exit_prompt_accepts_on_y)
 
     EXPECT_TRUE(session.responded_);
     EXPECT_TRUE(session.last_response_) << "'y' accepts the exit";
+}
+
+TEST(CursesGameRuntimeLocal, exit_prompt_renders_and_ignores_non_press_events)
+{
+    FakeExitSession session;
+    HeadlessTerminal term(24, 60);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    term.push_char_release(U'y');
+    term.push_key(Key::character(U'y', KeyEvent::Repeat));
+    term.push_char(U'y');
+
+    run_level_loop(session, term, clock, input, renderer,
+                   LevelLoopOptions{.max_frames = 1,
+                                    .no_pacing = true,
+                                    .render = true});
+
+    EXPECT_TRUE(session.responded_);
+    EXPECT_TRUE(session.last_response_);
+    EXPECT_GE(term.present_count(), 3)
+        << "the world, overlaid prompt, and resumed frame are presented";
+}
+
+TEST(CursesGameRuntimeLocal, messages_are_logged_and_default_pacing_runs)
+{
+    FakeExitSession session;
+    session.pending_ = false;
+    session.messages_.push_back("A server notice");
+    HeadlessTerminal term(24, 60);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+
+    run_level_loop(session, term, clock, input, renderer,
+                   LevelLoopOptions{.max_frames = 1,
+                                    .no_pacing = false,
+                                    .render = false});
+
+    EXPECT_EQ(std::vector<std::string>{"A server notice"},
+              std::vector<std::string>(renderer.log().begin(),
+                                       renderer.log().end()));
+    EXPECT_GT(clock.now_ms(), 0u);
+}
+
+TEST(CursesGameRuntimeLocal, ended_ctf_session_reports_winner_and_local_team)
+{
+    FakeExitSession session;
+    session.pending_ = false;
+    session.ended_ = true;
+    session.ending_ = 0;
+    session.next_level_ = 44;
+    session.world_.id = 44;
+    session.world_.type = GameWorld::TYPE_CTF;
+    session.world_.ctf.active = true;
+    session.world_.ctf.winner_team = 1;
+    session.world_.entity_factory = [](Order, std::int32_t) {
+        return std::make_unique<walker>();
+    };
+    walker* avatar = session.world_.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(avatar, nullptr);
+    avatar->set_team_num(1);
+    session.followed_id_ = avatar->entity_id();
+
+    HeadlessTerminal term(24, 60);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    const GameRunResult result = run_level_loop(
+        session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 1, .no_pacing = true, .render = false});
+
+    EXPECT_TRUE(result.ctf_match);
+    EXPECT_EQ(1, result.ctf_winner_team);
+    EXPECT_EQ(1, result.local_team);
+    EXPECT_TRUE(result.ctf_rematch);
 }
 
 // [BLOCKER lock-in] A real, server-forwarded level end must (a) terminate the
@@ -668,4 +805,3 @@ TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
     EXPECT_EQ(static_cast<int>(save.team_size), 1)
         << "losses persist nothing else: the roster the player entered with";
 }
-

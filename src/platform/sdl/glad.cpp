@@ -189,7 +189,6 @@ void glad_init(bool preserve_frame_timing = false);
 void glad_init(bool preserve_frame_timing,
                const og::ui::PickerLobbyGameStartConfig* lobby_config);
 
-#ifndef TESTING
 namespace {
 og::runtime::GameSession::Config default_session_config()
 {
@@ -258,6 +257,9 @@ void bootstrap_runtime(int argc, char* argv[])
 #endif
 }
 } // namespace
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/runtime_bootstrap_validation.inc"
 #endif
 
 #ifdef __EMSCRIPTEN__

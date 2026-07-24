@@ -71,21 +71,6 @@ void io_init(int argc, char* argv[]);
 void io_exit();
 void emit_headless_unsupported_warnings_probe();
 
-// popup_dialog: normally shows an SDL dialog, we just print to stderr
-void popup_dialog(const char* title, const char* message)
-{
-    std::fprintf(stderr, "[%s] %s\n", title, message);
-}
-
-// random(): used by ProductionRandom (entity code uses sim_rng instead)
-std::uint32_t random(std::uint32_t x)
-{
-    static std::uint32_t state = 12345;
-    if (x == 0) return 0;
-    state = state * 1103515245u + 12345u;
-    return (state >> 16) % x;
-}
-
 // read_pixie_file: defined in og_file.cpp (SDL-free)
 // Declared in pixie_data.h, linked automatically.
 

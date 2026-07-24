@@ -3131,3 +3131,30 @@ TEST(WorldSnapshot, spawn_point_fields_round_trip_and_clamp_on_apply)
         << "half-set spawn points must collapse to the sentinel";
     EXPECT_EQ(-1, static_cast<int>(clamped->spawn_y()));
 }
+
+TEST(WorldSnapshot, unsent_new_entity_removed_before_delta_leaves_no_tombstone)
+{
+    og::sim::PerClientState client_state;
+
+    og::sim::WorldSnapshot appeared;
+    og::sim::EntitySnapshot entity;
+    entity.entity_id = 4242u;
+    entity.dirty_mask[0] = ~0ULL;
+    entity.dirty_mask[1] = ~0ULL;
+    appeared.oblist.push_back(entity);
+    og::sim::accumulate_snapshot_for_client(client_state, appeared);
+    ASSERT_EQ((std::vector<std::uint32_t>{4242u}),
+              client_state.new_entity_ids);
+
+    og::sim::WorldSnapshot disappeared;
+    disappeared.removed_entity_ids.push_back(4242u);
+    og::sim::accumulate_snapshot_for_client(client_state, disappeared);
+    EXPECT_TRUE(client_state.new_entity_ids.empty());
+    EXPECT_TRUE(client_state.removed_entities.empty());
+
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(
+            client_state, disappeared);
+    EXPECT_TRUE(delta.oblist.empty());
+    EXPECT_TRUE(delta.removed_entity_ids.empty());
+}

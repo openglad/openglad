@@ -70,6 +70,39 @@ TEST(CursesInput, keycode_for_key_maps_terminal_keys_to_sdl_keycodes)
     EXPECT_EQ(CursesInput::keycode_for_key(Key::special(KeyCode::LeftAlt)), KEYCODE_LALT);
     EXPECT_EQ(CursesInput::keycode_for_key(Key::special(KeyCode::LeftShift)), KEYCODE_LSHIFT);
     EXPECT_EQ(CursesInput::keycode_for_key(Key::special(KeyCode::F5)), KEYCODE_F5);
+
+    struct SpecialCase {
+        KeyCode key;
+        int keycode;
+    };
+    const SpecialCase remaining_specials[] = {
+        {KeyCode::Down, KEYCODE_DOWN},
+        {KeyCode::Left, KEYCODE_LEFT},
+        {KeyCode::Right, KEYCODE_RIGHT},
+        {KeyCode::Enter, KEYCODE_RETURN},
+        {KeyCode::Backspace, KEYCODE_BACKSPACE},
+        {KeyCode::Home, KEYCODE_HOME},
+        {KeyCode::End, KEYCODE_END},
+        {KeyCode::Delete, KEYCODE_DELETE},
+        {KeyCode::RightCtrl, KEYCODE_RCTRL},
+        {KeyCode::RightAlt, KEYCODE_RALT},
+        {KeyCode::RightShift, KEYCODE_RSHIFT},
+        {KeyCode::F1, KEYCODE_F1},
+        {KeyCode::F2, KEYCODE_F2},
+        {KeyCode::F3, KEYCODE_F3},
+        {KeyCode::F4, KEYCODE_F4},
+        {KeyCode::F6, KEYCODE_F6},
+        {KeyCode::F7, KEYCODE_F7},
+        {KeyCode::F8, KEYCODE_F8},
+        {KeyCode::F9, KEYCODE_F9},
+        {KeyCode::F10, KEYCODE_F10},
+        {KeyCode::F11, KEYCODE_F11},
+        {KeyCode::F12, KEYCODE_F12},
+    };
+    for (const SpecialCase& test : remaining_specials) {
+        EXPECT_EQ(CursesInput::keycode_for_key(Key::special(test.key)),
+                  test.keycode);
+    }
     // No-keycode keys never match a binding.
     EXPECT_EQ(CursesInput::keycode_for_key(Key::none()), KEYCODE_UNKNOWN);
     EXPECT_EQ(CursesInput::keycode_for_key(Key::special(KeyCode::FocusOut)), KEYCODE_UNKNOWN);

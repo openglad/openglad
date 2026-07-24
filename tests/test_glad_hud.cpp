@@ -241,6 +241,33 @@ TEST_F(GladHud, glad_draw_gems_and_value_bars_smoke)
     new_draw_value_bar(80, 44, controlp, 1, og::runtime::current_session->myscreen_);
     draw_percentage_bar(80, 36, 12, 30, og::runtime::current_session->myscreen_);
 
+    // Temporary buffs can put either pool above its nominal maximum.  The
+    // modern bar deliberately caps its length while switching to the animated
+    // orange/water ramps, rather than wrapping or drawing beyond the frame.
+    screen* const s = og::runtime::current_session->myscreen_;
+    s->clearbuffer();
+    controlp->stats()->set_hitpoints(125);
+    new_draw_value_bar(180, 20, controlp, 0, s);
+    controlp->stats()->set_magicpoints(100);
+    new_draw_value_bar(180, 32, controlp, 1, s);
+    const auto buffed_frame = capture_rendered_frame(*s);
+    auto colored_pixels = [&](int top, unsigned char ramp_start) {
+        std::array<bool, 256> ramp_colors{};
+        for (int i = 0; i < 16; ++i)
+            ramp_colors[canonical_palette_index(
+                static_cast<unsigned char>(ramp_start + i))] = true;
+        int count = 0;
+        for (int y = top; y < top + 7; ++y)
+            for (int x = 180; x < 240; ++x)
+                if (ramp_colors[buffed_frame[static_cast<std::size_t>(y * 320 + x)]])
+                    ++count;
+        return count;
+    };
+    EXPECT_GT(colored_pixels(20, ORANGE_START), 0)
+        << "over-max HP should use the orange buff ramp";
+    EXPECT_GT(colored_pixels(32, WATER_START), 0)
+        << "over-max MP should use the water buff ramp";
+
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
 
@@ -270,11 +297,39 @@ TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
     v->prefs[PREF_SCORE] = PREF_SCORE_ON;
     v->prefs[PREF_FOES] = PREF_FOES_ON;
 
-    // Exercise all life display variants in new_score_panel.
+    // Exercise all life display variants in new_score_panel.  Start at zero
+    // before raising the score so this test observes the real animated
+    // count-up transition (and its gameplay RNG), rather than merely drawing
+    // a score that was already present when the function-static display state
+    // initialized.
+    Uint32& score = og::runtime::current_session->myscreen_->world_.m_score[0];
+    struct ScoreRestore
+    {
+        Uint32& destination;
+        Uint32 value;
+        ~ScoreRestore() { destination = value; }
+    } restore_score{score, score};
+    score = 0;
     v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    og::runtime::current_session->myscreen_->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel text mode";
+    const auto zero_score_frame = capture_rendered_frame(
+        *og::runtime::current_session->myscreen_);
+
+    score = 1'000'000u;
     v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    og::runtime::current_session->myscreen_->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel bars mode";
+    const auto counting_score_frame = capture_rendered_frame(
+        *og::runtime::current_session->myscreen_);
+    bool score_row_changed = false;
+    for (int y = v->endy - 8; y < v->endy; ++y)
+        for (int x = v->xloc; x < v->xloc + 70; ++x)
+            score_row_changed = score_row_changed ||
+                zero_score_frame[static_cast<std::size_t>(y * 320 + x)] !=
+                    counting_score_frame[static_cast<std::size_t>(y * 320 + x)];
+    EXPECT_TRUE(score_row_changed)
+        << "raising the team score must advance the visible SC count";
     v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
     ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel both mode";
 
@@ -457,6 +512,167 @@ TEST_F(GladHud, follow_caption_draws_and_ai_target_keeps_hud_dark)
     v->follow_company_ = old_company;
     v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
         ? old_control : nullptr;
+}
+
+TEST_F(GladHud, score_panel_sanitizes_mirrored_identity_and_special_metadata)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(80);
+    controlp->stats()->set_max_magicpoints(80);
+
+    walker* const old_control = v->control;
+    const bool old_following = v->following_;
+    const std::string old_company = v->follow_company_;
+    const char old_overlay = v->prefs[PREF_OVERLAY];
+    const char old_life = v->prefs[PREF_LIFE];
+    const char old_score = v->prefs[PREF_SCORE];
+    const char old_foes = v->prefs[PREF_FOES];
+    struct ViewRestore
+    {
+        screen* scr;
+        viewscreen* view;
+        walker* control;
+        bool following;
+        std::string company;
+        char overlay;
+        char life;
+        char score;
+        char foes;
+        ~ViewRestore()
+        {
+            view->following_ = following;
+            view->follow_company_ = std::move(company);
+            view->prefs[PREF_OVERLAY] = overlay;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->control = control_pointer_is_live(
+                scr->level_runtime_data(), control) ? control : nullptr;
+        }
+    } restore{s, v, old_control, old_following, old_company,
+              old_overlay, old_life, old_score, old_foes};
+
+    v->control = controlp;
+    v->following_ = true;
+    v->follow_company_.clear();
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // Network mirrors can have no guy object.  Prefer their replicated stats
+    // name and cap it to the caption's documented 12-character field.
+    ASSERT_NE(nullptr, controlp->myguy);
+    controlp->myguy->name.clear();
+    controlp->stats()->name = "TwelveChars-then-more";
+    controlp->set_user(-1);
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto named_frame = capture_rendered_frame(*s);
+    int caption_pixels = 0;
+    int caption_min_x = 320;
+    int caption_max_x = -1;
+    const unsigned char yellow = canonical_palette_index(YELLOW);
+    for (int y = v->endy - 14; y < v->endy - 2; ++y)
+    {
+        for (int x = v->xloc; x < v->endx; ++x)
+        {
+            if (named_frame[static_cast<std::size_t>(y * 320 + x)] != yellow)
+                continue;
+            ++caption_pixels;
+            caption_min_x = std::min(caption_min_x, x);
+            caption_max_x = std::max(caption_max_x, x);
+        }
+    }
+    ASSERT_GT(caption_pixels, 0);
+    EXPECT_LE(caption_max_x - caption_min_x + 1, 22 * 6)
+        << "FOLLOWING plus a capped 12-character name must fit its field";
+
+    // With neither guy nor stats name, fall back to the family label.  A raw
+    // signed-byte family from a hostile snapshot is clamped before indexing.
+    controlp->clear_myguy();
+    controlp->stats()->name.clear();
+    controlp->set_family(127);
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    EXPECT_NE(named_frame, capture_rendered_frame(*s));
+
+    // The live HUD applies the same bounds policy to family and special, and
+    // uses replicated stats for both name and level when no guy exists.
+    controlp->stats()->name = "Mirror Hero";
+    controlp->set_current_special(127);
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    v->following_ = false;
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto mirrored_frame = capture_rendered_frame(*s);
+    bool mirrored_name_visible = false;
+    for (int y = v->yloc + 3; y < v->yloc + 12; ++y)
+        for (int x = v->xloc + 2; x < v->xloc + 75; ++x)
+            mirrored_name_visible = mirrored_name_visible ||
+                mirrored_frame[static_cast<std::size_t>(y * 320 + x)] != 0;
+    EXPECT_TRUE(mirrored_name_visible);
+
+    // Invalid team bytes never index the fixed four-team score array; the HUD
+    // renders the neutral SC: 0 fallback instead.
+    controlp->set_team_num(255);
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto invalid_team_frame = capture_rendered_frame(*s);
+    bool invalid_score_visible = false;
+    for (int y = v->endy - 8; y < v->endy; ++y)
+        for (int x = v->xloc; x < v->xloc + 45; ++x)
+            invalid_score_visible = invalid_score_visible ||
+                invalid_team_frame[static_cast<std::size_t>(y * 320 + x)] != 0;
+    EXPECT_TRUE(invalid_score_visible);
+
+    // Find a real alternate-special label and verify holding Shifter changes
+    // the rendered special row through the normal HUD path.
+    int alternate_family = -1;
+    int alternate_special = -1;
+    for (int family = 0; family < NUM_FAMILIES && alternate_family < 0; ++family)
+    {
+        for (int special = 0; special < NUM_SPECIALS; ++special)
+        {
+            if (s->alternate_name[family][special] != "NONE" &&
+                s->alternate_name[family][special] !=
+                    s->special_name[family][special])
+            {
+                alternate_family = family;
+                alternate_special = special;
+                break;
+            }
+        }
+    }
+    ASSERT_GE(alternate_family, 0);
+    controlp->set_family(static_cast<char>(alternate_family));
+    controlp->set_current_special(static_cast<char>(alternate_special));
+    controlp->set_team_num(0);
+    controlp->set_shifter_down(0);
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto normal_special = capture_rendered_frame(*s);
+    controlp->set_shifter_down(1);
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto alternate_special_frame = capture_rendered_frame(*s);
+    bool special_row_changed = false;
+    for (int y = v->endy - 24; y < v->endy - 16; ++y)
+        for (int x = v->xloc; x < v->xloc + 100; ++x)
+            special_row_changed = special_row_changed ||
+                normal_special[static_cast<std::size_t>(y * 320 + x)] !=
+                    alternate_special_frame[static_cast<std::size_t>(y * 320 + x)];
+    EXPECT_TRUE(special_row_changed);
 }
 
 TEST_F(GladHud, fps_overlay_draws_when_enabled)

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -274,6 +275,16 @@ private:
 
 } // namespace
 
+TEST(NetTransportMultiplex, rejects_null_child_transport)
+{
+    std::vector<std::shared_ptr<og::sim::ITransport>> transports;
+    transports.push_back(nullptr);
+
+    EXPECT_THROW(
+        (void)og::sim::MultiplexTransport(std::move(transports)),
+        std::invalid_argument);
+}
+
 TEST(NetTransportMultiplex, poll_typed_assigns_distinct_public_peer_ids)
 {
     auto server_a = og::sim::InProcessTransport::create_server();
@@ -306,6 +317,27 @@ TEST(NetTransportMultiplex, poll_typed_assigns_distinct_public_peer_ids)
               messages[0].kind);
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage,
               messages[1].kind);
+}
+
+TEST(NetTransportMultiplex, raw_poll_maps_native_peer_and_skips_peer_zero)
+{
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    const std::array<std::uint8_t, 2> ignored = {9u, 8u};
+    const std::array<std::uint8_t, 3> payload = {1u, 2u, 3u};
+    raw_transport->enqueue_raw(0u, ignored);
+    raw_transport->enqueue_raw(77u, payload);
+
+    og::sim::MultiplexTransport transport({raw_transport});
+    const std::vector<og::sim::ReceivedMessage> messages = transport.poll();
+
+    ASSERT_EQ(1u, messages.size());
+    EXPECT_NE(0u, messages.front().peer_id);
+    EXPECT_EQ(std::vector<std::uint8_t>(payload.begin(), payload.end()),
+              messages.front().data);
+    const std::vector<og::sim::PeerId> connected = transport.connected_peers();
+    EXPECT_NE(connected.end(),
+              std::find(connected.begin(), connected.end(),
+                        messages.front().peer_id));
 }
 
 TEST(NetTransportMultiplex, typed_send_routes_to_matching_underlying_transport)
@@ -638,6 +670,47 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
         public_peer, std::make_shared<og::sim::SnapshotHashCheckMessage>());
     transport.disconnect(public_peer);
 
+    // Every targeted forwarding entry point must reject an unknown public ID.
+    // Keep the successful native-peer observations below as the oracle: an
+    // accidental fallback route would overwrite at least one with 999.
+    constexpr og::sim::PeerId unknown_peer = 999u;
+    transport.send(unknown_peer, raw.data(), raw.size());
+    transport.send_snapshot(unknown_peer, {});
+    transport.send_delta_snapshot(unknown_peer, {});
+    transport.send_input(unknown_peer, std::make_shared<InputState>(), 999u);
+    transport.send_sim_event_batch(unknown_peer, {});
+    transport.send_game_flow_event_batch(unknown_peer, {});
+    transport.send_lobby_message(
+        unknown_peer, std::make_shared<og::sim::LobbyMessage>());
+    transport.send_lobby_state(
+        unknown_peer, std::make_shared<og::sim::LobbyState>());
+    transport.send_initial_setup(
+        unknown_peer, std::make_shared<og::sim::InitialSetupMessage>());
+    transport.send_hello(
+        unknown_peer, std::make_shared<og::sim::HelloMessage>());
+    transport.send_client_ready(
+        unknown_peer, std::make_shared<og::sim::ClientReadyMessage>());
+    transport.send_keyframe_request(
+        unknown_peer, std::make_shared<og::sim::KeyframeRequestMessage>());
+    transport.send_heartbeat(
+        unknown_peer, std::make_shared<og::sim::HeartbeatMessage>());
+    transport.send_exit_prompt_broadcast(
+        unknown_peer,
+        std::make_shared<og::sim::ExitPromptBroadcastMessage>());
+    transport.send_exit_prompt_response(
+        unknown_peer,
+        std::make_shared<og::sim::ExitPromptResponseMessage>());
+    transport.send_pause_broadcast(
+        unknown_peer, std::make_shared<og::sim::PauseBroadcastMessage>());
+    transport.send_pause_response(
+        unknown_peer, std::make_shared<og::sim::PauseResponseMessage>());
+    transport.send_control_change(
+        unknown_peer, std::make_shared<og::sim::ControlChangeMessage>());
+    transport.send_snapshot_hash_check(
+        unknown_peer,
+        std::make_shared<og::sim::SnapshotHashCheckMessage>());
+    transport.disconnect(unknown_peer);
+
     EXPECT_EQ(44u, typed->raw_send_peer);
     EXPECT_EQ(2u, typed->raw_send_size);
     EXPECT_EQ(0x12u, typed->raw_send_first);
@@ -661,8 +734,4 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
     EXPECT_EQ(44u, typed->control_change_peer);
     EXPECT_EQ(44u, typed->hash_check_peer);
     EXPECT_EQ(44u, typed->disconnected_peer);
-
-    transport.send(999u, raw.data(), raw.size());
-    transport.send_lobby_state(999u, std::make_shared<og::sim::LobbyState>());
-    transport.disconnect(999u);
 }

@@ -322,12 +322,10 @@ bool SaveData::load(const std::string& filename)
     const bool invalid_team_size = (listsize < 0) || (listsize > MAX_TEAM_SIZE);
     if (invalid_team_size)
     {
-        // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
         LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
             filename, listsize, MAX_TEAM_SIZE);
         last_io_error_ = SaveDataIoError::ReadFailed;
         return false;
-        // GCOVR_EXCL_STOP
     }
 
 	// Read the # of players
@@ -500,12 +498,10 @@ bool SaveData::load(const std::string& filename)
         READ_OR_FAIL(&num_campaigns, 2, 1);
         if (num_campaigns < 0 || num_campaigns > kMaxSavedCampaigns)
         {
-            // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
             LogError("save_load_num_campaigns_invalid file={} num_campaigns={} max={}\n",
                 filename, num_campaigns, kMaxSavedCampaigns);
             last_io_error_ = SaveDataIoError::ReadFailed;
             return false;
-            // GCOVR_EXCL_STOP
         }
         for(int i = 0; i < num_campaigns; i++)
         {
@@ -528,12 +524,10 @@ bool SaveData::load(const std::string& filename)
             READ_OR_FAIL(&num_levels, 2, 1);
             if (num_levels < 0 || num_levels > kMaxSavedLevels)
             {
-                // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
                 LogError("save_load_num_levels_invalid file={} num_levels={} max={}\n",
                     filename, num_levels, kMaxSavedLevels);
                 last_io_error_ = SaveDataIoError::ReadFailed;
                 return false;
-                // GCOVR_EXCL_STOP
             }
             for(int j = 0; j < num_levels; j++)
             {
@@ -1076,11 +1070,9 @@ bool SaveData::save(const std::string& filename)
 	const std::size_t raw_campaign_count = completed_levels.size();
 	if (raw_campaign_count > 32767)
 	{
-	    // GCOVR_EXCL_START -- defensive cap; real campaign maps never approach SHRT_MAX
 	    LogError("save_write_too_many_campaigns {}\n", raw_campaign_count);
 	    last_io_error_ = SaveDataIoError::WriteFailed;
 	    return false;
-	    // GCOVR_EXCL_STOP
 	}
 	short num_campaigns = static_cast<short>(raw_campaign_count);
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
@@ -1109,11 +1101,9 @@ bool SaveData::save(const std::string& filename)
 	        const std::size_t raw_level_count = e->second.size();
 	        if (raw_level_count > 32767)
 	        {
-	            // GCOVR_EXCL_START -- defensive cap; real level sets never approach SHRT_MAX
 	            LogError("save_write_too_many_levels {}\n", raw_level_count);
 	            last_io_error_ = SaveDataIoError::WriteFailed;
 	            return false;
-	            // GCOVR_EXCL_STOP
 	        }
 	        short num_levels = static_cast<short>(raw_level_count);
 	        WRITE_OR_FAIL(&num_levels, 2, 1);

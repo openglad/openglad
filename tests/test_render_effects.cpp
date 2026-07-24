@@ -8,7 +8,9 @@
 #include <openglad/interface/render/effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>
@@ -77,6 +79,9 @@ private:
         {"trails", "on"},         {"dust", "on"},        {"fire_glow", "on"},
         {"depth_fx", "fog"},      {"screen_shake", "on"},
         {"floor_glide", "on"},
+        {"mini_hp_bar", "on"},    {"hit_flash", "on"},
+        {"hit_anim", "on"},       {"damage_numbers", "off"},
+        {"heal_numbers", "on"},
     };
     std::vector<std::pair<std::string, std::string>> saved_;
 };
@@ -97,9 +102,54 @@ void restore_world(viewscreen* vs)
     scr()->world().set_weather(WeatherKind::None);
 }
 
+class RenderSceneGuard
+{
+public:
+    explicit RenderSceneGuard(viewscreen* view)
+        : view_(view)
+        , saved_tick_(scr()->world().tick_count_)
+    {
+    }
+
+    ~RenderSceneGuard()
+    {
+        restore_world(view_);
+        scr()->world().tick_count_ = saved_tick_;
+    }
+
+    RenderSceneGuard(const RenderSceneGuard&) = delete;
+    RenderSceneGuard& operator=(const RenderSceneGuard&) = delete;
+
+private:
+    viewscreen* view_ = nullptr;
+    std::uint32_t saved_tick_ = 0u;
+};
+
 bool do_redraw(viewscreen* vs)
 {
     return vs->redraw(&scr()->level_runtime_data(), false);
+}
+
+int canonical_palette_index(unsigned char color)
+{
+    int red = 0;
+    int green = 0;
+    int blue = 0;
+    query_palette_reg(color, &red, &green, &blue);
+    for (int index = 0; index < 256; ++index)
+    {
+        int candidate_red = 0;
+        int candidate_green = 0;
+        int candidate_blue = 0;
+        query_palette_reg(static_cast<unsigned char>(index),
+                          &candidate_red, &candidate_green, &candidate_blue);
+        if (candidate_red == red && candidate_green == green &&
+            candidate_blue == blue)
+        {
+            return index;
+        }
+    }
+    return static_cast<int>(color);
 }
 
 struct RGB
@@ -550,6 +600,215 @@ TEST_F(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
     w->set_hit_recoil(0.0f);
 
     restore_world(vs);
+}
+
+TEST_F(RenderEffects, walker_sprite_applies_lunge_and_recoil_as_render_offsets)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "attack_lunge", "on");
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+
+    Sint32 sx = 0;
+    Sint32 sy = 0;
+    ground_anchor(*w, vs, sx, sy);
+    const float original_worldx = w->worldx();
+    const float original_worldy = w->worldy();
+
+    std::vector<RGB> stationary;
+    {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->clearbuffer();
+        w->set_attack_lunge(0.0f);
+        w->set_hit_recoil(0.0f);
+        ASSERT_TRUE(draw_walker(*w, vs, 254u, false));
+        stationary = grab_rect(sx - 1, sy - 1, w->sizex() + 12, w->sizey() + 2);
+    }
+
+    std::vector<RGB> offset;
+    {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->clearbuffer();
+        w->set_attack_lunge(1.0f);
+        w->set_attack_lunge_angle(0.0f);
+        w->set_hit_recoil(1.0f);
+        w->set_hit_recoil_angle(0.0f);
+        ASSERT_TRUE(draw_walker(*w, vs, 254u, false));
+        offset = grab_rect(sx - 1, sy - 1, w->sizex() + 12, w->sizey() + 2);
+    }
+
+    EXPECT_FALSE(rects_equal(stationary, offset));
+    EXPECT_FLOAT_EQ(original_worldx, w->worldx());
+    EXPECT_FLOAT_EQ(original_worldy, w->worldy());
+
+    w->set_attack_lunge(0.0f);
+    w->set_hit_recoil(0.0f);
+}
+
+TEST_F(RenderEffects, mini_health_bar_uses_threshold_colors_and_hides_at_full)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    w->stats()->set_max_hitpoints(100.0f);
+    w->set_last_hitpoints(80.0f);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+
+    const float world_x = w->worldx() - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_bottom = w->worldy() - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc + w->sizey());
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(world_x, world_bottom);
+    const Sint32 bar_y = walker_bottom + 1;
+
+    const auto render_bar_color = [&](float hitpoints) {
+        w->stats()->set_hitpoints(hitpoints);
+        ScopedGameplayUiCanvas gameplay_ui(*scr());
+        scr()->clearbuffer();
+        int background_index = -1;
+        scr()->get_pixel(bar_x + 1, bar_y, &background_index);
+        draw_small_health_bar(w, vs);
+        int color_index = -1;
+        scr()->get_pixel(bar_x + 1, bar_y, &color_index);
+        return std::pair{background_index, color_index};
+    };
+
+    const auto low = render_bar_color(25.0f);
+    const auto middle = render_bar_color(50.0f);
+    const auto high = render_bar_color(75.0f);
+    const auto full = render_bar_color(100.0f);
+    EXPECT_EQ(canonical_palette_index(LOW_HP_COLOR), low.second);
+    EXPECT_EQ(canonical_palette_index(MID_HP_COLOR), middle.second);
+    EXPECT_EQ(canonical_palette_index(LIGHT_GREEN), high.second);
+    EXPECT_EQ(full.first, full.second);
+    EXPECT_FLOAT_EQ(100.0f, w->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(100.0f, w->stats()->max_hitpoints());
+}
+
+TEST_F(RenderEffects, damage_number_visibility_and_expiration_preserve_cache)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    cfg.apply_setting("effects", "attack_lunge", "off");
+    cfg.apply_setting("effects", "hit_recoil", "off");
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    cfg.apply_setting("effects", "heal_numbers", "on");
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    scr()->world().tick_count_ = 80u;
+    w->damage_numbers.emplace_back(
+        w->worldx(), w->worldy(), 12.0f, RED, scr()->world().tick_count_);
+
+    const float hidden_t = w->damage_numbers.front().t;
+    const float hidden_y = w->damage_numbers.front().y;
+    ASSERT_TRUE(draw_walker(*w, vs));
+    ASSERT_EQ(1u, w->damage_numbers.size());
+    EXPECT_FLOAT_EQ(hidden_t, w->damage_numbers.front().t);
+    EXPECT_FLOAT_EQ(hidden_y, w->damage_numbers.front().y);
+    EXPECT_EQ(0u, damage_number_render_state_count(scr()));
+
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    w->damage_numbers.front().t = 0.01f;
+    ASSERT_TRUE(draw_walker(*w, vs));
+    EXPECT_TRUE(w->damage_numbers.empty());
+    EXPECT_EQ(0u, damage_number_render_state_count(scr()));
+}
+
+TEST_F(RenderEffects, dead_walkers_are_rejected_by_world_and_tile_draws)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    w->set_dead(1);
+
+    EXPECT_FALSE(draw_walker(*w, vs));
+    EXPECT_FALSE(draw_walker_tile(*w, vs));
+}
+
+TEST_F(RenderEffects, debug_path_toggle_adds_overlay_without_mutating_path)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    cfg.apply_setting("effects", "heal_numbers", "off");
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+
+    const auto make_path_state = [](int x, int y) {
+        const intptr_t encoded =
+            static_cast<intptr_t>(y / GRID_SIZE) * MAP_WIDTH + x / GRID_SIZE;
+        return reinterpret_cast<PathState>(encoded);
+    };
+    w->path_to_foe = {
+        make_path_state(112, 96),
+        make_path_state(208, 96),
+    };
+    const std::vector<PathState> expected_path = w->path_to_foe;
+    const bool previous_debug_paths =
+        og::runtime::current_session->debug_draw_paths_;
+
+    std::vector<RGB> without_path;
+    {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->clearbuffer();
+        og::runtime::current_session->debug_draw_paths_ = false;
+        const bool drew_without_path = draw_walker(*w, vs);
+        EXPECT_TRUE(drew_without_path);
+        without_path = grab_rect(vs->xloc, vs->yloc, vs->xview, vs->yview);
+    }
+
+    std::vector<RGB> with_path;
+    {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->clearbuffer();
+        og::runtime::current_session->debug_draw_paths_ = true;
+        const bool drew_with_path = draw_walker(*w, vs);
+        EXPECT_TRUE(drew_with_path);
+        with_path = grab_rect(vs->xloc, vs->yloc, vs->xview, vs->yview);
+    }
+    og::runtime::current_session->debug_draw_paths_ = previous_debug_paths;
+
+    EXPECT_FALSE(rects_equal(without_path, with_path));
+    EXPECT_EQ(expected_path, w->path_to_foe);
 }
 
 namespace
