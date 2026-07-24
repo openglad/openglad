@@ -1,5 +1,52 @@
 #include <openglad/platform/sai2x.h>
 
+#include <atomic>
+
+namespace
+{
+std::atomic<std::uint64_t> s_campaign_picker_entered_count{0};
+std::atomic<std::uint64_t> s_campaign_picker_action_count{0};
+std::atomic<bool> s_campaign_picker_abort_pending{false};
+} // namespace
+
+void campaign_picker_testing_input_reset()
+{
+    s_campaign_picker_entered_count.store(0, std::memory_order_release);
+    s_campaign_picker_action_count.store(0, std::memory_order_release);
+    s_campaign_picker_abort_pending.store(false, std::memory_order_release);
+}
+
+void campaign_picker_testing_abort()
+{
+    s_campaign_picker_abort_pending.store(true, std::memory_order_release);
+}
+
+std::uint64_t campaign_picker_testing_entered_count()
+{
+    return s_campaign_picker_entered_count.load(std::memory_order_acquire);
+}
+
+std::uint64_t campaign_picker_testing_action_count()
+{
+    return s_campaign_picker_action_count.load(std::memory_order_acquire);
+}
+
+bool campaign_picker_testing_take_abort()
+{
+    return s_campaign_picker_abort_pending.exchange(
+        false, std::memory_order_acquire);
+}
+
+void campaign_picker_testing_mark_entered()
+{
+    s_campaign_picker_entered_count.fetch_add(1, std::memory_order_release);
+}
+
+void campaign_picker_testing_mark_action()
+{
+    s_campaign_picker_action_count.fetch_add(1, std::memory_order_release);
+}
+
 int campaign_picker_testing_exercise_entry_draw_paths()
 {
     screen& current_screen = *og::runtime::current_session->myscreen_;

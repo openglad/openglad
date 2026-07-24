@@ -1,16 +1,159 @@
+#include <SDL3/SDL.h>
+
+#include <atomic>
+
+void level_picker_testing_input_reset();
+void level_picker_testing_click(int x, int y);
+std::uint64_t level_picker_testing_entered_count();
+std::uint64_t level_picker_testing_action_count();
+std::vector<std::string>& level_editor_testing_prompt_queue_ref();
+void picker_testing_yes_or_no_queue_clear();
+int picker_testing_yes_or_no_queue_remaining();
+
 namespace
 {
+bool level_editor_wait_for_counter(std::uint64_t (*counter)(),
+                                   std::uint64_t baseline)
+{
+    const std::uint64_t deadline =
+        static_cast<std::uint64_t>(og::input_native::ticks_ms()) + 5000u;
+    while (counter() <= baseline)
+    {
+        if (static_cast<std::uint64_t>(og::input_native::ticks_ms()) >= deadline)
+        {
+            level_picker_testing_click(-1, -1);
+            return false;
+        }
+        og::input_native::sleep_ms(1);
+    }
+    return true;
+}
+
+bool level_editor_click_picker_action(int x, int y)
+{
+    const std::uint64_t action_before =
+        level_picker_testing_action_count();
+    level_picker_testing_click(x, y);
+    return level_editor_wait_for_counter(
+        level_picker_testing_action_count, action_before);
+}
+
+struct LevelEditorDialogDismissState
+{
+    std::atomic<bool> stop{false};
+};
+
+bool level_editor_push_dialog_dismissal_event()
+{
+    SDL_Event down{};
+    down.type = SDL_EVENT_KEY_DOWN;
+    down.key.key = SDLK_SPACE;
+    down.key.down = true;
+    if (!SDL_PushEvent(&down))
+        return false;
+
+    SDL_Event up = down;
+    up.type = SDL_EVENT_KEY_UP;
+    up.key.down = false;
+    return SDL_PushEvent(&up);
+}
+
+int level_editor_stream_dialog_dismissal_events(
+    LevelEditorDialogDismissState& state)
+{
+    // timed_dialog() clears pre-existing input. Keep producing real key events
+    // until the main thread reports that the blocking action returned, so a
+    // scheduler pause cannot let the complete train arrive before that clear.
+    // The generous deadline remains a harness fail-safe; timed_dialog itself
+    // has a three-second product timeout once entered.
+    const std::uint64_t deadline =
+        static_cast<std::uint64_t>(og::input_native::ticks_ms()) + 30000u;
+    while (!state.stop.load(std::memory_order_acquire))
+    {
+        if (static_cast<std::uint64_t>(og::input_native::ticks_ms()) >= deadline)
+            return 1;
+        if (!level_editor_push_dialog_dismissal_event())
+            return 1;
+        og::input_native::sleep_ms(5);
+    }
+    return 0;
+}
+
+void level_editor_clear_dialog_dismissal_events()
+{
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    clear_keyboard();
+    clear_key_press_event();
+    clear_text_input_event();
+}
+
+int level_editor_picker_driver(void* data)
+{
+    auto* state = static_cast<LevelEditorDialogDismissState*>(data);
+    og::runtime::ensure_thread_session();
+    bool ok = level_editor_wait_for_counter(
+        level_picker_testing_entered_count, 0);
+    if (ok)
+        ok = level_editor_click_picker_action(225, 15);
+    if (!ok || state == nullptr)
+        return 1;
+    return level_editor_stream_dialog_dismissal_events(*state);
+}
+
+int level_editor_dialog_dismiss_driver(void* data)
+{
+    auto* state = static_cast<LevelEditorDialogDismissState*>(data);
+    og::runtime::ensure_thread_session();
+    if (state == nullptr)
+        return 1;
+    return level_editor_stream_dialog_dismissal_events(*state);
+}
+
+class LevelEditorTestingThread
+{
+public:
+    LevelEditorTestingThread(
+        SDL_Thread* thread, LevelEditorDialogDismissState& state)
+        : thread_(thread), state_(state) {}
+
+    ~LevelEditorTestingThread()
+    {
+        (void)stop_and_join();
+    }
+
+    bool valid() const { return thread_ != nullptr; }
+
+    int stop_and_join()
+    {
+        state_.stop.store(true, std::memory_order_release);
+        if (thread_ == nullptr)
+            return result_;
+        SDL_WaitThread(thread_, &result_);
+        thread_ = nullptr;
+        return result_;
+    }
+
+private:
+    SDL_Thread* thread_;
+    LevelEditorDialogDismissState& state_;
+    int result_ = 1;
+};
+
 class LevelEditorTestingStateGuard
 {
 public:
     LevelEditorTestingStateGuard()
         : state_(eds()), saved_state_(state_), mouse_(query_mouse_no_poll()),
-          saved_mouse_(mouse_) {}
+          saved_mouse_(mouse_)
+    {
+        trace_clear();
+    }
 
     ~LevelEditorTestingStateGuard()
     {
         state_ = std::move(saved_state_);
         mouse_ = saved_mouse_;
+        trace_clear();
     }
 
 private:
@@ -59,7 +202,357 @@ public:
 private:
     std::string initially_mounted_;
 };
+
+class LevelEditorTestingKeyGuard
+{
+public:
+    LevelEditorTestingKeyGuard()
+        : session_(*og::runtime::current_session),
+          saved_keystates_(session_.keystates_)
+    {
+        keys_.fill(false);
+        session_.keystates_ = keys_.data();
+    }
+
+    ~LevelEditorTestingKeyGuard()
+    {
+        session_.keystates_ = saved_keystates_;
+    }
+
+    void set(int key, bool down)
+    {
+        if (key >= 0 && key < static_cast<int>(keys_.size()))
+            keys_[static_cast<std::size_t>(key)] = down;
+    }
+
+private:
+    og::runtime::SessionState& session_;
+    const bool* saved_keystates_;
+    std::array<bool, SDL_SCANCODE_COUNT> keys_{};
+};
+
+class LevelEditorTestingPromptGuard
+{
+public:
+    LevelEditorTestingPromptGuard()
+        : queue_(level_editor_testing_prompt_queue_ref()), saved_(queue_)
+    {
+        queue_.clear();
+    }
+
+    ~LevelEditorTestingPromptGuard()
+    {
+        queue_ = std::move(saved_);
+    }
+
+private:
+    std::vector<std::string>& queue_;
+    std::vector<std::string> saved_;
+};
+
+class LevelEditorTestingYesNoGuard
+{
+public:
+    LevelEditorTestingYesNoGuard()
+    {
+        picker_testing_yes_or_no_queue_clear();
+    }
+
+    ~LevelEditorTestingYesNoGuard()
+    {
+        picker_testing_yes_or_no_queue_clear();
+    }
+};
+
+class LevelEditorTestingMouseEventGuard
+{
+public:
+    LevelEditorTestingMouseEventGuard()
+    {
+        SDL_FlushEvents(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    }
+
+    ~LevelEditorTestingMouseEventGuard()
+    {
+        SDL_FlushEvents(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    }
+};
 } // namespace
+
+int level_editor_test_mouse_release_workflows()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+        {
+            failed_check = check_index;
+            Log("level-editor internal check {} failed\n", check_index);
+        }
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorTestingKeyGuard key_guard;
+    LevelEditorTestingPromptGuard prompt_guard;
+    LevelEditorTestingMouseEventGuard mouse_event_guard;
+
+    check(mount_guard.switch_to("org.openglad.gladiator"));
+    LevelEditorData data;
+    check(data.loadCampaign("org.openglad.gladiator"));
+    check(data.loadLevel(1));
+    data.level->delete_objects();
+    data.level->create_new_grid();
+    data.level->set_draw_pos(0, 0);
+    eds().current_floor = 0;
+    eds().rowsdown = 0;
+    eds().decor_mode = false;
+    backgrounds().assign(
+        kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
+    object_pane().clear();
+    object_pane().push_back({Order::Living, FAMILY_SOLDIER});
+
+    screen* scr = og::runtime::current_session->myscreen_;
+    check(scr != nullptr && scr->viewob[0] != nullptr);
+    if (scr != nullptr && scr->viewob[0] != nullptr)
+    {
+        MouseState& mouse = query_mouse_no_poll();
+        data.myradar.start(data.level.get());
+        const auto queue_left_release = [&mouse](int x, int y) {
+            mouse.x = static_cast<float>(x);
+            mouse.y = static_cast<float>(y);
+            mouse.left = true;
+            SDL_Event release{};
+            release.type = SDL_EVENT_MOUSE_BUTTON_UP;
+            release.button.button = SDL_BUTTON_LEFT;
+            release.button.down = false;
+            release.button.x = static_cast<float>(x);
+            release.button.y = static_cast<float>(y);
+            const bool queued = SDL_PushEvent(&release);
+            if (!queued)
+                mouse.left = false;
+            return queued;
+        };
+
+        // The menu helpers wait for a genuine release before acting. Queue
+        // that release and assert each helper's distinct menu contract.
+        SimpleButton release_button("Release", 180, 150, 40, 12);
+        std::list<std::pair<SimpleButton*, std::set<SimpleButton*>>>
+            release_menu;
+        const bool submenu_release_queued = queue_left_release(181, 151);
+        check(submenu_release_queued);
+        if (submenu_release_queued)
+        {
+            check(activate_sub_menu_button(
+                181, 151, release_menu, release_button, true));
+            check(!mouse.left);
+        }
+
+        data.current_menu.push_back(
+            std::make_pair(
+                &release_button, std::set<SimpleButton*>{&release_button}));
+        const bool choice_release_queued = queue_left_release(181, 151);
+        check(choice_release_queued);
+        if (choice_release_queued)
+        {
+            check(activate_menu_choice(
+                181, 151, data, release_button, true));
+            check(!mouse.left);
+            check(data.current_menu.empty());
+        }
+        else
+            data.current_menu.clear();
+
+        data.current_menu.push_back(
+            std::make_pair(
+                &release_button, std::set<SimpleButton*>{&release_button}));
+        const bool toggle_release_queued = queue_left_release(181, 151);
+        check(toggle_release_queued);
+        if (toggle_release_queued)
+        {
+            check(activate_menu_toggle_choice(
+                181, 151, data, release_button, true));
+            check(!mouse.left);
+            check(data.current_menu.size() == 1);
+        }
+        data.current_menu.clear();
+
+        const int world_x = GRID_SIZE * 8;
+        const int world_y = GRID_SIZE * 8;
+        const int screen_x =
+            world_x - data.level->level_visuals().topx + scr->viewob[0]->xloc;
+        const int screen_y =
+            world_y - data.level->level_visuals().topy + scr->viewob[0]->yloc;
+        bool done = false;
+
+        walker* target =
+            data.level->add_ob(Order::Living, FAMILY_ORC);
+        check(target != nullptr);
+        if (target != nullptr)
+        {
+            target->setxy(world_x, world_y);
+            target->set_floor(0);
+            target->set_team_num(3);
+            target->stats()->set_level(4);
+            target->stats()->name = "Before release rename";
+            const std::size_t original_count =
+                data.level->world().oblist.size();
+
+            // The R+click workflow renames the exact collided object and
+            // removes its temporary collision probe.
+            level_editor_testing_prompt_queue_push("After release rename");
+            key_guard.set(KEYSTATE_r, true);
+            eds().levelchanged = 0;
+            data.mode = Mode::Select;
+            data.object_brush.snap_to_grid = true;
+            data.mouse_up(
+                screen_x, screen_y, screen_x, screen_y, done);
+            key_guard.set(KEYSTATE_r, false);
+            check(data.level->world().oblist.size() == original_count);
+            const bool target_present_after_rename = std::any_of(
+                data.level->world().oblist.begin(),
+                data.level->world().oblist.end(),
+                [target](const auto& candidate) {
+                    return candidate.get() == target;
+                });
+            check(target_present_after_rename);
+            if (target_present_after_rename)
+            {
+                check(target->stats()->name == "After release rename");
+                check(eds().levelchanged == 1);
+                if (!data.level->world().oblist.empty())
+                    check(data.level->world().oblist.front().get() == target);
+
+                // Ctrl+click toggles the same object by identity/geometry:
+                // selected -> absent -> selected, without touching the world.
+                data.selection.clear();
+                data.selection.push_back(SelectionInfo(target));
+                key_guard.set(KEYSTATE_LCTRL, true);
+                data.mouse_up(
+                    screen_x, screen_y, screen_x, screen_y, done);
+                check(data.selection.empty());
+                check(data.level->world().oblist.size() == original_count);
+                data.mouse_up(
+                    screen_x, screen_y, screen_x, screen_y, done);
+                check(data.selection.size() == 1);
+                if (!data.selection.empty())
+                {
+                    check(data.selection.front().target == target);
+                    check(data.selection.front().valid);
+                }
+                key_guard.set(KEYSTATE_LCTRL, false);
+
+                // A snapped placement colliding with the authored object is
+                // rejected atomically: no duplicate remains in the level.
+                data.mode = Mode::Object;
+                data.object_brush.order = Order::Living;
+                data.object_brush.family = FAMILY_SOLDIER;
+                data.object_brush.team = 2;
+                data.object_brush.level = 5;
+                data.object_brush.worldz = GRID_SIZE / 2;
+                data.object_brush.snap_to_grid = true;
+                data.object_brush.picking = false;
+                eds().levelchanged = 0;
+                data.mouse_up(
+                    screen_x, screen_y, screen_x, screen_y, done);
+                check(data.level->world().oblist.size() == original_count);
+                const bool target_present_after_collision = std::any_of(
+                    data.level->world().oblist.begin(),
+                    data.level->world().oblist.end(),
+                    [target](const auto& candidate) {
+                        return candidate.get() == target;
+                    });
+                check(target_present_after_collision);
+                if (target_present_after_collision)
+                {
+                    if (!data.level->world().oblist.empty())
+                        check(data.level->world().oblist.front().get() == target);
+                    check(target->family() == FAMILY_ORC);
+                    check(target->stats()->name == "After release rename");
+                    check(eds().levelchanged == 1);
+
+                    // Pick mode consumes itself and copies every authored brush
+                    // field from the collided object.
+                    data.object_brush.picking = true;
+                    data.pickerButton.set_colors_active();
+                    data.mouse_up(
+                        screen_x, screen_y, screen_x, screen_y, done);
+                    check(!data.object_brush.picking);
+                    check(data.object_brush.order == Order::Living);
+                    check(data.object_brush.family == FAMILY_ORC);
+                    check(data.object_brush.team == 3);
+                    check(data.object_brush.level == 4);
+                    check(data.level->world().oblist.size() == original_count);
+                    if (!data.level->world().oblist.empty())
+                        check(
+                            data.level->world().oblist.front().get() == target);
+                }
+            }
+        }
+
+        // Out-of-grid writes and reads are strict no-ops/fallbacks.
+        const unsigned char tile_before = data.get_terrain(0, 0);
+        data.set_terrain(-1, -1, PIX_WATER1);
+        check(data.get_terrain(0, 0) == tile_before);
+        check(data.get_decor(-1, -1) == DECOR_NONE);
+
+        // A stale decor stride is never read or written. The writer drops it
+        // and creates a correctly-sized plane; the explicit cleanup path
+        // likewise frees a stale plane.
+        GameWorld& world = data.level->world();
+        PixieData& decor = world.decor_for_floor(0);
+        decor = PixieData(
+            1, 1, 1, new unsigned char[1]{DECOR_TORCH1});
+        check(data.get_decor(0, 0) == DECOR_NONE);
+        check(data.set_decor(0, 0, DECOR_TORCH2));
+        check(decor.valid());
+        check(decor.w == world.grid.w && decor.h == world.grid.h);
+        check(data.get_decor(0, 0) == DECOR_TORCH2);
+        decor = PixieData(
+            1, 1, 1, new unsigned char[1]{DECOR_BRAZIER});
+        data.drop_mismatched_decor_planes();
+        check(!decor.valid());
+
+        // The cursor suppression test uses the real started radar bounds in
+        // both paint modes and leaves the authored object list unchanged.
+        mouse.x = static_cast<float>(
+            scr->viewob[0]->endx - data.myradar.xview - 3);
+        mouse.y = static_cast<float>(
+            scr->viewob[0]->endy - data.myradar.yview - 3);
+        const int radar_x = static_cast<int>(mouse.x);
+        const int radar_y = static_cast<int>(mouse.y);
+        const Sint32 draw_x_before_radar =
+            data.level->level_visuals().topx;
+        const Sint32 draw_y_before_radar =
+            data.level->level_visuals().topy;
+        bool radar_done = false;
+        data.mode = Mode::Terrain;
+        data.mouse_up(
+            radar_x, radar_y, radar_x, radar_y, radar_done);
+        check(!radar_done);
+        check(data.level->level_visuals().topx ==
+              draw_x_before_radar);
+        check(data.level->level_visuals().topy ==
+              draw_y_before_radar);
+        const std::size_t before_panel =
+            data.level->world().oblist.size();
+        check(data.display_panel(scr) == 1);
+        check(data.level->world().oblist.size() == before_panel);
+        data.mode = Mode::Object;
+        data.object_brush.order = Order::Living;
+        data.object_brush.family = FAMILY_SOLDIER;
+        check(data.display_panel(scr) == 1);
+        check(data.level->world().oblist.size() == before_panel);
+    }
+
+    check(level_editor_testing_prompt_queue_ref().empty());
+    check(mount_guard.restore());
+    check(get_mounted_campaign() == mount_guard.initially_mounted());
+    return failed_check == 0 ? 0 : -failed_check;
+}
 
 int level_editor_test_exercise_internal_helpers()
 {
@@ -68,9 +561,14 @@ int level_editor_test_exercise_internal_helpers()
     const auto check = [&check_index, &failed_check](bool condition) {
         ++check_index;
         if (!condition && failed_check == 0)
+        {
             failed_check = check_index;
+            Log("level-editor internal check {} failed\n", check_index);
+        }
     };
     LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingPromptGuard prompt_guard;
+    LevelEditorTestingYesNoGuard yes_no_guard;
     const std::string helper_campaign_id = "org.openglad.coverage.editor_helper";
     LevelEditorTestingMountGuard mount_guard;
     const auto mount_campaign_only = [&](const std::string& campaign_id) {
@@ -597,10 +1095,102 @@ int level_editor_test_exercise_internal_helpers()
         picker_testing_yes_or_no_queue_push(true);
         level_editor_testing_prompt_queue_push(helper_campaign_id.c_str());
         open_file_campaign_menu();
-        click_button(data.fileCampaignNewButton);
+	        click_button(data.fileCampaignNewButton);
 	        check(data.campaign->id == helper_campaign_id);
 	        check(data.saveCampaignAs(helper_campaign_id));
 	        check(data.saveLevelAs(3));
+
+        // Build an isolated two-step sequential chain of blank scenarios.
+        // Level 1 falls through to 2; level 2 has no successor and reports
+        // the terminal diagnostic.
+        check(data.saveLevelAs(2));
+        check(data.saveLevelAs(3));
+        const std::list<int> helper_levels = list_levels();
+        check(helper_levels ==
+              std::list<int>({1, 2, 3}));
+
+        std::set<int> sequential_connected;
+        std::list<std::string> sequential_problems;
+        get_connected_level_exits(
+            1, std::list<int>({1, 2}), sequential_connected,
+            sequential_problems);
+        check(sequential_connected == std::set<int>({1, 2}));
+        check(sequential_problems ==
+              std::list<std::string>({"Level 2 has no exits."}));
+
+	        const auto drive_level_picker = [&](SimpleButton& choice) {
+	                level_picker_testing_input_reset();
+	                LevelEditorDialogDismissState dismiss_state;
+	                LevelEditorTestingThread driver(
+	                    SDL_CreateThread(
+	                        level_editor_picker_driver,
+	                        "level_editor_picker_driver", &dismiss_state),
+	                    dismiss_state);
+	                check(driver.valid());
+	                if (!driver.valid())
+	                    return false;
+
+	                open_file_level_menu();
+	                click_button(choice);
+
+	                const int thread_result = driver.stop_and_join();
+	                level_editor_clear_dialog_dismissal_events();
+	                check(thread_result == 0);
+                return thread_result == 0;
+            };
+
+        // Save As through the actual level picker and ENTER ID. The new ID
+        // must be persisted, become current, and appear exactly once.
+        level_editor_testing_prompt_queue_push("7");
+        eds().levelchanged = 1;
+        check(drive_level_picker(data.fileLevelSaveAsButton));
+        check(data.level->world().id == 7);
+        check(!eds().levelchanged);
+        {
+            const std::list<int> levels_after_save_as = list_levels();
+            check(std::count(
+                levels_after_save_as.begin(), levels_after_save_as.end(), 7) ==
+                1);
+        }
+
+        // Load an exact listed scenario through the real ENTER ID flow.
+        level_editor_testing_prompt_queue_push("1");
+        eds().levelchanged = 0;
+        const bool loaded_first =
+            drive_level_picker(data.fileLevelLoadButton);
+        check(loaded_first);
+        check(data.level->world().id == 1);
+        check(!eds().levelchanged);
+        check(data.level->world().grid.w == 40);
+        check(data.level->world().grid.h == 60);
+
+        // An explicit missing positive ID exercises the failed-load outcome:
+        // the requested ID remains visible, authored dirty state is retained,
+        // and a direct valid reload restores the exact scenario.
+        level_editor_testing_prompt_queue_push("9999");
+        eds().levelchanged = 1;
+        picker_testing_yes_or_no_queue_push(true);
+        check(drive_level_picker(data.fileLevelLoadButton));
+        check(data.level->world().id == 9999);
+        check(eds().levelchanged == 1);
+        check(data.loadLevel(1));
+        check(data.level->world().id == 1);
+        check(data.level->world().grid.w == 40);
+        check(data.level->world().grid.h == 60);
+
+        // Re-entering an existing campaign ID and declining overwrite must
+        // leave the mounted package, editor model, and all level files exact.
+        const std::list<int> levels_before_declined_overwrite = list_levels();
+        level_editor_testing_prompt_queue_push(helper_campaign_id.c_str());
+        eds().levelchanged = 0;
+        check(picker_testing_yes_or_no_queue_remaining() == 0);
+        open_file_campaign_menu();
+        click_button(data.fileCampaignNewButton);
+        check(data.campaign->id == helper_campaign_id);
+        check(get_mounted_campaign() == helper_campaign_id);
+        check(data.level->world().id == 1);
+        check(list_levels() == levels_before_declined_overwrite);
+        check(picker_testing_yes_or_no_queue_remaining() == 0);
 
 	        // Decor paint → save → reload round-trip through the editor save
 	        // path (paint promotes the file to v11; erasing downgrades it again
@@ -681,6 +1271,18 @@ int level_editor_test_exercise_internal_helpers()
         click_button(data.campaignProfileDescriptionButton);
         check(!data.campaign->description.empty());
 
+        // The legacy icon command remains hidden from the normal submenu, but
+        // its action must still report the exact unsupported-operation popup.
+        data.current_menu.clear();
+        data.current_menu.push_back(std::make_pair(
+            &data.campaignProfileButton,
+            std::set<SimpleButton*>{&data.campaignProfileIconButton}));
+        trace_clear();
+        click_button(data.campaignProfileIconButton);
+        check(trace_count("popup") == 1);
+        check(trace_contains(
+            "popup", "Edit Icon: Not yet implemented."));
+
         level_editor_testing_prompt_queue_push("Coverage Authors");
         open_campaign_profile_menu();
         click_button(data.campaignProfileAuthorsButton);
@@ -708,6 +1310,37 @@ int level_editor_test_exercise_internal_helpers()
 
         open_campaign_menu();
         click_button(data.campaignValidateButton);
+
+        // An invalid start leaves every real scenario disconnected.
+        // The popup must retain the first six concrete diagnostics and report
+        // the exact number truncated, while leaving campaign data untouched.
+        const std::list<int> validation_levels = list_levels();
+        check(validation_levels.size() > 6);
+        if (validation_levels.size() > 6)
+        {
+            const int valid_first_level = data.campaign->first_level;
+            data.campaign->first_level = 9999;
+            trace_clear();
+            open_campaign_menu();
+            click_button(data.campaignValidateButton);
+            check(trace_count("popup") == 1);
+            check(trace_contains(
+                "popup",
+                "Validate Campaign: Level 9999 failed to load."));
+            check(trace_contains(
+                "popup",
+                std::format(
+                    "Level {} is not connected.",
+                    validation_levels.front()).c_str()));
+            check(trace_contains(
+                "popup",
+                std::format(
+                    "{} more problems...",
+                    static_cast<int>(validation_levels.size()) - 5).c_str()));
+            check(data.campaign->first_level == 9999);
+            check(list_levels() == validation_levels);
+            data.campaign->first_level = valid_first_level;
+        }
 
         open_level_menu();
         click_button(data.levelInfoButton);
@@ -741,6 +1374,76 @@ int level_editor_test_exercise_internal_helpers()
         open_level_details_menu();
         click_button(data.levelDetailsMapSizeButton);
         check(data.level->world().grid.w == 6 && data.level->world().grid.h == 6);
+
+        // Both byte-limit diagnostics are emitted together and the grid is
+        // byte-for-byte untouched by a rejected oversized request.
+        const std::vector<unsigned char> grid_before_oversize(
+            data.level->world().grid.data.get(),
+            data.level->world().grid.data.get() +
+                data.level->world().grid.w * data.level->world().grid.h);
+        trace_clear();
+        level_editor_testing_prompt_queue_push("256");
+        level_editor_testing_prompt_queue_push("300");
+        open_level_details_menu();
+        click_button(data.levelDetailsMapSizeButton);
+        check(data.level->world().grid.w == 6 &&
+              data.level->world().grid.h == 6);
+        check(std::equal(
+            grid_before_oversize.begin(), grid_before_oversize.end(),
+            data.level->world().grid.data.get()));
+        check(trace_contains("popup", "Width is too big (max 255)."));
+        check(trace_contains("popup", "Height is too big (max 255)."));
+
+        // Declining deletion of an out-of-bounds object makes a shrink fully
+        // atomic: dimensions, bytes, and object identity all survive.
+        walker* outside_resize =
+            data.level->add_ob(Order::Living, FAMILY_ORC);
+        check(outside_resize != nullptr);
+        if (outside_resize != nullptr)
+        {
+            outside_resize->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+            const std::size_t object_count_before_resize =
+                data.level->world().oblist.size();
+            check(picker_testing_yes_or_no_queue_remaining() == 0);
+            picker_testing_yes_or_no_queue_push(false);
+            level_editor_testing_prompt_queue_push("3");
+            level_editor_testing_prompt_queue_push("3");
+            LevelEditorDialogDismissState dismiss_state;
+            LevelEditorTestingThread dismiss_resize(
+                SDL_CreateThread(
+                    level_editor_dialog_dismiss_driver,
+                    "level_editor_dialog_dismiss", &dismiss_state),
+                dismiss_state);
+            check(dismiss_resize.valid());
+            if (dismiss_resize.valid())
+            {
+                open_level_details_menu();
+                click_button(data.levelDetailsMapSizeButton);
+                const int dismiss_result = dismiss_resize.stop_and_join();
+                level_editor_clear_dialog_dismissal_events();
+                check(dismiss_result == 0);
+            }
+            else
+            {
+                picker_testing_yes_or_no_queue_clear();
+                level_editor_testing_prompt_queue_ref().clear();
+            }
+            check(picker_testing_yes_or_no_queue_remaining() == 0);
+            check(data.level->world().grid.w == 6 &&
+                  data.level->world().grid.h == 6);
+            check(std::equal(
+                grid_before_oversize.begin(), grid_before_oversize.end(),
+                data.level->world().grid.data.get()));
+            check(data.level->world().oblist.size() ==
+                  object_count_before_resize);
+            check(std::any_of(
+                data.level->world().oblist.begin(),
+                data.level->world().oblist.end(),
+                [outside_resize](const auto& candidate) {
+                    return candidate.get() == outside_resize;
+                }));
+            data.level->remove_ob(outside_resize);
+        }
 
         const short type_before = data.level->world().type;
         open_level_goals_menu();
@@ -897,6 +1600,8 @@ int level_editor_test_exercise_internal_helpers()
             data.reset_mode_buttons();
             check(data.mode == Mode::Terrain);
         }
+        check(level_editor_testing_prompt_queue_ref().empty());
+        check(picker_testing_yes_or_no_queue_remaining() == 0);
     }
     check(mount_guard.restore());
     check(get_mounted_campaign() == mount_guard.initially_mounted());

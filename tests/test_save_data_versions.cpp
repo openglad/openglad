@@ -5,7 +5,9 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,6 +20,8 @@
 #include <openglad/gameplay/guy.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+
+#include "test_save_state_guard.h"
 
 static void rw_write(SDL_IOStream* out, const void* data, size_t len)
 {
@@ -1265,6 +1269,76 @@ TEST(SaveDataVersions, save_data_v14_writer_rejects_unsafe_campaign_ids)
               unsafe_progress.save_with_error(
                   "typed_save_v14_unsafe_progress_campaign"));
     EXPECT_EQ(SaveDataIoError::WriteFailed, unsafe_progress.last_io_error());
+}
+
+TEST(SaveDataVersions,
+     save_data_v14_writer_rejects_oversized_collections_before_count_fields)
+{
+    namespace fs = std::filesystem;
+    constexpr std::size_t kCampaignCountOffset = 164;
+    constexpr std::size_t kFirstLevelCountOffset = 208;
+
+    const auto expect_partial_header =
+        [](const fs::path& path, std::size_t expected_size) {
+            std::error_code ec;
+            ASSERT_TRUE(fs::is_regular_file(path, ec));
+            ASSERT_FALSE(ec);
+            ASSERT_EQ(expected_size, fs::file_size(path, ec));
+            ASSERT_FALSE(ec);
+
+            std::ifstream in(path, std::ios::binary);
+            ASSERT_TRUE(in.good());
+            std::array<unsigned char, 4> header{};
+            in.read(reinterpret_cast<char*>(header.data()),
+                    static_cast<std::streamsize>(header.size()));
+            ASSERT_TRUE(in.good());
+            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 14}),
+                      header);
+        };
+
+    {
+        constexpr const char* slot = "typed_save_too_many_campaigns";
+        const fs::path path =
+            fs::path(get_user_path()) / "save" / (std::string(slot) + ".gtl");
+        og::test::ScopedPhysicalFileState file_state(path);
+        ASSERT_TRUE(file_state.ready()) << file_state.error().message();
+
+        SaveData data;
+        data.current_campaign = "org.openglad.gladiator";
+        data.completed_levels.clear();
+        data.current_levels.clear();
+        for (int i = 0; i < 32768; ++i)
+        {
+            data.completed_levels.emplace(
+                "campaign." + std::to_string(i), std::set<int>{});
+        }
+
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.save_with_error(slot));
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.last_io_error());
+        expect_partial_header(path, kCampaignCountOffset);
+    }
+
+    {
+        constexpr const char* slot = "typed_save_too_many_levels";
+        const fs::path path =
+            fs::path(get_user_path()) / "save" / (std::string(slot) + ".gtl");
+        og::test::ScopedPhysicalFileState file_state(path);
+        ASSERT_TRUE(file_state.ready()) << file_state.error().message();
+
+        SaveData data;
+        data.current_campaign = "org.openglad.gladiator";
+        data.completed_levels.clear();
+        data.current_levels.clear();
+        std::set<int>& levels =
+            data.completed_levels["org.openglad.gladiator"];
+        for (int i = 0; i < 32768; ++i)
+            levels.insert(i);
+        data.current_levels["org.openglad.gladiator"] = 1;
+
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.save_with_error(slot));
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.last_io_error());
+        expect_partial_header(path, kFirstLevelCountOffset);
+    }
 }
 
 TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)

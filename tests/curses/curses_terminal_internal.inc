@@ -133,6 +133,60 @@ int curses_terminal_testing_exercise_internal_helpers()
         check(process_state.restore());
     }
 
+    // A real TTY without Kitty keyboard support must unwind curses mode and
+    // reject construction with the documented capability diagnostic.
+    {
+        ScopedFd pty_master(::posix_openpt(O_RDWR | O_NOCTTY));
+        ScopedFd pty_slave;
+        bool pty_ready = pty_master.valid() &&
+            ::grantpt(pty_master.get()) == 0 &&
+            ::unlockpt(pty_master.get()) == 0;
+        if (pty_ready) {
+            const char* const slave_name = ::ptsname(pty_master.get());
+            if (slave_name != nullptr)
+                pty_slave.reset(::open(slave_name, O_RDWR | O_NOCTTY));
+            pty_ready = pty_slave.valid();
+        }
+        check(pty_ready);
+
+        ScopedTerminalProcessState process_state;
+        check(process_state.valid());
+
+        struct winsize size{};
+        size.ws_row = 24;
+        size.ws_col = 80;
+        const bool sized = pty_ready &&
+            ::ioctl(pty_slave.get(), TIOCSWINSZ, &size) == 0;
+        check(sized);
+        const bool redirected = sized && process_state.valid() &&
+            process_state.redirect_standard_fds(
+                pty_slave.get(), pty_slave.get());
+        check(redirected);
+        const bool term_set = redirected &&
+            process_state.set_term_value("xterm-256color");
+        check(term_set);
+        // Device attributes complete the probe, but the reply deliberately
+        // omits the Kitty keyboard-flags response.
+        const bool response_queued = term_set &&
+            write_all(pty_master.get(), "\x1b[?62;1c");
+        check(response_queued);
+
+        bool rejected_without_kitty = false;
+        if (response_queued) {
+            try {
+                CursesTerminal terminal;
+                (void)terminal;
+            } catch (const std::runtime_error& ex) {
+                rejected_without_kitty =
+                    std::string_view(ex.what()).find(
+                        "does not support the Kitty keyboard protocol") !=
+                    std::string_view::npos;
+            }
+        }
+        check(rejected_without_kitty);
+        check(process_state.restore());
+    }
+
     check(exercise_fatal_signal_in_child());
 
     // Exercise the concrete ncurses renderer against an isolated virtual
@@ -152,7 +206,26 @@ int curses_terminal_testing_exercise_internal_helpers()
             term.impl_->color = false;
             check(term.rows() > 0 && term.cols() > 4);
             term.clear();
+            std::vector<chtype> visible_row_before(
+                static_cast<std::size_t>(term.cols()));
+            for (int col = 0; col < term.cols(); ++col) {
+                visible_row_before[static_cast<std::size_t>(col)] =
+                    mvwinch(stdscr, 0, col);
+            }
             term.put(-1, 0, U'X', Color::Default, Color::Default, false);
+            term.put_str(-1, 0, "offscreen", Color::Default,
+                         Color::Default, false);
+            term.put_str(0, term.cols(), "offscreen", Color::Default,
+                         Color::Default, false);
+            bool visible_row_unchanged = true;
+            for (int col = 0; col < term.cols(); ++col) {
+                visible_row_unchanged =
+                    mvwinch(stdscr, 0, col) ==
+                        visible_row_before[
+                            static_cast<std::size_t>(col)] &&
+                    visible_row_unchanged;
+            }
+            check(visible_row_unchanged);
             term.put(0, 0, U'A', Color::Default, Color::Default, true);
             term.put(0, 1, U'\u03a9', Color::Default, Color::Default, false);
             term.put_str(0, 2, "hi", Color::Default, Color::Default, false);
@@ -190,6 +263,8 @@ int curses_terminal_testing_exercise_internal_helpers()
             ::close(in_pipe[1]);
             ::close(in_pipe[0]);
             term.impl_->in_fd = STDIN_FILENO;
+        } else {
+            check(false);
         }
 
         int empty_pipe[2]{};
@@ -199,6 +274,22 @@ int curses_terminal_testing_exercise_internal_helpers()
             check(term.poll_key(false).is_none());
             ::close(empty_pipe[0]);
             term.impl_->in_fd = STDIN_FILENO;
+        } else {
+            check(false);
+        }
+
+        // poll() reports a closed descriptor as ready-with-POLLNVAL; the
+        // subsequent read fails with EBADF and must still return Key::none.
+        int invalid_pipe[2]{};
+        if (::pipe(invalid_pipe) == 0) {
+            const int invalid_fd = invalid_pipe[0];
+            ::close(invalid_pipe[0]);
+            ::close(invalid_pipe[1]);
+            term.impl_->in_fd = invalid_fd;
+            check(term.poll_key(false).is_none());
+            term.impl_->in_fd = STDIN_FILENO;
+        } else {
+            check(false);
         }
     }
 
@@ -221,16 +312,21 @@ int curses_terminal_testing_exercise_internal_helpers()
         const ssize_t n = ::read(write_pipe[0], buf, sizeof(buf));
         check(n == 19 && std::string(buf, static_cast<std::size_t>(n)) == "terminal-write-test");
         ::close(write_pipe[0]);
+    } else {
+        check(false);
     }
 
     auto probe = [&](std::string_view reply, bool expected) {
         int in_pipe[2]{};
         int out_pipe[2]{};
-        if (::pipe(in_pipe) != 0)
+        if (::pipe(in_pipe) != 0) {
+            check(false);
             return;
+        }
         if (::pipe(out_pipe) != 0) {
             ::close(in_pipe[0]);
             ::close(in_pipe[1]);
+            check(false);
             return;
         }
         (void)write_all(in_pipe[1], reply);

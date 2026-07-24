@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstring>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -832,6 +833,124 @@ TEST(VideoEffectsPrims, floor_layer_budget_and_allocation_failure_leave_render_r
               s->floor_layer_source_pixels_for_testing());
     EXPECT_EQ(static_cast<std::int64_t>(320) * 200,
               s->floor_layer_scaled_pixels_for_testing());
+}
+
+TEST(VideoEffectsPrims, floor_layer_invalid_inputs_leave_cached_state_untouched)
+{
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    SDL_Surface* const real_render = E_Screen->render;
+    ASSERT_NE(nullptr, real_render);
+
+    const int fallback_count =
+        s->floor_layer_fallback_count_for_testing();
+    const std::int64_t cached_source_pixels =
+        s->floor_layer_source_pixels_for_testing();
+    const std::int64_t cached_scaled_pixels =
+        s->floor_layer_scaled_pixels_for_testing();
+
+    {
+        struct RenderRestore
+        {
+            SDL_Surface* value;
+            ~RenderRestore() { E_Screen->render = value; }
+        } restore{real_render};
+        E_Screen->render = nullptr;
+        EXPECT_FALSE(s->floor_layer_begin(0, 0, 8, 8));
+        EXPECT_EQ(nullptr, E_Screen->render);
+    }
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_EQ(fallback_count,
+              s->floor_layer_fallback_count_for_testing())
+        << "an unavailable display is not an allocation fallback";
+
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, -1, 8));
+    EXPECT_EQ(fallback_count + 1,
+              s->floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(cached_source_pixels,
+              s->floor_layer_source_pixels_for_testing());
+    EXPECT_EQ(cached_scaled_pixels,
+              s->floor_layer_scaled_pixels_for_testing());
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+}
+
+TEST(VideoEffectsPrims, floor_layer_end_guards_and_canvas_routing_are_transactional)
+{
+    screen* const s = scr();
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    SDL_Surface* const real_render = E_Screen->render;
+    ASSERT_NE(nullptr, real_render);
+    const CanvasTarget original_target = s->active_canvas();
+
+    struct Restore
+    {
+        screen* value;
+        SDL_Surface* real_render;
+        CanvasTarget target;
+        ~Restore()
+        {
+            if (E_Screen)
+            {
+                E_Screen->render = real_render;
+                value->set_active_canvas(target);
+            }
+        }
+    } restore{s, real_render, original_target};
+
+    ASSERT_TRUE(s->floor_layer_begin(0, 0, 16, 16));
+    SDL_Surface* const layer = E_Screen->render;
+    ASSERT_NE(real_render, layer);
+    EXPECT_TRUE(s->floor_layer_redirect_active_for_testing());
+
+    s->set_active_canvas(CanvasTarget::UI);
+    EXPECT_NE(layer, E_Screen->render);
+    s->set_active_canvas(CanvasTarget::World);
+    EXPECT_EQ(layer, E_Screen->render)
+        << "returning to World during a floor pass resumes the layer";
+
+    s->fail_next_floor_layer_allocation_for_testing();
+    EXPECT_EQ(real_render, E_Screen->render)
+        << "clearing scratch during a pass restores the public draw target";
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+    EXPECT_EQ(0, s->floor_layer_source_pixels_for_testing());
+
+    // Consume the one-shot allocation failure and prove a clean retry works.
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, 16, 16));
+    ASSERT_TRUE(s->floor_layer_begin(0, 0, 16, 16));
+    s->floor_layer_end(0, 0, 16, 16, 0.0f, 8, 8, 255);
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+
+    const std::size_t bytes =
+        static_cast<std::size_t>(real_render->pitch) * real_render->h;
+    const std::vector<Uint8> before(
+        static_cast<const Uint8*>(real_render->pixels),
+        static_cast<const Uint8*>(real_render->pixels) + bytes);
+
+    // Padded output with no width is rejected before sampling.
+    s->floor_layer_end(0, 0, 0, 4, 1.0f, 0, 0, 255, {}, 1, 0);
+    // A scaled rectangle entirely outside its viewport has no output.
+    s->floor_layer_end(0, 0, 4, 4, 0.5f, -100, -100, 255);
+    // A positive sub-pixel output rounds to an empty destination.
+    s->floor_layer_end(0, 0, 1, 1, 0.1f, 0, 0, 255);
+    // An unrelated padded request beyond the cached layer clamps to an empty
+    // source rectangle and must not read or draw outside either surface.
+    s->floor_layer_end(real_render->w + 1, 0, 4, 4, 1.0f,
+                       real_render->w + 3, 2, 255, {}, 1, 0);
+
+    EXPECT_EQ(0, std::memcmp(before.data(), real_render->pixels, bytes))
+        << "every rejected composite must preserve the complete frame";
+
+    {
+        std::unique_ptr<Screen> detached = std::move(E_Screen);
+        s->floor_layer_end(0, 0, 4, 4, 1.0f, 2, 2, 255);
+        EXPECT_EQ(nullptr, E_Screen);
+        E_Screen = std::move(detached);
+    }
+    EXPECT_EQ(real_render, E_Screen->render);
 }
 
 // ---- Canvas plumbing (stages 1+2 of the resolution decoupling) ------------

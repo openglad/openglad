@@ -67,14 +67,18 @@ bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title,
     bool show_success_popup = true);
+bool picker_try_intercept_button_action(
+    Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue);
 bool picker_join_game(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client);
 std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client();
 int picker_testing_exercise_sdl_client_internal_paths();
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
+std::vector<std::string>& level_editor_testing_prompt_queue_ref();
 extern bool g_start_game_requested;
 #ifdef TESTING
 extern bool g_test_remove_exits;
@@ -130,6 +134,20 @@ public:
     {
         return host_controls_visible_result;
     }
+    [[nodiscard]] og::sim::StartDenialReason last_start_denial()
+        const noexcept override
+    {
+        return denial_result;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer>
+    lobby_players() const override
+    {
+        return players;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return networked_result;
+    }
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
@@ -143,6 +161,10 @@ public:
     int request_start_calls = 0;
     bool request_start_result = false;
     bool host_controls_visible_result = true;
+    bool networked_result = false;
+    og::sim::StartDenialReason denial_result =
+        og::sim::StartDenialReason::None;
+    std::vector<og::sim::LobbyPlayer> players;
     bool restrict_editable_slots = false;
     std::array<bool, MAX_TEAM_SIZE> editable_slots{};
 };
@@ -220,6 +242,9 @@ struct PickerLobbyClientTrace
     int sync_from_save_calls = 0;
     int sync_roster_calls = 0;
     int sync_settings_calls = 0;
+    int poll_calls = 0;
+    int set_player_mode_calls = 0;
+    int last_player_mode = -1;
 };
 
 struct ExclusiveLobbyBinding
@@ -273,6 +298,16 @@ private:
     std::string old_value_;
 };
 
+class ScopedTraceBuffer
+{
+public:
+    ScopedTraceBuffer() { trace_clear(); }
+    ~ScopedTraceBuffer() { trace_clear(); }
+
+    ScopedTraceBuffer(const ScopedTraceBuffer&) = delete;
+    ScopedTraceBuffer& operator=(const ScopedTraceBuffer&) = delete;
+};
+
 class TraceablePickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
 public:
@@ -305,8 +340,15 @@ public:
     {
         ++trace_->sync_settings_calls;
     }
-    void poll_and_apply() override {}
-    void set_player_mode(int) override {}
+    void poll_and_apply() override
+    {
+        ++trace_->poll_calls;
+    }
+    void set_player_mode(int player_count) override
+    {
+        ++trace_->set_player_mode_calls;
+        trace_->last_player_mode = player_count;
+    }
     bool request_start_game() override
     {
         return false;
@@ -333,10 +375,15 @@ public:
     {
         return status_lines_;
     }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return networked_;
+    }
 
     std::shared_ptr<PickerLobbyClientTrace> trace_;
     std::vector<std::string> status_lines_;
     bool throw_on_initialize = false;
+    bool networked_ = false;
 };
 
 class ExclusiveResourcePickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -515,6 +562,28 @@ TEST(PickerFuncs, get_training_cost_rating_all_families)
     }
 }
 
+TEST(PickerFuncs, player_control_summary_rejects_bad_slots_and_clips_long_key_names)
+{
+    EXPECT_EQ("--", player_control_key_display_name(-1, KEY_UP));
+    EXPECT_EQ("--", player_control_key_display_name(0, NUM_KEYS));
+    EXPECT_EQ((std::array<std::string, 2>{"", ""}),
+              build_player_control_summary_lines(-1, false));
+    EXPECT_TRUE(build_player_control_summary(-1).empty());
+
+    int& key = og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    const int saved_key = key;
+    struct KeyRestore
+    {
+        int& target;
+        int saved;
+        ~KeyRestore() { target = saved; }
+    } restore{key, saved_key};
+
+    key = SDLK_PRINTSCREEN;
+    EXPECT_EQ("PrintScre", player_control_key_display_name(0, KEY_FIRE))
+        << "the 11-character SDL key name must use the nine-character face";
+}
+
 
 // ---------------------------------------------------------------------------
 // get_random_name tests
@@ -656,6 +725,8 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->current_team_num_ = 0;
     og::runtime::current_session->current_difficulty_ = DIFFICULTY_SETTINGS - 1;
     og::runtime::current_session->myscreen_->save_data.allied_mode = static_cast<short>(0);
+    vbutton dispatcher;
+    dispatcher.arg = 1;
 
     ASSERT_EQ(4, (int)set_difficulty()) << "set_difficulty should return OK";
     // set_difficulty writes the DIFFICULTY subscreen's cycling row (index 1),
@@ -663,21 +734,29 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[1]->label).find("Difficulty: ") == 0)
         << "difficulty label should be updated";
 
-    ASSERT_EQ(4, (int)change_teamnum(1)) << "change_teamnum should return OK";
+    ASSERT_EQ(4, (int)dispatcher.do_call(
+        button_action_id(ButtonAction::ChangeTeam), 1))
+        << "the button dispatcher should route team changes";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->label).find("Playing on Team ") == 0) << "team label should be updated";
 
     og::runtime::current_session->current_team_num_ = 0;
-    ASSERT_EQ(4, (int)change_hire_teamnum(1)) << "change_hire_teamnum should return OK";
+    ASSERT_EQ(4, (int)dispatcher.do_call(
+        button_action_id(ButtonAction::ChangeHireTeam), 1))
+        << "the button dispatcher should route hire-team changes";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_) << "hire team num should increment";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
 
     // change_allied remains a save/replay compatibility hook after the visible
     // seat-mode row moved out; it no longer writes either button surface.
-    ASSERT_EQ(4, (int)change_allied()) << "change_allied should return OK";
+    ASSERT_EQ(4, (int)dispatcher.do_call(
+        button_action_id(ButtonAction::AlliedMode), 0))
+        << "the button dispatcher should route the compatibility toggle";
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle on";
-    ASSERT_EQ(4, (int)change_allied()) << "change_allied second toggle should return OK";
+    ASSERT_EQ(4, (int)dispatcher.do_call(
+        button_action_id(ButtonAction::AlliedMode), 0))
+        << "a second dispatched toggle should restore the original mode";
     ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle off";
 
     // Directly exercise picker helpers that were still uncovered.
@@ -832,7 +911,7 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
         std::make_unique<TraceablePickerLobbyClient>(
         next_trace);
     static_cast<TraceablePickerLobbyClient*>(next_client.get())->status_lines_ =
-        {"Room: GLAD-XKCD"};
+        {"", "Room: GLAD-XKCD", "Lobby: 2 players"};
     auto* const next_raw =
         static_cast<TraceablePickerLobbyClient*>(next_client.get());
 
@@ -843,7 +922,65 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
-    EXPECT_TRUE(trace_contains("popup", "Room: GLAD-XKCD"));
+    EXPECT_TRUE(trace_contains(
+        "popup", "Room: GLAD-XKCD\nLobby: 2 players"))
+        << "empty status rows must be skipped and visible rows joined once";
+}
+
+TEST(PickerFuncs, picker_replace_lobby_client_rejects_null_and_unpreserved_network_client)
+{
+    ScopedTraceBuffer trace_guard;
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client;
+    EXPECT_FALSE(picker_replace_lobby_client(
+        current_client, nullptr, "HOST GAME"));
+    EXPECT_EQ(nullptr, current_client);
+
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    auto next_client = std::make_unique<TraceablePickerLobbyClient>(next_trace);
+    next_client->networked_ = true;
+
+    screen* const saved_screen = og::runtime::current_session->myscreen_;
+    struct ScreenRestore
+    {
+        screen*& target;
+        screen* saved;
+        ~ScreenRestore() { target = saved; }
+    } restore{og::runtime::current_session->myscreen_, saved_screen};
+    og::runtime::current_session->myscreen_ = nullptr;
+
+    trace_clear();
+    EXPECT_FALSE(picker_replace_lobby_client(
+        current_client, std::move(next_client), "HOST GAME"));
+    EXPECT_EQ(nullptr, current_client);
+    EXPECT_EQ(0, next_trace->initialize_calls)
+        << "network initialization must not begin without the baseline save";
+    EXPECT_TRUE(trace_contains(
+        "popup", "Could not preserve your local team save."));
+}
+
+TEST(PickerFuncs, picker_main_menu_help_intercept_selects_the_help_command)
+{
+    struct PickerInterceptRestore
+    {
+        int scope = pks().intercept_scope;
+        const og::ui::PickerMenuItem* selected = pks().selected_menu_item;
+        ~PickerInterceptRestore()
+        {
+            pks().intercept_scope = scope;
+            pks().selected_menu_item = selected;
+        }
+    } restore;
+
+    pks().intercept_scope = 1; // PickerInterceptScope::MainMenu
+    pks().selected_menu_item = nullptr;
+    Sint32 retvalue = 0;
+
+    ASSERT_TRUE(picker_try_intercept_button_action(
+        button_action_id(ButtonAction::ShowHelp), 0, retvalue));
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::Help,
+              pks().selected_menu_item->command);
+    EXPECT_EQ(MENU_EXIT, retvalue);
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_can_skip_success_popup)
@@ -1255,9 +1392,21 @@ TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
 
 TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
 {
+    ScopedTraceBuffer trace_guard;
+    struct PromptQueueRestore
+    {
+        PromptQueueRestore()
+        {
+            picker_testing_yes_or_no_queue_clear();
+            level_editor_testing_prompt_queue_clear();
+        }
+        ~PromptQueueRestore()
+        {
+            picker_testing_yes_or_no_queue_clear();
+            level_editor_testing_prompt_queue_clear();
+        }
+    } prompt_queue_restore;
     picker_lobby_shutdown();
-    picker_testing_yes_or_no_queue_clear();
-    level_editor_testing_prompt_queue_clear();
     std::unique_ptr<og::ui::IPickerClient> client =
         picker_testing_create_sdl_client();
     ASSERT_NE(nullptr, client);
@@ -1268,22 +1417,88 @@ TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
     level_editor_testing_prompt_queue_push("0");
     EXPECT_FALSE(client->host_game());
     EXPECT_TRUE(trace_contains("popup", "1 to 65535"));
+    EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty());
 
     // The concrete join adapter must delegate to the same checked factory as
     // the public join flow, preserving a failed connection as a clean false.
     PlatformBridgeGuard bridge_guard;
     PlatformBridge bridge = platform_bridge();
-    bridge.create_join_picker_lobby_client =
-        [](const og::ui::PickerJoinGameOptions&)
+    std::vector<og::ui::PickerHostGameOptions> captured_host_options;
+    std::optional<og::ui::PickerJoinGameOptions> captured_join_options;
+    auto hosted_trace = std::make_shared<PickerLobbyClientTrace>();
+    auto* hosted_raw = static_cast<TraceablePickerLobbyClient*>(nullptr);
+    bridge.create_host_picker_lobby_client =
+        [&](const og::ui::PickerHostGameOptions& options)
             -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        captured_host_options.push_back(options);
+        auto hosted_client =
+            std::make_unique<TraceablePickerLobbyClient>(hosted_trace);
+        hosted_raw = hosted_client.get();
+        return hosted_client;
+    };
+    bridge.create_join_picker_lobby_client =
+        [&](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        captured_join_options = options;
         throw std::runtime_error("adapter join failure");
     };
     set_platform_bridge(std::move(bridge));
+
+    // A valid host request must preserve the exact parsed transport options,
+    // replace the live lobby, and avoid a blocking success modal.
+    picker_testing_yes_or_no_queue_push(false);
+    level_editor_testing_prompt_queue_push("24567");
+    trace_clear();
+    EXPECT_TRUE(client->host_game());
+    ASSERT_EQ(1u, captured_host_options.size());
+    EXPECT_EQ(24567, captured_host_options.front().port);
+    EXPECT_FALSE(captured_host_options.front().enable_relay);
+    EXPECT_TRUE(captured_host_options.front().relay_base_url.empty());
+    EXPECT_EQ(1, hosted_trace->initialize_calls);
+    EXPECT_EQ(hosted_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(0, trace_count("popup"));
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining());
+    EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty());
+
+    // Enabling relay hosting validates the configured URL before replacing the
+    // working lobby. An invalid scheme must be surfaced and leave it active.
+    {
+        ScopedEnvVar relay_env("OPENGLAD_RELAY_BASE_URL");
+#ifdef _WIN32
+        _putenv_s("OPENGLAD_RELAY_BASE_URL", "ftp://relay.invalid");
+#else
+        setenv("OPENGLAD_RELAY_BASE_URL", "ftp://relay.invalid", 1);
+#endif
+        picker_testing_yes_or_no_queue_push(true);
+        level_editor_testing_prompt_queue_push("24568");
+        trace_clear();
+        EXPECT_FALSE(client->host_game());
+        EXPECT_EQ(1u, captured_host_options.size());
+        EXPECT_EQ(hosted_raw, og::ui::active_picker_lobby_client());
+        EXPECT_TRUE(trace_contains(
+            "popup", "Relay base URL must use http://"));
+        EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+            << "relay validation must consume the host-mode decision";
+        EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty())
+            << "relay validation must consume the requested port";
+    }
+
+    ASSERT_EQ(0, picker_testing_yes_or_no_queue_remaining());
+    ASSERT_TRUE(level_editor_testing_prompt_queue_ref().empty());
     picker_testing_yes_or_no_queue_push(true);
     level_editor_testing_prompt_queue_push("127.0.0.1:24567");
     trace_clear();
     EXPECT_FALSE(client->join_game());
     EXPECT_TRUE(trace_contains("popup", "adapter join failure"));
+    ASSERT_TRUE(captured_join_options.has_value());
+    EXPECT_EQ(og::ui::PickerJoinMode::Direct,
+              captured_join_options->mode);
+    EXPECT_EQ("127.0.0.1:24567",
+              captured_join_options->direct_endpoint);
+    EXPECT_TRUE(captured_join_options->room_code.empty());
+    EXPECT_TRUE(captured_join_options->relay_base_url.empty());
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining());
+    EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty());
 
     // Loading with no display is a supported cancellation edge in the real
     // Company List wrapper; the adapter must propagate it without mutation.
@@ -1296,8 +1511,6 @@ TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
     // company, and reports the write result to the picker state machine.
     EXPECT_TRUE(client->save_game());
 
-    picker_testing_yes_or_no_queue_clear();
-    level_editor_testing_prompt_queue_clear();
     client.reset();
     picker_lobby_shutdown();
 }
@@ -1305,6 +1518,158 @@ TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
 TEST(PickerFuncs, concrete_sdl_client_relay_state_machine_paths)
 {
     EXPECT_EQ(0, picker_testing_exercise_sdl_client_internal_paths());
+}
+
+TEST(PickerFuncs, local_lobby_client_without_screen_has_exact_empty_contract)
+{
+    auto client = og::ui::create_local_picker_lobby_client();
+    ASSERT_NE(nullptr, client);
+
+    screen* const saved_screen = og::runtime::current_session->myscreen_;
+    struct ScreenRestore
+    {
+        screen*& target;
+        screen* saved;
+        ~ScreenRestore() { target = saved; }
+    } restore{og::runtime::current_session->myscreen_, saved_screen};
+    og::runtime::current_session->myscreen_ = nullptr;
+
+    client->poll_and_apply();
+    client->set_player_mode(2);
+    EXPECT_FALSE(client->add_local_seat());
+    EXPECT_FALSE(client->request_start_game());
+    EXPECT_FALSE(client->request_team_change(1));
+    EXPECT_FALSE(client->request_seat_team_change(0, 1));
+    EXPECT_FALSE(client->build_game_start_config().has_value());
+    EXPECT_TRUE(client->lobby_players().empty());
+    EXPECT_FALSE(client->authoritative_team_mask().has_value());
+    EXPECT_EQ(0u, client->local_seat_count());
+    EXPECT_FALSE(client->start_request_pending());
+    EXPECT_FALSE(client->has_game_start_config());
+}
+
+TEST(PickerFuncs, no_active_lobby_client_wrappers_return_documented_defaults)
+{
+    ActivePickerLobbyClientGuard active_guard(nullptr);
+    picker_lobby_shutdown();
+
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+    EXPECT_FALSE(picker_lobby_has_game_start_config());
+    EXPECT_TRUE(picker_lobby_status_lines().empty());
+    EXPECT_TRUE(picker_lobby_session_room_code().empty());
+    EXPECT_FALSE(picker_lobby_set_ready(true));
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              picker_lobby_last_start_denial());
+    EXPECT_FALSE(picker_lobby_authoritative_team_mask().has_value());
+    EXPECT_TRUE(picker_lobby_local_player_indices().empty());
+}
+
+TEST(PickerFuncs, lobby_poll_is_suppressed_while_gameplay_owns_the_transport)
+{
+    auto trace = std::make_shared<PickerLobbyClientTrace>();
+    TraceablePickerLobbyClient client(trace);
+    ActivePickerLobbyClientGuard active_guard(&client);
+
+    const bool saved_gameplay_active =
+        og::runtime::current_session->gameplay_active_;
+    struct GameplayRestore
+    {
+        bool& target;
+        bool saved;
+        ~GameplayRestore() { target = saved; }
+    } restore{og::runtime::current_session->gameplay_active_,
+              saved_gameplay_active};
+
+    og::runtime::current_session->gameplay_active_ = true;
+    picker_lobby_poll();
+    EXPECT_EQ(0, trace->poll_calls);
+
+    og::runtime::current_session->gameplay_active_ = false;
+    picker_lobby_poll();
+    EXPECT_EQ(1, trace->poll_calls);
+}
+
+TEST(PickerFuncs, right_click_player_mode_only_deselects_the_active_count)
+{
+    auto trace = std::make_shared<PickerLobbyClientTrace>();
+    TraceablePickerLobbyClient client(trace);
+    ActivePickerLobbyClientGuard active_guard(&client);
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char saved_numplayers = save.numplayers;
+    struct PlayerCountRestore
+    {
+        SaveData& save;
+        unsigned char count;
+        ~PlayerCountRestore() { save.numplayers = count; }
+    } restore{save, saved_numplayers};
+
+    vbutton dispatcher;
+    dispatcher.arg = 2;
+    save.numplayers = 2;
+    EXPECT_EQ(MENU_OK, dispatcher.do_call_right(
+        button_action_id(ButtonAction::SetPlayerMode), 2));
+    EXPECT_EQ(1, trace->set_player_mode_calls);
+    EXPECT_EQ(0, trace->last_player_mode)
+        << "right-clicking the selected count must request spectator mode";
+
+    save.numplayers = 1;
+    EXPECT_EQ(MENU_OK, dispatcher.do_call_right(
+        button_action_id(ButtonAction::SetPlayerMode), 2));
+    EXPECT_EQ(1, trace->set_player_mode_calls)
+        << "right-clicking an unselected count is a strict no-op";
+}
+
+TEST(PickerFuncs, go_menu_surfaces_each_authoritative_start_denial)
+{
+    ScopedTraceBuffer trace_guard;
+    ContractPickerLobbyClient client;
+    client.networked_result = true;
+    client.host_controls_visible_result = false;
+    client.request_start_result = false;
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 0;
+    player.seat_id = 1;
+    player.name = "Ready Host";
+    player.company = "Ready Company";
+    player.is_host = true;
+    player.ready = true;
+    player.character_slots.push_back(og::sim::LobbyCharacterSlot{
+        .slot_index = 0,
+        .character = og::sim::LobbyCharacterData{
+            .name = "Deployed Hero",
+            .family = FAMILY_SOLDIER,
+            .teamnum = 0,
+        },
+        .deployed = true,
+    });
+    client.players = {player};
+
+    ActivePickerLobbyClientGuard active_guard(&client);
+    const bool saved_start_requested = g_start_game_requested;
+    struct StartRequestRestore
+    {
+        bool saved;
+        ~StartRequestRestore() { g_start_game_requested = saved; }
+    } restore{saved_start_requested};
+
+    client.denial_result = og::sim::StartDenialReason::MachinesNotReady;
+    g_start_game_requested = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains(
+        "popup", "Waiting for other\nmachines to ready"))
+        << "a late readiness denial with no stale blocker rows needs fallback text";
+
+    client.denial_result =
+        og::sim::StartDenialReason::NoDeployedCharacters;
+    g_start_game_requested = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains(
+        "popup", "Deploy at least\none character\nbefore starting"))
+        << "a late authoritative roster denial must identify deployment";
+    EXPECT_EQ(2, client.request_start_calls);
 }
 
 // (do_load retired with the slot menus; the lobby sync-on-load behavior is
@@ -1332,7 +1697,9 @@ TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
     picker_lobby_initialize_from_save();
     picker_lobby_sync_from_save();
 
-    ASSERT_EQ(4, static_cast<int>(set_player_mode(2)));
+    vbutton dispatcher;
+    ASSERT_EQ(4, static_cast<int>(dispatcher.do_call(
+        button_action_id(ButtonAction::SetPlayerMode), 2)));
     EXPECT_EQ(2, static_cast<int>(save.numplayers));
     ASSERT_TRUE(save.team_list[0] && save.team_list[1]);
     EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
@@ -1931,6 +2298,22 @@ TEST(PickerFuncs, train_team_change_immediately_syncs_saved_roster)
     og::runtime::current_session->current_guy_ =
         std::make_unique<guy>(session.working_copy());
     og::runtime::current_session->current_team_num_ = session.working_copy().teamnum;
+
+    vbutton stat_dispatcher;
+    stat_dispatcher.arg = BUT_STR;
+    const short original_strength = session.working_copy().strength;
+    ASSERT_EQ(MENU_OK, stat_dispatcher.do_call(
+        button_action_id(ButtonAction::IncreaseStat), BUT_STR));
+    EXPECT_EQ(original_strength + 1, session.working_copy().strength);
+    ASSERT_EQ(MENU_OK, stat_dispatcher.do_call(
+        button_action_id(ButtonAction::DecreaseStat), BUT_STR));
+    EXPECT_EQ(original_strength, session.working_copy().strength);
+    ASSERT_EQ(MENU_OK, stat_dispatcher.do_call_right(
+        button_action_id(ButtonAction::IncreaseStat), BUT_STR));
+    EXPECT_EQ(original_strength + 5, session.working_copy().strength);
+    ASSERT_EQ(MENU_OK, stat_dispatcher.do_call_right(
+        button_action_id(ButtonAction::DecreaseStat), BUT_STR));
+    EXPECT_EQ(original_strength, session.working_copy().strength);
 
     ASSERT_EQ(4, static_cast<int>(change_teamnum(1)));
     EXPECT_EQ(3, static_cast<int>(session.working_copy().teamnum));
@@ -2889,7 +3272,9 @@ TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
         nullptr);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 
-    const Sint32 result = do_pick_spritesheet(0);
+    vbutton dispatcher;
+    const Sint32 result = dispatcher.do_call(
+        button_action_id(ButtonAction::PickSpriteSheet), 0);
 
     int code = 0;
     if (th)

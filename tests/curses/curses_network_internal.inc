@@ -2,6 +2,61 @@
 // this orchestration in tests/ prevents coverage tools from treating it as
 // shipped curses networking logic while preserving translation-unit access.
 
+bool curses_network_testing_inject_ctf(CursesGameSession& session,
+                                       short requested_respawn_ticks);
+int curses_network_testing_force_server_win(CursesGameSession& session,
+                                             std::uint32_t pinned_team0_score);
+int curses_network_testing_clear_server_team(CursesGameSession& session,
+                                              short team);
+
+class CursesNetworkTestingMountRestore
+{
+public:
+    CursesNetworkTestingMountRestore()
+        : mounted_before_(get_mounted_campaign())
+    {
+    }
+
+    ~CursesNetworkTestingMountRestore()
+    {
+        (void)restore();
+    }
+
+    bool restore()
+    {
+        if (restored_)
+            return restore_ok_;
+
+        const std::string mounted_after =
+            get_mounted_campaign();
+        if (mounted_after != mounted_before_) {
+            const CampaignPackageIoError result =
+                mounted_before_.empty()
+                    ? unmount_campaign_package_with_error(
+                          mounted_after)
+                    : mount_campaign_package_with_error(
+                          mounted_before_);
+            restore_ok_ =
+                result == CampaignPackageIoError::None;
+        }
+        restore_ok_ =
+            get_mounted_campaign() == mounted_before_ &&
+            restore_ok_;
+        restored_ = true;
+        return restore_ok_;
+    }
+
+    const std::string& mounted_before() const
+    {
+        return mounted_before_;
+    }
+
+private:
+    std::string mounted_before_;
+    bool restored_ = false;
+    bool restore_ok_ = true;
+};
+
 int curses_network_testing_exercise_internal_helpers()
 {
     int check_index = 0;
@@ -50,12 +105,22 @@ int curses_network_testing_exercise_internal_helpers()
     soldier->level = 4;
     save.team_list[3] = std::move(soldier);
     check(resolve_initial_local_team(save) == 2);
+    SaveData no_team_save;
+    check(resolve_initial_local_team(no_team_save) == 0);
 
     og::sim::LobbyPlayer player =
         build_local_lobby_player(save, "local-player", 2);
     check(player.name == "local-player" && player.team == 2 &&
         player.character_slots.size() == 1 &&
         player.character_slots.front().character.name == "Curses Soldier");
+    // Downstream helper probes need a valid slot even when the assertion above
+    // catches a build_local_lobby_player regression.  Construct it from the
+    // known test-owned save instead of dereferencing a possibly empty vector.
+    const og::sim::LobbyCharacterSlot fixture_slot{
+        .slot_index = 3,
+        .character = make_lobby_character_data(*save.team_list[3]),
+        .deployed = save.team_list[3]->deployed,
+    };
 
     og::sim::LobbyMessage join_message =
         make_join_message(save, "local-player", 2);
@@ -105,6 +170,58 @@ int curses_network_testing_exercise_internal_helpers()
     check(find_local_player(state) != nullptr &&
         find_local_player(state)->seat_id == player.seat_id);
 
+    // Preserve same-player/source-slot ordering, including the final
+    // slot-order comparator tie-break. This is the deterministic ordering the
+    // host and joiner must share before canonicalizing private guy ids.
+    og::sim::LobbyState colliding_slots_state;
+    colliding_slots_state.settings.campaign_id =
+        "org.openglad.gladiator";
+    colliding_slots_state.settings.scenario_id = 1;
+    og::sim::LobbyPlayer colliding_player = player;
+    colliding_player.player_index = 3;
+    colliding_player.character_slots.clear();
+    for (const std::string_view character_name : {"first", "second"}) {
+        og::sim::LobbyCharacterSlot slot = fixture_slot;
+        slot.slot_index = 7;
+        slot.deployed = true;
+        slot.character.name = std::string(character_name);
+        colliding_player.character_slots.push_back(std::move(slot));
+    }
+    colliding_slots_state.players.push_back(std::move(colliding_player));
+    const og::sim::LobbySaveDataEquivalent colliding_equivalent =
+        build_join_save_equivalent_from_state(colliding_slots_state);
+    check(colliding_equivalent.team_list.size() == 2 &&
+        colliding_equivalent.team_list[0].character.name == "first" &&
+        colliding_equivalent.team_list[1].character.name == "second" &&
+        colliding_equivalent.team_list[0].owner_player_index == 3 &&
+        colliding_equivalent.team_list[0].owner_save_slot == 7);
+
+    // The wire roster is bounded by SaveData's real 24-slot capacity. Verify
+    // that an oversized, otherwise valid roster is rejected rather than
+    // silently truncated or compacted.
+    og::sim::LobbyState oversized_state;
+    oversized_state.settings.campaign_id = "org.openglad.gladiator";
+    oversized_state.settings.scenario_id = 1;
+    og::sim::LobbyPlayer oversized_player = player;
+    oversized_player.character_slots.clear();
+    for (std::size_t i = 0; i <= MAX_TEAM_SIZE; ++i) {
+        og::sim::LobbyCharacterSlot slot = fixture_slot;
+        slot.slot_index = static_cast<std::uint8_t>(i);
+        slot.deployed = true;
+        slot.character.name = std::format("oversized-{}", i);
+        oversized_player.character_slots.push_back(std::move(slot));
+    }
+    oversized_state.players.push_back(std::move(oversized_player));
+    bool oversized_rejected = false;
+    try {
+        (void)build_join_save_equivalent_from_state(oversized_state);
+    } catch (const std::runtime_error& ex) {
+        oversized_rejected =
+            std::string_view(ex.what()).find("24-slot team limit") !=
+            std::string_view::npos;
+    }
+    check(oversized_rejected);
+
     class RawTransport final : public og::sim::ITransport {
     public:
         explicit RawTransport(std::vector<og::sim::ReceivedMessage> messages)
@@ -150,8 +267,22 @@ int curses_network_testing_exercise_internal_helpers()
 
     std::vector<std::uint8_t> unknown;
     og::sim::append_transport_header(unknown, og::sim::kHeartbeatMessageType, 0);
+    const auto malformed_payload = [](std::uint8_t message_type) {
+        std::vector<std::uint8_t> bytes;
+        og::sim::append_transport_header(bytes, message_type, 1);
+        bytes.push_back(0);
+        return bytes;
+    };
     RawTransport raw({
         og::sim::ReceivedMessage{.peer_id = 1, .data = {0xff}},
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kLobbyMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kLobbyStateMessageType),
+        },
         og::sim::ReceivedMessage{.peer_id = 1, .data = og::sim::serialize_lobby_message(join_message)},
         og::sim::ReceivedMessage{.peer_id = 1, .data = og::sim::serialize_lobby_state_message(state)},
         og::sim::ReceivedMessage{.peer_id = 1, .data = unknown},
@@ -171,6 +302,254 @@ int curses_network_testing_exercise_internal_helpers()
         decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
         decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
 
+    // A lobby before any transport/state attachment must expose a coherent
+    // empty public state, reject mutations, and render/cancel safely.
+    class ScriptedTerminal final : public ITerminal {
+    public:
+        explicit ScriptedTerminal(std::vector<Key> keys = {})
+            : keys_(std::move(keys))
+        {
+        }
+        int rows() const override { return 2; }
+        int cols() const override { return 80; }
+        bool supports_unicode() const override { return false; }
+        bool supports_color() const override { return false; }
+        void clear() override { ++clears_; }
+        void put(int, int, char32_t, Color, Color, bool) override {}
+        void put_str(int, int, std::string_view text, Color, Color,
+                     bool) override
+        {
+            rendered_.push_back(std::string(text));
+        }
+        void present() override { ++presents_; }
+        Key poll_key(bool) override
+        {
+            ++poll_count_;
+            if (next_key_ >= keys_.size())
+                return Key::none();
+            return keys_[next_key_++];
+        }
+        void set_cursor_visible(bool) override {}
+        void beep() override {}
+
+        int clears() const { return clears_; }
+        int presents() const { return presents_; }
+        std::size_t consumed_key_count() const { return next_key_; }
+        std::size_t poll_count() const { return poll_count_; }
+        bool input_exhausted() const
+        {
+            return next_key_ == keys_.size();
+        }
+        const std::vector<std::string>& rendered() const { return rendered_; }
+
+    private:
+        std::vector<Key> keys_;
+        std::size_t next_key_ = 0;
+        std::size_t poll_count_ = 0;
+        int clears_ = 0;
+        int presents_ = 0;
+        std::vector<std::string> rendered_;
+    };
+
+    SaveData unattached_save;
+    CursesLobbyImpl unattached_host(
+        LobbyRole::Host, unattached_save, 1);
+    check(unattached_host.is_host() &&
+        unattached_host.local_player_indices().empty() &&
+        !unattached_host.local_ready() &&
+        unattached_host.players().empty() &&
+        !unattached_host.request_team_change(1) &&
+        !unattached_host.request_seat_team_change(0, 1) &&
+        !unattached_host.request_seat_team_change(
+            0, static_cast<og::sim::LobbySeatId>(123), 1) &&
+        !unattached_host.set_ready(true));
+    unattached_host.request_start();
+    ScriptedTerminal unattached_terminal({
+        Key::character(U'x', KeyEvent::Release),
+        Key::special(KeyCode::Left),
+        Key::special(KeyCode::Right),
+        Key::character(U't'),
+        Key::character(U'c'),
+        Key::character(U's'),
+    });
+    FakeClock unattached_clock;
+    const bool unattached_started =
+        unattached_host.poll(unattached_terminal, unattached_clock);
+    const std::vector<std::string> unattached_status =
+        unattached_host.status_lines();
+    check(!unattached_started &&
+        unattached_terminal.clears() == 1 &&
+        unattached_terminal.presents() == 1 &&
+        unattached_terminal.input_exhausted() &&
+        unattached_terminal.consumed_key_count() == 6 &&
+        unattached_terminal.poll_count() == 7 &&
+        !unattached_host.state().has_value() &&
+        !unattached_host.start_negotiated() &&
+        unattached_status ==
+            std::vector<std::string>{
+                "Mode: HOST",
+                "Waiting for players...",
+                "Host controls cross-control"} &&
+        std::find(unattached_terminal.rendered().begin(),
+                  unattached_terminal.rendered().end(),
+                  "Hosting Game") != unattached_terminal.rendered().end());
+    unattached_host.cancel();
+    check(unattached_host.cancelled());
+
+    CursesLobbyImpl unattached_join(
+        LobbyRole::Join, unattached_save, 1);
+    check(!unattached_join.is_host() &&
+        !unattached_join.set_ready(true) &&
+        unattached_join.local_player_indices().empty());
+
+    // run_curses_lobby has two early terminal outcomes: explicit cancellation
+    // and a negotiated start whose session construction failed.
+    class EarlyExitLobby final : public CursesLobby {
+    public:
+        EarlyExitLobby(bool starts, bool is_cancelled)
+            : starts_(starts), cancelled_(is_cancelled)
+        {
+        }
+        bool poll(ITerminal&, IClock&) override
+        {
+            ++poll_count_;
+            return starts_;
+        }
+        bool is_host() const override { return true; }
+        void request_start() override {}
+        std::unique_ptr<CursesGameSession> take_session() override
+        {
+            ++take_count_;
+            return nullptr;
+        }
+        std::vector<std::string> status_lines() const override { return {}; }
+        void cancel() override { cancelled_ = true; }
+        bool cancelled() const override { return cancelled_; }
+        bool request_team_change(short) override { return false; }
+        bool request_seat_team_change(std::uint8_t, short) override
+        {
+            return false;
+        }
+        bool request_seat_team_change(
+            std::uint8_t, og::sim::LobbySeatId, short) override
+        {
+            return false;
+        }
+        std::vector<std::uint8_t> local_player_indices() const override
+        {
+            return {};
+        }
+        bool set_ready(bool) override { return false; }
+        bool local_ready() const override { return false; }
+        std::vector<og::sim::LobbyPlayer> players() const override
+        {
+            return {};
+        }
+        int poll_count() const { return poll_count_; }
+        int take_count() const { return take_count_; }
+
+    private:
+        bool starts_ = false;
+        bool cancelled_ = false;
+        int poll_count_ = 0;
+        int take_count_ = 0;
+    };
+
+    ScriptedTerminal unused_terminal;
+    FakeClock lobby_clock;
+    EarlyExitLobby cancelled_lobby(false, true);
+    const GameRunResult cancelled_result =
+        run_curses_lobby(cancelled_lobby, unused_terminal, lobby_clock);
+    check(!cancelled_result.ended &&
+        cancelled_lobby.poll_count() == 1 &&
+        cancelled_lobby.take_count() == 0);
+    EarlyExitLobby failed_start_lobby(true, false);
+    const GameRunResult failed_start_result =
+        run_curses_lobby(failed_start_lobby, unused_terminal, lobby_clock);
+    check(!failed_start_result.ended &&
+        failed_start_lobby.poll_count() == 1 &&
+        failed_start_lobby.take_count() == 1);
+
+    // Exercise follow maintenance with no controlled or fallback entity, then
+    // add a valid anonymous spectator target before the second frame. The
+    // engaged null target must be replaced with that entity's nonzero id.
+    auto follow_server = og::sim::InProcessTransport::create_server();
+    follow_server->accept_connections();
+    auto follow_client_link = follow_server->create_client_transport();
+    GameWorld empty_follow_world;
+    og::sim::GameClient empty_follow_client(
+        *follow_client_link, follow_client_link->local_peer_id(),
+        &empty_follow_world);
+    CursesFollowState empty_follow;
+    maintain_curses_follow(
+        empty_follow, empty_follow_client, empty_follow_world, 0);
+    check(empty_follow.engaged && empty_follow.target_entity_id == 0);
+    auto spectator_entity = std::make_unique<walker>();
+    (void)spectator_entity->set_order_family(
+        Order::Living, FAMILY_SOLDIER);
+    spectator_entity->set_dead(0);
+    walker* const spectator_target = spectator_entity.get();
+    empty_follow_world.oblist.push_back(
+        std::move(spectator_entity));
+    check(spectator_target != nullptr &&
+        spectator_target->entity_id() != 0);
+    if (spectator_target != nullptr) {
+        const std::uint32_t spectator_id =
+            spectator_target->entity_id();
+        maintain_curses_follow(
+            empty_follow, empty_follow_client,
+            empty_follow_world, 0);
+        check(empty_follow.engaged &&
+            empty_follow.target_entity_id == spectator_id);
+    }
+
+    // A decided CTF match returning to the same scenario is a rematch, so the
+    // network-win persistence path must leave both memory and the active
+    // company shelf untouched.
+    SaveData rematch_save;
+    rematch_save.scen_num = 7;
+    rematch_save.m_score[0] = 1234;
+    GameWorld rematch_world;
+    rematch_world.id = 7;
+    rematch_world.type = static_cast<char>(
+        rematch_world.type | GameWorld::TYPE_CTF);
+    rematch_world.ctf.active = true;
+    rematch_world.ctf.winner_team = 1;
+    const std::string active_company_before =
+        og::data::active_company_slot();
+    const std::string rematch_probe_slot =
+        make_network_player_name() + "-rematch";
+    const std::string rematch_probe_file =
+        "save/" + rematch_probe_slot + ".gtl";
+    const std::string rematch_probe_temp =
+        "save/" + rematch_probe_slot + ".tmp.gtl";
+    const bool rematch_probe_available =
+        !user_file_exists(rematch_probe_file) &&
+        !user_file_exists(rematch_probe_temp);
+    check(rematch_probe_available);
+    if (rematch_probe_available) {
+        {
+            og::data::ScopedActiveCompany rematch_company(
+                rematch_probe_slot);
+            check(rematch_company.applied());
+            if (rematch_company.applied()) {
+                persist_curses_networked_win(
+                    rematch_save, rematch_world, 0,
+                    rematch_save.scen_num);
+                check(rematch_save.scen_num == 7 &&
+                    rematch_save.m_score[0] == 1234 &&
+                    !user_file_exists(rematch_probe_file) &&
+                    !user_file_exists(rematch_probe_temp));
+            }
+        }
+        // Any artifact here was created after the collision-proof ownership
+        // check above, so cleanup cannot remove pre-existing user data.
+        (void)remove_user_file(rematch_probe_file);
+        (void)remove_user_file(rematch_probe_temp);
+    }
+    check(og::data::active_company_slot() ==
+        active_company_before);
+
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
     auto host_client = server->create_client_transport();
@@ -186,7 +565,11 @@ int curses_network_testing_exercise_internal_helpers()
     equivalent.allied_mode = 0;
     equivalent.team_list.push_back(og::sim::LobbyCharacterSlot{
         .slot_index = 0,
-        .character = player.character_slots.front().character,
+        .character = fixture_slot.character,
+        .deployed = true,
+        .owner_player_index = 0,
+        .owner_save_slot =
+            fixture_slot.slot_index,
     });
     std::vector<og::sim::LobbyPlayerBinding> bindings{
         og::sim::LobbyPlayerBinding{
@@ -255,6 +638,46 @@ int curses_network_testing_exercise_internal_helpers()
             second_drain.empty() &&
             exit_hook_accepts &&
             host_prompt_accepted;
+
+        // A pending player respawn deliberately suppresses spectator-follow
+        // engagement: the renderer must keep the local corpse/countdown view.
+        walker* pending_corpse = nullptr;
+        for (const auto& entity : mirror.oblist) {
+            walker* const candidate = entity.get();
+            if (candidate != nullptr && candidate->myguy != nullptr &&
+                candidate->user() == 0) {
+                pending_corpse = candidate;
+                break;
+            }
+        }
+        check(pending_corpse != nullptr);
+        if (pending_corpse != nullptr) {
+            const short dead_before = pending_corpse->dead();
+            const char type_before = mirror.type;
+            const og::sim::CtfState ctf_before = mirror.ctf;
+            pending_corpse->set_dead(1);
+            mirror.type = static_cast<char>(
+                mirror.type | GameWorld::TYPE_CTF);
+            mirror.ctf.active = true;
+            mirror.ctf.respawn_queue.push_back(
+                og::sim::CtfRespawnEntry{
+                    .kind = 0,
+                    .walker_entity_id =
+                        pending_corpse->entity_id(),
+                });
+            CursesFollowState pending_follow{
+                .engaged = true,
+                .target_entity_id = pending_corpse->entity_id(),
+            };
+            maintain_curses_follow(
+                pending_follow, host->client(), mirror, 0);
+            check(!pending_follow.engaged &&
+                pending_follow.target_entity_id == 0);
+            pending_corpse->set_dead(dead_before);
+            mirror.type = type_before;
+            mirror.ctf = ctf_before;
+        }
+
         host->request_abort();
         bool ended_after_abort = false;
         for (int i = 0; i < 25; ++i) {
@@ -280,6 +703,9 @@ int curses_network_testing_exercise_internal_helpers()
                                   join_client->local_peer_id(), 0, &err);
     check(join != nullptr);
     if (join != nullptr) {
+        check(!curses_network_testing_inject_ctf(*join, 30) &&
+            curses_network_testing_force_server_win(*join, 5) == -1 &&
+            curses_network_testing_clear_server_team(*join, 0) == -1);
         GameWorld& mirror = join->mirror_world();
         const std::uint32_t initial_tick = mirror.tick_count_;
         const std::uint32_t initial_next_input_tick = join->next_input_tick();
@@ -323,6 +749,26 @@ int curses_network_testing_exercise_internal_helpers()
         join->advance();
         check(stable_before_abort && !join->ended());
     }
+
+    // The authored-team helper reads only from the save's mounted campaign.
+    // Pin both the failed-load and successful-load paths, then restore the
+    // process mount exactly so shuffled neighbors see their original package.
+    CursesNetworkTestingMountRestore mount_restore;
+    const std::string ctf_campaign = "org.openglad.ctf";
+    const CampaignPackageIoError ctf_mount =
+        mount_campaign_package_with_error(ctf_campaign);
+    check(ctf_mount == CampaignPackageIoError::None);
+    if (ctf_mount == CampaignPackageIoError::None) {
+        SaveData ctf_save;
+        ctf_save.current_campaign = ctf_campaign;
+        ctf_save.scen_num = 32000;
+        check(ctf_authored_team_mask_for_save(ctf_save) == 0);
+        ctf_save.scen_num = 500;
+        check(ctf_authored_team_mask_for_save(ctf_save) != 0);
+    }
+    check(mount_restore.restore() &&
+        get_mounted_campaign() ==
+            mount_restore.mounted_before());
 
     return failed_check == 0 ? 0 : -failed_check;
 }

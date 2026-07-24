@@ -187,6 +187,41 @@ int main(int argc, char* argv[])
                       "explicit owning constructor releases its Screen");
         ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
                       "explicit owning constructor balances SDL lifecycle");
+
+        // The explicit constructor has the same two-stage non-Windowed boot
+        // contract as the factory/default constructor: create and confirm the
+        // remembered Windowed base, then restore and apply the saved request.
+        ok &= require(SDL_Init(SDL_INIT_VIDEO),
+                      "SDL dummy video initializes for explicit Borderless boot");
+        cfg.apply_setting("graphics", "fullscreen", "borderless");
+        cfg.apply_setting("graphics", "width", "711");
+        cfg.apply_setting("graphics", "height", "433");
+        cfg.apply_setting("graphics", "windowed_width", "577");
+        cfg.apply_setting("graphics", "windowed_height", "359");
+        std::unique_ptr<sdl_video> explicit_borderless =
+            std::make_unique<sdl_video>(true);
+        ok &= require(E_Screen != nullptr && E_Screen->window != nullptr,
+                      "explicit Borderless constructor creates an SDL window");
+        if (E_Screen != nullptr && E_Screen->window != nullptr)
+        {
+            const bool fullscreen =
+                (SDL_GetWindowFlags(E_Screen->window) &
+                 SDL_WINDOW_FULLSCREEN) != 0;
+            ok &= require(fullscreen,
+                          "explicit constructor reapplies Borderless mode");
+            ok &= require(
+                cfg.get_setting("graphics", "fullscreen") == "borderless" &&
+                    cfg.get_setting("graphics", "width") == "711" &&
+                    cfg.get_setting("graphics", "height") == "433" &&
+                    cfg.get_setting("graphics", "windowed_width") == "711" &&
+                    cfg.get_setting("graphics", "windowed_height") == "433",
+                "explicit Borderless boot persists the confirmed request");
+        }
+        explicit_borderless.reset();
+        ok &= require(E_Screen == nullptr,
+                      "explicit Borderless constructor releases its Screen");
+        ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
+                      "explicit Borderless constructor balances SDL lifecycle");
         io_exit();
     }
     catch (const std::exception& ex)

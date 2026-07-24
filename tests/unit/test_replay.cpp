@@ -247,6 +247,15 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
     truncated.pop_back();
     EXPECT_FALSE(og::sim::deserialize_replay(truncated, &io_error).has_value());
     EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+
+    og::sim::ReplayPlayer player;
+    ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+    ASSERT_EQ(1u, player.frame_count());
+    EXPECT_FALSE(player.load_bytes(bad_magic, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::InvalidHeader, io_error);
+    EXPECT_EQ(0u, player.frame_count())
+        << "a failed replacement must clear the previously loaded replay";
+    EXPECT_TRUE(player.header().campaign_id.empty());
 }
 
 TEST(Replay, deserialize_rejects_each_malformed_replay_section)
@@ -600,6 +609,66 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
                     "70",
                     "71");
     }
+
+    const auto expect_size_difference =
+        [&](auto add_expected, auto add_actual,
+            std::string_view field) {
+            og::sim::WorldSnapshot expected;
+            og::sim::WorldSnapshot actual;
+            add_expected(expected);
+            add_actual(actual);
+            expect_diff(expected, actual, field, "1", "0");
+        };
+
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.ctf_respawn_queue.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "ctf_respawn_queue.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.grid_dirty_tiles.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "grid_dirty_tiles.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.guy_snapshots.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "guy_snapshots.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.oblist.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "oblist.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.fxlist.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "fxlist.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.weaplist.push_back({});
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "weaplist.size");
+    expect_size_difference(
+        [](og::sim::WorldSnapshot& snapshot) {
+            snapshot.removed_entity_ids.push_back(17u);
+        },
+        [](og::sim::WorldSnapshot&) {},
+        "removed_entity_ids.size");
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.snapshot_hash = 0x12345678u;
+        expect_diff(expected, actual, "snapshot_hash", "305419896", "0");
+    }
 }
 
 TEST(Replay, recorder_zero_tick_keyframe_becomes_initial_snapshot)
@@ -650,6 +719,22 @@ TEST(Replay, file_errors_report_the_failed_operation)
     EXPECT_FALSE(player.load_file(std::filesystem::temp_directory_path(),
                                   &io_error));
     EXPECT_EQ(og::sim::ReplayIoError::OpenReadFailed, io_error);
+
+#if defined(__linux__)
+    const std::filesystem::path dev_full = "/dev/full";
+    ASSERT_TRUE(std::filesystem::is_character_file(dev_full))
+        << "Linux write-error coverage requires the standard /dev/full device";
+    // Exceed the stream buffer so the production write observes /dev/full
+    // synchronously instead of deferring the device error to destruction.
+    for (std::uint32_t tick = 0; tick < 4096u; ++tick)
+        recorder.record_input(tick, make_dense_input());
+    ASSERT_GT(recorder.serialize().size(), 65536u)
+        << "fixture must exceed the standard stream buffer";
+    io_error = og::sim::ReplayIoError::None;
+    EXPECT_FALSE(recorder.write_file(dev_full, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::OpenWriteFailed, io_error)
+        << "a stream that opens but rejects bytes is a write failure";
+#endif
 }
 
 TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)

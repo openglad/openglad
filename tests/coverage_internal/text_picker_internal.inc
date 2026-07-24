@@ -27,9 +27,118 @@ public:
     ScopedCinRedirect(const ScopedCinRedirect&) = delete;
     ScopedCinRedirect& operator=(const ScopedCinRedirect&) = delete;
 
+    bool exhausted() const
+    {
+        return input_.rdbuf()->in_avail() == 0;
+    }
+
+    bool eof_observed() const
+    {
+        return std::cin.eof();
+    }
+
 private:
     std::istringstream input_;
     std::streambuf* saved_;
+};
+
+// TextPickerClient's protocol is deliberately C stdio based. Capture stdout
+// around a single action so state-preserving error/cancel paths still have a
+// behavioral oracle: the exact prompt or diagnostic must have been emitted.
+class ScopedTextPickerStdoutCapture
+{
+public:
+    ScopedTextPickerStdoutCapture()
+    {
+        if (std::fflush(stdout) != 0)
+            return;
+        capture_ = std::tmpfile();
+        if (capture_ == nullptr)
+            return;
+        saved_fd_ = ::dup(::fileno(stdout));
+        if (saved_fd_ < 0)
+            return;
+        if (::dup2(::fileno(capture_), ::fileno(stdout)) < 0)
+            return;
+        active_ = true;
+        ready_ = true;
+    }
+
+    ~ScopedTextPickerStdoutCapture()
+    {
+        if (active_)
+            (void)restore_stdout();
+        if (saved_fd_ >= 0)
+            (void)::close(saved_fd_);
+        if (capture_ != nullptr)
+            (void)std::fclose(capture_);
+    }
+
+    ScopedTextPickerStdoutCapture(
+        const ScopedTextPickerStdoutCapture&) = delete;
+    ScopedTextPickerStdoutCapture& operator=(
+        const ScopedTextPickerStdoutCapture&) = delete;
+
+    bool ready() const { return ready_; }
+
+    std::string finish()
+    {
+        if (finished_)
+            return output_;
+        finished_ = true;
+        if (!ready_)
+            return {};
+
+        bool ok = std::fflush(stdout) == 0;
+        const bool restored = restore_stdout();
+        ok = restored && ok;
+        if (!restored)
+            return {};
+        if (saved_fd_ >= 0) {
+            ok = ::close(saved_fd_) == 0 && ok;
+            saved_fd_ = -1;
+        }
+        if (std::fseek(capture_, 0, SEEK_END) != 0)
+            ok = false;
+        const long size = ok ? std::ftell(capture_) : -1;
+        if (size < 0)
+            ok = false;
+        if (ok && std::fseek(capture_, 0, SEEK_SET) != 0)
+            ok = false;
+        if (ok) {
+            output_.resize(static_cast<std::size_t>(size));
+            const std::size_t read =
+                std::fread(output_.data(), 1, output_.size(), capture_);
+            ok = read == output_.size();
+        }
+        finish_ok_ = ok;
+        return output_;
+    }
+
+    bool finish_ok() const
+    {
+        return finished_ && finish_ok_;
+    }
+
+private:
+    bool restore_stdout()
+    {
+        if (!active_)
+            return true;
+        if (saved_fd_ < 0 ||
+            ::dup2(saved_fd_, ::fileno(stdout)) < 0)
+            return false;
+        active_ = false;
+        return true;
+    }
+
+    std::FILE* capture_ = nullptr;
+    int saved_fd_ = -1;
+    bool active_ = false;
+    bool ready_ = false;
+    bool finished_ = false;
+    bool finish_ok_ = false;
+    std::string output_;
 };
 
 class ScopedTextPickerInternalState
@@ -49,6 +158,20 @@ public:
         capture_file("save/missing-text-picker-save.tmp.gtl");
         capture_file("save/helper-slot.gtl");
         capture_file("save/helper-slot.tmp.gtl");
+        capture_file("save/textcov-active.gtl");
+        capture_file("save/textcov-active.tmp.gtl");
+        capture_file("save/textcov-list.gtl");
+        capture_file("save/textcov-list.tmp.gtl");
+        capture_file("save/textcov-list.gtl.tmp");
+        capture_file("save/textcov-list.gtl.restoretmp.tmp");
+        const std::filesystem::path backup_directory =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code directory_error;
+        backup_directory_existed_ =
+            std::filesystem::exists(backup_directory, directory_error);
+        if (directory_error)
+            snapshot_ok_ = false;
+        capture_textcov_list_backups(backup_directory);
     }
 
     ~ScopedTextPickerInternalState()
@@ -65,14 +188,37 @@ public:
         return snapshot_ok_;
     }
 
+    [[nodiscard]] bool clear_textcov_list_backups() noexcept
+    {
+        const std::filesystem::path backup_directory =
+            std::filesystem::path(get_user_path()) /
+            "save" / "backups";
+        return remove_textcov_list_backups(backup_directory);
+    }
+
     [[nodiscard]] bool restore() noexcept
     {
         if (restored_)
             return restore_ok_;
 
         restore_ok_ = snapshot_ok_;
+        restore_ok_ =
+            clear_textcov_list_backups() && restore_ok_;
         for (const FileSnapshot& file : files_)
             restore_ok_ = restore_file(file) && restore_ok_;
+        if (!backup_directory_existed_) {
+            std::error_code ec;
+            const std::filesystem::path backup_directory =
+                std::filesystem::path(get_user_path()) /
+                "save" / "backups";
+            (void)std::filesystem::remove(backup_directory, ec);
+            std::error_code exists_error;
+            const bool directory_remains =
+                std::filesystem::exists(
+                    backup_directory, exists_error);
+            restore_ok_ = !ec && !exists_error &&
+                !directory_remains && restore_ok_;
+        }
 
         const std::string mounted_after = get_mounted_campaign();
         if (mounted_after != mounted_campaign_before_)
@@ -105,11 +251,94 @@ private:
         std::vector<char> contents;
     };
 
+    static bool is_textcov_list_backup(
+        const std::filesystem::path& path)
+    {
+        return path.filename().string().starts_with(
+            "textcov-list.");
+    }
+
+    void capture_textcov_list_backups(
+        const std::filesystem::path& backup_directory)
+    {
+        if (!backup_directory_existed_)
+            return;
+
+        std::error_code ec;
+        std::filesystem::directory_iterator entries(
+            backup_directory, ec);
+        if (ec)
+        {
+            snapshot_ok_ = false;
+            return;
+        }
+        for (const std::filesystem::directory_entry& entry :
+             entries)
+        {
+            std::error_code entry_error;
+            const bool regular =
+                entry.is_regular_file(entry_error);
+            if (entry_error)
+            {
+                snapshot_ok_ = false;
+                continue;
+            }
+            if (regular &&
+                is_textcov_list_backup(entry.path()))
+                capture_absolute_file(entry.path());
+        }
+    }
+
+    bool remove_textcov_list_backups(
+        const std::filesystem::path& backup_directory) noexcept
+    {
+        std::error_code exists_error;
+        if (!std::filesystem::exists(
+                backup_directory, exists_error))
+            return !exists_error;
+
+        std::error_code iteration_error;
+        std::filesystem::directory_iterator entries(
+            backup_directory, iteration_error);
+        if (iteration_error)
+            return false;
+
+        std::vector<std::filesystem::path> matches;
+        for (const std::filesystem::directory_entry& entry :
+             entries)
+        {
+            std::error_code entry_error;
+            const bool regular =
+                entry.is_regular_file(entry_error);
+            if (entry_error)
+                return false;
+            if (regular &&
+                is_textcov_list_backup(entry.path()))
+                matches.push_back(entry.path());
+        }
+
+        bool ok = true;
+        for (const std::filesystem::path& path : matches)
+        {
+            std::error_code remove_error;
+            (void)std::filesystem::remove(path, remove_error);
+            ok = !remove_error && ok;
+        }
+        return ok;
+    }
+
     void capture_file(const std::string& relative_path)
     {
+        capture_absolute_file(
+            std::filesystem::path(get_user_path()) /
+            relative_path);
+    }
+
+    void capture_absolute_file(
+        const std::filesystem::path& path)
+    {
         FileSnapshot snapshot;
-        snapshot.path =
-            std::filesystem::path(get_user_path()) / relative_path;
+        snapshot.path = path;
 
         std::error_code ec;
         snapshot.existed = std::filesystem::exists(snapshot.path, ec);
@@ -198,6 +427,7 @@ private:
     GameWorld* world_ = nullptr;
     short world_difficulty_before_ = 0;
     std::vector<FileSnapshot> files_;
+    bool backup_directory_existed_ = false;
     bool snapshot_ok_ = true;
     bool restored_ = false;
     bool restore_ok_ = true;
@@ -449,6 +679,40 @@ int text_picker_testing_exercise_internal_paths()
         check(og::data::active_company_slot() == "helper-slot");
     }
     {
+        const std::string slot_before = config.save_name;
+        const std::uint32_t seed_before = config.seed;
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        ScopedCinRedirect input("");
+        client.show_options();
+        const bool input_reached_first_eof =
+            input.exhausted() && input.eof_observed();
+        const std::string text = output.finish();
+        check(config.save_name == slot_before &&
+              config.seed == seed_before &&
+              input_reached_first_eof &&
+              output.finish_ok() &&
+              text.find("Current save slot:") != std::string::npos &&
+              text.find("Current seed:") == std::string::npos);
+    }
+    {
+        const std::string slot_before = config.save_name;
+        const std::uint32_t seed_before = config.seed;
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        ScopedCinRedirect input("\n");
+        client.show_options();
+        const bool input_reached_second_eof =
+            input.exhausted() && input.eof_observed();
+        const std::string text = output.finish();
+        check(config.save_name == slot_before &&
+              config.seed == seed_before &&
+              input_reached_second_eof &&
+              output.finish_ok() &&
+              text.find("Current save slot:") != std::string::npos &&
+              text.find("Current seed:") != std::string::npos);
+    }
+    {
         ScopedCinRedirect input("\n123\n");
         client.show_options();
         check(config.save_name == "helper-slot" && config.seed == 123u);
@@ -471,6 +735,110 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::ViewScenario, "\n", [&] {
         return config.level == scenario_level;
     });
+    handle_team_item(PickerMenuCommand::SetLevel, "32000\n", [&] {
+        return config.level == 32000 && save.scen_num == 32000;
+    });
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::ViewScenario, "", [&] {
+            return config.level == 32000 && save.scen_num == 32000;
+        });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find("Could not load level 32000.") !=
+                std::string::npos);
+    }
+    handle_team_item(PickerMenuCommand::SetLevel, "1\n", [&] {
+        return config.level == 1 && save.scen_num == 1;
+    });
+
+    // A client without an error sink must still fail an unsafe load cleanly;
+    // set_error's null branch is part of the public nullptr contract.
+    {
+        TextPickerConfig null_error_config;
+        null_error_config.team_families = {FAMILY_SOLDIER};
+        null_error_config.save_name = "../unsafe-text-picker-load";
+        TextPickerClient null_error_client(null_error_config, nullptr);
+        check(!null_error_client.load_game());
+    }
+
+    // Unknown commands are ignored by the Difficulty dispatcher, preserving
+    // both the session difficulty and every match-rule field.
+    {
+        const int difficulty_before =
+            og::runtime::current_session->current_difficulty_;
+        const short respawn_before = save.respawn_mode;
+        const PickerMenuItem unknown_difficulty{
+            "unknown-difficulty", "Unknown",
+            PickerMenuCommand::BeginNewGame, 0};
+        client.handle_menu_item(
+            PickerMenuId::Difficulty, unknown_difficulty);
+        check(og::runtime::current_session->current_difficulty_ ==
+                  difficulty_before &&
+              save.respawn_mode == respawn_before);
+    }
+
+    // Drive the cancellation/validation branches of the company and backup
+    // row prompts over a real, valid save+snapshot. Each flow must leave both
+    // artifacts intact and keep this client on its original slot.
+    (void)remove_user_file("save/textcov-active.gtl");
+    (void)remove_user_file("save/textcov-active.tmp.gtl");
+    (void)remove_user_file("save/textcov-list.gtl");
+    (void)remove_user_file("save/textcov-list.tmp.gtl");
+    (void)remove_user_file("save/textcov-list.gtl.tmp");
+    (void)remove_user_file("save/textcov-list.gtl.restoretmp.tmp");
+    check(state_restore.clear_textcov_list_backups());
+    SaveData listed_company;
+    listed_company.reset();
+    listed_company.save_name = "TEXT COVERAGE COMPANY";
+    listed_company.current_campaign = "org.openglad.gladiator";
+    listed_company.last_played_unix_s = 9000000000000000LL;
+    check(listed_company.save_with_error("textcov-list") ==
+          SaveDataIoError::None);
+    check(og::data::backup_company_now("textcov-list"));
+
+    const auto check_cancelled_company_flow =
+        [&check](std::string input_text,
+                 std::string_view expected_output,
+                 bool expected_eof) {
+            TextPickerConfig list_config;
+            list_config.team_families = {FAMILY_SOLDIER};
+            list_config.save_name = "textcov-active";
+            TextPickerError list_error;
+            TextPickerClient list_client(list_config, &list_error);
+            ScopedTextPickerStdoutCapture output;
+            check(output.ready());
+            ScopedCinRedirect input(std::move(input_text));
+            const bool opened = list_client.show_company_list();
+            const bool input_oracle =
+                input.exhausted() &&
+                input.eof_observed() == expected_eof;
+            const std::string text = output.finish();
+            check(!opened &&
+                list_config.save_name == "textcov-active" &&
+                input_oracle &&
+                output.finish_ok() &&
+                text.find(expected_output) != std::string::npos &&
+                user_file_exists("save/textcov-list.gtl") &&
+                og::data::list_company_backups(
+                    "textcov-list").size() == 1);
+        };
+    check_cancelled_company_flow(
+        "1\n", "Open which company", true);
+    check_cancelled_company_flow(
+        "1\n99\n4\n", "Invalid company selection.", false);
+    check_cancelled_company_flow(
+        "2\n", "Backups for which company", true);
+    check_cancelled_company_flow(
+        "2\n1\n1\n", "Restore which backup", true);
+    check_cancelled_company_flow(
+        "2\n1\n1\n99\n3\n4\n",
+        "Invalid backup selection.", false);
+    check_cancelled_company_flow(
+        "3\n", "Delete which company", true);
+    check_cancelled_company_flow(
+        "2\n1\n2\n", "Delete which backup", true);
 
     config.team_families.clear();
     {
@@ -501,9 +869,18 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
         return save.ctf_team_count != previous_ctf_teams;
     });
-    handle_team_item(PickerMenuCommand::ViewScenario, "", [&] {
-        return config.campaign == "org.openglad.ctf";
-    });
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::ViewScenario, "", [&] {
+            return config.campaign == "org.openglad.ctf";
+        });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find(
+                "Campaign 'org.openglad.ctf' is not mounted.") !=
+                std::string::npos);
+    }
 
     check(state_restore.restore());
 

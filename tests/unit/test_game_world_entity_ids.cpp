@@ -1,4 +1,5 @@
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/order.h>
@@ -25,6 +26,28 @@ struct GameWorldEntityIdsFixture : testing::Test
     }
 
     GameWorld world;
+};
+
+class ScopedGameplayContextOverride
+{
+public:
+    explicit ScopedGameplayContextOverride(GameplayContext& context)
+        : previous_(current_game)
+    {
+        current_game = &context;
+    }
+
+    ~ScopedGameplayContextOverride()
+    {
+        current_game = previous_;
+    }
+
+    ScopedGameplayContextOverride(const ScopedGameplayContextOverride&) = delete;
+    ScopedGameplayContextOverride& operator=(
+        const ScopedGameplayContextOverride&) = delete;
+
+private:
+    GameplayContext* previous_ = nullptr;
 };
 
 } // namespace
@@ -504,4 +527,172 @@ TEST_F(GameWorldEntityIdsFixture, clear_resets_removed_entity_id_log_for_new_wor
     world.clear();
 
     EXPECT_TRUE(world.removed_entity_ids().empty());
+}
+
+TEST_F(GameWorldEntityIdsFixture, empty_list_removals_and_self_move_are_noops)
+{
+    ASSERT_TRUE(world.oblist.empty());
+    world.oblist.pop_back();
+    world.oblist.pop_front();
+    EXPECT_TRUE(world.oblist.empty());
+    EXPECT_TRUE(world.removed_entity_ids().empty());
+
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+    const std::uint32_t id = living->entity_id();
+
+    world.move_entities_from(world);
+
+    ASSERT_EQ(1u, world.oblist.size());
+    EXPECT_EQ(living, world.oblist.front().get());
+    EXPECT_EQ(living, world.find_by_id(id));
+    EXPECT_TRUE(world.removed_entity_ids().empty());
+}
+
+TEST_F(GameWorldEntityIdsFixture, optional_entity_hooks_preserve_null_and_forward_valid_calls)
+{
+    walker entity;
+    EXPECT_EQ(nullptr,
+              world.configure_existing_entity(entity, Order::Living,
+                                              FAMILY_SOLDIER));
+
+    PixieData configured_sprite;
+    int configure_calls = 0;
+    world.entity_configurator =
+        [&](walker& candidate, Order order, std::int32_t family) {
+            ++configure_calls;
+            EXPECT_EQ(&entity, &candidate);
+            EXPECT_EQ(Order::Living, order);
+            EXPECT_EQ(FAMILY_SOLDIER, family);
+            return &configured_sprite;
+        };
+    EXPECT_EQ(&configured_sprite,
+              world.configure_existing_entity(entity, Order::Living,
+                                              FAMILY_SOLDIER));
+    EXPECT_EQ(1, configure_calls);
+
+    int derived_calls = 0;
+    world.entity_derived_stats =
+        [&](walker* candidate, Order order, std::int32_t family) {
+            ++derived_calls;
+            EXPECT_EQ(&entity, candidate);
+            EXPECT_EQ(Order::Living, order);
+            EXPECT_EQ(FAMILY_SOLDIER, family);
+        };
+    world.set_entity_derived_stats(nullptr, Order::Living, FAMILY_SOLDIER);
+    EXPECT_EQ(0, derived_calls);
+    world.set_entity_derived_stats(&entity, Order::Living, FAMILY_SOLDIER);
+    EXPECT_EQ(1, derived_calls);
+}
+
+TEST_F(GameWorldEntityIdsFixture, gameplay_context_falls_back_to_matching_active_context)
+{
+    ASSERT_NE(nullptr, current_game);
+    ASSERT_NE(nullptr, current_game->sim_events);
+    ASSERT_NE(nullptr, current_game->config);
+
+    GameplayContext active;
+    active.world = &world;
+    active.save = current_game->save;
+    active.sim_events = current_game->sim_events;
+    active.config = current_game->config;
+    active.rng_override_ref = current_game->rng_override_ref;
+    active.session_rng_ref = current_game->session_rng_ref;
+    active.gameplay_active_ref = current_game->gameplay_active_ref;
+
+    world.set_gameplay_context_bindings(nullptr, nullptr, nullptr);
+    ScopedGameplayContextOverride context_guard(active);
+    GameplayContext populated;
+
+    ASSERT_TRUE(world.populate_gameplay_context(populated));
+    EXPECT_EQ(&world, populated.world);
+    EXPECT_EQ(active.save, populated.save);
+    EXPECT_EQ(active.sim_events, populated.sim_events);
+    EXPECT_EQ(active.config, populated.config);
+    EXPECT_EQ(active.rng_override_ref, populated.rng_override_ref);
+    EXPECT_EQ(active.session_rng_ref, populated.session_rng_ref);
+    EXPECT_EQ(active.gameplay_active_ref, populated.gameplay_active_ref);
+}
+
+TEST_F(GameWorldEntityIdsFixture, tracked_ids_rebuild_after_public_list_mutation)
+{
+    EXPECT_EQ(0u, world.tracked_entity_id(nullptr));
+
+    walker detached;
+    EXPECT_EQ(0u, world.tracked_entity_id(&detached));
+
+    auto external = std::make_unique<walker>();
+    external->set_order_family(Order::Living, FAMILY_SOLDIER);
+    walker* raw = external.get();
+    world.oblist.push_back(std::move(external));
+
+    ASSERT_NE(0u, raw->entity_id());
+    EXPECT_EQ(raw->entity_id(), world.tracked_entity_id(raw));
+    EXPECT_EQ(raw, world.find_by_id(raw->entity_id()));
+}
+
+TEST_F(GameWorldEntityIdsFixture, rejected_factory_results_leave_world_unchanged)
+{
+    world.entity_factory = {};
+    EXPECT_EQ(nullptr, world.add_ob(Order::Living, FAMILY_SOLDIER));
+    EXPECT_TRUE(world.oblist.empty());
+    EXPECT_EQ(0, world.living_count);
+
+    int factory_calls = 0;
+    world.entity_factory =
+        [&](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+            ++factory_calls;
+            EXPECT_EQ(Order::Living, order);
+            EXPECT_EQ(FAMILY_SOLDIER, family);
+            return nullptr;
+        };
+    EXPECT_EQ(nullptr, world.add_ob(Order::Living, FAMILY_SOLDIER));
+    EXPECT_EQ(1, factory_calls);
+    EXPECT_TRUE(world.oblist.empty());
+    EXPECT_EQ(0, world.living_count);
+}
+
+TEST_F(GameWorldEntityIdsFixture, boundary_queries_fail_closed_without_side_effects)
+{
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* peer = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, peer);
+    actor->set_team_num(0);
+    peer->set_team_num(0);
+    actor->setxy(0, 0);
+    peer->setxy(0, 0);
+
+    EXPECT_FALSE(world.query_object_passable(0.0f, 0.0f, nullptr));
+    EXPECT_FALSE(world.query_object_passable(0.0f, 0.0f, actor));
+    EXPECT_FALSE(world.floor_landing_clear(nullptr, 0.0f, 0.0f, 0));
+    EXPECT_FALSE(world.clear_sight_line(nullptr, actor));
+    EXPECT_FALSE(world.clear_sight_line(actor, nullptr));
+    EXPECT_TRUE(world.clear_sight_line(actor, peer));
+    EXPECT_EQ(nullptr, world.find_near_foe(actor));
+    EXPECT_EQ(0, world.remaining_foes(nullptr));
+
+    constexpr int kGridWidth = 3;
+    constexpr int kGridHeight = 3;
+    auto pixels = std::make_unique<unsigned char[]>(kGridWidth * kGridHeight);
+    std::fill_n(pixels.get(), kGridWidth * kGridHeight, PIX_GRASS1);
+    world.grid = PixieData(1, kGridWidth, kGridHeight, pixels.release());
+    world.pixmaxx = kGridWidth * GRID_SIZE;
+    world.pixmaxy = kGridHeight * GRID_SIZE;
+
+    EXPECT_TRUE(world.floor_landing_clear(actor, 0.0f, 0.0f, 0));
+
+    peer->setxy(5 * GRID_SIZE, 0);
+    EXPECT_FALSE(world.clear_sight_line(actor, peer));
+
+    EXPECT_EQ(0, world.damage_tile(-GRID_SIZE, 0));
+    EXPECT_EQ(0, world.damage_tile(0, -GRID_SIZE));
+    EXPECT_EQ(0, world.damage_tile(kGridWidth * GRID_SIZE, 0));
+    EXPECT_EQ(0, world.damage_tile(0, kGridHeight * GRID_SIZE));
+    EXPECT_TRUE(world.grid_dirty_tiles().empty());
+
+    world.set_floor_count(2);
+    ASSERT_EQ(2, world.floor_count());
+    world.set_floor_count(0);
+    EXPECT_EQ(1, world.floor_count());
 }

@@ -7,6 +7,8 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <atomic>
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
@@ -262,6 +264,148 @@ TEST(LevelEditorInteractions, level_editor_runs_and_handles_basic_input)
     ASSERT_TRUE(st.finished) << "injector thread should have finished";
 }
 
+namespace
+{
+struct EditorDecorToggleThreadState
+{
+    std::atomic<bool> stop{false};
+    bool events_queued = false;
+};
+
+class EditorDecorStateGuard
+{
+public:
+    EditorDecorStateGuard()
+        : saved_editor_state_(eds()),
+          saved_input_state_(input_hardware_state()),
+          saved_end_(og::runtime::current_session->myscreen_->world().end)
+    {
+        trace_clear();
+        eds().levelchanged = 0;
+        eds().campaignchanged = 0;
+        eds().decor_mode = false;
+        og::runtime::current_session->myscreen_->world().end = 0;
+    }
+
+    ~EditorDecorStateGuard()
+    {
+        SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+        input_hardware_state() = std::move(saved_input_state_);
+        eds() = std::move(saved_editor_state_);
+        og::runtime::current_session->myscreen_->world().end = saved_end_;
+        trace_clear();
+    }
+
+private:
+    LevelEditorState saved_editor_state_;
+    InputHardwareState saved_input_state_;
+    char saved_end_;
+};
+
+class JoinedSdlThread
+{
+public:
+    JoinedSdlThread(
+        SDL_Thread* thread, EditorDecorToggleThreadState& state)
+        : thread_(thread), state_(state) {}
+    ~JoinedSdlThread() { (void)join(); }
+
+    bool valid() const { return thread_ != nullptr; }
+
+    int join()
+    {
+        state_.stop.store(true, std::memory_order_release);
+        if (thread_ != nullptr)
+        {
+            SDL_WaitThread(thread_, &result_);
+            thread_ = nullptr;
+        }
+        return result_;
+    }
+
+private:
+    SDL_Thread* thread_;
+    EditorDecorToggleThreadState& state_;
+    int result_ = 1;
+};
+
+bool push_checked_key_press(SDL_Keycode key)
+{
+    SDL_Event down{};
+    down.type = SDL_EVENT_KEY_DOWN;
+    down.key.key = key;
+    down.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
+    down.key.down = true;
+    if (!SDL_PushEvent(&down))
+        return false;
+
+    SDL_Delay(10);
+    SDL_Event up = down;
+    up.type = SDL_EVENT_KEY_UP;
+    up.key.down = false;
+    return SDL_PushEvent(&up);
+}
+
+int editor_decor_toggle_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& state = *static_cast<EditorDecorToggleThreadState*>(opaque);
+    const Uint64 entry_deadline = SDL_GetTicks() + 5000u;
+    while (!trace_contains("canvas", "editor_pin_classic"))
+    {
+        if (SDL_GetTicks() >= entry_deadline)
+        {
+            (void)push_checked_key_press(SDLK_ESCAPE);
+            return 1;
+        }
+        SDL_Delay(1);
+    }
+
+    // O followed by T reaches Terrain mode from every possible current mode.
+    bool all_events_queued =
+        push_checked_key_press(SDLK_O) &&
+        push_checked_key_press(SDLK_T) &&
+        push_checked_key_press(SDLK_B);
+
+    // Keep a checked Escape event available until the real editor loop exits.
+    // This is event-only: the worker never races a product-state write.
+    while (!state.stop.load(std::memory_order_acquire))
+    {
+        const bool escape_queued = push_checked_key_press(SDLK_ESCAPE);
+        all_events_queued = escape_queued && all_events_queued;
+        SDL_Delay(10);
+    }
+    const bool stopped = state.stop.load(std::memory_order_acquire);
+    state.events_queued = all_events_queued && stopped;
+    return state.events_queued ? 0 : 1;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, terrain_decor_key_toggles_through_real_event_loop)
+{
+    EditorDecorStateGuard state_guard;
+    EditorDecorToggleThreadState state;
+    JoinedSdlThread thread(
+        SDL_CreateThread(
+            editor_decor_toggle_injector, "editor_decor_toggle", &state),
+        state);
+    if (!thread.valid())
+    {
+        FAIL() << "failed to create the editor event injector";
+        return;
+    }
+
+    (void)level_editor();
+
+    const int thread_result = thread.join();
+    const bool decor_mode_after_key = eds().decor_mode;
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_TRUE(state.events_queued);
+    EXPECT_TRUE(decor_mode_after_key)
+        << "B must switch a freshly entered editor from base to decor painting";
+}
+
 
 namespace
 {
@@ -483,4 +627,3 @@ TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
     ASSERT_TRUE(trace_contains("editor", "ai_cycle to=ROAM act=0 hold=0"))
         << "third AI click should return to ROAM (ACT_RANDOM)";
 }
-

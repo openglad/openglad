@@ -10,14 +10,29 @@
 #include "lodepng.h"
 #include "test_save_state_guard.h"
 
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
+#include <physfs.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
 #include <random>
 #include <string>
+#ifdef __linux__
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
 #include <vector>
+
+namespace og::io {
+SDL_IOStream* physfsio_open_read(const char* path);
+SDL_IOStream* physfsio_open_write(const char* path);
+} // namespace og::io
 
 namespace {
 
@@ -37,6 +52,61 @@ struct CampaignFixture {
             (void)mount_campaign_package_with_error(old_campaign);
     }
 };
+
+struct SdlIoStreamCloser
+{
+    void operator()(SDL_IOStream* stream) const
+    {
+        if (stream != nullptr)
+            (void)SDL_CloseIO(stream);
+    }
+};
+
+using ScopedSdlIoStream =
+    std::unique_ptr<SDL_IOStream, SdlIoStreamCloser>;
+
+struct SdlErrorClearGuard
+{
+    SdlErrorClearGuard() { SDL_ClearError(); }
+    ~SdlErrorClearGuard() { SDL_ClearError(); }
+};
+
+#ifdef __linux__
+int descriptor_for_file(const std::filesystem::path& expected)
+{
+    std::error_code ec;
+    for (const auto& entry :
+         std::filesystem::directory_iterator("/proc/self/fd", ec))
+    {
+        if (ec)
+            break;
+        const std::filesystem::path target =
+            std::filesystem::read_symlink(entry.path(), ec);
+        if (ec)
+        {
+            ec.clear();
+            continue;
+        }
+        if (std::filesystem::equivalent(target, expected, ec))
+        {
+            const std::optional<int> descriptor = [&]() -> std::optional<int> {
+                try
+                {
+                    return std::stoi(entry.path().filename().string());
+                }
+                catch (...)
+                {
+                    return std::nullopt;
+                }
+            }();
+            if (descriptor)
+                return *descriptor;
+        }
+        ec.clear();
+    }
+    return -1;
+}
+#endif
 
 } // namespace
 
@@ -144,6 +214,192 @@ TEST(PngConversion, stale_campaign_overwritten)
     PixieData grid = read_pixie_file("scen1.png");
     ASSERT_TRUE(grid.valid()) << "scen1.png should be loadable after campaign restore";
 }
+
+#ifdef __linux__
+TEST(PngConversion, physfs_sdl_bridge_reports_broken_file_descriptors)
+{
+    SdlErrorClearGuard error_guard;
+    namespace fs = std::filesystem;
+    const std::string read_name =
+        "physfs_bridge_read_" + std::to_string(getpid()) + ".bin";
+    const std::string write_name =
+        "physfs_bridge_write_" + std::to_string(getpid()) + ".bin";
+    const std::string short_write_name =
+        "physfs_bridge_short_write_" + std::to_string(getpid()) + ".bin";
+    const fs::path read_path = fs::path(get_user_path()) / read_name;
+    const fs::path write_path = fs::path(get_user_path()) / write_name;
+    const fs::path short_write_path =
+        fs::path(get_user_path()) / short_write_name;
+    struct Cleanup
+    {
+        fs::path read_path;
+        fs::path write_path;
+        fs::path short_write_path;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            fs::remove(read_path, ec);
+            fs::remove(write_path, ec);
+            fs::remove(short_write_path, ec);
+        }
+    } cleanup{read_path, write_path, short_write_path};
+
+    {
+        std::ofstream output(read_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(output.good());
+        const std::array<unsigned char, 8> payload{
+            0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87};
+        output.write(
+            reinterpret_cast<const char*>(payload.data()), payload.size());
+        ASSERT_TRUE(output.good());
+    }
+
+    const auto broken_read_stream = [&]() {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_read(read_name.c_str()));
+        EXPECT_NE(nullptr, stream);
+        if (stream == nullptr)
+            return stream;
+        const int descriptor = descriptor_for_file(read_path);
+        EXPECT_GE(descriptor, 0);
+        if (descriptor < 0)
+            return ScopedSdlIoStream{};
+        EXPECT_EQ(0, close(descriptor));
+        return stream;
+    };
+    const auto close_broken_stream = [](ScopedSdlIoStream& stream,
+                                        bool expect_close_error) {
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        const bool closed = SDL_CloseIO(stream.release());
+        if (expect_close_error)
+        {
+            EXPECT_FALSE(closed);
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        else
+        {
+            EXPECT_TRUE(closed)
+                << "read handles release their wrapper after an earlier "
+                   "descriptor failure";
+        }
+    };
+
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_CUR));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find position in file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_END));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find end of file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_SET));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        std::array<unsigned char, 4> bytes{
+            0xA5, 0xA5, 0xA5, 0xA5};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_ReadIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_EQ((std::array<unsigned char, 4>{
+                      0xA5, 0xA5, 0xA5, 0xA5}),
+                  bytes)
+            << "a failed read must not claim or fabricate bytes";
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        const int descriptor = descriptor_for_file(write_path);
+        ASSERT_GE(descriptor, 0);
+        ASSERT_EQ(0, close(descriptor));
+
+        const std::array<unsigned char, 4> bytes{
+            0xDE, 0xAD, 0xBE, 0xEF};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_WriteIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, true);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(short_write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        struct FileSizeLimitRestore
+        {
+            rlimit old_limit{};
+            using SignalHandler = void (*)(int);
+            SignalHandler old_handler = SIG_DFL;
+            bool limit_changed = false;
+            bool handler_changed = false;
+            ~FileSizeLimitRestore()
+            {
+                if (limit_changed &&
+                    setrlimit(RLIMIT_FSIZE, &old_limit) != 0)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the process file-size limit";
+                }
+                if (handler_changed &&
+                    std::signal(SIGXFSZ, old_handler) == SIG_ERR)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the SIGXFSZ handler";
+                }
+            }
+        };
+        {
+            FileSizeLimitRestore restore;
+            ASSERT_EQ(0, getrlimit(RLIMIT_FSIZE, &restore.old_limit));
+            restore.old_handler = std::signal(SIGXFSZ, SIG_IGN);
+            ASSERT_NE(SIG_ERR, restore.old_handler);
+            restore.handler_changed = true;
+            rlimit one_byte = restore.old_limit;
+            one_byte.rlim_cur = 1;
+            ASSERT_EQ(0, setrlimit(RLIMIT_FSIZE, &one_byte));
+            restore.limit_changed = true;
+
+            const std::array<unsigned char, 4> bytes{
+                0x10, 0x20, 0x30, 0x40};
+            SDL_ClearError();
+            EXPECT_EQ(1u, SDL_WriteIO(
+                              stream.get(), bytes.data(), bytes.size()));
+            EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        EXPECT_TRUE(SDL_CloseIO(stream.release()));
+        EXPECT_EQ(1u, fs::file_size(short_write_path));
+    }
+}
+#endif
 
 namespace {
 

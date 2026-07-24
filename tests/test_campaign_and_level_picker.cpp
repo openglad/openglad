@@ -14,8 +14,12 @@
 #include "test_interact.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <map>
+#include <string_view>
 #include <string>
 #include <vector>
 
@@ -27,6 +31,10 @@ bool sort_scen(const std::string& first, const std::string& second);
 // campaign_picker.cpp helper
 int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
+void campaign_picker_testing_input_reset();
+void campaign_picker_testing_abort();
+std::uint64_t campaign_picker_testing_entered_count();
+std::uint64_t campaign_picker_testing_action_count();
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
 // Deterministic dialog answers used by the level picker.
@@ -34,6 +42,7 @@ void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 void level_picker_testing_input_reset();
 void level_picker_testing_click(int x, int y);
 std::uint64_t level_picker_testing_entered_count();
@@ -56,6 +65,16 @@ void cleanup_leftover_test_campaigns()
             delete_campaign(id);
         }
     }
+}
+
+std::string unique_test_campaign_id(std::string_view stem)
+{
+    static std::atomic<std::uint64_t> sequence{0};
+    const auto nonce = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    return "org.openglad.test." + std::string(stem) + "." +
+        std::to_string(nonce) + "." +
+        std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
 }
 } // namespace
 
@@ -82,6 +101,116 @@ static void repeated_click(int x, int y, int attempts = 8)
         SDL_Delay(150);
     }
 }
+
+bool wait_for_campaign_picker_counter(
+    std::uint64_t (*counter)(), std::uint64_t baseline)
+{
+    constexpr Uint64 kHandshakeTimeoutMs = 5000;
+    const Uint64 started_at = SDL_GetTicks();
+    while (counter() <= baseline)
+    {
+        if (SDL_GetTicks() - started_at >= kHandshakeTimeoutMs)
+        {
+            campaign_picker_testing_abort();
+            return false;
+        }
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+bool wait_for_campaign_picker_ready()
+{
+    return wait_for_campaign_picker_counter(
+        campaign_picker_testing_entered_count, 0);
+}
+
+bool wait_for_campaign_picker_event_consumed(Uint32 event_type)
+{
+    constexpr Uint64 kHandshakeTimeoutMs = 5000;
+    const Uint64 started_at = SDL_GetTicks();
+    while (SDL_HasEvent(event_type))
+    {
+        if (SDL_GetTicks() - started_at >= kHandshakeTimeoutMs)
+        {
+            campaign_picker_testing_abort();
+            return false;
+        }
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+bool push_campaign_picker_mouse_event(Uint32 event_type, int x, int y)
+{
+    SDL_Event event{};
+    event.type = event_type;
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = event_type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.clicks = 1;
+    event.button.x = static_cast<float>(x);
+    event.button.y = static_cast<float>(y);
+    return SDL_PushEvent(&event);
+}
+
+bool click_campaign_picker_action(int x, int y)
+{
+    const std::uint64_t action_before =
+        campaign_picker_testing_action_count();
+    if (!push_campaign_picker_mouse_event(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, x, y))
+    {
+        campaign_picker_testing_abort();
+        return false;
+    }
+
+    const bool acknowledged = wait_for_campaign_picker_counter(
+        campaign_picker_testing_action_count, action_before);
+    if (!push_campaign_picker_mouse_event(
+            SDL_EVENT_MOUSE_BUTTON_UP, x, y))
+    {
+        campaign_picker_testing_abort();
+        return false;
+    }
+    const bool released =
+        wait_for_campaign_picker_event_consumed(
+            SDL_EVENT_MOUSE_BUTTON_UP);
+    return acknowledged && released;
+}
+
+struct CampaignPickerInputGuard
+{
+    CampaignPickerInputGuard()
+    {
+        campaign_picker_testing_input_reset();
+        if (SDL_HasEvents(
+                SDL_EVENT_MOUSE_BUTTON_DOWN,
+                SDL_EVENT_MOUSE_BUTTON_UP))
+        {
+            ADD_FAILURE()
+                << "campaign picker inherited stale mouse-button events";
+        }
+    }
+
+    ~CampaignPickerInputGuard()
+    {
+        campaign_picker_testing_input_reset();
+        SDL_FlushEvents(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    }
+
+    void reset()
+    {
+        if (SDL_HasEvents(
+                SDL_EVENT_MOUSE_BUTTON_DOWN,
+                SDL_EVENT_MOUSE_BUTTON_UP))
+        {
+            ADD_FAILURE()
+                << "previous campaign picker left mouse-button events queued";
+        }
+        campaign_picker_testing_input_reset();
+    }
+};
 
 struct ViewportGuard
 {
@@ -113,6 +242,65 @@ struct WorldEndGuard
 
     explicit WorldEndGuard(char& end_) : end(end_), saved(end_) {}
     ~WorldEndGuard() { end = saved; }
+};
+
+struct CampaignMountGuard
+{
+    std::string original_mount = get_mounted_campaign();
+
+    ~CampaignMountGuard()
+    {
+        const std::string mounted = get_mounted_campaign();
+        if (mounted == original_mount)
+            return;
+
+        const CampaignPackageIoError error =
+            original_mount.empty()
+                ? unmount_campaign_package_with_error(mounted)
+                : mount_campaign_package_with_error(original_mount);
+        if (error != CampaignPackageIoError::None)
+        {
+            ADD_FAILURE()
+                << "failed to restore campaign mount to " << original_mount;
+        }
+    }
+};
+
+class ScopedSdlThread
+{
+public:
+    explicit ScopedSdlThread(SDL_Thread* thread)
+        : thread_(thread)
+    {
+    }
+
+    ~ScopedSdlThread()
+    {
+        if (thread_ != nullptr)
+            SDL_WaitThread(thread_, nullptr);
+    }
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return thread_ != nullptr;
+    }
+
+    int join()
+    {
+        int result = 1;
+        if (thread_ != nullptr)
+        {
+            SDL_WaitThread(thread_, &result);
+            thread_ = nullptr;
+        }
+        return result;
+    }
+
+    ScopedSdlThread(const ScopedSdlThread&) = delete;
+    ScopedSdlThread& operator=(const ScopedSdlThread&) = delete;
+
+private:
+    SDL_Thread* thread_ = nullptr;
 };
 
 struct TemporaryCampaignGuard
@@ -205,38 +393,108 @@ static int picker_choose_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(500);
-    repeated_click(195, 190); // OK
-    return 0;
+    const bool ready = wait_for_campaign_picker_ready();
+    return ready && click_campaign_picker_action(195, 190) ? 0 : 1; // OK
 }
 
 static int picker_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(500);
-    repeated_click(121, 190); // CANCEL
-    return 0;
+    const bool ready = wait_for_campaign_picker_ready();
+    return ready && click_campaign_picker_action(121, 190) ? 0 : 1; // CANCEL
 }
 
 static int campaign_delete_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(500);
-    repeated_click(280, 15, 4);  // DELETE
-    repeated_click(121, 190, 8); // CANCEL
-    return 0;
+    bool ok = wait_for_campaign_picker_ready();
+    if (ok)
+        ok = click_campaign_picker_action(280, 15); // DELETE
+    if (ok)
+        ok = click_campaign_picker_action(121, 190); // CANCEL
+    return ok ? 0 : 1;
 }
 
 static int campaign_reset_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(500);
-    repeated_click(280, 15, 4);  // RESET
-    repeated_click(121, 190, 8); // CANCEL
-    return 0;
+    bool ok = wait_for_campaign_picker_ready();
+    if (ok)
+        ok = click_campaign_picker_action(280, 15); // RESET
+    if (ok)
+        ok = click_campaign_picker_action(121, 190); // CANCEL
+    return ok ? 0 : 1;
+}
+
+struct CampaignNavigationInjectorContext
+{
+    std::size_t steps = 0;
+    bool next = true;
+};
+
+static int campaign_next_prev_choose_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    const auto* const context =
+        static_cast<const CampaignNavigationInjectorContext*>(data);
+    bool ok = context != nullptr && wait_for_campaign_picker_ready();
+    for (std::size_t i = 0; ok && i < context->steps; ++i)
+    {
+        ok = context->next
+            ? click_campaign_picker_action(210, 40) // NEXT
+            : click_campaign_picker_action(105, 40); // PREV
+    }
+    if (ok)
+        ok = click_campaign_picker_action(195, 190); // OK
+    return ok ? 0 : 1;
+}
+
+static int campaign_enter_id_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    const bool ready = wait_for_campaign_picker_ready();
+    return ready && click_campaign_picker_action(225, 15) ? 0 : 1; // ENTER ID
+}
+
+struct CampaignDeleteInjectorContext
+{
+    std::filesystem::path package;
+};
+
+static int campaign_confirmed_delete_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto* const context =
+        static_cast<CampaignDeleteInjectorContext*>(opaque);
+
+    // One destructive click only. The cancel press cannot be consumed until
+    // deletion and row reload finish, so its event handshake also proves the
+    // destructive action committed before this thread inspects the package.
+    bool clicked_delete = wait_for_campaign_picker_ready();
+    if (clicked_delete)
+        clicked_delete = click_campaign_picker_action(280, 15); // DELETE
+    bool canceled = false;
+    if (clicked_delete)
+        canceled = click_campaign_picker_action(121, 190); // CANCEL
+    const bool removed = !std::filesystem::exists(context->package);
+    return clicked_delete && removed && canceled ? 0 : 1;
+}
+
+static int campaign_confirmed_reset_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    bool reset = wait_for_campaign_picker_ready();
+    if (reset)
+        reset = click_campaign_picker_action(280, 15); // RESET
+    bool canceled = false;
+    if (reset)
+        canceled = click_campaign_picker_action(121, 190); // CANCEL
+    return reset && canceled ? 0 : 1;
 }
 
 static int level_picker_choose_injector(void* data)
@@ -372,18 +630,19 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
 {
     cleanup_leftover_test_campaigns();
 
-    char old_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 0;
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
 
-    SDL_Thread* thread = SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr);
-    ASSERT_TRUE(thread != nullptr) << "failed to create picker q-hold thread";
+    ScopedSdlThread thread(
+        SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr));
+    ASSERT_TRUE(thread.valid()) << "failed to create picker q-hold thread";
 
     CampaignResult out = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
 
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    og::runtime::current_session->myscreen_->world().end = old_end;
+    const int thread_result = thread.join();
 
+    ASSERT_EQ(0, thread_result);
     ASSERT_TRUE(out.id.empty()) << "q exit path should not select a campaign";
 }
 
@@ -392,6 +651,8 @@ TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
 {
     cleanup_leftover_test_campaigns();
 
+    CampaignPickerInputGuard input_guard;
+    CampaignMountGuard mount_guard;
     const std::string old_campaign = get_mounted_campaign();
 
     ViewportGuard guard;
@@ -402,27 +663,30 @@ TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
     og::runtime::current_session->viewport_w_ = 320;
     og::runtime::current_session->viewport_h_ = 200;
 
-    char old_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 0;
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
 
-    SDL_Thread* choose_thread = SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr);
-    ASSERT_TRUE(choose_thread != nullptr) << "failed to create choose injector";
+    ScopedSdlThread choose_thread(
+        SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr));
+    ASSERT_TRUE(choose_thread.valid()) << "failed to create choose injector";
     CampaignResult chosen = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
-    int choose_rc = 0;
-    SDL_WaitThread(choose_thread, &choose_rc);
+    const int choose_rc = choose_thread.join();
+    ASSERT_EQ(0, choose_rc);
     ASSERT_TRUE(!chosen.id.empty()) << "choose path should return a selected campaign id";
     // Ensure later tests run against the baseline default campaign that has scenarios.
     ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after choose path";
 
-    SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
-    ASSERT_TRUE(cancel_thread != nullptr) << "failed to create cancel injector";
+    input_guard.reset();
+    ScopedSdlThread cancel_thread(
+        SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr));
+    ASSERT_TRUE(cancel_thread.valid()) << "failed to create cancel injector";
     CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
-    int cancel_rc = 0;
-    SDL_WaitThread(cancel_thread, &cancel_rc);
+    const int cancel_rc = cancel_thread.join();
+    ASSERT_EQ(0, cancel_rc);
     ASSERT_TRUE(canceled.id.empty()) << "cancel path should not return a campaign id";
     ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after cancel path";
 
-    og::runtime::current_session->myscreen_->world().end = old_end;
 }
 
 
@@ -430,6 +694,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
 {
     cleanup_leftover_test_campaigns();
 
+    CampaignPickerInputGuard input_guard;
     ViewportGuard guard;
     og::runtime::current_session->window_w_ = 320;
     og::runtime::current_session->window_h_ = 200;
@@ -438,24 +703,259 @@ TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
     og::runtime::current_session->viewport_w_ = 320;
     og::runtime::current_session->viewport_h_ = 200;
 
-    char old_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 0;
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
 
-    SDL_Thread* delete_thread = SDL_CreateThread(campaign_delete_then_cancel_injector, "picker_delete_cancel", nullptr);
-    ASSERT_TRUE(delete_thread != nullptr) << "failed to create campaign delete injector";
+    ScopedSdlThread delete_thread(SDL_CreateThread(
+        campaign_delete_then_cancel_injector,
+        "picker_delete_cancel", nullptr));
+    ASSERT_TRUE(delete_thread.valid())
+        << "failed to create campaign delete injector";
     CampaignResult after_delete_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, true);
-    int delete_rc = 0;
-    SDL_WaitThread(delete_thread, &delete_rc);
+    const int delete_rc = delete_thread.join();
+    ASSERT_EQ(0, delete_rc);
     ASSERT_TRUE(after_delete_prompt.id.empty()) << "delete+cancel path should return empty campaign id";
 
-    SDL_Thread* reset_thread = SDL_CreateThread(campaign_reset_then_cancel_injector, "picker_reset_cancel", nullptr);
-    ASSERT_TRUE(reset_thread != nullptr) << "failed to create campaign reset injector";
+    input_guard.reset();
+    ScopedSdlThread reset_thread(SDL_CreateThread(
+        campaign_reset_then_cancel_injector,
+        "picker_reset_cancel", nullptr));
+    ASSERT_TRUE(reset_thread.valid())
+        << "failed to create campaign reset injector";
     CampaignResult after_reset_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
-    int reset_rc = 0;
-    SDL_WaitThread(reset_thread, &reset_rc);
+    const int reset_rc = reset_thread.join();
+    ASSERT_EQ(0, reset_rc);
     ASSERT_TRUE(after_reset_prompt.id.empty()) << "reset+cancel path should return empty campaign id";
 
-    og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+TEST(CampaignAndLevelPicker, campaign_picker_next_and_prev_reach_ordered_boundaries)
+{
+    cleanup_leftover_test_campaigns();
+    std::list<std::string> ordered = list_campaigns();
+    og::ui::order_campaigns_for_select(ordered);
+    ASSERT_GT(ordered.size(), 1u);
+    const std::string first = ordered.front();
+    const std::string last = ordered.back();
+    CampaignPickerInputGuard input_guard;
+    CampaignMountGuard mount_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(first));
+    CampaignNavigationInjectorContext next_context{
+        ordered.size() - 1u, true};
+
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    ScopedSdlThread next_thread(SDL_CreateThread(
+        campaign_next_prev_choose_injector,
+        "campaign_next_choose", &next_context));
+    ASSERT_TRUE(next_thread.valid());
+    const CampaignResult next_result = pick_campaign(
+        &og::runtime::current_session->myscreen_->save_data, false);
+    const int next_thread_result = next_thread.join();
+
+    ASSERT_EQ(0, next_thread_result);
+    ASSERT_EQ(last, next_result.id)
+        << "each acknowledged NEXT must reach the last ordered row";
+
+    input_guard.reset();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(last));
+    CampaignNavigationInjectorContext prev_context{
+        ordered.size() - 1u, false};
+    ScopedSdlThread prev_thread(SDL_CreateThread(
+        campaign_next_prev_choose_injector,
+        "campaign_prev_choose", &prev_context));
+    ASSERT_TRUE(prev_thread.valid());
+    const CampaignResult prev_result = pick_campaign(
+        &og::runtime::current_session->myscreen_->save_data, false);
+    const int prev_thread_result = prev_thread.join();
+
+    EXPECT_EQ(0, prev_thread_result);
+    EXPECT_EQ(first, prev_result.id)
+        << "each acknowledged PREV must return to the first ordered row";
+}
+
+TEST(CampaignAndLevelPicker, campaign_picker_enter_id_returns_exact_prompt_text)
+{
+    CampaignPickerInputGuard input_guard;
+    CampaignMountGuard mount_guard;
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("org.openglad.manual-selection");
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    ScopedSdlThread thread(SDL_CreateThread(
+        campaign_enter_id_injector, "campaign_enter_id", nullptr));
+    ASSERT_TRUE(thread.valid());
+    const CampaignResult result = pick_campaign(
+        &og::runtime::current_session->myscreen_->save_data, false);
+    const int thread_result = thread.join();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ("org.openglad.manual-selection", result.id);
+    EXPECT_EQ(1, result.first_level)
+        << "manual IDs retain the CampaignResult default first level";
+}
+
+TEST(CampaignAndLevelPicker, campaign_picker_confirmed_delete_removes_only_selected_package)
+{
+    const std::string temporary_id = unique_test_campaign_id(
+        "cpdel");
+    ASSERT_TRUE(is_safe_campaign_id(temporary_id));
+    const std::filesystem::path temporary_package =
+        std::filesystem::path(get_user_path()) / "campaigns" /
+        (temporary_id + ".glad");
+    ASSERT_FALSE(std::filesystem::exists(temporary_package))
+        << "the generated campaign ID must be test-owned";
+    CampaignPickerInputGuard input_guard;
+    TemporaryCampaignGuard campaign_guard{
+        get_mounted_campaign(), temporary_id};
+
+    CampaignData source("org.openglad.gladiator");
+    ASSERT_TRUE(source.load());
+    source.title = "Delete Only This Campaign";
+    ASSERT_TRUE(source.save_as(temporary_id));
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(temporary_id));
+
+    const std::list<std::string> campaigns_before = list_campaigns();
+    ASSERT_TRUE(std::find(campaigns_before.begin(), campaigns_before.end(),
+                          temporary_id) != campaigns_before.end());
+    CampaignDeleteInjectorContext injector_context{
+        temporary_package};
+    ASSERT_TRUE(std::filesystem::exists(injector_context.package));
+
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+    YesNoQueueGuard yes_no_queue;
+    yes_no_queue.push(true);
+    yes_no_queue.push(true);
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    ScopedSdlThread thread(SDL_CreateThread(
+        campaign_confirmed_delete_injector,
+        "campaign_confirmed_delete", &injector_context));
+    ASSERT_TRUE(thread.valid());
+    const CampaignResult result = pick_campaign(
+        &og::runtime::current_session->myscreen_->save_data, true);
+    const int thread_result = thread.join();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "both destructive confirmations must be consumed";
+    EXPECT_TRUE(result.id.empty());
+    EXPECT_FALSE(std::filesystem::exists(injector_context.package));
+    const std::list<std::string> campaigns_after = list_campaigns();
+    for (const std::string& id : campaigns_before)
+    {
+        if (id != temporary_id)
+        {
+            EXPECT_TRUE(std::find(campaigns_after.begin(),
+                                  campaigns_after.end(), id) !=
+                        campaigns_after.end())
+                << "deleting one selected campaign must preserve " << id;
+        }
+    }
+}
+
+TEST(CampaignAndLevelPicker, campaign_picker_confirmed_reset_clears_selected_progress_only)
+{
+    const std::string temporary_id = unique_test_campaign_id(
+        "cprst");
+    ASSERT_TRUE(is_safe_campaign_id(temporary_id));
+    const std::filesystem::path temporary_package =
+        std::filesystem::path(get_user_path()) / "campaigns" /
+        (temporary_id + ".glad");
+    ASSERT_FALSE(std::filesystem::exists(temporary_package))
+        << "the generated campaign ID must be test-owned";
+    CampaignPickerInputGuard input_guard;
+    TemporaryCampaignGuard campaign_guard{
+        get_mounted_campaign(), temporary_id};
+
+    CampaignData source("org.openglad.gladiator");
+    ASSERT_TRUE(source.load());
+    source.title = "Reset Only This Campaign";
+    ASSERT_TRUE(source.save_as(temporary_id));
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(temporary_id));
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto saved_completed_levels = save.completed_levels;
+    struct CompletedLevelsRestore
+    {
+        SaveData& save;
+        std::map<std::string, std::set<int>> completed;
+        ~CompletedLevelsRestore()
+        {
+            save.completed_levels = std::move(completed);
+        }
+    } completed_restore{save, saved_completed_levels};
+    save.add_level_completed(temporary_id, 1);
+    save.add_level_completed(temporary_id, 3);
+    save.add_level_completed("org.openglad.gladiator", 77);
+    ASSERT_EQ(2, save.get_num_levels_completed(temporary_id));
+    ASSERT_EQ(1u,
+              save.completed_levels.at("org.openglad.gladiator").count(77));
+
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+    YesNoQueueGuard yes_no_queue;
+    yes_no_queue.push(true);
+    yes_no_queue.push(true);
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    ScopedSdlThread thread(SDL_CreateThread(
+        campaign_confirmed_reset_injector,
+        "campaign_confirmed_reset", nullptr));
+    ASSERT_TRUE(thread.valid());
+    const CampaignResult result = pick_campaign(&save, false);
+    const int thread_result = thread.join();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining())
+        << "both destructive confirmations must be consumed";
+    EXPECT_TRUE(result.id.empty());
+    EXPECT_EQ(0, save.get_num_levels_completed(temporary_id));
+    EXPECT_EQ(1u,
+              save.completed_levels.at("org.openglad.gladiator").count(77))
+        << "resetting the selected campaign must preserve other progress";
 }
 
 

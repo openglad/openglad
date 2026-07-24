@@ -33,9 +33,12 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -43,6 +46,7 @@
 #include <vector>
 
 #include <arpa/inet.h>
+#include <cstdint>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -101,6 +105,54 @@ void dismiss(HeadlessTerminal& term)
 {
     term.push_special(KeyCode::Enter);
 }
+
+class ScopedCursesPickerMountRestore
+{
+public:
+    ScopedCursesPickerMountRestore()
+        : mounted_before_(get_mounted_campaign())
+    {
+    }
+
+    ~ScopedCursesPickerMountRestore()
+    {
+        (void)restore();
+    }
+
+    bool restore()
+    {
+        if (restored_)
+            return restore_ok_;
+
+        const std::string mounted_after =
+            get_mounted_campaign();
+        if (mounted_after != mounted_before_) {
+            const CampaignPackageIoError result =
+                mounted_before_.empty()
+                    ? unmount_campaign_package_with_error(
+                          mounted_after)
+                    : mount_campaign_package_with_error(
+                          mounted_before_);
+            restore_ok_ =
+                result == CampaignPackageIoError::None;
+        }
+        restore_ok_ =
+            get_mounted_campaign() == mounted_before_ &&
+            restore_ok_;
+        restored_ = true;
+        return restore_ok_;
+    }
+
+    const std::string& mounted_before() const
+    {
+        return mounted_before_;
+    }
+
+private:
+    std::string mounted_before_;
+    bool restored_ = false;
+    bool restore_ok_ = true;
+};
 
 // Count non-null team members.
 int team_count(const SaveData& save)
@@ -1016,6 +1068,24 @@ TEST(CursesPickerClient, deploy_handles_empty_and_invalid_roster_selections)
     EXPECT_NE(invalid.t().dump().find("Invalid roster row"),
               std::string::npos);
     EXPECT_TRUE(invalid.t().input_exhausted());
+
+    HeadlessTerminal cancelled_term{40, 100};
+    FakeClock cancelled_clock;
+    TextPickerConfig cancelled_config;
+    CursesPickerOptions cancelled_options;
+    CursesPickerClient cancelled(
+        cancelled_term, cancelled_clock, cancelled_config,
+        cancelled_options);
+    ASSERT_TRUE(cancelled.save_data().team_list[0]);
+    const bool deployed_before =
+        cancelled.save_data().team_list[0]->deployed;
+    cancelled_term.push_special(KeyCode::Escape);
+    cancelled.handle_menu_item(
+        PickerMenuId::TeamBuild, *item);
+    EXPECT_EQ(deployed_before,
+              cancelled.save_data().team_list[0]->deployed)
+        << "cancelling the deploy prompt must not mutate the roster";
+    EXPECT_TRUE(cancelled_term.input_exhausted());
 }
 
 // Progress shows human titles. The scenario title is read off the MOUNTED
@@ -1086,7 +1156,285 @@ struct CursesSlotCleanup {
     }
 };
 
+std::string unique_curses_company_slot(std::string_view stem)
+{
+    static std::uint64_t sequence = 0;
+    const auto nonce =
+        std::chrono::steady_clock::now().time_since_epoch().count();
+    return std::format("{}-{}-{}-{}", stem,
+        static_cast<long long>(::getpid()), nonce, sequence++);
+}
+
+int company_row_number(const std::string& slot)
+{
+    const std::vector<og::data::CompanyInfo> companies =
+        og::data::list_companies();
+    const auto found = std::find_if(
+        companies.begin(), companies.end(),
+        [&slot](const og::data::CompanyInfo& company) {
+            return company.slot == slot;
+        });
+    if (found == companies.end())
+        return 0;
+    return static_cast<int>(
+        std::distance(companies.begin(), found)) + 1;
+}
+
+void enter_prompt_number(HeadlessTerminal& term, int number)
+{
+    if (number != 1) {
+        term.push_special(KeyCode::Backspace);
+        term.push_string(std::to_string(number));
+    }
+    term.push_special(KeyCode::Enter);
+}
+
+// Own only one collision-proof company slot. Cleanup removes that slot's
+// documented artifacts and backups, never the surrounding save shelf.
+class CursesCompanyArtifactCleanup
+{
+public:
+    explicit CursesCompanyArtifactCleanup(std::string slot)
+        : slot_(std::move(slot))
+    {
+        std::error_code ec;
+        const std::filesystem::path backup_directory =
+            std::filesystem::path(get_user_path()) /
+            "save" / "backups";
+        backup_directory_existed_ =
+            std::filesystem::exists(backup_directory, ec);
+        if (ec)
+            return;
+
+        const std::filesystem::path save_directory =
+            std::filesystem::path(get_user_path()) / "save";
+        for (const std::string_view suffix : artifact_suffixes()) {
+            const bool exists = std::filesystem::exists(
+                save_directory /
+                    (slot_ + std::string(suffix)),
+                ec);
+            if (ec || exists)
+                return;
+        }
+
+        if (backup_directory_existed_) {
+            std::filesystem::directory_iterator entries(
+                backup_directory, ec);
+            if (ec)
+                return;
+            const std::string prefix = slot_ + ".";
+            for (const std::filesystem::directory_entry& entry :
+                 entries) {
+                if (entry.path().filename().string().starts_with(
+                        prefix))
+                    return;
+            }
+        }
+        owned_ = true;
+    }
+
+    ~CursesCompanyArtifactCleanup()
+    {
+        if (owned_)
+            (void)cleanup();
+    }
+
+    bool ready() const { return owned_; }
+
+    bool cleanup()
+    {
+        if (!owned_)
+            return false;
+        if (cleaned_)
+            return true;
+
+        for (const og::data::CompanyBackupInfo& backup :
+             og::data::list_company_backups(slot_)) {
+            (void)og::data::delete_company_backup(
+                slot_, backup.seq);
+        }
+        const auto& suffixes = artifact_suffixes();
+        for (const std::string_view suffix : suffixes) {
+            (void)remove_user_file(
+                "save/" + slot_ + std::string(suffix));
+        }
+
+        const std::filesystem::path backup_directory =
+            std::filesystem::path(get_user_path()) /
+            "save" / "backups";
+        bool backup_cleanup_ok = true;
+        std::error_code iteration_error;
+        if (std::filesystem::exists(
+                backup_directory, iteration_error) &&
+            !iteration_error) {
+            std::vector<std::filesystem::path> matching_backups;
+            std::filesystem::directory_iterator entries(
+                backup_directory, iteration_error);
+            if (!iteration_error) {
+                const std::string prefix = slot_ + ".";
+                for (const std::filesystem::directory_entry& entry :
+                     entries) {
+                    if (entry.path().filename().string().starts_with(
+                            prefix)) {
+                        matching_backups.push_back(entry.path());
+                    }
+                }
+            }
+            backup_cleanup_ok = !iteration_error;
+            for (const std::filesystem::path& path :
+                 matching_backups) {
+                std::error_code artifact_error;
+                (void)std::filesystem::remove(
+                    path, artifact_error);
+                backup_cleanup_ok =
+                    !artifact_error && backup_cleanup_ok;
+            }
+        } else if (iteration_error) {
+            backup_cleanup_ok = false;
+        }
+
+        std::error_code remove_error;
+        if (!backup_directory_existed_)
+            (void)std::filesystem::remove(
+                backup_directory, remove_error);
+        std::error_code exists_error;
+        const bool company_artifact_remains =
+            std::any_of(
+                suffixes.begin(), suffixes.end(),
+                [this](std::string_view suffix) {
+                    return user_file_exists(
+                        "save/" + slot_ +
+                        std::string(suffix));
+                });
+        bool backup_artifact_remains = false;
+        std::error_code verify_error;
+        if (std::filesystem::exists(
+                backup_directory, verify_error) &&
+            !verify_error) {
+            std::filesystem::directory_iterator entries(
+                backup_directory, verify_error);
+            if (!verify_error) {
+                const std::string prefix = slot_ + ".";
+                for (const std::filesystem::directory_entry& entry :
+                     entries) {
+                    backup_artifact_remains =
+                        backup_artifact_remains ||
+                        entry.path().filename().string().starts_with(
+                            prefix);
+                }
+            }
+        }
+        const bool unexpected_directory =
+            !backup_directory_existed_ &&
+            std::filesystem::exists(
+                backup_directory, exists_error);
+        const bool cleanup_ok =
+            backup_cleanup_ok && !remove_error &&
+            !exists_error && !verify_error &&
+            !company_artifact_remains &&
+            !backup_artifact_remains &&
+            !unexpected_directory;
+        cleaned_ = cleanup_ok;
+        return cleanup_ok;
+    }
+
+private:
+    static const std::vector<std::string_view>& artifact_suffixes()
+    {
+        static const std::vector<std::string_view> suffixes{
+            ".gtl", ".tmp.gtl", ".gtl.restoretmp",
+            ".gtl.restoretmp.tmp", ".gtl.tmp"};
+        return suffixes;
+    }
+
+    std::string slot_;
+    bool backup_directory_existed_ = false;
+    bool owned_ = false;
+    bool cleaned_ = false;
+};
+
 } // namespace
+
+TEST(CursesPickerClient,
+     company_list_corrupt_active_and_explicit_back_states)
+{
+    {
+        const std::string corrupt_slot =
+            unique_curses_company_slot("curses-corrupt-company");
+        CursesCompanyArtifactCleanup cleanup(corrupt_slot);
+        ASSERT_TRUE(cleanup.ready());
+        const std::filesystem::path corrupt_path =
+            std::filesystem::path(get_user_path()) /
+            "save" / (corrupt_slot + ".gtl");
+        std::ofstream corrupt(
+            corrupt_path, std::ios::binary | std::ios::trunc);
+        corrupt << "not a save";
+        ASSERT_TRUE(corrupt.good());
+        corrupt.close();
+
+        const int corrupt_row =
+            company_row_number(corrupt_slot);
+        ASSERT_GT(corrupt_row, 0);
+
+        HeadlessTerminal term{40, 100};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client(term, clock, config, options);
+        const std::string slot_before = config.save_name;
+        pick(term, 0);                  // Open Company
+        enter_prompt_number(term, corrupt_row);
+        dismiss(term);                  // damaged notice
+        pick(term, 3);                  // explicit Back command
+
+        EXPECT_FALSE(client.show_company_list());
+        EXPECT_EQ(slot_before, config.save_name);
+        EXPECT_NE(term.dump().find("CORRUPT"),
+                  std::string::npos);
+        EXPECT_TRUE(std::filesystem::exists(corrupt_path));
+        EXPECT_TRUE(term.input_exhausted());
+        EXPECT_TRUE(cleanup.cleanup());
+    }
+
+    {
+        const std::string active_slot =
+            unique_curses_company_slot("curses-active-company");
+        CursesCompanyArtifactCleanup cleanup(active_slot);
+        ASSERT_TRUE(cleanup.ready());
+        ASSERT_TRUE(seed_curses_company(
+            active_slot, "ACTIVE COMPANY", 9000));
+        const int active_row =
+            company_row_number(active_slot);
+        ASSERT_GT(active_row, 0);
+
+        HeadlessTerminal term{40, 100};
+        FakeClock clock;
+        TextPickerConfig config;
+        config.save_name = active_slot;
+        CursesPickerOptions options;
+        CursesPickerClient client(term, clock, config, options);
+
+        {
+            og::data::ScopedActiveCompany active_company(
+                active_slot);
+            ASSERT_TRUE(active_company.applied());
+            pick(term, 2);                    // Delete Company
+            enter_prompt_number(term, active_row);
+            dismiss(term);                    // switch-first notice
+            pick(term, 3);                    // explicit Back command
+
+            EXPECT_FALSE(client.show_company_list());
+            EXPECT_EQ(active_slot,
+                      og::data::active_company_slot());
+            EXPECT_TRUE(user_file_exists(
+                "save/" + active_slot + ".gtl"));
+            EXPECT_NE(term.dump().find("ACTIVE COMPANY"),
+                      std::string::npos);
+            EXPECT_TRUE(term.input_exhausted());
+        }
+        EXPECT_TRUE(cleanup.cleanup());
+    }
+}
 
 // Opening row 1 (the most recent company) repoints the terminal slot
 // ([SAVE-R2]) and loads that company's save; show_company_list reports true
@@ -1256,6 +1604,48 @@ TEST(CursesPickerClient, company_backups_corrupt_snapshot_refuses)
     ASSERT_EQ(1u, backups.size());
     EXPECT_FALSE(backups.front().header.valid);
     (void)og::data::delete_company_backup("wp3curc", 1);
+}
+
+TEST(CursesPickerClient, company_backups_reject_invalid_row_and_explicitly_back)
+{
+    const std::string company_slot =
+        unique_curses_company_slot("curses-invalid-backup");
+    CursesCompanyArtifactCleanup cleanup(company_slot);
+    ASSERT_TRUE(cleanup.ready());
+    ASSERT_TRUE(seed_curses_company(
+        company_slot, "INVALID BACKUP ROW", 9100));
+    ASSERT_TRUE(og::data::backup_company_now(
+        company_slot));
+    const int company_row =
+        company_row_number(company_slot);
+    ASSERT_GT(company_row, 0);
+
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(term, clock, config, options);
+    const std::string slot_before = config.save_name;
+    pick(term, 1);                         // Backups...
+    enter_prompt_number(term, company_row);
+    pick(term, 0);                         // Restore Backup
+    term.push_special(KeyCode::Backspace); // clear default "1"
+    term.push_string("99");
+    term.push_special(KeyCode::Enter);     // invalid backup row
+    dismiss(term);                         // validation notice
+    pick(term, 2);                         // explicit backup-view Back
+    pick(term, 3);                         // explicit company-list Back
+
+    EXPECT_FALSE(client.show_company_list());
+    EXPECT_EQ(slot_before, config.save_name);
+    EXPECT_NE(term.dump().find("INVALID BACKUP ROW"),
+              std::string::npos);
+    EXPECT_TRUE(term.input_exhausted());
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups(company_slot);
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_TRUE(backups.front().header.valid);
+    EXPECT_TRUE(cleanup.cleanup());
 }
 
 // Delete is NO-first: the default confirm keeps the company; an explicit
@@ -1515,6 +1905,36 @@ TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
     EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
     EXPECT_EQ((std::vector<int>{FAMILY_SOLDIER}), f.config.team_families);
     EXPECT_GT(f.t().present_count(), 0);
+}
+
+TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
+{
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(term, clock, config, options);
+    ScopedCursesPickerMountRestore mount_restore;
+    const std::string mounted_before =
+        mount_restore.mounted_before();
+    config.campaign =
+        "org.openglad.missing-curses-run-campaign";
+    config.level = 1;
+    dismiss(term);
+
+    client.run_game();
+
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_NE(term.dump().find("Unable to start"),
+              std::string::npos);
+    EXPECT_NE(term.dump().find(
+                  "failed to load level for local game"),
+              std::string::npos);
+    EXPECT_EQ(config.campaign,
+              client.save_data().current_campaign);
+
+    EXPECT_TRUE(mount_restore.restore());
+    EXPECT_EQ(mounted_before, get_mounted_campaign());
 }
 
 // A richer run_picker: cycle difficulty through the Main menu's Difficulty
@@ -1783,6 +2203,50 @@ TEST(CursesPickerClient, view_scenario_renders_roster_report)
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("SCEN 1:"), std::string::npos) << dump;
     EXPECT_NE(dump.find("TEAM"), std::string::npos) << dump;
+}
+
+TEST(CursesPickerClient, view_scenario_reports_mount_and_level_failures)
+{
+    const auto* viewer_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(viewer_item, nullptr);
+
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(term, clock, config, options);
+    ScopedCursesPickerMountRestore mount_restore;
+    const std::string mounted_before =
+        mount_restore.mounted_before();
+
+    client.save_data().current_campaign =
+        "org.openglad.missing-curses-view-campaign";
+    dismiss(term);
+    client.handle_menu_item(
+        PickerMenuId::Scenario, *viewer_item);
+    EXPECT_NE(term.dump().find("is not mounted"),
+              std::string::npos);
+    EXPECT_TRUE(term.input_exhausted());
+
+    const CampaignPackageIoError mounted =
+        mount_campaign_package_with_error(
+            "org.openglad.gladiator");
+    EXPECT_EQ(CampaignPackageIoError::None, mounted);
+    if (mounted == CampaignPackageIoError::None) {
+        client.save_data().current_campaign =
+            "org.openglad.gladiator";
+        client.save_data().scen_num = 32000;
+        dismiss(term);
+        client.handle_menu_item(
+            PickerMenuId::Scenario, *viewer_item);
+        EXPECT_NE(term.dump().find("Could not load level 32000"),
+                  std::string::npos);
+        EXPECT_TRUE(term.input_exhausted());
+    }
+
+    EXPECT_TRUE(mount_restore.restore());
+    EXPECT_EQ(mounted_before, get_mounted_campaign());
 }
 
 // --- Scenario submenu --------------------------------------------------------

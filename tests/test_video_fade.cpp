@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -126,6 +127,27 @@ TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
     SDL_FillSurfaceRect(
         new_ok.get(), nullptr,
         SDL_MapSurfaceRGB(new_ok.get(), 70, 80, 90));
+
+    SurfacePtr wrong_dest = make_surface(319, 200);
+    ASSERT_NE(nullptr, wrong_dest);
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        wrong_dest.get(), nullptr,
+        SDL_MapSurfaceRGB(wrong_dest.get(), 4, 5, 6)));
+    const std::vector<Uint8> wrong_dest_before(
+        static_cast<const Uint8*>(wrong_dest->pixels),
+        static_cast<const Uint8*>(wrong_dest->pixels) +
+            wrong_dest->pitch * wrong_dest->h);
+    EXPECT_EQ(0,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_rle.get(), new_ok.get(), wrong_dest.get()))
+        << "destination dimensions must match even when both inputs match";
+    EXPECT_EQ(0u, old_rle->flags & SDL_SURFACE_LOCKED)
+        << "a later precondition failure must release the acquired old lock";
+    EXPECT_EQ(
+        0, std::memcmp(wrong_dest_before.data(), wrong_dest->pixels,
+                       wrong_dest_before.size()))
+        << "a rejected destination must remain byte-identical";
+
     EXPECT_EQ(1,
               og::runtime::current_session->myscreen_->fade_between(
                   old_rle.get(), new_ok.get(), dest.get()));

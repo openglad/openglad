@@ -2,10 +2,14 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/io.h>
 #include <openglad/legacy/pixdefs.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/radar.h>
+#include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
+#include <SDL3/SDL.h>
 
 #include <string>
 #include <set>
@@ -33,6 +37,9 @@ void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
+int level_editor_test_mouse_release_workflows();
+enum class EventType;
+EventType handle_basic_editor_event(const void* native_event);
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -139,6 +146,71 @@ TEST(LevelEditorHelpers, level_editor_decor_migrated_gladiator_roundtrip)
 {
     ASSERT_EQ(0, level_editor_test_decor_migrated_roundtrip())
         << "migrated-decor editor round-trip failed at the negated check index";
+}
+
+TEST(LevelEditorHelpers, mouse_release_workflows_preserve_exact_editor_state)
+{
+    ASSERT_EQ(0, level_editor_test_mouse_release_workflows())
+        << "mouse-release workflow failed at the negated check index";
+}
+
+TEST(LevelEditorHelpers, basic_event_outcomes_report_exact_release_and_quit_state)
+{
+    InputHardwareState saved_input = input_hardware_state();
+    LevelEditorState& editor =
+        *og::runtime::current_session->editor_;
+    const int saved_mouse_up_button = editor.mouse_up_button;
+    const char saved_world_end =
+        og::runtime::current_session->myscreen_->world().end;
+    struct RestoreState
+    {
+        InputHardwareState& input;
+        InputHardwareState saved_input;
+        LevelEditorState& editor;
+        int mouse_up_button;
+        char& world_end;
+        char saved_world_end;
+
+        ~RestoreState()
+        {
+            input = std::move(saved_input);
+            editor.mouse_up_button = mouse_up_button;
+            world_end = saved_world_end;
+            trace_clear();
+        }
+    } restore{
+        input_hardware_state(), std::move(saved_input), editor,
+        saved_mouse_up_button,
+        og::runtime::current_session->myscreen_->world().end,
+        saved_world_end};
+
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(nullptr)))
+        << "an absent native event is handled without changing state";
+
+    MouseState& mouse = query_mouse_no_poll();
+    mouse.left = false;
+    mouse.right = false;
+    SDL_Event mouse_up{};
+    mouse_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    mouse_up.button.button = SDL_BUTTON_LEFT;
+    mouse_up.button.down = false;
+    EXPECT_EQ(
+        5, static_cast<int>(handle_basic_editor_event(&mouse_up)));
+    EXPECT_EQ(0, editor.mouse_up_button)
+        << "an already-released button reports no synthetic release";
+
+    trace_clear();
+    SDL_Event quit_event{};
+    quit_event.type = SDL_EVENT_QUIT;
+    EXPECT_EQ(
+        0, static_cast<int>(handle_basic_editor_event(&quit_event)));
+    EXPECT_EQ(1, trace_count("picker"));
+    EXPECT_TRUE(trace_contains(
+        "picker", "quit called (test mode - not exiting)"));
+    EXPECT_EQ(
+        saved_world_end,
+        og::runtime::current_session->myscreen_->world().end);
 }
 
 

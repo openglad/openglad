@@ -33,9 +33,24 @@ bool LocalCursesSession::inject_exit_prompt_for_testing(
                       std::move(notification_batch)));
     current_game = &client_ctx_;
     client_->poll_messages();
+
+    // Non-terminal events must be ignored by both terminal projections: they
+    // neither latch an end nor leak text into the notification queue.
+    og::sim::SimEventBatch ignored_batch;
+    ignored_batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::PlaySound,
+        .a = 1,
+        .text = "",
+    });
+    PendingEnd ignored_end;
+    std::vector<std::string> ignored_messages;
+    collect_notifications(ignored_batch, ignored_messages);
+    apply_game_flow_batch(
+        ignored_batch, ignored_end, ignored_messages);
     return transition_hooks_accept &&
            server_save_.m_score[0] == synchronized_score &&
-           pending_exit_prompt_ && !messages_.empty();
+           pending_exit_prompt_ && !messages_.empty() &&
+           !ignored_end.ended && ignored_messages.empty();
 }
 
 bool curses_game_runtime_testing_inject_exit_prompt(

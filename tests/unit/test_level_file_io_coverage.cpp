@@ -6,6 +6,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
@@ -14,17 +15,24 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#if defined(__linux__)
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
 
 bool write_pixie_png(const char* filepath, const PixieData& data);
 
@@ -118,6 +126,61 @@ bool write_bytes(const fs::path& path,
     }
     return static_cast<bool>(out);
 }
+
+std::vector<std::uint8_t> read_bytes(const fs::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return {};
+    return {std::istreambuf_iterator<char>(in),
+            std::istreambuf_iterator<char>()};
+}
+
+#if defined(__linux__)
+class ScopedFileSizeLimit
+{
+public:
+    explicit ScopedFileSizeLimit(rlim_t limit)
+    {
+        if (::getrlimit(RLIMIT_FSIZE, &old_limit_) != 0 ||
+            old_limit_.rlim_max < limit)
+        {
+            return;
+        }
+
+        old_handler_ = std::signal(SIGXFSZ, SIG_IGN);
+        if (old_handler_ == SIG_ERR)
+            return;
+        handler_changed_ = true;
+
+        struct rlimit limited = old_limit_;
+        limited.rlim_cur = limit;
+        if (::setrlimit(RLIMIT_FSIZE, &limited) != 0)
+            return;
+        ready_ = true;
+    }
+
+    ~ScopedFileSizeLimit()
+    {
+        if (ready_ && ::setrlimit(RLIMIT_FSIZE, &old_limit_) != 0)
+            ADD_FAILURE() << "failed to restore RLIMIT_FSIZE";
+        if (handler_changed_ && std::signal(SIGXFSZ, old_handler_) == SIG_ERR)
+            ADD_FAILURE() << "failed to restore SIGXFSZ disposition";
+    }
+
+    ScopedFileSizeLimit(const ScopedFileSizeLimit&) = delete;
+    ScopedFileSizeLimit& operator=(const ScopedFileSizeLimit&) = delete;
+
+    [[nodiscard]] bool ready() const noexcept { return ready_; }
+
+private:
+    struct rlimit old_limit_{};
+    using SignalHandler = void (*)(int);
+    SignalHandler old_handler_ = SIG_DFL;
+    bool handler_changed_ = false;
+    bool ready_ = false;
+};
+#endif
 
 bool file_nonempty(const fs::path& path)
 {
@@ -642,5 +705,110 @@ TEST_F(LevelFileIoCoverage,
         EXPECT_TRUE(fs::is_directory(fallback_decor));
     }
 }
+
+#if defined(__linux__)
+TEST_F(LevelFileIoCoverage,
+       scenario_writer_reports_each_quota_boundary_with_exact_prefix)
+{
+    enum class PayloadShape
+    {
+        Plain,
+        Object,
+        Description,
+        Multifloor,
+        Decor,
+    };
+    struct FailurePoint
+    {
+        rlim_t byte_limit;
+        PayloadShape shape;
+        const char* field;
+    };
+
+    // These offsets are the boundaries immediately before each field in the
+    // production FSS layout. A real kernel file-size quota makes the next
+    // fwrite fail while preserving every preceding byte.
+    const FailurePoint cases[] = {
+        {4, PayloadShape::Plain, "grid name"},
+        {12, PayloadShape::Plain, "title"},
+        {42, PayloadShape::Plain, "scenario type"},
+        {43, PayloadShape::Plain, "par value"},
+        {45, PayloadShape::Plain, "time limit"},
+        {47, PayloadShape::Plain, "object count"},
+        {49, PayloadShape::Object, "first object"},
+        {49, PayloadShape::Plain, "description count"},
+        {50, PayloadShape::Description, "description width"},
+        {51, PayloadShape::Description, "description bytes"},
+        {50, PayloadShape::Multifloor, "floor count"},
+        {51, PayloadShape::Decor, "decor-present byte"},
+    };
+
+    for (std::size_t i = 0; i < std::size(cases); ++i)
+    {
+        const FailurePoint& row = cases[i];
+        SCOPED_TRACE(row.field);
+
+        GameWorld world(static_cast<int>(70 + i));
+        world.create_new_grid();
+        world.title = "quota-boundary";
+        LevelFileMetadata metadata;
+        metadata.grid_file = "quota";
+
+        switch (row.shape)
+        {
+            case PayloadShape::Plain:
+                break;
+            case PayloadShape::Object:
+                world.oblist.push_back(std::make_unique<walker>());
+                break;
+            case PayloadShape::Description:
+                metadata.description = {"abc"};
+                break;
+            case PayloadShape::Multifloor:
+                world.set_floor_count(2);
+                break;
+            case PayloadShape::Decor:
+                (void)allocate_decor_plane(world, 1);
+                break;
+        }
+
+        const std::string suffix =
+            std::to_string(::getpid()) + "_" + std::to_string(i) + ".fss";
+        const fs::path canonical_path =
+            fs::temp_directory_path() / ("openglad_lfio_full_" + suffix);
+        const fs::path limited_path =
+            fs::temp_directory_path() / ("openglad_lfio_limited_" + suffix);
+        ScopedFilesAbsent files({canonical_path, limited_path});
+        ASSERT_TRUE(files.ready());
+
+        LevelFileIoError error = LevelFileIoError::SerializeFailed;
+        ASSERT_TRUE(og::data::save_level_scenario_file(
+            world, canonical_path.string(), metadata, &error));
+        ASSERT_EQ(LevelFileIoError::None, error);
+        const std::vector<std::uint8_t> canonical =
+            read_bytes(canonical_path);
+        ASSERT_GT(canonical.size(),
+                  static_cast<std::size_t>(row.byte_limit));
+
+        bool saved = true;
+        {
+            ScopedFileSizeLimit limit(row.byte_limit);
+            ASSERT_TRUE(limit.ready())
+                << "the host must support a reversible RLIMIT_FSIZE";
+            error = LevelFileIoError::None;
+            saved = og::data::save_level_scenario_file(
+                world, limited_path.string(), metadata, &error);
+        }
+
+        EXPECT_FALSE(saved);
+        EXPECT_EQ(LevelFileIoError::SerializeFailed, error);
+        const std::vector<std::uint8_t> partial = read_bytes(limited_path);
+        ASSERT_EQ(static_cast<std::size_t>(row.byte_limit), partial.size());
+        EXPECT_TRUE(std::equal(partial.begin(), partial.end(),
+                               canonical.begin()))
+            << "a failed field may not corrupt any committed prefix byte";
+    }
+}
+#endif
 
 } // namespace

@@ -1,4 +1,5 @@
 #include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -8,6 +9,7 @@
 #include <cstring>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -45,6 +47,37 @@ static void run_sai2x_screen_class_paths();
 
 namespace
 {
+struct SurfaceDeleter
+{
+    void operator()(SDL_Surface* surface) const
+    {
+        if (surface != nullptr)
+            SDL_DestroySurface(surface);
+    }
+};
+
+using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
+
+class SessionWindowMetricsRestore
+{
+public:
+    SessionWindowMetricsRestore()
+        : width_(og::runtime::current_session->window_w_),
+          height_(og::runtime::current_session->window_h_)
+    {
+    }
+
+    ~SessionWindowMetricsRestore()
+    {
+        og::runtime::current_session->window_w_ = width_;
+        og::runtime::current_session->window_h_ = height_;
+    }
+
+private:
+    float width_;
+    float height_;
+};
+
 enum class DirectScaler
 {
     Super2xSai,
@@ -204,16 +237,17 @@ TEST(Sai2xScaler, surface_wrapper_matches_direct_scaler_output)
     constexpr int width = 8;
     constexpr int height = 8;
 
-    SDL_Surface* source = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
-    SDL_Surface* destination =
-        SDL_CreateSurface(width * 2, height * 2, SDL_PIXELFORMAT_ARGB8888);
+    SurfacePtr source(
+        SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888));
+    SurfacePtr destination(
+        SDL_CreateSurface(width * 2, height * 2, SDL_PIXELFORMAT_ARGB8888));
     ASSERT_NE(nullptr, source);
     ASSERT_NE(nullptr, destination);
 
     std::vector<unsigned char> pattern(width * height * sizeof(Uint32));
     fill_pattern(pattern, width, height);
     std::memcpy(source->pixels, pattern.data(), pattern.size());
-    SDL_FillSurfaceRect(destination, nullptr, 0xDEADBEEFu);
+    SDL_FillSurfaceRect(destination.get(), nullptr, 0xDEADBEEFu);
 
     std::vector<unsigned char> expected(
         static_cast<size_t>(destination->pitch * destination->h), 0xA5u);
@@ -224,12 +258,152 @@ TEST(Sai2xScaler, surface_wrapper_matches_direct_scaler_output)
                   expected.data(), static_cast<Uint32>(destination->pitch),
                   width, height);
 
-    Super2xSaI(source, destination, 0, 0, 0, 0, width, height);
+    Super2xSaI(source.get(), destination.get(), 0, 0, 0, 0, width, height);
     EXPECT_EQ(0, std::memcmp(expected.data(), destination->pixels, expected.size()));
     EXPECT_EQ(0, std::memcmp(pattern.data(), source->pixels, pattern.size()));
+}
 
-    SDL_DestroySurface(destination);
-    SDL_DestroySurface(source);
+TEST(Sai2xScaler, surface_wrapper_rejects_mismatched_pixel_depths)
+{
+    ASSERT_EQ(0, Init_2xSaI());
+    SurfacePtr source(
+        SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_RGB24));
+    SurfacePtr destination(
+        SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888));
+    ASSERT_NE(nullptr, source);
+    ASSERT_NE(nullptr, destination);
+    ASSERT_TRUE(
+        SDL_FillSurfaceRect(destination.get(), nullptr, 0x0055AA33u));
+
+    const std::vector<Uint8> before(
+        static_cast<const Uint8*>(destination->pixels),
+        static_cast<const Uint8*>(destination->pixels) +
+            destination->pitch * destination->h);
+    Super2xSaI(source.get(), destination.get(), 0, 0, 0, 0, 8, 8);
+    EXPECT_EQ(0, std::memcmp(
+                     before.data(), destination->pixels, before.size()))
+        << "a depth mismatch must not modify destination storage";
+}
+
+TEST(Sai2xScaler, screen_fullscreen_and_output_fallback_preserve_pixels)
+{
+    SessionWindowMetricsRestore metrics_restore;
+    Screen fullscreen(RenderEngine::NoZoom, 320, 200, 1);
+    ASSERT_NE(nullptr, fullscreen.window);
+    EXPECT_NE(0u, SDL_GetWindowFlags(fullscreen.window) &
+                      SDL_WINDOW_FULLSCREEN);
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        fullscreen.render, nullptr,
+        SDL_MapSurfaceRGB(fullscreen.render, 15, 35, 75)));
+
+    const std::vector<Uint8> before(
+        static_cast<const Uint8*>(fullscreen.render->pixels),
+        static_cast<const Uint8*>(fullscreen.render->pixels) +
+            fullscreen.render->pitch * fullscreen.render->h);
+    og::runtime::current_session->window_w_ = 0.0f;
+    og::runtime::current_session->window_h_ = 0.0f;
+    fullscreen.swap(0, 0, fullscreen.canvas_w(), fullscreen.canvas_h());
+    EXPECT_EQ(0, std::memcmp(
+                     before.data(), fullscreen.render->pixels, before.size()))
+        << "presentation with unavailable logical metrics is read-only";
+}
+
+TEST(Sai2xScaler, render_backend_failure_retries_without_losing_cpu_pixels)
+{
+    SessionWindowMetricsRestore metrics_restore;
+    Screen value(RenderEngine::NoZoom, 320, 200, 0);
+    ASSERT_NE(nullptr, value.window);
+    ASSERT_NE(nullptr, value.renderer);
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        value.render, nullptr,
+        SDL_MapSurfaceRGB(value.render, 27, 61, 143)));
+    const Uint32 pixel_before =
+        static_cast<const Uint32*>(value.render->pixels)[17 +
+            19 * value.render->pitch / static_cast<int>(sizeof(Uint32))];
+
+    SDL_Window* const window = value.window;
+    {
+        struct WindowRestore
+        {
+            Screen& value;
+            SDL_Window* window;
+            ~WindowRestore()
+            {
+                if (value.window == nullptr)
+                    value.window = window;
+            }
+        } restore{value, window};
+        value.window = nullptr;
+        request_render_backend_recreate();
+        ASSERT_TRUE(render_backend_recreate_pending());
+        value.swap(0, 0, value.canvas_w(), value.canvas_h());
+        EXPECT_TRUE(render_backend_recreate_pending());
+        EXPECT_EQ(nullptr, value.renderer);
+        EXPECT_EQ(pixel_before,
+                  static_cast<const Uint32*>(value.render->pixels)[17 +
+                      19 * value.render->pitch /
+                          static_cast<int>(sizeof(Uint32))]);
+    }
+    ASSERT_EQ(window, value.window);
+    value.swap(0, 0, value.canvas_w(), value.canvas_h());
+    EXPECT_FALSE(render_backend_recreate_pending());
+    EXPECT_NE(nullptr, value.renderer);
+    EXPECT_NE(nullptr, value.render_tex);
+    EXPECT_EQ(pixel_before,
+              static_cast<const Uint32*>(value.render->pixels)[17 +
+                  19 * value.render->pitch /
+                      static_cast<int>(sizeof(Uint32))])
+        << "renderer recovery must preserve the CPU canvas";
+}
+
+TEST(Sai2xScaler, smart_scaler_allocation_and_invalid_source_fail_closed)
+{
+    SessionWindowMetricsRestore metrics_restore;
+    Screen value(RenderEngine::SAI, 320, 200, 0);
+    ASSERT_NE(nullptr, value.renderer);
+    ASSERT_EQ(nullptr, value.render2);
+    ASSERT_EQ(nullptr, value.render2_tex);
+
+    SDL_Renderer* const renderer = value.renderer;
+    {
+        struct RendererRestore
+        {
+            Screen& value;
+            SDL_Renderer* renderer;
+            ~RendererRestore()
+            {
+                if (value.renderer == nullptr)
+                    value.renderer = renderer;
+            }
+        } restore{value, renderer};
+        value.renderer = nullptr;
+        value.swap(0, 0, value.canvas_w(), value.canvas_h());
+        EXPECT_EQ(nullptr, value.render2);
+        EXPECT_EQ(nullptr, value.render2_tex);
+        EXPECT_FALSE(value.last_world_present_used_smart_surface());
+    }
+    ASSERT_EQ(renderer, value.renderer);
+
+    value.Engine = RenderEngine::Eagle;
+    value.swap(0, 0, value.canvas_w(), value.canvas_h());
+    EXPECT_EQ(nullptr, value.render2)
+        << "the failed-size latch must reject the same scratch dimensions";
+    EXPECT_FALSE(value.last_world_present_used_smart_surface());
+
+    value.Engine = RenderEngine::SAI;
+    {
+        struct WidthRestore
+        {
+            SDL_Surface* surface;
+            int width;
+            ~WidthRestore() { surface->w = width; }
+        } restore{value.render, value.render->w};
+        value.render->w = 0;
+        value.swap(0, 0, value.canvas_w(), value.canvas_h());
+    }
+    EXPECT_EQ(nullptr, value.render2);
+    EXPECT_FALSE(value.last_world_present_used_smart_surface());
+    EXPECT_NE(nullptr, value.renderer);
 }
 
 
@@ -311,6 +485,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
 
 static void run_sai2x_screen_class_paths()
 {
+    SessionWindowMetricsRestore metrics_restore;
     {
         Screen s(RenderEngine::NoZoom, 320, 200, 0);
         s.clear();
