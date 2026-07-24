@@ -735,4 +735,18 @@ TEST(Replay, replay_player_verify_world_tracks_first_divergence)
     EXPECT_EQ(failure->field, player.first_divergence()->field);
     EXPECT_EQ(failure->expected_value, player.first_divergence()->expected_value);
     EXPECT_EQ(failure->actual_value, player.first_divergence()->actual_value);
+
+    // Exercise signed 32-bit diagnostics independently of the unsigned score
+    // mismatch above. The formatter is part of the user-facing divergence
+    // report and must preserve negative values.
+    world.m_score[0] = 11u;
+    og::sim::ReplayPlayer signed_value_player;
+    signed_value_player.set_checkpoints({checkpoint});
+    world.enemy_freeze = -17;
+    const auto signed_failure =
+        signed_value_player.verify_world(world, checkpoint.tick, false);
+    ASSERT_TRUE(signed_failure.has_value());
+    EXPECT_EQ("enemy_freeze", signed_failure->field);
+    EXPECT_EQ("0", signed_failure->expected_value);
+    EXPECT_EQ("-17", signed_failure->actual_value);
 }

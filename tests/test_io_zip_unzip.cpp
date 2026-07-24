@@ -6,7 +6,10 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -19,6 +22,78 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+
+namespace {
+
+class ScopedTemporaryTree
+{
+public:
+    explicit ScopedTemporaryTree(std::filesystem::path path)
+        : path_(std::move(path))
+    {
+        std::filesystem::remove_all(path_, error_);
+    }
+
+    ~ScopedTemporaryTree()
+    {
+        std::error_code error;
+        std::filesystem::remove_all(path_, error);
+        if (error)
+            ADD_FAILURE() << "temporary tree cleanup failed for " << path_
+                          << ": " << error.message();
+    }
+
+    [[nodiscard]] bool ready() const noexcept { return !error_; }
+    [[nodiscard]] const std::error_code& error() const noexcept
+    {
+        return error_;
+    }
+
+private:
+    std::filesystem::path path_;
+    std::error_code error_;
+};
+
+struct ZipDiscard
+{
+    void operator()(zip* archive) const noexcept
+    {
+        if (archive != nullptr)
+            zip_discard(archive);
+    }
+};
+
+using ScopedZipArchive = std::unique_ptr<zip, ZipDiscard>;
+
+bool write_single_entry_zip(const std::filesystem::path& archive_path,
+                            const std::string& entry_name,
+                            std::string_view payload)
+{
+    int error = 0;
+    ScopedZipArchive archive(zip_open(
+        archive_path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error));
+    if (archive == nullptr)
+        return false;
+
+    zip_source* source = zip_source_buffer(
+        archive.get(), payload.data(), payload.size(), 0);
+    if (source == nullptr)
+        return false;
+    if (zip_file_add(archive.get(), entry_name.c_str(), source,
+                     ZIP_FL_OVERWRITE) < 0)
+    {
+        zip_source_free(source);
+        return false;
+    }
+
+    zip* const raw_archive = archive.release();
+    const int close_result = zip_close(raw_archive);
+    if (close_result != 0)
+        zip_discard(raw_archive);
+    return close_result == 0;
+}
+
+} // namespace
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -293,6 +368,81 @@ TEST(IoZipUnzip, io_unzip_rejects_zip_slip_paths)
     ASSERT_TRUE(!fs::exists(outside)) << "zip slip output path outside extraction root must not be created";
 }
 
+TEST(IoZipUnzip, io_zip_skips_an_existing_output_archive_inside_input)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_self_archive_" + std::to_string(::getpid()));
+    const fs::path input = base / "input";
+    const fs::path archive = input / "bundle.zip";
+    const fs::path output = base / "output";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+
+    ASSERT_TRUE(create_dir(input.string()));
+    ASSERT_TRUE(write_file_bytes((input / "payload.txt").string(), "PAYLOAD"));
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(input.string(), archive.string()));
+    ASSERT_TRUE(fs::is_regular_file(archive));
+
+    // On the second write the archive is already one of the recursively
+    // enumerated input files. It must be recognized as the output itself and
+    // omitted, rather than recursively embedding its previous bytes.
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(input.string(), archive.string()));
+    ASSERT_EQ(ArchiveIoError::None,
+              unzip_into_with_error(archive.string(), output.string()));
+
+    std::string payload;
+    ASSERT_TRUE(read_file_all((output / "payload.txt").string(), &payload));
+    EXPECT_EQ("PAYLOAD", payload);
+    EXPECT_FALSE(fs::exists(output / "bundle.zip"));
+
+}
+
+TEST(IoZipUnzip, io_unzip_normalizes_backslashes)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_normalized_names_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "names.zip";
+    const fs::path outdir = base / "out";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(create_dir(base.string()));
+
+    ASSERT_TRUE(write_single_entry_zip(
+        zipfile, "nested\\payload.txt", "NORMALIZED"));
+    EXPECT_EQ(ArchiveIoError::None,
+              unzip_into_with_error(zipfile.string(), outdir.string()));
+    std::string payload;
+    ASSERT_TRUE(
+        read_file_all((outdir / "nested" / "payload.txt").string(), &payload));
+    EXPECT_EQ("NORMALIZED", payload);
+}
+
+TEST(IoZipUnzip, io_unzip_rejects_absolute_names_without_writing_outside)
+{
+    namespace fs = std::filesystem;
+    const fs::path base =
+        fs::temp_directory_path() /
+        ("openglad_io_absolute_name_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "absolute.zip";
+    const fs::path outdir = base / "out";
+    const fs::path outside = base / "outside.txt";
+    ScopedTemporaryTree cleanup(base);
+    ASSERT_TRUE(cleanup.ready()) << cleanup.error().message();
+    ASSERT_TRUE(create_dir(base.string()));
+
+    ASSERT_TRUE(write_single_entry_zip(
+        zipfile, outside.generic_string(), "REJECTED"));
+    EXPECT_EQ(ArchiveIoError::OpenEntryFailed,
+              unzip_into_with_error(zipfile.string(), outdir.string()));
+    EXPECT_FALSE(fs::exists(outside))
+        << "an absolute archive name cannot write outside the extraction root";
+}
 
 TEST(IoZipUnzip, io_unzip_rejects_archives_exceeding_entry_limit)
 {

@@ -273,9 +273,6 @@ TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_re
     actor->stats()->set_controller(orphan_controller.get());
     actor->clear_dirty();
 
-    actor->set_owner_id(99);
-    actor->stats()->set_controller_id(77);
-
     actor->sync_ids_from_pointers();
 
     EXPECT_EQ(nullptr, actor->owner());
@@ -284,6 +281,47 @@ TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_re
     EXPECT_EQ(nullptr, actor->stats()->controller());
     EXPECT_EQ(0u, actor->stats()->controller_id());
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
+
+    // A stale serialized controller ID with no pointer must be cleared too.
+    actor->stats()->set_controller_id(77);
+    actor->clear_dirty();
+    actor->sync_ids_from_pointers();
+    EXPECT_EQ(nullptr, actor->stats()->controller());
+    EXPECT_EQ(0u, actor->stats()->controller_id());
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
+}
+
+TEST_F(GameWorldEntityIdsFixture,
+       sync_ids_from_pointers_clears_links_on_detached_entity)
+{
+    walker actor;
+    walker target;
+    ASSERT_NE(nullptr, actor.stats());
+
+    actor.set_foe(&target);
+    actor.set_leader(&target);
+    actor.set_owner(&target);
+    actor.set_collide_ob(&target);
+    actor.stats()->set_controller(&target);
+    actor.clear_dirty();
+
+    actor.sync_ids_from_pointers();
+
+    EXPECT_EQ(nullptr, actor.foe());
+    EXPECT_EQ(nullptr, actor.leader());
+    EXPECT_EQ(nullptr, actor.owner());
+    EXPECT_EQ(nullptr, actor.collide_ob());
+    EXPECT_EQ(nullptr, actor.stats()->controller());
+    EXPECT_EQ(0u, actor.foe_id());
+    EXPECT_EQ(0u, actor.leader_id());
+    EXPECT_EQ(0u, actor.owner_id());
+    EXPECT_EQ(0u, actor.collide_ob_id());
+    EXPECT_EQ(0u, actor.stats()->controller_id());
+    EXPECT_TRUE(actor.is_dirty(og::dirty::BIT_FOE_ID));
+    EXPECT_TRUE(actor.is_dirty(og::dirty::BIT_LEADER_ID));
+    EXPECT_TRUE(actor.is_dirty(og::dirty::BIT_OWNER_ID));
+    EXPECT_TRUE(actor.is_dirty(og::dirty::BIT_COLLIDE_OB_ID));
+    EXPECT_TRUE(actor.is_dirty(og::dirty::BIT_CONTROLLER_ID));
 }
 
 TEST_F(GameWorldEntityIdsFixture,

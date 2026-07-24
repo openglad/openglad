@@ -5,6 +5,11 @@
 bool LocalCursesSession::inject_exit_prompt_for_testing(
     std::string prompt, std::uint32_t synchronized_score)
 {
+    const bool transition_hooks_accept =
+        server_->on_exit_accepted &&
+        server_->on_exit_accepted(2) &&
+        server_->on_level_transition &&
+        server_->on_level_transition(2);
     server_world().m_score[0] = synchronized_score;
     if (!server_->on_save_sync)
         return false;
@@ -28,7 +33,8 @@ bool LocalCursesSession::inject_exit_prompt_for_testing(
                       std::move(notification_batch)));
     current_game = &client_ctx_;
     client_->poll_messages();
-    return server_save_.m_score[0] == synchronized_score &&
+    return transition_hooks_accept &&
+           server_save_.m_score[0] == synchronized_score &&
            pending_exit_prompt_ && !messages_.empty();
 }
 

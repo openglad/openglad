@@ -1,10 +1,13 @@
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
@@ -888,6 +891,50 @@ TEST(SaveDataVersions, save_data_load_rejects_invalid_legacy_player_byte)
 }
 
 
+TEST(SaveDataVersions, save_data_v2_load_defaults_stats_added_by_later_versions)
+{
+    GuyRecord legacy{};
+    legacy.name = "V2LEGACY";
+    legacy.kills = 91;
+    legacy.level_kills = 92;
+    legacy.total_damage = 93;
+    legacy.total_hits = 94;
+    legacy.total_shots = 95;
+
+    write_save_file("ver2_legacy_stat_defaults",
+                    /*version=*/2,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/4,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/0,
+                    /*numplayers=*/1,
+                    /*guys=*/&legacy,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/false,
+                    /*v5plus_levelstatus=*/false,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData loaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              loaded.load_with_error("ver2_legacy_stat_defaults"));
+    ASSERT_EQ(1, static_cast<int>(loaded.team_size));
+    ASSERT_TRUE(loaded.team_list[0] != nullptr);
+    EXPECT_EQ("V2LEGACY", loaded.team_list[0]->name);
+    EXPECT_EQ(0, loaded.team_list[0]->kills)
+        << "v2 predates persisted kill counts";
+    EXPECT_EQ(0, loaded.team_list[0]->level_kills)
+        << "v2 predates persisted per-level kills";
+    EXPECT_EQ(0, loaded.team_list[0]->total_damage)
+        << "v2 predates persisted damage totals";
+    EXPECT_EQ(0, loaded.team_list[0]->total_hits)
+        << "v2 predates persisted hit totals";
+    EXPECT_EQ(0, loaded.team_list[0]->total_shots)
+        << "v2 predates persisted shot totals";
+}
+
+
 TEST(SaveDataVersions, save_data_save_with_error_open_write_failed_for_missing_directory)
 {
     const std::string bad_subdir = "save/typed_save_missing_dir";
@@ -1082,6 +1129,142 @@ static std::vector<uint8_t> read_save_bytes(const char* fname)
     }
     SDL_CloseIO(in);
     return bytes;
+}
+
+static void rewrite_save_bytes(const char* fname,
+                               const std::vector<uint8_t>& bytes)
+{
+    SDL_IOStream* out = open_write_file("save/", fname);
+    ASSERT_TRUE(out != nullptr) << fname;
+    ASSERT_EQ(bytes.size(), SDL_WriteIO(out, bytes.data(), bytes.size()))
+        << fname;
+    ASSERT_TRUE(SDL_CloseIO(out)) << fname;
+}
+
+TEST(SaveDataVersions,
+     save_data_v14_rejects_invalid_campaign_collection_boundaries)
+{
+    constexpr std::size_t kCampaignCountOffset = 164;
+    constexpr std::size_t kFirstCampaignOffset = 166;
+    constexpr std::size_t kFirstLevelCountOffset = 208;
+
+    SaveData seed;
+    seed.save_name = "BOUNDARY SEED";
+    seed.current_campaign = "org.openglad.gladiator";
+    seed.team_size = 0;
+    seed.completed_levels.clear();
+    seed.current_levels.clear();
+    seed.completed_levels["org.openglad.gladiator"] = {1, 3};
+    seed.current_levels["org.openglad.gladiator"] = 2;
+    ASSERT_EQ(SaveDataIoError::None,
+              seed.save_with_error("typed_save_v14_boundary_seed"));
+
+    const std::vector<uint8_t> canonical =
+        read_save_bytes("typed_save_v14_boundary_seed.gtl");
+    ASSERT_GT(canonical.size(), kFirstLevelCountOffset + sizeof(std::int16_t));
+    ASSERT_EQ(14, static_cast<int>(canonical[3]));
+
+    const auto expect_read_failure =
+        [&](const char* slot, std::vector<uint8_t> bytes) {
+            rewrite_save_bytes((std::string(slot) + ".gtl").c_str(), bytes);
+            SaveData loaded;
+            EXPECT_EQ(SaveDataIoError::ReadFailed,
+                      loaded.load_with_error(slot))
+                << slot;
+            EXPECT_EQ(SaveDataIoError::ReadFailed, loaded.last_io_error())
+                << slot;
+        };
+
+    {
+        std::vector<uint8_t> bytes = canonical;
+        const std::int16_t invalid_campaign_count = 129;
+        std::memcpy(bytes.data() + kCampaignCountOffset,
+                    &invalid_campaign_count, sizeof(invalid_campaign_count));
+        expect_read_failure("typed_save_v14_too_many_campaigns",
+                            std::move(bytes));
+    }
+
+    {
+        std::vector<uint8_t> bytes = canonical;
+        std::fill_n(bytes.begin() +
+                        static_cast<std::ptrdiff_t>(kFirstCampaignOffset),
+                    40, uint8_t{0});
+        constexpr std::string_view unsafe_id = "../outside";
+        std::copy(unsafe_id.begin(), unsafe_id.end(),
+                  bytes.begin() +
+                      static_cast<std::ptrdiff_t>(kFirstCampaignOffset));
+        expect_read_failure("typed_save_v14_unsafe_stored_campaign",
+                            std::move(bytes));
+    }
+
+    {
+        std::vector<uint8_t> bytes = canonical;
+        const std::int16_t invalid_level_count = 1001;
+        std::memcpy(bytes.data() + kFirstLevelCountOffset,
+                    &invalid_level_count, sizeof(invalid_level_count));
+        expect_read_failure("typed_save_v14_too_many_levels",
+                            std::move(bytes));
+    }
+}
+
+TEST(SaveDataVersions,
+     save_data_v14_unsafe_header_campaign_falls_back_to_default)
+{
+    constexpr std::size_t kHeaderCampaignOffset = 46;
+    constexpr std::size_t kHeaderCampaignWidth = 40;
+
+    SaveData seed;
+    seed.save_name = "HEADER FALLBACK";
+    seed.current_campaign = "org.openglad.gladiator";
+    seed.scen_num = 2;
+    seed.team_size = 0;
+    seed.completed_levels.clear();
+    seed.current_levels.clear();
+    seed.completed_levels["org.openglad.gladiator"] = {2};
+    seed.current_levels["org.openglad.gladiator"] = 2;
+    ASSERT_EQ(SaveDataIoError::None,
+              seed.save_with_error("typed_save_v14_header_fallback"));
+
+    std::vector<uint8_t> bytes =
+        read_save_bytes("typed_save_v14_header_fallback.gtl");
+    ASSERT_GE(bytes.size(),
+              kHeaderCampaignOffset + kHeaderCampaignWidth);
+    std::fill_n(bytes.begin() +
+                    static_cast<std::ptrdiff_t>(kHeaderCampaignOffset),
+                kHeaderCampaignWidth, uint8_t{0});
+    constexpr std::string_view unsafe_header_id = "../outside";
+    std::copy(unsafe_header_id.begin(), unsafe_header_id.end(),
+              bytes.begin() +
+                  static_cast<std::ptrdiff_t>(kHeaderCampaignOffset));
+    rewrite_save_bytes("typed_save_v14_header_fallback.gtl", bytes);
+
+    SaveData loaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              loaded.load_with_error("typed_save_v14_header_fallback"));
+    EXPECT_EQ("org.openglad.gladiator", loaded.current_campaign);
+    EXPECT_EQ(2, loaded.current_levels.at("org.openglad.gladiator"));
+    EXPECT_TRUE(
+        loaded.completed_levels.at("org.openglad.gladiator").contains(2));
+}
+
+TEST(SaveDataVersions, save_data_v14_writer_rejects_unsafe_campaign_ids)
+{
+    SaveData unsafe_current;
+    unsafe_current.current_campaign = "../outside";
+    EXPECT_EQ(SaveDataIoError::WriteFailed,
+              unsafe_current.save_with_error(
+                  "typed_save_v14_unsafe_current_campaign"));
+    EXPECT_EQ(SaveDataIoError::WriteFailed, unsafe_current.last_io_error());
+
+    SaveData unsafe_progress;
+    unsafe_progress.current_campaign = "org.openglad.gladiator";
+    unsafe_progress.completed_levels.clear();
+    unsafe_progress.current_levels.clear();
+    unsafe_progress.completed_levels["../outside"] = {1};
+    EXPECT_EQ(SaveDataIoError::WriteFailed,
+              unsafe_progress.save_with_error(
+                  "typed_save_v14_unsafe_progress_campaign"));
+    EXPECT_EQ(SaveDataIoError::WriteFailed, unsafe_progress.last_io_error());
 }
 
 TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)

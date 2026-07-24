@@ -2547,7 +2547,9 @@ TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_orde
 
     const og::sim::LobbyPlayer& p1 = lobby.players.back();
     og::ui::SeatSettingsScreenState state{
-        .seat_id = p1.seat_id,
+        // Offline/legacy callers may not have an authority-issued seat token;
+        // resolution must then use the stable displayed player index.
+        .seat_id = og::sim::kInvalidLobbySeatId,
         .player_index = p1.player_index,
         .local_slot = 2,
     };

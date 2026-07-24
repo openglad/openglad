@@ -52,3 +52,27 @@ fi
 grep -Fq \
     'openglad_demo: 2 sessions initialized, spawning 2 worker threads' \
     <<<"$output"
+
+set +e
+invalid_seed_output=$(
+    env \
+        SDL_VIDEODRIVER=dummy \
+        SDL_AUDIODRIVER=dummy \
+        SDL_RENDER_DRIVER=software \
+        OPENGLAD_DEMO_GRID=1x1 \
+        OPENGLAD_DEMO_MAX_FRAMES=1 \
+        OPENGLAD_DEMO_SEED=not-a-number \
+        OPENGLAD_CONFIG_DIR="$test_root/invalid-seed-config" \
+        "$demo_bin" 2>&1
+)
+invalid_seed_status=$?
+set -e
+
+printf '%s\n' "$invalid_seed_output"
+if (( invalid_seed_status == 0 )); then
+    printf 'openglad_demo accepted an invalid deterministic seed\n' >&2
+    exit 1
+fi
+grep -Fq \
+    "OPENGLAD_DEMO_SEED must be an unsigned integer, got 'not-a-number'" \
+    <<<"$invalid_seed_output"

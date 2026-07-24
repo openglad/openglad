@@ -126,6 +126,20 @@ bool file_nonempty(const fs::path& path)
            fs::file_size(path, ec) > 0 && !ec;
 }
 
+PixieData& allocate_decor_plane(GameWorld& world, unsigned char value)
+{
+    const PixieData& grid = world.grid_for_floor(0);
+    PixieData& decor = world.decor_for_floor(0);
+    decor.frames = 1;
+    decor.w = grid.w;
+    decor.h = grid.h;
+    const std::size_t cells =
+        static_cast<std::size_t>(grid.w) * static_cast<std::size_t>(grid.h);
+    decor.data = std::make_unique<unsigned char[]>(cells);
+    std::fill_n(decor.data.get(), cells, value);
+    return decor;
+}
+
 // Snapshot the named files, then force them absent for the test scope.  This
 // lets failure tests assert exactly which partial outputs were produced while
 // preserving any pre-existing developer files byte-for-byte.
@@ -233,6 +247,83 @@ TEST_F(LevelFileIoCoverage,
     EXPECT_EQ("unchanged", metadata.grid_file);
     ASSERT_EQ(1u, metadata.description.size());
     EXPECT_EQ("keep this", metadata.description.front());
+}
+
+TEST_F(LevelFileIoCoverage,
+       compatibility_dispatch_rejects_nulls_and_preserves_failure_state)
+{
+    const fs::path body = user_ / "scen/lfio_dispatch_body.bin";
+    const fs::path missing = user_ / "scen/lfio_compat_missing.fss";
+    ScopedFilesAbsent files({body, missing});
+    ASSERT_TRUE(files.ready());
+    ASSERT_TRUE(write_bytes(body, level_body(9, "unused")));
+
+    GameWorld world(18);
+    world.create_new_grid();
+    world.title = "dispatch state";
+    const unsigned char* const grid_data = world.grid.data.get();
+    const int grid_width = world.grid.w;
+
+    LevelFileMetadata metadata;
+    metadata.grid_file = "metadata state";
+    metadata.description = {"metadata description"};
+    auto infile = og::io::og_open_read("scen/lfio_dispatch_body.bin");
+    ASSERT_TRUE(infile);
+
+    EXPECT_EQ(0, og::data::load_scenario_version(*infile, &world, nullptr, 9));
+    EXPECT_EQ("dispatch state", world.title);
+    EXPECT_EQ(grid_data, world.grid.data.get());
+    EXPECT_EQ(grid_width, world.grid.w);
+
+    EXPECT_EQ(
+        0, og::data::load_scenario_version(*infile, nullptr, &metadata, 9));
+    EXPECT_EQ("metadata state", metadata.grid_file);
+    ASSERT_EQ(1u, metadata.description.size());
+    EXPECT_EQ("metadata description", metadata.description.front());
+
+    std::string grid_file = "compat grid";
+    std::list<std::string> description = {"compat description"};
+    int prepare_calls = 0;
+    LevelFileIoError err = LevelFileIoError::SerializeFailed;
+    EXPECT_FALSE(og::data::load_level(
+        "lfio_compat_missing.fss", world, grid_file, description,
+        [&] {
+            ++prepare_calls;
+            world.title = "prepared exactly once";
+            world.type = 37;
+        },
+        &err));
+    EXPECT_EQ(LevelFileIoError::OpenReadFailed, err);
+    EXPECT_EQ(1, prepare_calls);
+    EXPECT_EQ("prepared exactly once", world.title);
+    EXPECT_EQ(37, world.type);
+    EXPECT_EQ(grid_data, world.grid.data.get());
+    EXPECT_EQ(grid_width, world.grid.w);
+    EXPECT_EQ("compat grid", grid_file);
+    ASSERT_EQ(1u, description.size());
+    EXPECT_EQ("compat description", description.front());
+}
+
+TEST_F(LevelFileIoCoverage,
+       title_reader_rejects_unsafe_name_and_two_byte_safe_fixture)
+{
+    std::string title = "caller value";
+    EXPECT_EQ(LevelFileIoError::OpenReadFailed,
+              og::data::load_scenario_title_with_error("../escape", title));
+    EXPECT_EQ("none", title);
+    EXPECT_EQ("none", og::data::load_scenario_title("../escape"));
+
+    const fs::path short_title = user_ / "scen/lfio_title_short.fss";
+    ScopedFilesAbsent files({short_title});
+    ASSERT_TRUE(files.ready());
+    ASSERT_TRUE(write_bytes(short_title, {'F', 'S'}));
+
+    title = "caller value";
+    EXPECT_EQ(
+        LevelFileIoError::ParseFailed,
+        og::data::load_scenario_title_with_error("lfio_title_short", title));
+    EXPECT_EQ("none", title);
+    EXPECT_EQ("none", og::data::load_scenario_title("lfio_title_short"));
 }
 
 TEST_F(LevelFileIoCoverage,
@@ -458,6 +549,97 @@ TEST_F(LevelFileIoCoverage, writer_failures_report_the_exact_partial_file_set)
         EXPECT_TRUE(file_nonempty(fss));
         EXPECT_TRUE(file_nonempty(base));
         EXPECT_FALSE(fs::exists(upper));
+    }
+}
+
+TEST_F(LevelFileIoCoverage,
+       user_dir_save_treats_allocated_zero_decor_as_absent)
+{
+    constexpr int id = 9403;
+    const fs::path fss = user_ / "scen/scen9403.fss";
+    const fs::path base = user_ / "pix/scen9403.png";
+    const fs::path decor = user_ / "pix/scen9403_d0.png";
+    ScopedFilesAbsent files({fss, base, decor});
+    ASSERT_TRUE(files.ready());
+
+    GameWorld world(44);
+    world.create_new_grid();
+    PixieData& zero_decor = allocate_decor_plane(world, 0);
+    ASSERT_TRUE(zero_decor.valid());
+
+    LevelFileMetadata metadata;
+    LevelFileIoError err = LevelFileIoError::SerializeFailed;
+    EXPECT_TRUE(
+        og::data::save_level_to_user_dir(world, id, metadata, &err));
+    EXPECT_EQ(LevelFileIoError::None, err);
+    EXPECT_TRUE(file_nonempty(fss));
+    EXPECT_TRUE(file_nonempty(base));
+    EXPECT_FALSE(fs::exists(decor))
+        << "an allocated all-zero plane must not emit a decor artifact";
+}
+
+TEST_F(LevelFileIoCoverage,
+       nonempty_decor_reports_blocked_user_and_temp_outputs_exactly)
+{
+    {
+        constexpr int id = 9404;
+        const fs::path fss = user_ / "scen/scen9404.fss";
+        const fs::path base = user_ / "pix/scen9404.png";
+        const fs::path decor = user_ / "pix/scen9404_d0.png";
+        ScopedFilesAbsent files({fss, base, decor});
+        ASSERT_TRUE(files.ready());
+        std::error_code ec;
+        ASSERT_TRUE(fs::create_directory(decor, ec)) << ec.message();
+
+        GameWorld world(45);
+        world.create_new_grid();
+        PixieData& nonempty_decor = allocate_decor_plane(world, 0);
+        ASSERT_GT(nonempty_decor.w, 0);
+        ASSERT_GT(nonempty_decor.h, 0);
+        nonempty_decor.data[0] = 1;
+
+        LevelFileMetadata metadata;
+        LevelFileIoError err = LevelFileIoError::None;
+        EXPECT_FALSE(
+            og::data::save_level_to_user_dir(world, id, metadata, &err));
+        EXPECT_EQ(LevelFileIoError::OpenWriteFailed, err);
+        EXPECT_TRUE(file_nonempty(fss));
+        EXPECT_TRUE(file_nonempty(base));
+        EXPECT_TRUE(fs::is_directory(decor));
+    }
+
+    {
+        const fs::path fss = user_ / "temp/scen/lfio_decor_blocked.fss";
+        const fs::path base = user_ / "temp/pix/lfiodecor.png";
+        const fs::path decor = user_ / "temp/pix/lfiodecor_d0.png";
+        // OgFile deliberately falls back to stdio when PhysFS rejects an
+        // open. Block that relative fallback too, so this test exercises a
+        // real failed open independent of the test runner's working dir.
+        const fs::path fallback_decor =
+            fs::current_path() / "temp/pix/lfiodecor_d0.png";
+        ScopedFilesAbsent files({fss, base, decor, fallback_decor});
+        ASSERT_TRUE(files.ready());
+        std::error_code ec;
+        ASSERT_TRUE(fs::create_directory(decor, ec)) << ec.message();
+        ec.clear();
+        ASSERT_TRUE(fs::create_directory(fallback_decor, ec)) << ec.message();
+
+        GameWorld world(46);
+        world.create_new_grid();
+        PixieData& nonempty_decor = allocate_decor_plane(world, 1);
+        ASSERT_TRUE(nonempty_decor.valid());
+        ASSERT_EQ(1, nonempty_decor.data[0]);
+
+        LevelFileMetadata metadata;
+        metadata.grid_file = "lfiodecor";
+        LevelFileIoError err = LevelFileIoError::None;
+        EXPECT_FALSE(og::data::save_level(
+            world, "lfio_decor_blocked.fss", metadata, &err));
+        EXPECT_EQ(LevelFileIoError::OpenWriteFailed, err);
+        EXPECT_TRUE(file_nonempty(fss));
+        EXPECT_TRUE(file_nonempty(base));
+        EXPECT_TRUE(fs::is_directory(decor));
+        EXPECT_TRUE(fs::is_directory(fallback_decor));
     }
 }
 

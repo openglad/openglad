@@ -642,6 +642,137 @@ TEST(GameServerCoverage, explicit_host_disconnect_cascades_to_all_clients)
     EXPECT_TRUE(transport.sent().empty());
 }
 
+TEST(GameServerCoverage,
+     spectator_disconnects_retain_distinct_reconnect_tokens)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    const auto zero_hello =
+        og::sim::serialize_hello(og::sim::HelloMessage{});
+
+    transport.set_connected({201u});
+    server.poll_incoming_messages();
+    server.connect_spectator(201u);
+    transport.queue_raw(201u, {zero_hello.begin(), zero_hello.end()});
+    server.step();
+    const auto first_hello = find_hello(transport, 201u);
+    ASSERT_TRUE(first_hello.has_value());
+    ASSERT_FALSE(
+        og::sim::is_zero_session_token(first_hello->session_token));
+
+    transport.clear_sent();
+    transport.set_connected({});
+    server.poll_incoming_messages();
+
+    transport.set_connected({202u});
+    server.poll_incoming_messages();
+    server.connect_spectator(202u);
+    transport.queue_raw(202u, {zero_hello.begin(), zero_hello.end()});
+    server.step();
+    const auto second_hello = find_hello(transport, 202u);
+    ASSERT_TRUE(second_hello.has_value());
+    ASSERT_FALSE(
+        og::sim::is_zero_session_token(second_hello->session_token));
+    EXPECT_NE(first_hello->session_token,
+              second_hello->session_token);
+
+    transport.clear_sent();
+    transport.set_connected({});
+    server.poll_incoming_messages();
+
+    // Reconnect with the first token after a second spectator has also left.
+    // Both records must coexist; storing the second must not overwrite the
+    // first merely because the disconnected-spectator list was non-empty.
+    transport.set_connected({203u});
+    server.poll_incoming_messages();
+    const auto reconnect =
+        og::sim::serialize_hello(*first_hello);
+    transport.queue_raw(203u, {reconnect.begin(), reconnect.end()});
+    server.step();
+    const auto reconnected_hello = find_hello(transport, 203u);
+    ASSERT_TRUE(reconnected_hello.has_value());
+    EXPECT_EQ(first_hello->session_token,
+              reconnected_hello->session_token);
+}
+
+TEST(GameServerCoverage,
+     explicit_disconnect_only_removes_matching_grace_records)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    const auto zero_hello =
+        og::sim::serialize_hello(og::sim::HelloMessage{});
+
+    transport.set_connected({211u});
+    server.poll_incoming_messages();
+    server.bind_player(211u, 0u, 0);
+    server.bind_player(211u, 1u, 1, nullptr, 1);
+    transport.queue_raw(211u, {zero_hello.begin(), zero_hello.end()});
+    server.step();
+    ASSERT_TRUE(find_hello(transport, 211u).has_value());
+
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.disconnected_players().size());
+    EXPECT_EQ(0u, server.disconnected_players().front().player_index);
+    EXPECT_EQ(1u, server.disconnected_players().back().player_index);
+
+    transport.set_connected({212u});
+    server.poll_incoming_messages();
+    server.bind_player(212u, 0u, 0);
+    server.disconnect_client(212u);
+
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_EQ(1u, server.disconnected_players().front().player_index);
+    EXPECT_EQ(212u, transport.disconnected().back());
+}
+
+TEST(GameServerCoverage,
+     transport_disconnect_waits_for_budgeted_typed_message)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport(/*typed=*/true);
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected({221u});
+    server.poll_incoming_messages();
+    server.bind_player(221u, 0u, 0);
+
+    og::sim::TypedReceivedMessage hello;
+    hello.peer_id = 221u;
+    hello.kind = og::sim::TypedReceivedMessageKind::Hello;
+    hello.hello = std::make_shared<og::sim::HelloMessage>();
+    transport.queue_typed(std::move(hello));
+    server.step();
+    const auto hello_response = find_hello(transport, 221u);
+    ASSERT_TRUE(hello_response.has_value());
+    ASSERT_FALSE(
+        og::sim::is_zero_session_token(hello_response->session_token));
+
+    og::sim::TypedReceivedMessage heartbeat;
+    heartbeat.peer_id = 221u;
+    heartbeat.kind = og::sim::TypedReceivedMessageKind::Heartbeat;
+    heartbeat.heartbeat =
+        std::make_shared<og::sim::HeartbeatMessage>();
+    transport.queue_typed(std::move(heartbeat));
+    transport.set_connected({});
+
+    server.poll_incoming_messages(0);
+    EXPECT_EQ(0, server.messages_drained_last_call());
+    EXPECT_EQ(1u, server.pending_inbound_message_count());
+    EXPECT_TRUE(server.disconnected_players().empty());
+
+    server.poll_incoming_messages(1);
+    EXPECT_EQ(1, server.messages_drained_last_call());
+    EXPECT_EQ(0u, server.pending_inbound_message_count());
+    ASSERT_EQ(1u, server.last_polled_messages().size());
+    EXPECT_EQ(221u, server.last_polled_messages().front().peer_id);
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_EQ(0u, server.disconnected_players().front().player_index);
+}
+
 TEST(GameServerCoverage, backward_wall_clock_does_not_timeout_a_client)
 {
     TestGameWorld fixture;

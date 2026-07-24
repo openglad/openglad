@@ -249,6 +249,21 @@ TEST(LoadLevels, sdl_level_hooks_create_render_aware_entity_factory)
     const EntityFactory factory = hooks.create_entity_factory();
     EXPECT_TRUE(static_cast<bool>(factory.attach_render));
     EXPECT_TRUE(static_cast<bool>(factory.report_error));
+
+    walker entity;
+    PixieData pixel;
+    pixel.frames = 1;
+    pixel.w = 1;
+    pixel.h = 1;
+    pixel.data = std::make_unique<unsigned char[]>(1);
+    pixel.data[0] = 1;
+    factory.attach_render(entity, pixel);
+    EXPECT_TRUE(entity.has_render());
+
+    trace_clear();
+    factory.report_error("render-aware factory test error");
+    EXPECT_TRUE(trace_contains(
+        "popup", "ERROR: render-aware factory test error"));
 }
 
 TEST(LoadLevels, compatibility_overload_runs_preparation_and_returns_metadata)

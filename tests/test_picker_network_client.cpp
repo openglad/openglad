@@ -2233,7 +2233,7 @@ TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
     // latch so the pending assertion has no scheduler or wall-clock premise.
     const std::size_t completed_room_list_requests =
         relay_server.block_room_list_responses();
-    auto request = og::platform::begin_platform_list_relay_rooms(
+    auto request = og::ui::begin_list_relay_rooms(
         std::format("http://127.0.0.1:{}", relay_port),
         campaign_id);
     ASSERT_NE(nullptr, request);

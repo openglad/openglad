@@ -20,6 +20,11 @@ constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
 constexpr std::size_t kMaxLobbyTeamSize = 24;
+constexpr auto compare_peer_connection_order =
+    [](const auto& lhs, const auto& rhs) {
+        return lhs.second->connection_order <
+               rhs.second->connection_order;
+    };
 
 og::sim::LobbySettings make_default_lobby_settings()
 {
@@ -576,9 +581,7 @@ void LobbyServer::rebuild_state()
     }
 
     std::sort(ordered_peers.begin(), ordered_peers.end(),
-              [](const auto& lhs, const auto& rhs) {
-                  return lhs.second->connection_order < rhs.second->connection_order;
-              });
+              compare_peer_connection_order);
 
     // Flatten (connection_order, seat order): global player indices are
     // sequential across the flattened seat list.
@@ -1087,10 +1090,7 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                         ordered.emplace_back(other_peer_id, &peer);
                 }
                 std::sort(ordered.begin(), ordered.end(),
-                          [](const auto& lhs, const auto& rhs) {
-                              return lhs.second->connection_order <
-                                     rhs.second->connection_order;
-                          });
+                          compare_peer_connection_order);
                 std::vector<OrderedSeat> ordered_seats;
                 for (auto& [other_peer_id, peer] : ordered)
                 {

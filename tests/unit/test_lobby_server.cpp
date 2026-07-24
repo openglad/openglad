@@ -3222,6 +3222,35 @@ TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
         << "the queued Join is acknowledged only when unlock processes it";
 }
 
+TEST(LobbyServer, disconnect_removes_a_queued_next_round_join)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.start_game_requested());
+
+    og::sim::LobbyMessage resume_join = make_join_message(
+        "Guest", 1,
+        {make_slot(1u, 201, "Should Not Return", FAMILY_ARCHER)},
+        false,
+        404u);
+    std::get<og::sim::LobbyJoinMessage>(
+        resume_join.payload).resume_after_level = true;
+    transport.queue_lobby_message(22u, resume_join);
+    server.poll_incoming_messages();
+
+    server.disconnect_client(22u);
+    server.unlock_for_new_round();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_EQ("Host", server.state().players.front().name);
+    EXPECT_EQ((std::vector<og::sim::PeerId>{22u}),
+              transport.disconnected_peers());
+}
+
 // §4.2: only DEPLOYED slots consume the combined 24-slot capacity. A host
 // with half its 20-slot roster benched leaves 24-10 = 14 slots of budget, so
 // a 10-slot guest fits fully deployed — and the assembly equivalent

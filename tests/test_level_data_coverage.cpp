@@ -118,6 +118,30 @@ TEST(LevelDataCoverage, level_data_save_rejects_null_fx_and_weap_entries)
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
+TEST(LevelDataCoverage, default_entity_factory_reports_unsupported_entities)
+{
+    LevelRuntimeData data(
+        1, true, static_cast<const LevelDataHooks*>(nullptr));
+    ASSERT_TRUE(static_cast<bool>(data.world().entity_factory));
+
+    bool found_unsupported_entity = false;
+    testing::internal::CaptureStderr();
+    for (int family = 0; family < NUM_FAMILIES; ++family)
+    {
+        if (!data.world().entity_factory(
+                Order::Special, static_cast<std::int32_t>(family)))
+        {
+            found_unsupported_entity = true;
+            break;
+        }
+    }
+    const std::string diagnostics =
+        testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(found_unsupported_entity);
+    EXPECT_NE(std::string::npos,
+              diagnostics.find("No valid graphics for walker!"));
+}
+
 
 TEST(LevelDataCoverage, level_data_range_helpers_and_null_paths)
 {

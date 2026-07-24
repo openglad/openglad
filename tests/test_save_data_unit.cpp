@@ -2,6 +2,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/legacy/base.h>
+#include <array>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -30,6 +31,73 @@ TEST(SaveDataUnit, save_data_update_guys_clamps_to_max_team_size)
     ASSERT_TRUE(save.team_list.front() != nullptr);
     ASSERT_TRUE(save.team_list.back() != nullptr);
     ASSERT_TRUE(save.team_list[MAX_TEAM_SIZE - 1]->exp == static_cast<std::uint32_t>(100 + (MAX_TEAM_SIZE - 1)));
+}
+
+TEST(SaveDataUnit, merge_owned_guys_rejects_nonowners_and_invalid_roster_slots)
+{
+    const auto make_member = [](const char* name, std::uint32_t exp) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = name;
+        member->exp = exp;
+        member->deployed = true;
+        return member;
+    };
+    std::list<std::unique_ptr<walker>> empty_level;
+
+    SaveData scalar_no_owner;
+    scalar_no_owner.team_list[0] = make_member("UNCHANGED", 10);
+    scalar_no_owner.team_size = 1;
+    const guy* const scalar_member = scalar_no_owner.team_list[0].get();
+    scalar_no_owner.merge_owned_guys_from(empty_level, guy::kNoOwner);
+    ASSERT_EQ(1, static_cast<int>(scalar_no_owner.team_size));
+    ASSERT_TRUE(scalar_no_owner.team_list[0] != nullptr);
+    EXPECT_EQ(scalar_member, scalar_no_owner.team_list[0].get())
+        << "the scalar no-owner overload is an exact no-op";
+    EXPECT_EQ("UNCHANGED", scalar_no_owner.team_list[0]->name);
+    EXPECT_EQ(10u, scalar_no_owner.team_list[0]->exp);
+    EXPECT_TRUE(scalar_no_owner.team_list[0]->deployed);
+
+    SaveData span_no_owner;
+    span_no_owner.team_list[0] = make_member("SPAN", 20);
+    span_no_owner.team_size = 1;
+    const guy* const span_member = span_no_owner.team_list[0].get();
+    const std::array<std::uint8_t, 2> no_owners = {
+        guy::kNoOwner, guy::kNoOwner};
+    span_no_owner.merge_owned_guys_from(empty_level, no_owners);
+    ASSERT_EQ(1, static_cast<int>(span_no_owner.team_size));
+    ASSERT_TRUE(span_no_owner.team_list[0] != nullptr);
+    EXPECT_EQ(span_member, span_no_owner.team_list[0].get())
+        << "an all-no-owner span is an exact no-op";
+    EXPECT_EQ("SPAN", span_no_owner.team_list[0]->name);
+    EXPECT_EQ(20u, span_no_owner.team_list[0]->exp);
+    EXPECT_TRUE(span_no_owner.team_list[0]->deployed);
+
+    SaveData invalid_slot;
+    invalid_slot.team_list[0] = make_member("PRESERVED", 30);
+    invalid_slot.team_size = 1;
+    std::list<std::unique_ptr<walker>> level;
+    auto walker_with_invalid_slot = std::make_unique<walker>();
+    auto invalid_guy = make_member("INVALID", 999);
+    invalid_guy->owner_player_index = 1;
+    invalid_guy->owner_save_slot =
+        static_cast<std::uint8_t>(MAX_TEAM_SIZE);
+    walker_with_invalid_slot->set_owned_myguy(std::move(invalid_guy));
+    walker_with_invalid_slot->set_dead(0);
+    level.push_back(std::move(walker_with_invalid_slot));
+    invalid_slot.merge_owned_guys_from(level, std::uint8_t{1});
+    ASSERT_EQ(1, static_cast<int>(invalid_slot.team_size));
+    ASSERT_TRUE(invalid_slot.team_list[0] != nullptr);
+    EXPECT_EQ("PRESERVED", invalid_slot.team_list[0]->name)
+        << "an invalid owner_save_slot cannot overwrite the private roster";
+    EXPECT_EQ(30u, invalid_slot.team_list[0]->exp);
+    EXPECT_TRUE(invalid_slot.team_list[0]->deployed);
+
+    SaveData sparse;
+    sparse.team_size = 1;
+    sparse.merge_owned_guys_from(empty_level, std::uint8_t{1});
+    EXPECT_EQ(0, static_cast<int>(sparse.team_size))
+        << "a sparse legacy roster is re-densified without a null entry";
+    EXPECT_TRUE(sparse.team_list[0] == nullptr);
 }
 
 // --- GTL v14 held-back preservation (docs/company-basecamp-design.md §3.3) ---

@@ -13,6 +13,8 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -27,6 +29,15 @@ int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
+// Deterministic dialog answers used by the level picker.
+void level_editor_testing_prompt_queue_clear();
+void level_editor_testing_prompt_queue_push(const char* s);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
+void level_picker_testing_input_reset();
+void level_picker_testing_click(int x, int y);
+std::uint64_t level_picker_testing_entered_count();
+std::uint64_t level_picker_testing_action_count();
 
 namespace
 {
@@ -94,6 +105,101 @@ struct ViewportGuard
         og::runtime::current_session->viewport_offset_y_ = oy;
     }
 };
+
+struct WorldEndGuard
+{
+    char& end;
+    char saved;
+
+    explicit WorldEndGuard(char& end_) : end(end_), saved(end_) {}
+    ~WorldEndGuard() { end = saved; }
+};
+
+struct TemporaryCampaignGuard
+{
+    std::string original_mount;
+    std::string temporary_id;
+
+    ~TemporaryCampaignGuard()
+    {
+        const std::string mounted = get_mounted_campaign();
+        CampaignPackageIoError restore_error =
+            CampaignPackageIoError::None;
+        if (mounted != original_mount)
+        {
+            if (original_mount.empty())
+                restore_error =
+                    unmount_campaign_package_with_error(mounted);
+            else
+                restore_error =
+                    mount_campaign_package_with_error(original_mount);
+        }
+        if (restore_error != CampaignPackageIoError::None)
+        {
+            ADD_FAILURE()
+                << "failed to restore campaign mount to "
+                << original_mount;
+            return;
+        }
+        delete_campaign(temporary_id);
+    }
+};
+
+struct PromptQueueGuard
+{
+    PromptQueueGuard() { level_editor_testing_prompt_queue_clear(); }
+    ~PromptQueueGuard() { level_editor_testing_prompt_queue_clear(); }
+
+    void push(const char* value)
+    {
+        level_editor_testing_prompt_queue_push(value);
+    }
+};
+
+struct YesNoQueueGuard
+{
+    YesNoQueueGuard() { picker_testing_yes_or_no_queue_clear(); }
+    ~YesNoQueueGuard() { picker_testing_yes_or_no_queue_clear(); }
+
+    void push(bool value)
+    {
+        picker_testing_yes_or_no_queue_push(value);
+    }
+};
+
+bool wait_for_level_picker_counter(std::uint64_t (*counter)(),
+                                   std::uint64_t baseline)
+{
+    constexpr Uint64 kHandshakeTimeoutMs = 5000;
+    const Uint64 started_at = SDL_GetTicks();
+    while (counter() <= baseline)
+    {
+        if (SDL_GetTicks() - started_at >= kHandshakeTimeoutMs)
+        {
+            // Negative coordinates are the harness's fail-safe abort request.
+            // They never count as a picker action, so the test still fails.
+            level_picker_testing_click(-1, -1);
+            return false;
+        }
+        SDL_Delay(1);
+    }
+    return true;
+}
+
+bool wait_for_level_picker_ready()
+{
+    return wait_for_level_picker_counter(
+        level_picker_testing_entered_count, 0);
+}
+
+bool click_level_picker_action(int x, int y)
+{
+    const std::uint64_t action_before =
+        level_picker_testing_action_count();
+    level_picker_testing_click(x, y);
+    return wait_for_level_picker_counter(
+        level_picker_testing_action_count, action_before);
+}
 
 static int picker_choose_injector(void* data)
 {
@@ -166,13 +272,57 @@ static int level_picker_scroll_then_choose_first_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(500);
-    inject_click(180, 155, 100); // NEXT: shift previews up and re-index them
-    SDL_Delay(250);
-    inject_click(24, 23, 100);   // Select the entry shifted into the first row
-    SDL_Delay(150);
-    inject_click(280, 175, 100); // OK
-    return 0;
+    bool ok = wait_for_level_picker_ready();
+    if (ok)
+        ok = click_level_picker_action(
+            180, 155); // NEXT: shift previews up and re-index them
+    if (ok)
+        ok = click_level_picker_action(
+            24, 23); // Select the entry shifted into the first row
+    if (ok)
+        ok = click_level_picker_action(280, 175); // OK
+    return ok ? 0 : 1;
+}
+
+static int level_picker_scroll_back_then_choose_first_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    bool ok = wait_for_level_picker_ready();
+    if (ok)
+        ok = click_level_picker_action(180, 155); // NEXT
+    if (ok)
+        ok = click_level_picker_action(180, 25); // PREV
+    if (ok)
+        ok = click_level_picker_action(
+            24, 23); // First entry after scrolling back
+    if (ok)
+        ok = click_level_picker_action(280, 175); // OK
+    return ok ? 0 : 1;
+}
+
+static int level_picker_enter_id_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    bool ok = wait_for_level_picker_ready();
+    if (ok)
+        ok = click_level_picker_action(225, 15); // ENTER ID
+    return ok ? 0 : 1;
+}
+
+static int level_picker_delete_once_then_cancel_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    bool ok = wait_for_level_picker_ready();
+    if (ok)
+        ok = click_level_picker_action(24, 23); // Select first entry
+    if (ok)
+        ok = click_level_picker_action(280, 15); // DELETE
+    if (ok)
+        ok = click_level_picker_action(239, 175); // CANCEL
+    return ok ? 0 : 1;
 }
 
 TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
@@ -446,9 +596,10 @@ TEST(CampaignAndLevelPicker, level_picker_scroll_repositions_preview_entries)
     const int expected_level_after_scroll = levels[1];
 
     char& end = og::runtime::current_session->myscreen_->world().end;
-    const char saved_end = end;
+    WorldEndGuard end_guard(end);
     end = 0;
 
+    level_picker_testing_input_reset();
     SDL_Thread* thread = SDL_CreateThread(
         level_picker_scroll_then_choose_first_injector,
         "level_picker_scroll_choose", nullptr);
@@ -460,7 +611,130 @@ TEST(CampaignAndLevelPicker, level_picker_scroll_repositions_preview_entries)
     EXPECT_EQ(0, thread_result);
     EXPECT_EQ(expected_level_after_scroll, chosen)
         << "NEXT must move the second level into the first preview's clickable row";
-    end = saved_end;
+}
+
+TEST(CampaignAndLevelPicker, level_picker_previous_restores_prior_preview_entries)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    const std::vector<int> levels = list_levels_v();
+    ASSERT_GT(levels.size(), 3u)
+        << "PREV needs a full preview window after one NEXT step";
+    const int starting_level = levels.front();
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_scroll_back_then_choose_first_injector,
+        "level_picker_scroll_back_choose", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const int chosen = pick_level(
+        og::runtime::current_session->myscreen_, starting_level, false);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(starting_level, chosen)
+        << "PREV must restore the original first preview and its level id";
+}
+
+TEST(CampaignAndLevelPicker, level_picker_enter_id_returns_valid_prompt_value)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("42");
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_enter_id_injector, "level_picker_enter_id", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const int chosen = pick_level(
+        og::runtime::current_session->myscreen_, 1, false);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(42, chosen)
+        << "ENTER ID must accept a positive integer even when it is not listed";
+}
+
+TEST(CampaignAndLevelPicker, level_picker_delete_removes_only_selected_level)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    const std::string temporary_id =
+        "org.openglad.test.level_picker_delete";
+    TemporaryCampaignGuard campaign_guard{
+        get_mounted_campaign(), temporary_id};
+    delete_campaign(temporary_id);
+
+    CampaignData campaign("org.openglad.gladiator");
+    ASSERT_TRUE(campaign.load());
+    ASSERT_TRUE(campaign.save_as(temporary_id));
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(temporary_id));
+
+    const std::vector<int> before = list_levels_v();
+    ASSERT_GT(before.size(), 3u);
+    const int deleted_level = before.front();
+
+    YesNoQueueGuard yes_no_queue;
+    yes_no_queue.push(true);
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_delete_once_then_cancel_injector,
+        "level_picker_delete_once", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const int chosen = pick_level(
+        og::runtime::current_session->myscreen_, deleted_level, true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    const std::vector<int> after = list_levels_v();
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(deleted_level, chosen)
+        << "canceling after deletion keeps the caller's default selection";
+    ASSERT_EQ(before.size() - 1u, after.size());
+    EXPECT_TRUE(std::find(after.begin(), after.end(), deleted_level) ==
+                after.end())
+        << "DELETE must remove exactly the selected level from the copy";
+    for (const int level : after)
+    {
+        EXPECT_TRUE(std::find(before.begin(), before.end(), level) !=
+                    before.end())
+            << "DELETE must not synthesize or replace unrelated levels";
+    }
 }
 
 // picker_main_menu.cpp: the new-game flow under test below.

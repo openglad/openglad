@@ -66,6 +66,9 @@ TEST(VideoFade, video_fadebetween_null_and_format_preconditions_are_handled)
     if (!(dest && old_ok && new_ok))
         return;
 
+    EXPECT_EQ(
+        0, og::runtime::current_session->myscreen_->fade_between(
+               old_ok.get(), new_ok.get(), nullptr));
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(nullptr, nullptr, dest.get()));
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(nullptr, new_ok.get(), dest.get()));
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_ok.get(), nullptr, dest.get()));
@@ -74,19 +77,97 @@ TEST(VideoFade, video_fadebetween_null_and_format_preconditions_are_handled)
     ASSERT_TRUE(new_bad_h != nullptr) << "height mismatch surface created";
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_bad_h.get(), dest.get()));
 
-    SurfacePtr old_bad_w = make_surface(321, 200);
-    ASSERT_TRUE(old_bad_w != nullptr) << "old width mismatch surface created";
-    EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_bad_w.get(), nullptr, dest.get()));
+    std::vector<Uint32> narrow_pixels(320u * 200u);
+    SurfacePtr narrow_same_pitch(SDL_CreateSurfaceFrom(
+        319, 200, SDL_PIXELFORMAT_XRGB8888,
+        narrow_pixels.data(), 320 * 4));
+    ASSERT_NE(nullptr, narrow_same_pitch)
+        << "same-pitch width mismatch surface created";
+    ASSERT_EQ(old_ok->pitch, narrow_same_pitch->pitch);
+    EXPECT_EQ(0,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_ok.get(), narrow_same_pitch.get(), dest.get()));
 
     SurfacePtr new_rgba = make_surface_masks(
         320, 200, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
     ASSERT_TRUE(new_rgba != nullptr) << "R mask mismatch surface created";
+    ASSERT_NE(old_ok->format, new_rgba->format);
+    ASSERT_EQ(old_ok->pitch, new_rgba->pitch);
     EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_rgba.get(), dest.get()));
+    EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_ok.get(), new_rgba.get()));
 
     SurfacePtr old_24 = make_surface_masks(320, 200, 24, 0x0000ff, 0x00ff00, 0xff0000, 0);
     SurfacePtr new_24 = make_surface_masks(320, 200, 24, 0x0000ff, 0x00ff00, 0xff0000, 0);
-    ASSERT_TRUE(old_24 != nullptr && new_24 != nullptr) << "24-bit surfaces created";
-    EXPECT_EQ(0, og::runtime::current_session->myscreen_->fade_between(old_24.get(), new_24.get(), dest.get()));
+    SurfacePtr dest_24 = make_surface_masks(320, 200, 24, 0x0000ff, 0x00ff00, 0xff0000, 0);
+    ASSERT_TRUE(old_24 != nullptr && new_24 != nullptr && dest_24 != nullptr)
+        << "24-bit surfaces created";
+    EXPECT_EQ(0,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_24.get(), new_24.get(), dest_24.get()));
+}
+
+TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
+{
+    SurfacePtr dest = make_surface(320, 200);
+    SurfacePtr old_rle = make_surface(320, 200);
+    SurfacePtr new_ok = make_surface(320, 200);
+    ASSERT_NE(nullptr, dest);
+    ASSERT_NE(nullptr, old_rle);
+    ASSERT_NE(nullptr, new_ok);
+    SurfacePtr rle_blit_target = make_surface(320, 200);
+    ASSERT_NE(nullptr, rle_blit_target);
+    ASSERT_TRUE(SDL_SetSurfaceColorKey(
+        old_rle.get(), true, SDL_MapSurfaceRGB(old_rle.get(), 255, 0, 255)));
+    ASSERT_TRUE(SDL_SetSurfaceRLE(old_rle.get(), true));
+    ASSERT_TRUE(SDL_BlitSurface(
+        old_rle.get(), nullptr, rle_blit_target.get(), nullptr));
+    ASSERT_TRUE(SDL_MUSTLOCK(old_rle.get()));
+
+    SDL_FillSurfaceRect(
+        new_ok.get(), nullptr,
+        SDL_MapSurfaceRGB(new_ok.get(), 70, 80, 90));
+    EXPECT_EQ(1,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_rle.get(), new_ok.get(), dest.get()));
+    EXPECT_EQ(0u, old_rle->flags & SDL_SURFACE_LOCKED)
+        << "FadeBetween must release a lock it acquired";
+
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    ASSERT_TRUE(SDL_ReadSurfacePixel(old_rle.get(), 10, 10, &red, &green, &blue, nullptr));
+    EXPECT_EQ(70, red);
+    EXPECT_EQ(80, green);
+    EXPECT_EQ(90, blue);
+
+    SurfacePtr old_ok = make_surface(320, 200);
+    SurfacePtr new_rle = make_surface(320, 200);
+    ASSERT_NE(nullptr, old_ok);
+    ASSERT_NE(nullptr, new_rle);
+    ASSERT_TRUE(SDL_SetSurfaceColorKey(
+        new_rle.get(), true, SDL_MapSurfaceRGB(new_rle.get(), 255, 0, 255)));
+    ASSERT_TRUE(SDL_SetSurfaceRLE(new_rle.get(), true));
+    ASSERT_TRUE(SDL_BlitSurface(
+        new_rle.get(), nullptr, rle_blit_target.get(), nullptr));
+    ASSERT_TRUE(SDL_MUSTLOCK(new_rle.get()));
+    EXPECT_EQ(0,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_ok.get(), new_rle.get(), dest.get()));
+
+    SurfacePtr dest_rle = make_surface(320, 200);
+    ASSERT_NE(nullptr, dest_rle);
+    ASSERT_TRUE(SDL_SetSurfaceColorKey(
+        dest_rle.get(), true,
+        SDL_MapSurfaceRGB(dest_rle.get(), 255, 0, 255)));
+    ASSERT_TRUE(SDL_SetSurfaceRLE(dest_rle.get(), true));
+    ASSERT_TRUE(SDL_BlitSurface(
+        dest_rle.get(), nullptr, rle_blit_target.get(), nullptr));
+    ASSERT_TRUE(SDL_MUSTLOCK(dest_rle.get()));
+    EXPECT_EQ(0,
+              og::runtime::current_session->myscreen_->fade_between(
+                  old_ok.get(), new_ok.get(), dest_rle.get()));
+    EXPECT_EQ(0u, dest_rle->flags & SDL_SURFACE_LOCKED)
+        << "rejected destination remains unlocked";
 }
 
 

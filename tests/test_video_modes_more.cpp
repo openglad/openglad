@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -131,6 +132,18 @@ TEST(VideoModesMore, display_mode_sizes_are_reported_in_physical_pixels)
 	// Invalid/unspecified density safely retains the logical dimensions.
 	mode.pixel_density = 0.0f;
 	EXPECT_EQ(std::make_pair(1365, 767),
+	          og::platform::display_mode_pixel_size(mode));
+
+	mode.w = 0;
+	mode.h = -1;
+	EXPECT_EQ(std::make_pair(0, 0),
+	          og::platform::display_mode_pixel_size(mode));
+
+	mode.w = std::numeric_limits<int>::max();
+	mode.h = std::numeric_limits<int>::max();
+	mode.pixel_density = 2.0f;
+	EXPECT_EQ(std::make_pair(std::numeric_limits<int>::max(),
+	                        std::numeric_limits<int>::max()),
 	          og::platform::display_mode_pixel_size(mode));
 }
 

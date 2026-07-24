@@ -14,15 +14,19 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "../test_save_state_guard.h"
+
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -102,6 +106,8 @@ private:
     std::filesystem::path save_dir_;
     std::filesystem::path stash_dir_;
 };
+
+std::string read_file_bytes(const std::filesystem::path& path);
 
 void append_bytes(std::string& out, const void* data, std::size_t size)
 {
@@ -673,6 +679,78 @@ TEST(CompanyIoPrimitives, exists_copy_and_remove_round_trip)
         << "removing a missing file reports false";
 }
 
+TEST(CompanyIoPrimitives, copy_failures_leave_no_partial_destination)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("copy-source.gtl", "SOURCE BYTES");
+
+    sandbox.write_raw("parent-blocker", "not a directory");
+    EXPECT_FALSE(copy_user_file("save/copy-source.gtl",
+                                "save/parent-blocker/copy.gtl"));
+    EXPECT_FALSE(fs::exists(sandbox.dir() / "parent-blocker/copy.gtl"));
+    EXPECT_EQ("not a directory",
+              read_file_bytes(sandbox.dir() / "parent-blocker"));
+
+    const fs::path rename_target = sandbox.dir() / "rename-target.gtl";
+    std::error_code ec;
+    fs::create_directories(rename_target, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("rename-target.gtl/keep", "directory sentinel");
+
+    EXPECT_FALSE(copy_user_file("save/copy-source.gtl",
+                                "save/rename-target.gtl"));
+    EXPECT_TRUE(fs::is_directory(rename_target));
+    EXPECT_EQ("directory sentinel",
+              read_file_bytes(rename_target / "keep"));
+    EXPECT_FALSE(fs::exists(sandbox.dir() / "rename-target.gtl.tmp"))
+        << "a failed atomic rename must clean its staging file";
+
+#if defined(__linux__)
+    const fs::path dev_full = "/dev/full";
+    ASSERT_TRUE(fs::exists(dev_full));
+    ASSERT_TRUE(fs::is_character_file(dev_full));
+    const fs::path short_write_tmp = sandbox.dir() / "short-write.gtl.tmp";
+    fs::create_symlink(dev_full, short_write_tmp, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    EXPECT_FALSE(copy_user_file("save/copy-source.gtl",
+                                "save/short-write.gtl"));
+    EXPECT_FALSE(fs::exists(sandbox.dir() / "short-write.gtl"));
+    EXPECT_FALSE(fs::exists(short_write_tmp))
+        << "a flushed short write must remove the temporary symlink";
+    EXPECT_EQ("SOURCE BYTES",
+              read_file_bytes(sandbox.dir() / "copy-source.gtl"))
+        << "copy failures never mutate the source";
+#endif
+}
+
+TEST(CompanyIoPrimitives, unsafe_campaign_paths_do_not_touch_the_filesystem)
+{
+    SaveDirSandbox sandbox;
+    og::test::ScopedCampaignMountState mount_state;
+    const std::string mounted_before = get_mounted_campaign();
+    EXPECT_EQ(CampaignPackageIoError::UnmountFailed,
+              unmount_campaign_package_with_error("../outside"));
+    EXPECT_EQ(mounted_before, get_mounted_campaign());
+
+    const std::filesystem::path traversal_target =
+        std::filesystem::path(get_user_path()) / "outside.glad";
+    og::test::ScopedPhysicalFileState traversal_target_state(
+        traversal_target);
+    ASSERT_TRUE(traversal_target_state.ready())
+        << traversal_target_state.error().message();
+    {
+        std::ofstream out(traversal_target, std::ios::binary);
+        ASSERT_TRUE(out.good());
+        out << "sentinel";
+    }
+    delete_campaign("../outside");
+    EXPECT_TRUE(std::filesystem::exists(traversal_target))
+        << "an unsafe id must be rejected before path construction";
+    EXPECT_EQ("sentinel", read_file_bytes(traversal_target));
+}
+
 TEST(CompanyAtomicSave, writes_via_tmp_and_leaves_no_staging_file)
 {
     SaveDirSandbox sandbox;
@@ -712,6 +790,44 @@ TEST(CompanyAtomicSave, rejects_netsession_and_unsafe_slots)
               og::data::atomic_company_save(save, "bad name"));
     EXPECT_FALSE(user_file_exists("save/netsession.gtl"));
     EXPECT_FALSE(user_file_exists("save/netsession.tmp.gtl"));
+}
+
+TEST(CompanyAtomicSave, propagates_write_and_rename_failures_without_replacement)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    const fs::path cwd_invalid_staging =
+        fs::current_path() / "save/invalid-payload.tmp.gtl";
+    og::test::ScopedPhysicalFileState cwd_invalid_staging_state(
+        cwd_invalid_staging);
+    ASSERT_TRUE(cwd_invalid_staging_state.ready())
+        << cwd_invalid_staging_state.error().message();
+
+    SaveData invalid;
+    invalid.current_campaign = "../outside";
+    EXPECT_EQ(SaveDataIoError::WriteFailed,
+              og::data::atomic_company_save(invalid, "invalid-payload"));
+    EXPECT_FALSE(user_file_exists("save/invalid-payload.gtl"))
+        << "a rejected payload cannot replace the destination";
+    EXPECT_FALSE(user_file_exists("save/invalid-payload.tmp.gtl"))
+        << "a rejected payload cannot leave an atomic-save staging file";
+
+    const fs::path blocked_destination = sandbox.dir() / "blocked.gtl";
+    std::error_code ec;
+    fs::create_directories(blocked_destination, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("blocked.gtl/keep", "directory sentinel");
+
+    SaveData valid;
+    valid.current_campaign = "org.openglad.gladiator";
+    valid.save_name = "Rename Failure";
+    EXPECT_EQ(SaveDataIoError::WriteFailed,
+              og::data::atomic_company_save(valid, "blocked"));
+    EXPECT_TRUE(fs::is_directory(blocked_destination));
+    EXPECT_EQ("directory sentinel",
+              read_file_bytes(blocked_destination / "keep"));
+    EXPECT_FALSE(user_file_exists("save/blocked.tmp.gtl"))
+        << "the failed rename must remove the completed staging save";
 }
 
 // [§3.10 grep tripwire] The gameplay component must never reference the
@@ -931,6 +1047,79 @@ TEST(CompanyBackups, dotted_slots_stay_unambiguous)
     EXPECT_EQ("led.7.004.gtl", dotted[0].filename);
 }
 
+TEST(CompanyBackups, parser_rejects_bad_suffixes_and_orders_equal_sequences)
+{
+    SaveDirSandbox sandbox;
+    write_backup_raw(sandbox, "parse.4.gtl", "FOUR");
+    write_backup_raw(sandbox, "parse.004.gtl", "PADDED FOUR");
+    write_backup_raw(sandbox, "parse.4.tmp", "WRONG SUFFIX");
+    write_backup_raw(sandbox, "parse..gtl", "EMPTY SEQUENCE");
+    write_backup_raw(sandbox, "parse.1234567890.gtl", "TOO MANY DIGITS");
+
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("parse");
+    ASSERT_EQ(2u, backups.size());
+    EXPECT_EQ(4, backups[0].seq);
+    EXPECT_EQ(4, backups[1].seq);
+    EXPECT_EQ("parse.004.gtl", backups[0].filename);
+    EXPECT_EQ("parse.4.gtl", backups[1].filename)
+        << "equal numeric sequences use filename ordering as a stable tie-break";
+}
+
+TEST(CompanyBackups, blocked_backup_directory_reports_copy_failure)
+{
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("copyfail.gtl", "COMPANY STATE");
+    sandbox.write_raw("backups", "not a directory");
+
+    EXPECT_FALSE(og::data::backup_company_now("copyfail"));
+    EXPECT_EQ("not a directory",
+              read_file_bytes(sandbox.dir() / "backups"));
+    EXPECT_FALSE(user_file_exists("save/backups/copyfail.001.gtl"));
+    EXPECT_FALSE(user_file_exists("save/backups/copyfail.001.gtl.tmp"));
+}
+
+TEST(CompanyBackups, failed_prune_keeps_the_new_snapshot_and_old_directory)
+{
+    namespace fs = std::filesystem;
+    SaveDirSandbox sandbox;
+    sandbox.write_raw("prunefail.gtl", "CURRENT COMPANY STATE");
+
+    const fs::path oldest_dir =
+        sandbox.dir() / "backups/prunefail.001.gtl";
+    std::error_code ec;
+    fs::create_directories(oldest_dir, ec);
+    ASSERT_FALSE(ec);
+    sandbox.write_raw("backups/prunefail.001.gtl/keep",
+                      "nonempty directory sentinel");
+    for (int seq = 2; seq <= og::data::kCompanyBackupRetention; ++seq)
+    {
+        write_backup_raw(
+            sandbox,
+            std::format("prunefail.{:03d}.gtl", seq),
+            "OLDER SNAPSHOT");
+    }
+
+    EXPECT_TRUE(og::data::backup_company_now("prunefail"))
+        << "the new durable snapshot succeeds even when stale pruning fails";
+    const std::string newest_filename =
+        std::format("prunefail.{:03d}.gtl",
+                    og::data::kCompanyBackupRetention + 1);
+    EXPECT_TRUE(
+        user_file_exists(std::string("save/backups/") + newest_filename));
+    EXPECT_EQ("CURRENT COMPANY STATE",
+              read_file_bytes(sandbox.dir() / "backups" / newest_filename))
+        << "the durable snapshot must be an exact byte copy of the live save";
+    EXPECT_EQ(
+        static_cast<std::size_t>(og::data::kCompanyBackupRetention + 1),
+        og::data::list_company_backups("prunefail").size())
+        << "a failed prune leaves one extra entry for a later retry";
+    EXPECT_TRUE(fs::is_directory(oldest_dir));
+    EXPECT_EQ("nonempty directory sentinel",
+              read_file_bytes(oldest_dir / "keep"))
+        << "failed pruning must not damage the obstructing filesystem entry";
+}
+
 TEST(CompanyBackups, retention_prunes_lowest_seqs_deterministically)
 {
     SaveDirSandbox sandbox;
@@ -1047,6 +1236,129 @@ TEST(CompanyBackups, restore_aborts_on_corrupt_or_missing_backup)
         << "an aborted restore leaves the in-memory save untouched";
 }
 
+TEST(CompanyBackups, restore_copy_failures_preserve_source_and_live_company)
+{
+    namespace fs = std::filesystem;
+    const auto seed_memory =
+        [](SaveData& memory, std::string_view name, std::int16_t scen_num,
+           std::uint32_t cash) {
+            memory.save_name = name;
+            memory.scen_num = scen_num;
+            memory.totalcash = cash;
+            memory.team_size = 1;
+            memory.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            memory.team_list[0]->name = std::string(name) + " ROSTER";
+            memory.team_list[0]->exp = cash + 17;
+            memory.team_list[0]->deployed = false;
+            return memory.team_list[0].get();
+        };
+    const auto expect_memory_unchanged =
+        [](const SaveData& memory, std::string_view name,
+           std::int16_t scen_num,
+           std::uint32_t cash, const guy* expected_member) {
+            EXPECT_EQ(name, memory.save_name);
+            EXPECT_EQ(scen_num, memory.scen_num);
+            EXPECT_EQ(cash, memory.totalcash);
+            ASSERT_EQ(1, static_cast<int>(memory.team_size));
+            ASSERT_EQ(expected_member, memory.team_list[0].get())
+                << "a failed restore cannot replace the in-memory roster";
+            EXPECT_EQ(std::string(name) + " ROSTER",
+                      memory.team_list[0]->name);
+            EXPECT_EQ(cash + 17, memory.team_list[0]->exp);
+            EXPECT_FALSE(memory.team_list[0]->deployed);
+        };
+
+    {
+        SaveDirSandbox sandbox;
+        const std::string backup =
+            timestamped_header("STAGE SOURCE", 101);
+        write_backup_raw(sandbox, "stagefail.001.gtl", backup);
+        const fs::path blocker =
+            sandbox.dir() / "stagefail.gtl.restoretmp.tmp";
+        std::error_code ec;
+        fs::create_directories(blocker, ec);
+        ASSERT_FALSE(ec);
+        sandbox.write_raw("stagefail.gtl.restoretmp.tmp/keep", "sentinel");
+
+        SaveData memory;
+        const guy* const memory_member =
+            seed_memory(memory, "MEMORY STAGE", 41, 4101);
+        EXPECT_EQ(og::data::CompanyRestoreError::CopyFailed,
+                  og::data::restore_company_backup(memory, "stagefail", 1));
+        expect_memory_unchanged(
+            memory, "MEMORY STAGE", 41, 4101, memory_member);
+        EXPECT_EQ(backup,
+                  read_file_bytes(
+                      sandbox.dir() / "backups/stagefail.001.gtl"));
+        EXPECT_FALSE(user_file_exists("save/stagefail.gtl.restoretmp"));
+        EXPECT_TRUE(fs::is_directory(blocker));
+    }
+
+    {
+        SaveDirSandbox sandbox;
+        const std::string current =
+            timestamped_header("LIVE COMPANY", 202);
+        const std::string backup =
+            timestamped_header("CHOSEN BACKUP", 201);
+        sandbox.write_raw("prebackupfail.gtl", current);
+        write_backup_raw(sandbox, "prebackupfail.001.gtl", backup);
+        const fs::path blocker =
+            sandbox.dir() / "backups/prebackupfail.002.gtl.tmp";
+        std::error_code ec;
+        fs::create_directories(blocker, ec);
+        ASSERT_FALSE(ec);
+        sandbox.write_raw(
+            "backups/prebackupfail.002.gtl.tmp/keep", "sentinel");
+
+        SaveData memory;
+        const guy* const memory_member =
+            seed_memory(memory, "MEMORY PREBACKUP", 42, 4202);
+        EXPECT_EQ(og::data::CompanyRestoreError::PreRestoreBackupFailed,
+                  og::data::restore_company_backup(
+                      memory, "prebackupfail", 1));
+        expect_memory_unchanged(
+            memory, "MEMORY PREBACKUP", 42, 4202, memory_member);
+        EXPECT_EQ(current,
+                  read_file_bytes(sandbox.dir() / "prebackupfail.gtl"))
+            << "failure to snapshot the live state aborts before replacement";
+        EXPECT_EQ(backup,
+                  read_file_bytes(
+                      sandbox.dir() / "backups/prebackupfail.001.gtl"));
+        EXPECT_FALSE(
+            user_file_exists("save/prebackupfail.gtl.restoretmp"));
+        EXPECT_TRUE(fs::is_directory(blocker));
+    }
+
+    {
+        SaveDirSandbox sandbox;
+        const std::string backup =
+            timestamped_header("FINAL COPY SOURCE", 303);
+        write_backup_raw(sandbox, "finalcopyfail.001.gtl", backup);
+        const fs::path blocker =
+            sandbox.dir() / "finalcopyfail.gtl.tmp";
+        std::error_code ec;
+        fs::create_directories(blocker, ec);
+        ASSERT_FALSE(ec);
+        sandbox.write_raw("finalcopyfail.gtl.tmp/keep", "sentinel");
+
+        SaveData memory;
+        const guy* const memory_member =
+            seed_memory(memory, "MEMORY FINAL COPY", 43, 4303);
+        EXPECT_EQ(og::data::CompanyRestoreError::CopyFailed,
+                  og::data::restore_company_backup(
+                      memory, "finalcopyfail", 1));
+        expect_memory_unchanged(
+            memory, "MEMORY FINAL COPY", 43, 4303, memory_member);
+        EXPECT_FALSE(user_file_exists("save/finalcopyfail.gtl"));
+        EXPECT_FALSE(
+            user_file_exists("save/finalcopyfail.gtl.restoretmp"));
+        EXPECT_EQ(backup,
+                  read_file_bytes(
+                      sandbox.dir() / "backups/finalcopyfail.001.gtl"));
+        EXPECT_TRUE(fs::is_directory(blocker));
+    }
+}
+
 // --- Autosave choke point (§3.8) ------------------------------------------
 
 namespace {
@@ -1146,6 +1458,30 @@ TEST(CompanyAutosave, level_win_snapshots_exactly_once_per_call)
                   save, og::data::CompanyAutosaveKind::LevelWin));
     EXPECT_EQ(2u, og::data::list_company_backups("save0").size())
         << "each win takes its own snapshot; other kinds never do";
+}
+
+TEST(CompanyAutosave, level_win_keeps_success_when_backup_path_is_blocked)
+{
+    SaveDirSandbox sandbox;
+    ScopedCompanyClock clock(600);
+    og::data::ScopedActiveCompany active("blocked-backup");
+    ASSERT_TRUE(active.applied());
+    sandbox.write_raw("backups", "not a directory");
+
+    SaveData save;
+    save.current_campaign = "org.openglad.gladiator";
+    save.save_name = "Backup Failure Is Nonfatal";
+    EXPECT_EQ(SaveDataIoError::None,
+              og::data::company_autosave(
+                  save, og::data::CompanyAutosaveKind::LevelWin));
+    EXPECT_EQ(600, save.last_played_unix_s);
+    const auto header =
+        og::data::read_company_header("blocked-backup");
+    ASSERT_TRUE(header.has_value());
+    EXPECT_TRUE(header->valid);
+    EXPECT_EQ("Backup Failure Is Nonfatal", header->display_name);
+    EXPECT_EQ("not a directory",
+              read_file_bytes(sandbox.dir() / "backups"));
 }
 
 // [SAVE-F1]: while a networked lobby holds the in-memory save (host campaign

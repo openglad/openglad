@@ -392,7 +392,17 @@ SaveDataIoError atomic_company_save(SaveData& save, const std::string& slot)
     const std::string tmp_slot = slot + ".tmp";
     const SaveDataIoError write_error = save.save_with_error(tmp_slot);
     if (write_error != SaveDataIoError::None)
+    {
+        // Serialization can fail after creating the staging file. Never
+        // leave that partial file behind, whether OgFile selected the user
+        // directory or its cwd fallback.
+        (void)remove_user_file("save/" + tmp_slot + ".gtl");
+        std::error_code cleanup_ec;
+        std::filesystem::remove(
+            std::filesystem::path("save") / (tmp_slot + ".gtl"),
+            cleanup_ec);
         return write_error;
+    }
 
     namespace fs = std::filesystem;
     std::error_code ec;

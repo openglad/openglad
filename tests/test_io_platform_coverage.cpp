@@ -8,22 +8,228 @@
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/io_common.h>
 
+#include "test_save_state_guard.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <physfs.h>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
+std::string get_asset_path();
+
 namespace {
 
+class ScopedEnvVar
+{
+public:
+    explicit ScopedEnvVar(const char* name) : name_(name)
+    {
+        if (const char* value = std::getenv(name_))
+        {
+            had_value_ = true;
+            old_value_ = value;
+        }
+    }
+
+    ~ScopedEnvVar()
+    {
+        if (had_value_)
+            set(old_value_);
+        else
+            clear();
+    }
+
+    void set(const std::string& value) const
+    {
+#ifdef _WIN32
+        (void)_putenv_s(name_, value.c_str());
+#else
+        (void)setenv(name_, value.c_str(), 1);
+#endif
+    }
+
+    void clear() const
+    {
+#ifdef _WIN32
+        (void)_putenv_s(name_, "");
+#else
+        (void)unsetenv(name_);
+#endif
+    }
+
+private:
+    const char* name_;
+    bool had_value_ = false;
+    std::string old_value_;
+};
+
 } // namespace
+
+TEST(IoPlatformCoverage, user_path_and_open_write_stdio_fallback_are_exact)
+{
+    namespace fs = std::filesystem;
+    const fs::path output =
+        fs::path(get_user_path()) / "platform_io_second_pass" /
+        "absolute_stdio_fallback.bin";
+    og::test::ScopedPhysicalFileState output_state(output);
+    ASSERT_TRUE(output_state.ready()) << output_state.error().message();
+    std::error_code ec;
+    fs::create_directories(output.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    ScopedEnvVar config_dir("OPENGLAD_CONFIG_DIR");
+    ScopedEnvVar home("HOME");
+    config_dir.clear();
+    home.clear();
+    EXPECT_EQ("./", get_user_path())
+        << "without an explicit config directory or HOME, the cwd is used";
+
+    static constexpr unsigned char payload[] = {0x4f, 0x47, 0x21, 0x7f};
+    {
+        IostreamPtr out{open_write_file(output.string().c_str())};
+        ASSERT_TRUE(out != nullptr)
+            << "an absolute native path must use the stdio fallback";
+        ASSERT_EQ(sizeof(payload), SDL_WriteIO(out.get(), payload,
+                                               sizeof(payload)));
+        ASSERT_TRUE(SDL_FlushIO(out.get()));
+    }
+
+    std::ifstream in(output, std::ios::binary);
+    ASSERT_TRUE(in.good());
+    const std::vector<unsigned char> actual{
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>()};
+    EXPECT_EQ(std::vector<unsigned char>(std::begin(payload),
+                                         std::end(payload)),
+              actual);
+}
+
+TEST(IoPlatformCoverage,
+     io_init_rejects_double_initialization_without_state_mutation)
+{
+    ASSERT_TRUE(og::resources::is_initialized());
+    og::test::ScopedCampaignMountState mount_state;
+    const std::string mounted_before = get_mounted_campaign();
+    std::string argv0 =
+        (std::filesystem::path(get_asset_path()) / "og_test_io").string();
+    char* argv[] = {argv0.data()};
+
+    bool threw = false;
+    std::string message;
+    try
+    {
+        io_init(1, argv);
+    }
+    catch (const std::runtime_error& error)
+    {
+        threw = true;
+        message = error.what();
+    }
+
+    EXPECT_TRUE(threw);
+    EXPECT_EQ(0u, message.find("Fatal: Failed to initialize PhysFS:"))
+        << message;
+    EXPECT_TRUE(og::resources::is_initialized())
+        << "rejecting a second initialization leaves the live instance intact";
+    EXPECT_EQ(mounted_before, get_mounted_campaign());
+}
+
+TEST(IoPlatformCoverage,
+     io_init_reports_invalid_write_directory_and_recovers_canonical_state)
+{
+    namespace fs = std::filesystem;
+    ASSERT_TRUE(og::resources::is_initialized());
+    og::test::ScopedCampaignMountState mount_state;
+
+    const fs::path blocker =
+        fs::path(get_user_path()) / "platform_io_second_pass" /
+        "write_dir_parent_blocker";
+    og::test::ScopedPhysicalFileState blocker_state(blocker);
+    ASSERT_TRUE(blocker_state.ready()) << blocker_state.error().message();
+    std::error_code ec;
+    fs::create_directories(blocker.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(blocker, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good());
+        out << "parent is intentionally a regular file";
+    }
+    const fs::path invalid_config = blocker / "nested_config";
+
+    std::string argv0 =
+        (fs::path(get_asset_path()) / "og_test_io").string();
+    char* argv[] = {argv0.data()};
+    bool threw = false;
+    bool initialized_after_failure = false;
+    std::string failure_message;
+    std::string write_dir_after_failure;
+    {
+        ScopedEnvVar config_dir("OPENGLAD_CONFIG_DIR");
+        config_dir.set(invalid_config.string());
+        set_mounted_campaign_for_testing("");
+        io_exit();
+
+        try
+        {
+            io_init(1, argv);
+        }
+        catch (const std::runtime_error& error)
+        {
+            threw = true;
+            failure_message = error.what();
+        }
+        initialized_after_failure = og::resources::is_initialized();
+        if (const char* write_dir = PHYSFS_getWriteDir())
+            write_dir_after_failure = write_dir;
+        if (initialized_after_failure)
+            io_exit();
+    }
+
+    // Re-establish the integration test process contract before making any
+    // assertions, so even a failed expectation cannot strand sibling tests.
+    set_mounted_campaign_for_testing("");
+    bool recovered = true;
+    std::string recovery_error;
+    try
+    {
+        io_init(1, argv);
+    }
+    catch (const std::runtime_error& error)
+    {
+        recovered = false;
+        recovery_error = error.what();
+    }
+
+    ASSERT_TRUE(recovered) << recovery_error;
+    EXPECT_TRUE(threw);
+    EXPECT_NE(std::string::npos,
+              failure_message.find(
+                  "Fatal: Failed to set write directory " +
+                  invalid_config.string()))
+        << failure_message;
+    EXPECT_TRUE(initialized_after_failure)
+        << "PhysFS initialization succeeds before write-dir validation fails";
+    EXPECT_TRUE(write_dir_after_failure.empty());
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+
+    std::ifstream blocker_in(blocker, std::ios::binary);
+    ASSERT_TRUE(blocker_in.good());
+    const std::string blocker_bytes{
+        std::istreambuf_iterator<char>(blocker_in),
+        std::istreambuf_iterator<char>()};
+    EXPECT_EQ("parent is intentionally a regular file", blocker_bytes);
+    EXPECT_FALSE(fs::exists(invalid_config));
+}
 
 TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 {
@@ -724,6 +930,39 @@ TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_
     std::map<std::string, int> current_levels;
     ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
     set_mounted_campaign_for_testing(prev);
+}
+
+TEST(IoPlatformCoverage, restore_default_campaigns_ignores_nonpackages)
+{
+    namespace fs = std::filesystem;
+    const fs::path source =
+        fs::path(get_asset_path()) / "builtin" /
+        "coverage_nonpackage_marker.txt";
+    const fs::path destination =
+        fs::path(get_user_path()) / "campaigns" /
+        "coverage_nonpackage_marker.txt";
+    og::test::ScopedPhysicalFileState source_state(source);
+    og::test::ScopedPhysicalFileState destination_state(destination);
+    ASSERT_TRUE(source_state.ready()) << source_state.error().message();
+    ASSERT_TRUE(destination_state.ready())
+        << destination_state.error().message();
+
+    std::error_code ec;
+    fs::create_directories(source.parent_path(), ec);
+    ASSERT_FALSE(ec);
+    {
+        std::ofstream marker(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(marker.good());
+        marker << "not a campaign package";
+    }
+    fs::remove(destination, ec);
+    ASSERT_FALSE(ec);
+
+    restore_default_campaigns();
+
+    EXPECT_TRUE(fs::is_regular_file(source));
+    EXPECT_FALSE(fs::exists(destination))
+        << "only .glad packages may be restored into the user campaign dir";
 }
 
 

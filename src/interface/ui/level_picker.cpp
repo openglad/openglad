@@ -28,6 +28,7 @@
 #include <openglad/resources/io_common.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <format>
@@ -70,6 +71,15 @@ struct UiRect
 
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
 
+#ifdef TESTING
+std::atomic<std::uint64_t> s_level_picker_entered_count{0};
+std::atomic<std::uint64_t> s_level_picker_action_count{0};
+std::atomic<int> s_level_picker_click_x{0};
+std::atomic<int> s_level_picker_click_y{0};
+std::atomic<bool> s_level_picker_click_pending{false};
+std::atomic<bool> s_level_picker_abort_pending{false};
+#endif
+
 void wait_for_mouse_release()
 {
     MouseState& mymouse = query_mouse();
@@ -103,6 +113,37 @@ void wait_for_key_release(int key, const char* context)
     }
 }
 } // namespace
+
+#ifdef TESTING
+void level_picker_testing_input_reset()
+{
+    s_level_picker_entered_count.store(0, std::memory_order_release);
+    s_level_picker_action_count.store(0, std::memory_order_release);
+    s_level_picker_click_pending.store(false, std::memory_order_release);
+    s_level_picker_abort_pending.store(false, std::memory_order_release);
+}
+
+void level_picker_testing_click(int x, int y)
+{
+    const bool abort_requested = x < 0 || y < 0;
+    s_level_picker_click_x.store(x, std::memory_order_relaxed);
+    s_level_picker_click_y.store(y, std::memory_order_relaxed);
+    s_level_picker_click_pending.store(
+        !abort_requested, std::memory_order_release);
+    s_level_picker_abort_pending.store(
+        abort_requested, std::memory_order_release);
+}
+
+std::uint64_t level_picker_testing_entered_count()
+{
+    return s_level_picker_entered_count.load(std::memory_order_acquire);
+}
+
+std::uint64_t level_picker_testing_action_count()
+{
+    return s_level_picker_action_count.load(std::memory_order_acquire);
+}
+#endif
 
 
 void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
@@ -440,8 +481,18 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	};
     
     bool done = false;
+#ifdef TESTING
+    s_level_picker_entered_count.fetch_add(1, std::memory_order_release);
+#endif
 	while (!done)
 	{
+#ifdef TESTING
+        if (s_level_picker_abort_pending.exchange(
+                false, std::memory_order_acquire))
+        {
+            break;
+        }
+#endif
 		// Reset the timer count to zero ...
 		reset_timer();
 
@@ -463,6 +514,15 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	        int my = static_cast<int>(mymouse.y);
         
         bool do_click = mymouse.left;
+#ifdef TESTING
+        if (s_level_picker_click_pending.exchange(
+                false, std::memory_order_acquire))
+        {
+            mx = s_level_picker_click_x.load(std::memory_order_relaxed);
+            my = s_level_picker_click_y.load(std::memory_order_relaxed);
+            do_click = true;
+        }
+#endif
 		bool do_prev = (do_click && prev.x <= mx && mx <= prev.x + prev.w
                && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OK && highlighted_button == prev_index);
         bool do_next = (do_click && next.x <= mx && mx <= next.x + next.w
@@ -476,6 +536,14 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OK && highlighted_button == id_index);
         bool do_select = do_click || (retvalue == OK && (highlighted_button == entry1_index || highlighted_button == entry2_index || highlighted_button == entry3_index));
+#ifdef TESTING
+        if (do_prev || do_next || do_choose || do_cancel || do_delete ||
+            do_id || do_select)
+        {
+            s_level_picker_action_count.fetch_add(
+                1, std::memory_order_release);
+        }
+#endif
         
         
 			if (mymouse.left)

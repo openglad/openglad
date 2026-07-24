@@ -941,6 +941,88 @@ TEST(PickerFuncs, picker_join_game_direct_prompt_catches_factory_error)
     level_editor_testing_prompt_queue_clear();
 }
 
+TEST(PickerFuncs, relay_listing_fallbacks_are_immediate_and_non_throwing)
+{
+    PlatformBridgeGuard bridge_guard;
+
+    set_platform_bridge({});
+    EXPECT_THROW(
+        og::ui::create_host_picker_lobby_client({}),
+        std::runtime_error);
+    EXPECT_THROW(
+        og::ui::create_join_picker_lobby_client({}),
+        std::runtime_error);
+    EXPECT_TRUE(
+        og::ui::list_relay_rooms("https://relay.invalid").empty());
+
+    auto unavailable =
+        og::ui::begin_list_relay_rooms("https://relay.invalid");
+    ASSERT_NE(nullptr, unavailable);
+    const auto unavailable_result = unavailable->poll();
+    ASSERT_TRUE(unavailable_result.has_value());
+    EXPECT_TRUE(unavailable_result->rooms.empty());
+    EXPECT_TRUE(unavailable_result->error.empty());
+    EXPECT_FALSE(unavailable->poll().has_value());
+
+    std::string normalized_url;
+    PlatformBridge synchronous;
+    synchronous.begin_list_relay_rooms =
+        [](const std::string&, const std::string&) {
+            return std::unique_ptr<
+                og::ui::IPickerRelayRoomListRequest>{};
+        };
+    synchronous.list_relay_rooms =
+        [&](const std::string& base_url, const std::string&) {
+            normalized_url = base_url;
+            return std::vector<og::ui::PickerRelayRoomInfo>{
+                {.code = "GLAD-FALLBACK",
+                 .campaign_hash = {},
+                 .campaign_name = {},
+                 .host_name = {},
+                 .player_count = 0,
+                 .created_at_ms = 0}};
+        };
+    set_platform_bridge(std::move(synchronous));
+
+    auto fallback = og::ui::begin_list_relay_rooms(
+        " https://relay.invalid/// ", "campaign");
+    ASSERT_NE(nullptr, fallback);
+    const auto fallback_result = fallback->poll();
+    ASSERT_TRUE(fallback_result.has_value());
+    ASSERT_EQ(1u, fallback_result->rooms.size());
+    EXPECT_EQ("GLAD-FALLBACK", fallback_result->rooms.front().code);
+    EXPECT_EQ("https://relay.invalid", normalized_url);
+    EXPECT_FALSE(fallback->poll().has_value());
+
+    PlatformBridge standard_failure;
+    standard_failure.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+            throw std::runtime_error("relay unavailable");
+        };
+    set_platform_bridge(std::move(standard_failure));
+    auto failed =
+        og::ui::begin_list_relay_rooms("https://relay.invalid");
+    ASSERT_NE(nullptr, failed);
+    const auto failed_result = failed->poll();
+    ASSERT_TRUE(failed_result.has_value());
+    EXPECT_EQ("relay unavailable", failed_result->error);
+
+    PlatformBridge unknown_failure;
+    unknown_failure.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+            throw 7;
+        };
+    set_platform_bridge(std::move(unknown_failure));
+    auto unknown =
+        og::ui::begin_list_relay_rooms("https://relay.invalid");
+    ASSERT_NE(nullptr, unknown);
+    const auto unknown_result = unknown->poll();
+    ASSERT_TRUE(unknown_result.has_value());
+    EXPECT_EQ("Relay room listing failed.", unknown_result->error);
+}
+
 TEST(PickerFuncs, picker_join_game_direct_prompt_replaces_client)
 {
     PlatformBridgeGuard bridge_guard;

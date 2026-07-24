@@ -3,6 +3,7 @@
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_session.h>
@@ -10,16 +11,27 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/view_layout.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/save_data.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
 #include "test_network_fixture.h"
+#include "test_save_state_guard.h"
+
+#include <array>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <optional>
+#include <string>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
@@ -89,6 +101,220 @@ void set_world_tile(short world_x, short world_y, unsigned char tile)
         return;
     level.world().grid.data[gx + level.world().grid.w * gy] = tile;
 }
+
+og::runtime::GameSession::Config prompt_flow_session_config()
+{
+    og::runtime::GameSession::Config config;
+    config.numviews = 1;
+    config.allocate_screen = true;
+    config.create_display = false;
+    config.allocate_prefs = true;
+    config.install_legacy_globals = false;
+    return config;
+}
+
+std::filesystem::path prompt_flow_save_path(const char* filename)
+{
+    return std::filesystem::path(get_user_path()) / "save" / filename;
+}
+
+class ScopedPlatformBridgeState
+{
+public:
+    ScopedPlatformBridgeState() : saved_(platform_bridge()) {}
+
+    ~ScopedPlatformBridgeState()
+    {
+        set_platform_bridge(std::move(saved_));
+    }
+
+    ScopedPlatformBridgeState(const ScopedPlatformBridgeState&) = delete;
+    ScopedPlatformBridgeState& operator=(
+        const ScopedPlatformBridgeState&) = delete;
+
+private:
+    PlatformBridge saved_;
+};
+
+struct PhysicalFileImage
+{
+    bool exists = false;
+    std::string bytes;
+};
+
+PhysicalFileImage read_physical_file_image(
+    const std::filesystem::path& path)
+{
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    EXPECT_FALSE(error) << "failed to inspect " << path << ": "
+                        << error.message();
+    if (error || !exists)
+        return {};
+
+    std::ifstream input(path, std::ios::binary);
+    EXPECT_TRUE(input.is_open()) << "failed to open " << path;
+    return {
+        .exists = true,
+        .bytes = std::string(std::istreambuf_iterator<char>(input), {}),
+    };
+}
+
+bool replace_physical_file(
+    const std::filesystem::path& path,
+    const std::optional<std::string>& bytes)
+{
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    if (error)
+        return false;
+    if (!bytes.has_value())
+        return true;
+
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error)
+        return false;
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.write(bytes->data(),
+                 static_cast<std::streamsize>(bytes->size()));
+    return output.good();
+}
+
+void expect_physical_file_image(
+    const std::filesystem::path& path,
+    const PhysicalFileImage& expected)
+{
+    const PhysicalFileImage actual = read_physical_file_image(path);
+    EXPECT_EQ(expected.exists, actual.exists)
+        << "test changed whether " << path << " exists";
+    EXPECT_EQ(expected.bytes, actual.bytes)
+        << "test did not restore " << path << " byte-for-byte";
+}
+
+struct AmbientPromptFlowState
+{
+    og::runtime::SessionState* session = nullptr;
+    og::runtime::GameSession* game_session = nullptr;
+    GameplayContext* game = nullptr;
+    screen* game_screen = nullptr;
+    bool networked = false;
+    bool gameplay_active = false;
+    std::string campaign;
+    short save_level = 0;
+    short world_level = 0;
+    char world_end = 0;
+    bool withdraw_requested = false;
+    short withdraw_level = -1;
+};
+
+AmbientPromptFlowState capture_ambient_prompt_flow_state()
+{
+    AmbientPromptFlowState state;
+    state.session = og::runtime::current_session;
+    state.game_session = og::runtime::current_game_session;
+    state.game = current_game;
+    if (state.session == nullptr)
+        return state;
+
+    state.game_screen = state.session->myscreen_;
+    state.networked = state.session->networked_session_;
+    state.gameplay_active = state.session->gameplay_active_;
+    if (state.game_screen != nullptr)
+    {
+        state.campaign = state.game_screen->save_data.current_campaign;
+        state.save_level = state.game_screen->save_data.scen_num;
+        state.world_level = state.game_screen->world().current_scenario;
+        state.world_end = state.game_screen->world().end;
+        state.withdraw_requested =
+            state.game_screen->world().withdraw_requested;
+        state.withdraw_level = state.game_screen->world().withdraw_level;
+    }
+    return state;
+}
+
+void expect_ambient_prompt_flow_state(
+    const AmbientPromptFlowState& expected)
+{
+    ASSERT_EQ(expected.session, og::runtime::current_session);
+    EXPECT_EQ(expected.game_session, og::runtime::current_game_session);
+    EXPECT_EQ(expected.game, current_game);
+    if (expected.session == nullptr)
+        return;
+
+    EXPECT_EQ(expected.game_screen, expected.session->myscreen_);
+    EXPECT_EQ(expected.networked, expected.session->networked_session_);
+    EXPECT_EQ(expected.gameplay_active, expected.session->gameplay_active_);
+    if (expected.game_screen != nullptr)
+    {
+        EXPECT_EQ(expected.campaign,
+                  expected.game_screen->save_data.current_campaign);
+        EXPECT_EQ(expected.save_level,
+                  expected.game_screen->save_data.scen_num);
+        EXPECT_EQ(expected.world_level,
+                  expected.game_screen->world().current_scenario);
+        EXPECT_EQ(expected.world_end, expected.game_screen->world().end);
+        EXPECT_EQ(expected.withdraw_requested,
+                  expected.game_screen->world().withdraw_requested);
+        EXPECT_EQ(expected.withdraw_level,
+                  expected.game_screen->world().withdraw_level);
+    }
+}
+
+class PromptFlowTestSession
+{
+public:
+    PromptFlowTestSession()
+        : save0_restore_(prompt_flow_save_path("save0.gtl"))
+        , save0_staging_restore_(
+              prompt_flow_save_path("save0.tmp.gtl"))
+        , active_company_("save0")
+        , session_(prompt_flow_session_config())
+        , scope_(session_.activate())
+    {
+    }
+
+    ~PromptFlowTestSession()
+    {
+        picker_testing_yes_or_no_queue_clear();
+    }
+
+    PromptFlowTestSession(const PromptFlowTestSession&) = delete;
+    PromptFlowTestSession& operator=(const PromptFlowTestSession&) = delete;
+
+    [[nodiscard]] bool ready() const noexcept
+    {
+        return save0_restore_.ready() &&
+               save0_staging_restore_.ready() &&
+               active_company_.applied();
+    }
+
+    [[nodiscard]] const std::error_code& save0_error() const noexcept
+    {
+        return save0_restore_.error();
+    }
+
+    [[nodiscard]] const std::error_code& staging_error() const noexcept
+    {
+        return save0_staging_restore_.error();
+    }
+
+    [[nodiscard]] screen* game_screen() const noexcept
+    {
+        return session_.screen_ptr();
+    }
+
+private:
+    // Destruction runs in reverse: leave the isolated session, destroy it,
+    // restore the active company, restore both physical files, then restore
+    // the process-wide campaign mount.
+    og::test::ScopedCampaignMountState campaign_mount_restore_;
+    og::test::ScopedPhysicalFileState save0_restore_;
+    og::test::ScopedPhysicalFileState save0_staging_restore_;
+    og::data::ScopedActiveCompany active_company_;
+    ScopedPlatformBridgeState platform_bridge_restore_;
+    og::runtime::GameSession session_;
+    og::runtime::GameSession::SessionScope scope_;
+};
 
 } // namespace
 
@@ -837,6 +1063,384 @@ TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batch
     picker_testing_yes_or_no_queue_clear();
     s->world_.end = 0;
     clear_level_lists();
+}
+
+TEST(RuntimeCoveragePaths,
+     screen_accepts_generated_exit_prompt_and_advances_the_campaign)
+{
+    const AmbientPromptFlowState ambient_before =
+        capture_ambient_prompt_flow_state();
+    const std::string campaign_before = get_mounted_campaign();
+    const std::filesystem::path save0_path =
+        prompt_flow_save_path("save0.gtl");
+    const std::filesystem::path staging_path =
+        prompt_flow_save_path("save0.tmp.gtl");
+    const PhysicalFileImage save0_before =
+        read_physical_file_image(save0_path);
+    const PhysicalFileImage staging_before =
+        read_physical_file_image(staging_path);
+
+    {
+        PromptFlowTestSession context;
+        ASSERT_TRUE(context.ready())
+            << "save0 snapshot: " << context.save0_error().message()
+            << "; staging snapshot: "
+            << context.staging_error().message();
+        screen* const s = context.game_screen();
+        ASSERT_NE(nullptr, s);
+
+        s->save_data.reset();
+        s->save_data.scen_num = 1;
+        s->sync_world_from_save_data();
+        s->world().end = 0;
+        s->world().retry = false;
+        s->world().withdraw_requested = true;
+        s->world().withdraw_level = 9;
+
+        // The networked display exercises the same accepted game-flow
+        // transition while deliberately leaving the private company alone.
+        og::runtime::current_session->networked_session_ = true;
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);
+
+        og::sim::GameFlowEventBatch batch;
+        batch.events.push_back(og::sim::Event{
+            .kind = og::sim::EventKind::RequestExitConfirmation,
+            .a = 2,
+            .b = 0,
+            .text = {},
+        });
+
+        EXPECT_TRUE(s->dispatch_game_flow_events(batch));
+        EXPECT_EQ(1, static_cast<int>(s->world().end));
+        EXPECT_EQ(2, static_cast<int>(s->save_data.scen_num));
+        EXPECT_TRUE(s->save_data.is_level_completed(1));
+        EXPECT_FALSE(s->world().withdraw_requested);
+        EXPECT_EQ(-1, static_cast<int>(s->world().withdraw_level));
+    }
+
+    expect_ambient_prompt_flow_state(ambient_before);
+    EXPECT_EQ(campaign_before, get_mounted_campaign());
+    expect_physical_file_image(save0_path, save0_before);
+    expect_physical_file_image(staging_path, staging_before);
+}
+
+TEST(RuntimeCoveragePaths,
+     screen_accepts_generated_withdraw_prompt_and_persists_destination)
+{
+    const AmbientPromptFlowState ambient_before =
+        capture_ambient_prompt_flow_state();
+    const std::string campaign_before = get_mounted_campaign();
+    const std::filesystem::path save0_path =
+        prompt_flow_save_path("save0.gtl");
+    const std::filesystem::path staging_path =
+        prompt_flow_save_path("save0.tmp.gtl");
+    const PhysicalFileImage save0_before =
+        read_physical_file_image(save0_path);
+    const PhysicalFileImage staging_before =
+        read_physical_file_image(staging_path);
+
+    {
+        PromptFlowTestSession context;
+        ASSERT_TRUE(context.ready())
+            << "save0 snapshot: " << context.save0_error().message()
+            << "; staging snapshot: "
+            << context.staging_error().message();
+        screen* const s = context.game_screen();
+        ASSERT_NE(nullptr, s);
+
+        s->save_data.reset();
+        s->save_data.scen_num = 1;
+        EXPECT_EQ(SaveDataIoError::None,
+                  s->save_data.save_with_error("save0"));
+        s->sync_world_from_save_data();
+        s->world().end = 0;
+        s->world().retry = false;
+        s->world().withdraw_requested = true;
+        s->world().withdraw_level = 3;
+        og::runtime::current_session->networked_session_ = false;
+
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);
+
+        og::sim::GameFlowEventBatch batch;
+        batch.events.push_back(og::sim::Event{
+            .kind = og::sim::EventKind::RequestExitConfirmation,
+            .a = 3,
+            .b = 1,
+            .text = {},
+        });
+        // The explicit withdraw event is authoritative when its destination
+        // differs from the prompt's provisional destination.
+        batch.events.push_back(og::sim::Event{
+            .kind = og::sim::EventKind::WithdrawToLevel,
+            .a = 4,
+            .text = {},
+        });
+
+        EXPECT_TRUE(s->dispatch_game_flow_events(batch));
+        EXPECT_EQ(1, static_cast<int>(s->world().end));
+        EXPECT_EQ(4, static_cast<int>(s->save_data.scen_num));
+        EXPECT_EQ(4, static_cast<int>(s->world().current_scenario));
+        EXPECT_FALSE(s->save_data.is_level_completed(1))
+            << "withdrawing must not award a level completion";
+
+        SaveData persisted;
+        EXPECT_EQ(SaveDataIoError::None,
+                  persisted.load_with_error("save0"));
+        EXPECT_EQ(4, static_cast<int>(persisted.scen_num));
+        EXPECT_FALSE(persisted.is_level_completed(1));
+    }
+
+    expect_ambient_prompt_flow_state(ambient_before);
+    EXPECT_EQ(campaign_before, get_mounted_campaign());
+    expect_physical_file_image(save0_path, save0_before);
+    expect_physical_file_image(staging_path, staging_before);
+}
+
+TEST(RuntimeCoveragePaths,
+     screen_rejects_corrupt_withdraw_saves_and_clears_stale_requests)
+{
+    const AmbientPromptFlowState ambient_before =
+        capture_ambient_prompt_flow_state();
+    const std::string campaign_before = get_mounted_campaign();
+    const std::filesystem::path save0_path =
+        prompt_flow_save_path("save0.gtl");
+    const std::filesystem::path staging_path =
+        prompt_flow_save_path("save0.tmp.gtl");
+    const PhysicalFileImage save0_before =
+        read_physical_file_image(save0_path);
+    const PhysicalFileImage staging_before =
+        read_physical_file_image(staging_path);
+
+    {
+        PromptFlowTestSession context;
+        ASSERT_TRUE(context.ready())
+            << "save0 snapshot: " << context.save0_error().message()
+            << "; staging snapshot: "
+            << context.staging_error().message();
+        screen* const s = context.game_screen();
+        ASSERT_NE(nullptr, s);
+
+        struct CorruptSaveCase
+        {
+            const char* label;
+            std::optional<std::string> bytes;
+            SaveDataIoError expected_error;
+        };
+        const std::array<CorruptSaveCase, 4> cases = {{
+            {"missing", std::nullopt, SaveDataIoError::OpenReadFailed},
+            {"truncated", std::string("GTL", 3),
+             SaveDataIoError::ReadFailed},
+            {"bad header", std::string("BAD", 3),
+             SaveDataIoError::InvalidHeader},
+            {"unsupported version", std::string("GTL\0", 4),
+             SaveDataIoError::UnsupportedVersion},
+        }};
+
+        for (const CorruptSaveCase& test_case : cases)
+        {
+            SCOPED_TRACE(test_case.label);
+            ASSERT_TRUE(
+                replace_physical_file(save0_path, test_case.bytes));
+            const PhysicalFileImage corrupt_image =
+                read_physical_file_image(save0_path);
+
+            SaveData probe;
+            EXPECT_EQ(test_case.expected_error,
+                      probe.load_with_error("save0"))
+                << "fixture must reach the intended typed load failure";
+
+            s->save_data.reset();
+            s->save_data.scen_num = 7;
+            s->sync_world_from_save_data();
+            s->world().end = 0;
+            s->world().m_score[0] = 91;
+            s->world().completed_levels = {2};
+            s->world().withdraw_requested = true;
+            s->world().withdraw_level = 4;
+            picker_testing_yes_or_no_queue_clear();
+            picker_testing_yes_or_no_queue_push(true);
+
+            og::sim::GameFlowEventBatch batch;
+            batch.events.push_back(og::sim::Event{
+                .kind = og::sim::EventKind::RequestExitConfirmation,
+                .a = 4,
+                .b = 1,
+                .text = {},
+            });
+
+            EXPECT_TRUE(s->dispatch_game_flow_events(batch));
+            EXPECT_EQ(0, static_cast<int>(s->world().end));
+            EXPECT_EQ(7, static_cast<int>(s->save_data.scen_num));
+            EXPECT_EQ(91u, s->save_data.m_score[0]);
+            EXPECT_TRUE(s->save_data.is_level_completed(2));
+            EXPECT_FALSE(s->world().withdraw_requested);
+            EXPECT_EQ(-1, static_cast<int>(s->world().withdraw_level));
+            expect_physical_file_image(save0_path, corrupt_image);
+        }
+
+        s->world().end = 0;
+        s->world().withdraw_requested = true;
+        s->world().withdraw_level = 11;
+        const short scenario_before = s->save_data.scen_num;
+        og::sim::GameFlowEventBatch orphan_withdraw;
+        orphan_withdraw.events.push_back(og::sim::Event{
+            .kind = og::sim::EventKind::WithdrawToLevel,
+            .a = 9,
+            .text = {},
+        });
+        EXPECT_TRUE(s->dispatch_game_flow_events(orphan_withdraw));
+        EXPECT_FALSE(s->world().withdraw_requested);
+        EXPECT_EQ(-1, static_cast<int>(s->world().withdraw_level));
+        EXPECT_EQ(scenario_before, s->save_data.scen_num)
+            << "a withdraw event without its confirmation must not move "
+               "the campaign cursor";
+        EXPECT_EQ(0, static_cast<int>(s->world().end));
+    }
+
+    expect_ambient_prompt_flow_state(ambient_before);
+    EXPECT_EQ(campaign_before, get_mounted_campaign());
+    expect_physical_file_image(save0_path, save0_before);
+    expect_physical_file_image(staging_path, staging_before);
+}
+
+TEST(RuntimeCoveragePaths, screen_reports_unsupported_scenario_title_version)
+{
+    constexpr const char* kScenarioStem =
+        "runtime_coverage_unsupported_title";
+    const std::filesystem::path scenario_path =
+        std::filesystem::current_path() / "scen" /
+        (std::string(kScenarioStem) + ".fss");
+    og::test::ScopedPhysicalFileState restore(scenario_path);
+    ASSERT_TRUE(restore.ready())
+        << "failed to snapshot scenario fixture: "
+        << restore.error().message();
+    ASSERT_TRUE(replace_physical_file(
+        scenario_path, std::string("FSS\1", 4)));
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    std::string title = "sentinel";
+    EXPECT_EQ(screen::ScenarioTitleError::UnsupportedVersion,
+              s->get_scen_title_with_error(kScenarioStem, title));
+    EXPECT_EQ("none", title);
+    EXPECT_STREQ("none", s->get_scen_title(kScenarioStem, s));
+}
+
+TEST(RuntimeCoveragePaths,
+     screen_zero_view_and_dependency_guards_preserve_observable_state)
+{
+    ScopedPlatformBridgeState restore_bridge;
+    og::runtime::GameSession::Config config;
+    config.numviews = 1;
+    config.create_display = false;
+    config.install_legacy_globals = false;
+    og::runtime::GameSession session(config);
+    auto session_scope = session.activate();
+    screen* const s = session.screen_ptr();
+    ASSERT_NE(nullptr, s);
+
+    loader* const installed_loader = s->myloader;
+    ASSERT_NE(nullptr, installed_loader);
+    s->myloader = nullptr;
+    EXPECT_EQ(nullptr, s->set_walker(nullptr, Order::Living, FAMILY_SOLDIER));
+    s->myloader = installed_loader;
+
+    s->cleanup(0);
+    s->initialize_views();
+    EXPECT_EQ(0, static_cast<int>(s->numviews));
+    for (const auto& view : s->viewob)
+        EXPECT_EQ(nullptr, view);
+
+    s->redrawme = 37;
+    s->refresh();
+    EXPECT_EQ(37, static_cast<int>(s->redrawme));
+    EXPECT_EQ(1, static_cast<int>(s->input(nullptr)));
+
+    og::sim::SimEventLog* const installed_events = session.game_.sim_events;
+    ASSERT_NE(nullptr, installed_events);
+    session.game_.sim_events = nullptr;
+    s->world().tick_count_ = 123;
+    const screen::TickWorldBatches batches = s->tick_world();
+    EXPECT_TRUE(batches.first.events.empty());
+    EXPECT_TRUE(batches.second.events.empty());
+    EXPECT_EQ(123u, s->world().tick_count_);
+    session.game_.sim_events = installed_events;
+
+    s->reset(1);
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+    ASSERT_NE(nullptr, s->viewob[0]);
+    s->viewob[0]->prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+    s->viewob[0]->resize(PREF_VIEW_PANELS);
+    const og::view_layout::ViewLayout chrome =
+        og::view_layout::compute_view_layout(
+            s->numviews, 0, og::view_layout::kModePanels,
+            s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h());
+    ASSERT_TRUE(chrome.applies);
+    const int end_x = chrome.x + chrome.w;
+    const int end_y = chrome.y + chrome.h;
+    const int mid_x = chrome.x + chrome.w / 2;
+    const int mid_y = chrome.y + chrome.h / 2;
+    ASSERT_GT(chrome.x - 5, 0);
+    ASSERT_GT(chrome.y - 4, 0);
+    ASSERT_LT(end_x + 4, s->gameplay_ui_canvas_w());
+    ASSERT_LT(end_y + 4, s->gameplay_ui_canvas_h());
+
+    constexpr int kUntouched = 7;
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        s->draw_box(0, 0, s->canvas_w() - 1, s->canvas_h() - 1,
+                    kUntouched, 1, 1);
+    }
+    s->draw_panel_chrome(1);
+
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        const auto expect_palette_index =
+            [s](int x, int y, int expected, const char* description)
+        {
+            int actual = -1;
+            EXPECT_EQ(expected, s->get_pixel(x, y, &actual))
+                << description << " at (" << x << ", " << y << ')';
+            EXPECT_EQ(expected, actual)
+                << description << " at (" << x << ", " << y << ')';
+        };
+
+        expect_palette_index(mid_x, chrome.y - 3, 15,
+                             "raised bevel top edge");
+        expect_palette_index(mid_x, end_y + 3, 11,
+                             "raised bevel bottom edge");
+        expect_palette_index(chrome.x - 4, mid_y, 14,
+                             "raised bevel left edge");
+        expect_palette_index(end_x + 3, mid_y, 12,
+                             "raised bevel right edge");
+
+        expect_palette_index(mid_x, chrome.y - 1, 0,
+                             "black inner frame top");
+        expect_palette_index(mid_x, end_y, 0,
+                             "black inner frame bottom");
+        expect_palette_index(chrome.x - 1, mid_y, 0,
+                             "black inner frame left");
+        expect_palette_index(end_x, mid_y, 0,
+                             "black inner frame right");
+        expect_palette_index(chrome.x, chrome.y, 13,
+                             "panel chrome face");
+
+        expect_palette_index(chrome.x - 5, mid_y, kUntouched,
+                             "pixel immediately outside left edge");
+        expect_palette_index(end_x + 4, mid_y, kUntouched,
+                             "pixel immediately outside right edge");
+        expect_palette_index(mid_x, chrome.y - 4, kUntouched,
+                             "pixel immediately outside top edge");
+        expect_palette_index(mid_x, end_y + 4, kUntouched,
+                             "pixel immediately outside bottom edge");
+    }
+
+    s->reset(0);
+    EXPECT_EQ(0, static_cast<int>(s->numviews));
+    for (const auto& view : s->viewob)
+        EXPECT_EQ(nullptr, view);
 }
 
 

@@ -8,6 +8,7 @@
 #include <openglad/core/test_trace.h>
 
 #include "lodepng.h"
+#include "test_save_state_guard.h"
 
 #include <gtest/gtest.h>
 
@@ -490,4 +491,110 @@ TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
 
     fs::remove(png, ec);
     fs::remove(json, ec);
+}
+
+TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    const fs::path png = tmp_dir / "malformed_variants.png";
+    const fs::path json = tmp_dir / "malformed_variants.json";
+    og::test::ScopedPhysicalFileState png_state(png);
+    og::test::ScopedPhysicalFileState json_state(json);
+    ASSERT_TRUE(png_state.ready()) << png_state.error().message();
+    ASSERT_TRUE(json_state.ready()) << json_state.error().message();
+
+    constexpr int W = 10;
+    constexpr int H = 7;
+    write_indexed_png_strip(png.string(), W, H, 1);
+
+    struct BadSidecar {
+        const char* description;
+        const char* text;
+        const char* reason;
+    };
+    const BadSidecar cases[] = {
+        {"empty file", "", "empty file"},
+        {"empty top-level object", "{}", "empty top-level object"},
+        {"top-level array", "[]", "expected top-level object"},
+        {"missing unknown value", R"({"unknown":})",
+         "unexpected character in value"},
+        {"invalid keyword", R"({"unknown":tru})", "unknown keyword"},
+        {"unsupported string escape", R"({"unknown":"bad\\escape"})",
+         "backslash escape unsupported"},
+        {"unterminated string", R"({"unknown":"unterminated})",
+         "unterminated string"},
+        {"array missing comma", R"({"unknown":[1 2]})",
+         "expected ',' or ']'"},
+        {"object missing colon", R"({"unknown":{"a" 1}})",
+         "expected ':'"},
+        {"frames is an array", R"({"frames":[]})",
+         "\"frames\" not an object"},
+        {"frame entry is an array", R"({"frames":{"a":[]}})",
+         "frame entry not an object"},
+        {"empty frame entry", R"({"frames":{"a":{}}})",
+         "frame entry empty"},
+        {"missing frame rectangle", R"({"frames":{"a":{"other":1}}})",
+         "missing \"frame\" rectangle"},
+        {"frame rectangle is an array",
+         R"({"frames":{"a":{"frame":[]}}})",
+         "\"frame\" rect not an object"},
+        {"empty frame rectangle", R"({"frames":{"a":{"frame":{}}}})",
+         "empty frame rect"},
+        {"string frame width",
+         R"({"frames":{"a":{"frame":{"w":"10","h":7}}}})",
+         "expected non-negative integer"},
+        {"fractional frame width",
+         R"({"frames":{"a":{"frame":{"w":1.5,"h":7}}}})",
+         "non-integer numeric not supported"},
+        {"overflowing frame width",
+         R"({"frames":{"a":{"frame":{"w":1000000001,"h":7}}}})",
+         "integer overflow"},
+        {"meta is an array", R"({"meta":[]})",
+         "\"meta\" not an object"},
+        {"meta size is an array", R"({"meta":{"size":[]}})",
+         "\"meta.size\" not an object"},
+        {"empty meta size", R"({"meta":{"size":{}}})",
+         "empty meta.size"},
+        {"missing meta size",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}}})",
+         "missing \"meta.size\""},
+        {"no frames",
+         R"({"frames":{},"meta":{"size":{"w":10,"h":7}}})",
+         "no frames"},
+        {"zero frame width",
+         R"({"frames":{"a":{"frame":{"w":0,"h":7}}},"meta":{"size":{"w":0,"h":7}}})",
+         "invalid frame dimensions"},
+        {"frame width above format limit",
+         R"({"frames":{"a":{"frame":{"w":256,"h":7}}},"meta":{"size":{"w":256,"h":7}}})",
+         "frame metadata out of range"},
+        {"stacked size mismatch",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}},"meta":{"size":{"w":9,"h":7}}})",
+         "size mismatch between meta.size and frames*frame"},
+    };
+
+    for (const BadSidecar& row : cases) {
+        SCOPED_TRACE(row.description);
+        write_text_file(json.string(), row.text);
+        trace_clear();
+
+        PixieData round = read_pixie_file(png.string().c_str());
+
+        ASSERT_TRUE(round.valid())
+            << "ordinary sidecar errors must retain the documented "
+               "single-frame PNG fallback";
+        EXPECT_EQ(1, static_cast<int>(round.frames));
+        EXPECT_EQ(W, static_cast<int>(round.w));
+        EXPECT_EQ(H, static_cast<int>(round.h));
+        ASSERT_NE(nullptr, round.data);
+        EXPECT_EQ(3, static_cast<int>(round.data[0]))
+            << "fallback must preserve decoded palette indices";
+        EXPECT_TRUE(trace_contains("io", "malformed Aseprite sidecar"));
+        EXPECT_TRUE(trace_contains("io", row.reason))
+            << "diagnostic should identify the rejected construct";
+    }
 }

@@ -217,6 +217,32 @@ int curses_network_testing_exercise_internal_helpers()
         host->commit_result_to_save();
         (void)host->server();
         (void)host->client();
+        const bool exit_hook_accepts =
+            host->server().on_exit_accepted &&
+            host->server().on_exit_accepted(2);
+
+        og::sim::ExitPromptBroadcastMessage host_prompt;
+        host_prompt.destination_level = 2;
+        host_prompt.prompt_text = "Host callback prompt";
+        server->send_exit_prompt_broadcast(
+            host_client->local_peer_id(),
+            std::make_shared<og::sim::ExitPromptBroadcastMessage>(
+                host_prompt));
+        host->client().poll_messages();
+        host->server().poll_incoming_messages();
+        const auto& host_prompt_messages =
+            host->server().last_polled_messages();
+        const bool host_prompt_accepted =
+            std::any_of(
+                host_prompt_messages.begin(),
+                host_prompt_messages.end(),
+                [](const og::sim::TypedReceivedMessage& message) {
+                    return message.kind ==
+                            og::sim::TypedReceivedMessageKind::
+                                ExitPromptResponse &&
+                        message.exit_prompt_response &&
+                        message.exit_prompt_response->accepted;
+                });
         const bool stable_before_abort =
             initial_worlds_valid &&
             initial_tick > 0 &&
@@ -226,7 +252,9 @@ int curses_network_testing_exercise_internal_helpers()
             !host->ended() &&
             host->ending() == 0 &&
             host->next_level() <= 0 &&
-            second_drain.empty();
+            second_drain.empty() &&
+            exit_hook_accepts &&
+            host_prompt_accepted;
         host->request_abort();
         bool ended_after_abort = false;
         for (int i = 0; i < 25; ++i) {
@@ -262,6 +290,26 @@ int curses_network_testing_exercise_internal_helpers()
         const std::vector<std::string> second_drain = join->drain_messages();
         join->commit_result_to_save();
         (void)join->client();
+        og::sim::ExitPromptBroadcastMessage join_prompt;
+        join_prompt.destination_level = 2;
+        join_prompt.prompt_text = "Join callback prompt";
+        join_server->send_exit_prompt_broadcast(
+            join_client->local_peer_id(),
+            std::make_shared<og::sim::ExitPromptBroadcastMessage>(
+                join_prompt));
+        join->advance();
+        const auto join_prompt_messages = join_server->poll_typed();
+        const bool join_prompt_accepted =
+            std::any_of(
+                join_prompt_messages.begin(),
+                join_prompt_messages.end(),
+                [](const og::sim::TypedReceivedMessage& message) {
+                    return message.kind ==
+                            og::sim::TypedReceivedMessageKind::
+                                ExitPromptResponse &&
+                        message.exit_prompt_response &&
+                        message.exit_prompt_response->accepted;
+                });
         const bool stable_before_abort =
             !mirror.oblist.empty() &&
             initial_next_input_tick == initial_tick + 1 &&
@@ -269,7 +317,8 @@ int curses_network_testing_exercise_internal_helpers()
             !join->ended() &&
             join->ending() == 0 &&
             join->next_level() <= 0 &&
-            second_drain.empty();
+            second_drain.empty() &&
+            join_prompt_accepted;
         join->request_abort();
         join->advance();
         check(stable_before_abort && !join->ended());

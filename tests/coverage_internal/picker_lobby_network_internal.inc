@@ -1,5 +1,104 @@
 namespace og::ui::detail {
 
+namespace {
+
+class ScopedRelayBaseUrlEnv
+{
+public:
+    ScopedRelayBaseUrlEnv()
+    {
+        if (const char* const value =
+                std::getenv("OPENGLAD_RELAY_BASE_URL");
+            value != nullptr)
+        {
+            saved_ = value;
+        }
+    }
+
+    ~ScopedRelayBaseUrlEnv()
+    {
+        set(saved_);
+    }
+
+    ScopedRelayBaseUrlEnv(const ScopedRelayBaseUrlEnv&) = delete;
+    ScopedRelayBaseUrlEnv& operator=(const ScopedRelayBaseUrlEnv&) = delete;
+
+    void set(const std::optional<std::string>& value) const
+    {
+#ifdef _WIN32
+        (void)_putenv_s(
+            "OPENGLAD_RELAY_BASE_URL",
+            value.value_or("").c_str());
+#else
+        if (value.has_value())
+        {
+            (void)setenv(
+                "OPENGLAD_RELAY_BASE_URL",
+                value->c_str(),
+                1);
+        }
+        else
+        {
+            (void)unsetenv("OPENGLAD_RELAY_BASE_URL");
+        }
+#endif
+    }
+
+private:
+    std::optional<std::string> saved_;
+};
+
+class ScopedClearedRosterNames
+{
+public:
+    explicit ScopedClearedRosterNames(SaveData& save)
+        : save_(save)
+    {
+        // Copy every name before mutating any member so an allocation failure
+        // during construction still leaves the roster untouched.
+        for (std::size_t i = 0; i < save_.team_list.size(); ++i)
+        {
+            if (save_.team_list[i] != nullptr)
+                saved_names_[i] = save_.team_list[i]->name;
+        }
+        for (auto& member : save_.team_list)
+        {
+            if (member != nullptr)
+                member->name.clear();
+        }
+    }
+
+    ~ScopedClearedRosterNames()
+    {
+        if (first_member_replaced_)
+            save_.team_list[0] = std::move(saved_first_member_);
+        for (std::size_t i = 0; i < save_.team_list.size(); ++i)
+        {
+            if (save_.team_list[i] != nullptr)
+                save_.team_list[i]->name = std::move(saved_names_[i]);
+        }
+    }
+
+    ScopedClearedRosterNames(const ScopedClearedRosterNames&) = delete;
+    ScopedClearedRosterNames& operator=(
+        const ScopedClearedRosterNames&) = delete;
+
+    void install_first_member(std::unique_ptr<guy> replacement)
+    {
+        saved_first_member_ = std::move(save_.team_list[0]);
+        save_.team_list[0] = std::move(replacement);
+        first_member_replaced_ = true;
+    }
+
+private:
+    SaveData& save_;
+    std::array<std::string, MAX_TEAM_SIZE> saved_names_;
+    std::unique_ptr<guy> saved_first_member_;
+    bool first_member_replaced_ = false;
+};
+
+} // namespace
+
 int picker_lobby_network_testing_exercise_internal_helpers()
 {
     int checks = 0;
@@ -30,6 +129,15 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(campaign_content_hash("__openglad_missing_campaign_fixture__").empty());
     check(relay_base_url_or_default(" https://relay.example/custom ") ==
           "https://relay.example/custom");
+    {
+        ScopedRelayBaseUrlEnv relay_env;
+        relay_env.set("https://relay.env.example");
+        check(relay_base_url_or_default("") ==
+              "https://relay.env.example");
+        relay_env.set("");
+        check(relay_base_url_or_default("") ==
+              std::string(kDefaultRelayBaseUrl));
+    }
     check(build_relay_room_websocket_url_impl(
               "https://relay.example",
               "ROOM-1",
@@ -299,6 +407,28 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           declared_teams[0] == 2 &&
           declared_teams[1] == 3 &&
           declared_teams[2] == 0);
+    const std::vector<short> one_declared_team =
+        resolve_local_seat_declaration_teams(save, 2, 1);
+    check(one_declared_team == std::vector<short>{2});
+    check(seed_local_seat_assignments(save, true) ==
+          std::vector<short>{2});
+    std::vector<short> resized_teams{0, 1, 2, 3};
+    resize_local_seat_assignments(
+        resized_teams, save, false, 2);
+    check(resized_teams == std::vector<short>({0, 1}));
+    resized_teams.clear();
+    SaveData empty_assignment_save;
+    resize_local_seat_assignments(
+        resized_teams, empty_assignment_save, false, MAX_PLAYERS);
+    std::vector<short> expected_default_teams;
+    expected_default_teams.reserve(MAX_PLAYERS);
+    for (short team = 0; team < MAX_PLAYERS; ++team)
+        expected_default_teams.push_back(team);
+    check(resized_teams == expected_default_teams);
+    const auto default_seat =
+        build_local_lobby_seats(save, "default-seat", {});
+    check(default_seat.size() == 1 &&
+          default_seat.front().team == resolve_initial_local_team(save));
     const std::vector<og::sim::LobbyPlayer> declared_seats =
         build_local_lobby_seats(save, "local-player", 2, 2, &excluded_slots);
     check(declared_seats.size() == 2 &&
@@ -340,6 +470,18 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     remote_player.character_slots[0].character.teamnum = 3;
     state.players = {remote_player, local_player};
     state.local_seat_ids = {local_player.seat_id};
+
+    if (SaveData* const active_save = current_picker_save();
+        active_save != nullptr)
+    {
+        ScopedClearedRosterNames roster_restore(*active_save);
+        check(current_host_name(-1).empty());
+        auto fallback_member = std::make_unique<guy>(0);
+        fallback_member->name = "Fallback Host";
+        roster_restore.install_first_member(std::move(fallback_member));
+        const std::string fallback_host_name = current_host_name(-1);
+        check(fallback_host_name == "Fallback Host");
+    }
 
     check(find_local_player(state) != nullptr &&
           find_local_player(state)->seat_id == local_player.seat_id);
