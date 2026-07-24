@@ -3696,7 +3696,7 @@ int sdl_video::FadeBetween(
 	//Set nullptr pointers to temporary black screens
 	//(for simple fade-in/out effects).
 	if (!pOldSurface && !pNewSurface)
-		return 0; // nothing to do; avoid allocating two unused temporaries
+		return 0; //nothing to do; avoid allocating two unused temporaries
 	if (!pOldSurface)
 	{
 		bOldNull = true;
@@ -3808,8 +3808,9 @@ int sdl_video::FadeBetween(
 	} while (dwNow - dwFirstPaint + 50 < static_cast<Uint64>(fadeDuration));	// constant-time effect
 #endif
 
-	// Show the new screen entirely. The destination may alias pNewSurface
-	// (fadeblack(true) does exactly that), so the animation may have already
+	//Show new screen entirely.
+	// The destination may alias pNewSurface (fadeblack(true) does exactly
+	// that), so the animation may have already
 	// overwritten pNewSurface with its final partial blend. Restore the
 	// snapshot captured before the animation in that case.
 	if (pNewSurface == DestSurface)
