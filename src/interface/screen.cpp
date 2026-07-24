@@ -820,14 +820,14 @@ void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
     {
         g_test_present_paused.store(true, std::memory_order_release);
         const auto deadline = std::chrono::steady_clock::now()
-                            + std::chrono::seconds(10);
+                            + std::chrono::seconds(30);
         while (g_test_present_pause_requested.load(std::memory_order_acquire))
         {
             if (std::chrono::steady_clock::now() >= deadline)
             {
                 fprintf(stderr,
                         "test frame capture held the presenter for more than "
-                        "10000 ms\n");
+                        "30000 ms\n");
                 fflush(stderr);
                 abort();
             }

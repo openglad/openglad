@@ -42,7 +42,11 @@ static inline PickerState &pks() {
 namespace {
 
 constexpr int kTeamMenuTimeoutMs = 20000;
-constexpr Uint64 kFramePauseTimeoutMs = 5000;
+// Coverage instrumentation plus host swap pressure can occasionally leave the
+// presenter descheduled for several seconds in the middle of a frame. Keep the
+// synchronization bounded without mistaking that host pressure for a blank
+// frame; the enclosing CTest timeout remains the final 420-second backstop.
+constexpr Uint64 kFramePauseTimeoutMs = 30000;
 
 class PresentedFramePause {
 public:
