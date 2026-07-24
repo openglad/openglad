@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <set>
@@ -153,7 +155,8 @@ og::sim::LobbyMessage make_join_message(
     const char* name,
     std::int16_t requested_team,
     std::vector<og::sim::LobbyCharacterSlot> slots,
-    bool ready = false)
+    bool ready = false,
+    std::uint32_t request_id = 0)
 {
     og::sim::LobbyPlayer player;
     player.name = name;
@@ -162,7 +165,10 @@ og::sim::LobbyMessage make_join_message(
     player.ready = ready;
 
     og::sim::LobbyMessage message;
-    message.payload = og::sim::LobbyJoinMessage{.player = std::move(player)};
+    message.payload = og::sim::LobbyJoinMessage{
+        .player = std::move(player),
+        .request_id = request_id,
+    };
     return message;
 }
 
@@ -206,7 +212,20 @@ void expect_all_sent_states_equal(
 {
     ASSERT_FALSE(sent_messages.empty());
     for (const auto& message : sent_messages)
-        EXPECT_EQ(expected, decode_lobby_state(message));
+    {
+        og::sim::LobbyState actual = decode_lobby_state(message);
+        // Ownership and Join acknowledgement are deliberately recipient-
+        // specific; compare the canonical replicated content here and cover
+        // those personalized fields explicitly below.
+        actual.local_seat_ids.clear();
+        actual.last_join_request_id = 0;
+        actual.local_peer_is_host = false;
+        og::sim::LobbyState canonical_expected = expected;
+        canonical_expected.local_seat_ids.clear();
+        canonical_expected.last_join_request_id = 0;
+        canonical_expected.local_peer_is_host = false;
+        EXPECT_EQ(canonical_expected, actual);
+    }
 }
 
 } // namespace
@@ -221,7 +240,11 @@ TEST(LobbyServer, poll_registers_connected_transport_peers)
 
     ASSERT_EQ(1u, transport.sent_messages().size());
     EXPECT_EQ(11u, transport.sent_messages().front().peer_id);
-    EXPECT_EQ(server.state(), decode_lobby_state(transport.sent_messages().front()));
+    og::sim::LobbyState echoed =
+        decode_lobby_state(transport.sent_messages().front());
+    echoed.local_seat_ids.clear();
+    echoed.local_peer_is_host = false;
+    EXPECT_EQ(server.state(), echoed);
 }
 
 TEST(LobbyServer, poll_disconnects_removed_transport_peers)
@@ -308,10 +331,10 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(7, state.settings.scenario_id);
     EXPECT_EQ(2, state.settings.difficulty);
     EXPECT_EQ(0, state.settings.allied_mode);
-    // Non-allied classic teams are exclusive again: the shared->exclusive
-    // transition de-shares the guest off the host's team.
+    // The legacy allied setting still round-trips, but explicit shared
+    // assignments survive a switch to classic settings.
     EXPECT_EQ(0, state.players[0].team);
-    EXPECT_EQ(1, state.players[1].team);
+    EXPECT_EQ(0, state.players[1].team);
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), state);
 
@@ -559,6 +582,7 @@ TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
     og::sim::LobbyMessage team_change;
     team_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 1u,
+        .seat_id = server.state().players[1].seat_id,
         .team = 2,
     };
     transport.queue_lobby_message(22u, team_change);
@@ -714,16 +738,16 @@ TEST(LobbyServer, malformed_typed_message_disconnects_peer)
     EXPECT_TRUE(server.state().players.empty());
 }
 
-TEST(LobbyServer, fifth_join_is_rejected_when_lobby_is_full)
+TEST(LobbyServer, fifth_classic_join_may_share_an_existing_team)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
     for (og::sim::PeerId peer_id = 1u; peer_id <= 5u; ++peer_id)
         server.connect_client(peer_id);
 
-    // Non-allied classic teams are exclusive, so four seats exhaust the team
-    // range (the rules cap; allied/CTF lobbies share teams and admit up to
-    // kMaxGlobalPlayers seats instead).
+    // Explicit assignments supersede the old classic-team exclusivity rule:
+    // a fifth seat may reuse one of the four colors. The independent global
+    // kMaxGlobalPlayers cap is covered by the multi-seat tests below.
     og::sim::LobbySettings classic_settings;
     classic_settings.allied_mode = 0;
     og::sim::LobbyMessage classic_message;
@@ -753,10 +777,11 @@ TEST(LobbyServer, fifth_join_is_rejected_when_lobby_is_full)
         make_join_message("Overflow", 3, {make_slot(4u, 500, "Extra Guy", FAMILY_MAGE)}));
     server.poll_incoming_messages();
 
-    ASSERT_EQ(4u, server.state().players.size());
-    ASSERT_EQ(1u, transport.sent_messages().size());
-    EXPECT_EQ(5u, transport.sent_messages()[0].peer_id);
-    EXPECT_EQ(server.state(), decode_lobby_state(transport.sent_messages()[0]));
+    ASSERT_EQ(5u, server.state().players.size());
+    EXPECT_EQ(3, server.state().players[3].team);
+    EXPECT_EQ(3, server.state().players[4].team);
+    ASSERT_EQ(5u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
 }
 
 TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately)
@@ -819,6 +844,65 @@ TEST(LobbyServer, slot_sanitization_and_save_data_mapping_compact_sparse_slots)
     EXPECT_EQ(1u, equivalent.team_list[1].slot_index);
     EXPECT_EQ("First", equivalent.team_list[0].character.name);
     EXPECT_EQ("Second", equivalent.team_list[1].character.name);
+}
+
+TEST(LobbyServer,
+     combined_roster_canonicalizes_colliding_and_invalid_private_guy_ids)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message(
+            "Host",
+            0,
+            {make_slot(0u, 6, "Host Six", FAMILY_SOLDIER),
+             make_slot(2u, 1, "Host One", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message(
+            "Joiner",
+            1,
+            {make_slot(0u, 6, "Join Six", FAMILY_MAGE),
+             make_slot(1u, -1, "Join Invalid", FAMILY_CLERIC)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(4u, equivalent.team_list.size());
+
+    std::set<std::int32_t> assembled_ids;
+    for (const og::sim::LobbyCharacterSlot& slot : equivalent.team_list)
+    {
+        EXPECT_GE(slot.character.guy_id, 0) << slot.character.name;
+        EXPECT_TRUE(assembled_ids.insert(slot.character.guy_id).second)
+            << slot.character.name;
+    }
+    EXPECT_EQ(4u, assembled_ids.size());
+
+    const auto id_for = [&](std::string_view name) {
+        const auto found = std::find_if(
+            equivalent.team_list.begin(),
+            equivalent.team_list.end(),
+            [name](const og::sim::LobbyCharacterSlot& slot) {
+                return slot.character.name == name;
+            });
+        EXPECT_NE(equivalent.team_list.end(), found);
+        return found != equivalent.team_list.end()
+            ? found->character.guy_id
+            : std::int32_t{-1};
+    };
+
+    EXPECT_EQ(6, id_for("Host Six"))
+        << "the first valid occurrence keeps its private id";
+    EXPECT_EQ(1, id_for("Host One"))
+        << "an already-unique valid id must never be stolen by a remap";
+    EXPECT_NE(6, id_for("Join Six"));
+    EXPECT_GE(id_for("Join Invalid"), 0);
 }
 
 // §4.2 [NET-F2]: a join whose deployed total would exceed the 24-slot match
@@ -909,7 +993,10 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
 
     transport.clear_sent_messages();
     og::sim::LobbyMessage non_host_start;
-    non_host_start.payload = og::sim::LobbyStartGameMessage{.player_index = 1u};
+    non_host_start.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 1u,
+        .request_id = 90u,
+    };
     transport.queue_lobby_message(22u, non_host_start);
     server.poll_incoming_messages();
 
@@ -917,7 +1004,10 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     EXPECT_TRUE(transport.sent_messages().empty());
 
     og::sim::LobbyMessage host_start;
-    host_start.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
+    host_start.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 91u,
+    };
     transport.queue_lobby_message(11u, host_start);
     server.poll_incoming_messages();
 
@@ -927,7 +1017,10 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     {
         const og::sim::LobbyMessage decoded = decode_lobby_message(sent_message);
         EXPECT_EQ(og::sim::LobbyMessageKind::StartGame, decoded.kind());
-        EXPECT_EQ(0u, std::get<og::sim::LobbyStartGameMessage>(decoded.payload).player_index);
+        const auto& confirmation =
+            std::get<og::sim::LobbyStartGameMessage>(decoded.payload);
+        EXPECT_EQ(0u, confirmation.player_index);
+        EXPECT_EQ(91u, confirmation.request_id);
     }
     EXPECT_TRUE(server.consume_start_game_requested());
     EXPECT_FALSE(server.consume_start_game_requested());
@@ -937,6 +1030,7 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     og::sim::LobbyMessage team_change;
     team_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 1u,
+        .seat_id = server.state().players[1].seat_id,
         .team = 2,
     };
     transport.queue_lobby_message(22u, team_change);
@@ -997,7 +1091,7 @@ TEST(LobbyServer,
               bindings[1]);
 }
 
-TEST(LobbyServer, allied_mode_preserves_combat_colors_but_shares_seat_team)
+TEST(LobbyServer, allied_mode_preserves_explicit_binding_and_combat_teams)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
@@ -1045,7 +1139,7 @@ TEST(LobbyServer, allied_mode_preserves_combat_colors_but_shares_seat_team)
         server.build_player_bindings();
     ASSERT_EQ(2u, bindings.size());
     EXPECT_EQ(2, bindings[0].team);
-    EXPECT_EQ(2, bindings[1].team);
+    EXPECT_EQ(3, bindings[1].team);
 }
 
 TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
@@ -1094,7 +1188,7 @@ TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
     }
 }
 
-TEST(LobbyServer, local_together_shares_first_seat_without_recoloring_roster)
+TEST(LobbyServer, local_legacy_together_field_does_not_collapse_explicit_seats)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport, /*local_session=*/true);
@@ -1135,8 +1229,8 @@ TEST(LobbyServer, local_together_shares_first_seat_without_recoloring_roster)
     const auto bindings = server.build_player_bindings();
     ASSERT_EQ(2u, bindings.size());
     EXPECT_EQ(0, bindings[0].team);
-    EXPECT_EQ(0, bindings[1].team)
-        << "Together gives P2 another red controller, never the yellow fighter";
+    EXPECT_EQ(1, bindings[1].team)
+        << "the legacy Together field no longer overrides an explicit seat";
 }
 
 namespace {
@@ -1152,7 +1246,9 @@ og::sim::LobbyMessage make_settings_change_message(
     return message;
 }
 
-og::sim::LobbySettings make_ctf_lobby_settings(std::int16_t team_count = 0)
+og::sim::LobbySettings make_ctf_lobby_settings(
+    std::int16_t team_count = 0,
+    std::uint8_t authored_team_mask = 0)
 {
     og::sim::LobbySettings settings;
     settings.campaign_id = "org.openglad.ctf";
@@ -1160,20 +1256,42 @@ og::sim::LobbySettings make_ctf_lobby_settings(std::int16_t team_count = 0)
     settings.difficulty = 1;
     settings.allied_mode = 0;
     settings.ctf_team_count = team_count;
+    settings.ctf_authored_team_mask = authored_team_mask;
     return settings;
 }
 
-og::sim::LobbyMessage make_team_change_message(std::int16_t team)
+og::sim::LobbyMessage make_team_change_message(
+    const og::sim::LobbyPlayer& player,
+    std::int16_t team)
 {
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbyTeamChangeMessage{
-        .player_index = 0xffu, // identity comes from the sending peer
+        .player_index = player.player_index,
+        .seat_id = player.seat_id,
         .team = team,
     };
     return message;
 }
 
 } // namespace
+
+TEST(LobbyState, ctf_team_domain_uses_authored_order_and_safe_fallback)
+{
+    og::sim::LobbySettings settings = make_ctf_lobby_settings(2);
+
+    // No published map metadata preserves the old explicit numeric clamp.
+    EXPECT_EQ(0b0011u, og::sim::lobby_effective_team_mask(settings));
+
+    // Sparse authored teams are truncated by set-bit order, matching CTF
+    // gameplay's first-N-authored activation.
+    settings.ctf_authored_team_mask = 0b1101u;
+    EXPECT_EQ(0b0101u, og::sim::lobby_effective_team_mask(settings));
+    EXPECT_TRUE(og::sim::lobby_team_is_selectable(settings, 2));
+    EXPECT_FALSE(og::sim::lobby_team_is_selectable(settings, 1));
+
+    settings.ctf_team_count = 0;
+    EXPECT_EQ(0b1101u, og::sim::lobby_effective_team_mask(settings));
+}
 
 TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
 {
@@ -1345,7 +1463,8 @@ TEST(LobbyServer, ctf_lobby_allows_shared_teams)
 
     // The guest moves onto the host's team: accepted under CTF settings.
     transport.clear_sent_messages();
-    transport.queue_lobby_message(22u, make_team_change_message(0));
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 0));
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
@@ -1366,7 +1485,7 @@ TEST(LobbyServer, ctf_lobby_allows_shared_teams)
     EXPECT_EQ(0, server.state().players[2].team);
 }
 
-TEST(LobbyServer, classic_lobby_keeps_exclusive_teams)
+TEST(LobbyServer, classic_lobby_allows_shared_explicit_teams)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1379,20 +1498,21 @@ TEST(LobbyServer, classic_lobby_keeps_exclusive_teams)
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
-    // Non-allied classic settings: teams are exclusive, so the host's team is
-    // taken and the guest's TeamChange resolves back to its current team.
+    // Non-allied classic settings no longer imply one seat per color. The
+    // guest may explicitly join the host's team.
     og::sim::LobbySettings classic_settings;
     classic_settings.allied_mode = 0;
     transport.queue_lobby_message(
         11u, make_settings_change_message(classic_settings));
     server.poll_incoming_messages();
 
-    transport.queue_lobby_message(22u, make_team_change_message(0));
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 0));
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_EQ(0, server.state().players[0].team);
-    EXPECT_EQ(1, server.state().players[1].team);
+    EXPECT_EQ(0, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
 }
@@ -1416,12 +1536,14 @@ TEST(LobbyServer, ctf_team_count_clamps_team_choice)
 
     // Team 3 is outside the explicit 2-team range: the change resolves back
     // to the guest's current (in-range) team.
-    transport.queue_lobby_message(22u, make_team_change_message(3));
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 3));
     server.poll_incoming_messages();
     EXPECT_EQ(1, server.state().players[1].team);
 
     // An in-range shared team is still accepted.
-    transport.queue_lobby_message(22u, make_team_change_message(0));
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 0));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().players[1].team);
 
@@ -1433,6 +1555,76 @@ TEST(LobbyServer, ctf_team_count_clamps_team_choice)
     ASSERT_EQ(3u, server.state().players.size());
     EXPECT_LT(server.state().players[2].team, 2);
     EXPECT_GE(server.state().players[2].team, 0);
+}
+
+TEST(LobbyServer, sparse_ctf_authored_domain_matches_gameplay_and_reteams)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message(
+                 "Host", 0,
+                 {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0)}));
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Guest", 3,
+                 {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER, 3)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3, server.state().players[1].team);
+
+    // Auto exposes every authored flag team, including sparse ids.
+    constexpr std::uint8_t kTeamsZeroTwoThree = 0b1101u;
+    transport.queue_lobby_message(
+        11u,
+        make_settings_change_message(
+            make_ctf_lobby_settings(0, kTeamsZeroTwoThree)));
+    server.poll_incoming_messages();
+    EXPECT_EQ(kTeamsZeroTwoThree,
+              server.state().settings.ctf_authored_team_mask);
+    EXPECT_EQ(3, server.state().players[1].team);
+
+    // A crafted request for missing authored team 1 is denied, while sparse
+    // authored team 2 is accepted.
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 1));
+    server.poll_incoming_messages();
+    EXPECT_EQ(3, server.state().players[1].team);
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 2));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().players[1].team);
+
+    // Explicit 2 means gameplay's first two AUTHORED teams {0,2}, not the
+    // numeric range {0,1}. Team 2 remains valid and team 1 remains rejected.
+    transport.queue_lobby_message(
+        11u,
+        make_settings_change_message(
+            make_ctf_lobby_settings(2, kTeamsZeroTwoThree)));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().players[1].team);
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 1));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().players[1].team);
+
+    // A new level's authored domain invalidates the old assignment. The
+    // settings transition deterministically moves it to the first active
+    // authored team without repainting its character's combat allegiance.
+    constexpr std::uint8_t kTeamsOneThree = 0b1010u;
+    transport.queue_lobby_message(
+        11u,
+        make_settings_change_message(
+            make_ctf_lobby_settings(0, kTeamsOneThree)));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(1, server.state().players[0].team);
+    EXPECT_EQ(1, server.state().players[1].team);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(3,
+              server.state().players[1].character_slots[0].character.teamnum);
 }
 
 TEST(LobbyServer, settings_change_reteams_out_of_range_players)
@@ -1465,7 +1657,7 @@ TEST(LobbyServer, settings_change_reteams_out_of_range_players)
     expect_all_sent_states_equal(transport.sent_messages(), server.state());
 }
 
-TEST(LobbyServer, settings_change_to_classic_deshares_teams)
+TEST(LobbyServer, settings_change_to_classic_preserves_shared_assignments)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1483,15 +1675,16 @@ TEST(LobbyServer, settings_change_to_classic_deshares_teams)
     server.poll_incoming_messages();
 
     // Both humans legitimately share team 0 under CTF settings.
-    transport.queue_lobby_message(22u, make_team_change_message(0));
+    transport.queue_lobby_message(
+        22u, make_team_change_message(server.state().players[1], 0));
     server.poll_incoming_messages();
     ASSERT_EQ(2u, server.state().players.size());
     ASSERT_EQ(0, server.state().players[0].team);
     ASSERT_EQ(0, server.state().players[1].team);
 
-    // Host switches the campaign back to classic: exclusivity returns, so
-    // the later-connected player must be moved off the shared team (with
-    // its fighter color unchanged) and the new state broadcast.
+    // Host switches the campaign back to classic. Explicit assignments are
+    // mode-independent, so both seats remain on team 0 (with fighter colors
+    // unchanged); the settings change itself still broadcasts.
     og::sim::LobbySettings classic = make_ctf_lobby_settings();
     classic.campaign_id = "org.openglad.gladiator";
     transport.clear_sent_messages();
@@ -1499,11 +1692,8 @@ TEST(LobbyServer, settings_change_to_classic_deshares_teams)
     server.poll_incoming_messages();
 
     ASSERT_EQ(2u, server.state().players.size());
-    EXPECT_EQ(0, server.state().players[0].team)
-        << "the earliest-connected player keeps the shared team";
-    EXPECT_NE(0, server.state().players[1].team);
-    EXPECT_GE(server.state().players[1].team, 0);
-    EXPECT_LT(server.state().players[1].team, 4);
+    EXPECT_EQ(0, server.state().players[0].team);
+    EXPECT_EQ(0, server.state().players[1].team);
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
     EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
     ASSERT_EQ(2u, transport.sent_messages().size());
@@ -1520,7 +1710,9 @@ og::sim::LobbyMessage make_multi_seat_join_message(
     const char* name,
     const std::vector<std::int16_t>& seat_teams,
     std::uint8_t first_slot_index = 0u,
-    std::int32_t first_guy_id = 100)
+    std::int32_t first_guy_id = 100,
+    og::sim::LobbyMachineId client_authored_machine_id =
+        og::sim::kInvalidLobbyMachineId)
 {
     og::sim::LobbyJoinMessage join;
     for (std::size_t seat = 0; seat < seat_teams.size(); ++seat)
@@ -1529,6 +1721,7 @@ og::sim::LobbyMessage make_multi_seat_join_message(
         player.name = seat == 0
             ? std::string(name)
             : std::string(name) + "#" + std::to_string(seat);
+        player.machine_id = client_authored_machine_id;
         player.team = seat_teams[seat];
         player.character_slots = {make_slot(
             static_cast<std::uint8_t>(first_slot_index + seat),
@@ -1559,16 +1752,34 @@ TEST(LobbyServer, multi_seat_join_flattens_seats_and_binds_local_slots)
     // Default (allied) settings share teams across peers. Host declares two
     // seats, guest declares three.
     transport.queue_lobby_message(
-        11u, make_multi_seat_join_message("Host", {0, 1}, 0u, 100));
+        11u, make_multi_seat_join_message(
+                 "Host", {0, 1}, 0u, 100, 0xdeadbeefu));
     transport.queue_lobby_message(
-        22u, make_multi_seat_join_message("Guest", {0, 1, 2}, 2u, 200));
+        22u, make_multi_seat_join_message(
+                 "Guest", {0, 1, 2}, 2u, 200, 0xdeadbeefu));
     server.poll_incoming_messages();
 
     const og::sim::LobbyState& state = server.state();
     ASSERT_EQ(5u, state.players.size());
     // Flatten order: (connection order, seat order); indices sequential.
     for (std::size_t index = 0; index < state.players.size(); ++index)
+    {
         EXPECT_EQ(index, state.players[index].player_index);
+        EXPECT_NE(og::sim::kInvalidLobbySeatId, state.players[index].seat_id);
+    }
+    std::set<og::sim::LobbySeatId> seat_ids;
+    for (const og::sim::LobbyPlayer& player : state.players)
+        seat_ids.insert(player.seat_id);
+    EXPECT_EQ(state.players.size(), seat_ids.size());
+    EXPECT_NE(og::sim::kInvalidLobbyMachineId, state.players[0].machine_id);
+    EXPECT_EQ(state.players[0].machine_id, state.players[1].machine_id);
+    EXPECT_NE(og::sim::kInvalidLobbyMachineId, state.players[2].machine_id);
+    EXPECT_EQ(state.players[2].machine_id, state.players[3].machine_id);
+    EXPECT_EQ(state.players[2].machine_id, state.players[4].machine_id);
+    EXPECT_NE(state.players[0].machine_id, state.players[2].machine_id);
+    EXPECT_NE(0xdeadbeefu, state.players[0].machine_id);
+    EXPECT_NE(0xdeadbeefu, state.players[2].machine_id)
+        << "the server must ignore a client-authored machine ID";
     EXPECT_EQ("Host", state.players[0].name);
     EXPECT_EQ("Host#1", state.players[1].name);
     EXPECT_EQ("Guest", state.players[2].name);
@@ -1578,8 +1789,7 @@ TEST(LobbyServer, multi_seat_join_flattens_seats_and_binds_local_slots)
     EXPECT_FALSE(state.players[1].is_host);
     EXPECT_FALSE(state.players[2].is_host);
     EXPECT_EQ(0u, state.host_player_id);
-    // Cross-peer sharing allowed (allied): guest seat 0 shares team 0 with
-    // host seat 0; within-peer teams stay distinct.
+    // Explicit assignments are preserved exactly across and within peers.
     EXPECT_EQ(0, state.players[0].team);
     EXPECT_EQ(1, state.players[1].team);
     EXPECT_EQ(0, state.players[2].team);
@@ -1600,18 +1810,21 @@ TEST(LobbyServer, multi_seat_join_flattens_seats_and_binds_local_slots)
     EXPECT_EQ(1u, bindings[3].local_slot);
     EXPECT_EQ(22u, bindings[4].peer_id);
     EXPECT_EQ(2u, bindings[4].local_slot);
+    const std::array<std::int16_t, 5> expected_teams = {0, 1, 0, 1, 2};
     for (std::size_t index = 0; index < bindings.size(); ++index)
+    {
         EXPECT_EQ(index, bindings[index].player_index);
+        EXPECT_EQ(expected_teams[index], bindings[index].team);
+    }
 }
 
-TEST(LobbyServer, multi_seat_join_enforces_within_peer_distinct_teams)
+TEST(LobbyServer, multi_seat_join_allows_within_peer_duplicate_teams)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
     server.connect_client(11u);
 
-    // Both seats request team 0: seat 1 must be bumped to a distinct team
-    // even though allied settings share teams across peers.
+    // Both seats request team 0: the duplicate is intentional and preserved.
     transport.queue_lobby_message(
         11u, make_multi_seat_join_message("Host", {0, 0}));
     server.poll_incoming_messages();
@@ -1619,17 +1832,13 @@ TEST(LobbyServer, multi_seat_join_enforces_within_peer_distinct_teams)
     const og::sim::LobbyState& state = server.state();
     ASSERT_EQ(2u, state.players.size());
     EXPECT_EQ(0, state.players[0].team);
-    EXPECT_NE(state.players[0].team, state.players[1].team);
-    EXPECT_GE(state.players[1].team, 0);
-    EXPECT_LT(state.players[1].team, MAX_PLAYERS);
-    // Resolving a duplicate seat must not repaint its fighter. The crafted
-    // shape is unstartable until the roster is fixed, rather than silently
-    // turning the second red fighter yellow.
+    EXPECT_EQ(0, state.players[1].team);
+    // Preserving a duplicate seat must not repaint its fighter.
     ASSERT_EQ(1u, state.players[1].character_slots.size());
     EXPECT_EQ(0, state.players[1].character_slots[0].character.teamnum);
 }
 
-TEST(LobbyServer, non_allied_lobby_truncates_seats_beyond_the_team_range)
+TEST(LobbyServer, non_allied_lobby_keeps_duplicate_seats_beyond_four_players)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -1642,22 +1851,24 @@ TEST(LobbyServer, non_allied_lobby_truncates_seats_beyond_the_team_range)
         11u, make_settings_change_message(classic_settings));
     server.poll_incoming_messages();
 
-    // Host takes three of the four exclusive teams.
+    // Host declares three seats.
     transport.queue_lobby_message(
         11u, make_multi_seat_join_message("Host", {0, 1, 2}, 0u, 100));
     server.poll_incoming_messages();
     ASSERT_EQ(3u, server.state().players.size());
 
-    // The guest asks for two seats but only one distinct team remains: the
-    // join is truncated to one seat (the rules-driven 4-seat PVP cap).
+    // The guest asks for two seats on the same remaining color. Both survive;
+    // only the independent 16-seat global cap can truncate the declaration.
     transport.queue_lobby_message(
         22u, make_multi_seat_join_message("Guest", {3, 3}, 3u, 200));
     server.poll_incoming_messages();
 
     const og::sim::LobbyState& state = server.state();
-    ASSERT_EQ(4u, state.players.size());
+    ASSERT_EQ(5u, state.players.size());
     EXPECT_EQ("Guest", state.players[3].name);
     EXPECT_EQ(3, state.players[3].team);
+    EXPECT_EQ("Guest#1", state.players[4].name);
+    EXPECT_EQ(3, state.players[4].team);
 }
 
 TEST(LobbyServer, global_seat_cap_truncates_and_rejects_joins)
@@ -1691,14 +1902,20 @@ TEST(LobbyServer, global_seat_cap_truncates_and_rejects_joins)
     EXPECT_EQ(15u, server.state().players[15].player_index);
 
     // With the lobby at the global cap a further join is rejected outright
-    // (the requester only receives the authoritative state echo).
+    // (the requester only receives the authoritative, correlated state echo).
     transport.clear_sent_messages();
-    transport.queue_lobby_message(
-        6u, make_multi_seat_join_message("Overflow", {0}, 0u, 600));
+    og::sim::LobbyMessage overflow =
+        make_multi_seat_join_message("Overflow", {0}, 0u, 600);
+    std::get<og::sim::LobbyJoinMessage>(overflow.payload).request_id = 404u;
+    transport.queue_lobby_message(6u, overflow);
     server.poll_incoming_messages();
     ASSERT_EQ(16u, server.state().players.size());
     ASSERT_EQ(1u, transport.sent_messages().size());
     EXPECT_EQ(6u, transport.sent_messages()[0].peer_id);
+    EXPECT_EQ(
+        404u,
+        decode_lobby_state(transport.sent_messages()[0])
+            .last_join_request_id);
 }
 
 TEST(LobbyServer, ready_applies_to_every_seat_of_the_sender)
@@ -1724,6 +1941,331 @@ TEST(LobbyServer, ready_applies_to_every_seat_of_the_sender)
         EXPECT_TRUE(player.ready) << "seat " << int(player.player_index);
 }
 
+TEST(LobbyServer,
+     remove_seat_erases_the_exact_owned_middle_seat_and_clears_ready)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Host", {0, 1, 2}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Guest", {3}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(4u, server.state().players.size());
+
+    const og::sim::LobbySeatId first_id =
+        server.state().players[0].seat_id;
+    const og::sim::LobbySeatId removed_id =
+        server.state().players[1].seat_id;
+    const og::sim::LobbySeatId third_id =
+        server.state().players[2].seat_id;
+    const og::sim::LobbySeatId guest_id =
+        server.state().players[3].seat_id;
+
+    og::sim::LobbyMessage ready;
+    ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 0u,
+        .ready = true,
+    };
+    transport.queue_lobby_message(11u, ready);
+    transport.queue_lobby_message(22u, ready);
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[0].ready);
+    ASSERT_TRUE(server.state().players[1].ready);
+    ASSERT_TRUE(server.state().players[2].ready);
+
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage remove;
+    remove.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = 1u,
+        .seat_id = removed_id,
+    };
+    transport.queue_lobby_message(11u, remove);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(3u, server.state().players.size());
+    EXPECT_EQ(first_id, server.state().players[0].seat_id);
+    EXPECT_EQ(third_id, server.state().players[1].seat_id);
+    EXPECT_EQ(guest_id, server.state().players[2].seat_id);
+    EXPECT_FALSE(server.state().players[0].ready);
+    EXPECT_FALSE(server.state().players[1].ready);
+    EXPECT_TRUE(server.state().players[2].ready)
+        << "removing one machine's seat must not unready another peer";
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyState recipient = decode_lobby_state(sent);
+        if (sent.peer_id == 11u)
+        {
+            EXPECT_EQ(
+                (std::vector<og::sim::LobbySeatId>{first_id, third_id}),
+                recipient.local_seat_ids);
+        }
+        else if (sent.peer_id == 22u)
+        {
+            EXPECT_EQ(
+                (std::vector<og::sim::LobbySeatId>{guest_id}),
+                recipient.local_seat_ids);
+        }
+    }
+
+    // The surviving third seat has compacted to local slot 1 without taking
+    // the removed seat's stable command token.
+    const std::vector<og::sim::LobbyPlayerBinding> bindings =
+        server.build_player_bindings();
+    ASSERT_EQ(3u, bindings.size());
+    EXPECT_EQ(11u, bindings[1].peer_id);
+    EXPECT_EQ(1u, bindings[1].local_slot);
+    EXPECT_EQ(third_id, server.state().players[1].seat_id);
+}
+
+TEST(LobbyServer, remove_seat_rejects_foreign_or_stale_tokens)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Host", {0, 1}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Guest", {2}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+
+    const og::sim::LobbyState before = server.state();
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage foreign_remove;
+    foreign_remove.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = before.players[2].player_index,
+        .seat_id = before.players[2].seat_id,
+    };
+    transport.queue_lobby_message(11u, foreign_remove);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(before, server.state());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(11u, transport.sent_messages().front().peer_id);
+    og::sim::LobbyState echoed =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_EQ(
+        (std::vector<og::sim::LobbySeatId>{
+            before.players[0].seat_id,
+            before.players[1].seat_id}),
+        echoed.local_seat_ids);
+    echoed.local_seat_ids.clear();
+    echoed.local_peer_is_host = false;
+    EXPECT_EQ(before, echoed);
+
+    // A token that was once owned but has already been removed is stale, not
+    // permission to target whichever sibling now occupies its dense P#.
+    const og::sim::LobbySeatId stale_id = before.players[1].seat_id;
+    og::sim::LobbyMessage valid_remove;
+    valid_remove.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = before.players[1].player_index,
+        .seat_id = stale_id,
+    };
+    transport.queue_lobby_message(11u, valid_remove);
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    const og::sim::LobbyState after_valid_remove = server.state();
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, valid_remove);
+    server.poll_incoming_messages();
+    EXPECT_EQ(after_valid_remove, server.state());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(11u, transport.sent_messages().front().peer_id);
+}
+
+TEST(LobbyServer,
+     queued_remove_seat_keeps_stable_target_when_p_numbers_redensify)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    server.connect_client(33u);
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Host", {0}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Leaving", {1}));
+    transport.queue_lobby_message(
+        33u, make_multi_seat_join_message("Survivor", {1, 2, 3}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(5u, server.state().players.size());
+
+    const og::sim::LobbyPlayer captured_target =
+        server.state().players[3];
+    const og::sim::LobbySeatId survivor_first_id =
+        server.state().players[2].seat_id;
+    const og::sim::LobbySeatId survivor_third_id =
+        server.state().players[4].seat_id;
+    og::sim::LobbyMessage queued_remove;
+    queued_remove.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = captured_target.player_index,
+        .seat_id = captured_target.seat_id,
+    };
+
+    server.disconnect_client(22u);
+    ASSERT_EQ(4u, server.state().players.size());
+    EXPECT_EQ(captured_target.player_index,
+              server.state().players[3].player_index);
+    EXPECT_EQ(survivor_third_id, server.state().players[3].seat_id)
+        << "the captured dense P# now aliases the third sibling";
+
+    transport.queue_lobby_message(33u, queued_remove);
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+    EXPECT_EQ(survivor_first_id, server.state().players[1].seat_id);
+    EXPECT_EQ(survivor_third_id, server.state().players[2].seat_id);
+    EXPECT_EQ(
+        server.state().players.end(),
+        std::find_if(
+            server.state().players.begin(), server.state().players.end(),
+            [seat_id = captured_target.seat_id](
+                const og::sim::LobbyPlayer& player) {
+                return player.seat_id == seat_id;
+            }));
+}
+
+TEST(LobbyServer,
+     final_remove_is_a_zero_seat_spectator_and_reuses_its_private_token)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message(
+            "Host", 0,
+            {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message(
+            "Guest", 1,
+            {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+
+    const og::sim::LobbySeatId guest_id =
+        server.state().players[1].seat_id;
+    og::sim::LobbyMessage remove_guest;
+    remove_guest.payload = og::sim::LobbyRemoveSeatMessage{
+        // Deliberately stale: the stable server token is authoritative.
+        .player_index = 0xffu,
+        .seat_id = guest_id,
+    };
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(22u, remove_guest);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_EQ("Host", server.state().players.front().name);
+    const std::vector<og::sim::LobbyPlayerBinding> spectator_bindings =
+        server.build_player_bindings();
+    ASSERT_EQ(1u, spectator_bindings.size());
+    EXPECT_EQ(11u, spectator_bindings.front().peer_id);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyState recipient = decode_lobby_state(sent);
+        if (sent.peer_id == 11u)
+        {
+            EXPECT_TRUE(recipient.local_peer_is_host);
+            ASSERT_EQ(1u, recipient.local_seat_ids.size());
+        }
+        else
+        {
+            EXPECT_FALSE(recipient.local_peer_is_host);
+            EXPECT_TRUE(recipient.local_seat_ids.empty());
+        }
+    }
+
+    // [+] creates a real active seat again, but the stable command identity
+    // comes from server-private dormant peer state rather than a published
+    // placeholder player.
+    transport.queue_lobby_message(
+        22u,
+        make_join_message(
+            "Guest", 1,
+            {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)},
+            false,
+            77u));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(guest_id, server.state().players[1].seat_id);
+
+    og::sim::LobbyMessage ready_guest;
+    ready_guest.payload = og::sim::LobbyReadyMessage{
+        .player_index = 1u,
+        .ready = true,
+    };
+    transport.queue_lobby_message(22u, ready_guest);
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.state().players[1].ready);
+
+    // Host authority belongs to peer 11, not its seat. Removing the host's
+    // final active seat keeps Scenario/GO authority, excludes that seat from
+    // bindings, and lets the spectator host start the ready guest.
+    const og::sim::LobbySeatId host_id =
+        server.state().players[0].seat_id;
+    og::sim::LobbyMessage remove_host;
+    remove_host.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = 0u,
+        .seat_id = host_id,
+    };
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, remove_host);
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_FALSE(server.state().players.front().is_host);
+    EXPECT_EQ(0xffu, server.state().host_player_id);
+    ASSERT_EQ(1u, server.build_player_bindings().size());
+    EXPECT_EQ(22u, server.build_player_bindings().front().peer_id);
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyState recipient = decode_lobby_state(sent);
+        EXPECT_EQ(sent.peer_id == 11u, recipient.local_peer_is_host);
+        if (sent.peer_id == 11u)
+        {
+            EXPECT_TRUE(recipient.local_seat_ids.empty());
+        }
+    }
+
+    og::sim::LobbyMessage start;
+    start.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0xffu,
+    };
+    transport.queue_lobby_message(11u, start);
+    server.poll_incoming_messages();
+    EXPECT_TRUE(server.start_game_requested());
+}
+
+TEST(LobbyServer, disconnecting_zero_seat_host_republishes_peer_authority)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    server.disconnect_client(11u);
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    const og::sim::LobbyState promoted =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_TRUE(promoted.players.empty());
+    EXPECT_TRUE(promoted.local_seat_ids.empty());
+    EXPECT_TRUE(promoted.local_peer_is_host);
+}
+
 TEST(LobbyServer, team_change_retargets_the_matching_seat)
 {
     MockLobbyTransport transport;
@@ -1739,6 +2281,7 @@ TEST(LobbyServer, team_change_retargets_the_matching_seat)
     og::sim::LobbyMessage team_change;
     team_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 1u,
+        .seat_id = server.state().players[1].seat_id,
         .team = 3,
     };
     transport.queue_lobby_message(11u, team_change);
@@ -1747,33 +2290,246 @@ TEST(LobbyServer, team_change_retargets_the_matching_seat)
     EXPECT_EQ(0, server.state().players[0].team);
     EXPECT_EQ(3, server.state().players[1].team);
 
-    // A team change targeting an unknown player index falls back to seat 0.
+    // A stale/foreign player index is denied and must not mutate seat 0.
     og::sim::LobbyMessage fallback_change;
     fallback_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 0xaau,
+        .seat_id = 0xdeadbeefu,
         .team = 2,
     };
     transport.queue_lobby_message(11u, fallback_change);
     server.poll_incoming_messages();
 
-    EXPECT_EQ(2, server.state().players[0].team);
+    EXPECT_EQ(0, server.state().players[0].team);
     EXPECT_EQ(3, server.state().players[1].team);
 
-    // Within-peer distinctness holds for team changes: moving seat 0 onto
-    // seat 1's team is refused (state unchanged, echo sent).
+    // Moving seat 0 onto seat 1's team is an accepted duplicate assignment.
     transport.clear_sent_messages();
     og::sim::LobbyMessage collide_change;
     collide_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 0u,
+        .seat_id = server.state().players[0].seat_id,
         .team = 3,
     };
     transport.queue_lobby_message(11u, collide_change);
     server.poll_incoming_messages();
 
-    EXPECT_EQ(2, server.state().players[0].team);
+    EXPECT_EQ(3, server.state().players[0].team);
     EXPECT_EQ(3, server.state().players[1].team);
     ASSERT_EQ(1u, transport.sent_messages().size());
     EXPECT_EQ(11u, transport.sent_messages()[0].peer_id);
+    og::sim::LobbyState echoed =
+        decode_lobby_state(transport.sent_messages()[0]);
+    ASSERT_EQ(2u, echoed.local_seat_ids.size());
+    echoed.local_seat_ids.clear();
+    echoed.local_peer_is_host = false;
+    EXPECT_EQ(server.state(), echoed);
+}
+
+TEST(LobbyServer,
+     queued_team_change_keeps_stable_target_when_disconnect_redensifies_p_numbers)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    server.connect_client(33u);
+
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Host", {0}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Leaving", {1}));
+    transport.queue_lobby_message(
+        33u, make_multi_seat_join_message("Survivor", {1, 2}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(4u, server.state().players.size());
+    const og::sim::LobbyPlayer old_survivor_first = server.state().players[2];
+    const og::sim::LobbySeatId survivor_second_id =
+        server.state().players[3].seat_id;
+    ASSERT_EQ(2u, old_survivor_first.player_index);
+    ASSERT_EQ(3u, server.state().players[3].player_index);
+
+    // This request was authored against the pre-disconnect state. Once P2
+    // leaves, its captured global index 2 aliases Survivor's SECOND seat.
+    // The stable token must still select Survivor's FIRST seat.
+    og::sim::LobbyMessage queued_change;
+    queued_change.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = old_survivor_first.player_index,
+        .seat_id = old_survivor_first.seat_id,
+        .team = 3,
+    };
+
+    server.disconnect_client(22u);
+    ASSERT_EQ(3u, server.state().players.size());
+    ASSERT_EQ(1u, server.state().players[1].player_index);
+    ASSERT_EQ(old_survivor_first.seat_id,
+              server.state().players[1].seat_id);
+    ASSERT_EQ(2u, server.state().players[2].player_index);
+    ASSERT_EQ(survivor_second_id, server.state().players[2].seat_id);
+
+    transport.queue_lobby_message(33u, queued_change);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(3, server.state().players[1].team)
+        << "the queued command must follow its stable seat token";
+    EXPECT_EQ(2, server.state().players[2].team)
+        << "the re-densified P3 must not inherit stale P3 input";
+}
+
+TEST(LobbyServer, deferred_disconnect_is_published_before_same_batch_start)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    transport.set_connected_peers({11u, 22u, 33u});
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        11u, make_join_message(
+                 "Host", 0,
+                 {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Leaving", 1,
+                 {make_slot(1u, 200, "Leaving Guy", FAMILY_ARCHER)}));
+    transport.queue_lobby_message(
+        33u, make_join_message(
+                 "Survivor", 2,
+                 {make_slot(2u, 300, "Survivor Guy", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+    og::sim::LobbyMessage leaving_ready;
+    leaving_ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 1u,
+        .ready = true,
+    };
+    og::sim::LobbyMessage survivor_ready;
+    survivor_ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 2u,
+        .ready = true,
+    };
+    transport.queue_lobby_message(22u, leaving_ready);
+    transport.queue_lobby_message(33u, survivor_ready);
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+
+    // The transport sees peer 22 disconnect, but its final idempotent Ready
+    // and the host Start arrive in the same drain. The final message is
+    // processed; the deferred removal must then be broadcast before Start.
+    transport.clear_sent_messages();
+    transport.set_connected_peers({11u, 33u});
+    og::sim::LobbyMessage start;
+    start.payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 77u,
+    };
+    transport.queue_lobby_message(22u, leaving_ready);
+    transport.queue_lobby_message(11u, start);
+    server.poll_incoming_messages();
+
+    ASSERT_TRUE(server.start_game_requested());
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ("Host", server.state().players[0].name);
+    EXPECT_EQ("Survivor", server.state().players[1].name);
+
+    std::optional<og::sim::LobbyState> latest_survivor_state;
+    bool saw_start = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id != 33u)
+            continue;
+        if (const auto state =
+                og::sim::deserialize_lobby_state_message(sent.data);
+            state.has_value())
+        {
+            EXPECT_FALSE(saw_start)
+                << "no revised roster state may trail StartGame";
+            latest_survivor_state = *state;
+            continue;
+        }
+        const auto message = og::sim::deserialize_lobby_message(sent.data);
+        if (!message.has_value() ||
+            message->kind() != og::sim::LobbyMessageKind::StartGame)
+        {
+            continue;
+        }
+        saw_start = true;
+        ASSERT_TRUE(latest_survivor_state.has_value())
+            << "the revised roster state must precede StartGame";
+        ASSERT_EQ(2u, latest_survivor_state->players.size());
+        EXPECT_EQ("Host", latest_survivor_state->players[0].name);
+        EXPECT_EQ("Survivor", latest_survivor_state->players[1].name);
+    }
+    EXPECT_TRUE(saw_start);
+}
+
+TEST(LobbyServer, state_echo_proves_local_seat_ownership_with_server_tokens)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_multi_seat_join_message("Same Name", {0, 1}));
+    transport.queue_lobby_message(
+        22u, make_multi_seat_join_message("Same Name", {2}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(3u, server.state().players.size());
+    EXPECT_TRUE(server.state().local_seat_ids.empty())
+        << "the canonical server state is not recipient-specific";
+    EXPECT_EQ(server.state().players[0].machine_id,
+              server.state().players[1].machine_id);
+    EXPECT_NE(server.state().players[0].machine_id,
+              server.state().players[2].machine_id)
+        << "identical display names must not merge distinct network peers";
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        11u, make_team_change_message(server.state().players[0], 3));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    for (const og::sim::ReceivedMessage& message : transport.sent_messages())
+    {
+        const og::sim::LobbyState recipient = decode_lobby_state(message);
+        if (message.peer_id == 11u)
+        {
+            ASSERT_EQ(2u, recipient.local_seat_ids.size());
+            EXPECT_EQ(server.state().players[0].seat_id,
+                      recipient.local_seat_ids[0]);
+            EXPECT_EQ(server.state().players[1].seat_id,
+                      recipient.local_seat_ids[1]);
+        }
+        else
+        {
+            ASSERT_EQ(22u, message.peer_id);
+            ASSERT_EQ(1u, recipient.local_seat_ids.size());
+            EXPECT_EQ(server.state().players[2].seat_id,
+                      recipient.local_seat_ids[0]);
+        }
+    }
+
+    // A real token owned by another peer is still foreign. Even if the
+    // request advertises this sender's current dense P#, authority is the
+    // (sending peer, seat_id) pair and the guest seat remains unchanged.
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage forged_change;
+    forged_change.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = server.state().players[2].player_index,
+        .seat_id = server.state().players[0].seat_id,
+        .team = 3,
+    };
+    transport.queue_lobby_message(22u, forged_change);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(2, server.state().players[2].team);
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages()[0].peer_id);
+    const og::sim::LobbyState denial =
+        decode_lobby_state(transport.sent_messages()[0]);
+    ASSERT_EQ(1u, denial.local_seat_ids.size());
+    EXPECT_EQ(server.state().players[2].seat_id,
+              denial.local_seat_ids[0]);
 }
 
 TEST(LobbyServer, rejoin_replaces_the_whole_seat_list)
@@ -1789,9 +2545,20 @@ TEST(LobbyServer, rejoin_replaces_the_whole_seat_list)
         22u, make_multi_seat_join_message("Guest", {0}, 4u, 200));
     server.poll_incoming_messages();
     ASSERT_EQ(5u, server.state().players.size());
+    const og::sim::LobbySeatId host_seat_0_id =
+        server.state().players[0].seat_id;
+    const og::sim::LobbySeatId host_seat_1_id =
+        server.state().players[1].seat_id;
+    const og::sim::LobbySeatId guest_seat_id =
+        server.state().players[4].seat_id;
+    const og::sim::LobbyMachineId host_machine_id =
+        server.state().players[0].machine_id;
+    const og::sim::LobbyMachineId guest_machine_id =
+        server.state().players[4].machine_id;
 
     // set_player_mode 4 -> 2 re-sends the join with two seats: the seat list
-    // shrinks and every global index is re-densified.
+    // shrinks and every global index is re-densified. Surviving local ordinals
+    // retain their stable command tokens, including the shifted guest seat.
     transport.queue_lobby_message(
         11u, make_multi_seat_join_message("Host", {0, 1}, 0u, 100));
     server.poll_incoming_messages();
@@ -1801,6 +2568,13 @@ TEST(LobbyServer, rejoin_replaces_the_whole_seat_list)
     EXPECT_EQ("Host", state.players[0].name);
     EXPECT_EQ("Host#1", state.players[1].name);
     EXPECT_EQ("Guest", state.players[2].name);
+    EXPECT_EQ(host_seat_0_id, state.players[0].seat_id);
+    EXPECT_EQ(host_seat_1_id, state.players[1].seat_id);
+    EXPECT_EQ(guest_seat_id, state.players[2].seat_id);
+    EXPECT_EQ(host_machine_id, state.players[0].machine_id);
+    EXPECT_EQ(host_machine_id, state.players[1].machine_id);
+    EXPECT_EQ(guest_machine_id, state.players[2].machine_id);
+    EXPECT_NE(host_machine_id, guest_machine_id);
     for (std::size_t index = 0; index < state.players.size(); ++index)
         EXPECT_EQ(index, state.players[index].player_index);
 }
@@ -1853,10 +2627,14 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
     return message;
 }
 
-og::sim::LobbyMessage make_start_message(std::uint8_t player_index)
+og::sim::LobbyMessage make_start_message(std::uint8_t player_index,
+                                         std::uint32_t request_id = 0)
 {
     og::sim::LobbyMessage message;
-    message.payload = og::sim::LobbyStartGameMessage{.player_index = player_index};
+    message.payload = og::sim::LobbyStartGameMessage{
+        .player_index = player_index,
+        .request_id = request_id,
+    };
     return message;
 }
 
@@ -1895,7 +2673,7 @@ TEST(LobbyServer, content_identical_join_resend_preserves_ready)
         << "a content-identical join re-send preserves ready";
 
     // And the host can now start over the re-synced-but-still-ready lobby.
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.queue_lobby_message(11u, make_start_message(0u, 101u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.start_game_requested());
     EXPECT_EQ(0u, server.state().last_start_denial);
@@ -1977,6 +2755,7 @@ TEST(LobbyServer, team_change_clears_that_machines_ready)
     og::sim::LobbyMessage team_change;
     team_change.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = 1u,
+        .seat_id = server.state().players[1].seat_id,
         .team = 2,
     };
     transport.queue_lobby_message(22u, team_change);
@@ -2044,11 +2823,12 @@ TEST(LobbyServer, start_denied_when_nonhost_not_ready_keeps_lobby_live)
 
     // Guest is not ready: the host's GO is denied WITHOUT locking the lobby.
     transport.clear_sent_messages();
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.queue_lobby_message(11u, make_start_message(0u, 101u));
     server.poll_incoming_messages();
     EXPECT_FALSE(server.start_game_requested());
     EXPECT_EQ(start_denial_reason_value(og::sim::StartDenialReason::MachinesNotReady),
               server.state().last_start_denial);
+    EXPECT_EQ(101u, server.state().last_start_request_id);
     // The denial is echoed (the host must see WHO is blocking).
     ASSERT_FALSE(transport.sent_messages().empty());
 
@@ -2094,7 +2874,7 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
         << "the first-connected peer is the elected host";
 
     transport.clear_sent_messages();
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.queue_lobby_message(11u, make_start_message(0u, 101u));
     server.poll_incoming_messages();
 
     EXPECT_FALSE(server.consume_start_game_requested())
@@ -2108,21 +2888,60 @@ TEST(LobbyServer, dedicated_denial_keeps_loop_polling_and_echoes_reason_to_every
         const og::sim::LobbyState echoed = decode_lobby_state(message);
         EXPECT_EQ(expected_reason, echoed.last_start_denial)
             << "every state echo after the denial carries the reason";
+        EXPECT_EQ(101u, echoed.last_start_request_id);
         echoed_peers.insert(message.peer_id);
     }
     EXPECT_EQ((std::set<og::sim::PeerId>{11u, 22u}), echoed_peers)
         << "the denial echo must reach the elected host AND the guest";
+
+    // Retry without changing the blocker. Clearing then restoring the same
+    // denial reason leaves LobbyState byte-identical, but this request still
+    // needs its own authoritative echo or the async host waits forever.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 101u));
+    server.poll_incoming_messages();
+    EXPECT_FALSE(server.consume_start_game_requested());
+    echoed_peers.clear();
+    for (const og::sim::ReceivedMessage& message : transport.sent_messages())
+    {
+        const og::sim::LobbyState echoed = decode_lobby_state(message);
+        EXPECT_EQ(expected_reason, echoed.last_start_denial);
+        EXPECT_EQ(101u, echoed.last_start_request_id);
+        echoed_peers.insert(message.peer_id);
+    }
+    EXPECT_EQ((std::set<og::sim::PeerId>{11u, 22u}), echoed_peers)
+        << "an identical repeated denial still resolves the new request";
 
     // The dedicated loop stays live: the guest readies, the elected host's
     // next GO is accepted, and consume_start_game_requested() flips true —
     // the exact condition that breaks server_main into gameplay.
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
-    transport.queue_lobby_message(11u, make_start_message(0u));
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 103u));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.consume_start_game_requested())
         << "server_main's break-into-gameplay read";
     EXPECT_EQ(0u, server.state().last_start_denial);
+    EXPECT_EQ(0u, server.state().last_start_request_id)
+        << "accepted requests correlate through the StartGame confirmation";
+    ASSERT_FALSE(transport.sent_messages().empty());
+    std::size_t confirmation_count = 0;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const auto confirmation =
+            og::sim::deserialize_lobby_message(sent.data);
+        if (!confirmation.has_value())
+            continue; // accepted-after-denial also broadcasts the cleared state
+        ASSERT_EQ(og::sim::LobbyMessageKind::StartGame,
+                  confirmation->kind());
+        EXPECT_EQ(103u,
+                  std::get<og::sim::LobbyStartGameMessage>(
+                      confirmation->payload)
+                      .request_id);
+        ++confirmation_count;
+    }
+    EXPECT_EQ(2u, confirmation_count);
 }
 
 TEST(LobbyServer, start_denial_survives_interleaved_join_cleared_on_next_start)
@@ -2225,15 +3044,182 @@ TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
     server.poll_incoming_messages();
     ASSERT_TRUE(server.start_game_requested());
 
+    transport.clear_sent_messages();
     server.unlock_for_new_round();
     EXPECT_FALSE(server.start_game_requested());
     for (const og::sim::LobbyPlayer& player : server.state().players)
         EXPECT_FALSE(player.ready) << "every machine re-readies each round";
+    ASSERT_EQ(2u, transport.sent_messages().size())
+        << "the new-round ready clear must be echoed to both machines";
+    for (const og::sim::ReceivedMessage& message : transport.sent_messages())
+    {
+        const og::sim::LobbyState echoed = decode_lobby_state(message);
+        ASSERT_EQ(2u, echoed.players.size());
+        EXPECT_FALSE(echoed.players[0].ready);
+        EXPECT_FALSE(echoed.players[1].ready);
+    }
 
     // The reopened lobby accepts messages again (the lock was cleared).
     transport.queue_lobby_message(22u, make_ready_message(1u, true));
     server.poll_incoming_messages();
     EXPECT_TRUE(server.state().players[1].ready);
+}
+
+TEST(LobbyServer, identical_resume_join_repeats_missed_ready_reset_to_sender)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.start_game_requested());
+
+    // Model the guest's still-active GameClient draining the unlock broadcast
+    // before its picker resumes.
+    server.unlock_for_new_round();
+    transport.clear_sent_messages();
+
+    // The private save did not change, so the resume declaration is exactly
+    // the stored roster. It still needs a fresh recipient-specific echo to
+    // release the next-round ready guard.
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Guest", 1,
+                 {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)},
+                 false,
+                 0x11223344u));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(0u, server.state().last_join_request_id)
+        << "the canonical state must remain recipient-neutral";
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    const og::sim::LobbyState echoed =
+        decode_lobby_state(transport.sent_messages().front());
+    ASSERT_EQ(2u, echoed.players.size());
+    EXPECT_FALSE(echoed.players[1].ready);
+    ASSERT_EQ(1u, echoed.local_seat_ids.size());
+    EXPECT_EQ(echoed.players[1].seat_id, echoed.local_seat_ids.front());
+    EXPECT_EQ(0x11223344u, echoed.last_join_request_id);
+}
+
+TEST(LobbyServer, join_ack_is_recipient_specific_and_repeatable)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message(
+                 "Host", 0,
+                 {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)},
+                 false,
+                 101u));
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Guest", 1,
+                 {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)},
+                 false,
+                 202u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0u, server.state().last_join_request_id);
+
+    // A retry reuses the same nonce. Content-identical declarations do not
+    // change canonical state, but still receive a fresh correlated echo.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Guest", 1,
+                 {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)},
+                 false,
+                 202u));
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    EXPECT_EQ(
+        202u,
+        decode_lobby_state(transport.sent_messages().front())
+            .last_join_request_id);
+
+    // Later broadcasts retain each recipient's own acknowledgement. A guest
+    // must never observe the host's nonce (or vice versa).
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_ready_message(0u, true));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyState recipient = decode_lobby_state(sent);
+        EXPECT_EQ(sent.peer_id == 11u ? 101u : 202u,
+                  recipient.last_join_request_id);
+    }
+}
+
+TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    ASSERT_TRUE(server.start_game_requested());
+
+    // The guest reaches Base Camp first and sends its sole resume Join while
+    // the host is still on the locked previous round. It must not mutate the
+    // running round, but it also must not be lost.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        22u, make_join_message(
+                 "Guest", 1,
+                 {make_slot(1u, 200, "Racing Mutation", FAMILY_ARCHER)},
+                 false,
+                 302u));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ("Guest Guy",
+              server.state().players[1].character_slots[0].character.name);
+    EXPECT_TRUE(transport.sent_messages().empty())
+        << "an ordinary Join that loses the Start race is dropped, not queued";
+
+    og::sim::LobbyMessage resume_join = make_join_message(
+        "Guest", 1,
+        {make_slot(1u, 201, "Advanced Guest", FAMILY_ARCHER)},
+        false,
+        303u);
+    std::get<og::sim::LobbyJoinMessage>(
+        resume_join.payload).resume_after_level = true;
+    transport.queue_lobby_message(22u, resume_join);
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ("Guest Guy",
+              server.state().players[1].character_slots[0].character.name);
+    EXPECT_TRUE(transport.sent_messages().empty())
+        << "a locked Join stays invisible to the running round";
+
+    server.unlock_for_new_round();
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ("Advanced Guest",
+              server.state().players[1].character_slots[0].character.name)
+        << "unlock must apply the early resume declaration";
+    for (const og::sim::LobbyPlayer& player : server.state().players)
+        EXPECT_FALSE(player.ready);
+
+    std::uint32_t last_guest_join_ack = 0;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 22u)
+        {
+            last_guest_join_ack =
+                decode_lobby_state(sent).last_join_request_id;
+        }
+    }
+    EXPECT_EQ(303u, last_guest_join_ack)
+        << "the queued Join is acknowledged only when unlock processes it";
 }
 
 // §4.2: only DEPLOYED slots consume the combined 24-slot capacity. A host
@@ -2379,9 +3365,9 @@ TEST(LobbyServer, zero_deploy_host_starts_when_another_machine_deploys)
 
     const auto bindings = server.build_player_bindings();
     ASSERT_EQ(2u, bindings.size());
-    EXPECT_EQ(1, bindings[0].team);
+    EXPECT_EQ(0, bindings[0].team);
     EXPECT_EQ(1, bindings[1].team)
-        << "Together must use the deployed guest's color when the host is benched";
+        << "explicit bindings stay exact even when the host has no deployed fighter";
 }
 
 // §4.3 rule 4 stays GLOBAL under cross-control: an all-benched lobby is

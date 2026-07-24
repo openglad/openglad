@@ -15,6 +15,7 @@
 #include <openglad/resources/filesystem.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdlib>
@@ -669,10 +670,8 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
 
-    // G8 (design §1.2): change_allied no longer writes allbuttons_[7]. The
-    // pvp_allied LabelBinding moved to PLAYER SETTINGS and re-derives both
-    // label surfaces every frame, so change_allied only toggles the save flag
-    // and syncs the lobby.
+    // change_allied remains a save/replay compatibility hook after the visible
+    // seat-mode row moved out; it no longer writes either button surface.
     ASSERT_EQ(4, (int)change_allied()) << "change_allied should return OK";
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle on";
     ASSERT_EQ(4, (int)change_allied()) << "change_allied second toggle should return OK";
@@ -2056,7 +2055,8 @@ TEST(PickerFuncs, local_lobby_hoists_my_team_to_player_one)
     save.allied_mode = orig_allied;
 }
 
-TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
+TEST(PickerFuncs,
+     local_lobby_targets_exact_seats_and_preserves_explicit_teams)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
@@ -2068,17 +2068,24 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
     const short orig_allied = save.allied_mode;
+    const bool orig_start_requested = g_start_game_requested;
 
+    for (auto& member : save.team_list)
+        member.reset();
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->name = "SlotZero";
+    save.team_list[0]->name = "Red One";
     save.team_list[0]->teamnum = 0;
     save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
-    save.team_list[1]->name = "SlotOne";
-    save.team_list[1]->teamnum = 2;
-    save.team_size = 2;
+    save.team_list[1]->name = "Red Two";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[2]->name = "Blue One";
+    save.team_list[2]->teamnum = 2;
+    save.team_size = 3;
     save.my_team = 0;
-    save.numplayers = 2;
+    save.numplayers = 3;
     save.allied_mode = 0;
+    g_start_game_requested = false;
 
     {
         auto client = og::ui::create_local_picker_lobby_client();
@@ -2087,30 +2094,115 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
             << "local sessions are not networked";
         EXPECT_FALSE(client->local_ready());
 
-        // No heroes on team 1: the request must bounce and leave my_team.
-        EXPECT_FALSE(client->request_team_change(1));
-        EXPECT_EQ(0, save.my_team);
+        std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        std::sort(players.begin(), players.end(),
+                  [](const auto& lhs, const auto& rhs) {
+                      return lhs.player_index < rhs.player_index;
+                  });
+        EXPECT_EQ(3u, players.size());
+        if (players.size() == 3u)
+        {
+            const std::uint8_t p1 = players[0].player_index;
+            const std::uint8_t p2 = players[1].player_index;
 
-        // Team 2 has a hero: my_team moves and the hoist re-seats P1 there.
-        EXPECT_TRUE(client->request_team_change(2));
-        EXPECT_EQ(2, save.my_team);
-        const auto config = client->build_game_start_config();
-        ASSERT_TRUE(config.has_value());
-        EXPECT_EQ(2, config->my_team)
-            << "P1 must re-seat onto the requested team";
+            // A seat assignment is independent of roster colors: Player 2 can
+            // choose empty team 3, and changing it must not reseat Player 1 or
+            // rewrite the compatibility my_team field.
+            EXPECT_TRUE(client->request_seat_team_change(p2, 3));
+            players = client->lobby_players();
+            std::sort(players.begin(), players.end(),
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.player_index < rhs.player_index;
+                      });
+            EXPECT_EQ(0, players[0].team);
+            EXPECT_EQ(3, players[1].team);
+            EXPECT_EQ(0, save.my_team);
 
-        // The local lobby exposes its synthetic seats as lobby players. The
-        // classic LobbyServer resolves the seat swap conservatively (each
-        // synthetic peer keeps a distinct team), so assert the team SET; the
-        // authoritative P1 team for gameplay is config.my_team above.
-        const auto players = client->lobby_players();
-        ASSERT_EQ(2u, players.size());
-        const bool covers_both_teams =
-            (players[0].team == 2 && players[1].team == 0) ||
-            (players[0].team == 0 && players[1].team == 2);
-        EXPECT_TRUE(covers_both_teams)
-            << "synthetic seats must cover teams {0,2}, got "
-            << players[0].team << "/" << players[1].team;
+            const auto empty_team_config =
+                client->build_game_start_config();
+            ASSERT_TRUE(empty_team_config.has_value());
+            EXPECT_EQ((std::vector<short>{0, 3, 1}),
+                      empty_team_config->local_seat_teams)
+                << "game-start configuration uses authored seat teams even "
+                   "when one currently has no hero";
+
+            const std::vector<short> before_invalid = {
+                static_cast<short>(players[0].team),
+                static_cast<short>(players[1].team),
+                static_cast<short>(players[2].team),
+            };
+            EXPECT_FALSE(client->request_seat_team_change(0xffu, 2))
+                << "an unknown global player id must not fall back to seat 0";
+            EXPECT_EQ(before_invalid,
+                      [&] {
+                          std::vector<short> teams;
+                          for (const auto& player : client->lobby_players())
+                              teams.push_back(player.team);
+                          return teams;
+                      }());
+
+            // Duplicate assignments are intentional: both local players may
+            // control team 0. The second-seat request remains seat-targeted.
+            EXPECT_TRUE(client->request_seat_team_change(p2, 0));
+            players = client->lobby_players();
+            std::sort(players.begin(), players.end(),
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.player_index < rhs.player_index;
+                      });
+            EXPECT_EQ(0, players[0].team);
+            EXPECT_EQ(0, players[1].team);
+            EXPECT_EQ(1, players[2].team);
+            EXPECT_EQ(p1, players[0].player_index);
+
+            // Returning from a level re-declares the local seats and roster.
+            // Authored duplicate teams survive, while every private save slot
+            // is advertised exactly once (the first matching seat owns it).
+            client->resume_after_level();
+            players = client->lobby_players();
+            std::sort(players.begin(), players.end(),
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.player_index < rhs.player_index;
+                      });
+            ASSERT_EQ(3u, players.size());
+            EXPECT_EQ(0, players[0].team);
+            EXPECT_EQ(0, players[1].team);
+            EXPECT_EQ(1, players[2].team);
+
+            std::array<int, MAX_TEAM_SIZE> slot_counts{};
+            std::size_t advertised_slots = 0;
+            for (const auto& player : players)
+            {
+                for (const auto& slot : player.character_slots)
+                {
+                    ++advertised_slots;
+                    if (slot.slot_index < slot_counts.size())
+                        ++slot_counts[slot.slot_index];
+                }
+            }
+            EXPECT_EQ(3u, advertised_slots);
+            EXPECT_EQ(1, slot_counts[0]);
+            EXPECT_EQ(1, slot_counts[1]);
+            EXPECT_EQ(1, slot_counts[2]);
+            EXPECT_TRUE(players[1].character_slots.empty())
+                << "a duplicate matching seat must not duplicate team-0 "
+                   "fighters";
+
+            const auto resumed_config = client->build_game_start_config();
+            ASSERT_TRUE(resumed_config.has_value());
+            EXPECT_EQ((std::vector<short>{0, 0, 1}),
+                      resumed_config->local_seat_teams);
+            EXPECT_EQ(0, resumed_config->my_team);
+            ASSERT_EQ(3u, resumed_config->save_data.team_list.size());
+            std::array<int, MAX_TEAM_SIZE> config_slot_counts{};
+            for (const auto& slot : resumed_config->save_data.team_list)
+            {
+                if (slot.slot_index < config_slot_counts.size())
+                    ++config_slot_counts[slot.slot_index];
+            }
+            EXPECT_EQ(1, config_slot_counts[0]);
+            EXPECT_EQ(1, config_slot_counts[1]);
+            EXPECT_EQ(1, config_slot_counts[2]);
+        }
 
         client->shutdown();
     }
@@ -2122,6 +2214,217 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
     save.allied_mode = orig_allied;
+    g_start_game_requested = orig_start_requested;
+}
+
+TEST(PickerFuncs,
+     local_lobby_adds_and_removes_exact_seats_with_offline_last_seat_guard)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> original_roster;
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        original_roster[slot] = std::move(save.team_list[slot]);
+    const unsigned char original_team_size = save.team_size;
+    const short original_my_team = save.my_team;
+    const unsigned char original_numplayers = save.numplayers;
+    const short original_allied_mode = save.allied_mode;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    for (int slot = 0; slot < 3; ++slot)
+    {
+        save.team_list[slot] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[slot]->name = std::format("Seat {}", slot + 1);
+        save.team_list[slot]->teamnum = static_cast<short>(slot);
+    }
+    save.team_size = 3;
+    save.my_team = 0;
+    save.numplayers = 3;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_EQ(3u, client->local_seat_count());
+
+        std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        ASSERT_EQ(3u, players.size());
+        const og::sim::LobbyPlayer first = players[0];
+        const og::sim::LobbyPlayer removed = players[1];
+        const og::sim::LobbyPlayer third = players[2];
+
+        EXPECT_TRUE(client->remove_local_seat(
+            0xffu, removed.seat_id))
+            << "the stable token, not a stale dense P#, targets the seat";
+        EXPECT_EQ(2u, client->local_seat_count());
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(first.seat_id, players[0].seat_id);
+        EXPECT_EQ(first.team, players[0].team);
+        EXPECT_EQ(third.seat_id, players[1].seat_id);
+        EXPECT_EQ(third.team, players[1].team);
+        EXPECT_EQ(1u, players[1].player_index)
+            << "the surviving third seat gets the dense P2 display index";
+        EXPECT_FALSE(client->remove_local_seat(
+            removed.player_index, removed.seat_id))
+            << "the removed stable token must never alias the new P2";
+
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(3u, client->local_seat_count());
+        players = client->lobby_players();
+        ASSERT_EQ(3u, players.size());
+        EXPECT_EQ(first.seat_id, players[0].seat_id);
+        EXPECT_EQ(third.seat_id, players[1].seat_id);
+        EXPECT_NE(removed.seat_id, players[2].seat_id);
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(4u, client->local_seat_count());
+        EXPECT_FALSE(client->add_local_seat())
+            << "one machine cannot exceed MAX_PLAYERS local controls";
+
+        client->set_player_mode(1);
+        players = client->lobby_players();
+        ASSERT_EQ(1u, players.size());
+        EXPECT_FALSE(client->remove_local_seat(
+            players.front().player_index, players.front().seat_id))
+            << "offline play keeps one active seat";
+        EXPECT_EQ(1u, client->local_seat_count());
+
+        // The legacy spectator mode still exists. [+] activates its existing
+        // placeholder instead of creating a second lobby player.
+        client->set_player_mode(0);
+        EXPECT_EQ(0u, client->local_seat_count());
+        ASSERT_EQ(1u, client->lobby_players().size());
+        EXPECT_TRUE(client->add_local_seat());
+        EXPECT_EQ(1u, client->local_seat_count());
+        EXPECT_EQ(1u, client->lobby_players().size());
+        client->shutdown();
+    }
+
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        save.team_list[slot] = std::move(original_roster[slot]);
+    save.team_size = original_team_size;
+    save.my_team = original_my_team;
+    save.numplayers = original_numplayers;
+    save.allied_mode = original_allied_mode;
+}
+
+TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> original_roster;
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        original_roster[slot] = std::move(save.team_list[slot]);
+    const unsigned char original_team_size = save.team_size;
+    const short original_my_team = save.my_team;
+    const unsigned char original_numplayers = save.numplayers;
+    const short original_allied_mode = save.allied_mode;
+    const std::string original_campaign = save.current_campaign;
+    const short original_scenario = save.scen_num;
+    const short original_ctf_team_count = save.ctf_team_count;
+    const std::string original_mount = get_mounted_campaign();
+    const int original_world_id = world.id;
+    const char original_world_type = world.type;
+    const std::size_t original_fx_size = world.fxlist.size();
+    std::vector<std::pair<walker*, unsigned char>> original_flag_teams;
+    for (const auto& effect : world.fxlist)
+    {
+        if (effect != nullptr &&
+            effect->query_order() == Order::Treasure &&
+            effect->family() == og::FAMILY_FLAG)
+        {
+            original_flag_teams.emplace_back(effect.get(), effect->team_num());
+            effect->set_team_num(SCORE_TEAM_COUNT);
+        }
+    }
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Host";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Guest";
+    save.team_list[1]->teamnum = 3;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.current_campaign = "org.openglad.ctf";
+    save.scen_num = 7;
+    save.ctf_team_count = 0;
+    set_mounted_campaign_for_testing(save.current_campaign);
+    world.id = save.scen_num;
+    world.type |= GameWorld::TYPE_CTF;
+    for (const short team : {short{0}, short{2}, short{3}})
+    {
+        walker* flag = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+        ASSERT_NE(nullptr, flag);
+        flag->set_team_num(static_cast<unsigned char>(team));
+    }
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(3, players[1].team);
+
+        // Explicit 2 selects authored {0,2}; the old team-3 assignment is
+        // invalidated by the settings echo and moves to the first active team.
+        save.ctf_team_count = 2;
+        client->sync_settings_from_save();
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(0, players[1].team);
+        EXPECT_TRUE(client->request_seat_team_change(
+            players[1].player_index, 2));
+        EXPECT_FALSE(client->request_seat_team_change(
+            players[1].player_index, 1));
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(2, players[1].team);
+
+        // A next level with sparse authored {1,3} in Auto invalidates both
+        // old assignments; the client adopts the server's deterministic team
+        // 1 normalization without recoloring the saved heroes.
+        while (world.fxlist.size() > original_fx_size)
+            world.fxlist.pop_back();
+        walker* flag1 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+        walker* flag3 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+        ASSERT_NE(nullptr, flag1);
+        ASSERT_NE(nullptr, flag3);
+        flag1->set_team_num(1);
+        flag3->set_team_num(3);
+        save.ctf_team_count = 0;
+        client->sync_settings_from_save();
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(1, players[0].team);
+        EXPECT_EQ(1, players[1].team);
+        EXPECT_EQ(0, save.team_list[0]->teamnum);
+        EXPECT_EQ(3, save.team_list[1]->teamnum);
+        client->shutdown();
+    }
+
+    for (const auto& [flag, team] : original_flag_teams)
+        flag->set_team_num(team);
+    while (world.fxlist.size() > original_fx_size)
+        world.fxlist.pop_back();
+    world.id = original_world_id;
+    world.type = original_world_type;
+    set_mounted_campaign_for_testing(original_mount);
+    for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+        save.team_list[slot] = std::move(original_roster[slot]);
+    save.team_size = original_team_size;
+    save.my_team = original_my_team;
+    save.numplayers = original_numplayers;
+    save.allied_mode = original_allied_mode;
+    save.current_campaign = original_campaign;
+    save.scen_num = original_scenario;
+    save.ctf_team_count = original_ctf_team_count;
 }
 
 TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)

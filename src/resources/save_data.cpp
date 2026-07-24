@@ -40,7 +40,11 @@
 
 namespace
 {
-constexpr unsigned char kMaxPlayers = kMaxSavePlayers;
+constexpr unsigned char kMaxLegacyPlayers = kMaxLegacySavePlayers;
+// GTL readers before player count became session state still consume the byte
+// at offset 132. Keep it readable as one player without encoding this
+// session's actual choice into the company.
+constexpr std::uint8_t kLegacyPlayerCountCompatibility = 1;
 constexpr int kMaxLegacyLevels = 500;
 }
 
@@ -131,7 +135,7 @@ bool SaveData::load(const std::string& filename)
 	std::int16_t temp_short = 0;
 	std::int16_t temp_arm = 0;
 	std::int16_t temp_lev = 0;
-	std::uint8_t temp_numplayers = 0;
+	std::uint8_t legacy_numplayers = 0;
 	std::uint32_t temp_exp;
 	std::int16_t temp_kills = 0;
 	std::int32_t temp_level_kills;
@@ -160,6 +164,8 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes Allied mode                // Versions 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
+	// This is now a legacy compatibility marker; the runtime count is not
+	// saved, and old files may contain their historical value.
 	// 31-bytes RESERVED, reinterpreted by version 14+ as:
 	//   8-bytes (Sint64) last-played unix seconds (offset 133)  // Version 14+
 	//   23-bytes RESERVED (zero-filled by v14+ writers)
@@ -325,18 +331,20 @@ bool SaveData::load(const std::string& filename)
     }
 
 	// Read the # of players
-	READ_OR_FAIL(&temp_numplayers, 1, 1);
-	#ifdef DISABLE_MULTIPLAYER
-	temp_numplayers = 1;
-	#endif
-    if (temp_numplayers > kMaxPlayers)
+	// Validate the historical byte so malformed legacy files keep the same
+	// rejection behavior. Player count is session state: loading a company
+	// must not replace the live runtime projection.
+	READ_OR_FAIL(&legacy_numplayers, 1, 1);
+    if (legacy_numplayers > kMaxLegacyPlayers)
     {
         LogError("save_load_numplayers_invalid file={} numplayers={} max={}\n",
-            filename, (int)temp_numplayers, (int)kMaxPlayers);
+            filename, (int)legacy_numplayers, (int)kMaxLegacyPlayers);
         last_io_error_ = SaveDataIoError::ReadFailed;
         return 0;
     }
-	numplayers = temp_numplayers;
+	#ifdef DISABLE_MULTIPLAYER
+	numplayers = 1;
+	#endif
 
 	// Read the reserved area, 31 bytes. Version 14+ reinterprets the first
 	// 8 bytes as the last-played timestamp (offset 133); older files carry
@@ -837,7 +845,8 @@ bool SaveData::save(const std::string& filename)
 	std::int16_t temp_short = 0;
 	std::int16_t temp_arm = 0;
 	std::int16_t temp_lev = 0;
-	std::uint8_t numplayers_to_save = this->numplayers;
+	constexpr std::uint8_t legacy_numplayers =
+	    kLegacyPlayerCountCompatibility;
 	std::uint32_t temp_exp;
 	std::int16_t temp_kills = 0;
 	std::int32_t temp_level_kills;
@@ -865,6 +874,8 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes allied setting              // Version 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
+	// This is now a legacy compatibility marker (always 1); the live runtime
+	// count is session state and is never serialized.
 	// 31-bytes RESERVED, reinterpreted by version 14+ as:
 	//   8-bytes (Sint64) last-played unix seconds (offset 133)  // Version 14+
 	//   23-bytes RESERVED (zero-filled)
@@ -983,7 +994,7 @@ bool SaveData::save(const std::string& filename)
 	//Log("Team size: %d  ", listsize);
 	WRITE_OR_FAIL(&listsize, 2, 1);
 
-	WRITE_OR_FAIL(&numplayers_to_save, 1, 1);
+	WRITE_OR_FAIL(&legacy_numplayers, 1, 1);
 
 	// Write the former 31-byte reserved area: v14+ stores the last-played
 	// timestamp in the first 8 bytes (offset 133) and zero-fills the rest.

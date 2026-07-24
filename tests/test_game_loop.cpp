@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <set>
 #include <string>
@@ -843,17 +844,48 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 3;
     ASSERT_TRUE(game_screen->save_data.save("save0"));
+    EXPECT_EQ(3, static_cast<int>(game_screen->save_data.numplayers));
+
+    const std::filesystem::path save_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    std::ifstream save_file(save_path, std::ios::binary);
+    ASSERT_TRUE(save_file.is_open());
+    save_file.seekg(132);
+    char legacy_player_count = 0;
+    ASSERT_TRUE(save_file.read(&legacy_player_count, 1));
+    EXPECT_EQ(1, static_cast<unsigned char>(legacy_player_count))
+        << "the GTL carries only the compatibility marker, not the live count";
 
     game_screen->ready_for_battle(1);
     ASSERT_EQ(1, game_screen->numviews);
 
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
     EXPECT_EQ(3u,
-              og::runtime::local_transport_client_count(
-                  *og::runtime::current_game_session));
+              og::runtime::local_transport_client_count(gameplay_session));
 
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_NE(game_screen, server_screen)
+        << "the authority must use its own freshly loaded screen";
+    EXPECT_EQ(3, static_cast<int>(server_screen->save_data.numplayers));
+    EXPECT_EQ(3, server_screen->numviews);
+    for (int view_index = 0; view_index < 3; ++view_index)
+    {
+        EXPECT_NE(nullptr, server_screen->viewob[view_index])
+            << "missing authoritative view " << view_index;
+    }
+    for (int view_index = 3; view_index < MAX_VIEWS; ++view_index)
+    {
+        EXPECT_EQ(nullptr, server_screen->viewob[view_index])
+            << "unexpected authoritative view " << view_index;
+    }
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
 }
 
@@ -1888,14 +1920,15 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
     world.delete_objects();
 }
 
-// §4.5 [NET-F1] + stomp survival: a networked numplayers==0 (spectator)
-// machine's view engages the follow camera, SwitchChar cycles the watched
-// target CROSS-TEAM through the networked follow branch (the legacy
-// spectator block is my_team-filtered, so this outcome proves the gate), and
-// the choice survives a forced full snapshot resync. Without the networked
-// shadow the legacy spectator block still owns the key (demo/local
+// §4.5 [NET-F1] + true-zero-seat regression: a networked spectator machine's
+// empty seat vector means NO local player binding even when remote player 0
+// has a live control. Its view engages the follow camera, SwitchChar cycles
+// the watched target CROSS-TEAM through the networked follow branch (the
+// legacy spectator block is my_team-filtered, so this outcome proves the
+// gate), and the choice survives a forced full snapshot resync. Without the
+// networked shadow the legacy spectator block still owns the key (demo/local
 // unchanged).
-TEST(GameLoop, networked_spectator_follow_cycles_and_survives_full_resync)
+TEST(GameLoop, networked_zero_seat_joiner_follow_cycles_and_survives_full_resync)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -1935,18 +1968,29 @@ TEST(GameLoop, networked_spectator_follow_cycles_and_survives_full_resync)
     reset_viewscreen_input_debounce();
 
     // Networked client shadow over an in-process pair; the test plays the
-    // server side by pushing keyframes captured from the display world (the
-    // controlled-ids table stays all-zero: a spectator machine).
+    // server side by pushing keyframes captured from the display world. The
+    // empty vector is the production true-zero-seat joiner install path.
     auto server_transport = og::sim::InProcessTransport::create_server();
     server_transport->accept_connections();
     auto client_transport = server_transport->create_client_transport();
     const og::sim::PeerId peer_id = client_transport->local_peer_id();
     session.networked_session_ = true;
     og::runtime::reset_network_client_transport_shadow(
-        session, *game_screen, client_transport, peer_id, std::size_t{3});
+        session,
+        *game_screen,
+        client_transport,
+        peer_id,
+        std::vector<og::runtime::LocalSeatBinding>{});
     ASSERT_TRUE(og::runtime::local_transport_active(session));
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session))
         << "the view input path must see the same session as the shadow";
+
+    og::sim::ControlChangeMessage remote_player_zero;
+    remote_player_zero.player_index = 0u;
+    remote_player_zero.entity_id = home_hero_id;
+    server_transport->send_control_change(
+        peer_id,
+        std::make_shared<og::sim::ControlChangeMessage>(remote_player_zero));
 
     const auto push_keyframe = [&] {
         server_transport->send_snapshot(
@@ -1960,6 +2004,8 @@ TEST(GameLoop, networked_spectator_follow_cycles_and_survives_full_resync)
     // preferred walker, with no local user-tag stamp.
     push_keyframe();
     ASSERT_TRUE(view->following_);
+    EXPECT_EQ(-1, static_cast<int>(view->global_player_index_))
+        << "an empty network seat vector must not inherit remote player 0";
     ASSERT_NE(nullptr, view->control);
     EXPECT_EQ(home_hero_id, view->control->entity_id());
     EXPECT_EQ(-1, static_cast<int>(view->control->user()));
@@ -2005,6 +2051,114 @@ TEST(GameLoop, networked_spectator_follow_cycles_and_survives_full_resync)
 
     session.gameplay_active_ = saved_gameplay_active;
     game_screen->save_data.numplayers = 1;
+    game_screen->world().delete_objects();
+}
+
+// The host install has the same empty-seat meaning as the joiner install. A
+// zero-seat host still owns match authority, but its display must not borrow
+// remote player 0 merely because the legacy local-shadow fallback also uses an
+// empty vector. An additional unbound remote spectator must receive the real
+// InitialSetup/snapshot handshake too; it has no binding that could register it
+// by accident. Drive the host shadow with a separate remote P0 so the first
+// controlled-id entry is deliberately nonzero.
+TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    og::ui::PickerLobbyGameStartConfig start_config =
+        make_one_view_lobby_start_config(save);
+    start_config.is_networked = true;
+    start_config.local_player_index = 0xffu;
+    start_config.local_player_indices.clear();
+    start_config.local_seat_teams.clear();
+    start_config.save_data.numplayers = 0;
+    for (std::size_t slot = 0;
+         slot < start_config.save_data.team_list.size();
+         ++slot)
+    {
+        start_config.save_data.team_list[slot].owner_player_index = 0u;
+        start_config.save_data.team_list[slot].owner_save_slot =
+            static_cast<std::uint8_t>(slot);
+    }
+
+    ready_screen_for_game_start(*game_screen, &start_config);
+    glad_init(false, &start_config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(gameplay_session.networked_session_);
+    ASSERT_EQ(0, static_cast<int>(game_screen->save_data.numplayers));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    auto host_local_client_transport =
+        server_transport->create_client_transport();
+    auto remote_player_transport =
+        server_transport->create_client_transport();
+    auto remote_spectator_transport =
+        server_transport->create_client_transport();
+    og::sim::GameClient remote_spectator(
+        *remote_spectator_transport,
+        remote_spectator_transport->local_peer_id());
+    const std::vector<og::sim::LobbyPlayerBinding> player_bindings = {
+        og::sim::LobbyPlayerBinding{
+            .peer_id = remote_player_transport->local_peer_id(),
+            .local_slot = 0u,
+            .player_index = 0u,
+            .team = 0,
+        },
+    };
+
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        server_transport,
+        host_local_client_transport,
+        player_bindings);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_spectator.poll_messages();
+        const og::sim::GameClient* const display_client =
+            game_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->controlled_entity_ids()[0] != 0u &&
+            view->following_ && view->control != nullptr &&
+            remote_spectator.initial_setup().has_value() &&
+            remote_spectator.baseline().has_value();
+    })) << "both zero-seat displays should receive the production handoff";
+
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    ASSERT_NE(0u, display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(-1, static_cast<int>(view->global_player_index_))
+        << "host authority must not manufacture a local seat";
+    EXPECT_EQ(display_client->controlled_entity_ids()[0],
+              view->control->entity_id());
+    EXPECT_TRUE(view->following_);
+    EXPECT_NE(0u, remote_spectator.controlled_entity_ids()[0])
+        << "the unbound remote spectator receives the live control map";
+
+    const std::uint32_t spectator_initial_tick =
+        remote_spectator.last_seen_server_tick();
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_spectator.poll_messages();
+        return remote_spectator.last_seen_server_tick() >
+                spectator_initial_tick &&
+            !remote_spectator_transport->connected_peers().empty();
+    })) << "the zero-seat remote survives Hello and receives later ticks";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
 }
 

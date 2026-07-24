@@ -164,6 +164,8 @@ const char* ctf_team_color_name(int team);
 // scan; usable before ctf_initialize_for_level runs (e.g. by team-choice
 // surfaces constraining CTF team selection to authored teams).
 void ctf_authored_flag_teams(const GameWorld& world, bool (&present)[4]);
+[[nodiscard]] std::uint8_t
+ctf_authored_flag_team_mask(const GameWorld& world) noexcept;
 
 // True when a kind-0 (player revive) entry for this corpse is still pending.
 // Shared by the HUD countdown and the view-control keep-alive paths.

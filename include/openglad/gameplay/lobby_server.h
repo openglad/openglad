@@ -94,23 +94,33 @@ private:
     void apply_transport_disconnects();
     struct ConnectedPeerState {
         std::uint64_t connection_order = 0;
+        LobbyMachineId machine_id = kInvalidLobbyMachineId;
         // The peer's local seats in seat order (empty = not joined). Seat k is
         // driven by the peer's InputState slot k.
         std::vector<LobbyPlayer> seats = {};
+        // Removing the final seat leaves the peer connected as a true
+        // spectator: it is absent from LobbyState, readiness, capacity, and
+        // gameplay bindings. Retain only its stable command token privately so
+        // a later [+] can reactivate the same seat identity.
+        LobbySeatId dormant_seat_id = kInvalidLobbySeatId;
+        // Recipient-specific Join acknowledgement. This is deliberately peer
+        // state rather than canonical LobbyState so another client's broadcast
+        // can never appear to acknowledge this peer's in-flight declaration.
+        std::uint32_t last_join_request_id = 0;
     };
 
-    [[nodiscard]] std::int16_t effective_team_limit() const noexcept;
-    // Cross-peer availability only; same-peer seats are skipped (within-peer
-    // distinctness is enforced via the sibling_teams argument below).
+    [[nodiscard]] std::uint8_t effective_team_mask() const noexcept;
+    // Team validity/availability. Explicit assignments permit sharing within
+    // and across peers; the effective authored CTF domain is still enforced.
     [[nodiscard]] bool is_team_available(std::int16_t team,
                                          PeerId peer_id) const noexcept;
     [[nodiscard]] std::int16_t resolve_team(
         PeerId peer_id,
         std::int16_t requested_team,
         std::optional<std::int16_t> current_team) const noexcept;
-    // Seat-aware resolve: like resolve_team, but also refuses teams already
-    // held by the same peer's OTHER seats (sibling_teams), which stay
-    // distinct even when cross-peer sharing is allowed.
+    // Seat-aware resolve. sibling_teams is retained for source compatibility
+    // with the legacy distinct-seat callers, but no longer excludes duplicate
+    // assignments.
     [[nodiscard]] std::int16_t resolve_seat_team(
         PeerId peer_id,
         std::int16_t requested_team,
@@ -129,9 +139,12 @@ private:
     [[nodiscard]] bool start_allowed(PeerId requester,
                                      StartDenialReason& reason) const noexcept;
     void rebuild_state();
+    [[nodiscard]] LobbySeatId allocate_seat_id();
+    [[nodiscard]] LobbyMachineId allocate_machine_id();
     void send_state(PeerId peer_id) const;
     void broadcast_state() const;
-    void broadcast_start_game(std::uint8_t player_index) const;
+    void broadcast_start_game(std::uint8_t player_index,
+                              std::uint32_t request_id) const;
     void reassign_host_peer();
     void process_lobby_message(PeerId peer_id, const LobbyMessage& message);
 
@@ -140,9 +153,15 @@ private:
     LobbyState state_;
     std::vector<PeerId> connected_transport_peers_;
     std::vector<PeerId> pending_transport_disconnects_;
+    // A client can return to Base Camp before the host does. If its next-round
+    // Join reaches a still-locked server, retain the latest declaration until
+    // unlock_for_new_round() instead of losing the only refresh it will send.
+    std::vector<std::pair<PeerId, LobbyMessage>> pending_locked_joins_;
     std::unordered_map<PeerId, ConnectedPeerState> peers_;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     std::uint64_t next_connection_order_ = 1;
+    LobbySeatId next_seat_id_ = 1;
+    LobbyMachineId next_machine_id_ = 1;
     bool start_game_requested_ = false;
     bool lobby_locked_ = false;
 };

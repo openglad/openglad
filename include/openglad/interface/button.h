@@ -167,15 +167,15 @@ Sint32 change_allied();
 Sint32 change_ctf_teams();
 Sint32 change_ctf_caps();
 Sint32 change_ctf_troops();
-Sint32 create_teams_menu(Sint32 arg1); // Team choice & match settings subscreen
+Sint32 create_teams_menu(Sint32 arg1); // MATCHUP overview/settings subscreen
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
-Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/teams/progress subscreen
-Sint32 teams_page_flip(Sint32 team);      // TEAMS per-team member pager
+Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/matchup/progress subscreen
+Sint32 teams_page_flip(Sint32 team);      // MATCHUP per-team member pager
 Sint32 teams_join_team(Sint32 team);
 Sint32 teams_cycle_guy(Sint32 whichway);
 Sint32 teams_cycle_guy_team(Sint32 whichway);
-// origin_button_index < 0: the TEAMS READY mirror (index-refreshes its own
+// origin_button_index < 0: the legacy MATCHUP READY mirror (index-refreshes its own
 // label); >= 0: the base-camp READY twin (§2.6 — the engine label/color
 // pass re-derives its surfaces, so no index write happens here).
 Sint32 teams_toggle_ready(Sint32 origin_button_index);
@@ -200,6 +200,7 @@ Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
+std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
 

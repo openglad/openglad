@@ -1530,6 +1530,7 @@ void picker_cleanup_resources()
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
     pks().mainmenu_buttons.clear();
+    pks().seat_settings_buttons.clear();
     pks().createmenu_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
@@ -1639,7 +1640,7 @@ static const button k_networking_menu_buttons[] =
 // create_save_menu / create_load_menu live in menu_screen_specs.cpp
 // (docs/menu-engine.md).
 
-// TEAMS subscreen (create_teams_menu): engine-hosted — the spec, accessor
+// MATCHUP subscreen (create_teams_menu): engine-hosted — the spec, accessor
 // shim, and entry wrapper live in menu_screen_specs.cpp; the per-frame
 // machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
 // (docs/menu-engine.md).
@@ -1948,6 +1949,20 @@ static std::string get_key_display_name_short(int keycode)
     return sname;
 }
 
+std::string player_control_key_display_name(int player_index, int key_enum)
+{
+    if (player_index < 0 || player_index >= 4 ||
+        key_enum < 0 || key_enum >= NUM_KEYS)
+    {
+        return "--";
+    }
+    const int keycode =
+        og::runtime::current_session->player_keys_[player_index][key_enum];
+    return keycode == KEYCODE_UNKNOWN
+        ? "--"
+        : get_key_display_name_short(keycode);
+}
+
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
@@ -1955,22 +1970,23 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
 
     const bool eight_dir =
         get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
-    const std::string up_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP]);
-    const std::string left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_LEFT]);
-    const std::string down_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN]);
-    const std::string right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_RIGHT]);
-    const std::string yell_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_YELL]);
-    const std::string fire_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_FIRE]);
-    const std::string special_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL]);
+    const std::string up_s = player_control_key_display_name(player_index, KEY_UP);
+    const std::string left_s = player_control_key_display_name(player_index, KEY_LEFT);
+    const std::string down_s = player_control_key_display_name(player_index, KEY_DOWN);
+    const std::string right_s = player_control_key_display_name(player_index, KEY_RIGHT);
+    const std::string yell_s = player_control_key_display_name(player_index, KEY_YELL);
+    const std::string fire_s = player_control_key_display_name(player_index, KEY_FIRE);
+    const std::string special_s = player_control_key_display_name(player_index, KEY_SPECIAL);
     const std::string special_switch_s =
-        get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL_SWITCH]);
-    const std::string switch_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SWITCH]);
-    const std::string shifter_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SHIFTER]);
+        player_control_key_display_name(player_index, KEY_SPECIAL_SWITCH);
+    const std::string switch_s =
+        player_control_key_display_name(player_index, KEY_SWITCH);
+    const std::string shifter_s =
+        player_control_key_display_name(player_index, KEY_SHIFTER);
     // Unbound look-up (the P4 8-direction default, or user-cleared) shows
     // "--" instead of the empty string SDL names keycode 0 with.
-    const int lookup_key = og::runtime::current_session->player_keys_[player_index][KEY_LOOKUP];
-    const std::string lookup_s = lookup_key == KEYCODE_UNKNOWN
-        ? "--" : get_key_display_name_short(lookup_key);
+    const std::string lookup_s =
+        player_control_key_display_name(player_index, KEY_LOOKUP);
     const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
         yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s, lookup_s);
 
@@ -1989,10 +2005,14 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
         };
     }
 
-    const std::string up_right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP_RIGHT]);
-    const std::string down_right_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN_RIGHT]);
-    const std::string down_left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_DOWN_LEFT]);
-    const std::string up_left_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_UP_LEFT]);
+    const std::string up_right_s =
+        player_control_key_display_name(player_index, KEY_UP_RIGHT);
+    const std::string down_right_s =
+        player_control_key_display_name(player_index, KEY_DOWN_RIGHT);
+    const std::string down_left_s =
+        player_control_key_display_name(player_index, KEY_DOWN_LEFT);
+    const std::string up_left_s =
+        player_control_key_display_name(player_index, KEY_UP_LEFT);
 
     if (remap_mode)
     {
@@ -2034,6 +2054,17 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
     mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
     mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+}
+
+// Remapping is intentionally a blocking prompt, but a network guest must
+// still receive an accepted host GO while waiting for the next key. Returning
+// false cancels the prompt sequence; the enclosing engine screen then sees
+// the same remote-start flag at its next loop-top check and unwinds normally.
+static bool poll_lobby_during_control_remap()
+{
+    picker_lobby_poll();
+    return !g_start_game_requested ||
+        !picker_lobby_has_game_start_config();
 }
 
 static void remap_player_keys(int player_index)
@@ -2082,7 +2113,11 @@ static void remap_player_keys(int player_index)
     {
         const auto& prompt = prompts[idx];
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
-        assignKeyFromWaitEvent(player_index, prompt.key);
+        if (!assignKeyFromWaitEventPolling(
+                player_index, prompt.key, &poll_lobby_during_control_remap))
+        {
+            break;
+        }
     }
 }
 
@@ -2784,12 +2819,13 @@ Sint32 change_hire_teamnum(Sint32 arg)
 
 Sint32 change_allied()
 {
+   // Change our allied mode (on or off)
+   //
+   // Heritage compatibility: current menus no longer expose this global
+   // switch; Base Camp assigns every player seat explicitly. Old saves and
+   // replay/wire records still carry allied_mode, so the retired action stays
+   // callable for compatibility tests and older integrations.
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
-
-   // G8 sweep (design §1.2): the old raw allbuttons_[7] click-side label
-   // write is gone. PLAYER SETTINGS owns the pvp_allied LabelBinding and
-   // re-derives both label surfaces every frame, so the write stays
-   // redundant after the row's move off the main menu.
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -2800,7 +2836,7 @@ Sint32 change_allied()
    return MENU_OK;
 }
 
-// Refresh a TEAMS-subscreen settings button's label in both the live vbutton
+// Refresh a MATCHUP settings button's label in both the live vbutton
 // array and the mutable descriptor row that backs later redraws.
 static void refresh_teamsmenu_button_label(int button_index,
                                            const std::string& label)
@@ -3076,17 +3112,17 @@ Sint32 teams_join_team(Sint32 team)
    if (!picker_lobby_is_networked() &&
        !og::ui::team_has_members(save, static_cast<short>(team)))
    {
-       popup_dialog("TEAMS", "NO HEROES ON\nTHIS TEAM");
+       popup_dialog("MATCHUP", "NO HEROES ON\nTHIS TEAM");
        return MENU_OK;
    }
 
    if (!picker_lobby_request_team_change(static_cast<short>(team)))
-       popup_dialog("TEAMS", "TEAM TAKEN");
+       popup_dialog("MATCHUP", "CHANGE DENIED");
 
    return MENU_OK;
 }
 
-// Advance the TEAMS subscreen's selected roster slot to the next occupied
+// Advance the retired MATCHUP roster cursor to the next occupied
 // slot in `whichway` (+1/-1), wrapping. Returns the new slot, or -1 when the
 // roster is empty.
 static int advance_teams_menu_guy_slot(const SaveData& save, int whichway)
@@ -3141,7 +3177,7 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
        return MENU_OK;
    if (!picker_lobby_save_slot_editable(slot))
    {
-       popup_dialog("TEAMS", "LOCKED");
+       popup_dialog("TEAM", "LOCKED");
        return MENU_OK;
    }
 
@@ -3158,10 +3194,10 @@ Sint32 teams_cycle_guy_team(Sint32 whichway)
    return MENU_OK;
 }
 
-// Shared by the TEAMS mirror (origin_button_index < 0) and the base-camp
-// READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the same
-// lobby flag. The TEAMS mirror refreshes its label by index for the
-// same-frame flip; the base-camp twin is re-derived by the engine
+// Shared by the retired MATCHUP mirror (origin_button_index < 0) and the
+// base-camp READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the
+// same lobby flag. The compatibility mirror refreshes its label by index for
+// the same-frame flip; the base-camp twin is re-derived by the engine
 // label/color pass the same frame (a cross-screen index write here would
 // stamp a roster row instead).
 Sint32 teams_toggle_ready(Sint32 origin_button_index)
@@ -3170,9 +3206,9 @@ Sint32 teams_toggle_ready(Sint32 origin_button_index)
    if (ready)
    {
        // §2.6 client ready gate: cross-control OFF + brought characters +
-       // none deployed => popup instead of readying. Spectator/empty-roster
-       // machines ready freely [NET-R9]; the server GO gate is the
-       // authoritative backstop either way.
+       // none deployed => popup instead of readying. An active seat with an
+       // empty roster bypasses this local deploy check [NET-R9]. A true
+       // zero-seat client has no READY action and never reaches this handler.
        const og::ui::ReadyGoPresentation presentation =
            picker_compute_ready_go_presentation();
        if (presentation.state == og::ui::ReadyGoState::ClientUnready &&
@@ -3193,7 +3229,7 @@ Sint32 teams_toggle_ready(Sint32 origin_button_index)
    return MENU_OK;
 }
 
-// TEAMS per-team member pager: advance the team's detail slice. The frame
+// MATCHUP per-team detail pager: advance the team's detail slice. The frame
 // loop (compute_teams_menu_state) wraps the raw counter onto the current
 // page count, so a shrinking roster can never strand the page out of range.
 Sint32 teams_page_flip(Sint32 team)

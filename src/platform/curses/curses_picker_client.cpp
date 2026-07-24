@@ -272,7 +272,7 @@ private:
         term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
         ++row;
         const int footer = term_.rows() - 1;
-        // Scroll-follow: when the list outgrows the terminal (e.g. the Teams
+        // Scroll-follow: when the list outgrows the terminal (e.g. the Matchup
         // roster with a full 24-member team), start drawing from an offset
         // that keeps the cursor row visible instead of truncating the tail.
         const int capacity = footer - row;
@@ -605,32 +605,37 @@ void train_team(Menu& menu, SaveData& save, int seed_slot)
     }
 }
 
-// Roster grouped by team. "Play on {COLOR}" re-seats P1 (my_team); Enter on a
-// character cycles its team (local sessions; the curses picker holds no live
-// lobby, networking negotiates teams in the lobby screen instead).
+// MATCHUP groups the roster by team. A curses process owns at most one local
+// seat, so its leading row cycles P1's real launch/lobby assignment
+// (SaveData::my_team); Enter on a character still cycles that roster member's
+// combat team.
 void teams_screen(Menu& menu, SaveData& save)
 {
+    if (save.my_team < 0 || save.my_team >= SCORE_TEAM_COUNT)
+        save.my_team = 0;
+
     int cursor = 0;
     for (;;) {
         struct RowAction {
-            short play_team = -1;
+            bool cycle_player = false;
             int cycle_slot = -1;
         };
         std::vector<ListEntry> entries;
         std::vector<RowAction> actions;
-        const std::vector<short> seats = og::ui::derive_local_seat_teams(save);
 
-        // Only seats below numplayers materialize in-game (game.cpp
-        // truncates the derivation at numviews); never tag the rest.
-        const size_t seat_limit = std::min<size_t>(
-            seats.size(), static_cast<size_t>(save.numplayers));
+        const bool has_local_player = save.numplayers != 0;
+        if (has_local_player) {
+            entries.push_back(ListEntry{"Seats", false});
+            actions.push_back(RowAction{});
+            entries.push_back(ListEntry{std::format(
+                "P1 plays {}",
+                og::sim::ctf_team_color_name(save.my_team)), true});
+            actions.push_back(RowAction{.cycle_player = true});
+        }
 
         for (short t = 0; t < 4; ++t) {
-            std::string seat_tag;
-            for (size_t seat = 0; seat < seat_limit; ++seat) {
-                if (seats[seat] == t)
-                    seat_tag = std::format("(P{})", seat + 1);
-            }
+            const std::string seat_tag =
+                has_local_player && save.my_team == t ? "(P1)" : "";
 
             int hero_count = 0;
             std::vector<std::pair<int, std::string>> members;
@@ -648,29 +653,22 @@ void teams_screen(Menu& menu, SaveData& save)
             entries.push_back(ListEntry{og::ui::format_team_row_label(
                 t, hero_count, false, false, false, seat_tag), false});
             actions.push_back(RowAction{});
-            if (hero_count > 0) {
-                entries.push_back(ListEntry{std::format("  Play on {}",
-                    og::sim::ctf_team_color_name(t)), true});
-                actions.push_back(RowAction{.play_team = t});
-            }
             for (auto& [slot, label] : members) {
                 entries.push_back(ListEntry{std::move(label), true});
                 actions.push_back(RowAction{.cycle_slot = slot});
             }
         }
 
-        const int choice = menu.choose("Teams", entries,
-            "Enter: play / cycle character team | Esc back", cursor);
+        const int choice = menu.choose("Matchup", entries,
+            "Enter: cycle seat / character team | Esc back", cursor);
         if (choice < 0)
             return;
         cursor = choice;
 
         const RowAction& action = actions[static_cast<size_t>(choice)];
-        if (action.play_team >= 0) {
-            if (!og::ui::set_preferred_team(save, action.play_team)) {
-                menu.show_text("Teams", {std::format("No heroes on {} team.",
-                    og::sim::ctf_team_color_name(action.play_team))});
-            }
+        if (action.cycle_player) {
+            save.my_team =
+                static_cast<short>((save.my_team + 1) % SCORE_TEAM_COUNT);
         } else if (action.cycle_slot >= 0) {
             if (og::ui::cycle_guy_team(save, action.cycle_slot, 1) >= 0)
                 autosave_company_after_mutation(save);  // §3.8 team cycle
@@ -773,19 +771,23 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
-            og::ui::set_player_count(save_data_, item.arg);
-            menu.show_text("Players",
-                {std::format("Player mode set to {}.", item.arg)});
+            if (item.arg > 1) {
+                og::ui::set_player_count(save_data_, 1);
+                menu.show_text("Players",
+                    {"The curses client supports one local player.",
+                     "Network players join from separate clients."});
+            } else {
+                og::ui::set_player_count(save_data_, item.arg);
+                menu.show_text("Players",
+                    {std::format("Player mode set to {}.", item.arg)});
+            }
             break;
         case PickerMenuCommand::ToggleAlliedMode:
-            og::ui::toggle_allied_mode(save_data_);
-            menu.show_text("Seat Mode",
-                {std::format("Seat mode set to {}.",
-                    og::ui::is_allied_mode(save_data_) ? "Together" : "Split")});
-            // §3.8 settings tail: persisted match settings autosave like any
-            // other base-camp mutation (E4 — a toggled setting must survive
-            // quit without an explicit save).
-            autosave_company_after_mutation(save_data_);
+            // Compatibility-only command: no current menu exposes it. If an
+            // older caller dispatches the enum, point at the new per-level
+            // surface without mutating the legacy persisted bit.
+            menu.show_text("Base Camp",
+                {"Choose this player's team from Matchup."});
             break;
         case PickerMenuCommand::LevelEdit:
             menu.show_text("Level Editor",

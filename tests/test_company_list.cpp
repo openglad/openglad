@@ -92,6 +92,23 @@ std::filesystem::path company_path(const std::string& slot)
     return std::filesystem::path(get_user_path()) / "save" / (slot + ".gtl");
 }
 
+// GTL keeps the retired player-count byte at offset 132 so old readers retain
+// their fixed layout. New readers must consume it for compatibility without
+// letting one company's historical local-player choice replace this session's
+// live picker mode.
+bool patch_legacy_player_count(const std::string& slot, std::uint8_t count)
+{
+    constexpr std::streamoff kLegacyPlayerCountOffset = 132;
+    std::fstream file(company_path(slot),
+                      std::ios::binary | std::ios::in | std::ios::out);
+    if (!file)
+        return false;
+    file.seekp(kLegacyPlayerCountOffset);
+    const char byte = static_cast<char>(count);
+    file.write(&byte, 1);
+    return static_cast<bool>(file);
+}
+
 // Loadable company with one named, deployed soldier on team 0 — the roster
 // shape the cross-company lobby re-seed flow asserts on (the roster is the
 // field the polled lobby cache used to clobber).
@@ -158,6 +175,14 @@ struct CompanySlotCleanup {
                 (void)og::data::delete_company_backup(slot, backup.seq);
             (void)remove_user_file("save/" + slot + ".gtl");
         }
+    }
+};
+
+struct ActiveCompanySlotRestore {
+    std::string slot = og::data::active_company_slot();
+    ~ActiveCompanySlotRestore()
+    {
+        (void)og::data::set_active_company_slot(slot);
     }
 };
 
@@ -561,6 +586,67 @@ int continue_corrupt_only_injector(void* data)
 }
 
 } // namespace
+
+// Player count is picker-session state, not company state. Exercise the real
+// header validation + full GTL body load for every supported live mode while
+// deliberately making the retired on-disk byte disagree.
+TEST(CompanyList, open_company_slot_preserves_live_player_mode)
+{
+    CompanySlotCleanup cleanup{{"runtimecountdirect"}};
+    ActiveCompanySlotRestore active_slot_restore;
+    ASSERT_TRUE(seed_company("runtimecountdirect", "RUNTIME COUNT", 1000));
+
+    for (int live_count = 0; live_count <= MAX_PLAYERS; ++live_count) {
+        SCOPED_TRACE(std::string("live_count=") + std::to_string(live_count));
+        const std::uint8_t legacy_count = static_cast<std::uint8_t>(
+            live_count == MAX_PLAYERS ? 0 : live_count + 1);
+        ASSERT_TRUE(
+            patch_legacy_player_count("runtimecountdirect", legacy_count));
+
+        SaveData live;
+        live.numplayers = static_cast<unsigned char>(live_count);
+        SaveDataIoError io = SaveDataIoError::None;
+        ASSERT_EQ(og::ui::ContinueResult::Opened,
+                  og::ui::open_company_slot(
+                      live, "runtimecountdirect", &io));
+        EXPECT_EQ(SaveDataIoError::None, io);
+        EXPECT_EQ(live_count, static_cast<int>(live.numplayers))
+            << "the legacy GTL byte belongs to the file format, not this "
+               "picker session";
+    }
+}
+
+// CONTINUE adds startup-company selection ahead of the same full load. Pin
+// this fixture far enough into the future to outrank any wall-clock-stamped
+// company left by another shuffled flow, then prove the selection layer also
+// cannot import a stale client-local player count.
+TEST(CompanyList, open_most_recent_company_preserves_live_player_mode)
+{
+    CompanySlotCleanup cleanup{{"runtimecountcontinue"}};
+    ActiveCompanySlotRestore active_slot_restore;
+    ASSERT_TRUE(seed_company(
+        "runtimecountcontinue", "RUNTIME CONTINUE",
+        INT64_C(400000000000000)));
+
+    for (int live_count = 0; live_count <= MAX_PLAYERS; ++live_count) {
+        SCOPED_TRACE(std::string("live_count=") + std::to_string(live_count));
+        const std::uint8_t legacy_count = static_cast<std::uint8_t>(
+            live_count == MAX_PLAYERS ? 0 : live_count + 1);
+        ASSERT_TRUE(
+            patch_legacy_player_count("runtimecountcontinue", legacy_count));
+
+        SaveData live;
+        live.numplayers = static_cast<unsigned char>(live_count);
+        SaveDataIoError io = SaveDataIoError::None;
+        ASSERT_EQ(og::ui::ContinueResult::Opened,
+                  og::ui::open_most_recent_company(live, &io));
+        EXPECT_EQ(SaveDataIoError::None, io);
+        EXPECT_EQ("runtimecountcontinue",
+                  og::data::active_company_slot());
+        EXPECT_EQ(live_count, static_cast<int>(live.numplayers))
+            << "CONTINUE must preserve spectator and every local seat count";
+    }
+}
 
 // Open: row 0 is the most-recent company — exactly what CONTINUE opens — and
 // opening it repoints the active slot, loads the save, and lands on team

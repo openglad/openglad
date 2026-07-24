@@ -352,7 +352,18 @@ int main(int argc, char* argv[])
             *session.ctx_.sim_events,
             transport);
         for (const og::sim::PeerId peer_id : transport.connected_peers())
-            game_server.connect_client(peer_id);
+        {
+            const bool owns_seat = std::any_of(
+                player_bindings.begin(),
+                player_bindings.end(),
+                [peer_id](const og::sim::LobbyPlayerBinding& binding) {
+                    return binding.peer_id == peer_id;
+                });
+            if (owns_seat)
+                game_server.connect_client(peer_id);
+            else
+                game_server.connect_spectator(peer_id);
+        }
         for (const og::sim::LobbyPlayerBinding& binding : player_bindings)
         {
             game_server.bind_player(binding.peer_id,

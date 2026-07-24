@@ -294,6 +294,7 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.difficulty);
     append_i16(payload, settings.allied_mode);
     append_i16(payload, settings.ctf_team_count);
+    append_u8(payload, settings.ctf_authored_team_mask);
     append_i16(payload, settings.ctf_capture_limit);
     append_i16(payload, settings.ctf_respawn_ticks);
     append_i16(payload, settings.ctf_strip_scenario_troops);
@@ -311,6 +312,7 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.difficulty = reader.read_i16();
     settings.allied_mode = reader.read_i16();
     settings.ctf_team_count = reader.read_i16();
+    settings.ctf_authored_team_mask = reader.read_u8();
     settings.ctf_capture_limit = reader.read_i16();
     settings.ctf_respawn_ticks = reader.read_i16();
     settings.ctf_strip_scenario_troops = reader.read_i16();
@@ -321,12 +323,13 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     return settings;
 }
 
-// v8 wire minimums: a slot is slot_index + slot_flags + the guy payload; a
-// player is index u8 + two empty strings (name, company: u32 lengths) +
-// team i16 + ready/is_host bools + the u32 slot count.
+// v9 wire minimums: a slot is slot_index + slot_flags + the guy payload; a
+// player is index u8 + stable seat_id u32 + machine_id u32 + two empty strings
+// (name, company: u32 lengths) + team i16 + ready/is_host bools + the u32 slot
+// count.
 constexpr std::size_t kMinSerializedLobbyCharacterSlotSize =
     2 + kMinSerializedGuyDataSize;
-constexpr std::size_t kMinSerializedLobbyPlayerSize = 17;
+constexpr std::size_t kMinSerializedLobbyPlayerSize = 25;
 
 // LobbyCharacterSlot slot_flags byte (v8): bit0 = deployed. The writer
 // zeroes bits 1-7; the reader masks bit0 and ignores the rest so future
@@ -354,6 +357,8 @@ void append_lobby_player(std::vector<std::uint8_t>& payload,
                          const og::sim::LobbyPlayer& player)
 {
     append_u8(payload, player.player_index);
+    append_u32(payload, player.seat_id);
+    append_u32(payload, player.machine_id);
     append_string(payload, player.name);
     append_string(payload, player.company);
     append_i16(payload, player.team);
@@ -369,6 +374,8 @@ og::sim::LobbyPlayer read_lobby_player(PayloadReader& reader)
 {
     og::sim::LobbyPlayer player;
     player.player_index = reader.read_u8();
+    player.seat_id = reader.read_u32();
+    player.machine_id = reader.read_u32();
     player.name = reader.read_string();
     player.company = reader.read_string();
     if (player.company.size() > og::sim::kMaxLobbyCompanyNameLength)
@@ -513,6 +520,11 @@ std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
             using Message = std::decay_t<decltype(lobby_message)>;
             if constexpr (std::is_same_v<Message, LobbyJoinMessage>)
             {
+                // v9: one declaration/retry generation. Keeping the nonce
+                // before the variable-size seat records makes malformed
+                // payloads fail before any potentially large allocations.
+                append_u32(payload, lobby_message.request_id);
+                append_bool(payload, lobby_message.resume_after_level);
                 append_lobby_player(payload, lobby_message.player);
                 // v7: extra seats (1..N-1) after seat 0.
                 append_u8(payload,
@@ -533,11 +545,18 @@ std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
             else if constexpr (std::is_same_v<Message, LobbyTeamChangeMessage>)
             {
                 append_u8(payload, lobby_message.player_index);
+                append_u32(payload, lobby_message.seat_id);
                 append_i16(payload, lobby_message.team);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyRemoveSeatMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+                append_u32(payload, lobby_message.seat_id);
             }
             else if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
             {
                 append_u8(payload, lobby_message.player_index);
+                append_u32(payload, lobby_message.request_id);
             }
             else if constexpr (std::is_same_v<Message,
                                               LobbySettingsChangeMessage>)
@@ -563,6 +582,8 @@ std::optional<LobbyMessage> deserialize_lobby_message(
             case LobbyMessageKind::Join:
             {
                 LobbyJoinMessage join;
+                join.request_id = reader.read_u32();
+                join.resume_after_level = reader.read_bool();
                 join.player = read_lobby_player(reader);
                 // v7: u8 extra-seat count, bounds-checked against the minimum
                 // serialized seat size so a crafted count cannot over-reserve.
@@ -602,8 +623,18 @@ std::optional<LobbyMessage> deserialize_lobby_message(
             {
                 LobbyTeamChangeMessage team_change;
                 team_change.player_index = reader.read_u8();
+                team_change.seat_id = reader.read_u32();
                 team_change.team = reader.read_i16();
                 message.payload = team_change;
+                break;
+            }
+
+            case LobbyMessageKind::RemoveSeat:
+            {
+                LobbyRemoveSeatMessage remove_seat;
+                remove_seat.player_index = reader.read_u8();
+                remove_seat.seat_id = reader.read_u32();
+                message.payload = remove_seat;
                 break;
             }
 
@@ -611,6 +642,7 @@ std::optional<LobbyMessage> deserialize_lobby_message(
             {
                 LobbyStartGameMessage start_game;
                 start_game.player_index = reader.read_u8();
+                start_game.request_id = reader.read_u32();
                 message.payload = start_game;
                 break;
             }
@@ -637,9 +669,22 @@ std::vector<std::uint8_t> serialize_lobby_state_message(const LobbyState& state)
     append_lobby_settings(payload, state.settings);
     append_u8(payload, state.host_player_id);
     append_u8(payload, state.last_start_denial);
+    append_u32(payload, state.last_start_request_id);
     append_u32(payload, static_cast<std::uint32_t>(state.players.size()));
     for (const auto& player : state.players)
         append_lobby_player(payload, player);
+    append_u8(payload,
+              static_cast<std::uint8_t>(std::min<std::size_t>(
+                  state.local_seat_ids.size(), MAX_PLAYERS)));
+    for (std::size_t index = 0;
+         index < state.local_seat_ids.size() &&
+         index < static_cast<std::size_t>(MAX_PLAYERS);
+         ++index)
+    {
+        append_u32(payload, state.local_seat_ids[index]);
+    }
+    append_u32(payload, state.last_join_request_id);
+    append_bool(payload, state.local_peer_is_host);
     return wrap_transport_message(kLobbyStateMessageType, payload);
 }
 
@@ -652,6 +697,7 @@ std::optional<LobbyState> deserialize_lobby_state_message(
             state.settings = read_lobby_settings(reader);
             state.host_player_id = reader.read_u8();
             state.last_start_denial = reader.read_u8();
+            state.last_start_request_id = reader.read_u32();
             const std::uint32_t player_count = reader.read_u32();
             if (!reader.ok() ||
                 player_count >
@@ -665,6 +711,26 @@ std::optional<LobbyState> deserialize_lobby_state_message(
             state.players.reserve(player_count);
             for (std::uint32_t i = 0; i < player_count && reader.ok(); ++i)
                 state.players.push_back(read_lobby_player(reader));
+
+            const std::uint8_t local_seat_count = reader.read_u8();
+            const std::size_t remaining = reader.remaining_bytes();
+            if (!reader.ok() ||
+                remaining < sizeof(std::uint32_t) + sizeof(std::uint8_t) ||
+                static_cast<std::size_t>(local_seat_count) >
+                    (remaining - sizeof(std::uint32_t) -
+                     sizeof(std::uint8_t)) /
+                        sizeof(LobbySeatId) ||
+                local_seat_count > MAX_PLAYERS)
+            {
+                reader.fail();
+                return;
+            }
+            state.local_seat_ids.clear();
+            state.local_seat_ids.reserve(local_seat_count);
+            for (std::uint8_t i = 0; i < local_seat_count && reader.ok(); ++i)
+                state.local_seat_ids.push_back(reader.read_u32());
+            state.last_join_request_id = reader.read_u32();
+            state.local_peer_is_host = reader.read_bool();
         });
 }
 

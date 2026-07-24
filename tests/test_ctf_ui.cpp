@@ -43,7 +43,7 @@
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-// TESTING hook (picker_team_build.cpp): render one TEAMS-subscreen frame in
+// TESTING hook (picker_team_build.cpp): render one MATCHUP frame in
 // the real draw order so pixel probes can run without the blocking loop.
 void picker_test_render_teams_menu_frame();
 
@@ -703,10 +703,10 @@ TEST(CtfUi, radar_draws_flag_and_control_point_blips)
 }
 
 // The team-build screen keeps a single always-visible SCENARIO entry (the
-// scenario commands and the TEAMS subscreen live behind it now), and the
-// TEAMS subscreen's settings buttons cycle the save fields through the same
+// scenario commands and the MATCHUP overview live behind it now), and the
+// MATCHUP settings buttons cycle the save fields through the same
 // handlers.
-TEST(CtfUi, team_build_row_and_teams_subscreen_settings_cycle)
+TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
@@ -724,11 +724,14 @@ TEST(CtfUi, team_build_row_and_teams_subscreen_settings_cycle)
         ASSERT_EQ(kCreateMenuButtonCount, picker_createmenu_button_count());
         EXPECT_EQ("scenario", row[kCreateMenuScenarioIndex].id) << campaign;
         EXPECT_FALSE(row[kCreateMenuScenarioIndex].hidden) << campaign;
-        // TEAMS and VIEW LEVEL moved into the SCENARIO subscreen.
+        // MATCHUP and VIEW LEVEL live in the SCENARIO subscreen.
         button* scenario = picker_scenariomenu_buttons();
         ASSERT_EQ(kScenarioMenuButtonCount,
                   picker_scenariomenu_button_count());
-        EXPECT_EQ("teams", scenario[kScenarioMenuTeamsIndex].id) << campaign;
+        EXPECT_EQ("matchup", scenario[kScenarioMenuTeamsIndex].id)
+            << campaign;
+        EXPECT_EQ("MATCHUP", scenario[kScenarioMenuTeamsIndex].label)
+            << campaign;
         EXPECT_EQ("view_scenario",
                   scenario[kScenarioMenuViewScenarioIndex].id) << campaign;
         EXPECT_FALSE(scenario[kScenarioMenuTeamsIndex].hidden) << campaign;
@@ -736,7 +739,7 @@ TEST(CtfUi, team_build_row_and_teams_subscreen_settings_cycle)
             << campaign;
     }
 
-    // The CTF match settings live in the TEAMS subscreen now; their handlers
+    // The CTF match settings live in MATCHUP; their handlers
     // cycle the save fields and refresh the subscreen's descriptor labels.
     save.current_campaign = "org.openglad.ctf";
     save.ctf_team_count = 2;
@@ -825,7 +828,7 @@ TEST(CtfUi, editor_labels_resolve_for_ctf_objects)
 }
 
 // ---------------------------------------------------------------------------
-// Injector-driven picker flows for the TEAMS subscreen and the VIEW LEVEL
+// Injector-driven picker flows for MATCHUP and the VIEW LEVEL
 // viewer (test_back_to_mainmenu's continue_game pattern: save0 is written
 // first so CONTINUE lands straight in team build without prompts).
 // ---------------------------------------------------------------------------
@@ -969,6 +972,7 @@ struct TeamsFlowState
     bool finished = false;
     bool subscreen_opened = false;
     bool ctf_buttons_hidden = false;
+    bool retired_controls_hidden = false;
     bool you_on_team_0 = false;
     bool you_on_team_1 = false;
     bool viewer_opened = false;
@@ -985,39 +989,31 @@ int teams_local_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // Team build -> SCENARIO submenu -> TEAMS subscreen.
+    // Base Camp's seat-rail label opens MATCHUP directly.
     SDL_Delay(500);
-    wait_for_interactable("scenario", 10000);
+    wait_for_interactable("seats", 10000);
     SDL_Delay(750);
-    interact("scenario");
-    wait_for_interactable("teams", 10000);
-    SDL_Delay(300);
-    interact("teams");
+    interact("seats");
 
-    // TEAMS subscreen: classic local — joins + guy row, no CTF settings.
-    state->subscreen_opened = wait_for_interactable("join_team_0", 10000);
+    // Classic MATCHUP is overview-only: no JOIN, hero cycler, duplicate
+    // READY, or CTF settings.
+    state->subscreen_opened =
+        wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
     state->ctf_buttons_hidden = !has_interactable("ctf_teams") &&
         !has_interactable("ctf_caps") && !has_interactable("ctf_troops");
-    state->you_on_team_0 =
-        wait_for_interactable_label("join_team_0", "YOU", 3000);
+    state->retired_controls_hidden =
+        !has_interactable("join_team_0") &&
+        !has_interactable("guy_prev") &&
+        !has_interactable("guy_next") &&
+        !has_interactable("guy_team") &&
+        !has_interactable("ready");
 
-    // Move the selected hero to GREEN, then take its seat.
-    interact("guy_team");
-    SDL_Delay(300);
-    interact("join_team_1");
-    state->you_on_team_1 =
-        wait_for_interactable_label("join_team_1", "YOU", 5000);
-    // The label can flip while the previous click's press is still held;
-    // settle before the next click so its down-transition isn't swallowed.
-    SDL_Delay(300);
-
-    // Empty team: the JOIN bounces with a popup (TESTING: trace only).
-    interact("join_team_2");
-    SDL_Delay(300);
-
-    // TEAMS back returns to the SCENARIO submenu.
+    // MATCHUP back returns directly to Base Camp.
     interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("scenario", 10000);
+    interact("scenario");
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
@@ -1030,7 +1026,7 @@ int teams_local_flow_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
-    wait_for_interactable("teams", 10000);
+    wait_for_interactable("matchup", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1053,14 +1049,14 @@ int teams_ctf_settings_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // Team build -> SCENARIO submenu -> TEAMS subscreen.
+    // Team build -> SCENARIO submenu -> MATCHUP.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
-    wait_for_interactable("teams", 10000);
+    wait_for_interactable("matchup", 10000);
     SDL_Delay(300);
-    interact("teams");
+    interact("matchup");
 
     // CTF campaign + local host: the match-settings trio lives here.
     state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
@@ -1081,7 +1077,7 @@ int teams_ctf_settings_flow_injector(void* data)
         wait_for_interactable_label("ctf_troops", "Troops: Own", 5000);
     SDL_Delay(300);
 
-    // TEAMS back returns to the SCENARIO submenu.
+    // MATCHUP back returns to the SCENARIO submenu.
     interact("back");
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
@@ -1096,7 +1092,7 @@ int teams_ctf_settings_flow_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
-    wait_for_interactable("teams", 10000);
+    wait_for_interactable("matchup", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1192,7 +1188,7 @@ int view_scenario_pager_injector(void* data)
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     interact("back");
     SDL_Delay(300);
-    wait_for_interactable("teams", 10000);
+    wait_for_interactable("matchup", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1231,7 +1227,7 @@ struct TeamsPagerFlowState
     bool page3_seen = false;
 };
 
-// TEAMS per-team pager: an 8-hero RED team overflows the detail line, so
+// MATCHUP per-team pager: an 8-hero RED team overflows the detail line, so
 // team_page_0 shows and cycles the slice; empty GREEN has no pager.
 int teams_pager_flow_injector(void* data)
 {
@@ -1247,11 +1243,12 @@ int teams_pager_flow_injector(void* data)
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
-    wait_for_interactable("teams", 10000);
+    wait_for_interactable("matchup", 10000);
     SDL_Delay(300);
-    interact("teams");
+    interact("matchup");
 
-    state->subscreen_opened = wait_for_interactable("join_team_0", 10000);
+    state->subscreen_opened =
+        wait_for_interactable_at("back", 10, 170, 10000);
     SDL_Delay(300);
     state->pager_team0_visible = wait_for_interactable("team_page_0", 5000);
     state->pager_team1_hidden = !has_interactable("team_page_1");
@@ -1268,7 +1265,7 @@ int teams_pager_flow_injector(void* data)
         wait_for_picker_trace("teams_detail t=0 page=3/", 1, 5000);
     SDL_Delay(300);
 
-    // Unwind: TEAMS -> SCENARIO -> team build -> main menu.
+    // Unwind: MATCHUP -> SCENARIO -> team build -> main menu.
     interact("back");
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
@@ -1285,7 +1282,7 @@ int teams_pager_flow_injector(void* data)
 
 } // namespace
 
-TEST(CtfUi, teams_subscreen_local_join_and_viewer_flow)
+TEST(CtfUi, matchup_local_overview_and_viewer_flow)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -1305,14 +1302,15 @@ TEST(CtfUi, teams_subscreen_local_join_and_viewer_flow)
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
-    EXPECT_TRUE(state.subscreen_opened) << "TEAMS subscreen should open";
+    EXPECT_TRUE(state.subscreen_opened) << "MATCHUP should open from SEATS";
     EXPECT_TRUE(state.ctf_buttons_hidden)
         << "classic campaigns hide the CTF settings trio";
-    EXPECT_TRUE(state.you_on_team_0) << "P1 starts as YOU on RED";
-    EXPECT_TRUE(state.you_on_team_1) << "JOIN should relabel YOU on GREEN";
+    EXPECT_TRUE(state.retired_controls_hidden)
+        << "MATCHUP must not expose JOIN, hero cycling, or duplicate READY";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
 
-    EXPECT_EQ(1, save.my_team) << "JOIN GREEN must set my_team";
+    EXPECT_EQ(0, save.my_team)
+        << "the overview must not mutate the player's assigned team";
     const guy* alpha = nullptr;
     for (const auto& member : save.team_list)
     {
@@ -1320,15 +1318,16 @@ TEST(CtfUi, teams_subscreen_local_join_and_viewer_flow)
             alpha = member.get();
     }
     ASSERT_NE(nullptr, alpha);
-    EXPECT_EQ(1, alpha->teamnum) << "TEAM > must cycle the selected hero";
+    EXPECT_EQ(0, alpha->teamnum)
+        << "the overview must not mutate roster allegiance";
 
-    EXPECT_TRUE(trace_contains("popup", "NO HEROES"))
-        << "JOIN on an empty team must explain itself";
+    EXPECT_FALSE(trace_contains("popup", "NO HEROES"))
+        << "retired JOIN actions must not run";
     EXPECT_TRUE(trace_contains("picker", "view_scenario lines="))
         << "the viewer should trace its report";
 }
 
-TEST(CtfUi, teams_subscreen_ctf_settings_flow)
+TEST(CtfUi, matchup_ctf_settings_flow)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -1422,15 +1421,15 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
         << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
 }
 
-// TEAMS per-team member paging: an 8-hero team overflows the 34-char detail
-// line, so the row gets a '>' pager + a p/N indicator and the slices rotate
-// through every member; an empty team never shows a pager.
-TEST(CtfUi, teams_subscreen_member_pager_cycles_slices)
+// MATCHUP per-team detail paging: a seat and eight heroes overflow the
+// 39-character paged detail budget, so the row gets a '>' pager plus p/N,
+// and the slices rotate through every member. An empty team has no pager.
+TEST(CtfUi, matchup_member_pager_cycles_slices)
 {
     trace_clear();
     SavedPickerSave save_guard;
-    // 8 names whose ", "-joined detail is 56 chars: three 26-char slices
-    // ("Alpha, Bravo, Charlie" | "Delta, Echo, Foxtrot, Golf" | "Hotel").
+    // The seat identity and HEROES prefix consume part of page one; the
+    // widened row then packs the remaining names into three visible slices.
     write_save0_with_soldiers(
         "org.openglad.gladiator", 1,
         {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
@@ -1449,7 +1448,7 @@ TEST(CtfUi, teams_subscreen_member_pager_cycles_slices)
     g_picker_max_mainmenu_calls = 0;
 
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
-    EXPECT_TRUE(state.subscreen_opened) << "TEAMS subscreen should open";
+    EXPECT_TRUE(state.subscreen_opened) << "MATCHUP should open";
     EXPECT_TRUE(state.pager_team0_visible)
         << "the overflowing RED team must show its '>' pager";
     EXPECT_TRUE(state.pager_team1_hidden)
@@ -1460,28 +1459,30 @@ TEST(CtfUi, teams_subscreen_member_pager_cycles_slices)
     // The traces carry the rendered indicator (p/N) and the slice text:
     // each page shows a different run of member names.
     EXPECT_GE(count_picker_trace_containing(
-                  "teams_detail t=0 page=1/3 Alpha, Bravo, Charlie"), 1)
-        << "entry slice should list the first members";
+                  "teams_detail t=0 page=1/3 SEATS: P1 YOU, HEROES: Alpha, Bravo"),
+              1)
+        << "entry slice should identify the seat and first heroes";
     EXPECT_GE(count_picker_trace_containing(
-                  "teams_detail t=0 page=2/3 Delta, Echo, Foxtrot, Golf"), 1)
+                  "teams_detail t=0 page=2/3 Charlie, Delta, Echo, Foxtrot, Golf"),
+              1)
         << "page 2 should rotate to the middle members";
     EXPECT_GE(count_picker_trace_containing(
                   "teams_detail t=0 page=3/3 Hotel"), 1)
         << "page 3 should show the overflow tail";
 }
 
-// Draw-order regression: the per-team '>' pager is the only TEAMS button
-// whose face sits inside a row readability bar (8..234 x row band). The bars
+// Draw-order regression: the per-team '>' pager is the only MATCHUP button
+// whose face sits inside a row readability bar (8..312 x row band). The bars
 // must render BENEATH the buttons — when they were painted after
 // draw_buttons, every visible pager was dimmed to ~41% brightness (PURE_BLACK
 // alpha 150) unlike every other button. Renders one real frame via the
 // TESTING hook and compares the pager's face pixels against the same
 // BUTTON_FACING face style on buttons outside the bars.
-TEST(CtfUi, teams_subscreen_pager_face_not_dimmed_by_row_bar)
+TEST(CtfUi, matchup_pager_face_not_dimmed_by_row_bar)
 {
     SavedPickerSave save_guard;
-    // Same 8-name roster as the pager flow: team 0's detail line overflows
-    // the 34-char unpaged budget, so team_page_0 is visible.
+    // Same 8-name roster as the pager flow: team 0's detail line overflows,
+    // so team_page_0 is visible.
     write_save0_with_soldiers(
         "org.openglad.gladiator", 1,
         {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
@@ -1492,29 +1493,23 @@ TEST(CtfUi, teams_subscreen_pager_face_not_dimmed_by_row_bar)
     screen* s = test_screen();
     // Face-interior probes: inside each button, clear of the 1px borders and
     // of the centered 1-char '>' label (glyph starts at x=(x+xend)/2).
-    // team_page_0: (219,39,14x12) -> face (220..231, 40..49), glyph from 226.
+    // team_page_0: (297,39,14x12), with the glyph centered near x=304.
     int pager_face = -1;
-    s->get_pixel(221, 44, &pager_face);
-    // guy_next '>': (120,146,16x12) -> face (121..134, 147..156), glyph from
-    // 128 — same face style, same 1-char label, outside every row bar.
+    s->get_pixel(299, 44, &pager_face);
+    // BACK is a visible button outside every row bar and uses the same
+    // BUTTON_FACING face style.
     int reference_face = -1;
-    s->get_pixel(122, 151, &reference_face);
-    // join_team_0: (240,32,50x12) -> face interior at (243,35) — a second
-    // reference outside the bars (they end at x=234), inside the row band.
-    int join_face = -1;
-    s->get_pixel(243, 35, &join_face);
+    s->get_pixel(13, 174, &reference_face);
 
     EXPECT_EQ(reference_face, pager_face)
         << "pager face inside the row bar must match the undimmed button "
            "face style (bar painted over the button?)";
-    EXPECT_EQ(join_face, pager_face)
-        << "pager face must match the JOIN button face beside it";
 
     // And the bar itself still dims the backdrop around the button: a bar
     // pixel just below the pager (row band is y 30..51; the pager ends at
     // y=50) must not be the button-face color.
     int bar_pixel = -1;
-    s->get_pixel(221, 51, &bar_pixel);
+    s->get_pixel(299, 51, &bar_pixel);
     EXPECT_NE(bar_pixel, pager_face)
         << "row readability bar should still darken non-button pixels";
 

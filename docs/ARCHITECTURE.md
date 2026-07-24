@@ -388,7 +388,10 @@ Setting `save_data.numplayers = 0` enables spectator mode:
 - Only `InputAction::SwitchChar` works (cycles camera target)
 - All characters remain AI-controlled
 
-In the picker UI, right-clicking the player count button sets spectator mode, displaying a "SPECTATOR" label.
+In a network lobby, removing the machine's final owned seat through Base
+Camp's **SPECTATE** action leaves that client connected without a gameplay
+binding; **+** adds an active seat again. The old main-menu player-count
+right-click no longer exists.
 
 ---
 
@@ -493,15 +496,18 @@ emscripten_frame_wrapper()    (called ~60 FPS by browser)
 
 OpenGlad multiplayer is **server-authoritative**: one peer (the host) runs the
 deterministic simulation; every peer (including the host) renders a **mirror** of
-the authoritative state that it receives as snapshots. Up to 4 players. The same
-machinery also runs single-player and local split-screen — see
-[Local Transport Shadow](#local-transport-shadow).
+the authoritative state that it receives as snapshots. Each machine may
+contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
+machinery also runs single-player and local split-screen — see [Local Transport
+Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v8**, world
-snapshot format **v9**, and replay format **v10**. Protocol v8 is a hard cut for the
-Company/Base Camp multiplayer state (deployment, ready state, ownership, and
-cross-control); peers reject incompatible versions during the handshake, while
-snapshot and replay readers independently reject unsupported payload formats.
+The current network compatibility line is lobby/gameplay protocol **v9**, world
+snapshot format **v9**, and replay format **v11**. Protocol v9 adds stable,
+server-issued lobby seat identity and authoritative per-recipient ownership on
+top of the Company/Base Camp multiplayer state introduced by v8. Team changes
+and exact-seat removal use that identity rather than the mutable dense `P#`.
+Peers reject incompatible versions during the handshake, while snapshot and
+replay readers independently reject unsupported payload formats.
 
 ### Core components (`og_gameplay`, SDL-free)
 
@@ -511,7 +517,7 @@ snapshot and replay readers independently reject unsupported payload formats.
 | `GameClient` | `src/gameplay/game_client.cpp` | Mirror. Sends this peer's input, applies snapshots to its local mirror world, raises callbacks (initial setup, control mapping, sim/game-flow event batches, exit/pause prompts). |
 | `WorldSnapshot` | `src/gameplay/world_snapshot.cpp` | Serializes world state. Full **keyframes** and **deltas** against a baseline; per-entity `GuySnapshot`s; deterministic hashing for desync detection. |
 | `ITransport` | `src/gameplay/net_transport.cpp` | Typed message channel (snapshots, input, event batches, lobby messages, hello/heartbeat, exit/pause). Implementations below. |
-| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
+| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, seat lifecycle and team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
 
 **Transports** (`ITransport` implementations):
 
@@ -545,7 +551,14 @@ play the server and the single client are both in-process (`InProcessTransport`)
 
 ### Lobby → gameplay → lobby flow
 
-The team-build menu already coordinates a networked start. `IPickerLobbyClient`
+Base Camp coordinates a networked start. Its seat rail is a four-card view of
+the authoritative lobby roster, with paging for larger lobbies and **+** for
+adding a local seat. An owned card opens its machine-local control profile and
+next-level team assignment; a foreign card is read-only. The interface keeps
+stable seat tokens behind the dense display ordinals, so removing a middle
+seat cannot retarget a command to one of its siblings.
+
+`IPickerLobbyClient`
 (`src/interface/ui/picker_lobby_client.cpp`,
 `picker_lobby_network_client.cpp`) has three implementations:
 
@@ -554,19 +567,20 @@ The team-build menu already coordinates a networked start. `IPickerLobbyClient`
 - `JoinPickerLobbyClient` — connects to a remote host
 
 ```
-picker_team_build (lobby)                 each peer
+Base Camp / picker_team_build (lobby)     each peer
   ├── poll lobby, show status lines
+  ├── add/remove local seats and edit owned seats
   ├── host: request_start_game() ──┐
   └── join: wait for handoff       │   StartGame broadcast
                                    ▼
   install_gameplay_runtime() → reset_network_{host,client}_transport_shadow()
         creates the per-level GameServer / GameClient on the live transport
   glad_main()  ── play the level ──
-  glad_main returns (world.end != 0) → back to the team-build menu
+  glad_main returns (world.end != 0) → back to Base Camp
   resume_after_level()  reuse the SAME connection for the next level
 ```
 
-Between levels every peer returns to the team-build menu (single-player parity).
+Between levels every peer returns to Base Camp (single-player parity).
 The lobby connection **persists across `glad_main`** — `install_gameplay_runtime`
 keeps the host/join client's transport refs and `LobbyServer` alive (dormant
 during gameplay; the lobby is never polled inside the game loop), and
@@ -620,10 +634,16 @@ save_data
 ├── current_level           — next level to play
 ├── completed_levels        — set of finished level IDs
 ├── score, cash             — team resources
-└── numplayers              — 0–4 player count (0 = spectator mode)
+└── numplayers              — runtime-only 0–4 local seat/view projection
 ```
 
 Save slots are numbered 0–9. Slot 0 is the auto-save. The game saves after each completed level.
+The local player count (including spectator mode at 0), active seat tokens, and
+seat-team assignments are session state. They are not restored from or
+persisted in a company save. Although `numplayers` remains as an in-memory
+compatibility projection in `SaveData`, GTL writers emit a fixed one-player
+marker and current readers ignore the old field. Direction modes and keymaps
+live in the shared configuration, outside company storage.
 
 ### Campaign Packages
 
@@ -647,12 +667,16 @@ backed by `walker::find_path_to_point`). Flag pickup/return/capture ride the nor
 so control bindings and per-player save merging survive; team wipes never end a CTF match (gated
 at the GameServer/display endgame consumers).
 
-The whole `CtfState` is replicated in the `WorldSnapshot` world-scalar block (snapshot format v4,
-replay format v5), so mirrors, late joiners, replays, and the curses/text HUDs need no extra wire
-messages. Match settings (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`; 0 = Auto/map
-default) follow the `allied_mode` plumbing: SaveData (GTL v10) → LobbySettings → game start →
-`GameWorld::ctf_requested_*`. With the type bit clear, every CTF path reduces to one false branch:
-zero extra RNG draws, events, or entity changes (classic parity preserved).
+The whole `CtfState` is replicated in the `WorldSnapshot` world-scalar block.
+That support was introduced in snapshot format v4 and replay format v5 and is
+retained by the current v9/v11 formats, so mirrors, late joiners, replays, and
+the curses/text HUDs need no extra wire messages. Match settings
+(`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`; 0 = Auto/map
+default) follow the versioned SaveData (GTL v10) → LobbySettings → game start →
+`GameWorld::ctf_requested_*` path. Protocol v9 also carries the loaded map's
+authored-team mask so every peer agrees on sparse flag-team domains. With the
+type bit clear, every CTF path reduces to one false branch: zero extra RNG
+draws, events, or entity changes (classic parity preserved).
 
 The shipped campaign `builtin/org.openglad.ctf.glad` (levels 500–509: six adapted classic maps +
 four originals) is generated by `tools/ctf_mapgen` via `scripts/generate_ctf_campaign.sh`; the team-tinting

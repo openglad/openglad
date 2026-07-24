@@ -21,7 +21,7 @@ follows.
 - Full menu flow, reusing the existing data-driven menu model
   (`IPickerClient` / `run_picker` / `menu_model` / `picker_common`): new game,
   continue, hire, train, view roster, save/load, campaign select, level select,
-  options, help, difficulty, player count, and **networking (host & join)**.
+  options, help, difficulty, Base Camp, and **networking (host & join)**.
 - Real-time gameplay rendered as a roguelike: each tile is a character, each
   "dude" (walker) is a character chosen to approximate its family, drawn on the
   **nearest tile to its actual pixel coordinates** (entities move smoothly in
@@ -341,6 +341,15 @@ lifted from the SDL-free portions of the lobby clients, handoff modeled on
 `server_main.cpp`) and the networked variant of the level loop (host runs the
 `GameServer`; join only polls its `GameClient`).
 
+The lobby roster uses the same lobby-wide P# display ordinals as SDL Base Camp.
+`<`/`>` (or the arrow keys) moves between seats owned by this terminal and `t`
+cycles the selected seat's team; remote seats are read-only. One ncurses
+process currently advertises one local seat (split-screen remains a non-goal),
+while lobbies may contain more than four seats across network clients. The
+terminal Main menu no longer carries the old 1–4 player-count rows. SDL Base
+Camp's **+** and remove-seat lifecycle is unavailable in ncurses, so additional
+players join from separate clients.
+
 ---
 
 ## Test plan (CI-safe, no TTY)
@@ -349,7 +358,7 @@ All tests use `HeadlessTerminal` + `FakeClock`, so they run headlessly (no TTY) 
 the tty-specific bits of `CursesTerminal` (raw I/O, signals) are the only untested
 code; the parsing they depend on is covered by the `kitty_keys` decoder tests.
 Every case lives in a single CTest binary, **`og_test_curses`** (unit + component
-+ integration + networking, ~128 cases), plus the **`openglad_curses_link_no_sdl`**
++ integration + networking, ~210 cases), plus the **`openglad_curses_link_no_sdl`**
 CTest that asserts the shipped binary has zero SDL symbols.
 
 1. **glyph_map** — every living family id → expected glyph; treasure/weapon/

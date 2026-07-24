@@ -12,7 +12,10 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The expanded multi-seat menu/network matrix needs about 20 minutes for a
+    # clean compile plus tests on an uncached runner; leave room for the final
+    # curses, parity, and relay checks instead of cancelling a passing suite.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:

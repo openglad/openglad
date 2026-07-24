@@ -11,7 +11,6 @@
  *   state        - dump all entity positions/status as JSON
  *   census       - per-team alive counts + named-hero and crew status
  *   events       - drain and print accumulated sim events
- *   input <player> <key> - inject a player input
  *   quit         - exit
  *
  * All output is JSON lines on stdout.

@@ -249,6 +249,103 @@ TEST(UxShots, b_mainmenu_with_company) {
   ASSERT_EQ(1, state.captures);
 }
 
+// --- 2a. game settings and global controls ---------------------------------
+
+int game_settings_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_interactable("options", 5000)) {
+    SDL_Delay(1500);
+    interact("options");
+    if (wait_for_interactable("control_settings", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("game_settings");
+      interact("control_settings");
+    }
+    if (wait_for_interactable("controls_back", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("global_controls");
+      interact("controls_back");
+    }
+    if (wait_for_interactable("options_back", 5000)) {
+      SDL_Delay(300);
+      interact("options_back");
+    }
+  }
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, b1_game_settings_and_controls) {
+  trace_clear();
+  reap_all_companies();
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(game_settings_injector, "ux_settings", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 1;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(2, state.captures);
+}
+
+// --- 2b. per-seat settings --------------------------------------------------
+// This probe used to capture the main-menu PLAYER SETTINGS screen. Its
+// successor is deliberately reached from an owned Base Camp card so the
+// screenshot covers the stable-seat editor in its real context.
+
+int seat_settings_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_interactable("continue_game", 5000)) {
+    SDL_Delay(1500);
+    interact("continue_game");
+    if (wait_for_team_menu() &&
+        wait_for_interactable("seat_card_0", 5000)) {
+      SDL_Delay(500);
+      interact("seat_card_0");
+    }
+    if (wait_for_interactable("seat_settings_back", 5000)) {
+      SDL_Delay(1500);
+      state->captures += capture_frame("seat_settings");
+      interact("seat_settings_back");
+    }
+    if (wait_for_team_menu()) {
+      SDL_Delay(300);
+      interact("back");
+    }
+  }
+  // This probe permits one main-menu call. Base Camp BACK therefore returns
+  // through picker_main's test gate instead of materializing another QUIT
+  // face; there is nothing left for the injector to dismiss.
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, b2_seat_settings) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(seat_settings_injector, "ux_seat", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 1;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(1, state.captures);
+}
+
 // --- 3. name entry ----------------------------------------------------------
 
 int name_entry_injector(void *data) {
@@ -525,6 +622,35 @@ int basecamp_paged_injector(void *data) {
   return 0;
 }
 
+int basecamp_three_seats_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu() &&
+      wait_for_interactable("add_seat", 5000)) {
+    SDL_Delay(300);
+    interact("add_seat");
+    if (wait_for_interactable("seat_card_1", 5000)) {
+      SDL_Delay(300);  // cross the intentional 250 ms + debounce
+      interact("add_seat");
+    }
+    if (wait_for_interactable("seat_card_2", 5000)) {
+      SDL_Delay(1500);
+      shot->state.captures += capture_frame(shot->name);
+    }
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
 void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
@@ -557,6 +683,17 @@ TEST(UxShots, h_basecamp_empty) {
   NamedShot shot;
   shot.name = "basecamp_empty";
   run_basecamp_shot(shot, &basecamp_shot_injector);
+}
+
+TEST(UxShots, i_basecamp_three_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  NamedShot shot;
+  shot.name = "basecamp_three_local_seats";
+  run_basecamp_shot(shot, &basecamp_three_seats_injector);
 }
 
 // --- 10-12. networked base camp: host / joiner / degraded alert -------------
@@ -625,11 +762,17 @@ struct ActiveLobbyGuard {
 og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
                                      const char *company, bool is_host,
                                      bool ready,
-                                     const std::vector<RosterSeed> &roster) {
+                                     const std::vector<RosterSeed> &roster,
+                                     short team = 0,
+                                     og::sim::LobbyMachineId machine_id =
+                                         og::sim::kInvalidLobbyMachineId) {
   og::sim::LobbyPlayer player;
   player.player_index = index;
+  player.seat_id = static_cast<og::sim::LobbySeatId>(index) + 1;
+  player.machine_id = machine_id;
   player.name = name;
   player.company = company;
+  player.team = team;
   player.is_host = is_host;
   player.ready = ready;
   std::uint8_t i = 0;
@@ -640,6 +783,7 @@ og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
     slot.character.name = seed.name;
     slot.character.family = static_cast<std::int8_t>(seed.family);
     slot.character.level = seed.level;
+    slot.character.teamnum = team;
     player.character_slots.push_back(std::move(slot));
   }
   return player;
@@ -698,9 +842,10 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   client.alert = std::move(alert);
   if (host_view) {
     client.players = {
-        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false, {}),
+        make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false, {},
+                        0, 1),
         make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false,
-                        foreign_roster()),
+                        foreign_roster(), 0, 2),
     };
     client.local_indices = {0};
   } else {
@@ -710,8 +855,9 @@ void run_basecamp_net_shot(const char *name, bool host_view,
         "JOIN RIVER BAND";
     client.players = {
         make_probe_seat(0, "net-host", "IRON KETTLE BAND", true, false,
-                        foreign_roster()),
-        make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false, {}),
+                        foreign_roster(), 0, 1),
+        make_probe_seat(1, "net-join", "JOIN RIVER BAND", false, false, {},
+                        0, 2),
     };
     client.local_indices = {1};
   }
@@ -738,6 +884,62 @@ TEST(UxShots, k_basecamp_net_join) {
 TEST(UxShots, l_basecamp_net_alert) {
   run_basecamp_net_shot("basecamp_net_alert", false,
                         std::optional<std::string>("Status: connection lost"));
+}
+
+// Seven authoritative seats exercise the compact four-card rail, its pager,
+// and the MATCHUP overview reached through the SEATS label. Internal network
+// names intentionally differ from public company names so the screenshots
+// catch any accidental transport-identity leak.
+int basecamp_many_seats_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  if (wait_for_team_menu()) {
+    SDL_Delay(1500);
+    state->captures += capture_frame("basecamp_net_seats_p1");
+    if (wait_for_interactable("seat_page_next", 5000)) {
+      interact("seat_page_next");
+      SDL_Delay(750);
+      state->captures += capture_frame("basecamp_net_seats_p2");
+    }
+    interact("seats");
+    if (wait_for_interactable("cross_control", 5000)) {
+      SDL_Delay(1000);
+      state->captures += capture_frame("matchup_network_seats");
+      interact("back");
+      if (wait_for_team_menu(5000)) {
+        SDL_Delay(250);
+        interact("back");
+      }
+    }
+  }
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, m_basecamp_many_seats_and_matchup) {
+  trace_clear();
+  seed_session_save_for_net();
+  FakeNetLobbyClient client;
+  client.players = {
+      make_probe_seat(0, "net-a0", "IRON KETTLE BAND", true, true, {}, 0, 1),
+      make_probe_seat(1, "net-a1", "IRON KETTLE BAND", false, true, {}, 0, 1),
+      make_probe_seat(2, "net-b0", "RED LANTERN CREW", false, true, {}, 1, 2),
+      make_probe_seat(3, "net-b1", "RED LANTERN CREW", false, true, {}, 1, 2),
+      make_probe_seat(4, "net-c0", "COPPER SHIELDS", false, false, {}, 2, 3),
+      make_probe_seat(5, "net-d0", "BLACK BANNERS", false, true, {}, 2, 4),
+      make_probe_seat(6, "net-d1", "BLACK BANNERS", false, true, {}, 3, 4),
+  };
+  client.local_indices = {0, 1};
+  ActiveLobbyGuard guard(&client);
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_many_seats_injector, "ux_seats", &state);
+  ASSERT_TRUE(thread != nullptr);
+  create_team_menu(0);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(3, state.captures);
 }
 
 TEST(UxShots, i_basecamp_paged) {

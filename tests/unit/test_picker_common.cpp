@@ -2120,7 +2120,7 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
     EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
 }
 
-// --- TEAMS detail pagination (the per-team '>' pager) -----------------------
+// --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
 
 TEST(PickerCommon, paginate_team_detail_packs_greedily_and_never_overflows)
 {
@@ -2134,7 +2134,7 @@ TEST(PickerCommon, paginate_team_detail_packs_greedily_and_never_overflows)
     EXPECT_EQ("Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel",
               one[0]);
 
-    // ... and split greedily at the TEAMS screen's 26-char paged budget.
+    // ... and split greedily at a narrower 26-character budget.
     const auto pages = og::ui::paginate_team_detail_pages(names, 26);
     ASSERT_EQ(3u, pages.size());
     EXPECT_EQ("Alpha, Bravo, Charlie", pages[0]);
@@ -3280,10 +3280,13 @@ og::sim::LobbyPlayer make_lobby_seat(std::uint8_t player_index,
                                      bool is_host,
                                      bool ready,
                                      int deployed_slots,
-                                     int benched_slots)
+                                     int benched_slots,
+                                     og::sim::LobbyMachineId machine_id =
+                                         og::sim::kInvalidLobbyMachineId)
 {
     og::sim::LobbyPlayer player;
     player.player_index = player_index;
+    player.machine_id = machine_id;
     player.name = name;
     player.company = company;
     player.is_host = is_host;
@@ -3386,21 +3389,17 @@ TEST(BaseCampMpDisplay, deploy_counts_read_the_live_save_flag_for_own_rows)
 
 TEST(BaseCampMpDisplay, ready_counts_group_seats_into_machines)
 {
-    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a"));
-    EXPECT_EQ("net-a", og::ui::lobby_player_machine_key("net-a#3"));
-    EXPECT_EQ("x", og::ui::lobby_player_machine_key("x#1#2"));
-
     // Host machine has 2 seats (seat 1 is is_host=false but must NOT count
-    // as a gating machine — the §4.3 multi-seat-host rule). Machine "net-b"
+    // as a gating machine — the §4.3 multi-seat-host rule). Machine 2
     // has 2 seats and counts ready only when BOTH are. Machine "net-c" is a
     // single ready seat; "net-d" is an unready spectator (0 slots).
     const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
-        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
-        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
-        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
-        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
-        make_lobby_seat(5, "net-d", "D CO", false, false, 0, 0),
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0, 1),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0, 1),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0, 2),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0, 2),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0, 3),
+        make_lobby_seat(5, "net-d", "D CO", false, false, 0, 0, 4),
     };
     og::ui::BaseCampReadyCounts counts =
         og::ui::count_base_camp_ready_machines(players);
@@ -3413,6 +3412,25 @@ TEST(BaseCampMpDisplay, ready_counts_group_seats_into_machines)
     counts = og::ui::count_base_camp_ready_machines(all);
     EXPECT_EQ(2, counts.ready);
     EXPECT_EQ(3, counts.machines);
+}
+
+TEST(BaseCampMpDisplay,
+     machine_ids_keep_exact_name_and_company_spoof_separate_from_host)
+{
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_lobby_seat(
+            0, "same-name", "SAME COMPANY", true, false, 1, 0, 41),
+        make_lobby_seat(
+            1, "same-name", "SAME COMPANY", false, false, 1, 0, 42),
+    };
+
+    const og::ui::BaseCampReadyCounts ready =
+        og::ui::count_base_camp_ready_machines(players);
+    EXPECT_EQ(1, ready.machines);
+    EXPECT_EQ(0, ready.ready);
+    EXPECT_EQ(2, og::ui::count_base_camp_session_census(players).machines);
+    EXPECT_EQ("SAME COMPANY", og::ui::format_go_blockers(players))
+        << "the foreign machine must not disappear into the host grouping";
 }
 
 TEST(BaseCampMpDisplay, session_census_counts_machines_and_players)
@@ -3428,11 +3446,11 @@ TEST(BaseCampMpDisplay, session_census_counts_machines_and_players)
     // net-host has 2 seats, net-b has 2 seats, net-c one — 3 machines,
     // 5 players.
     const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
-        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
-        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0),
-        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0),
-        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0),
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0, 1),
+        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0, 1),
+        make_lobby_seat(2, "net-b", "B CO", false, true, 1, 0, 2),
+        make_lobby_seat(3, "net-b#1", "B CO", false, false, 1, 0, 2),
+        make_lobby_seat(4, "net-c", "C CO", false, true, 1, 0, 3),
     };
     const og::ui::BaseCampSessionCensus census =
         og::ui::count_base_camp_session_census(players);
@@ -3453,10 +3471,11 @@ TEST(BaseCampMpDisplay, host_display_name_prefers_company_over_wire_name)
     EXPECT_EQ("A COMPANY NAME P",
               og::ui::base_camp_host_display_name(players));
 
-    // Empty company falls back to the machine key (seat suffix stripped).
+    // Empty company falls back to the seat's display name. It is presentation
+    // only; the server-issued machine ID remains the grouping authority.
     const std::vector<og::sim::LobbyPlayer> bare = {
         make_lobby_seat(0, "net-h#2", "", true, false, 1, 0)};
-    EXPECT_EQ("net-h", og::ui::base_camp_host_display_name(bare));
+    EXPECT_EQ("net-h#2", og::ui::base_camp_host_display_name(bare));
 
     // No host seat yet (pre-election): empty.
     const std::vector<og::sim::LobbyPlayer> unelected = {
@@ -3467,9 +3486,12 @@ TEST(BaseCampMpDisplay, host_display_name_prefers_company_over_wire_name)
 TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
 {
     const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 2, 0),
-        make_lobby_seat(1, "net-j", "JOIN RIVER BAND", false, false, 1, 0),
-        make_lobby_seat(2, "net-j#1", "JOIN RIVER BAND", false, false, 1, 0),
+        make_lobby_seat(
+            0, "net-h", "IRON KETTLE BAND", true, false, 2, 0, 1),
+        make_lobby_seat(
+            1, "net-j", "JOIN RIVER BAND", false, false, 1, 0, 2),
+        make_lobby_seat(
+            2, "net-j#1", "JOIN RIVER BAND", false, false, 1, 0, 2),
     };
 
     // §9.12 host shape: role + room + census. "MACH / PLYR" is the
@@ -3503,7 +3525,8 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
     for (int i = 0; i < 16; ++i) {
         sixteen.push_back(make_lobby_seat(
             static_cast<std::uint8_t>(i),
-            std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0));
+            std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0,
+            static_cast<og::sim::LobbyMachineId>(i + 1)));
     }
     const std::string worst_host = og::ui::format_base_camp_session_status(
         true, "GLAD-XXXX", sixteen);
@@ -3521,7 +3544,8 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
 TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
 {
     const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0)};
+        make_lobby_seat(
+            0, "net-h", "IRON KETTLE BAND", true, false, 1, 0, 1)};
 
     // Healthy: the session status, plain color.
     const og::ui::BaseCampLineB healthy = og::ui::compose_base_camp_line_b(
@@ -3563,6 +3587,7 @@ TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)
     character.armor = 15;
     character.exp = 777;
     character.level = 6;
+    character.teamnum = 2;
 
     const std::unique_ptr<guy> display =
         og::ui::make_base_camp_display_guy(character);
@@ -3576,6 +3601,7 @@ TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)
     EXPECT_EQ(15, display->armor);
     EXPECT_EQ(777u, display->exp);
     EXPECT_EQ(6, display->level);
+    EXPECT_EQ(2, display->teamnum);
 }
 
 TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
@@ -3717,16 +3743,17 @@ TEST(ReadyGoSlot, state_5_client_unready_red_with_deploy_gate)
     EXPECT_TRUE(cross.caption.empty());
 }
 
-TEST(ReadyGoSlot, state_5_spectator_machines_ready_freely)
+TEST(ReadyGoSlot, state_5_spectator_formatter_has_no_deploy_caption)
 {
-    // [NET-R9]: the spectator machine (zero contributed character slots)
-    // gets the READY button and may ready with nothing deployed.
+    // [NET-R9]: the pure formatter's spectator shape has no local deployment
+    // warning. Base Camp separately hides the READY button when the machine
+    // has no active seat.
     const og::ui::ReadyGoPresentation p =
         ready_go(true, false, false, false, 3, 0, false, true);
     EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, p.state);
     EXPECT_EQ("READY", p.label);
     EXPECT_EQ(og::ui::kReadyGoFaceUnready, p.face_color);
-    EXPECT_TRUE(p.caption.empty()) << "spectators ready freely";
+    EXPECT_TRUE(p.caption.empty()) << "spectator shape has no deploy warning";
 }
 
 TEST(ReadyGoSlot, state_6_client_ready_green_unready_action)
@@ -3753,12 +3780,15 @@ TEST(ReadyGoSlot, labels_fit_the_68px_face_budget)
 TEST(ReadyGoSlot, go_blockers_lists_unready_machines_only)
 {
     const std::vector<og::sim::LobbyPlayer> players = {
-        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0),
-        make_lobby_seat(1, "net-host#1", "HOST CO", false, false, 1, 0),
-        make_lobby_seat(2, "net-b", "BRAVO BAND", false, true, 1, 0),
-        make_lobby_seat(3, "net-b#1", "BRAVO BAND", false, false, 0, 1),
-        make_lobby_seat(4, "net-c", "CHARLIE BAND", false, true, 1, 0),
-        make_lobby_seat(5, "net-d", "", false, false, 0, 0),
+        make_lobby_seat(0, "net-host", "HOST CO", true, false, 1, 0, 1),
+        make_lobby_seat(
+            1, "net-host#1", "HOST CO", false, false, 1, 0, 1),
+        make_lobby_seat(2, "net-b", "BRAVO BAND", false, true, 1, 0, 2),
+        make_lobby_seat(
+            3, "net-b#1", "BRAVO BAND", false, false, 0, 1, 2),
+        make_lobby_seat(
+            4, "net-c", "CHARLIE BAND", false, true, 1, 0, 3),
+        make_lobby_seat(5, "net-d", "", false, false, 0, 0, 4),
     };
     const std::string body = og::ui::format_go_blockers(players);
     // Host machine excluded even with unready seats; BRAVO gates because
@@ -3770,13 +3800,14 @@ TEST(ReadyGoSlot, go_blockers_lists_unready_machines_only)
 TEST(ReadyGoSlot, go_blockers_clips_and_caps_the_popup)
 {
     std::vector<og::sim::LobbyPlayer> players;
-    players.push_back(make_lobby_seat(0, "net-host", "HOST CO", true, false,
-                                      1, 0));
+    players.push_back(make_lobby_seat(
+        0, "net-host", "HOST CO", true, false, 1, 0, 1));
     for (int i = 0; i < 6; ++i) {
         players.push_back(make_lobby_seat(
             static_cast<std::uint8_t>(1 + i),
             std::format("net-m{}", i).c_str(),
-            "A VERY LONG COMPANY NAME INDEED", false, false, 1, 0));
+            "A VERY LONG COMPANY NAME INDEED", false, false, 1, 0,
+            static_cast<og::sim::LobbyMachineId>(i + 2)));
     }
     const std::string body = og::ui::format_go_blockers(players);
     // Six blockers: 4 named lines (each clipped to 26 chars) + the tail.

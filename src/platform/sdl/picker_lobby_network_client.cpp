@@ -38,6 +38,7 @@
 #include <filesystem>
 #include <format>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -64,6 +65,7 @@ void popup_dialog(const char* title, const char* message);
 namespace {
 
 constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+constexpr auto kJoinRetryInterval = std::chrono::milliseconds(100);
 
 struct OrderedLobbySlot {
     std::uint8_t slot_index = 0;
@@ -793,7 +795,11 @@ short gameplay_start_team(short allied_mode,
                           short requested_team,
                           short shared_team) noexcept
 {
-    return allied_mode != 0 ? shared_team : requested_team;
+    // allied_mode is retained in old saves and the versioned lobby wire, but
+    // a live lobby's explicit per-seat assignment is now authoritative.
+    (void)allied_mode;
+    (void)shared_team;
+    return requested_team;
 }
 
 std::vector<std::string> split_top_level_json_objects(std::string_view text)
@@ -1227,9 +1233,10 @@ og::sim::LobbyPlayer build_local_lobby_player(
     return player;
 }
 
-// Seat naming: seat 0 keeps the machine's base name ("net-<hex>"); seat k is
-// derived as base + "#k". The LobbyServer preserves client-sent names, so a
-// machine identifies its own seats by exact-matching these derived names.
+// Seat naming is display/debug metadata only: seat 0 keeps the machine's base
+// name ("net-<hex>"); seat k is derived as base + "#k". Ownership is carried
+// exclusively by the server-issued LobbySeatId values in
+// LobbyState::local_seat_ids; names are client-controlled and may collide.
 std::string derive_local_seat_name(std::string_view base_name, std::size_t seat)
 {
     if (seat == 0)
@@ -1277,6 +1284,38 @@ std::vector<short> resolve_local_seat_declaration_teams(
     return teams;
 }
 
+std::vector<short> seed_local_seat_assignments(const SaveData& save,
+                                               bool spectator_mode)
+{
+    std::vector<short> teams =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    if (spectator_mode || teams.empty())
+        teams.assign(1, resolve_initial_local_team(save));
+    return teams;
+}
+
+void resize_local_seat_assignments(std::vector<short>& teams,
+                                   const SaveData& save,
+                                   bool spectator_mode,
+                                   int local_player_count)
+{
+    const std::size_t target_count = spectator_mode
+        ? 1u
+        : static_cast<std::size_t>(
+              std::clamp(local_player_count, 1, MAX_PLAYERS));
+    const std::vector<short> seed =
+        seed_local_seat_assignments(save, spectator_mode);
+    if (teams.size() > target_count)
+        teams.resize(target_count);
+    while (teams.size() < target_count)
+    {
+        const std::size_t index = teams.size();
+        teams.push_back(index < seed.size()
+                ? seed[index]
+                : static_cast<short>(index % MAX_PLAYERS));
+    }
+}
+
 // Build this machine's whole seat list (one LobbyPlayer per local seat).
 // Character TEAM is combat allegiance, not ownership or seat assignment.
 // Prefer the matching-color seat for stable ownership tags; colors with no
@@ -1285,14 +1324,20 @@ std::vector<short> resolve_local_seat_declaration_teams(
 std::vector<og::sim::LobbyPlayer> build_local_lobby_seats(
     const SaveData& save,
     std::string_view base_name,
-    short seat0_team,
-    std::size_t seat_count,
+    const std::vector<short>& requested_seat_teams,
     const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
 {
-    const std::size_t count = std::clamp<std::size_t>(
-        seat_count, 1u, static_cast<std::size_t>(MAX_PLAYERS));
-    const std::vector<short> seat_teams =
-        resolve_local_seat_declaration_teams(save, seat0_team, count);
+    std::vector<short> seat_teams;
+    seat_teams.reserve(static_cast<std::size_t>(MAX_PLAYERS));
+    for (std::size_t index = 0;
+         index < requested_seat_teams.size() &&
+             index < static_cast<std::size_t>(MAX_PLAYERS);
+         ++index)
+    {
+        seat_teams.push_back(requested_seat_teams[index]);
+    }
+    if (seat_teams.empty())
+        seat_teams.push_back(resolve_initial_local_team(save));
 
     std::vector<og::sim::LobbyPlayer> seats;
     seats.reserve(seat_teams.size());
@@ -1330,26 +1375,53 @@ std::vector<og::sim::LobbyPlayer> build_local_lobby_seats(
     return seats;
 }
 
-const og::sim::LobbyPlayer* find_local_player(
-    const og::sim::LobbyState& state,
-    std::string_view player_name) noexcept;
+std::vector<og::sim::LobbyPlayer> build_local_lobby_seats(
+    const SaveData& save,
+    std::string_view base_name,
+    short seat0_team,
+    std::size_t seat_count,
+    const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
+{
+    const std::size_t count = std::clamp<std::size_t>(
+        seat_count, 1u, static_cast<std::size_t>(MAX_PLAYERS));
+    return build_local_lobby_seats(
+        save,
+        base_name,
+        resolve_local_seat_declaration_teams(save, seat0_team, count),
+        excluded_slots);
+}
 
-// This machine's seats in the authoritative state, in local seat order.
-// Truncated joins keep the FIRST K seats server-side, so the derived names are
-// gap-free: stop at the first missing one.
-std::vector<const og::sim::LobbyPlayer*> find_local_seats(
+const og::sim::LobbyPlayer* find_player_by_seat_id(
     const og::sim::LobbyState& state,
-    std::string_view base_name)
+    og::sim::LobbySeatId seat_id) noexcept;
+
+// This machine's seats in authoritative local-seat order. The server
+// personalizes local_seat_ids for the receiving peer, so no client-controlled
+// field (name, company, team, or roster content) participates in ownership.
+std::vector<const og::sim::LobbyPlayer*> find_local_seats(
+    const og::sim::LobbyState& state)
 {
     std::vector<const og::sim::LobbyPlayer*> seats;
-    for (std::size_t seat = 0; seat < static_cast<std::size_t>(MAX_PLAYERS);
-         ++seat)
+    seats.reserve(state.local_seat_ids.size());
+    for (const og::sim::LobbySeatId seat_id : state.local_seat_ids)
     {
-        const og::sim::LobbyPlayer* const player = find_local_player(
-            state, derive_local_seat_name(base_name, seat));
-        if (player == nullptr)
-            break;
-        seats.push_back(player);
+        if (const og::sim::LobbyPlayer* const player =
+                find_player_by_seat_id(state, seat_id))
+        {
+            seats.push_back(player);
+        }
+    }
+    return seats;
+}
+
+std::vector<og::sim::LobbyPlayer> copy_local_seats(
+    const og::sim::LobbyState& state)
+{
+    std::vector<og::sim::LobbyPlayer> seats;
+    for (const og::sim::LobbyPlayer* const seat : find_local_seats(state))
+    {
+        if (seat != nullptr)
+            seats.push_back(*seat);
     }
     return seats;
 }
@@ -1415,24 +1487,32 @@ std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
     return applied_slots;
 }
 
-const og::sim::LobbyPlayer* find_local_player(
+const og::sim::LobbyPlayer* find_player_by_seat_id(
     const og::sim::LobbyState& state,
-    std::string_view player_name) noexcept
+    og::sim::LobbySeatId seat_id) noexcept
 {
+    if (seat_id == og::sim::kInvalidLobbySeatId)
+        return nullptr;
     const auto it = std::find_if(
         state.players.begin(),
         state.players.end(),
-        [player_name](const og::sim::LobbyPlayer& player) {
-            return player.name == player_name;
+        [seat_id](const og::sim::LobbyPlayer& player) {
+            return player.seat_id == seat_id;
     });
     return it != state.players.end() ? &*it : nullptr;
 }
 
-bool local_player_is_host(const og::sim::LobbyState& state,
-                          std::string_view player_name) noexcept
+const og::sim::LobbyPlayer* find_local_player(
+    const og::sim::LobbyState& state) noexcept
 {
-    const og::sim::LobbyPlayer* const local_player =
-        find_local_player(state, player_name);
+    const std::vector<const og::sim::LobbyPlayer*> seats =
+        find_local_seats(state);
+    return seats.empty() ? nullptr : seats.front();
+}
+
+bool local_player_is_host(const og::sim::LobbyState& state) noexcept
+{
+    const og::sim::LobbyPlayer* const local_player = find_local_player(state);
     return local_player != nullptr &&
         (local_player->is_host ||
          local_player->player_index == state.host_player_id);
@@ -1476,6 +1556,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
         equivalent.team_list.push_back(std::move(compacted));
     }
 
+    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
     return equivalent;
 }
 
@@ -1496,8 +1577,7 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     SaveData& save,
     bool spectator_mode,
     short local_team,
-    std::size_t local_player_count = 1,
-    std::string_view local_player_name = {})
+    std::size_t local_player_count = 1)
 {
     LobbyStateApplyResult result;
     save.current_campaign = state.settings.campaign_id.empty()
@@ -1530,34 +1610,30 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     // team change, using their raw PRIVATE slot indices. Truncated/unsent local
     // members deliberately remain in the private roster but do not enter the
     // match.
-    if (!local_player_name.empty())
+    for (const og::sim::LobbyPlayer* const seat : find_local_seats(state))
     {
-        for (const og::sim::LobbyPlayer* const seat :
-             find_local_seats(state, local_player_name))
+        for (const og::sim::LobbyCharacterSlot& slot :
+             seat->character_slots)
         {
-            for (const og::sim::LobbyCharacterSlot& slot :
-                 seat->character_slots)
+            const std::size_t private_slot = slot.slot_index;
+            if (private_slot >= save.team_list.size() ||
+                save.team_list[private_slot] == nullptr)
             {
-                const std::size_t private_slot = slot.slot_index;
-                if (private_slot >= save.team_list.size() ||
-                    save.team_list[private_slot] == nullptr)
-                {
-                    continue;
-                }
-                save.team_list[private_slot]->teamnum =
-                    slot.character.teamnum;
-                // §4.2 [NET-F2] reconciliation: the server may have
-                // force-benched overflow slots (24-cap). Adopt the echoed
-                // authoritative deploy flag into the private roster so the
-                // machine's next join re-sends exactly what the server
-                // stored (content-identical ⇒ ready survives).
-                if (save.team_list[private_slot]->deployed != slot.deployed)
-                {
-                    save.team_list[private_slot]->deployed = slot.deployed;
-                    ++result.deploy_flags_adopted;
-                    if (!slot.deployed)
-                        ++result.deploy_benched;
-                }
+                continue;
+            }
+            save.team_list[private_slot]->teamnum =
+                slot.character.teamnum;
+            // §4.2 [NET-F2] reconciliation: the server may have
+            // force-benched overflow slots (24-cap). Adopt the echoed
+            // authoritative deploy flag into the private roster so the
+            // machine's next join re-sends exactly what the server
+            // stored (content-identical ⇒ ready survives).
+            if (save.team_list[private_slot]->deployed != slot.deployed)
+            {
+                save.team_list[private_slot]->deployed = slot.deployed;
+                ++result.deploy_flags_adopted;
+                if (!slot.deployed)
+                    ++result.deploy_benched;
             }
         }
     }
@@ -1612,6 +1688,26 @@ void send_lobby_message(og::sim::ITransport& transport,
 
 og::sim::LobbyMessage make_join_message(const SaveData& save,
                                         std::string_view player_name,
+                                        const std::vector<short>& seat_teams,
+                                        const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
+{
+    // A join declares this machine's WHOLE seat list: seat 0 rides in the
+    // legacy player field, seats 1..N-1 in extra_players (wire v7).
+    std::vector<og::sim::LobbyPlayer> seats = build_local_lobby_seats(
+        save, player_name, seat_teams, excluded_slots);
+
+    og::sim::LobbyMessage message;
+    og::sim::LobbyJoinMessage join;
+    join.player = std::move(seats.front());
+    join.extra_players.assign(
+        std::make_move_iterator(seats.begin() + 1),
+        std::make_move_iterator(seats.end()));
+    message.payload = std::move(join);
+    return message;
+}
+
+og::sim::LobbyMessage make_join_message(const SaveData& save,
+                                        std::string_view player_name,
                                         short local_team,
                                         const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr,
                                         std::size_t seat_count = 1)
@@ -1635,13 +1731,28 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
     return message;
 }
 
-og::sim::LobbyMessage make_team_change_message(std::uint8_t player_index,
+og::sim::LobbyMessage make_team_change_message(
+                                               std::uint8_t player_index,
+                                               og::sim::LobbySeatId seat_id,
                                                short team)
 {
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbyTeamChangeMessage{
         .player_index = player_index,
+        .seat_id = seat_id,
         .team = team,
+    };
+    return message;
+}
+
+og::sim::LobbyMessage make_remove_seat_message(
+    std::uint8_t player_index,
+    og::sim::LobbySeatId seat_id)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyRemoveSeatMessage{
+        .player_index = player_index,
+        .seat_id = seat_id,
     };
     return message;
 }
@@ -1654,6 +1765,77 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
         .ready = ready,
     };
     return message;
+}
+
+bool start_denial_matches_request(
+    const og::sim::LobbyState& state,
+    std::uint32_t pending_request_id) noexcept
+{
+    return pending_request_id != 0 &&
+        state.last_start_request_id == pending_request_id &&
+        state.last_start_denial != og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::None);
+}
+
+bool start_confirmation_matches_request(
+    const og::sim::LobbyMessage& message,
+    std::uint32_t pending_request_id) noexcept
+{
+    const auto* const start =
+        std::get_if<og::sim::LobbyStartGameMessage>(&message.payload);
+    return start != nullptr &&
+        (pending_request_id == 0 || start->request_id == pending_request_id);
+}
+
+template <typename Poll, typename Accepted>
+bool wait_for_authoritative_lobby_value(
+    Poll&& poll,
+    Accepted&& accepted,
+    int attempts = 50,
+    bool yield_between_attempts = true)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt)
+    {
+        poll();
+        if (accepted())
+            return true;
+        if (!yield_between_attempts)
+            continue;
+#ifdef __EMSCRIPTEN__
+        // sleep_for busy-waits under Emscripten; Asyncify must yield so the
+        // WebSocket onmessage callback can deliver the authoritative echo.
+        emscripten_sleep(10);
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+    }
+    return false;
+}
+
+// Authoritative seat mutations are not safely timeoutable: authority may
+// commit just after a fixed deadline, leaving the caller's local input-profile
+// projection out of step with the accepted seat roster. Wait while the ordered
+// transport remains live, and return false only for a definitive denial,
+// competing Start, or link loss.
+template <typename Poll, typename Accepted, typename Aborted>
+bool wait_for_authoritative_lobby_outcome(
+    Poll&& poll,
+    Accepted&& accepted,
+    Aborted&& aborted)
+{
+    for (;;)
+    {
+        poll();
+        if (accepted())
+            return true;
+        if (aborted())
+            return false;
+#ifdef __EMSCRIPTEN__
+        emscripten_sleep(10);
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+    }
 }
 
 // [NET-R5] §4.2: networked clients answer is_save_slot_editable with OWN
@@ -1674,8 +1856,7 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
 bool networked_save_slot_editable(
     std::size_t slot_index,
     const SaveData* save,
-    const og::sim::LobbyState* state,
-    std::string_view local_player_name) noexcept
+    const og::sim::LobbyState* state) noexcept
 {
     if (slot_index >= static_cast<std::size_t>(MAX_TEAM_SIZE))
         return false;
@@ -1688,8 +1869,7 @@ bool networked_save_slot_editable(
         return true;  // private untagged roster: this machine's character
     if (state == nullptr)
         return false;  // tagged row with no lobby view: never assume own
-    for (const og::sim::LobbyPlayer* const seat :
-         find_local_seats(*state, local_player_name))
+    for (const og::sim::LobbyPlayer* const seat : find_local_seats(*state))
     {
         if (seat->player_index == member->owner_player_index)
             return true;
@@ -1709,6 +1889,15 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
                 : 1);
     settings.allied_mode = save.allied_mode;
     settings.ctf_team_count = save.ctf_team_count;
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->myscreen_ != nullptr)
+    {
+        settings.ctf_authored_team_mask =
+            og::ui::ctf_authored_team_mask_for_loaded_level(
+                save,
+                og::runtime::current_session->myscreen_->world(),
+                get_mounted_campaign());
+    }
     settings.ctf_capture_limit = save.ctf_capture_limit;
     settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
     settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
@@ -1783,42 +1972,18 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 short resolve_pending_local_team(
     const og::sim::LobbyState& state,
     short requested_team,
-    std::string_view local_player_name,
     const std::vector<short>& sibling_teams = {}) noexcept
 {
-    // Mirror the server's seat rule: within one machine seats need DISTINCT
-    // teams; across machines a team is occupied unless the lobby is shareable
-    // (CTF campaign or allied mode).
-    const bool shareable = og::sim::lobby_teams_shareable(state.settings);
-    const auto team_available = [&](short team) {
-        if (team < 0 || team >= MAX_PLAYERS)
-            return false;
-        if (std::find(sibling_teams.begin(), sibling_teams.end(), team) !=
-            sibling_teams.end())
-            return false;
-        if (shareable)
-            return true;
-
-        return std::none_of(
-            state.players.begin(),
-            state.players.end(),
-            [team, local_player_name](const og::sim::LobbyPlayer& player) {
-                return !og::ui::detail::is_local_seat_name(
-                           player.name, local_player_name) &&
-                    player.team == team;
-            });
-    };
-
-    if (team_available(requested_team))
+    // Explicit assignments permit co-op within and across machines. Mirror
+    // the selected level's authored CTF domain before the server echo; the
+    // server remains authoritative.
+    (void)sibling_teams;
+    if (og::sim::lobby_team_is_selectable(state.settings, requested_team))
         return requested_team;
 
-    for (short candidate = 0; candidate < MAX_PLAYERS; ++candidate)
-    {
-        if (team_available(candidate))
-            return candidate;
-    }
-
-    return requested_team;
+    const short fallback =
+        og::sim::lobby_first_selectable_team(state.settings);
+    return fallback >= 0 ? fallback : requested_team;
 }
 
 struct PendingLocalLobbyState {
@@ -1829,8 +1994,7 @@ struct PendingLocalLobbyState {
 PendingLocalLobbyState build_pending_local_lobby_state(
     const og::sim::LobbyState& state,
     const std::vector<og::sim::LobbyPlayer>& pending_local_seats,
-    short requested_local_team,
-    std::string_view local_player_name)
+    short requested_local_team)
 {
     PendingLocalLobbyState merged{
         .state = state,
@@ -1841,15 +2005,19 @@ PendingLocalLobbyState build_pending_local_lobby_state(
         pending_local_seats.front().character_slots.empty() ||
         merged.state.players.size() >=
             static_cast<std::size_t>(og::sim::kMaxGlobalPlayers) ||
-        og::ui::detail::find_local_player(merged.state, local_player_name) !=
-            nullptr)
+        !merged.state.local_seat_ids.empty())
     {
         return merged;
     }
 
     // Merge every pending local seat (the join is a whole-seat-list declare),
-    // resolving teams in seat order with within-machine distinctness.
+    // resolving teams in seat order with within-machine distinctness. Give
+    // the optimistic copies locally unique high-end seat IDs so the normal
+    // authoritative ownership path can consume them without consulting the
+    // untrusted name. These IDs never leave this temporary state.
     std::vector<short> sibling_teams;
+    og::sim::LobbySeatId pending_seat_id =
+        std::numeric_limits<og::sim::LobbySeatId>::max();
     for (std::size_t seat = 0; seat < pending_local_seats.size(); ++seat)
     {
         if (merged.state.players.size() >=
@@ -1860,7 +2028,6 @@ PendingLocalLobbyState build_pending_local_lobby_state(
         const short seat_team = resolve_pending_local_team(
             merged.state,
             seat == 0 ? requested_local_team : pending_seat.team,
-            local_player_name,
             sibling_teams);
         if (seat == 0)
             merged.local_team = seat_team;
@@ -1868,9 +2035,14 @@ PendingLocalLobbyState build_pending_local_lobby_state(
 
         og::sim::LobbyPlayer local_player = pending_seat;
         local_player.player_index = 0xffu;
+        while (og::ui::detail::find_player_by_seat_id(
+                   merged.state, pending_seat_id) != nullptr)
+            --pending_seat_id;
+        local_player.seat_id = pending_seat_id--;
         local_player.team = seat_team;
         local_player.ready = false;
         local_player.is_host = false;
+        merged.state.local_seat_ids.push_back(local_player.seat_id);
         merged.state.players.push_back(std::move(local_player));
     }
     return merged;
@@ -2153,26 +2325,29 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         og::sim::LobbyState editability_state;
         og::sim::LobbyPlayer own_seat;
         own_seat.player_index = 0;
+        own_seat.seat_id = 101;
         own_seat.name = "editability-check";
         editability_state.players.push_back(own_seat);
+        editability_state.local_seat_ids = {own_seat.seat_id};
 
         check(!networked_save_slot_editable(
             static_cast<std::size_t>(MAX_TEAM_SIZE),
-            &editability_save, &editability_state, "editability-check"));
+            &editability_save, &editability_state));
         check(networked_save_slot_editable(  // untagged private row
-            0u, &editability_save, &editability_state, "editability-check"));
+            0u, &editability_save, &editability_state));
         check(networked_save_slot_editable(  // empty slot (hire may fill)
-            5u, &editability_save, &editability_state, "editability-check"));
+            5u, &editability_save, &editability_state));
         check(!networked_save_slot_editable(  // foreign-tagged row locks
-            1u, &editability_save, &editability_state, "editability-check"));
+            1u, &editability_save, &editability_state));
         check(networked_save_slot_editable(  // own-tagged (post-merge) row
-            2u, &editability_save, &editability_state, "editability-check"));
+            2u, &editability_save, &editability_state));
         check(!networked_save_slot_editable(  // tagged + no lobby view
-            2u, &editability_save, nullptr, "editability-check"));
+            2u, &editability_save, nullptr));
         check(networked_save_slot_editable(  // no picker session yet
-            1u, nullptr, &editability_state, "editability-check"));
-        check(!networked_save_slot_editable(  // tagged + name not in state
-            2u, &editability_save, &editability_state, "someone-else"));
+            1u, nullptr, &editability_state));
+        editability_state.local_seat_ids.clear();
+        check(!networked_save_slot_editable(  // tagged + no ownership grant
+            2u, &editability_save, &editability_state));
     }
 
     SaveData save;
@@ -2220,7 +2395,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     SaveData empty_save;
     check(resolve_initial_local_team(empty_save) == 0);
     check(gameplay_start_team(0, 3, 2) == 3);
-    check(gameplay_start_team(1, 3, 2) == 2);
+    check(gameplay_start_team(1, 3, 2) == 3);
 
     std::array<bool, MAX_TEAM_SIZE> excluded_slots{};
     excluded_slots.fill(false);
@@ -2279,9 +2454,11 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     state.settings.allied_mode = 1;
     state.host_player_id = 1;
     local_player.player_index = 1;
+    local_player.seat_id = 201;
     local_player.is_host = true;
     og::sim::LobbyPlayer remote_player;
     remote_player.player_index = 2;
+    remote_player.seat_id = 202;
     remote_player.name = "remote-player";
     remote_player.team = 3;
     remote_player.character_slots.push_back(local_player.character_slots[0]);
@@ -2289,11 +2466,69 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     remote_player.character_slots[0].character.name = "Remote";
     remote_player.character_slots[0].character.teamnum = 3;
     state.players = {remote_player, local_player};
+    state.local_seat_ids = {local_player.seat_id};
 
-    check(find_local_player(state, "local-player") != nullptr);
-    check(find_local_player(state, "missing") == nullptr);
-    check(local_player_is_host(state, "local-player"));
-    check(!local_player_is_host(state, "remote-player"));
+    check(find_local_player(state) != nullptr &&
+          find_local_player(state)->seat_id == local_player.seat_id);
+    check(local_player_is_host(state));
+    og::sim::LobbyState remote_view = state;
+    remote_view.local_seat_ids = {remote_player.seat_id};
+    check(!local_player_is_host(remote_view));
+
+    // Names and company/roster content are client-controlled. Even an exact
+    // spoof sorted before our player must not become editable, targetable, or
+    // eligible for the local gameplay binding.
+    og::sim::LobbyState spoofed_state = state;
+    spoofed_state.players.front().name = local_player.name;
+    spoofed_state.players.front().company = local_player.company;
+    check(find_local_player(spoofed_state) != nullptr &&
+          find_local_player(spoofed_state)->seat_id == local_player.seat_id);
+
+    // A reply from an older GO attempt may be queued immediately before a
+    // new request. Only the matching request ID may resolve the new pending
+    // attempt; followers with no local request still accept the broadcast.
+    og::sim::LobbyState stale_denial = state;
+    stale_denial.last_start_request_id = 40;
+    stale_denial.last_start_denial =
+        og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::MachinesNotReady);
+    check(!start_denial_matches_request(stale_denial, 41));
+    stale_denial.last_start_request_id = 41;
+    check(start_denial_matches_request(stale_denial, 41));
+    og::sim::LobbyMessage stale_confirmation;
+    stale_confirmation.payload = og::sim::LobbyStartGameMessage{
+        .player_index = local_player.player_index,
+        .request_id = 40,
+    };
+    check(!start_confirmation_matches_request(stale_confirmation, 41));
+    check(start_confirmation_matches_request(stale_confirmation, 0));
+    std::get<og::sim::LobbyStartGameMessage>(
+        stale_confirmation.payload).request_id = 41;
+    check(start_confirmation_matches_request(stale_confirmation, 41));
+
+    // Team/ready requests must likewise ignore an unrelated state queued
+    // before their own echo. The shared bounded waiter keeps polling until
+    // the requested authoritative value appears, and still terminates when a
+    // denial leaves it unchanged.
+    int echo_polls = 0;
+    bool requested_value = false;
+    check(wait_for_authoritative_lobby_value(
+        [&] {
+            ++echo_polls;
+            if (echo_polls == 2)
+                requested_value = true;
+        },
+        [&] { return requested_value; },
+        3,
+        false));
+    check(echo_polls == 2);
+    int denied_polls = 0;
+    check(!wait_for_authoritative_lobby_value(
+        [&] { ++denied_polls; },
+        [] { return false; },
+        3,
+        false));
+    check(denied_polls == 3);
     const auto equivalent =
         build_save_data_equivalent_from_state(state, false);
     check(equivalent.current_campaign == std::string(kDefaultCampaignId) &&
@@ -2322,8 +2557,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     SaveData applied_save;
     applied_save.team_list[0] = make_member(0, "Private", 0, 9);
     applied_save.team_size = 1;
-    apply_lobby_state_to_save(
-        state, applied_save, true, 4, 1u, "local-player");
+    apply_lobby_state_to_save(state, applied_save, true, 4, 1u);
     check(applied_save.current_campaign == std::string(kDefaultCampaignId) &&
           applied_save.scen_num == 1 &&
           applied_save.numplayers == 0 &&
@@ -2343,8 +2577,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         lobby_slot.slot_index = slot;
         oversized_state.players[0].character_slots.push_back(lobby_slot);
     }
-    apply_lobby_state_to_save(
-        oversized_state, applied_save, false, 1, 1u, "local-player");
+    apply_lobby_state_to_save(oversized_state, applied_save, false, 1, 1u);
     check(applied_save.team_size == 1 &&
           applied_save.team_list[0] != nullptr &&
           applied_save.team_list[0]->name == "Private");
@@ -2362,13 +2595,13 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     }
     check(applied_save.team_list[0]->deployed);
     const LobbyStateApplyResult reconciled = apply_lobby_state_to_save(
-        benched_state, applied_save, true, 4, 1u, "local-player");
+        benched_state, applied_save, true, 4, 1u);
     check(reconciled.deploy_flags_adopted == 1 &&
           reconciled.deploy_benched == 1 &&
           applied_save.team_list[0] != nullptr &&
           !applied_save.team_list[0]->deployed);
     const LobbyStateApplyResult reconciled_again = apply_lobby_state_to_save(
-        benched_state, applied_save, true, 4, 1u, "local-player");
+        benched_state, applied_save, true, 4, 1u);
     check(reconciled_again.deploy_flags_adopted == 0 &&
           reconciled_again.deploy_benched == 0);
     const auto benched_equivalent =
@@ -2463,7 +2696,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     typed_transport.typed.push_back(std::move(typed_message));
     check(poll_lobby_transport_messages(typed_transport).size() == 1);
 
-    check(resolve_pending_local_team(state, -1, "local-player") == 0);
+    check(resolve_pending_local_team(state, -1) == 0);
     og::sim::LobbyState full_state;
     for (short team = 0; team < MAX_PLAYERS; ++team)
     {
@@ -2472,51 +2705,62 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         player.team = team;
         full_state.players.push_back(std::move(player));
     }
-    check(resolve_pending_local_team(full_state, 3, "local-player") == 3);
+    check(resolve_pending_local_team(full_state, 3) == 3);
+    og::sim::LobbyState sparse_ctf_state;
+    sparse_ctf_state.settings.campaign_id = std::string(og::kCtfCampaignId);
+    sparse_ctf_state.settings.ctf_team_count = 2;
+    sparse_ctf_state.settings.ctf_authored_team_mask = 0b1101u;
+    check(resolve_pending_local_team(sparse_ctf_state, 2) == 2);
+    check(resolve_pending_local_team(sparse_ctf_state, 1) == 0);
+    sparse_ctf_state.settings.ctf_team_count = 0;
+    check(resolve_pending_local_team(sparse_ctf_state, 3) == 3);
+    check(resolve_pending_local_team(sparse_ctf_state, 1) == 0);
+    og::sim::LobbyState pending_base_state = state;
+    pending_base_state.local_seat_ids.clear();
     og::sim::LobbyPlayer empty_pending;
     check(build_pending_local_lobby_state(
-              state,
+              pending_base_state,
               {empty_pending},
-              1,
-              "pending-player").state.players.size() == state.players.size());
+              1).state.players.size() == pending_base_state.players.size());
     og::sim::LobbyPlayer pending_player = local_player;
     pending_player.name = "pending-player";
-    // state has allied_mode = 1, so cross-peer team sharing is allowed and
-    // the requested team 3 sticks even though "remote-player" holds it.
+    // Explicit assignments are shareable, so requested team 3 sticks even
+    // though "remote-player" holds it.
     const auto pending_state = build_pending_local_lobby_state(
-        state,
+        pending_base_state,
         {pending_player},
-        3,
-        "pending-player");
-    check(pending_state.state.players.size() == state.players.size() + 1 &&
-          pending_state.local_team == 3);
+        3);
+    check(pending_state.state.players.size() ==
+              pending_base_state.players.size() + 1 &&
+          pending_state.local_team == 3 &&
+          pending_state.state.local_seat_ids.size() == 1 &&
+          find_local_player(pending_state.state) != nullptr &&
+          find_local_player(pending_state.state)->name == "pending-player");
     check(build_pending_local_lobby_state(
               state,
               {pending_player},
-              3,
-              "local-player").state.players.size() == state.players.size());
-    // Exclusive lobbies (allied off, non-CTF) keep the old bounce-to-free-team
-    // resolution.
-    og::sim::LobbyState exclusive_state = state;
+              3).state.players.size() == state.players.size());
+    // Classic non-allied lobbies also preserve the explicit shared choice.
+    og::sim::LobbyState exclusive_state = pending_base_state;
     exclusive_state.settings.allied_mode = 0;
     const auto exclusive_pending = build_pending_local_lobby_state(
         exclusive_state,
         {pending_player},
-        3,
-        "pending-player");
-    check(exclusive_pending.local_team == 0);
-    // Multi-seat pending merges keep within-machine teams distinct.
+        3);
+    check(exclusive_pending.local_team == 3);
+    // Multi-seat pending merges preserve an intentional same-team choice.
     og::sim::LobbyPlayer pending_seat1 = pending_player;
     pending_seat1.name = "pending-player#1";
     pending_seat1.team = 3;
     const auto multi_pending = build_pending_local_lobby_state(
-        state,
+        pending_base_state,
         {pending_player, pending_seat1},
-        3,
-        "pending-player");
-    check(multi_pending.state.players.size() == state.players.size() + 2 &&
+        3);
+    check(multi_pending.state.players.size() ==
+              pending_base_state.players.size() + 2 &&
           multi_pending.local_team == 3 &&
-          multi_pending.state.players.back().team == 0);
+          multi_pending.state.local_seat_ids.size() == 2 &&
+          multi_pending.state.players.back().team == 3);
 
     check(build_host_transport_failure_message("direct failed", "relay failed") ==
           "Direct: direct failed\nRelay: relay failed");
@@ -2595,12 +2839,15 @@ public:
 
         spectator_mode_ = og::ui::is_spectator_mode(*save);
         local_team_ = resolve_initial_local_team(*save);
-        // Honor the main menu's 1..4-player mode: a networked host declares
-        // one lobby seat per local player (0 = spectator, unchanged).
+        // Honor the live Base Camp seat count: a networked host declares one
+        // lobby seat per local player (0 = spectator, unchanged).
         local_player_count_ = spectator_mode_
             ? 0
             : std::clamp<int>(save->numplayers, 1, MAX_PLAYERS);
         save->numplayers = static_cast<unsigned char>(local_player_count_);
+        local_seat_teams_ =
+            og::ui::detail::seed_local_seat_assignments(*save, spectator_mode_);
+        local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
         direct_address_ = detect_lan_ipv4_address();
 
@@ -2681,15 +2928,7 @@ public:
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
             og::ui::detail::make_settings_message(*save));
-        og::ui::detail::send_lobby_message(
-            *local_client_transport_,
-            local_client_transport_->local_peer_id(),
-            og::ui::detail::make_join_message(
-                *save,
-                player_name_,
-                local_team_,
-                nullptr,
-                join_seat_count()));
+        send_join_from_save();
 
         poll_messages();
         apply_state_to_current_save();
@@ -2716,7 +2955,9 @@ public:
         spectator_mode_ = false;
         local_player_count_ = 1;
         local_team_ = 0;
+        local_seat_teams_.clear();
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
         direct_address_.clear();
         relay_room_code_.clear();
         relay_status_message_.clear();
@@ -2759,29 +3000,163 @@ public:
         local_player_count_ =
             std::clamp<int>(player_count, 0, MAX_PLAYERS);
         save->numplayers = static_cast<unsigned char>(local_player_count_);
+        og::ui::detail::resize_local_seat_assignments(
+            local_seat_teams_,
+            *save,
+            spectator_mode_,
+            local_player_count_);
+        local_team_ = local_seat_teams_.front();
+        save->my_team = local_team_;
         send_join_from_save();
         poll_and_apply();
     }
 
-    bool request_start_game() override
+    bool add_local_seat() override
+    {
+        SaveData* const save = current_picker_save();
+        if (save == nullptr || !local_client_transport_ ||
+            !state_.has_value() || server_ == nullptr ||
+            server_->start_game_requested())
+        {
+            return false;
+        }
+
+        const std::size_t active_count = local_seat_count();
+        if (!spectator_mode_ &&
+            active_count >= static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            return false;
+        }
+
+        const bool was_spectator = spectator_mode_;
+        const std::size_t requested_count =
+            spectator_mode_ ? 1u : active_count + 1u;
+        spectator_mode_ = false;
+        local_player_count_ = static_cast<int>(requested_count);
+        save->numplayers = static_cast<unsigned char>(requested_count);
+        og::ui::detail::resize_local_seat_assignments(
+            local_seat_teams_,
+            *save,
+            spectator_mode_,
+            local_player_count_);
+        local_team_ = local_seat_teams_.front();
+        save->my_team = local_team_;
+
+        send_join_from_save();
+        poll_and_apply();
+        const bool accepted = local_seat_count() == requested_count;
+        if (!accepted && was_spectator)
+        {
+            spectator_mode_ = true;
+            local_player_count_ = 0;
+            save->numplayers = 0;
+            og::ui::detail::resize_local_seat_assignments(
+                local_seat_teams_,
+                *save,
+                spectator_mode_,
+                local_player_count_);
+        }
+        return accepted;
+    }
+
+    bool remove_local_seat(std::uint8_t player_index,
+                           og::sim::LobbySeatId seat_id) override
     {
         if (!local_client_transport_ || !state_.has_value() ||
-            !og::ui::detail::local_player_is_host(*state_, player_name_))
+            server_ == nullptr || server_->start_game_requested() ||
+            spectator_mode_ ||
+            seat_id == og::sim::kInvalidLobbySeatId)
+        {
+            return false;
+        }
+
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            og::ui::detail::find_local_seats(*state_);
+        const auto target = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [seat_id](const og::sim::LobbyPlayer* seat) {
+                return seat != nullptr && seat->seat_id == seat_id;
+            });
+        if (target == local_seats.end())
+            return false;
+
+        SaveData* const save = current_picker_save();
+        if (save == nullptr)
+            return false;
+
+        const std::size_t requested_count = local_seats.size() - 1u;
+        og::ui::detail::send_lobby_message(
+            *local_client_transport_,
+            local_client_transport_->local_peer_id(),
+            og::ui::detail::make_remove_seat_message(
+                player_index, seat_id));
+        poll_and_apply();
+        const bool removed = state_.has_value() &&
+            og::ui::detail::find_player_by_seat_id(*state_, seat_id) == nullptr &&
+            local_seat_count() == requested_count;
+        if (!removed)
+            return false;
+
+        if (requested_count == 0u)
+        {
+            // The server keeps the peer connection (and a private dormant
+            // token) but publishes no LobbyPlayer for a spectator. It
+            // therefore consumes no capacity, ready gate, roster, or gameplay
+            // binding.
+            spectator_mode_ = true;
+            local_player_count_ = 0;
+            save->numplayers = 0;
+            og::ui::detail::resize_local_seat_assignments(
+                local_seat_teams_,
+                *save,
+                spectator_mode_,
+                local_player_count_);
+            return true;
+        }
+
+        // Re-declare the private roster immediately so characters formerly
+        // carried by the removed seat move onto a surviving owned seat.
+        send_join_from_save();
+        poll_and_apply();
+        return state_.has_value() &&
+            og::ui::detail::find_player_by_seat_id(*state_, seat_id) == nullptr &&
+            local_seat_count() == requested_count;
+    }
+
+    [[nodiscard]] std::size_t local_seat_count() const override
+    {
+        if (state_.has_value())
+            return og::ui::detail::find_local_seats(*state_).size();
+        if (spectator_mode_)
+            return 0u;
+        return static_cast<std::size_t>(
+            std::clamp(local_player_count_, 0, MAX_PLAYERS));
+    }
+
+    bool request_start_game() override
+    {
+        if (start_request_pending_ ||
+            !local_client_transport_ || !state_.has_value() ||
+            server_ == nullptr)
         {
             return false;
         }
 
         const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
-        if (local_player == nullptr)
-            return false;
+            og::ui::detail::find_local_player(*state_);
 
         pending_game_start_config_.reset();
         start_request_pending_ = true;
+        pending_start_request_id_ = next_start_request_id_++;
+        if (next_start_request_id_ == 0)
+            next_start_request_id_ = 1;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyStartGameMessage{
-            .player_index = local_player->player_index,
+            .player_index = local_player != nullptr
+                ? local_player->player_index
+                : std::uint8_t{0xffu},
+            .request_id = pending_start_request_id_,
         };
         og::ui::detail::send_lobby_message(
             *local_client_transport_,
@@ -2800,6 +3175,7 @@ public:
             // the lobby. Drop the pending flag so the go_menu poll loop stops
             // spinning to timeout; the reason is read via last_start_denial().
             start_request_pending_ = false;
+            pending_start_request_id_ = 0;
         }
         return g_start_game_requested;
     }
@@ -2818,13 +3194,16 @@ public:
         const og::sim::LobbyState& authoritative_state = server_->state();
         const short shared_team =
             og::sim::shared_allied_gameplay_team(authoritative_state);
+        og::sim::LobbyState authoritative_local_state = authoritative_state;
+        authoritative_local_state.local_seat_ids = state_.has_value()
+            ? state_->local_seat_ids
+            : std::vector<og::sim::LobbySeatId>{};
         const std::vector<const og::sim::LobbyPlayer*> local_seats =
-            og::ui::detail::find_local_seats(authoritative_state, player_name_);
-        config.save_data.numplayers = spectator_mode_
+            og::ui::detail::find_local_seats(authoritative_local_state);
+        const bool authoritative_spectator = local_seats.empty();
+        config.save_data.numplayers = authoritative_spectator
             ? 0u
-            : static_cast<unsigned char>(std::clamp<std::size_t>(
-                  local_seats.size(), 1u,
-                  static_cast<std::size_t>(MAX_PLAYERS)));
+            : static_cast<unsigned char>(local_seats.size());
         config.difficulty = state_.has_value()
             ? static_cast<std::int16_t>(state_->settings.difficulty)
             : static_cast<std::int16_t>(authoritative_state.settings.difficulty);
@@ -2833,7 +3212,7 @@ public:
         config.is_networked = true;
         config.local_player_index =
             static_cast<std::uint8_t>(authoritative_state.host_player_id);
-        if (!spectator_mode_)
+        if (!authoritative_spectator)
         {
             for (const og::sim::LobbyPlayer* const seat : local_seats)
             {
@@ -2899,9 +3278,7 @@ public:
 
     [[nodiscard]] bool host_controls_visible() const noexcept override
     {
-        if (!state_.has_value())
-            return server_ != nullptr;
-        return og::ui::detail::local_player_is_host(*state_, player_name_);
+        return server_ != nullptr;
     }
 
     // [NET-R5]: own slots only (see networked_save_slot_editable).
@@ -2911,21 +3288,43 @@ public:
         return og::ui::detail::networked_save_slot_editable(
             slot_index,
             current_picker_save(),
-            state_.has_value() ? &*state_ : nullptr,
-            player_name_);
+            state_.has_value() ? &*state_ : nullptr);
     }
 
     bool request_team_change(short team) override
     {
-        if (!local_client_transport_)
+        return request_seat_team_change(local_player_index(), team);
+    }
+
+    bool request_seat_team_change(std::uint8_t player_index,
+                                  short team) override
+    {
+        if (!local_client_transport_ || !state_.has_value() ||
+            team < 0 || team >= MAX_PLAYERS)
             return false;
+
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            og::ui::detail::find_local_seats(*state_);
+        const auto target_it = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [player_index](const og::sim::LobbyPlayer* seat) {
+                return seat->player_index == player_index;
+            });
+        if (target_it == local_seats.end())
+            return false;
+        const og::sim::LobbySeatId target_seat_id = (*target_it)->seat_id;
 
         og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            og::ui::detail::make_team_change_message(local_player_index(), team));
+            og::ui::detail::make_team_change_message(
+                player_index, target_seat_id, team));
         poll_and_apply();
-        return local_team_ == team;
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const echoed =
+            og::ui::detail::find_player_by_seat_id(*state_, target_seat_id);
+        return echoed != nullptr && echoed->team == team;
     }
 
     bool set_ready(bool ready) override
@@ -2946,7 +3345,7 @@ public:
         if (!state_.has_value())
             return false;
         const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_);
         return local_player != nullptr && local_player->ready;
     }
 
@@ -2957,8 +3356,16 @@ public:
         return state_->players;
     }
 
-    // §2.5 base-camp ownership split: this machine's seats in the
-    // replicated state, by the derived seat-name convention.
+    [[nodiscard]] std::optional<std::uint8_t>
+    authoritative_team_mask() const noexcept override
+    {
+        if (!state_.has_value())
+            return std::nullopt;
+        return og::sim::lobby_effective_team_mask(state_->settings);
+    }
+
+    // §2.5 base-camp ownership split: this machine's seats from the
+    // recipient-specific, server-issued ownership grant.
     [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
         const override
     {
@@ -2966,7 +3373,7 @@ public:
             return {};
         std::vector<std::uint8_t> indices;
         for (const og::sim::LobbyPlayer* const seat :
-             og::ui::detail::find_local_seats(*state_, player_name_))
+             og::ui::detail::find_local_seats(*state_))
         {
             indices.push_back(seat->player_index);
         }
@@ -3026,6 +3433,7 @@ public:
         // resume_after_level(). Only the per-start scratch state is cleared.
         player_bindings_.clear();
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
         pending_game_start_config_.reset();
         return true;
     }
@@ -3034,6 +3442,7 @@ public:
     {
         g_start_game_requested = false;
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
         pending_game_start_config_.reset();
         player_bindings_.clear();
 
@@ -3042,7 +3451,24 @@ public:
         if (combined_transport_ == nullptr || local_client_transport_ == nullptr ||
             server_ == nullptr)
         {
+            const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
+            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            {
+                local_seat_teams_ = preserved_teams;
+                SaveData* const save = current_picker_save();
+                if (save != nullptr)
+                {
+                    og::ui::detail::resize_local_seat_assignments(
+                        local_seat_teams_,
+                        *save,
+                        spectator_mode_,
+                        local_player_count_);
+                    local_team_ = local_seat_teams_.front();
+                    save->my_team = local_team_;
+                    sync_roster_from_save();
+                }
+            }
             return;
         }
 
@@ -3065,16 +3491,16 @@ private:
         if (!state_.has_value())
             return 0xffu;
         const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_);
         return local_player != nullptr ? local_player->player_index : 0xffu;
     }
 
-    // Seats declared in a join: a spectator still occupies one lobby seat
-    // (unchanged single-seat path); otherwise one seat per local player.
+    // Active seats declared in a Join. A spectator remains connected with no
+    // authoritative LobbyPlayer and therefore sends Leave instead.
     [[nodiscard]] std::size_t join_seat_count() const noexcept
     {
         return spectator_mode_
-            ? 1u
+            ? 0u
             : static_cast<std::size_t>(
                   std::clamp<int>(local_player_count_, 1, MAX_PLAYERS));
     }
@@ -3100,15 +3526,27 @@ private:
         if (save == nullptr)
             return;
 
+        if (spectator_mode_)
+        {
+            og::sim::LobbyMessage message;
+            message.payload = og::sim::LobbyLeaveMessage{
+                .player_index = local_player_index(),
+            };
+            og::ui::detail::send_lobby_message(
+                *local_client_transport_,
+                local_client_transport_->local_peer_id(),
+                std::move(message));
+            return;
+        }
+
         og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
             og::ui::detail::make_join_message(
                 *save,
                 player_name_,
-                local_team_,
-                nullptr,
-                join_seat_count()));
+                local_seat_teams_,
+                nullptr));
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -3120,9 +3558,17 @@ private:
             {
                 state_ = *message.lobby_state;
                 if (const og::sim::LobbyPlayer* const local_player =
-                        og::ui::detail::find_local_player(*state_, player_name_))
+                        og::ui::detail::find_local_player(*state_))
                 {
                     local_team_ = local_player->team;
+                }
+                const std::vector<const og::sim::LobbyPlayer*> local_seats =
+                    og::ui::detail::find_local_seats(*state_);
+                if (!local_seats.empty())
+                {
+                    local_seat_teams_.clear();
+                    for (const og::sim::LobbyPlayer* const seat : local_seats)
+                        local_seat_teams_.push_back(seat->team);
                 }
             }
             break;
@@ -3132,7 +3578,16 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
+                if (!og::ui::detail::start_confirmation_matches_request(
+                        *message.lobby_message,
+                        start_request_pending_
+                            ? pending_start_request_id_
+                            : 0))
+                {
+                    break;
+                }
                 start_request_pending_ = false;
+                pending_start_request_id_ = 0;
                 g_start_game_requested = true;
                 if (server_ != nullptr)
                     player_bindings_ = server_->build_player_bindings();
@@ -3169,7 +3624,7 @@ private:
         if (!spectator_mode_)
         {
             const std::vector<const og::sim::LobbyPlayer*> local_seats =
-                og::ui::detail::find_local_seats(*state_, player_name_);
+                og::ui::detail::find_local_seats(*state_);
             if (!local_seats.empty())
                 local_player_count_ = static_cast<int>(local_seats.size());
         }
@@ -3180,8 +3635,7 @@ private:
                 *save,
                 spectator_mode_,
                 local_team_,
-                static_cast<std::size_t>(std::max(local_player_count_, 0)),
-                player_name_);
+                static_cast<std::size_t>(std::max(local_player_count_, 0)));
         og::ui::detail::persist_deploy_reconciliation(*save, applied);
     }
 
@@ -3230,7 +3684,10 @@ private:
     // Local seats this machine declares (0 = spectator, 1..MAX_PLAYERS).
     int local_player_count_ = 1;
     short local_team_ = 0;
+    std::vector<short> local_seat_teams_;
     bool start_request_pending_ = false;
+    std::uint32_t next_start_request_id_ = 1;
+    std::uint32_t pending_start_request_id_ = 0;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
@@ -3257,22 +3714,29 @@ public:
 
         spectator_mode_ = og::ui::is_spectator_mode(*save);
         local_team_ = resolve_initial_local_team(*save);
-        // Honor the main menu's 1..4-player mode: a networked joiner declares
-        // one lobby seat per local player (0 = spectator, unchanged).
+        // Honor the live Base Camp seat count: a networked joiner declares one
+        // lobby seat per local player (0 = spectator, unchanged).
         local_player_count_ = spectator_mode_
             ? 0
             : std::clamp<int>(save->numplayers, 1, MAX_PLAYERS);
         save->numplayers = static_cast<unsigned char>(local_player_count_);
+        local_seat_teams_ =
+            og::ui::detail::seed_local_seat_assignments(*save, spectator_mode_);
+        local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
-        pending_local_seats_ = og::ui::detail::build_local_lobby_seats(
-            *save,
-            player_name_,
-            local_team_,
-            join_seat_count(),
-            nullptr);
+        if (!spectator_mode_)
+        {
+            pending_local_seats_ = og::ui::detail::build_local_lobby_seats(
+                *save,
+                player_name_,
+                local_seat_teams_,
+                nullptr);
+        }
 
         server_peer_id_ = 1;
         server_peer_id_adopted_ = false;
+        lobby_states_received_ = 0;
+        awaiting_round_ready_reset_ = false;
         relay_room_code_.clear();
         direct_url_.clear();
 
@@ -3317,24 +3781,33 @@ public:
         spectator_mode_ = false;
         local_player_count_ = 1;
         local_team_ = 0;
+        local_seat_teams_.clear();
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        deferred_start_requested_ = false;
         join_message_sent_ = false;
+        join_confirmation_pending_ = false;
+        pending_join_request_id_ = 0;
+        pending_join_resume_after_level_ = false;
+        join_state_serial_at_send_ = 0;
+        next_join_retry_at_ = {};
         settings_dirty_ = false;
         server_peer_id_ = 1;
         server_peer_id_adopted_ = false;
+        awaiting_round_ready_reset_ = false;
         pending_local_seats_.clear();
     }
 
     void sync_from_save() override
     {
         settings_dirty_ = true;
-        join_message_sent_ = false;
+        (void)prepare_pending_join_from_save();
         poll_and_apply();
     }
 
     void sync_roster_from_save() override
     {
-        join_message_sent_ = false;
+        (void)prepare_pending_join_from_save();
         poll_and_apply();
     }
 
@@ -3357,11 +3830,14 @@ public:
         if (transport_->connected_peers().empty())
         {
             join_message_sent_ = false;
+            join_confirmation_pending_ = false;
+            pending_join_request_id_ = 0;
             // A pending start request can never resolve on a dead connection
             // (neither the StartGame handoff nor the denial echo will arrive);
             // release it so go_menu's wait loop gives up instead of spinning
             // forever, and the user can retry after the reconnect.
             start_request_pending_ = false;
+            deferred_start_requested_ = false;
             rebuild_status_lines();
             return;
         }
@@ -3373,12 +3849,21 @@ public:
         }
         if (!join_message_sent_)
         {
-            send_join_from_save();
-            join_message_sent_ = true;
+            join_message_sent_ = send_join_from_save();
+        }
+        else if (join_confirmation_pending_ &&
+                 std::chrono::steady_clock::now() >= next_join_retry_at_)
+        {
+            // During the previous level the host GameServer owns this shared
+            // transport and legally drains non-game Lobby messages. Keep the
+            // desired declaration alive until a matching authoritative echo
+            // proves the reopened LobbyServer received it.
+            (void)send_pending_join();
         }
 
         drain_messages();
         apply_state_to_current_save();
+        maybe_dispatch_deferred_start();
         rebuild_status_lines();
     }
 
@@ -3392,36 +3877,260 @@ public:
         local_player_count_ =
             std::clamp<int>(player_count, 0, MAX_PLAYERS);
         save->numplayers = static_cast<unsigned char>(local_player_count_);
-        join_message_sent_ = false;
+        og::ui::detail::resize_local_seat_assignments(
+            local_seat_teams_,
+            *save,
+            spectator_mode_,
+            local_player_count_);
+        local_team_ = local_seat_teams_.front();
+        save->my_team = local_team_;
+        (void)prepare_pending_join_from_save();
         poll_and_apply();
+    }
+
+    bool add_local_seat() override
+    {
+        poll_and_apply();
+        SaveData* const save = current_picker_save();
+        if (save == nullptr || !transport_ ||
+            transport_->connected_peers().empty() || !state_.has_value() ||
+            start_request_pending_ || pending_game_start_config_.has_value() ||
+            g_start_game_requested || awaiting_round_ready_reset_ ||
+            join_confirmation_pending_)
+        {
+            return false;
+        }
+
+        const std::size_t active_count = local_seat_count();
+        if (active_count >= static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            return false;
+        }
+
+        // An active non-host machine must first publish unready. Whichever
+        // message reaches authority first then has a safe outcome: Start wins
+        // and this mutation aborts, or Ready(false) wins and Start is denied
+        // until the changed roster is explicitly re-readied.
+        if (!local_player_is_host() && local_ready() &&
+            !set_ready(false))
+        {
+            return false;
+        }
+        if (start_request_pending_ || pending_game_start_config_.has_value() ||
+            g_start_game_requested || awaiting_round_ready_reset_ ||
+            join_confirmation_pending_)
+        {
+            return false;
+        }
+
+        const bool previous_spectator = spectator_mode_;
+        const int previous_player_count = local_player_count_;
+        const unsigned char previous_numplayers = save->numplayers;
+        const short previous_local_team = local_team_;
+        const std::vector<short> previous_seat_teams = local_seat_teams_;
+        const std::size_t requested_count = active_count + 1u;
+        spectator_mode_ = false;
+        local_player_count_ = static_cast<int>(requested_count);
+        save->numplayers = static_cast<unsigned char>(requested_count);
+        og::ui::detail::resize_local_seat_assignments(
+            local_seat_teams_,
+            *save,
+            spectator_mode_,
+            local_player_count_);
+        local_team_ = local_seat_teams_.front();
+        save->my_team = local_team_;
+        if (!prepare_pending_join_from_save())
+        {
+            spectator_mode_ = previous_spectator;
+            local_player_count_ = previous_player_count;
+            save->numplayers = previous_numplayers;
+            local_team_ = previous_local_team;
+            local_seat_teams_ = previous_seat_teams;
+            save->my_team = local_team_;
+            return false;
+        }
+
+        const bool accepted =
+            og::ui::detail::wait_for_authoritative_lobby_outcome(
+                [this] { poll_and_apply(); },
+                [this, requested_count] {
+                    return !join_confirmation_pending_ &&
+                        local_seat_count() == requested_count;
+                },
+                [this] {
+                    if (!transport_ ||
+                        transport_->connected_peers().empty() ||
+                        !join_confirmation_pending_ ||
+                        g_start_game_requested ||
+                        pending_game_start_config_.has_value())
+                    {
+                        return true;
+                    }
+                    const og::sim::TransportLinkState link =
+                        transport_->link_state();
+                    return link == og::sim::TransportLinkState::Failed ||
+                        link == og::sim::TransportLinkState::Lost;
+                });
+        if (accepted)
+            return true;
+
+        // A correlated authoritative denial, a competing Start, or link loss
+        // is definitive. Stop retries and restore the exact local projection;
+        // no compensating whole Join is needed (and one could remap stable
+        // middle-seat identities by ordinal after a disconnect).
+        join_confirmation_pending_ = false;
+        pending_join_request_id_ = 0;
+        pending_join_resume_after_level_ = false;
+        spectator_mode_ = previous_spectator;
+        local_player_count_ = previous_player_count;
+        save->numplayers = previous_numplayers;
+        local_team_ = previous_local_team;
+        local_seat_teams_ = previous_seat_teams;
+        save->my_team = local_team_;
+        pending_local_seats_ = state_.has_value()
+            ? og::ui::detail::copy_local_seats(*state_)
+            : std::vector<og::sim::LobbyPlayer>{};
+        join_message_sent_ = true;
+        return false;
+    }
+
+    bool remove_local_seat(std::uint8_t player_index,
+                           og::sim::LobbySeatId seat_id) override
+    {
+        poll_and_apply();
+        if (!transport_ || transport_->connected_peers().empty() ||
+            !state_.has_value() || local_seat_count() == 0u ||
+            start_request_pending_ || pending_game_start_config_.has_value() ||
+            g_start_game_requested || awaiting_round_ready_reset_ ||
+            join_confirmation_pending_ ||
+            seat_id == og::sim::kInvalidLobbySeatId)
+        {
+            return false;
+        }
+
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            og::ui::detail::find_local_seats(*state_);
+        const auto target = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [seat_id](const og::sim::LobbyPlayer* seat) {
+                return seat != nullptr && seat->seat_id == seat_id;
+            });
+        if (target == local_seats.end())
+            return false;
+
+        SaveData* const save = current_picker_save();
+        if (save == nullptr)
+            return false;
+
+        if (!local_player_is_host() && local_ready() &&
+            !set_ready(false))
+        {
+            return false;
+        }
+        if (start_request_pending_ || pending_game_start_config_.has_value() ||
+            g_start_game_requested || awaiting_round_ready_reset_ ||
+            join_confirmation_pending_)
+        {
+            return false;
+        }
+
+        const std::size_t requested_count = local_seats.size() - 1u;
+        og::ui::detail::send_lobby_message(
+            *transport_,
+            server_peer_id_,
+            og::ui::detail::make_remove_seat_message(
+                player_index, seat_id));
+        const bool removed =
+            og::ui::detail::wait_for_authoritative_lobby_outcome(
+                [this] { poll_and_apply(); },
+                [this, seat_id, requested_count] {
+                    return state_.has_value() &&
+                        og::ui::detail::find_player_by_seat_id(
+                            *state_, seat_id) == nullptr &&
+                        local_seat_count() == requested_count;
+                },
+                [this] {
+                    if (!transport_ ||
+                        transport_->connected_peers().empty() ||
+                        g_start_game_requested ||
+                        pending_game_start_config_.has_value())
+                    {
+                        return true;
+                    }
+                    const og::sim::TransportLinkState link =
+                        transport_->link_state();
+                    return link == og::sim::TransportLinkState::Failed ||
+                        link == og::sim::TransportLinkState::Lost;
+                });
+        if (!removed)
+            return false;
+
+        local_player_count_ = static_cast<int>(requested_count);
+        save->numplayers = static_cast<unsigned char>(requested_count);
+        if (requested_count == 0u)
+        {
+            spectator_mode_ = true;
+            og::ui::detail::resize_local_seat_assignments(
+                local_seat_teams_,
+                *save,
+                spectator_mode_,
+                local_player_count_);
+            join_confirmation_pending_ = false;
+            pending_join_request_id_ = 0;
+            pending_join_resume_after_level_ = false;
+            pending_local_seats_.clear();
+            join_message_sent_ = true;
+            return true;
+        }
+
+        if (!prepare_pending_join_from_save())
+            return true;
+
+        // Re-declare the private roster after the exact removal so fighters
+        // carried by that seat move to a surviving stable seat. The exact
+        // RemoveSeat is already committed, so a delayed roster echo must not
+        // make the UI skip its matching local-control profile compaction.
+        (void)og::ui::detail::wait_for_authoritative_lobby_value(
+            [this] { poll_and_apply(); },
+            [this, seat_id, requested_count] {
+                return !join_confirmation_pending_ &&
+                    state_.has_value() &&
+                    og::ui::detail::find_player_by_seat_id(
+                        *state_, seat_id) == nullptr &&
+                    local_seat_count() == requested_count;
+            });
+        return true;
+    }
+
+    [[nodiscard]] std::size_t local_seat_count() const override
+    {
+        if (state_.has_value())
+            return og::ui::detail::find_local_seats(*state_).size();
+        if (spectator_mode_)
+            return 0u;
+        return static_cast<std::size_t>(
+            std::clamp(local_player_count_, 0, MAX_PLAYERS));
     }
 
     bool request_start_game() override
     {
-        if (!transport_ || !local_player_is_host())
+        if (start_request_pending_ || !transport_ || !local_player_is_host() ||
+            pending_game_start_config_.has_value() ||
+            g_start_game_requested)
             return false;
 
-        const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
-        if (local_player == nullptr)
+        if (join_confirmation_pending_ || awaiting_round_ready_reset_)
+        {
+            // GO immediately after a roster edit is a queued intent, not a
+            // silent no-op. The poll loop dispatches it only after every
+            // authoritative mutation/redistribution echo has settled.
+            deferred_start_requested_ = true;
+            start_request_pending_ = true;
             return false;
+        }
 
-        pending_game_start_config_.reset();
-        start_request_pending_ = true;
-        // Mirror the server's [NET-R4] clear-on-next-StartGame in the CACHED
-        // state: a denial left over from a PREVIOUS attempt must not be read
-        // as this request's verdict (a fresh echo re-sets it if denied again).
-        state_->last_start_denial = og::sim::start_denial_reason_value(
-            og::sim::StartDenialReason::None);
-
-        og::sim::LobbyMessage message;
-        message.payload = og::sim::LobbyStartGameMessage{
-            .player_index = local_player->player_index,
-        };
-        og::ui::detail::send_lobby_message(
-            *transport_,
-            server_peer_id_,
-            std::move(message));
+        if (!dispatch_start_request())
+            return false;
 
         // Over real sockets the verdict is usually ASYNC: the accept arrives
         // as a StartGame message, a denial as a later denial-bearing
@@ -3446,16 +4155,17 @@ public:
         // that accompanied the start (player indices are recomputed on every
         // lobby edit, so an earlier echo could drive the wrong walkers).
         const std::vector<const og::sim::LobbyPlayer*> local_seats =
-            og::ui::detail::find_local_seats(*state_, player_name_);
+            og::ui::detail::find_local_seats(*state_);
         const short shared_team =
             og::sim::shared_allied_gameplay_team(*state_);
+        const bool authoritative_spectator = local_seats.empty();
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data =
             og::ui::detail::build_save_data_equivalent_from_state(
                 *state_,
-                spectator_mode_,
-                std::max<std::size_t>(local_seats.size(), 1u));
+                authoritative_spectator,
+                local_seats.size());
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
@@ -3463,7 +4173,7 @@ public:
         config.is_networked = true;
         if (!local_seats.empty())
             config.local_player_index = local_seats.front()->player_index;
-        if (!spectator_mode_)
+        if (!authoritative_spectator)
         {
             for (const og::sim::LobbyPlayer* const seat : local_seats)
             {
@@ -3541,41 +4251,54 @@ public:
         return og::ui::detail::networked_save_slot_editable(
             slot_index,
             current_picker_save(),
-            state_.has_value() ? &*state_ : nullptr,
-            player_name_);
+            state_.has_value() ? &*state_ : nullptr);
     }
 
     bool request_team_change(short team) override
     {
+        return request_seat_team_change(local_player_index(), team);
+    }
+
+    bool request_seat_team_change(std::uint8_t player_index,
+                                  short team) override
+    {
         if (!transport_ || transport_->connected_peers().empty())
             return false;
+        if (!state_.has_value() || team < 0 || team >= MAX_PLAYERS)
+            return false;
 
-        const std::uint64_t states_before = lobby_states_received_;
+        const std::vector<const og::sim::LobbyPlayer*> local_seats =
+            og::ui::detail::find_local_seats(*state_);
+        const auto target_it = std::find_if(
+            local_seats.begin(), local_seats.end(),
+            [player_index](const og::sim::LobbyPlayer* seat) {
+                return seat->player_index == player_index;
+            });
+        if (target_it == local_seats.end())
+            return false;
+        const og::sim::LobbySeatId target_seat_id = (*target_it)->seat_id;
+
         og::ui::detail::send_lobby_message(
             *transport_,
             server_peer_id_,
-            og::ui::detail::make_team_change_message(local_player_index(), team));
+            og::ui::detail::make_team_change_message(
+                player_index, target_seat_id, team));
         // The remote round trip is asynchronous, but the server answers every
-        // request (denials get an explicit state echo): exit on the first
-        // received state instead of burning the full window on a bounce.
-        for (int attempt = 0; attempt < 50; ++attempt)
-        {
-            poll_and_apply();
-            if (local_team_ == team)
-                return true;
-            if (lobby_states_received_ != states_before)
-                return false;
-#ifdef __EMSCRIPTEN__
-            // std::this_thread::sleep_for busy-waits on emscripten without
-            // returning to the browser event loop, so the WebSocket echo this
-            // loop waits for could never arrive in-window. emscripten_sleep
-            // yields via Asyncify and lets onmessage fire.
-            emscripten_sleep(10);
-#else
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-#endif
-        }
-        return false;
+        // request (denials get an explicit state echo). An older unrelated
+        // state may already be queued ahead of that echo, so only the stable
+        // target's requested value proves acceptance; otherwise wait through
+        // the bounded window instead of misreporting the first stale state as
+        // a denial.
+        return og::ui::detail::wait_for_authoritative_lobby_value(
+            [this] { poll_and_apply(); },
+            [this, target_seat_id, team] {
+                if (!state_.has_value())
+                    return false;
+                const og::sim::LobbyPlayer* const echoed =
+                    og::ui::detail::find_player_by_seat_id(
+                        *state_, target_seat_id);
+                return echoed != nullptr && echoed->team == team;
+            });
     }
 
     bool set_ready(bool ready) override
@@ -3583,34 +4306,46 @@ public:
         if (!transport_ || transport_->connected_peers().empty())
             return false;
 
-        const std::uint64_t states_before = lobby_states_received_;
+        if (ready &&
+            (awaiting_round_ready_reset_ || join_confirmation_pending_))
+        {
+            // An early Ready click can race the host's return from gameplay.
+            // Wait for the server's ordered new-round ready=false state before
+            // sending, and also wait for this round's Join acknowledgement:
+            // otherwise the active GameServer can drain the one-shot Join and
+            // a Ready would arm the server's stale previous-round roster. The
+            // wait is bounded, so a joiner that returns before the host simply
+            // gets a rejected click and may retry once the host unlocks.
+            const bool reset_observed =
+                og::ui::detail::wait_for_authoritative_lobby_value(
+                    [this] { poll_and_apply(); },
+                    [this] {
+                        return !awaiting_round_ready_reset_ &&
+                            !join_confirmation_pending_;
+                    });
+            if (!reset_observed)
+                return false;
+        }
+
         og::ui::detail::send_lobby_message(
             *transport_,
             server_peer_id_,
             og::ui::detail::make_ready_message(local_player_index(), ready));
-        for (int attempt = 0; attempt < 50; ++attempt)
-        {
-            poll_and_apply();
-            if (local_ready() == ready)
-                return true;
-            if (lobby_states_received_ != states_before)
-                return local_ready() == ready;
-#ifdef __EMSCRIPTEN__
-            // See request_team_change: sleep_for busy-waits on emscripten.
-            emscripten_sleep(10);
-#else
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-#endif
-        }
-        return false;
+        // Ignore unrelated LobbyState traffic queued before this request.
+        // Only observing the requested value proves acceptance; an unchanged
+        // denial is resolved by the bounded timeout.
+        return og::ui::detail::wait_for_authoritative_lobby_value(
+            [this] { poll_and_apply(); },
+            [this, ready] { return local_ready() == ready; });
     }
 
     [[nodiscard]] bool local_ready() const noexcept override
     {
-        if (!state_.has_value())
+        if (!state_.has_value() || awaiting_round_ready_reset_ ||
+            join_confirmation_pending_)
             return false;
         const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_);
         return local_player != nullptr && local_player->ready;
     }
 
@@ -3621,8 +4356,16 @@ public:
         return state_->players;
     }
 
-    // §2.5 base-camp ownership split: this machine's seats in the
-    // replicated state, by the derived seat-name convention.
+    [[nodiscard]] std::optional<std::uint8_t>
+    authoritative_team_mask() const noexcept override
+    {
+        if (!state_.has_value())
+            return std::nullopt;
+        return og::sim::lobby_effective_team_mask(state_->settings);
+    }
+
+    // §2.5 base-camp ownership split: this machine's seats from the
+    // recipient-specific, server-issued ownership grant.
     [[nodiscard]] std::vector<std::uint8_t> local_player_indices()
         const override
     {
@@ -3630,7 +4373,7 @@ public:
             return {};
         std::vector<std::uint8_t> indices;
         for (const og::sim::LobbyPlayer* const seat :
-             og::ui::detail::find_local_seats(*state_, player_name_))
+             og::ui::detail::find_local_seats(*state_))
         {
             indices.push_back(seat->player_index);
         }
@@ -3665,26 +4408,28 @@ public:
 
         // One connection, one GameClient, N local seat bindings: view/input
         // slot k follows the global player_index its seat was assigned, and
-        // renders that seat's gameplay team (Together shares the first active
-        // authoritative team without recoloring any fighter).
+        // renders that seat's explicit gameplay team without recoloring any
+        // fighter.
         std::vector<og::runtime::LocalSeatBinding> local_seats;
+        bool authoritative_spectator = false;
         if (state_.has_value())
         {
             const short allied_mode = state_->settings.allied_mode;
             const short shared_team =
                 og::sim::shared_allied_gameplay_team(*state_);
             for (const og::sim::LobbyPlayer* const seat :
-                 og::ui::detail::find_local_seats(*state_, player_name_))
+                 og::ui::detail::find_local_seats(*state_))
             {
                 local_seats.push_back(og::runtime::LocalSeatBinding{
                     .player_index = seat->player_index,
                     .team = gameplay_start_team(
                         allied_mode, static_cast<short>(seat->team),
-                        shared_team),
+                    shared_team),
                 });
             }
+            authoritative_spectator = local_seats.empty();
         }
-        if (local_seats.empty())
+        if (local_seats.empty() && !authoritative_spectator)
         {
             local_seats.push_back(og::runtime::LocalSeatBinding{
                 .player_index = 0,
@@ -3715,6 +4460,8 @@ public:
         // per-level runtime, and resume_after_level() rejoins the lobby over the
         // still-open socket. Only the per-start scratch state is cleared.
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        deferred_start_requested_ = false;
         pending_game_start_config_.reset();
         return true;
     }
@@ -3722,20 +4469,54 @@ public:
     void resume_after_level() override
     {
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        deferred_start_requested_ = false;
         pending_game_start_config_.reset();
 
-        // If the socket didn't survive, reconnect from scratch.
-        if (transport_ == nullptr)
+        // If the socket object survived but its upstream did not, it is no
+        // more reusable than a null transport. Recreate it instead of sending
+        // the one resume Join into a permanently Lost/Failed connection and
+        // keeping the previous round's lobby cache forever.
+        const bool transport_unusable = transport_ == nullptr ||
+            transport_->link_state() == og::sim::TransportLinkState::Failed ||
+            transport_->link_state() == og::sim::TransportLinkState::Lost ||
+            transport_->connected_peers().empty();
+        if (transport_unusable)
         {
+            const std::vector<short> preserved_teams = local_seat_teams_;
             initialize_from_save();
+            if (!preserved_teams.empty() && !local_seat_teams_.empty())
+            {
+                local_seat_teams_ = preserved_teams;
+                SaveData* const save = current_picker_save();
+                if (save != nullptr)
+                {
+                    og::ui::detail::resize_local_seat_assignments(
+                        local_seat_teams_,
+                        *save,
+                        spectator_mode_,
+                        local_player_count_);
+                    local_team_ = local_seat_teams_.front();
+                    save->my_team = local_team_;
+                    sync_roster_from_save();
+                }
+            }
             return;
         }
 
-        // Reuse the still-open socket: re-send this peer's join from the
-        // reloaded (advanced) save0 and re-poll so the host's LobbyServer
-        // re-adds us to the level-N lobby. (sync_from_save re-sends settings +
-        // join and polls.)
-        sync_from_save();
+        // The cached state can still say ready=true from the completed round.
+        // Do not let that stale value satisfy a new set_ready(true) request:
+        // unlock_for_new_round publishes ready=false before accepting the next
+        // round's declarations, and handle_typed_message releases this guard
+        // only after that authoritative reset reaches this peer.
+        awaiting_round_ready_reset_ = true;
+
+        // Reuse the still-open socket: this explicitly marked resume Join is
+        // the only declaration a still-locked LobbyServer may retain for the
+        // next round. Ordinary seat mutations are never queued across Start.
+        settings_dirty_ = true;
+        (void)prepare_pending_join_from_save(true);
+        poll_and_apply();
     }
 
 private:
@@ -3743,7 +4524,7 @@ private:
     {
         if (!state_.has_value())
             return false;
-        return og::ui::detail::local_player_is_host(*state_, player_name_);
+        return state_->local_peer_is_host;
     }
 
     [[nodiscard]] std::uint8_t local_player_index() const
@@ -3752,16 +4533,16 @@ private:
         if (!state_.has_value())
             return 0xffu;
         const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_);
         return local_player != nullptr ? local_player->player_index : 0xffu;
     }
 
-    // Seats declared in a join: a spectator still occupies one lobby seat
-    // (unchanged single-seat path); otherwise one seat per local player.
+    // Active seats declared in a Join. A spectator is a connected zero-seat
+    // peer and consumes no lobby/gameplay capacity.
     [[nodiscard]] std::size_t join_seat_count() const noexcept
     {
         return spectator_mode_
-            ? 1u
+            ? 0u
             : static_cast<std::size_t>(
                   std::clamp<int>(local_player_count_, 1, MAX_PLAYERS));
     }
@@ -3780,23 +4561,16 @@ private:
             og::ui::detail::make_settings_message(*save));
     }
 
-    void send_join_from_save()
+    bool send_pending_join()
     {
-        if (!transport_)
-            return;
-        SaveData* const save = current_picker_save();
-        if (save == nullptr)
-            return;
-
-        pending_local_seats_ = og::ui::detail::build_local_lobby_seats(
-            *save,
-            player_name_,
-            local_team_,
-            join_seat_count(),
-            nullptr);
+        if (!transport_ || pending_local_seats_.empty() ||
+            pending_join_request_id_ == 0)
+            return false;
 
         og::sim::LobbyMessage message;
         og::sim::LobbyJoinMessage join;
+        join.request_id = pending_join_request_id_;
+        join.resume_after_level = pending_join_resume_after_level_;
         join.player = pending_local_seats_.front();
         join.extra_players.assign(
             pending_local_seats_.begin() + 1,
@@ -3806,6 +4580,120 @@ private:
             *transport_,
             server_peer_id_,
             std::move(message));
+        join_confirmation_pending_ = true;
+        join_state_serial_at_send_ = lobby_states_received_;
+        next_join_retry_at_ =
+            std::chrono::steady_clock::now() + kJoinRetryInterval;
+        return true;
+    }
+
+    bool prepare_pending_join_from_save(bool resume_after_level = false)
+    {
+        SaveData* const save = current_picker_save();
+        if (save == nullptr)
+            return false;
+
+        if (spectator_mode_)
+        {
+            pending_local_seats_.clear();
+            pending_join_request_id_ = 0;
+            pending_join_resume_after_level_ = false;
+            join_confirmation_pending_ = false;
+            join_message_sent_ = false;
+            return true;
+        }
+
+        pending_local_seats_ = og::ui::detail::build_local_lobby_seats(
+            *save,
+            player_name_,
+            local_seat_teams_,
+            nullptr);
+        pending_join_request_id_ = next_join_request_id_++;
+        if (next_join_request_id_ == 0)
+            next_join_request_id_ = 1;
+        pending_join_resume_after_level_ = resume_after_level;
+        join_confirmation_pending_ = true;
+        join_state_serial_at_send_ = lobby_states_received_;
+        join_message_sent_ = false;
+        return true;
+    }
+
+    bool send_join_from_save()
+    {
+        if (!transport_)
+            return false;
+        if (spectator_mode_)
+        {
+            og::sim::LobbyMessage message;
+            message.payload = og::sim::LobbyLeaveMessage{
+                .player_index = local_player_index(),
+            };
+            og::ui::detail::send_lobby_message(
+                *transport_, server_peer_id_, std::move(message));
+            join_confirmation_pending_ = false;
+            pending_join_request_id_ = 0;
+            pending_join_resume_after_level_ = false;
+            pending_local_seats_.clear();
+            return true;
+        }
+        if (pending_join_request_id_ == 0 &&
+            !prepare_pending_join_from_save())
+        {
+            return false;
+        }
+        return send_pending_join();
+    }
+
+    bool dispatch_start_request()
+    {
+        if (!transport_ || !state_.has_value() ||
+            !local_player_is_host() || join_confirmation_pending_ ||
+            awaiting_round_ready_reset_ ||
+            pending_game_start_config_.has_value() ||
+            g_start_game_requested)
+        {
+            return false;
+        }
+
+        const og::sim::LobbyPlayer* const local_player =
+            og::ui::detail::find_local_player(*state_);
+        pending_game_start_config_.reset();
+        deferred_start_requested_ = false;
+        start_request_pending_ = true;
+        pending_start_request_id_ = next_start_request_id_++;
+        if (next_start_request_id_ == 0)
+            next_start_request_id_ = 1;
+
+        // Mirror the server's [NET-R4] clear-on-next-StartGame in the CACHED
+        // state: a denial left over from a PREVIOUS attempt must not be read
+        // as this request's verdict.
+        state_->last_start_denial = og::sim::start_denial_reason_value(
+            og::sim::StartDenialReason::None);
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyStartGameMessage{
+            .player_index = local_player != nullptr
+                ? local_player->player_index
+                : std::uint8_t{0xffu},
+            .request_id = pending_start_request_id_,
+        };
+        og::ui::detail::send_lobby_message(
+            *transport_, server_peer_id_, std::move(message));
+        return true;
+    }
+
+    void maybe_dispatch_deferred_start()
+    {
+        if (!deferred_start_requested_)
+            return;
+        if (!transport_ || !state_.has_value() || !local_player_is_host())
+        {
+            deferred_start_requested_ = false;
+            start_request_pending_ = false;
+            pending_start_request_id_ = 0;
+            return;
+        }
+        (void)dispatch_start_request();
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -3824,26 +4712,73 @@ private:
                 // `while (pending) poll` wait blocks forever on the
                 // dedicated-server ELECTED host and the relay host (the
                 // in-process direct host resolves synchronously and never
-                // needs this). The cached denial was cleared when the request
-                // was sent, so a non-None value here is this request's fresh
-                // verdict (modulo a still-in-flight pre-request echo — a
-                // transient wrong reason at worst; an accepted start still
-                // lands via the StartGame handoff below).
+                // needs this). Match the echoed request ID too: a denial from
+                // an older attempt may already be queued and must not release
+                // a newer pending request.
                 if (start_request_pending_ &&
-                    state_->last_start_denial !=
-                        og::sim::start_denial_reason_value(
-                            og::sim::StartDenialReason::None))
+                    og::ui::detail::start_denial_matches_request(
+                        *state_, pending_start_request_id_))
                 {
                     start_request_pending_ = false;
+                    pending_start_request_id_ = 0;
+                    deferred_start_requested_ = false;
                 }
                 const std::vector<const og::sim::LobbyPlayer*> local_seats =
-                    og::ui::detail::find_local_seats(*state_, player_name_);
+                    og::ui::detail::find_local_seats(*state_);
+                const std::vector<og::sim::LobbyPlayer> echoed_local_seats =
+                    og::ui::detail::copy_local_seats(*state_);
+
+                const bool all_local_seats_unready =
+                    std::all_of(
+                        local_seats.begin(), local_seats.end(),
+                        [](const og::sim::LobbyPlayer* seat) {
+                            return seat != nullptr && !seat->ready;
+                        });
+                if (awaiting_round_ready_reset_ &&
+                    all_local_seats_unready)
+                {
+                    // Empty is intentionally vacuously unready: a spectator
+                    // has no ready bit to reset between levels.
+                    awaiting_round_ready_reset_ = false;
+                }
+
+                if (join_confirmation_pending_ &&
+                    lobby_states_received_ > join_state_serial_at_send_ &&
+                    pending_join_request_id_ != 0 &&
+                    state_->last_join_request_id ==
+                        pending_join_request_id_ &&
+                    !awaiting_round_ready_reset_)
+                {
+                    // The correlated result can be empty when the global
+                    // capacity rejects a spectator's [+]. Empty is still a
+                    // complete authoritative answer and must stop retries.
+                    join_confirmation_pending_ = false;
+                    pending_join_request_id_ = 0;
+                    pending_join_resume_after_level_ = false;
+                    pending_local_seats_ = echoed_local_seats;
+                }
+
                 if (!local_seats.empty())
                 {
+                    // A stale state may arrive after the resume declaration
+                    // was drained by the still-running GameServer. Do not let
+                    // it overwrite the desired seat vector; retry that vector
+                    // until the LobbyServer confirms it.
+                    if (!join_confirmation_pending_)
+                    {
+                        pending_local_seats_ = echoed_local_seats;
+                        local_team_ = local_seats.front()->team;
+                        local_seat_teams_.clear();
+                        for (const og::sim::LobbyPlayer* const seat :
+                             local_seats)
+                        {
+                            local_seat_teams_.push_back(seat->team);
+                        }
+                    }
+                }
+                else if (!join_confirmation_pending_ && join_message_sent_)
+                {
                     pending_local_seats_.clear();
-                    for (const og::sim::LobbyPlayer* const seat : local_seats)
-                        pending_local_seats_.push_back(*seat);
-                    local_team_ = local_seats.front()->team;
                 }
             }
             break;
@@ -3853,7 +4788,17 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
+                if (!og::ui::detail::start_confirmation_matches_request(
+                        *message.lobby_message,
+                        start_request_pending_
+                            ? pending_start_request_id_
+                            : 0))
+                {
+                    break;
+                }
                 start_request_pending_ = false;
+                pending_start_request_id_ = 0;
+                deferred_start_requested_ = false;
                 g_start_game_requested = true;
                 pending_game_start_config_ = build_game_start_config();
             }
@@ -3911,10 +4856,24 @@ private:
         const og::sim::LobbyState* applied_state = &*state_;
         std::optional<og::sim::LobbyState> pending_merged_state;
         const std::vector<const og::sim::LobbyPlayer*> local_seats =
-            og::ui::detail::find_local_seats(*state_, player_name_);
-        if (!local_seats.empty())
+            og::ui::detail::find_local_seats(*state_);
+        if (join_confirmation_pending_ && !local_seats.empty())
+        {
+            // This can be a stale previous-round state received while the
+            // desired Join is still being retried. Apply synchronized match
+            // settings, but withhold local ownership so stale team/deploy
+            // fields cannot overwrite the private company before authority
+            // acknowledges the declaration.
+            pending_merged_state = *state_;
+            pending_merged_state->local_seat_ids.clear();
+            applied_state = &*pending_merged_state;
+        }
+        else if (!local_seats.empty())
         {
             local_team_ = local_seats.front()->team;
+            local_seat_teams_.clear();
+            for (const og::sim::LobbyPlayer* const seat : local_seats)
+                local_seat_teams_.push_back(seat->team);
             // Adopt the authoritative seat count (the server truncates a
             // join that exceeded lobby capacity).
             if (!spectator_mode_)
@@ -3925,8 +4884,7 @@ private:
             PendingLocalLobbyState merged = build_pending_local_lobby_state(
                 *state_,
                 pending_local_seats_,
-                local_team_,
-                player_name_);
+                local_team_);
             local_team_ = merged.local_team;
             pending_merged_state = std::move(merged.state);
             applied_state = &*pending_merged_state;
@@ -3938,10 +4896,9 @@ private:
                 *save,
                 spectator_mode_,
                 local_team_,
-                static_cast<std::size_t>(std::max(local_player_count_, 0)),
-                player_name_);
-        // A pending-merged state mirrors this machine's own optimistic
-        // seats, so adoption can only fire off a REAL server echo.
+                static_cast<std::size_t>(std::max(local_player_count_, 0)));
+        // A pending-merged/masked state mirrors or withholds this machine's
+        // unconfirmed seats, so adoption can only fire off a REAL server echo.
         og::ui::detail::persist_deploy_reconciliation(*save, applied);
     }
 
@@ -3996,11 +4953,25 @@ private:
     // Local seats this machine declares (0 = spectator, 1..MAX_PLAYERS).
     int local_player_count_ = 1;
     short local_team_ = 0;
+    std::vector<short> local_seat_teams_;
     bool start_request_pending_ = false;
+    bool deferred_start_requested_ = false;
+    std::uint32_t next_start_request_id_ = 1;
+    std::uint32_t pending_start_request_id_ = 0;
     bool join_message_sent_ = false;
+    bool join_confirmation_pending_ = false;
+    std::uint32_t next_join_request_id_ = 1;
+    std::uint32_t pending_join_request_id_ = 0;
+    bool pending_join_resume_after_level_ = false;
+    std::uint64_t join_state_serial_at_send_ = 0;
+    std::chrono::steady_clock::time_point next_join_retry_at_{};
     bool settings_dirty_ = false;
-    // Counts every authoritative LobbyState received; request windows use it
-    // to detect the server's denial echo without burning the full timeout.
+    // A completed round leaves ready=true in the last cached LobbyState.
+    // While resuming, readiness stays locally false until the server's
+    // new-round ready=false broadcast arrives.
+    bool awaiting_round_ready_reset_ = false;
+    // Counts authoritative states so relay host discovery is adopted only
+    // before the first server binding.
     std::uint64_t lobby_states_received_ = 0;
     // This machine's declared seat list (seat 0 first), used to optimistically
     // merge our seats into echoed states that predate our join.

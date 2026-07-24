@@ -26,10 +26,11 @@ A menu entry exists once in the shared model and is consumed by three clients:
 5. Curses: `handle_menu_item` + `menu_item_label` in
    `src/platform/curses/curses_picker_client.cpp`.
 
-`allied_mode` is the canonical end-to-end template; the CTF settings trio
-followed it exactly. If the setting affects the sim, it also needs the
-SaveData → LobbySettings → world plumbing — that's a separate, bigger chain
-(versioned save/wire formats); see `docs/ARCHITECTURE.md`.
+The retired player-facing `allied_mode` toggle remains a useful compatibility
+example, but new synchronized settings should follow the CTF settings trio. If
+a setting affects the sim, it also needs the SaveData → LobbySettings → world
+plumbing — that's a separate, bigger chain (versioned save/wire formats); see
+`docs/ARCHITECTURE.md`.
 
 ## Pixel budgets (measure before you write a label)
 
@@ -41,8 +42,8 @@ SaveData → LobbySettings → world plumbing — that's a separate, bigger chai
 - The team-build grid: columns x=30/120/210, rows y=40/70/100/140/170, button
   faces 80px wide, 15px tall (20px on bottom rows). Respect the grid; a
   one-off wide button reads as clutter.
-- Mission-briefing text budget is 33 chars/line; the TEAMS detail line is 34
-  (26 when paged); the scenario-viewer line budget is 48. Tests pin these.
+- Mission-briefing text budget is 33 chars/line; the MATCHUP detail line is 47
+  (39 when paged); the scenario-viewer line budget is 48. Tests pin these.
 
 ## Labels have TWO surfaces
 
@@ -61,6 +62,11 @@ label-writing callbacks write by index. Reordering a table without updating
 the constants silently relabels the wrong button. Append new rows at the end;
 when a restructure is unavoidable, update the constants, the per-frame sync
 code, and the layout tests in the same change.
+
+Base Camp has two independent page windows: eight roster rows and four
+player-seat cards. The **SEATS**, **<**, card, and **>** controls have their own
+indices and navigation. Do not couple seat paging to roster paging, and keep
+both arrows hidden unless the seat list spans multiple pages.
 
 Two consumers select TEXT menu items by 1-based position and break silently
 on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive
@@ -89,12 +95,14 @@ in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 
 `draw_buttons()` runs before the screen's content draw. Any translucent fill
 (readability bars, backing rects) painted in the content pass lands ON TOP of
-buttons and dims them — the TEAMS pagers shipped at 41% brightness this way.
+buttons and dims them — the MATCHUP pagers shipped at 41% brightness this way.
 Split background fills into a pre-pass before `draw_buttons`; keep text after.
 
 ## Blocking subscreens (the only sanctioned pattern)
 
-Clone `create_teams_menu` / `create_scenario_menu`, not ad-hoc loops:
+Clone the MATCHUP screen's internal `create_teams_menu` /
+`create_scenario_menu`, not ad-hoc loops:
+
 - per-iteration `picker_lobby_poll()` (the lobby must stay alive),
 - per-frame `sync_*_host_control_visibility` + nav rewire,
 - BACK returns `MENU_REDRAW`; `MENU_EXIT` is reserved for propagating exits —

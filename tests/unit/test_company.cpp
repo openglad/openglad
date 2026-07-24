@@ -124,7 +124,7 @@ struct HeaderFixture
     std::int16_t scen_num = 3;
     std::uint32_t cash = 1234;
     std::int16_t listsize = 2;
-    std::uint8_t numplayers = 1;
+    std::uint8_t legacy_numplayers = 1;
     std::int64_t last_played = 0; // v14+
 
     std::string bytes() const
@@ -160,7 +160,7 @@ struct HeaderFixture
         if (version >= 7)
             append_value<std::int16_t>(out, 1); // allied mode
         append_value(out, listsize);
-        append_value(out, numplayers);
+        append_value(out, legacy_numplayers);
         if (version >= 14)
         {
             append_value(out, last_played);
@@ -445,7 +445,7 @@ TEST(CompanyScan, version_ladder_v2_v5_v6_v7_v13)
     }
 }
 
-TEST(CompanyScan, invalid_listsize_numplayers_and_unsafe_campaign)
+TEST(CompanyScan, invalid_listsize_legacy_player_byte_and_unsafe_campaign)
 {
     SaveDirSandbox sandbox;
 
@@ -458,12 +458,12 @@ TEST(CompanyScan, invalid_listsize_numplayers_and_unsafe_campaign)
         << "the reader rejects listsize > MAX_TEAM_SIZE; the scan must agree";
 
     HeaderFixture crowded;
-    crowded.numplayers = 5;
+    crowded.legacy_numplayers = 5;
     sandbox.write_raw("crowded.gtl", crowded.bytes());
     const auto crowded_info = og::data::read_company_header("crowded");
     ASSERT_TRUE(crowded_info.has_value());
     EXPECT_FALSE(crowded_info->valid)
-        << "the reader rejects numplayers > 4; the scan must agree";
+        << "the retired compatibility byte keeps its legacy corruption bound";
 
     HeaderFixture hostile;
     hostile.campaign = "../../etc/passwd";
@@ -1064,8 +1064,9 @@ TEST(CompanyAutosave, level_win_snapshots_exactly_once_per_call)
 // [SAVE-F1]: while a networked lobby holds the in-memory save (host campaign
 // / cursor / settings), a mutation autosave must MERGE into the private
 // on-disk company: own roster + owned wallets overlaid, everything else —
-// campaign cursor, history, difficulty, ctf/respawn/tower settings, seat
-// fields — preserved from disk, and the ambient campaign mount restored.
+// campaign cursor, history, difficulty, ctf/respawn/tower settings and
+// company-owned seat/team fields — preserved from disk, and the ambient
+// campaign mount restored. Player count is session state, not a company field.
 TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
 {
     SaveDirSandbox sandbox;
@@ -1083,7 +1084,6 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         priv.current_campaign = "org.openglad.gladiator";
         priv.scen_num = 5;
         priv.my_team = 0;
-        priv.numplayers = 2;
         priv.allied_mode = 1;
         priv.respawn_mode = 2;
         priv.generator_rate = 150;
@@ -1158,6 +1158,7 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         << "the merge stamps only the merged disk copy, not the session save";
 
     SaveData reloaded;
+    reloaded.numplayers = 4;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
 
     // Preserved from disk ([SAVE-F1] contract).
@@ -1170,7 +1171,8 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         reloaded.completed_levels.contains("org.openglad.ctf"))
         << "the host's session history must never leak into the company";
     EXPECT_EQ(0, reloaded.my_team);
-    EXPECT_EQ(2, static_cast<int>(reloaded.numplayers));
+    EXPECT_EQ(4, static_cast<int>(reloaded.numplayers))
+        << "loading the merged company must preserve the live seat count";
     EXPECT_EQ(1, reloaded.allied_mode);
     EXPECT_EQ(2, reloaded.respawn_mode);
     EXPECT_EQ(150, reloaded.generator_rate);

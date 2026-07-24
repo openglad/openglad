@@ -70,6 +70,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.ctf_team_count = 0; // Auto: every team the map authors
     }
+    sanitized.ctf_authored_team_mask = static_cast<std::uint8_t>(
+        sanitized.ctf_authored_team_mask & og::sim::kAllLobbyTeamMask);
     sanitized.ctf_capture_limit =
         std::clamp<std::int16_t>(sanitized.ctf_capture_limit, 0, 50);
     if (sanitized.ctf_respawn_ticks != 0)
@@ -122,13 +124,6 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
     }
 
     return sanitized;
-}
-
-std::int16_t gameplay_seat_team_for_mode(std::int16_t allied_mode,
-                                         std::int16_t team,
-                                         std::int16_t shared_team) noexcept
-{
-    return allied_mode != 0 ? shared_team : team;
 }
 
 std::string default_player_name(std::size_t ordinal)
@@ -233,48 +228,22 @@ struct OrderedLobbySlot {
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
-// Content-identical seat comparison for the ready-preservation rule (§4.3,
-// [NET-R7]). Two slots match on slot_index, deploy flag, and character data,
-// but NOT on the assembly-only owner_player_index/owner_save_slot: the
-// in-process loopback transport shares LobbyMessage objects with no serialize/
-// normalize pass, so "wire-defaulted 0xff on both sides" is not a safe
-// assumption on the host path. The deploy flag IS content — a changed deploy
-// selection clears ready (that machine's roster really changed, §4.2).
-bool lobby_slot_content_equal(const og::sim::LobbyCharacterSlot& lhs,
-                              const og::sim::LobbyCharacterSlot& rhs) noexcept
-{
-    return lhs.slot_index == rhs.slot_index &&
-        lhs.deployed == rhs.deployed &&
-        lhs.character == rhs.character;
-}
-
 // A re-sent join whose seats match the peer's stored seats content-for-content
 // preserves ready (kills the go_menu re-send deadlock). Compares seat count,
-// per-seat team, and per-seat character-slot content. Player name/company are
-// excluded (a rename never un-readies anyone); ready/is_host/player_index are
-// non-content.
+// per-seat team, and per-seat character-slot content. Two slots match on
+// slot_index, deploy flag, and character data, but NOT on the assembly-only
+// owner_player_index/owner_save_slot: the in-process loopback transport shares
+// LobbyMessage objects with no serialize/normalize pass, so "wire-defaulted
+// 0xff on both sides" is not a safe assumption on the host path. Player
+// name/company are excluded (a rename never un-readies anyone);
+// ready/is_host/player_index and server-issued seat_id/machine_id are
+// non-content. The deploy flag IS content — a changed deploy selection clears
+// ready (that machine's roster really changed, §4.2).
 bool lobby_seats_content_identical(
     const std::vector<og::sim::LobbyPlayer>& previous,
     const std::vector<og::sim::LobbyPlayer>& next) noexcept
 {
-    if (previous.size() != next.size())
-        return false;
-    for (std::size_t seat = 0; seat < previous.size(); ++seat)
-    {
-        if (previous[seat].team != next[seat].team)
-            return false;
-        if (previous[seat].character_slots.size() !=
-            next[seat].character_slots.size())
-            return false;
-        for (std::size_t slot = 0; slot < previous[seat].character_slots.size();
-             ++slot)
-        {
-            if (!lobby_slot_content_equal(previous[seat].character_slots[slot],
-                                          next[seat].character_slots[slot]))
-                return false;
-        }
-    }
-    return true;
+    return og::sim::lobby_join_seats_content_identical(previous, next);
 }
 
 } // namespace
@@ -352,6 +321,21 @@ void LobbyServer::unlock_for_new_round() noexcept
     }
     for (LobbyPlayer& player : state_.players)
         player.ready = false;
+
+    // Ready is authoritative state, not a local host-side cache. In
+    // particular, a joiner that was ready for the previous level must see the
+    // new-round false before its first READY click can produce a real change.
+    broadcast_state();
+
+    // A joiner may leave gameplay and re-declare its advanced roster before
+    // the host has returned far enough to unlock this server. The lock still
+    // prevents that declaration from affecting the running level; apply the
+    // latest declaration now that the next-round lobby is open.
+    std::vector<std::pair<PeerId, LobbyMessage>> pending_joins =
+        std::move(pending_locked_joins_);
+    pending_locked_joins_.clear();
+    for (const auto& [peer_id, message] : pending_joins)
+        process_lobby_message(peer_id, message);
 }
 
 bool LobbyServer::start_allowed(PeerId requester,
@@ -415,12 +399,20 @@ bool LobbyServer::start_allowed(PeerId requester,
 void LobbyServer::connect_client(PeerId peer_id)
 {
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
-    const auto [it, inserted] = peers_.emplace(
-        peer_id, ConnectedPeerState{.connection_order = next_connection_order_++});
+    const auto [it, inserted] = peers_.try_emplace(peer_id);
     if (!inserted)
+    {
         it->second.connection_order = it->second.connection_order == 0
             ? next_connection_order_++
             : it->second.connection_order;
+        if (it->second.machine_id == kInvalidLobbyMachineId)
+            it->second.machine_id = allocate_machine_id();
+    }
+    else
+    {
+        it->second.connection_order = next_connection_order_++;
+        it->second.machine_id = allocate_machine_id();
+    }
     if (!host_peer_id_.has_value())
         host_peer_id_ = peer_id;
 
@@ -431,6 +423,10 @@ void LobbyServer::disconnect_client(PeerId peer_id)
 {
     erase_peer_id_sorted(connected_transport_peers_, peer_id);
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
+    std::erase_if(pending_locked_joins_,
+                  [peer_id](const auto& pending) {
+                      return pending.first == peer_id;
+                  });
     const auto peer_it = peers_.find(peer_id);
     if (peer_it == peers_.end())
     {
@@ -448,34 +444,31 @@ void LobbyServer::disconnect_client(PeerId peer_id)
     if (had_player || was_host)
     {
         rebuild_state();
-        if (state_ != previous_state)
+        // Host authority is recipient-specific and can change even when both
+        // the departing and promoted peers have zero active seats, leaving
+        // the canonical player list byte-for-byte identical.
+        if (was_host || state_ != previous_state)
             broadcast_state();
     }
 
     transport_.disconnect(peer_id);
 }
 
-std::int16_t LobbyServer::effective_team_limit() const noexcept
+std::uint8_t LobbyServer::effective_team_mask() const noexcept
 {
-    // Shared-team (CTF) lobbies with an explicit team count clamp choosable
-    // teams to the requested range; everything else keeps the full range.
-    if (lobby_settings_allow_shared_teams(state_.settings) &&
-        state_.settings.ctf_team_count > 0)
-    {
-        return std::min<std::int16_t>(static_cast<std::int16_t>(MAX_PLAYERS),
-                                      state_.settings.ctf_team_count);
-    }
-    return static_cast<std::int16_t>(MAX_PLAYERS);
+    return lobby_effective_team_mask(state_.settings);
 }
 
 bool LobbyServer::is_team_available(std::int16_t team,
                                     PeerId peer_id) const noexcept
 {
-    if (team < 0 || team >= effective_team_limit())
+    if (!lobby_team_is_selectable(state_.settings, team))
         return false;
 
-    // Shared-team lobbies (CTF and allied): any in-range team is open to any
-    // OTHER peer; within-peer distinctness is enforced by resolve_seat_team.
+    // Explicit assignments are shareable in every mode: any in-range team is
+    // open to every seat, including another seat of this peer. Keep the
+    // compatibility query here so older allied/CTF-oriented callers retain
+    // the same public helper without controlling the new assignment rule.
     if (lobby_teams_shareable(state_.settings))
         return true;
 
@@ -507,10 +500,13 @@ std::int16_t LobbyServer::resolve_seat_team(
     std::optional<std::int16_t> current_team,
     const std::vector<std::int16_t>& sibling_teams) const noexcept
 {
+    // The argument remains in the private helper signature to keep the
+    // lowered-CTF-count and legacy call sites straightforward. Sibling teams
+    // are no longer exclusions: explicit assignments deliberately permit
+    // multiple seats of one machine to share a team.
+    (void)sibling_teams;
     const auto seat_available = [&](std::int16_t team) noexcept {
-        return is_team_available(team, peer_id) &&
-            std::find(sibling_teams.begin(), sibling_teams.end(), team) ==
-                sibling_teams.end();
+        return is_team_available(team, peer_id);
     };
 
     if (seat_available(requested_team))
@@ -518,8 +514,7 @@ std::int16_t LobbyServer::resolve_seat_team(
     if (current_team.has_value() && seat_available(*current_team))
         return *current_team;
 
-    const std::int16_t limit = effective_team_limit();
-    for (std::int16_t candidate = 0; candidate < limit; ++candidate)
+    for (std::int16_t candidate = 0; candidate < SCORE_TEAM_COUNT; ++candidate)
     {
         if (seat_available(candidate))
             return candidate;
@@ -609,25 +604,60 @@ void LobbyServer::rebuild_state()
     }
 }
 
+LobbySeatId LobbyServer::allocate_seat_id()
+{
+    if (next_seat_id_ == kInvalidLobbySeatId)
+        throw std::overflow_error("lobby seat id space exhausted");
+    return next_seat_id_++;
+}
+
+LobbyMachineId LobbyServer::allocate_machine_id()
+{
+    if (next_machine_id_ == kInvalidLobbyMachineId)
+        throw std::overflow_error("lobby machine id space exhausted");
+    return next_machine_id_++;
+}
+
 void LobbyServer::send_state(PeerId peer_id) const
 {
-    transport_.send_lobby_state(peer_id, std::make_shared<LobbyState>(state_));
+    auto peer_state = std::make_shared<LobbyState>(state_);
+    const auto peer_it = peers_.find(peer_id);
+    if (peer_it != peers_.end())
+    {
+        peer_state->local_seat_ids.reserve(peer_it->second.seats.size());
+        for (const LobbyPlayer& seat : peer_it->second.seats)
+            peer_state->local_seat_ids.push_back(seat.seat_id);
+        peer_state->last_join_request_id =
+            peer_it->second.last_join_request_id;
+        peer_state->local_peer_is_host =
+            host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+    }
+    transport_.send_lobby_state(peer_id, std::move(peer_state));
 }
 
 void LobbyServer::broadcast_state() const
 {
-    const auto shared_state = std::make_shared<LobbyState>(state_);
     for (const auto& [peer_id, peer] : peers_)
     {
-        (void)peer;
-        transport_.send_lobby_state(peer_id, shared_state);
+        auto peer_state = std::make_shared<LobbyState>(state_);
+        peer_state->local_seat_ids.reserve(peer.seats.size());
+        for (const LobbyPlayer& seat : peer.seats)
+            peer_state->local_seat_ids.push_back(seat.seat_id);
+        peer_state->last_join_request_id = peer.last_join_request_id;
+        peer_state->local_peer_is_host =
+            host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+        transport_.send_lobby_state(peer_id, std::move(peer_state));
     }
 }
 
-void LobbyServer::broadcast_start_game(std::uint8_t player_index) const
+void LobbyServer::broadcast_start_game(std::uint8_t player_index,
+                                       std::uint32_t request_id) const
 {
     LobbyMessage message;
-    message.payload = LobbyStartGameMessage{.player_index = player_index};
+    message.payload = LobbyStartGameMessage{
+        .player_index = player_index,
+        .request_id = request_id,
+    };
     const auto shared_message = std::make_shared<LobbyMessage>(std::move(message));
     for (const auto& [peer_id, peer] : peers_)
     {
@@ -639,7 +669,24 @@ void LobbyServer::broadcast_start_game(std::uint8_t player_index) const
 void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& message)
 {
     if (lobby_locked_)
+    {
+        if (message.kind() == LobbyMessageKind::Join &&
+            peers_.contains(peer_id) &&
+            std::get<LobbyJoinMessage>(message.payload).resume_after_level)
+        {
+            const auto pending_it = std::find_if(
+                pending_locked_joins_.begin(),
+                pending_locked_joins_.end(),
+                [peer_id](const auto& pending) {
+                    return pending.first == peer_id;
+                });
+            if (pending_it == pending_locked_joins_.end())
+                pending_locked_joins_.emplace_back(peer_id, message);
+            else
+                pending_it->second = message;
+        }
         return;
+    }
 
     const auto peer_it = peers_.find(peer_id);
     if (peer_it == peers_.end())
@@ -647,13 +694,27 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
 
     const LobbyState previous_state = state_;
     bool rebuild_needed = false;
+    bool authoritative_echo_required = false;
+    bool requester_echo_required = false;
     std::optional<std::uint8_t> accepted_start_player_index = std::nullopt;
+    std::uint32_t accepted_start_request_id = 0;
 
     switch (message.kind())
     {
     case LobbyMessageKind::Join:
     {
         const auto& join = std::get<LobbyJoinMessage>(message.payload);
+        // This is the recipient-specific proof that the declaration reached
+        // the reopened LobbyServer rather than being drained by the prior
+        // round's GameServer. Record it before validation so every processed
+        // Join outcome (including authoritative truncation/rejection) receives
+        // a correlated echo. Retries deliberately reuse the same request id.
+        peer_it->second.last_join_request_id = join.request_id;
+        // A Join is also the resume handshake for a surviving connection.
+        // Even an identical declaration needs a fresh recipient-specific
+        // state echo: the peer may have missed the new-round ready=false
+        // broadcast while its GameClient still owned the shared transport.
+        requester_echo_required = true;
 
         // Requested seat list: seat 0 + extras, per-machine capped.
         std::vector<const LobbyPlayer*> requested;
@@ -701,15 +762,12 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     : std::nullopt;
             const std::int16_t team = resolve_seat_team(
                 peer_id, requested_seat.team, current_team, sibling_teams);
-            const bool collides_with_sibling =
-                std::find(sibling_teams.begin(), sibling_teams.end(), team) !=
-                sibling_teams.end();
-            if (team < 0 || collides_with_sibling)
+            if (team < 0)
             {
-                // No distinct team left for this seat. Seat 0: reject the
-                // whole join (matching the historic full-lobby echo). Later
-                // seats: truncate — the client adopts the echoed
-                // authoritative seat count.
+                // No valid in-range team exists. Seat 0: reject the whole
+                // join (matching the historic full-lobby echo). Later seats:
+                // truncate — the client adopts the echoed authoritative seat
+                // count. Duplicate assignments never reach this path.
                 if (seat_order == 0)
                 {
                     peer_it->second.seats = previous_seats;
@@ -740,6 +798,26 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
 
             seat.team = team;
             seat.player_index = 0xff;
+            // A re-join replaces the peer's declaration, but the seat at local
+            // ordinal k remains the same command target. New ordinals receive
+            // fresh tokens; never trust a client-authored token.
+            if (seat_order < previous_seats.size())
+            {
+                seat.seat_id = previous_seats[seat_order].seat_id;
+            }
+            else if (seat_order == 0 && previous_seats.empty() &&
+                     peer_it->second.dormant_seat_id !=
+                         kInvalidLobbySeatId)
+            {
+                seat.seat_id = peer_it->second.dormant_seat_id;
+            }
+            else
+            {
+                seat.seat_id = allocate_seat_id();
+            }
+            // Machine identity is scoped to the connected peer. All of its
+            // seats share the server-issued value; never trust the client's.
+            seat.machine_id = peer_it->second.machine_id;
             seat.is_host = false;
             seat.character_slots = sanitize_character_slots(
                 requested_seat.character_slots, team);
@@ -761,7 +839,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 else
                     --slot_capacity;
             }
-            sibling_teams.push_back(team);
             new_seats.push_back(std::move(seat));
         }
 
@@ -781,6 +858,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         }
 
         peer_it->second.seats = std::move(new_seats);
+        if (!peer_it->second.seats.empty())
+            peer_it->second.dormant_seat_id = kInvalidLobbySeatId;
         rebuild_needed = true;
         break;
     }
@@ -788,6 +867,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     case LobbyMessageKind::Leave:
         if (!peer_it->second.seats.empty())
         {
+            peer_it->second.dormant_seat_id =
+                peer_it->second.seats.front().seat_id;
             peer_it->second.seats.clear();
             rebuild_needed = true;
         }
@@ -810,25 +891,34 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         {
             const auto& team_change = std::get<LobbyTeamChangeMessage>(message.payload);
             std::vector<LobbyPlayer>& seats = peer_it->second.seats;
-            // Retarget the sender's seat whose player_index matches;
-            // otherwise seat 0 (the historic single-seat semantics).
-            std::size_t seat_order = 0;
+            // Retarget only the sender-owned seat whose stable server token
+            // matches. player_index is deliberately NOT used here: it is the
+            // dense P#/gameplay ordinal and can change when another peer
+            // leaves. A stale/foreign token receives a denial echo instead of
+            // aliasing a different sibling seat after that re-index.
+            std::optional<std::size_t> seat_order;
             for (std::size_t k = 0; k < seats.size(); ++k)
             {
-                if (seats[k].player_index == team_change.player_index)
+                if (team_change.seat_id != kInvalidLobbySeatId &&
+                    seats[k].seat_id == team_change.seat_id)
                 {
                     seat_order = k;
                     break;
                 }
             }
+            if (!seat_order.has_value())
+            {
+                send_state(peer_id);
+                break;
+            }
             std::vector<std::int16_t> sibling_teams;
             sibling_teams.reserve(seats.size());
             for (std::size_t k = 0; k < seats.size(); ++k)
             {
-                if (k != seat_order)
+                if (k != *seat_order)
                     sibling_teams.push_back(seats[k].team);
             }
-            LobbyPlayer& seat = seats[seat_order];
+            LobbyPlayer& seat = seats[*seat_order];
             const std::int16_t current = seat.team;
             const std::int16_t team = resolve_seat_team(
                 peer_id, team_change.team, current, sibling_teams);
@@ -852,14 +942,52 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         }
         break;
 
+    case LobbyMessageKind::RemoveSeat:
+        if (!peer_it->second.seats.empty())
+        {
+            const auto& remove_seat =
+                std::get<LobbyRemoveSeatMessage>(message.payload);
+            std::vector<LobbyPlayer>& seats = peer_it->second.seats;
+            const auto target = std::find_if(
+                seats.begin(), seats.end(),
+                [&remove_seat](const LobbyPlayer& seat) {
+                    return remove_seat.seat_id != kInvalidLobbySeatId &&
+                        seat.seat_id == remove_seat.seat_id;
+                });
+            if (target == seats.end())
+            {
+                // A stale P#/token pair must not remove whichever sibling
+                // happens to occupy that dense index now.
+                requester_echo_required = true;
+                break;
+            }
+
+            if (seats.size() == 1u)
+                peer_it->second.dormant_seat_id = target->seat_id;
+            seats.erase(target);
+            // Removing a seat changes this machine's declaration. Its
+            // remaining seats must reconfirm readiness as one unit.
+            for (LobbyPlayer& machine_seat : seats)
+                machine_seat.ready = false;
+            rebuild_needed = true;
+        }
+        else
+        {
+            requester_echo_required = true;
+        }
+        break;
+
     case LobbyMessageKind::StartGame:
         if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
+            const auto& start_game =
+                std::get<LobbyStartGameMessage>(message.payload);
             // [NET-R4] a host StartGame request clears the prior denial echo
             // FIRST (queued non-StartGame messages between denial and read must
             // not wipe it — only the next StartGame does).
             state_.last_start_denial =
                 start_denial_reason_value(StartDenialReason::None);
+            state_.last_start_request_id = 0;
 
             StartDenialReason reason = StartDenialReason::None;
             if (start_allowed(peer_id, reason))
@@ -870,6 +998,7 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     ? std::optional<std::uint8_t>(
                           peer_it->second.seats.front().player_index)
                     : std::optional<std::uint8_t>(0xffu);
+                accepted_start_request_id = start_game.request_id;
             }
             else
             {
@@ -879,6 +1008,12 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 // triggers and the host stays free to fix the blocker and
                 // retry.
                 state_.last_start_denial = start_denial_reason_value(reason);
+                state_.last_start_request_id = start_game.request_id;
+                // A repeated denial can restore exactly the same reason that
+                // previous_state already carried (the request clears then
+                // re-sets it). The requester still needs a fresh echo to
+                // resolve this specific asynchronous StartGame attempt.
+                authoritative_echo_required = true;
             }
         }
         // A non-host StartGame stays silently ignored (no denial echo),
@@ -894,17 +1029,24 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 sanitize_settings(settings_change.settings, state_.settings,
                                   local_session_);
 
-            // A lowered CTF team count can strand joined players on a team
-            // outside the new range; re-resolve them so nobody is left on a
-            // team the host just removed.
-            const std::int16_t limit = effective_team_limit();
+            // A level or CTF-count change can strand joined players outside
+            // the selected map's authored domain; re-resolve them so nobody
+            // starts on a team the next match will not activate.
+            const std::uint8_t team_mask = effective_team_mask();
+            const std::int16_t first_team =
+                lobby_first_selectable_team(state_.settings);
             for (auto& [other_peer_id, peer] : peers_)
             {
                 for (std::size_t seat_order = 0;
                      seat_order < peer.seats.size(); ++seat_order)
                 {
                     LobbyPlayer& seat = peer.seats[seat_order];
-                    if (seat.team < limit)
+                    const auto seat_bit = seat.team >= 0 &&
+                            seat.team < SCORE_TEAM_COUNT
+                        ? static_cast<std::uint8_t>(
+                              1u << static_cast<unsigned>(seat.team))
+                        : static_cast<std::uint8_t>(0);
+                    if ((team_mask & seat_bit) != 0)
                         continue;
                     std::vector<std::int16_t> sibling_teams;
                     sibling_teams.reserve(peer.seats.size());
@@ -915,7 +1057,7 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     }
                     const std::int16_t reteamed = resolve_seat_team(
                         other_peer_id,
-                        static_cast<std::int16_t>(limit - 1),
+                        first_team,
                         std::nullopt,
                         sibling_teams);
                     if (reteamed < 0)
@@ -1023,10 +1165,15 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
     if (rebuild_needed)
         rebuild_state();
 
-    if (state_ != previous_state)
+    if (state_ != previous_state || authoritative_echo_required)
         broadcast_state();
+    else if (requester_echo_required)
+        send_state(peer_id);
     if (accepted_start_player_index.has_value())
-        broadcast_start_game(*accepted_start_player_index);
+    {
+        broadcast_start_game(*accepted_start_player_index,
+                             accepted_start_request_id);
+    }
 }
 
 void LobbyServer::poll_incoming_messages()
@@ -1044,6 +1191,16 @@ void LobbyServer::poll_incoming_messages()
                                peer_id))
         {
             continue;
+        }
+        if (message.kind() == LobbyMessageKind::StartGame)
+        {
+            // A transport snapshot can report a disconnected peer together
+            // with that peer's final queued message. Preserve those preceding
+            // messages, but remove every deferred disconnect before freezing
+            // and broadcasting the game-start roster. Otherwise clients build
+            // from the ghost-inclusive StartGame state while the host builds
+            // its config after the trailing disconnect pass.
+            apply_transport_disconnects();
         }
         process_lobby_message(peer_id, message);
     }
@@ -1172,6 +1329,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
             gameplay_slot.owner_save_slot = slot.slot_index;
             equivalent.team_list.push_back(std::move(gameplay_slot));
         }
+        canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
         return equivalent;
     }
 
@@ -1185,6 +1343,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         equivalent.team_list.push_back(std::move(compacted));
     }
 
+    canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
     return equivalent;
 }
 
@@ -1192,8 +1351,6 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
 {
     std::vector<LobbyPlayerBinding> bindings;
     bindings.reserve(peers_.size());
-
-    const std::int16_t shared_team = shared_allied_gameplay_team(state_);
 
     for (const auto& [peer_id, peer] : peers_)
     {
@@ -1205,8 +1362,10 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
                 .peer_id = peer_id,
                 .local_slot = static_cast<std::uint8_t>(seat_order),
                 .player_index = seat.player_index,
-                .team = gameplay_seat_team_for_mode(
-                    state_.settings.allied_mode, seat.team, shared_team),
+                // allied_mode remains serialized for legacy saves/replays,
+                // but explicit lobby assignments are already the gameplay
+                // teams and must not collapse onto a shared color.
+                .team = seat.team,
             });
         }
     }

@@ -11,6 +11,7 @@
 #include <openglad/resources/io_common.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <format>
 #include <memory>
 #include <optional>
@@ -24,6 +25,9 @@ namespace {
 struct LocalLobbyPeer {
     std::shared_ptr<og::sim::InProcessTransport> transport;
     og::sim::PeerId peer_id = 0;
+    // Learned from this peer's personalized LobbyState echo. Names remain
+    // presentation metadata and are never used to infer ownership.
+    og::sim::LobbySeatId seat_id = og::sim::kInvalidLobbySeatId;
     short team = 0;
     std::string name;
 };
@@ -110,29 +114,15 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
 
 std::vector<short> build_peer_team_mapping(const SaveData& save, bool spectator_mode)
 {
-    // The seat derivation gameplay uses (distinct nonzero teams in slot
-    // order, my_team hoisted first) so the lobby's Player 1 team matches the
-    // loader's first view.
-    std::vector<short> teams = og::ui::derive_local_seat_teams(save);
-    const int required_players = spectator_mode
-        ? 0
-        : std::clamp<int>(save.numplayers, 1, MAX_PLAYERS);
-    const int target_count = required_players;
-
-    if (static_cast<int>(teams.size()) > target_count)
-        teams.resize(static_cast<std::size_t>(target_count));
-
-    for (short candidate = 0;
-         static_cast<int>(teams.size()) < target_count && candidate < MAX_PLAYERS;
-         ++candidate)
-    {
-        if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
-            teams.push_back(candidate);
-    }
-
-    if (teams.empty())
-        teams.push_back(0);
-
+    // Legacy saves do not contain explicit seat assignments. Seed them once
+    // from the old Together/Split setting, then keep the live lobby vector
+    // authoritative for every roster/settings sync and subsequent level.
+    std::vector<short> teams =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    if (spectator_mode || teams.empty())
+        teams.assign(1, save.my_team >= 0 && save.my_team < MAX_PLAYERS
+                ? save.my_team
+                : 0);
     return teams;
 }
 
@@ -181,7 +171,16 @@ void restore_preserved_save_slots(
             continue;
 
         std::size_t restore_index = preserved_slot.slot_index;
-        if (restore_index >= save.team_list.size() || save.team_list[restore_index])
+        if (restore_index < save.team_list.size() && save.team_list[restore_index])
+        {
+            // The echoed lobby now carries every private company slot, even
+            // when no seat controls that fighter's color. An occupied
+            // authoritative slot therefore supersedes its pre-echo
+            // preservation copy; restoring it elsewhere would duplicate the
+            // fighter.
+            continue;
+        }
+        if (restore_index >= save.team_list.size())
         {
             restore_index = save.team_list.size();
             for (std::size_t candidate = 0; candidate < save.team_list.size(); ++candidate)
@@ -221,8 +220,25 @@ public:
             og::runtime::current_session->myscreen_->save_data.numplayers == 0;
 
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
-        ensure_peer_count(static_cast<int>(peer_teams.size()));
+        seat_teams_ = build_peer_team_mapping(save, spectator_mode_);
+        ensure_peer_count(static_cast<int>(seat_teams_.size()));
+        commit_from_save(true, true);
+    }
+
+    void resume_after_level() override
+    {
+        if (!server_)
+        {
+            initialize_from_save();
+            return;
+        }
+        // Keep the explicit per-seat choices, but reset the one-round handoff
+        // exactly as the network host does before reopening its lobby.
+        g_start_game_requested = false;
+        start_request_pending_ = false;
+        pending_start_request_id_ = 0;
+        pending_game_start_config_.reset();
+        server_->unlock_for_new_round();
         commit_from_save(true, true);
     }
 
@@ -238,8 +254,10 @@ public:
         state_.reset();
         server_.reset();
         server_transport_.reset();
+        seat_teams_.clear();
         spectator_mode_ = false;
         start_request_pending_ = false;
+        pending_start_request_id_ = 0;
         pending_game_start_config_.reset();
     }
 
@@ -280,7 +298,86 @@ public:
                 std::clamp(player_count, 1, MAX_PLAYERS));
         }
 
+        resize_seat_teams(save);
         sync_roster_from_save();
+    }
+
+    bool add_local_seat() override
+    {
+        if (!ensure_initialized())
+            return false;
+        if (server_->start_game_requested())
+            return false;
+        if (!spectator_mode_ &&
+            peers_.size() >= static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            return false;
+        }
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        const std::size_t requested_count = spectator_mode_
+            ? 1u
+            : peers_.size() + 1u;
+        spectator_mode_ = false;
+        save.numplayers = static_cast<unsigned char>(requested_count);
+        commit_from_save(false, true);
+        return !spectator_mode_ && peers_.size() == requested_count;
+    }
+
+    bool remove_local_seat(std::uint8_t player_index,
+                           og::sim::LobbySeatId seat_id) override
+    {
+        (void)player_index;
+        if (!ensure_initialized() || server_->start_game_requested() ||
+            spectator_mode_ ||
+            peers_.size() <= 1u || !state_.has_value() ||
+            seat_id == og::sim::kInvalidLobbySeatId)
+        {
+            return false;
+        }
+
+        const auto player_it = std::find_if(
+            state_->players.begin(), state_->players.end(),
+            [seat_id](const og::sim::LobbyPlayer& player) {
+                return player.seat_id == seat_id;
+            });
+        if (player_it == state_->players.end())
+            return false;
+
+        const auto peer_it = std::find_if(
+            peers_.begin(), peers_.end(),
+            [seat_id](const LocalLobbyPeer& peer) {
+                return peer.seat_id == seat_id;
+            });
+        if (peer_it == peers_.end())
+            return false;
+
+        const std::size_t seat_index =
+            static_cast<std::size_t>(peer_it - peers_.begin());
+        server_->disconnect_client(peer_it->peer_id);
+        peers_.erase(peer_it);
+        seat_teams_.erase(
+            seat_teams_.begin() + static_cast<std::ptrdiff_t>(seat_index));
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        save.numplayers = static_cast<unsigned char>(peers_.size());
+        if (!seat_teams_.empty())
+            save.my_team = seat_teams_.front();
+        send_player_joins();
+        poll_messages();
+        apply_state_to_save();
+
+        return state_.has_value() &&
+            std::none_of(
+                state_->players.begin(), state_->players.end(),
+                [seat_id](const og::sim::LobbyPlayer& player) {
+                    return player.seat_id == seat_id;
+                });
+    }
+
+    [[nodiscard]] std::size_t local_seat_count() const override
+    {
+        return spectator_mode_ ? 0u : peers_.size();
     }
 
     bool request_start_game() override
@@ -290,9 +387,7 @@ public:
 
         const SaveData& save =
             og::runtime::current_session->myscreen_->save_data;
-        const std::vector<short> seat_teams =
-            og::ui::derive_local_gameplay_seat_teams(save);
-        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
+        if (!og::ui::local_seat_teams_have_controls(save, seat_teams_))
         {
             start_request_pending_ = false;
             return false;
@@ -300,8 +395,14 @@ public:
 
         pending_game_start_config_.reset();
         start_request_pending_ = true;
+        pending_start_request_id_ = next_start_request_id_++;
+        if (next_start_request_id_ == 0)
+            next_start_request_id_ = 1;
         og::sim::LobbyMessage message;
-        message.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
+        message.payload = og::sim::LobbyStartGameMessage{
+            .player_index = 0u,
+            .request_id = pending_start_request_id_,
+        };
         peers_.front().transport->send_lobby_message(
             peers_.front().peer_id,
             std::make_shared<og::sim::LobbyMessage>(std::move(message)));
@@ -309,6 +410,11 @@ public:
         apply_state_to_save();
         if (g_start_game_requested)
             pending_game_start_config_ = build_game_start_config();
+        else
+        {
+            start_request_pending_ = false;
+            pending_start_request_id_ = 0;
+        }
         return g_start_game_requested;
     }
 
@@ -356,8 +462,7 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        const std::vector<short> gameplay_seat_teams =
-            og::ui::derive_local_gameplay_seat_teams(save);
+        const std::vector<short> gameplay_seat_teams = seat_teams_;
         const short shared_local_team = gameplay_seat_teams.empty()
             ? 0
             : gameplay_seat_teams.front();
@@ -406,18 +511,67 @@ public:
 
     bool request_team_change(short team) override
     {
-        if (!ensure_initialized())
+        if (!ensure_initialized() || peers_.empty())
+            return false;
+        std::uint8_t player_index = 0xffu;
+        if (state_.has_value())
+        {
+            const auto player_it = std::find_if(
+                state_->players.begin(), state_->players.end(),
+                [seat_id = peers_.front().seat_id](
+                    const og::sim::LobbyPlayer& player) {
+                    return player.seat_id == seat_id;
+                });
+            if (player_it != state_->players.end())
+                player_index = player_it->player_index;
+        }
+        return request_seat_team_change(player_index, team);
+    }
+
+    bool request_seat_team_change(std::uint8_t player_index,
+                                  short team) override
+    {
+        if (!ensure_initialized() || !state_.has_value() ||
+            team < 0 || team >= MAX_PLAYERS)
+        {
+            return false;
+        }
+
+        const auto player_it = std::find_if(
+            state_->players.begin(), state_->players.end(),
+            [player_index](const og::sim::LobbyPlayer& player) {
+                return player.player_index == player_index;
+            });
+        if (player_it == state_->players.end())
             return false;
 
-        SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        if (!og::ui::team_has_members(save, team))
-            return false;
-        if (!og::ui::set_preferred_team(save, team))
+        const auto peer_it = std::find_if(
+            peers_.begin(), peers_.end(),
+            [&player_it](const LocalLobbyPeer& peer) {
+                return peer.seat_id == player_it->seat_id;
+            });
+        if (peer_it == peers_.end())
             return false;
 
-        // The roster commit re-derives the synthetic seats; the my_team hoist
-        // re-seats Player 1 onto the requested team.
-        commit_from_save(false, true);
+        const std::size_t seat_index =
+            static_cast<std::size_t>(peer_it - peers_.begin());
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyTeamChangeMessage{
+            .player_index = player_index,
+            .seat_id = player_it->seat_id,
+            .team = team,
+        };
+        peer_it->transport->send_lobby_message(
+            peer_it->peer_id,
+            std::make_shared<og::sim::LobbyMessage>(std::move(message)));
+        poll_messages();
+        sync_seat_teams_from_state();
+
+        if (seat_index >= seat_teams_.size() || seat_teams_[seat_index] != team)
+            return false;
+        if (seat_index == 0)
+            og::runtime::current_session->myscreen_->save_data.my_team = team;
+        apply_state_to_save();
         return true;
     }
 
@@ -426,6 +580,14 @@ public:
         if (!state_.has_value())
             return {};
         return state_->players;
+    }
+
+    [[nodiscard]] std::optional<std::uint8_t>
+    authoritative_team_mask() const noexcept override
+    {
+        if (!state_.has_value())
+            return std::nullopt;
+        return og::sim::lobby_effective_team_mask(state_->settings);
     }
 
 private:
@@ -445,15 +607,34 @@ private:
             return;
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
-        ensure_peer_count(static_cast<int>(peer_teams.size()));
+        resize_seat_teams(save);
+        ensure_peer_count(static_cast<int>(seat_teams_.size()));
 
         if (include_settings)
             send_host_settings();
         if (include_roster)
-            send_player_joins(peer_teams);
+            send_player_joins();
         poll_messages();
         apply_state_to_save();
+    }
+
+    void resize_seat_teams(const SaveData& save)
+    {
+        const std::size_t target_count = spectator_mode_
+            ? 1u
+            : static_cast<std::size_t>(
+                  std::clamp<int>(save.numplayers, 1, MAX_PLAYERS));
+        const std::vector<short> seed =
+            build_peer_team_mapping(save, spectator_mode_);
+        if (seat_teams_.size() > target_count)
+            seat_teams_.resize(target_count);
+        while (seat_teams_.size() < target_count)
+        {
+            const std::size_t index = seat_teams_.size();
+            seat_teams_.push_back(index < seed.size()
+                    ? seed[index]
+                    : static_cast<short>(index % MAX_PLAYERS));
+        }
     }
 
     void ensure_peer_count(int target_count)
@@ -493,6 +674,11 @@ private:
             static_cast<std::int16_t>(og::runtime::current_session->current_difficulty_);
         settings.allied_mode = save.allied_mode;
         settings.ctf_team_count = save.ctf_team_count;
+        settings.ctf_authored_team_mask =
+            og::ui::ctf_authored_team_mask_for_loaded_level(
+                save,
+                og::runtime::current_session->myscreen_->world(),
+                get_mounted_campaign());
         settings.ctf_capture_limit = save.ctf_capture_limit;
         settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
         settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
@@ -511,20 +697,21 @@ private:
             std::make_shared<og::sim::LobbyMessage>(std::move(message)));
     }
 
-    void send_player_joins(const std::vector<short>& peer_teams)
+    void send_player_joins()
     {
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        std::vector<og::sim::LobbyPlayer> players(peers_.size());
 
         for (std::size_t peer_index = 0;
-             peer_index < peers_.size() && peer_index < peer_teams.size();
+             peer_index < peers_.size() && peer_index < seat_teams_.size();
              ++peer_index)
         {
             LocalLobbyPeer& peer = peers_[peer_index];
-            peer.team = peer_teams[peer_index];
+            peer.team = seat_teams_[peer_index];
             if (peer.name.empty())
                 peer.name = std::format("Player {}", peer_index + 1);
 
-            og::sim::LobbyPlayer player;
+            og::sim::LobbyPlayer& player = players[peer_index];
             player.name = peer.name;
             // v8: every seat of one machine advertises the same active
             // company display name (SaveData::save_name).
@@ -532,28 +719,65 @@ private:
             player.team = peer.team;
             player.ready = false;
             player.is_host = peer_index == 0;
+        }
 
-            for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
-            {
-                const auto& member = save.team_list[slot_index];
-                if (!member || member->teamnum != peer.team)
-                    continue;
+        // A company slot belongs to exactly one synthetic seat. Duplicate
+        // seat-team assignments are valid, so matching every seat
+        // independently would advertise the same fighter more than once.
+        for (std::size_t slot_index = 0;
+             slot_index < save.team_list.size(); ++slot_index)
+        {
+            const auto& member = save.team_list[slot_index];
+            if (!member)
+                continue;
+            const auto matching_seat = std::find(
+                seat_teams_.begin(), seat_teams_.end(), member->teamnum);
+            const std::size_t owner_seat = matching_seat == seat_teams_.end()
+                ? 0u
+                : static_cast<std::size_t>(
+                      matching_seat - seat_teams_.begin());
 
-                player.character_slots.push_back(og::sim::LobbyCharacterSlot{
+            players[owner_seat].character_slots.push_back(
+                og::sim::LobbyCharacterSlot{
                     .slot_index = static_cast<std::uint8_t>(slot_index),
                     .character = make_lobby_character_data(*member),
                     // v8: stamped from the save guy's v14 deploy flag.
                     .deployed = member->deployed,
                 });
-            }
+        }
 
+        for (std::size_t peer_index = 0; peer_index < peers_.size();
+             ++peer_index)
+        {
+            LocalLobbyPeer& peer = peers_[peer_index];
             og::sim::LobbyMessage join_message;
             join_message.payload = og::sim::LobbyJoinMessage{
-                .player = std::move(player),
+                .player = std::move(players[peer_index]),
             };
             peer.transport->send_lobby_message(
                 peer.peer_id,
                 std::make_shared<og::sim::LobbyMessage>(std::move(join_message)));
+        }
+    }
+
+    void sync_seat_teams_from_state()
+    {
+        if (!state_.has_value())
+            return;
+        for (std::size_t peer_index = 0; peer_index < peers_.size();
+             ++peer_index)
+        {
+            LocalLobbyPeer& peer = peers_[peer_index];
+            const auto player_it = std::find_if(
+                state_->players.begin(), state_->players.end(),
+                [&peer](const og::sim::LobbyPlayer& player) {
+                    return player.seat_id == peer.seat_id;
+                });
+            if (player_it == state_->players.end())
+                continue;
+            peer.team = static_cast<short>(player_it->team);
+            if (peer_index < seat_teams_.size())
+                seat_teams_[peer_index] = peer.team;
         }
     }
 
@@ -568,14 +792,27 @@ private:
                 {
                 case og::sim::TypedReceivedMessageKind::LobbyState:
                     if (message.lobby_state)
+                    {
                         state_ = *message.lobby_state;
+                        if (!state_->local_seat_ids.empty())
+                            peer.seat_id = state_->local_seat_ids.front();
+                    }
                     break;
                 case og::sim::TypedReceivedMessageKind::LobbyMessage:
                     if (message.lobby_message
                         && message.lobby_message->kind()
                             == og::sim::LobbyMessageKind::StartGame)
                     {
+                        const auto& start = std::get<
+                            og::sim::LobbyStartGameMessage>(
+                                message.lobby_message->payload);
+                        if (start_request_pending_ &&
+                            start.request_id != pending_start_request_id_)
+                        {
+                            break;
+                        }
                         start_request_pending_ = false;
+                        pending_start_request_id_ = 0;
                         g_start_game_requested = true;
                         pending_game_start_config_ = build_game_start_config();
                     }
@@ -591,6 +828,7 @@ private:
     {
         if (!state_.has_value())
             return;
+        sync_seat_teams_from_state();
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         const std::vector<short> active_teams =
@@ -685,7 +923,8 @@ private:
             // collide with preserved inactive-team members, reshuffling the
             // visible roster and then persisting the shuffle.
             const std::uint8_t slot_index = ordered_slot.slot_index;
-            if (slot_index >= save.team_list.size())
+            if (slot_index >= save.team_list.size() ||
+                save.team_list[slot_index] != nullptr)
                 continue;
 
             save.team_list[slot_index] =
@@ -708,9 +947,12 @@ private:
     std::shared_ptr<og::sim::InProcessTransport> server_transport_;
     std::unique_ptr<og::sim::LobbyServer> server_;
     std::vector<LocalLobbyPeer> peers_;
+    std::vector<short> seat_teams_;
     std::optional<og::sim::LobbyState> state_;
     bool spectator_mode_ = false;
     bool start_request_pending_ = false;
+    std::uint32_t next_start_request_id_ = 1;
+    std::uint32_t pending_start_request_id_ = 0;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
 };
 
@@ -837,6 +1079,25 @@ void picker_lobby_set_player_mode(int player_count)
     resolve_picker_lobby_client().set_player_mode(player_count);
 }
 
+bool picker_lobby_add_local_seat()
+{
+    return resolve_picker_lobby_client().add_local_seat();
+}
+
+bool picker_lobby_remove_local_seat(std::uint8_t player_index,
+                                    og::sim::LobbySeatId seat_id)
+{
+    return resolve_picker_lobby_client().remove_local_seat(
+        player_index, seat_id);
+}
+
+std::size_t picker_lobby_local_seat_count()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->local_seat_count();
+    return 0u;
+}
+
 bool picker_lobby_request_start()
 {
     return resolve_picker_lobby_client().request_start_game();
@@ -897,6 +1158,21 @@ bool picker_lobby_request_team_change(short team)
     return resolve_picker_lobby_client().request_team_change(team);
 }
 
+bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
+                                           short team)
+{
+    return resolve_picker_lobby_client().request_seat_team_change(
+        player_index, team);
+}
+
+bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
+                                           og::sim::LobbySeatId seat_id,
+                                           short team)
+{
+    return resolve_picker_lobby_client().request_seat_team_change(
+        player_index, seat_id, team);
+}
+
 bool picker_lobby_set_ready(bool ready)
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
@@ -923,6 +1199,13 @@ std::vector<og::sim::LobbyPlayer> picker_lobby_players()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->lobby_players();
     return {};
+}
+
+std::optional<std::uint8_t> picker_lobby_authoritative_team_mask()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->authoritative_team_mask();
+    return std::nullopt;
 }
 
 std::vector<std::uint8_t> picker_lobby_local_player_indices()

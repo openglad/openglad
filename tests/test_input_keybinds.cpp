@@ -10,6 +10,8 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 
 extern cfg_store cfg;
@@ -107,28 +109,44 @@ struct ModeKeyBindingGuard
 struct FullControlSnapshotGuard
 {
     int modes[4];
+    int default_profiles[4];
     int mode4[4][NUM_KEYS];
     int mode8[4][NUM_KEYS];
+    int active[4][NUM_KEYS];
+    JoyData joy[4];
+    DirectionGraceState direction_grace[4];
+    bool touch_keystate[4][NUM_KEYS];
 
     FullControlSnapshotGuard()
     {
+        InputHardwareState& hw = input_hardware_state();
         for (int p = 0; p < 4; ++p)
         {
             modes[p] = get_player_control_mode(p);
+            default_profiles[p] =
+                hw.player_control_default_profiles[p];
+            joy[p] = player_joy[p];
+            direction_grace[p] = hw.direction_grace[p];
             for (int k = 0; k < NUM_KEYS; ++k)
             {
                 mode4[p][k] = get_player_key_binding_for_mode(
                     p, static_cast<int>(ControlDirectionMode::FourDirection), k);
                 mode8[p][k] = get_player_key_binding_for_mode(
                     p, static_cast<int>(ControlDirectionMode::EightDirection), k);
+                active[p][k] =
+                    og::runtime::current_session->player_keys_[p][k];
+                touch_keystate[p][k] = hw.touch_keystate[p][k];
             }
         }
     }
 
     void restore()
     {
+        InputHardwareState& hw = input_hardware_state();
         for (int p = 0; p < 4; ++p)
         {
+            hw.player_control_default_profiles[p] =
+                default_profiles[p];
             set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
             for (int k = 0; k < NUM_KEYS; ++k)
                 set_player_key_binding(p, k, mode4[p][k]);
@@ -136,6 +154,15 @@ struct FullControlSnapshotGuard
             for (int k = 0; k < NUM_KEYS; ++k)
                 set_player_key_binding(p, k, mode8[p][k]);
             set_player_control_mode(p, modes[p]);
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                og::runtime::current_session->player_keys_[p][k] =
+                    active[p][k];
+            }
+            player_joy[p] = joy[p];
+            hw.direction_grace[p] = direction_grace[p];
+            for (int k = 0; k < NUM_KEYS; ++k)
+                hw.touch_keystate[p][k] = touch_keystate[p][k];
         }
     }
 
@@ -686,6 +713,474 @@ TEST(InputKeybinds, input_mode_key_binding_updates_are_isolated_by_control_mode)
 }
 
 
+TEST(InputKeybinds, reset_default_controls_for_player_restores_only_that_player)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+    int expected_mode4[NUM_KEYS];
+    int expected_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        expected_mode4[k] = get_player_key_binding_for_mode(1, kFour, k);
+        expected_mode8[k] = get_player_key_binding_for_mode(1, kEight, k);
+    }
+
+    set_player_control_mode(1, kFour);
+    set_player_key_binding(1, KEY_UP, SDLK_F1);
+    set_player_control_mode(1, kEight);
+    set_player_key_binding(1, KEY_UP_RIGHT, SDLK_F2);
+
+    // Keep another player deliberately non-default so a per-player reset
+    // cannot pass by falling back to the existing reset-all behavior.
+    set_player_control_mode(0, kFour);
+    set_player_key_binding(0, KEY_FIRE, SDLK_F3);
+    set_player_control_mode(0, kEight);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_F4);
+    int untouched_mode4[NUM_KEYS];
+    int untouched_mode8[NUM_KEYS];
+    int untouched_active[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        untouched_mode4[k] = get_player_key_binding_for_mode(0, kFour, k);
+        untouched_mode8[k] = get_player_key_binding_for_mode(0, kEight, k);
+        untouched_active[k] = og::runtime::current_session->player_keys_[0][k];
+    }
+
+    ASSERT_TRUE(reset_default_player_controls_for_player(1));
+    ASSERT_EQ(kFour, get_player_control_mode(1));
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        ASSERT_EQ(expected_mode4[k], get_player_key_binding_for_mode(1, kFour, k))
+            << "P2 4-direction key " << k << " should return to its default";
+        ASSERT_EQ(expected_mode8[k], get_player_key_binding_for_mode(1, kEight, k))
+            << "P2 8-direction key " << k << " should return to its default";
+        ASSERT_EQ(expected_mode4[k], og::runtime::current_session->player_keys_[1][k])
+            << "P2 active key " << k << " should carry the default mode map";
+
+        ASSERT_EQ(untouched_mode4[k], get_player_key_binding_for_mode(0, kFour, k))
+            << "P1 4-direction key " << k << " must remain untouched";
+        ASSERT_EQ(untouched_mode8[k], get_player_key_binding_for_mode(0, kEight, k))
+            << "P1 8-direction key " << k << " must remain untouched";
+        ASSERT_EQ(untouched_active[k], og::runtime::current_session->player_keys_[0][k])
+            << "P1 active key " << k << " must remain untouched";
+    }
+    ASSERT_EQ(kEight, get_player_control_mode(0));
+}
+
+
+TEST(InputKeybinds, reset_default_controls_for_player_rejects_invalid_index)
+{
+    FullControlSnapshotGuard guard;
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F5);
+
+    const int mode_before = get_player_control_mode(0);
+    const int binding_before = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT);
+    const int active_before = og::runtime::current_session->player_keys_[0][KEY_UP_RIGHT];
+
+    ASSERT_TRUE(!reset_default_player_controls_for_player(-1));
+    ASSERT_TRUE(!reset_default_player_controls_for_player(4));
+    ASSERT_EQ(mode_before, get_player_control_mode(0));
+    ASSERT_EQ(binding_before, get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT));
+    ASSERT_EQ(active_before, og::runtime::current_session->player_keys_[0][KEY_UP_RIGHT]);
+}
+
+
+TEST(InputKeybinds, compact_controls_after_middle_player_removal_preserves_profiles)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+
+    // The removed Player 2 profile is intentionally customized. It belongs
+    // in the inactive tail after compaction, ready for a later added seat.
+    set_player_control_mode(1, kFour);
+    set_player_key_binding(1, KEY_DOWN, SDLK_F8);
+    set_player_control_mode(1, kEight);
+    set_player_key_binding(1, KEY_UP_LEFT, SDLK_F9);
+    og::runtime::current_session->player_keys_[1][KEY_FIRE] = SDLK_F10;
+    int removed_mode4[NUM_KEYS];
+    int removed_mode8[NUM_KEYS];
+    int removed_active[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        removed_mode4[k] = get_player_key_binding_for_mode(1, kFour, k);
+        removed_mode8[k] = get_player_key_binding_for_mode(1, kEight, k);
+        removed_active[k] =
+            og::runtime::current_session->player_keys_[1][k];
+    }
+    removed_mode8[KEY_FIRE] = SDLK_F10;
+
+    // Player 1 precedes the removed profile and must not move or reset.
+    set_player_control_mode(0, kFour);
+    set_player_key_binding(0, KEY_UP, SDLK_F1);
+    set_player_control_mode(0, kEight);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F2);
+    int earlier_mode4[NUM_KEYS];
+    int earlier_mode8[NUM_KEYS];
+    int earlier_active[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        earlier_mode4[k] = get_player_key_binding_for_mode(0, kFour, k);
+        earlier_mode8[k] = get_player_key_binding_for_mode(0, kEight, k);
+        earlier_active[k] = og::runtime::current_session->player_keys_[0][k];
+    }
+
+    // Player 3 is the immediate successor of the removed Player 2 profile.
+    set_player_control_mode(2, kFour);
+    set_player_key_binding(2, KEY_LEFT, SDLK_F3);
+    set_player_control_mode(2, kEight);
+    set_player_key_binding(2, KEY_DOWN_LEFT, SDLK_F4);
+    og::runtime::current_session->player_keys_[2][KEY_FIRE] = SDLK_F5;
+    int successor_mode4[NUM_KEYS];
+    int successor_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        successor_mode4[k] = get_player_key_binding_for_mode(2, kFour, k);
+        successor_mode8[k] = get_player_key_binding_for_mode(2, kEight, k);
+    }
+    successor_mode8[KEY_FIRE] = SDLK_F5;
+
+    // Player 4 must also shift, proving the whole active suffix compacts.
+    set_player_control_mode(3, kFour);
+    set_player_key_binding(3, KEY_YELL, SDLK_F6);
+    set_player_control_mode(3, kEight);
+    set_player_key_binding(3, KEY_SPECIAL, SDLK_F7);
+    int final_successor_mode4[NUM_KEYS];
+    int final_successor_mode8[NUM_KEYS];
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        final_successor_mode4[k] = get_player_key_binding_for_mode(3, kFour, k);
+        final_successor_mode8[k] = get_player_key_binding_for_mode(3, kEight, k);
+    }
+
+    for (int p = 0; p < 4; ++p)
+    {
+        player_joy[p].index = 40 + p;
+        player_joy[p].key_type[KEY_FIRE] = JoyData::BUTTON;
+        player_joy[p].key_index[KEY_FIRE] = 10 + p;
+    }
+
+    ASSERT_TRUE(compact_player_controls_after_removal(1, 4));
+
+    ASSERT_EQ(kEight, get_player_control_mode(1));
+    ASSERT_EQ(kEight, get_player_control_mode(2));
+    ASSERT_EQ(kEight, get_player_control_mode(3));
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        ASSERT_EQ(earlier_mode4[k], get_player_key_binding_for_mode(0, kFour, k));
+        ASSERT_EQ(earlier_mode8[k], get_player_key_binding_for_mode(0, kEight, k));
+        ASSERT_EQ(earlier_active[k], og::runtime::current_session->player_keys_[0][k]);
+
+        ASSERT_EQ(successor_mode4[k], get_player_key_binding_for_mode(1, kFour, k))
+            << "the clicked middle seat's successor must retain 4-dir key " << k;
+        ASSERT_EQ(successor_mode8[k], get_player_key_binding_for_mode(1, kEight, k))
+            << "the clicked middle seat's successor must retain 8-dir key " << k;
+        ASSERT_EQ(successor_mode8[k], og::runtime::current_session->player_keys_[1][k])
+            << "the shifted successor must activate its retained mode";
+
+        ASSERT_EQ(final_successor_mode4[k], get_player_key_binding_for_mode(2, kFour, k));
+        ASSERT_EQ(final_successor_mode8[k], get_player_key_binding_for_mode(2, kEight, k));
+        ASSERT_EQ(final_successor_mode8[k], og::runtime::current_session->player_keys_[2][k]);
+
+        ASSERT_EQ(removed_mode4[k], get_player_key_binding_for_mode(3, kFour, k))
+            << "the freed profile must retain its 4-dir key " << k;
+        ASSERT_EQ(removed_mode8[k], get_player_key_binding_for_mode(3, kEight, k))
+            << "the freed profile must retain its 8-dir key " << k;
+        ASSERT_EQ(removed_active[k], og::runtime::current_session->player_keys_[3][k])
+            << "the freed profile must retain and activate its mode";
+    }
+    EXPECT_EQ(40, player_joy[0].index);
+    EXPECT_EQ(42, player_joy[1].index);
+    EXPECT_EQ(43, player_joy[2].index);
+    EXPECT_EQ(41, player_joy[3].index);
+    EXPECT_EQ(11, player_joy[3].key_index[KEY_FIRE]);
+    EXPECT_EQ(0, input_hardware_state()
+                     .player_control_default_profiles[0]);
+    EXPECT_EQ(2, input_hardware_state()
+                     .player_control_default_profiles[1]);
+    EXPECT_EQ(3, input_hardware_state()
+                     .player_control_default_profiles[2]);
+    EXPECT_EQ(1, input_hardware_state()
+                     .player_control_default_profiles[3]);
+    ASSERT_EQ(kEight, get_player_control_mode(0));
+}
+
+TEST(InputKeybinds, compact_controls_after_first_of_four_keeps_readded_mapping_unique)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour =
+        static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight =
+        static_cast<int>(ControlDirectionMode::EightDirection);
+    InputHardwareState& hw = input_hardware_state();
+    for (int p = 0; p < 4; ++p)
+    {
+        player_joy[p].index = 20 + p;
+        player_joy[p].key_type[KEY_YELL] = JoyData::BUTTON;
+        player_joy[p].key_index[KEY_YELL] = p;
+        hw.direction_grace[p] = {
+            .prev_raw = 3, .hold_mask = 3, .ticks_left = 2};
+        for (int k = 0; k < NUM_KEYS; ++k)
+            hw.touch_keystate[p][k] = true;
+    }
+
+    ASSERT_TRUE(compact_player_controls_after_removal(0, 4));
+
+    // Simulating the next [+] simply makes the inactive tail active again:
+    // arrows / IJKL / THGF / WASD, never two THGF profiles.
+    constexpr int expected_up[4] = {SDLK_UP, SDLK_I, SDLK_T, SDLK_W};
+    constexpr int expected_right[4] = {
+        SDLK_RIGHT, SDLK_L, SDLK_H, SDLK_D};
+    constexpr int expected_joy[4] = {21, 22, 23, 20};
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(expected_up[p],
+                  get_player_key_binding_for_mode(p, kFour, KEY_UP));
+        EXPECT_EQ(expected_up[p],
+                  get_player_key_binding_for_mode(p, kEight, KEY_UP));
+        EXPECT_EQ(expected_right[p],
+                  get_player_key_binding_for_mode(p, kFour, KEY_RIGHT));
+        EXPECT_EQ(expected_up[p],
+                  og::runtime::current_session->player_keys_[p][KEY_UP]);
+        EXPECT_EQ(expected_joy[p], player_joy[p].index);
+        EXPECT_EQ(
+            (p + 1) % 4,
+            hw.player_control_default_profiles[p]);
+        EXPECT_EQ(0, hw.direction_grace[p].prev_raw);
+        EXPECT_EQ(0, hw.direction_grace[p].hold_mask);
+        EXPECT_EQ(0, hw.direction_grace[p].ticks_left);
+        for (int k = 0; k < NUM_KEYS; ++k)
+            EXPECT_FALSE(hw.touch_keystate[p][k]);
+    }
+    EXPECT_NE(
+        get_player_key_binding_for_mode(2, kFour, KEY_UP),
+        get_player_key_binding_for_mode(3, kFour, KEY_UP));
+}
+
+TEST(InputKeybinds, compact_controls_after_repeated_removals_preserves_profile_pool)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour =
+        static_cast<int>(ControlDirectionMode::FourDirection);
+    ASSERT_TRUE(compact_player_controls_after_removal(0, 4));
+    ASSERT_TRUE(compact_player_controls_after_removal(0, 3));
+
+    // Two removals followed by two adds expose the whole unchanged pool.
+    // A positional tail reset would produce IJKL twice here.
+    constexpr int expected_up[4] = {SDLK_I, SDLK_T, SDLK_UP, SDLK_W};
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(expected_up[p],
+                  get_player_key_binding_for_mode(p, kFour, KEY_UP));
+    }
+}
+
+TEST(InputKeybinds, compact_controls_rotates_every_valid_active_range)
+{
+    FullControlSnapshotGuard guard;
+    constexpr int kFour =
+        static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight =
+        static_cast<int>(ControlDirectionMode::EightDirection);
+    InputHardwareState& hw = input_hardware_state();
+
+    for (int active_count = 1; active_count <= 4; ++active_count)
+    {
+        for (int removed = 0; removed < active_count; ++removed)
+        {
+            reset_default_player_controls();
+            for (int p = 0; p < 4; ++p)
+            {
+                set_player_control_mode(p, kFour);
+                set_player_key_binding(
+                    p, KEY_CHEAT, SDLK_F1 + p);
+                set_player_control_mode(p, kEight);
+                set_player_key_binding(
+                    p, KEY_CHEAT, SDLK_F5 + p);
+                set_player_control_mode(
+                    p, (p % 2 == 0) ? kFour : kEight);
+                player_joy[p].index = 50 + p;
+                player_joy[p].key_type[KEY_SPECIAL] =
+                    JoyData::BUTTON;
+                player_joy[p].key_index[KEY_SPECIAL] = 60 + p;
+                hw.direction_grace[p] = {
+                    .prev_raw = 3,
+                    .hold_mask = 3,
+                    .ticks_left = 2,
+                };
+                for (int k = 0; k < NUM_KEYS; ++k)
+                    hw.touch_keystate[p][k] = true;
+            }
+
+            std::array<int, 4> expected_sources{0, 1, 2, 3};
+            std::rotate(
+                expected_sources.begin() + removed,
+                expected_sources.begin() + removed + 1,
+                expected_sources.begin() + active_count);
+
+            ASSERT_TRUE(compact_player_controls_after_removal(
+                removed, active_count));
+            for (int p = 0; p < 4; ++p)
+            {
+                const int source = expected_sources[
+                    static_cast<std::size_t>(p)];
+                EXPECT_EQ(
+                    SDLK_F1 + source,
+                    get_player_key_binding_for_mode(
+                        p, kFour, KEY_CHEAT))
+                    << "active_count=" << active_count
+                    << " removed=" << removed << " slot=" << p;
+                EXPECT_EQ(
+                    SDLK_F5 + source,
+                    get_player_key_binding_for_mode(
+                        p, kEight, KEY_CHEAT));
+                const int expected_mode =
+                    (source % 2 == 0) ? kFour : kEight;
+                EXPECT_EQ(expected_mode, get_player_control_mode(p));
+                EXPECT_EQ(
+                    expected_mode == kFour
+                        ? SDLK_F1 + source
+                        : SDLK_F5 + source,
+                    og::runtime::current_session
+                        ->player_keys_[p][KEY_CHEAT]);
+                EXPECT_EQ(50 + source, player_joy[p].index);
+                EXPECT_EQ(
+                    source,
+                    hw.player_control_default_profiles[p]);
+                EXPECT_EQ(
+                    60 + source,
+                    player_joy[p].key_index[KEY_SPECIAL]);
+
+                const bool affected =
+                    p >= removed && p < active_count;
+                EXPECT_EQ(
+                    affected ? 0 : 3,
+                    hw.direction_grace[p].prev_raw);
+                EXPECT_EQ(
+                    affected ? 0 : 3,
+                    hw.direction_grace[p].hold_mask);
+                EXPECT_EQ(
+                    affected ? 0 : 2,
+                    hw.direction_grace[p].ticks_left);
+                for (int k = 0; k < NUM_KEYS; ++k)
+                {
+                    EXPECT_EQ(
+                        !affected, hw.touch_keystate[p][k]);
+                }
+            }
+        }
+    }
+}
+
+TEST(InputKeybinds, compacted_default_profile_identity_survives_cfg_roundtrip)
+{
+    FullControlSnapshotGuard guard;
+    cfg_store config;
+    reset_default_player_controls();
+
+    constexpr int kFour =
+        static_cast<int>(ControlDirectionMode::FourDirection);
+    ASSERT_TRUE(compact_player_controls_after_removal(0, 4));
+    save_player_control_settings_to_cfg(config);
+
+    reset_default_player_controls();
+    load_player_control_settings_from_cfg(config);
+    const int expected_profiles[4] = {1, 2, 3, 0};
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(
+            expected_profiles[p],
+            input_hardware_state()
+                .player_control_default_profiles[p]);
+        ASSERT_TRUE(reset_default_player_controls_for_player(p));
+    }
+
+    // RESET after reload restores each rotated profile's own factory map.
+    constexpr int expected_up[4] = {SDLK_UP, SDLK_I, SDLK_T, SDLK_W};
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(
+            expected_up[p],
+            get_player_key_binding_for_mode(
+                p, kFour, KEY_UP));
+    }
+}
+
+
+TEST(InputKeybinds, compact_controls_after_removal_rejects_invalid_inputs)
+{
+    FullControlSnapshotGuard guard;
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F8);
+    InputHardwareState& hw = input_hardware_state();
+    player_joy[2].index = 77;
+    player_joy[2].key_type[KEY_FIRE] = JoyData::BUTTON;
+    player_joy[2].key_index[KEY_FIRE] = 9;
+    hw.direction_grace[1] = {
+        .prev_raw = 5, .hold_mask = 5, .ticks_left = 3};
+    hw.touch_keystate[1][KEY_FIRE] = true;
+
+    int modes[4];
+    int default_profiles[4];
+    int mode4[4][NUM_KEYS];
+    int mode8[4][NUM_KEYS];
+    int active[4][NUM_KEYS];
+    for (int p = 0; p < 4; ++p)
+    {
+        modes[p] = get_player_control_mode(p);
+        default_profiles[p] =
+            hw.player_control_default_profiles[p];
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            mode4[p][k] = get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::FourDirection), k);
+            mode8[p][k] = get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::EightDirection), k);
+            active[p][k] = og::runtime::current_session->player_keys_[p][k];
+        }
+    }
+
+    ASSERT_TRUE(!compact_player_controls_after_removal(-1, 3));
+    ASSERT_TRUE(!compact_player_controls_after_removal(3, 3));
+    ASSERT_TRUE(!compact_player_controls_after_removal(0, 0));
+    ASSERT_TRUE(!compact_player_controls_after_removal(0, 5));
+    for (int p = 0; p < 4; ++p)
+    {
+        ASSERT_EQ(modes[p], get_player_control_mode(p));
+        ASSERT_EQ(
+            default_profiles[p],
+            hw.player_control_default_profiles[p]);
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            ASSERT_EQ(mode4[p][k], get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::FourDirection), k));
+            ASSERT_EQ(mode8[p][k], get_player_key_binding_for_mode(p,
+                static_cast<int>(ControlDirectionMode::EightDirection), k));
+            ASSERT_EQ(active[p][k], og::runtime::current_session->player_keys_[p][k]);
+        }
+    }
+    EXPECT_EQ(77, player_joy[2].index);
+    EXPECT_EQ(JoyData::BUTTON, player_joy[2].key_type[KEY_FIRE]);
+    EXPECT_EQ(9, player_joy[2].key_index[KEY_FIRE]);
+    EXPECT_EQ(5, hw.direction_grace[1].prev_raw);
+    EXPECT_EQ(5, hw.direction_grace[1].hold_mask);
+    EXPECT_EQ(3, hw.direction_grace[1].ticks_left);
+    EXPECT_TRUE(hw.touch_keystate[1][KEY_FIRE]);
+}
+
+
 TEST(InputKeybinds, input_control_settings_cfg_roundtrip)
 {
     cfg_store config;
@@ -725,6 +1220,14 @@ TEST(InputKeybinds, input_control_settings_cfg_invalid_values_fall_back_to_defau
         0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_SPECIAL);
 
     config.apply_setting("controls", "player1_mode", "invalid");
+    config.apply_setting(
+        "controls", "player1_default_profile", "invalid");
+    config.apply_setting(
+        "controls", "player2_default_profile", "2");
+    config.apply_setting(
+        "controls", "player3_default_profile", "3");
+    config.apply_setting(
+        "controls", "player4_default_profile", "4");
     config.apply_setting("controls", "player1_key0", "invalid");
     config.apply_setting("controls", "player1_mode4_key4", "invalid");
     config.apply_setting("controls", "player1_mode8_key5", "invalid");
@@ -735,6 +1238,14 @@ TEST(InputKeybinds, input_control_settings_cfg_invalid_values_fall_back_to_defau
     ASSERT_EQ(default_legacy, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP)) << "invalid legacy key should fall back to default";
     ASSERT_EQ(default_mode4, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_FIRE)) << "invalid 4-direction key should fall back to default";
     ASSERT_EQ(default_mode8, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_SPECIAL)) << "invalid 8-direction key should fall back to default";
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(
+            p,
+            input_hardware_state()
+                .player_control_default_profiles[p])
+            << "an invalid persisted permutation must fall back atomically";
+    }
 }
 
 
@@ -811,8 +1322,8 @@ TEST(InputKeybinds, controls_reset_defaults_action_resets_controls_only)
 
     ASSERT_STREQ("CONTROL_RESET_TEST", cfg.get_setting("graphics", "render").c_str()) << "controls reset should not modify non-controls settings";
 
-    // The PLAYER SETTINGS action persists immediately: dirty runtime again,
-    // reload cfg, and prove the defaults return from disk.
+    // The global CONTROLS / RESET ALL action persists immediately: dirty
+    // runtime again, reload cfg, and prove the defaults return from disk.
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F12);
     cfg.load_settings();

@@ -13,17 +13,12 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 13> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
-    {"3_player", "3 Player", PickerMenuCommand::SetPlayerMode, 3},
-    {"2_player", "2 Player", PickerMenuCommand::SetPlayerMode, 2},
-    {"1_player", "1 Player", PickerMenuCommand::SetPlayerMode, 1},
     // The DIFFICULTY entry is a door into the DIFFICULTY submenu
     // (kDifficultyMenuItems below); the in-place cycle moved in there.
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
-    {"pvp_allied", "Seat Mode", PickerMenuCommand::ToggleAlliedMode},
     {"level_edit", "Level Editor", PickerMenuCommand::LevelEdit},
     {"options", "Game Settings", PickerMenuCommand::Options},
     // HELP and QUIT are separate, stable footer actions on the graphical
@@ -49,10 +44,10 @@ constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"go", "GO!", PickerMenuCommand::StartGame},
     {"back", "Back", PickerMenuCommand::Back},
     {"networking", "Networking", PickerMenuCommand::Networking},
-    // The scenario-shaped commands (campaign/level/viewer/teams/progress)
+    // The scenario-shaped commands (campaign/level/viewer/matchup/progress)
     // live in the SCENARIO submenu now (kScenarioItems below).
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
-    // The SDL picker groups the CTF match settings into the TEAMS subscreen;
+    // The SDL picker groups the CTF match settings into MATCHUP;
     // terminal clients keep them as flat team-build items.
     {"ctf_teams", "CTF Teams", PickerMenuCommand::CycleCtfTeamCount},
     {"ctf_caps", "Capture Limit", PickerMenuCommand::CycleCtfCaptureLimit},
@@ -66,7 +61,7 @@ constexpr std::array<PickerMenuItem, 6> kScenarioItems = {{
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
-    {"teams", "Teams", PickerMenuCommand::Teams},
+    {"matchup", "Matchup", PickerMenuCommand::Teams},
     {"progress", "Progress", PickerMenuCommand::ShowProgress},
     {"back", "Back", PickerMenuCommand::Back},
 }};

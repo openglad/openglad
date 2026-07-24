@@ -91,7 +91,7 @@ struct PickerState {
 
     // Mutable menu descriptor arrays (Phase 12).
     std::vector<button> mainmenu_buttons;
-    std::vector<button> player_settings_buttons;
+    std::vector<button> seat_settings_buttons;
     std::vector<button> createmenu_buttons;
     std::vector<button> main_options_buttons;
     std::vector<button> display_settings_buttons;
@@ -115,10 +115,10 @@ struct PickerState {
     // §2.4 Backups sub-view (per company) — Layer F engine screen.
     std::vector<button> company_backups_buttons;
 
-    // TEAMS subscreen: roster slot selected by the local guy-cycling row.
+    // MATCHUP subscreen: roster slot selected by the legacy local guy row.
     int teams_menu_guy_slot = 0;
 
-    // TEAMS subscreen: per-team member-detail page (the '>' pager). Session
+    // MATCHUP subscreen: per-team member-detail page (the '>' pager). Session
     // state only — reset every time the subscreen opens, never persisted.
     std::array<int, 4> teams_menu_team_page{};
 

@@ -1940,6 +1940,185 @@ TEST(NetTransportInProcess, network_fixture_player_disconnect_notifies_remaining
 }
 
 TEST(NetTransportInProcess,
+     preauthorized_zero_seat_spectator_handshakes_and_unknown_peer_is_rejected)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    auto spectator_transport =
+        fixture.server_transport().create_client_transport();
+    const og::sim::PeerId spectator_peer =
+        spectator_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().connect_spectator(spectator_peer);
+    });
+    og::sim::GameClient spectator(*spectator_transport, spectator_peer);
+    InputState spectator_input{};
+    spectator.send_input(
+        spectator_input, fixture.server_world().tick_count_ + 1u);
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    spectator.poll_messages();
+
+    ASSERT_FALSE(og::sim::is_zero_session_token(spectator.session_token()));
+    ASSERT_TRUE(spectator.initial_setup().has_value());
+    ASSERT_TRUE(spectator.baseline().has_value());
+    ASSERT_FALSE(spectator_transport->connected_peers().empty());
+
+    const std::uint32_t initial_tick = spectator.last_seen_server_tick();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    spectator.poll_messages();
+    EXPECT_GT(spectator.last_seen_server_tick(), initial_tick)
+        << "the admitted spectator remains connected for ordinary tick delivery";
+    EXPECT_FALSE(spectator_transport->connected_peers().empty());
+
+    // GameClient sends the shared input envelope even without a seat, and
+    // treats that as outbound activity instead of also sending a heartbeat.
+    // Valid spectator input must therefore refresh the server timeout.
+    now_ms +=
+        static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
+    spectator.send_input(
+        spectator_input, fixture.server_world().tick_count_ + 1u);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    spectator.poll_messages();
+    ASSERT_FALSE(spectator_transport->connected_peers().empty())
+        << "live zero-seat input traffic keeps the spectator connected";
+
+    const og::sim::SessionToken spectator_token = spectator.session_token();
+    spectator_transport->disconnect(spectator_peer);
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+        fixture.server().poll_incoming_messages();
+    });
+
+    auto reconnect_transport =
+        fixture.server_transport().create_client_transport();
+    const og::sim::PeerId reconnect_peer =
+        reconnect_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+    og::sim::HelloMessage reconnect_hello;
+    reconnect_hello.session_token = spectator_token;
+    reconnect_transport->send_hello(
+        reconnect_peer,
+        std::make_shared<og::sim::HelloMessage>(reconnect_hello));
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    const std::vector<og::sim::TypedReceivedMessage> reconnect_messages =
+        reconnect_transport->poll_typed();
+    EXPECT_FALSE(reconnect_transport->connected_peers().empty());
+    EXPECT_TRUE(std::any_of(
+        reconnect_messages.begin(),
+        reconnect_messages.end(),
+        [&spectator_token](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Hello &&
+                message.hello != nullptr &&
+                message.hello->session_token == spectator_token;
+        })) << "a zero-seat peer reconnects with its issued session token";
+    EXPECT_TRUE(std::any_of(
+        reconnect_messages.begin(),
+        reconnect_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind ==
+                    og::sim::TypedReceivedMessageKind::InitialSetup &&
+                message.initial_setup != nullptr;
+        }));
+    EXPECT_TRUE(std::any_of(
+        reconnect_messages.begin(),
+        reconnect_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Snapshot &&
+                message.snapshot != nullptr;
+        }));
+
+    // Transport discovery still does not authorize arbitrary gameplay
+    // spectators: an unregistered peer's fresh zero-token Hello is the old
+    // unknown-reconnect shape and must remain rejected.
+    auto unknown_transport =
+        fixture.server_transport().create_client_transport();
+    const og::sim::PeerId unknown_peer = unknown_transport->local_peer_id();
+    og::sim::GameClient unknown(*unknown_transport, unknown_peer);
+    unknown.send_input(
+        spectator_input, fixture.server_world().tick_count_ + 1u);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_TRUE(unknown_transport->connected_peers().empty());
+    EXPECT_TRUE(og::sim::is_zero_session_token(unknown.session_token()));
+}
+
+TEST(NetTransportInProcess,
+     preauthorized_zero_seat_host_retains_timer_wait_authority)
+{
+    TestGameWorld test_world(1);
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto host_transport = server_transport->create_client_transport();
+    const og::sim::PeerId host_peer = host_transport->local_peer_id();
+
+    og::sim::GameServer server(
+        test_world.world(), test_world.events, *server_transport);
+    server.connect_spectator(host_peer);
+    og::sim::GameClient host(*host_transport, host_peer);
+
+    InputState host_input{};
+    host_input.timer_wait_request = 7;
+    host.send_input(host_input, 1u);
+    server.step();
+    host.poll_messages();
+
+    EXPECT_EQ(7, static_cast<int>(test_world.world().timer_wait))
+        << "host authority belongs to the admitted peer, not to a seat";
+    EXPECT_FALSE(host_transport->connected_peers().empty());
+    EXPECT_FALSE(og::sim::is_zero_session_token(host.session_token()));
+
+    const og::sim::SessionToken host_token = host.session_token();
+    host_transport->disconnect(host_peer);
+    server.poll_incoming_messages();
+    server.poll_incoming_messages();
+
+    auto reconnect_transport = server_transport->create_client_transport();
+    const og::sim::PeerId reconnect_peer =
+        reconnect_transport->local_peer_id();
+    server.poll_incoming_messages();
+    og::sim::HelloMessage reconnect_hello;
+    reconnect_hello.session_token = host_token;
+    reconnect_transport->send_hello(
+        reconnect_peer,
+        std::make_shared<og::sim::HelloMessage>(reconnect_hello));
+    server.step();
+    (void)reconnect_transport->poll_typed();
+
+    InputState reconnected_host_input{};
+    reconnected_host_input.timer_wait_request = 9;
+    reconnect_transport->send_input(
+        reconnect_peer,
+        std::make_shared<InputState>(reconnected_host_input),
+        test_world.world().tick_count_ + 1u);
+    server.step();
+    EXPECT_EQ(9, static_cast<int>(test_world.world().timer_wait))
+        << "a reconnected zero-seat host recovers host authority";
+}
+
+TEST(NetTransportInProcess,
      network_fixture_reconnects_with_session_token_and_reclaims_control)
 {
     og::sim::test::NetworkTestFixture fixture({

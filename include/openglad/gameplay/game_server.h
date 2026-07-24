@@ -100,6 +100,11 @@ struct ConnectedClientState {
     bool allow_initial_keyframe_without_ready = false;
     bool budget_pending_keyframe = false;
     bool force_keyframe = false;
+    // Set only by a lobby-to-gameplay handoff for a connected peer that owns
+    // no seats. Such a peer may complete a fresh zero-token Hello and receives
+    // the same InitialSetup/snapshot stream as a player; arbitrary transport
+    // arrivals remain unauthorized reconnect attempts.
+    bool spectator_admitted = false;
     SessionToken session_token = kZeroSessionToken;
     std::uint64_t last_received_input_ms = 0;
     std::uint64_t last_pause_request_ms = 0;
@@ -125,6 +130,12 @@ struct DisconnectedPlayer {
     bool was_host = false;
 };
 
+struct DisconnectedSpectator {
+    SessionToken session_token = kZeroSessionToken;
+    std::uint64_t disconnected_at_ms = 0;
+    bool was_host = false;
+};
+
 struct PendingExitPromptState {
     std::int16_t destination_level = -1;
     bool withdraw_prompt = false;
@@ -145,6 +156,10 @@ public:
     GameServer(GameWorld& world, SimEventLog& events, ITransport& transport);
 
     void connect_client(PeerId peer_id);
+    // Admit a lobby-authorized, zero-seat peer to the gameplay stream. This is
+    // intentionally distinct from connect_client(): transport discovery alone
+    // must not let an unknown zero-token connection become a spectator.
+    void connect_spectator(PeerId peer_id);
     void disconnect_client(PeerId peer_id);
     // Upserts the peer's seat keyed by local_slot (defaults keep historic
     // single-seat callers source-compatible: their one binding is slot 0).
@@ -290,6 +305,7 @@ private:
     std::vector<PeerId> pending_transport_disconnects_;
     std::unordered_map<PeerId, ConnectedClientState> clients_;
     std::vector<DisconnectedPlayer> disconnected_players_;
+    std::vector<DisconnectedSpectator> disconnected_spectators_;
     std::array<walker*, kMaxGlobalPlayers> player_controls_ = {};
     std::array<SimInputDebounce, kMaxGlobalPlayers> player_input_debounce_ = {};
     std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};

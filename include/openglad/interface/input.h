@@ -260,6 +260,10 @@ enum class ControlDirectionMode : int
 
 class cfg_store;
 
+bool reset_default_player_controls_for_player(int player_index);
+// Compact active profiles after a seat leaves and rotate the freed profile to
+// the inactive tail, ready for the next seat added on this machine.
+bool compact_player_controls_after_removal(int removed_player_index, int active_player_count);
 void reset_default_player_controls();
 int get_player_control_mode(int player_index);
 void set_player_control_mode(int player_index, int mode);
@@ -549,6 +553,12 @@ inline bool isPlayerKey(int player_num, int key) {
 }
 
 const void* wait_for_key_event();
+// Blocking remap prompts can keep an asynchronous owner alive without
+// teaching the input layer about that owner. The callback runs once before
+// each event-queue pass and returns false to cancel the wait.
+using KeyWaitPollCallback = bool (*)();
+bool assignKeyFromWaitEventPolling(
+    int player_num, int key_enum, KeyWaitPollCallback poll_callback);
 void quit_if_quit_event(const void* native_event);
 template <typename EventT>
 inline void quit_if_quit_event(const EventT& event)

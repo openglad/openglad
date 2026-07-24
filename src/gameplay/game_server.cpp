@@ -945,6 +945,12 @@ void GameServer::connect_client(PeerId peer_id)
         host_peer_id_ = peer_id;
 }
 
+void GameServer::connect_spectator(PeerId peer_id)
+{
+    connect_client(peer_id);
+    clients_[peer_id].spectator_admitted = true;
+}
+
 void GameServer::handle_transport_disconnect(
     PeerId peer_id,
     bool close_transport,
@@ -1058,6 +1064,26 @@ void GameServer::handle_transport_disconnect(
             }
         }
     }
+    else if (client.spectator_admitted &&
+             !is_zero_session_token(client.session_token))
+    {
+        const auto existing = std::find_if(
+            disconnected_spectators_.begin(),
+            disconnected_spectators_.end(),
+            [&client](const DisconnectedSpectator& disconnected) {
+                return session_tokens_equal(disconnected.session_token,
+                                            client.session_token);
+            });
+        const DisconnectedSpectator replacement{
+            .session_token = client.session_token,
+            .disconnected_at_ms = now_ms(),
+            .was_host = was_host,
+        };
+        if (existing != disconnected_spectators_.end())
+            *existing = replacement;
+        else
+            disconnected_spectators_.push_back(replacement);
+    }
 
     clients_.erase(it);
     if (close_transport)
@@ -1162,6 +1188,7 @@ void GameServer::bind_player(PeerId peer_id,
     }
 
     ConnectedClientState& client = clients_[peer_id];
+    client.spectator_admitted = false;
     if (control == nullptr)
     {
         // CTF: prefer the binding player's OWN hero. Several humans may share
@@ -1336,6 +1363,55 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
         return;
     }
 
+    if (client.spectator_admitted)
+    {
+        if (!is_zero_session_token(client.session_token) &&
+            !is_zero_session_token(message.session_token) &&
+            !session_tokens_equal(message.session_token, client.session_token))
+        {
+            handle_transport_disconnect(peer_id, true);
+            return;
+        }
+
+        if (is_zero_session_token(client.session_token))
+            client.session_token = allocate_session_token();
+        response.session_token = client.session_token;
+        transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
+        return;
+    }
+
+    const auto disconnected_spectator = std::find_if(
+        disconnected_spectators_.begin(),
+        disconnected_spectators_.end(),
+        [&message](const DisconnectedSpectator& disconnected) {
+            return !is_zero_session_token(message.session_token) &&
+                session_tokens_equal(disconnected.session_token,
+                                     message.session_token);
+        });
+    if (disconnected_spectator != disconnected_spectators_.end())
+    {
+        const DisconnectedSpectator reconnect = *disconnected_spectator;
+        client.spectator_admitted = true;
+        client.session_token = reconnect.session_token;
+        client.initial_setup_sent = false;
+        client.has_initial_snapshot = false;
+        client.client_ready = false;
+        client.allow_initial_keyframe_without_ready = true;
+        client.budget_pending_keyframe = true;
+        client.force_keyframe = true;
+        client.expected_snapshot_hashes.clear();
+        reset_client_snapshot_state(client.snapshot_state);
+        if (reconnect.was_host)
+            host_peer_id_ = peer_id;
+
+        send_initial_setup(peer_id);
+        response.session_token = client.session_token;
+        transport_.send_hello(
+            peer_id, std::make_shared<HelloMessage>(response));
+        disconnected_spectators_.erase(disconnected_spectator);
+        return;
+    }
+
     if (is_zero_session_token(message.session_token))
     {
         handle_transport_disconnect(peer_id, true);
@@ -1459,6 +1535,16 @@ void GameServer::handle_heartbeat(PeerId peer_id)
 
 void GameServer::update_disconnected_players(std::uint64_t now)
 {
+    disconnected_spectators_.erase(
+        std::remove_if(
+            disconnected_spectators_.begin(),
+            disconnected_spectators_.end(),
+            [now](const DisconnectedSpectator& disconnected) {
+                return now >= disconnected.disconnected_at_ms &&
+                    now - disconnected.disconnected_at_ms >= PAUSE_TIMEOUT_MS;
+            }),
+        disconnected_spectators_.end());
+
     for (auto it = disconnected_players_.begin();
          it != disconnected_players_.end();)
     {
@@ -1715,8 +1801,15 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         switch (message.kind)
         {
         case TypedReceivedMessageKind::Input:
-            if (!message.input || !client.has_player_binding())
+            if (!message.input)
                 break;
+            if (!client.has_player_binding() && !client.spectator_admitted)
+                break;
+            // A zero-seat display still sends the shared InputState envelope
+            // every tick. Count that valid traffic before the seat gate so an
+            // admitted spectator does not time out while GameClient suppresses
+            // redundant heartbeats after outbound input.
+            client.last_received_input_ms = now_ms();
             if (host_peer_id_.has_value() &&
                 message.peer_id == *host_peer_id_ &&
                 message.input->timer_wait_request != kNoTimerWaitRequest)
@@ -1726,6 +1819,8 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     0,
                     20));
             }
+            if (!client.has_player_binding())
+                break;
             {
                 // The tick is attacker-controlled (raw wire u32). Drop inputs
                 // whose tick sits absurdly far ahead of the live window: only
@@ -1759,7 +1854,6 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     seat.last_received_input_tick = message.tick;
                 }
             }
-            client.last_received_input_ms = now_ms();
             break;
 
         case TypedReceivedMessageKind::Hello:
@@ -2154,6 +2248,7 @@ void GameServer::prepare_clients_for_loaded_level()
     next_sim_event_sequence_ = 1;
     next_game_flow_event_sequence_ = 1;
     disconnected_players_.clear();
+    disconnected_spectators_.clear();
     player_controls_.fill(nullptr);
     player_input_debounce_ = {};
     world_.control_hp = 0.0f;
@@ -2798,7 +2893,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         ConnectedClientState& client = clients_.at(peer_id);
         if (!client.initial_setup_sent)
         {
-            if (!client.has_player_binding())
+            if (!client.has_player_binding() && !client.spectator_admitted)
                 continue;
             send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
             continue;

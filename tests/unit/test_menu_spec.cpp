@@ -84,19 +84,21 @@ TEST(MenuSpec, difficulty_label_full_cycle_with_normalization)
     }
 }
 
-TEST(MenuSpec, allied_mode_label_full_cycle)
+TEST(MenuSpec, legacy_allied_mode_helper_has_no_menu_item)
 {
     SaveData save;
     const PickerMenuItem* item =
         item_of(PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode);
-    ASSERT_NE(nullptr, item);
+    EXPECT_EQ(nullptr, item)
+        << "per-level team choices moved to the Base Camp seat rail";
 
+    // Old saves and replay/wire compatibility still carry the bit, so its
+    // standalone normalization helper remains a stable two-state cycle.
     save.allied_mode = 0;
-    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*item, context_for(save)));
     og::ui::toggle_allied_mode(save);
-    EXPECT_EQ("SEATS: TOGETHER", og::ui::menu_item_label(*item, context_for(save)));
+    EXPECT_EQ(1, save.allied_mode);
     og::ui::toggle_allied_mode(save);
-    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*item, context_for(save)));
+    EXPECT_EQ(0, save.allied_mode);
 }
 
 TEST(MenuSpec, ctf_setting_labels_full_cycles)
@@ -229,26 +231,27 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     const PickerMenuItem* go =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::StartGame);
-    const PickerMenuItem* allied =
-        item_of(PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode);
+    const PickerMenuItem* ctf_teams =
+        item_of(PickerMenuId::TeamBuild,
+                PickerMenuCommand::CycleCtfTeamCount);
     ASSERT_NE(nullptr, view_team);
     ASSERT_NE(nullptr, go);
-    ASSERT_NE(nullptr, allied);
+    ASSERT_NE(nullptr, ctf_teams);
 
     EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, context_for(save)));
     EXPECT_EQ("GO!", og::ui::menu_item_label(*go, context_for(save)));
 
     // A save-backed binding without a save falls back to the fixed label.
     MenuLabelContext no_save;
-    EXPECT_EQ("Seat Mode", og::ui::menu_item_label(*allied, no_save));
+    EXPECT_EQ("CTF Teams", og::ui::menu_item_label(*ctf_teams, no_save));
 
     // Spectator context does not alter any current label (documents Layer-E
     // behavior; Layer F adds spectator-aware bindings).
-    save.allied_mode = 0;
     MenuLabelContext spectator = context_for(save);
     spectator.spectator = true;
     EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, spectator));
-    EXPECT_EQ("SEATS: SPLIT", og::ui::menu_item_label(*allied, spectator));
+    EXPECT_EQ("Teams: Auto",
+              og::ui::menu_item_label(*ctf_teams, spectator));
 }
 
 // --- cancel semantics -----------------------------------------------------

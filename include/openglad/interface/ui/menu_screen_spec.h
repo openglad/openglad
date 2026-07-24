@@ -162,8 +162,8 @@ struct MenuScreenSpec {
     EnterTransition enter = EnterTransition::None;
     int default_highlight = 0;
     bool right_click_enabled = false;
-    // Subscreens whose BACK carries MENU_REDRAW (view team / TEAMS / the
-    // slot menus): the loop must END on a redraw-bearing retvalue — checked
+    // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM / MATCHUP / the
+    // retired slot menus): the loop must END on a redraw-bearing retvalue — checked
     // right where the legacy loops checked, after handle_menu_nav and
     // BEFORE reset_buttons could consume it — and run_menu_screen returns
     // MENU_REDRAW from that break. Screens whose nested subscreens return
@@ -234,7 +234,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // here; docs/menu-engine.md explains why.
 enum class MenuScreenId : std::uint8_t {
     MainMenu,
-    PlayerSettings,
+    SeatSettings,
     TeamBuild,
     MainOptions,
     DisplaySettings,
@@ -271,23 +271,20 @@ const MenuScreenSpec& train_menu_screen_spec();
 const MenuScreenSpec& progress_menu_screen_spec();
 const MenuScreenSpec& view_scenario_menu_screen_spec();
 
-// The MP and no-MP main-menu specs share the same geometry; their nested
-// PLAYER SETTINGS specs
-// carry the actual multiplayer shape difference. DISABLE_MULTIPLAYER selects
-// both compiled variants (including the USE_TOUCH_INPUT mapping). The
-// web/native fork inside each main spec is the build-gated enabled/disabled
-// QUIT row; HELP is present in both. Both specs exist on every build so
-// uncompiled shapes remain unit-testable.
+// The MP and no-MP main-menu specs share the same geometry.
+// DISABLE_MULTIPLAYER selects the compiled variant (including the
+// USE_TOUCH_INPUT mapping). The web/native fork inside each main spec is the
+// build-gated enabled/disabled QUIT row; HELP is present in both. Both specs
+// exist on every build so uncompiled shapes remain unit-testable.
 const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
 const MenuScreenSpec& main_menu_screen_spec_mp();
 const MenuScreenSpec& main_menu_screen_spec_nomp();
 
-// PLAYER SETTINGS: local player count, PVP relationship, and the door into
-// per-player control modes/keymaps, plus their scoped reset. Multiplayer-
-// disabled builds keep the same door and RESET CONTROLS, but omit seat/PVP.
-const MenuScreenSpec& player_settings_menu_screen_spec();
-const MenuScreenSpec& player_settings_menu_screen_spec_mp();
-const MenuScreenSpec& player_settings_menu_screen_spec_nomp();
+// LOCAL SEAT SETTINGS: an owned Base Camp seat's team and persistent local
+// controller profile. The no-MP shape omits removal while retaining controls.
+const MenuScreenSpec& seat_settings_menu_screen_spec();
+const MenuScreenSpec& seat_settings_menu_screen_spec_mp();
+const MenuScreenSpec& seat_settings_menu_screen_spec_nomp();
 
 // §2.1 Company & Base Camp: the CONTINUE/LOAD gate reads a cached view of the
 // company set, refreshed once per mainmenu() entry (never per frame —
@@ -316,6 +313,17 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
+    // The live lobby's globally indexed player seats, sorted by player_index,
+    // plus a four-card page window for the Base Camp assignment rail. Unlike
+    // character TEAM colors above, these assignments are transient per-level
+    // player/view ownership and never rewrite a company roster.
+    std::vector<og::sim::LobbyPlayer> seats;
+    std::vector<std::uint8_t> local_seat_indices;
+    PageModel seat_page{};
+    // Accepted + activations are debounced like deploy taps: touch click
+    // collapsing can otherwise create two local seats from one visible tap.
+    // Denials never stamp, so retry-after-capacity remains immediate.
+    std::int64_t last_seat_add_ms = -1;
     // A second accepted deploy toggle of
     // the same display row (same tapped rect resolving to the same save
     // slot) within 250 ms is silently ignored — every touch mistap
@@ -327,10 +335,24 @@ struct BaseCampScreenState {
     std::int64_t last_deploy_toggle_ms = -1;
 };
 
+// One owned seat opened from the Base Camp rail. seat_id is the stable
+// authority token; player_index/P# and local_slot are refreshed while open.
+// Public so headless tests can drive the editor spec through ownership,
+// reindexing, and stale-seat shapes without a blocking UI thread.
+struct SeatSettingsScreenState {
+    og::sim::LobbySeatId seat_id = og::sim::kInvalidLobbySeatId;
+    std::uint8_t player_index = 0xff;
+    int local_slot = -1;
+    bool removed = false;
+    bool missing_notice_shown = false;
+};
+
 // The base camp spec is team_build_menu_screen_spec() (the screen keeps its
 // registry identity); the per-frame rewire reads the installed state (the
 // company-list seam pattern; null renders the empty-roster shape).
 void install_base_camp_state_for_screen(BaseCampScreenState* state);
+void install_seat_settings_state_for_screen(
+    SeatSettingsScreenState* state);
 
 // Re-collect the display-slot list from the save and clamp the page window
 // (§3.3 positional-refresh rule; called every frame tick and by tests).

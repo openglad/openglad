@@ -792,7 +792,6 @@ TEST(SaveLoadTeam,
     disk.reset();
     disk.current_campaign = "org.openglad.gladiator";
     disk.scen_num = 1;
-    disk.numplayers = 0;
     disk.completed_levels[disk.current_campaign] = {4};
     disk.m_totalcash[0] = 3000u;
     disk.m_totalscore[0] = 2000u;
@@ -819,10 +818,12 @@ TEST(SaveLoadTeam,
         og::progression::NetWinFoldCapture{}));
 
     SaveData after;
+    after.numplayers = 3;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
     EXPECT_EQ(2, static_cast<int>(after.scen_num))
         << "a zero-owner spectator still follows the next lobby round";
-    EXPECT_EQ(0, static_cast<int>(after.numplayers));
+    EXPECT_EQ(3, static_cast<int>(after.numplayers))
+        << "company persistence must not overwrite the live seat count";
     EXPECT_EQ((std::set<int>{4}),
               after.completed_levels[disk.current_campaign])
         << "watching a win must not award completed-level credit";
@@ -845,7 +846,6 @@ TEST(SaveLoadTeam,
     private_save.reset();
     private_save.current_campaign = "org.openglad.gladiator";
     private_save.scen_num = 3;
-    private_save.numplayers = 0;
     private_save.completed_levels[private_save.current_campaign] = {1, 2};
     private_save.m_totalcash[0] = 2468u;
     private_save.m_totalscore[0] = 1357u;
@@ -892,12 +892,14 @@ TEST(SaveLoadTeam,
     EXPECT_EQ("NET_ROSTER", after_session.team_list[0]->name);
 
     SaveData after_private;
+    after_private.numplayers = 2;
     ASSERT_EQ(SaveDataIoError::None,
               after_private.load_with_error("save0"));
     EXPECT_EQ(5, static_cast<int>(after_private.scen_num));
     EXPECT_EQ(5,
               after_private.current_levels.at(private_save.current_campaign));
-    EXPECT_EQ(0, static_cast<int>(after_private.numplayers));
+    EXPECT_EQ(2, static_cast<int>(after_private.numplayers))
+        << "the private company no longer stores a player-count setting";
     EXPECT_EQ((std::set<int>{1, 2}),
               after_private.completed_levels[private_save.current_campaign]);
     EXPECT_EQ(2468u, after_private.m_totalcash[0]);

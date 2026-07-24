@@ -7,6 +7,7 @@
 
 #include <array>
 #include <format>
+#include <optional>
 #include <string>
 
 int PlayerInput::move_x() const
@@ -208,20 +209,112 @@ void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
+bool reset_default_player_controls_for_player(int player_index)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+
+    int default_profile =
+        hw().player_control_default_profiles[player_index];
+    if (default_profile < 0 || default_profile >= 4)
+    {
+        default_profile = player_index;
+        hw().player_control_default_profiles[player_index] =
+            default_profile;
+    }
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        hw().player_mode_keys[player_index][kModeFourIndex][k] =
+            kDefaultFourDirKeys[default_profile][k];
+        hw().player_mode_keys[player_index][kModeEightIndex][k] =
+            kDefaultEightDirKeys[default_profile][k];
+    }
+    hw().player_control_modes[player_index] =
+        kDefaultControlModes[static_cast<std::size_t>(
+            default_profile)];
+    // Activate the default mode's keymap into player_keys
+    activate_mode_keymap_for_player(
+        player_index,
+        kDefaultControlModes[static_cast<std::size_t>(
+            default_profile)]);
+    return true;
+}
+
+bool compact_player_controls_after_removal(int removed_player_index, int active_player_count)
+{
+    if (active_player_count < 1 || active_player_count > 4 ||
+        removed_player_index < 0 || removed_player_index >= active_player_count)
+        return false;
+
+    // Control profiles are a four-entry pool. Compact the surviving seats,
+    // then rotate the freed profile to the first inactive slot so a later [+]
+    // reuses that distinct mapping. Resetting the tail by its array index
+    // cloned P4's THGF defaults after P1 was removed from a four-seat game.
+    sync_runtime_keys_to_active_mode(removed_player_index);
+    std::array<std::array<int, NUM_KEYS>, 2> removed_keys{};
+    for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
+    {
+        for (int k = 0; k < NUM_KEYS; ++k)
+            removed_keys[mode][k] =
+                hw().player_mode_keys[removed_player_index][mode][k];
+    }
+    const int removed_mode =
+        hw().player_control_modes[removed_player_index];
+    const int removed_default_profile =
+        hw().player_control_default_profiles[removed_player_index];
+    const JoyData removed_joy = player_joy[removed_player_index];
+
+    for (int source = removed_player_index + 1; source < active_player_count; ++source)
+    {
+        sync_runtime_keys_to_active_mode(source);
+        const int destination = source - 1;
+        for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
+        {
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                hw().player_mode_keys[destination][mode][k] =
+                    hw().player_mode_keys[source][mode][k];
+            }
+        }
+        hw().player_control_modes[destination] = hw().player_control_modes[source];
+        hw().player_control_default_profiles[destination] =
+            hw().player_control_default_profiles[source];
+        player_joy[destination] = player_joy[source];
+        activate_mode_keymap_for_player(
+            destination, hw().player_control_modes[destination]);
+    }
+
+    const int inactive_tail = active_player_count - 1;
+    for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
+    {
+        for (int k = 0; k < NUM_KEYS; ++k)
+            hw().player_mode_keys[inactive_tail][mode][k] =
+                removed_keys[mode][k];
+    }
+    hw().player_control_modes[inactive_tail] = removed_mode;
+    hw().player_control_default_profiles[inactive_tail] =
+        removed_default_profile;
+    player_joy[inactive_tail] = removed_joy;
+    activate_mode_keymap_for_player(inactive_tail, removed_mode);
+
+    // Held input is transient, not part of the profile. Do not let the menu
+    // gesture that removed a seat become input for a shifted or re-added one.
+    for (int player = removed_player_index;
+         player < active_player_count; ++player)
+    {
+        hw().direction_grace[player] = {};
+        for (int k = 0; k < NUM_KEYS; ++k)
+            hw().touch_keystate[player][k] = false;
+    }
+    return true;
+}
+
 void reset_default_player_controls()
 {
     for (int p = 0; p < 4; ++p)
     {
-        for (int k = 0; k < NUM_KEYS; ++k)
-        {
-            hw().player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
-            hw().player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
-        }
-        hw().player_control_modes[p] = kDefaultControlModes[static_cast<std::size_t>(p)];
-        // Activate the default mode's keymap into player_keys
-        const int idx = control_mode_keymap_index(kDefaultControlModes[static_cast<std::size_t>(p)]);
-        for (int k = 0; k < NUM_KEYS; ++k)
-            og::runtime::current_session->player_keys_[p][k] = hw().player_mode_keys[p][idx][k];
+        hw().player_control_default_profiles[p] = p;
+        reset_default_player_controls_for_player(p);
     }
 }
 
@@ -267,8 +360,50 @@ void load_player_control_settings_from_cfg(cfg_store& config)
 {
     reset_default_player_controls();
 
+    // A profile's factory-layout identity is a permutation of 1..4. It
+    // follows compacted profiles so per-seat RESET remains collision-free
+    // after remove/add, and is persisted separately from the mutable maps.
+    std::array<int, 4> default_profiles{};
+    std::array<bool, 4> seen_profiles{};
+    bool valid_default_profiles = true;
     for (int p = 0; p < 4; ++p)
     {
+        const std::string value = config.get_setting(
+            "controls",
+            std::format("player{}_default_profile", p + 1));
+        int profile = p;
+        if (!value.empty())
+        {
+            const std::optional<int> parsed =
+                parse_int_strict(value);
+            if (!parsed.has_value() || *parsed < 1 || *parsed > 4)
+            {
+                valid_default_profiles = false;
+                continue;
+            }
+            profile = *parsed - 1;
+        }
+        if (seen_profiles[static_cast<std::size_t>(profile)])
+        {
+            valid_default_profiles = false;
+            continue;
+        }
+        default_profiles[static_cast<std::size_t>(p)] = profile;
+        seen_profiles[static_cast<std::size_t>(profile)] = true;
+    }
+    for (int p = 0; p < 4; ++p)
+    {
+        hw().player_control_default_profiles[p] =
+            valid_default_profiles
+            ? default_profiles[static_cast<std::size_t>(p)]
+            : p;
+        reset_default_player_controls_for_player(p);
+    }
+
+    for (int p = 0; p < 4; ++p)
+    {
+        const int default_profile =
+            hw().player_control_default_profiles[p];
         const std::string mode_key = std::format("player{}_mode", p + 1);
         const std::string mode_str = config.get_setting("controls", mode_key);
         for (int k = 0; k < NUM_KEYS; ++k)
@@ -277,8 +412,10 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             const std::string legacy_key_value = config.get_setting("controls", legacy_key_name);
             if (!legacy_key_value.empty())
             {
-                const int four_fallback = kDefaultFourDirKeys[p][k];
-                const int eight_fallback = kDefaultEightDirKeys[p][k];
+                const int four_fallback =
+                    kDefaultFourDirKeys[default_profile][k];
+                const int eight_fallback =
+                    kDefaultEightDirKeys[default_profile][k];
                 hw().player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
                 hw().player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
             }
@@ -288,7 +425,8 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode4_key_value.empty())
             {
                 hw().player_mode_keys[p][kModeFourIndex][k] =
-                    parse_int_strict(mode4_key_value).value_or(kDefaultFourDirKeys[p][k]);
+                    parse_int_strict(mode4_key_value).value_or(
+                        kDefaultFourDirKeys[default_profile][k]);
             }
 
             const std::string mode8_key_name = std::format("player{}_mode8_key{}", p + 1, k);
@@ -296,14 +434,17 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode8_key_value.empty())
             {
                 hw().player_mode_keys[p][kModeEightIndex][k] =
-                    parse_int_strict(mode8_key_value).value_or(kDefaultEightDirKeys[p][k]);
+                    parse_int_strict(mode8_key_value).value_or(
+                        kDefaultEightDirKeys[default_profile][k]);
             }
         }
 
         hw().player_control_modes[p] = mode_str.empty()
-            ? static_cast<int>(ControlDirectionMode::FourDirection)
+            ? kDefaultControlModes[static_cast<std::size_t>(
+                  default_profile)]
             : normalize_control_mode(parse_int_strict(mode_str).value_or(
-                static_cast<int>(ControlDirectionMode::FourDirection)));
+                  kDefaultControlModes[static_cast<std::size_t>(
+                      default_profile)]));
         activate_mode_keymap_for_player(p, hw().player_control_modes[p]);
     }
 }
@@ -313,6 +454,11 @@ void save_player_control_settings_to_cfg(cfg_store& config)
     for (int p = 0; p < 4; ++p)
     {
         sync_runtime_keys_to_active_mode(p);
+        config.apply_setting(
+            "controls",
+            std::format("player{}_default_profile", p + 1),
+            std::to_string(
+                hw().player_control_default_profiles[p] + 1));
         config.apply_setting("controls", std::format("player{}_mode", p + 1),
             std::to_string(get_player_control_mode(p)));
         for (int k = 0; k < NUM_KEYS; ++k)

@@ -26,7 +26,8 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id)) << "main menu definition should report main id";
-    ASSERT_TRUE(def.items.size() >= 11) << "main menu should expose expected item count";
+    ASSERT_EQ(8u, def.items.size())
+        << "terminal main menu has no player-count rows";
 
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
@@ -46,9 +47,11 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuItem* join = find_picker_menu_item(PickerMenuId::Main, "join_game");
     ASSERT_TRUE(join == nullptr) << "join_game id should no longer appear in the main menu";
 
-    const PickerMenuItem* p4 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 4);
-    ASSERT_TRUE(p4 != nullptr) << "set player mode with arg=4 should resolve";
-    ASSERT_TRUE(p4->id == "4_player") << "set player mode arg=4 should resolve to 4_player item";
+    for (int players = 1; players <= 4; ++players) {
+        EXPECT_EQ(nullptr, find_picker_menu_item(
+            PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, players))
+            << "player-count choices belong to Base Camp, not Main";
+    }
 
     const PickerMenuItem* missing = find_picker_menu_item(PickerMenuId::Main, "missing-item");
     ASSERT_TRUE(missing == nullptr) << "missing id should return nullptr";
@@ -149,16 +152,16 @@ TEST(MenuModel, team_build_lookup)
     // The scenario-shaped commands moved OUT of the team-build menu, and
     // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
-         {"teams", "view_scenario", "set_level", "set_campaign", "progress",
-          "view_team", "load_team", "save_team"})
+         {"matchup", "teams", "view_scenario", "set_level", "set_campaign",
+          "progress", "view_team", "load_team", "save_team"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, moved_id) ==
                     nullptr)
             << moved_id << " must not resolve in the base camp";
     }
 
-    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)
-        << "teams never lives in the main menu";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "matchup") == nullptr)
+        << "matchup never lives in the main menu";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_troops") == nullptr)
         << "ctf_troops lives in the team build menu only";
 }
@@ -173,7 +176,7 @@ TEST(MenuModel, scenario_menu_lookup)
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
     ASSERT_EQ(6u, def.items.size())
-        << "scenario menu: campaign/level/viewer/teams/progress + back";
+        << "scenario menu: campaign/level/viewer/matchup/progress + back";
 
     const struct
     {
@@ -183,7 +186,7 @@ TEST(MenuModel, scenario_menu_lookup)
         {"set_campaign", PickerMenuCommand::SetCampaign},
         {"set_level", PickerMenuCommand::SetLevel},
         {"view_scenario", PickerMenuCommand::ViewScenario},
-        {"teams", PickerMenuCommand::Teams},
+        {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
         {"back", PickerMenuCommand::Back},
     };
@@ -233,14 +236,14 @@ TEST(MenuModel, lookup_miss_paths_and_fallback_item)
 }
 
 
-TEST(MenuModel, round10_set_player_mode_arg_variants_and_invalid_command_lookup)
+TEST(MenuModel, player_mode_is_absent_and_invalid_command_lookup_still_misses)
 {
     using namespace og::ui;
 
-    const PickerMenuItem* p1 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 1);
-    const PickerMenuItem* p2 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2);
-    const PickerMenuItem* p3 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 3);
-    ASSERT_TRUE(p1 && p2 && p3) << "set-player-mode items for args 1/2/3 should resolve";
+    for (int players = 0; players <= 4; ++players) {
+        EXPECT_EQ(nullptr, find_picker_menu_item(
+            PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, players));
+    }
 
     const PickerMenuItem* invalid_cmd =
         find_picker_menu_item(static_cast<PickerMenuId>(777), PickerMenuCommand::SetCampaign, 0);
@@ -391,9 +394,9 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(13u, main_def.items.size())
-        << "main menu exposes both Help and Quit plus the appended company "
-           "loader";
+    ASSERT_EQ(8u, main_def.items.size())
+        << "main menu exposes both Help and Quit plus the company loader, "
+           "without the retired player-count or seat-mode rows";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -547,7 +550,7 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
 
     // §2.1: load_company remains at the end; Main now exposes both stable
     // Help and Quit actions. TeamBuild/Scenario/Difficulty are unchanged.
-    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::Main).items.size());
+    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());

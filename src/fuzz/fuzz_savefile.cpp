@@ -13,6 +13,7 @@
 //   2 bytes  - allied mode (v7+)
 //   2 bytes  - team list size (short)
 //   1 byte   - number of players
+//              (legacy compatibility marker; runtime-only now)
 //   31 bytes - reserved; v14+ reinterprets as:
 //     8 bytes  - last-played unix seconds (int64, offset 133)
 //     23 bytes - reserved (zero-filled)
@@ -48,6 +49,7 @@
 #include <cstdint>
 
 static constexpr int MAX_TEAM_SIZE = 24;
+static constexpr uint8_t MAX_LEGACY_PLAYERS = 4;
 
 static bool rw_read_exact(SDL_IOStream *rw, void *dst, size_t sz, size_t count)
 {
@@ -176,8 +178,15 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     }
 
     // Number of players
-    uint8_t numplayers = 0;
-    if (!rw_read_exact(rw, &numplayers, 1, 1))
+    // This is now a legacy compatibility marker. The production reader still
+    // consumes and validates it, but never adopts it as runtime session state.
+    uint8_t legacy_numplayers = 0;
+    if (!rw_read_exact(rw, &legacy_numplayers, 1, 1))
+    {
+        SDL_CloseIO(rw);
+        return;
+    }
+    if (legacy_numplayers > MAX_LEGACY_PLAYERS)
     {
         SDL_CloseIO(rw);
         return;

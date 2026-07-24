@@ -515,6 +515,21 @@ bool is_ctf_campaign(const SaveData& save)
     return save.current_campaign == og::kCtfCampaignId;
 }
 
+std::uint8_t ctf_authored_team_mask_for_loaded_level(
+    const SaveData& save,
+    const GameWorld& world,
+    std::string_view mounted_campaign)
+{
+    if (!is_ctf_campaign(save) ||
+        mounted_campaign != save.current_campaign ||
+        world.id != save.scen_num ||
+        (world.type & GameWorld::TYPE_CTF) == 0)
+    {
+        return 0;
+    }
+    return og::sim::ctf_authored_flag_team_mask(world);
+}
+
 void toggle_ctf_scenario_troops(SaveData& save)
 {
     save.ctf_strip_scenario_troops =
@@ -1141,12 +1156,21 @@ BaseCampDeployCounts count_base_camp_display_deploys(
     return counts;
 }
 
-std::string_view lobby_player_machine_key(std::string_view player_name)
+namespace {
+
+std::uint64_t lobby_machine_group_key(
+    const og::sim::LobbyPlayer& player,
+    std::size_t ordinal) noexcept
 {
-    const std::size_t hash = player_name.find('#');
-    return hash == std::string_view::npos ? player_name
-                                          : player_name.substr(0, hash);
+    if (player.machine_id != og::sim::kInvalidLobbyMachineId)
+        return player.machine_id;
+    // A missing authority grant must never make unrelated seats look like
+    // one machine. This path exists for defensive/test-shaped states only;
+    // v9 servers stamp every accepted seat.
+    return (std::uint64_t{1} << 32) | ordinal;
 }
+
+} // namespace
 
 BaseCampReadyCounts count_base_camp_ready_machines(
     const std::vector<og::sim::LobbyPlayer>& players)
@@ -1155,10 +1179,11 @@ BaseCampReadyCounts count_base_camp_ready_machines(
         bool is_host = false;
         bool all_ready = true;
     };
-    std::map<std::string, MachineState, std::less<>> machines;
-    for (const og::sim::LobbyPlayer& player : players) {
+    std::map<std::uint64_t, MachineState> machines;
+    for (std::size_t index = 0; index < players.size(); ++index) {
+        const og::sim::LobbyPlayer& player = players[index];
         MachineState& machine =
-            machines[std::string(lobby_player_machine_key(player.name))];
+            machines[lobby_machine_group_key(player, index)];
         machine.is_host = machine.is_host || player.is_host;
         machine.all_ready = machine.all_ready && player.ready;
     }
@@ -1177,9 +1202,9 @@ BaseCampReadyCounts count_base_camp_ready_machines(
 BaseCampSessionCensus count_base_camp_session_census(
     const std::vector<og::sim::LobbyPlayer>& players)
 {
-    std::set<std::string, std::less<>> machines;
-    for (const og::sim::LobbyPlayer& player : players)
-        machines.insert(std::string(lobby_player_machine_key(player.name)));
+    std::set<std::uint64_t> machines;
+    for (std::size_t index = 0; index < players.size(); ++index)
+        machines.insert(lobby_machine_group_key(players[index], index));
     BaseCampSessionCensus census;
     census.machines = static_cast<int>(machines.size());
     census.players = static_cast<int>(players.size());
@@ -1194,8 +1219,7 @@ std::string base_camp_host_display_name(
             continue;
         if (!player.company.empty())
             return clip_chars(player.company, 16);
-        return clip_chars(
-            std::string(lobby_player_machine_key(player.name)), 16);
+        return clip_chars(player.name, 16);
     }
     return {};
 }
@@ -1298,9 +1322,11 @@ ReadyGoPresentation format_ready_go_button(bool networked,
     p.label = "READY";
     p.face_color = kReadyGoFaceUnready;
     // Client ready gate: cross-control OFF + own roster brought characters
-    // + none deployed => the click popups instead of readying. Spectator /
-    // empty-roster machines ready freely [NET-R9]; cross-control ON removes
-    // the per-machine minimum (bring 0, play a friend's characters).
+    // + none deployed => the click popups instead of readying. The spectator
+    // formatter shape and active seats with empty rosters have no deploy
+    // minimum [NET-R9]; Base Camp separately hides READY for a true zero-seat
+    // client, which is exempt from the server gate. Cross-control ON also
+    // removes the minimum (bring 0, play a friend's characters).
     if (!cross_control && !spectator && own_deployed <= 0)
         p.caption = "DEPLOY AT LEAST ONE";
     return p;
@@ -1313,11 +1339,13 @@ std::string format_go_blockers(
         bool is_host = false;
         bool all_ready = true;
         std::string company;
+        std::string display_name;
     };
     // Insertion order keeps the popup stable across identical lobby states.
-    std::vector<std::pair<std::string, MachineState>> machines;
-    for (const og::sim::LobbyPlayer& player : players) {
-        const std::string key(lobby_player_machine_key(player.name));
+    std::vector<std::pair<std::uint64_t, MachineState>> machines;
+    for (std::size_t index = 0; index < players.size(); ++index) {
+        const og::sim::LobbyPlayer& player = players[index];
+        const std::uint64_t key = lobby_machine_group_key(player, index);
         auto it = std::find_if(machines.begin(), machines.end(),
                                [&key](const auto& entry) {
                                    return entry.first == key;
@@ -1328,13 +1356,17 @@ std::string format_go_blockers(
         it->second.all_ready = it->second.all_ready && player.ready;
         if (it->second.company.empty())
             it->second.company = player.company;
+        if (it->second.display_name.empty())
+            it->second.display_name = player.name;
     }
     std::vector<std::string> blockers;
     for (const auto& [key, machine] : machines) {
+        (void)key;
         if (machine.is_host || machine.all_ready)
             continue;
         blockers.push_back(clip_chars(
-            machine.company.empty() ? key : machine.company, 26));
+            machine.company.empty() ? machine.display_name : machine.company,
+            26));
     }
     std::string body;
     constexpr std::size_t kMaxLines = 4;
@@ -1378,6 +1410,7 @@ std::unique_ptr<guy> make_base_camp_display_guy(
     result->armor = character.armor;
     result->exp = character.exp;
     result->level = character.level;
+    result->teamnum = character.teamnum;
     return result;
 }
 
@@ -2635,7 +2668,7 @@ std::vector<std::string> format_scenario_report_lines(
             if (!first_team || !lines.empty())
                 lines.emplace_back();
             first_team = false;
-            // Score teams get their color name (matching the TEAMS screen
+            // Score teams get their color name (matching the MATCHUP screen
             // and the CTF flag lines); anything beyond keeps the raw index.
             std::string header = (current_team >= 0 && current_team < 4)
                 ? std::format("{} TEAM",

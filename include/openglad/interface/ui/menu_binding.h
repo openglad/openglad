@@ -114,7 +114,7 @@ struct PageModel {
     // Step by delta, clamped to [0, page_count()-1]; true when the page
     // actually changed (the legacy flip traces only on a real change).
     bool step(int delta);
-    // 1-based "p/N" (the VIEW LEVEL page_info / TEAMS slice format).
+    // 1-based "p/N" (the VIEW LEVEL page_info / MATCHUP slice format).
     [[nodiscard]] std::string indicator() const;
 };
 
