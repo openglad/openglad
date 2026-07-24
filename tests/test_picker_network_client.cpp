@@ -42,6 +42,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -1066,7 +1067,70 @@ public:
 
     ~FakeRelayServer()
     {
+        stop();
+    }
+
+    // IXWebSocket's server shutdown snapshots its registered websocket
+    // clients before joining accepted connection threads. If shutdown races a
+    // handshake, the new thread is absent from that snapshot and the join can
+    // wait forever. Callers that intentionally drop a live relay first wait
+    // for connected_peer_count(), which is populated by the post-handshake
+    // Open callback. Keep a watchdog here as a hard test-process bound and as
+    // actionable diagnostics if upstream shutdown ever regresses again.
+    void stop(std::chrono::milliseconds timeout = 10s)
+    {
+        if (stopped_)
+            return;
+
+        const std::size_t initial_client_count = server_.getClients().size();
+        const std::size_t initial_peer_count = connected_peer_count();
+        const std::string create_uri = last_create_uri();
+        std::mutex shutdown_mutex;
+        std::condition_variable shutdown_condition;
+        bool shutdown_completed = false;
+
+        std::thread watchdog([&] {
+            std::unique_lock<std::mutex> lock(shutdown_mutex);
+            if (shutdown_condition.wait_for(
+                    lock,
+                    timeout,
+                    [&] { return shutdown_completed; }))
+            {
+                return;
+            }
+
+            std::fprintf(
+                stderr,
+                "FakeRelayServer::stop exceeded %lld ms "
+                "(IX clients before stop=%zu, relay peers before stop=%zu, "
+                "create URI=%s)\n",
+                static_cast<long long>(timeout.count()),
+                initial_client_count,
+                initial_peer_count,
+                create_uri.c_str());
+            std::fflush(stderr);
+            std::abort();
+        });
+
         server_.stop();
+        stopped_ = true;
+        {
+            std::lock_guard<std::mutex> lock(shutdown_mutex);
+            shutdown_completed = true;
+        }
+        shutdown_condition.notify_one();
+        watchdog.join();
+    }
+
+    [[nodiscard]] std::size_t connected_client_count()
+    {
+        return server_.getClients().size();
+    }
+
+    [[nodiscard]] std::size_t connected_peer_count() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return peers_.size();
     }
 
     [[nodiscard]] std::string last_create_uri() const
@@ -1394,6 +1458,7 @@ private:
     std::string room_list_response_body_;
     std::string last_create_uri_;
     std::string last_room_list_uri_;
+    bool stopped_ = false;
 };
 
 } // namespace
@@ -6817,6 +6882,18 @@ TEST(PickerNetworkClient,
     auto host_client = og::ui::create_host_picker_lobby_client(options);
     host_client->initialize_from_save();
 
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return relay_server->connected_peer_count() == 1;
+    },
+    10s)) << "the hosted relay websocket must finish its handshake before "
+             "the drop is exercised"
+          << "\ncreate URI: " << relay_server->last_create_uri()
+          << "\nIX clients: " << relay_server->connected_client_count()
+          << "\nrelay peers: " << relay_server->connected_peer_count()
+          << "\nstatus lines: "
+          << ::testing::PrintToString(host_client->status_lines());
+
     EXPECT_TRUE(status_lines_contain_exact(
         host_client->status_lines(),
         "Room: GLAD-XKCD"));
@@ -6835,6 +6912,7 @@ TEST(PickerNetworkClient,
             << "a healthy hosted room shows role + room + census";
     }
 
+    relay_server->stop();
     relay_server.reset();
 
     ASSERT_TRUE(wait_until([&] {

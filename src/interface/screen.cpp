@@ -54,9 +54,22 @@
 #include <openglad/resources/progression.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <cstring>
 #include <format>
+#include <thread>
+
+#ifdef TESTING
+// The UX screenshot probes run their input driver on a second thread. These
+// flags let that thread inspect one fully presented frame without racing the
+// menu loop's next clear/redraw pass.
+std::atomic_bool g_test_present_pause_requested{false};
+std::atomic_bool g_test_present_paused{false};
+#endif
 
 // Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
 // The function is declared in stats.cpp; defined here in the SDL build.
@@ -801,6 +814,26 @@ void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
                 fclose(fp);
             }
         }
+    }
+
+    if (g_test_present_pause_requested.load(std::memory_order_acquire))
+    {
+        g_test_present_paused.store(true, std::memory_order_release);
+        const auto deadline = std::chrono::steady_clock::now()
+                            + std::chrono::seconds(10);
+        while (g_test_present_pause_requested.load(std::memory_order_acquire))
+        {
+            if (std::chrono::steady_clock::now() >= deadline)
+            {
+                fprintf(stderr,
+                        "test frame capture held the presenter for more than "
+                        "10000 ms\n");
+                fflush(stderr);
+                abort();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        g_test_present_paused.store(false, std::memory_order_release);
     }
 #endif
 }

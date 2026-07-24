@@ -2871,7 +2871,26 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             TIMEOUT 420
         )
 
+        # The level-data suite rewrites temp/scen/scen99.fss while the parity
+        # bootstrap mounts the same source-tree scenario directory. Keep those
+        # read/write windows from overlapping in every parallel CTest lane.
+        set_tests_properties(
+            og_test_level
+            og_test_parity
+            PROPERTIES RESOURCE_LOCK source_scenario_fixtures
+        )
+
         if(ENABLE_COVERAGE)
+            # These two binaries temporarily replace config fixtures in shared
+            # source/build asset trees to exercise missing/invalid-file paths.
+            # Coverage CTest now runs concurrently, so keep those mutation
+            # windows globally isolated from sibling process startup and the
+            # nested Emscripten build.
+            set_tests_properties(
+                og_test_io
+                og_unit_data
+                PROPERTIES RUN_SERIAL TRUE
+            )
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
             # runners when CTest schedules them all at once.
             set_tests_properties(
@@ -3018,6 +3037,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             set_tests_properties(openglad_server_cli PROPERTIES
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
+                RESOURCE_LOCK native_network_stack
             )
 
             if(CMAKE_GENERATOR MATCHES "Ninja")
@@ -3041,6 +3061,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
                     SDL_AUDIODRIVER=dummy
                     SDL_RENDER_DRIVER=software
                     OPENGLAD_DEMO_MAX_FRAMES=1
+                    OPENGLAD_CONFIG_DIR=${CMAKE_BINARY_DIR}/openglad_demo_user
                     $<TARGET_FILE:openglad_demo>
             )
             set_tests_properties(openglad_demo_smoke PROPERTIES

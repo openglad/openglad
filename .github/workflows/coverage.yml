@@ -2,7 +2,7 @@ name: Coverage CI
 
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
 
 permissions:
@@ -52,6 +52,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-coverage
+          max-size: 2G
 
       - name: Configure (ci-coverage preset)
         run: cmake --preset ci-coverage -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -60,7 +61,16 @@ jobs:
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
       - name: Run tests with coverage
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3
+        # CTest continues to enforce the RUN_SERIAL, RESOURCE_LOCK, and
+        # PROCESSORS properties registered in CMakeLists.txt. Those processor
+        # reservations are calibrated for four-slot GitHub runners, so keep the
+        # parallel level at min(nproc, 4) on larger or smaller hosts.
+        run: |
+          parallel_jobs="$(nproc)"
+          if (( parallel_jobs > 4 )); then
+            parallel_jobs=4
+          fi
+          ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --no-tests=error
 
       - name: Typecheck relay worker
         working-directory: relay
@@ -70,32 +80,21 @@ jobs:
         working-directory: relay
         run: npm test
 
-      - name: Generate HTML coverage report
-        run: |
-          mkdir -p build/ci-coverage/coverage
-          python3 -m gcovr \
-            --root . \
-            --filter src/ \
-            --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
-            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --html-details \
-            --output build/ci-coverage/coverage/coverage.html \
-            build/ci-coverage
-
-      - name: Generate coverage summary report and enforce thresholds
+      - name: Generate coverage reports and enforce thresholds
         id: coverage_metrics
         run: |
           LINE_THRESHOLD=90
           FUNCTION_THRESHOLD=95
 
+          mkdir -p build/ci-coverage/coverage
           set +e
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --txt \
-            --output build/ci-coverage/coverage/coverage-summary.txt \
+            --html-details build/ci-coverage/coverage/coverage.html \
+            --txt build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \
             --fail-under-line "${LINE_THRESHOLD}" \
             --fail-under-function "${FUNCTION_THRESHOLD}" \

@@ -18,6 +18,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,8 @@ void picker_main(Sint32 argc, char **argv);
 Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+extern std::atomic_bool g_test_present_pause_requested;
+extern std::atomic_bool g_test_present_paused;
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState &pks() {
@@ -39,15 +42,70 @@ static inline PickerState &pks() {
 namespace {
 
 constexpr int kTeamMenuTimeoutMs = 20000;
+constexpr Uint64 kFramePauseTimeoutMs = 5000;
+
+class PresentedFramePause {
+public:
+  PresentedFramePause() {
+    bool expected = false;
+    if (!g_test_present_pause_requested.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+      fprintf(stderr,
+              "  [uxshot] FAILED: another frame capture is already pending\n");
+      fflush(stderr);
+      abort();
+    }
+
+    const Uint64 deadline = SDL_GetTicks() + kFramePauseTimeoutMs;
+    while (!g_test_present_paused.load(std::memory_order_acquire)) {
+      if (SDL_GetTicks() >= deadline) {
+        fprintf(stderr,
+                "  [uxshot] FAILED: no fully presented frame within %llu ms\n",
+                static_cast<unsigned long long>(kFramePauseTimeoutMs));
+        fflush(stderr);
+        abort();
+      }
+      SDL_Delay(1);
+    }
+    acquired_ = true;
+  }
+
+  ~PresentedFramePause() {
+    if (!acquired_)
+      return;
+
+    g_test_present_pause_requested.store(false, std::memory_order_release);
+    const Uint64 deadline = SDL_GetTicks() + kFramePauseTimeoutMs;
+    while (g_test_present_paused.load(std::memory_order_acquire)) {
+      if (SDL_GetTicks() >= deadline) {
+        fprintf(stderr,
+                "  [uxshot] presenter did not resume within %llu ms\n",
+                static_cast<unsigned long long>(kFramePauseTimeoutMs));
+        fflush(stderr);
+        abort();
+      }
+      SDL_Delay(1);
+    }
+  }
+
+  PresentedFramePause(const PresentedFramePause &) = delete;
+  PresentedFramePause &operator=(const PresentedFramePause &) = delete;
+
+  [[nodiscard]] bool acquired() const { return acquired_; }
+
+private:
+  bool acquired_ = false;
+};
 
 // Verify the current canvas and optionally dump it as a binary PPM. Runs on
-// the injector thread while the menu loop repaints identical frames, so each
-// caller settles the menu first.
+// the injector thread. The presenter handshake freezes exactly one completed
+// frame while its pixels are copied, so a blank-frame assertion cannot pass or
+// fail based on overlap with the menu loop's next clear/redraw pass.
 bool capture_frame(const char *name) {
   screen *scr = og::runtime::current_session->myscreen_;
   const char *output_dir = std::getenv("UXSHOTS_DIR");
-  FILE *f = nullptr;
   std::string path;
+  std::vector<Uint8> rgb;
   if (output_dir != nullptr && output_dir[0] != '\0') {
     std::error_code error;
     std::filesystem::create_directories(output_dir, error);
@@ -57,29 +115,38 @@ bool capture_frame(const char *name) {
       return false;
     }
     path = std::string(output_dir) + "/" + name + ".ppm";
-    f = fopen(path.c_str(), "wb");
+    rgb.reserve(320 * 200 * 3);
+  }
+
+  std::size_t nonblack_pixels = 0;
+  {
+    PresentedFramePause frame_pause;
+    if (!frame_pause.acquired())
+      return false;
+
+    for (int y = 0; y < 200; ++y) {
+      for (int x = 0; x < 320; ++x) {
+        Uint8 r = 0, g = 0, b = 0;
+        scr->get_pixel(x, y, &r, &g, &b);
+        if (r != 0 || g != 0 || b != 0)
+          ++nonblack_pixels;
+        if (!path.empty()) {
+          rgb.push_back(r);
+          rgb.push_back(g);
+          rgb.push_back(b);
+        }
+      }
+    }
+  }
+
+  if (!path.empty()) {
+    FILE *f = fopen(path.c_str(), "wb");
     if (f == nullptr) {
       fprintf(stderr, "  [uxshot] FAILED to open %s\n", path.c_str());
       return false;
     }
     fprintf(f, "P6\n320 200\n255\n");
-  }
-
-  std::size_t nonblack_pixels = 0;
-  for (int y = 0; y < 200; ++y) {
-    for (int x = 0; x < 320; ++x) {
-      Uint8 r = 0, g = 0, b = 0;
-      scr->get_pixel(x, y, &r, &g, &b);
-      if (r != 0 || g != 0 || b != 0)
-        ++nonblack_pixels;
-      if (f != nullptr) {
-        fputc(r, f);
-        fputc(g, f);
-        fputc(b, f);
-      }
-    }
-  }
-  if (f != nullptr) {
+    fwrite(rgb.data(), sizeof(Uint8), rgb.size(), f);
     fclose(f);
     fprintf(stderr, "  [uxshot] wrote %s\n", path.c_str());
   }
