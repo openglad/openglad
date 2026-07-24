@@ -25,6 +25,7 @@
 short new_score_panel(screen* s, short do_it);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+void picker_quit();
 
 namespace {
 
@@ -257,8 +258,9 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
 
 TEST(RuntimeCoveragePaths, screen_lifecycle_session_owner_paths)
 {
-    destroy_global_screen();
-    ASSERT_TRUE(global_session_owner() == nullptr) << "destroy_global_screen should clear owner";
+    picker_quit();
+    ASSERT_TRUE(global_session_owner() == nullptr)
+        << "picker_quit should release picker resources and clear the screen owner";
 
     screen* recreated = create_global_screen(1);
     ASSERT_TRUE(recreated != nullptr) << "create_global_screen should recreate session";

@@ -33,19 +33,40 @@
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#ifndef OPENGLAD_SERVER_TEST_EXECUTABLE
+#define OPENGLAD_SERVER_TEST_EXECUTABLE "openglad_server"
+#endif
 
 using namespace og::curses;
 
@@ -72,6 +93,210 @@ int curses_network_testing_clear_server_team(CursesGameSession& session,
 } // namespace og::curses
 
 namespace {
+
+using namespace std::chrono_literals;
+
+class ExternalServerProcess
+{
+public:
+    explicit ExternalServerProcess(const std::vector<std::string>& arguments)
+    {
+        std::string directory_pattern =
+            (std::filesystem::temp_directory_path() /
+             "openglad-server-process-XXXXXX").string();
+        std::vector<char> writable(directory_pattern.begin(),
+                                   directory_pattern.end());
+        writable.push_back('\0');
+        if (char* created = ::mkdtemp(writable.data()))
+            config_directory_ = created;
+        if (config_directory_.empty())
+            return;
+
+        int output_pipe[2]{};
+        if (::pipe(output_pipe) != 0)
+            return;
+        const int flags = ::fcntl(output_pipe[0], F_GETFL, 0);
+        if (flags >= 0)
+            (void)::fcntl(output_pipe[0], F_SETFL, flags | O_NONBLOCK);
+        (void)::fcntl(output_pipe[0], F_SETFD, FD_CLOEXEC);
+        (void)::fcntl(output_pipe[1], F_SETFD, FD_CLOEXEC);
+
+        const std::filesystem::path executable =
+            OPENGLAD_SERVER_TEST_EXECUTABLE;
+        std::vector<std::string> owned_argv;
+        owned_argv.reserve(arguments.size() + 1);
+        owned_argv.push_back(executable.string());
+        owned_argv.insert(owned_argv.end(), arguments.begin(), arguments.end());
+        std::vector<char*> child_argv;
+        child_argv.reserve(owned_argv.size() + 1);
+        for (std::string& argument : owned_argv)
+            child_argv.push_back(argument.data());
+        child_argv.push_back(nullptr);
+
+        pid_ = ::fork();
+        if (pid_ < 0) {
+            pid_ = -1;
+            (void)::close(output_pipe[0]);
+            (void)::close(output_pipe[1]);
+            return;
+        }
+        if (pid_ == 0) {
+            (void)::close(output_pipe[0]);
+            if (::dup2(output_pipe[1], STDOUT_FILENO) < 0 ||
+                ::dup2(output_pipe[1], STDERR_FILENO) < 0) {
+                _exit(126);
+            }
+            if (output_pipe[1] > STDERR_FILENO)
+                (void)::close(output_pipe[1]);
+
+            (void)::setenv("OPENGLAD_CONFIG_DIR",
+                           config_directory_.c_str(), 1);
+            if (!executable.parent_path().empty() &&
+                ::chdir(executable.parent_path().c_str()) != 0)
+                _exit(126);
+            ::execv(executable.c_str(), child_argv.data());
+            _exit(127);
+        }
+
+        (void)::close(output_pipe[1]);
+        output_fd_ = output_pipe[0];
+    }
+
+    ~ExternalServerProcess()
+    {
+        if (pid_ > 0) {
+            (void)::kill(pid_, SIGKILL);
+            while (::waitpid(pid_, nullptr, 0) < 0 && errno == EINTR) {
+            }
+        }
+        if (output_fd_ >= 0)
+            (void)::close(output_fd_);
+        std::error_code ignored;
+        if (!config_directory_.empty())
+            std::filesystem::remove_all(config_directory_, ignored);
+    }
+
+    ExternalServerProcess(const ExternalServerProcess&) = delete;
+    ExternalServerProcess& operator=(const ExternalServerProcess&) = delete;
+
+    [[nodiscard]] bool launched() const { return pid_ > 0; }
+    [[nodiscard]] const std::string& output() const { return output_; }
+
+    bool wait_for_output(std::string_view expected,
+                         std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            drain_output();
+            if (output_.find(expected) != std::string::npos)
+                return true;
+            if (has_exited())
+                break;
+            pollfd readable{output_fd_, POLLIN, 0};
+            (void)::poll(&readable, 1, 10);
+        }
+        drain_output();
+        return output_.find(expected) != std::string::npos;
+    }
+
+    bool terminate_cleanly(std::chrono::milliseconds timeout = 10s)
+    {
+        if (pid_ <= 0)
+            return exited_ && WIFEXITED(wait_status_) &&
+                WEXITSTATUS(wait_status_) == 0;
+
+        if (::kill(pid_, SIGTERM) != 0 && errno != ESRCH)
+            return false;
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            drain_output();
+            if (has_exited())
+                break;
+            std::this_thread::sleep_for(5ms);
+        }
+        drain_output();
+        return exited_ && WIFEXITED(wait_status_) &&
+            WEXITSTATUS(wait_status_) == 0;
+    }
+
+private:
+    void drain_output()
+    {
+        if (output_fd_ < 0)
+            return;
+        for (;;) {
+            char buffer[4096];
+            const ssize_t count = ::read(output_fd_, buffer, sizeof(buffer));
+            if (count > 0) {
+                output_.append(buffer, static_cast<std::size_t>(count));
+                continue;
+            }
+            if (count < 0 && errno == EINTR)
+                continue;
+            break;
+        }
+    }
+
+    bool has_exited()
+    {
+        if (pid_ <= 0)
+            return exited_;
+        const pid_t waited = ::waitpid(pid_, &wait_status_, WNOHANG);
+        if (waited == pid_) {
+            pid_ = -1;
+            exited_ = true;
+        }
+        return exited_;
+    }
+
+    std::filesystem::path config_directory_;
+    pid_t pid_ = -1;
+    int output_fd_ = -1;
+    int wait_status_ = -1;
+    bool exited_ = false;
+    std::string output_;
+};
+
+std::optional<int> external_server_free_tcp_port()
+{
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        return std::nullopt;
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = htons(0);
+    if (::bind(fd, reinterpret_cast<const sockaddr*>(&address),
+               sizeof(address)) != 0) {
+        (void)::close(fd);
+        return std::nullopt;
+    }
+    socklen_t length = sizeof(address);
+    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) != 0) {
+        (void)::close(fd);
+        return std::nullopt;
+    }
+    const int port = ntohs(address.sin_port);
+    (void)::close(fd);
+    return port > 0 ? std::optional<int>(port) : std::nullopt;
+}
+
+template <typename Predicate>
+bool poll_external_client_until(og::sim::WebSocketClientTransport& client,
+                                Predicate&& predicate,
+                                std::chrono::milliseconds timeout = 10s)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const std::vector<og::sim::TypedReceivedMessage> messages =
+            client.poll_typed();
+        if (predicate(messages))
+            return true;
+        std::this_thread::sleep_for(5ms);
+    }
+    return predicate(client.poll_typed());
+}
 
 void init_team_save(SaveData& save, short team, char family, const char* name)
 {
@@ -780,6 +1005,15 @@ TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
         ++matched;
     }
     EXPECT_GT(matched, 0) << "at least one entity should be mirrored on both sides";
+
+    EXPECT_GT(game.host_session->next_input_tick(), 0u);
+    EXPECT_GT(game.join_session->next_input_tick(), 0u);
+    game.join_session->request_abort();
+    game.host_session->request_abort();
+    for (int i = 0; i < 30 && !game.host_session->ended(); ++i)
+        advance_all(*game.host_session, *game.join_session, 1);
+    EXPECT_TRUE(game.host_session->ended())
+        << "either peer's abort request ends the shared mission";
 }
 
 // §4.4 install + snapshot v9 consumption on the curses stack: the host
@@ -1400,6 +1634,13 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
     EXPECT_EQ(1, mine->team);
     EXPECT_NE(term.text_row(term.rows() - 1).find("[</>] seat"),
               std::string::npos);
+
+    term.push_char(U'<');
+    lobby->poll(term, clock);
+    EXPECT_TRUE(status_contains(*lobby, "Selected P1"));
+    term.push_special(KeyCode::Right);
+    lobby->poll(term, clock);
+    EXPECT_TRUE(status_contains(*lobby, "Selected P1"));
 }
 
 TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
@@ -1772,4 +2013,140 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 
     host_lobby->cancel();
     join_lobby->cancel();
+}
+
+TEST(CursesNetworkProcess, dedicated_server_transitions_from_lobby_to_gameplay)
+{
+    const std::optional<int> port = external_server_free_tcp_port();
+    ASSERT_TRUE(port.has_value());
+
+    ExternalServerProcess server({
+        "--host", "127.0.0.1",
+        "--port", std::to_string(*port),
+        "--lobby-poll-ms", "0",
+        "--fps", "60",
+    });
+    ASSERT_TRUE(server.launched());
+    ASSERT_TRUE(server.wait_for_output("headless_server_listening", 10s))
+        << server.output();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", *port), client_options);
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_external_client_until(
+        client,
+        [&client](const auto&) {
+            return client.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+        })) << server.output();
+
+    og::sim::LobbyCharacterSlot slot = make_network_roster_slot(
+        0u, 7001, "Process Soldier", FAMILY_SOLDIER);
+    slot.deployed = true;
+    slot.character.strength = 12;
+    slot.character.dexterity = 11;
+    slot.character.constitution = 13;
+    slot.character.intelligence = 10;
+    slot.character.armor = 5;
+    slot.character.level = 1;
+    slot.character.teamnum = 0;
+
+    constexpr std::uint32_t join_request_id = 41u;
+    auto join = std::make_shared<og::sim::LobbyMessage>();
+    join->payload = og::sim::LobbyJoinMessage{
+        .player = og::sim::LobbyPlayer{
+            .name = "Process Host",
+            .company = "Process Company",
+            .team = 0,
+            .character_slots = {slot},
+        },
+        .request_id = join_request_id,
+    };
+    client.send_lobby_message(1u, join);
+
+    std::optional<og::sim::LobbyState> joined_state;
+    ASSERT_TRUE(poll_external_client_until(
+        client,
+        [&joined_state](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind !=
+                        og::sim::TypedReceivedMessageKind::LobbyState ||
+                    !message.lobby_state ||
+                    message.lobby_state->last_join_request_id !=
+                        join_request_id) {
+                    continue;
+                }
+                joined_state = *message.lobby_state;
+                return true;
+            }
+            return false;
+        })) << server.output();
+    ASSERT_TRUE(joined_state.has_value());
+    ASSERT_TRUE(joined_state->local_peer_is_host);
+    ASSERT_EQ(1u, joined_state->players.size());
+    EXPECT_TRUE(joined_state->players.front().is_host);
+    EXPECT_EQ("Process Host", joined_state->players.front().name);
+    ASSERT_EQ(1u, joined_state->players.front().character_slots.size());
+    EXPECT_TRUE(joined_state->players.front().character_slots.front().deployed);
+
+    constexpr std::uint32_t start_request_id = 42u;
+    auto start = std::make_shared<og::sim::LobbyMessage>();
+    start->payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = start_request_id,
+    };
+    client.send_lobby_message(1u, start);
+
+    ASSERT_TRUE(server.wait_for_output("headless_server_tick_interval_ms", 20s))
+        << server.output();
+
+    bool saw_start_confirmation = false;
+    bool saw_initial_setup = false;
+    bool saw_initial_snapshot = false;
+    std::shared_ptr<og::sim::InitialSetupMessage> initial_setup;
+    ASSERT_TRUE(poll_external_client_until(
+        client,
+        [&](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::LobbyMessage &&
+                    message.lobby_message &&
+                    message.lobby_message->kind() ==
+                        og::sim::LobbyMessageKind::StartGame) {
+                    const auto& confirmation =
+                        std::get<og::sim::LobbyStartGameMessage>(
+                            message.lobby_message->payload);
+                    if (confirmation.request_id == start_request_id)
+                        saw_start_confirmation = true;
+                }
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::InitialSetup &&
+                    message.initial_setup) {
+                    saw_initial_setup = true;
+                    initial_setup = message.initial_setup;
+                }
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::Snapshot &&
+                    message.snapshot) {
+                    saw_initial_snapshot = true;
+                }
+            }
+            return saw_start_confirmation && saw_initial_setup &&
+                saw_initial_snapshot;
+        })) << server.output();
+
+    ASSERT_TRUE(initial_setup);
+    EXPECT_EQ(1, initial_setup->current_scenario);
+    EXPECT_FALSE(initial_setup->level_title.empty());
+    EXPECT_FALSE(initial_setup->guys.empty());
+
+    EXPECT_TRUE(server.terminate_cleanly()) << server.output();
+    EXPECT_NE(std::string::npos,
+              server.output().find("headless_server_listening"));
+    EXPECT_NE(std::string::npos,
+              server.output().find("headless_server_tick_interval_ms"));
 }

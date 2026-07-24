@@ -14,6 +14,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -397,6 +398,40 @@ TEST(CompanyScan, v14_header_reads_all_fields_at_fixed_offsets)
     EXPECT_EQ(1700000000, info->last_played_unix_s);
 }
 
+TEST(CompanyScan, every_truncated_v14_header_boundary_is_reported_corrupt)
+{
+    SaveDirSandbox sandbox;
+    const std::string complete = HeaderFixture{}.bytes();
+    ASSERT_EQ(164u, complete.size());
+
+    // End immediately before each version-gated read in the v14 prefix:
+    // version, registered, name, campaign, scenario, cash, score, per-team
+    // scores, allied flag, roster size, legacy player byte, and timestamp.
+    const std::array<std::size_t, 12> truncation_sizes{
+        3u, 4u, 6u, 46u, 86u, 88u,
+        92u, 96u, 128u, 130u, 132u, 133u,
+    };
+    for (std::size_t index = 0; index < truncation_sizes.size(); ++index)
+    {
+        const std::size_t boundary = truncation_sizes[index];
+        const std::string slot = "truncated-" + std::to_string(index);
+        sandbox.write_raw(slot + ".gtl", complete.substr(0, boundary));
+        const std::optional<og::data::CompanyInfo> info =
+            og::data::read_company_header(slot);
+        ASSERT_TRUE(info.has_value()) << "boundary " << boundary;
+        EXPECT_FALSE(info->valid) << "boundary " << boundary;
+        EXPECT_EQ(slot, info->slot) << "boundary " << boundary;
+    }
+
+    // Seven bytes of the eight-byte v14 timestamp reaches the final guarded
+    // read while remaining structurally corrupt.
+    sandbox.write_raw("truncated-timestamp.gtl", complete.substr(0, 140));
+    const auto timestamp =
+        og::data::read_company_header("truncated-timestamp");
+    ASSERT_TRUE(timestamp.has_value());
+    EXPECT_FALSE(timestamp->valid);
+}
+
 TEST(CompanyScan, version_ladder_v2_v5_v6_v7_v13)
 {
     SaveDirSandbox sandbox;
@@ -756,6 +791,58 @@ void write_backup_raw(const SaveDirSandbox& sandbox, const std::string& name,
 }
 
 } // namespace
+
+TEST(CompanyScan, native_filesystem_fallback_lists_companies_and_backups_before_io_init)
+{
+    SaveDirSandbox sandbox;
+
+    HeaderFixture company_header;
+    company_header.name = "Filesystem Company";
+    company_header.last_played = 424242;
+    sandbox.write_raw("filesystemco.gtl", company_header.bytes());
+
+    // The fallback must apply the same filtering contract as the PhysFS
+    // listing: reserved, atomic-staging, unrelated, unsafe, and directory
+    // entries are never surfaced as companies.
+    sandbox.write_raw("netsession.gtl", company_header.bytes());
+    sandbox.write_raw("filesystemco.tmp.gtl", company_header.bytes());
+    sandbox.write_raw("notes.txt", "not a company");
+    sandbox.write_raw("bad name.gtl", company_header.bytes());
+    std::error_code ec;
+    std::filesystem::create_directories(sandbox.dir() / "directory.gtl", ec);
+    ASSERT_FALSE(ec);
+
+    HeaderFixture backup_header = company_header;
+    backup_header.last_played = 424200;
+    write_backup_raw(sandbox, "filesystemco.004.gtl", backup_header.bytes());
+    write_backup_raw(sandbox, "filesystemco.bad.gtl", "not a backup name");
+    std::filesystem::create_directories(
+        sandbox.dir() / "backups" / "filesystemco.005.gtl", ec);
+    ASSERT_FALSE(ec);
+
+    // Model the documented pre-io_init call site. The unit-test listener
+    // structurally restores PhysFS after every test, even after a fatal
+    // assertion, so this remains shuffle-safe and cannot leak global state.
+    ASSERT_TRUE(og::resources::deinit());
+    ASSERT_FALSE(og::resources::is_initialized());
+
+    const std::vector<og::data::CompanyInfo> companies =
+        og::data::list_companies();
+    ASSERT_EQ(1u, companies.size());
+    EXPECT_EQ("filesystemco", companies.front().slot);
+    EXPECT_EQ("Filesystem Company", companies.front().display_name);
+    EXPECT_EQ(424242, companies.front().last_played_unix_s);
+    EXPECT_TRUE(companies.front().valid);
+    EXPECT_EQ("filesystemco", og::data::select_startup_company());
+
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("filesystemco");
+    ASSERT_EQ(1u, backups.size());
+    EXPECT_EQ(4, backups.front().seq);
+    EXPECT_EQ("filesystemco.004.gtl", backups.front().filename);
+    EXPECT_TRUE(backups.front().header.valid);
+    EXPECT_EQ(424200, backups.front().header.last_played_unix_s);
+}
 
 TEST(CompanyBackups, snapshot_is_a_byte_copy_with_padded_seq)
 {

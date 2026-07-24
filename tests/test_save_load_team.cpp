@@ -8,15 +8,22 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_save_state_guard.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/guy_create.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <functional>
+#include <fstream>
+#include <format>
 #include <list>
 #include <set>
+#include <span>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -589,11 +596,15 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
     scr->save_data.current_campaign = "org.openglad.gladiator";
     scr->save_data.keep_fallen_heroes = 0;
     {
-        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";  a->id = 1; a->exp = 0;
-        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "FALLEN_B"; b->id = 2; b->exp = 1234;
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";    a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "FALLEN_B";   b->id = 2; b->exp = 1234;
+        auto c = std::make_unique<guy>(FAMILY_MAGE);    c->name = "OTHER_OWNER"; c->id = 3; c->exp = 2222;
+        auto d = std::make_unique<guy>(FAMILY_CLERIC);  d->name = "UNOWNED";     d->id = 4; d->exp = 3333;
         scr->save_data.team_list[0] = std::move(a);
         scr->save_data.team_list[1] = std::move(b);
-        scr->save_data.team_size = 2;
+        scr->save_data.team_list[2] = std::move(c);
+        scr->save_data.team_list[3] = std::move(d);
+        scr->save_data.team_size = 4;
     }
     ASSERT_TRUE(scr->save_data.save("save0"));
 
@@ -602,31 +613,58 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
     scr->save_data.keep_fallen_heroes = 1;
 
     scr->world().delete_objects();
-    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t slot,
-                          bool dead, const char* name) {
+    auto add_walker = [&](unsigned char family,
+                          int guy_id,
+                          std::uint8_t owner,
+                          std::uint8_t slot,
+                          std::uint32_t exp,
+                          bool dead,
+                          const char* name) {
         guy g(static_cast<int>(family));
         g.id = guy_id;
         g.name = name;
         std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
         ASSERT_TRUE(w != nullptr);
         w->set_dead(dead ? 1 : 0);
-        w->myguy->owner_player_index = 0;
+        w->myguy->owner_player_index = owner;
         w->myguy->owner_save_slot = slot;
+        w->myguy->exp = exp;
         scr->world().oblist.push_back(std::move(w));
     };
-    add_walker(FAMILY_SOLDIER, 1, /*slot=*/0, /*dead=*/false, "ALIVE_A");
-    add_walker(FAMILY_ARCHER,  2, /*slot=*/1, /*dead=*/true,  "FALLEN_B");
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/0, /*slot=*/0, 5000u,
+               /*dead=*/false, "ALIVE_A");
+    add_walker(FAMILY_ARCHER, 2, /*owner=*/0, /*slot=*/1, 7777u,
+               /*dead=*/true, "FALLEN_B");
+    add_walker(FAMILY_MAGE, 3, /*owner=*/1, /*slot=*/2, 9999u,
+               /*dead=*/false, "OTHER_OWNER_CHANGED");
+    add_walker(FAMILY_CLERIC, 4, guy::kNoOwner, /*slot=*/3, 11111u,
+               /*dead=*/false, "UNOWNED_CHANGED");
 
+    const std::array<std::uint8_t, 2> owners = {
+        0u,
+        guy::kNoOwner,
+    };
     og::runtime::detail::persist_owned_characters_to_save0(
-        *scr, /*own_player_index=*/0);
+        *scr, std::span<const std::uint8_t>(owners));
 
     SaveData after;
     ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
-    ASSERT_EQ(2, static_cast<int>(after.team_size))
+    ASSERT_EQ(4, static_cast<int>(after.team_size))
         << "the session's Permadeath Off must keep the fallen hero, even "
            "though the disk save0 still said permadeath";
+    ASSERT_TRUE(after.team_list[0] != nullptr);
     ASSERT_TRUE(after.team_list[1] != nullptr);
+    ASSERT_TRUE(after.team_list[2] != nullptr);
+    ASSERT_TRUE(after.team_list[3] != nullptr);
+    EXPECT_EQ(5000u, after.team_list[0]->exp)
+        << "the explicitly owned survivor must be merged";
     EXPECT_STREQ("FALLEN_B", after.team_list[1]->name.c_str());
+    EXPECT_EQ(2222u, after.team_list[2]->exp)
+        << "a different owner's session progress must stay private";
+    EXPECT_STREQ("OTHER_OWNER", after.team_list[2]->name.c_str());
+    EXPECT_EQ(3333u, after.team_list[3]->exp)
+        << "kNoOwner in the requested span must not merge an unowned entity";
+    EXPECT_STREQ("UNOWNED", after.team_list[3]->name.c_str());
     EXPECT_EQ(1, static_cast<int>(after.keep_fallen_heroes))
         << "the negotiated match rule persists with the merged save";
 
@@ -636,6 +674,349 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
     // precedent), so restore the flag this test set or it leaks into any
     // later test that writes save0 under --gtest_shuffle.
     scr->save_data.keep_fallen_heroes = 0;
+}
+
+TEST(SaveLoadTeam, networked_finalize_span_persists_every_owned_seat_only)
+{
+    screen* const ambient_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, ambient_screen);
+    GameWorld& ambient_world = ambient_screen->world();
+    ASSERT_TRUE(ambient_world.oblist.empty());
+    ASSERT_TRUE(ambient_world.fxlist.empty());
+    ASSERT_TRUE(ambient_world.weaplist.empty());
+    ASSERT_TRUE(ambient_world.dead_list.empty());
+
+    struct ScopedAmbientWorldRestore
+    {
+        GameWorld& world;
+        int id = world.id;
+        short current_scenario = world.current_scenario;
+        char end = world.end;
+        int living_count = world.living_count;
+        int guy_id_counter = world.guy_id_counter;
+        std::array<std::uint32_t, 4> scores = {
+            world.m_score[0], world.m_score[1],
+            world.m_score[2], world.m_score[3]};
+        std::set<int> completed_levels = world.completed_levels;
+
+        ~ScopedAmbientWorldRestore()
+        {
+            EXPECT_EQ(id, world.id);
+            EXPECT_EQ(current_scenario, world.current_scenario);
+            EXPECT_EQ(end, world.end);
+            EXPECT_EQ(living_count, world.living_count);
+            EXPECT_EQ(guy_id_counter, world.guy_id_counter);
+            EXPECT_TRUE(world.oblist.empty());
+            EXPECT_TRUE(world.fxlist.empty());
+            EXPECT_TRUE(world.weaplist.empty());
+            EXPECT_TRUE(world.dead_list.empty());
+            for (std::size_t i = 0; i < scores.size(); ++i)
+                EXPECT_EQ(scores[i], world.m_score[i]);
+            EXPECT_EQ(completed_levels, world.completed_levels);
+
+            if (!world.oblist.empty() || !world.fxlist.empty() ||
+                !world.weaplist.empty() || !world.dead_list.empty())
+            {
+                world.delete_objects();
+            }
+            world.id = id;
+            world.current_scenario = current_scenario;
+            world.end = end;
+            world.living_count = living_count;
+            world.guy_id_counter = guy_id_counter;
+            for (std::size_t i = 0; i < scores.size(); ++i)
+                world.m_score[i] = scores[i];
+            world.completed_levels = completed_levels;
+        }
+    } ambient_restore{ambient_world};
+
+    og::test::ScopedCampaignMountState mount_restore;
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+    const std::filesystem::path save0_staging_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.tmp.gtl";
+    og::test::ScopedPhysicalFileState save0_staging_restore(
+        save0_staging_path);
+    ASSERT_TRUE(save0_staging_restore.ready())
+        << "failed to snapshot save0 staging file: "
+        << save0_staging_restore.error().message();
+
+    og::runtime::GameSession::Config session_config;
+    session_config.numviews = 1;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+    ASSERT_NE(ambient_screen, scr);
+    GameWorld& world = scr->world();
+
+    if (get_mounted_campaign() != "org.openglad.gladiator")
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error(
+                      "org.openglad.gladiator"));
+    }
+    ASSERT_EQ(og::mode::ProgressionKind::Classic,
+              og::mode::current_progression().kind());
+
+    SaveData private_save;
+    private_save.reset();
+    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.current_levels[private_save.current_campaign] = 1;
+    private_save.scen_num = 1;
+    auto add_private = [&](std::size_t slot,
+                           int family,
+                           int id,
+                           const char* name,
+                           std::uint32_t exp) {
+        auto member = std::make_unique<guy>(family);
+        member->id = id;
+        member->name = name;
+        member->exp = exp;
+        private_save.team_list[slot] = std::move(member);
+    };
+    add_private(0u, FAMILY_SOLDIER, 61, "BASE_SIX", 600u);
+    add_private(1u, FAMILY_ARCHER, 71, "BASE_SEVEN", 700u);
+    add_private(2u, FAMILY_MAGE, 81, "BASE_OTHER", 800u);
+    private_save.team_size = 3;
+    ASSERT_TRUE(private_save.save("save0"));
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = private_save.current_campaign;
+    scr->save_data.current_levels[scr->save_data.current_campaign] = 1;
+    scr->save_data.scen_num = 1;
+    scr->save_data.numplayers = 3;
+    scr->save_data.my_team = 0;
+
+    world.delete_objects();
+    world.id = 1;
+    world.current_scenario = 1;
+    world.end = 0;
+    for (auto& score : world.m_score)
+        score = 0;
+
+    auto add_session = [&](int family,
+                           int id,
+                           std::uint8_t owner,
+                           std::uint8_t slot,
+                           short team,
+                           const char* name,
+                           std::uint32_t exp) {
+        guy member(family);
+        member.id = id;
+        member.name = name;
+        member.teamnum = team;
+        member.deployed = true;
+        std::unique_ptr<walker> entity =
+            guy_create_walker_owned(member, scr);
+        ASSERT_NE(nullptr, entity);
+        entity->set_dead(0);
+        entity->set_team_num(static_cast<unsigned char>(team));
+        entity->myguy->owner_player_index = owner;
+        entity->myguy->owner_save_slot = slot;
+        entity->myguy->deployed = true;
+        entity->myguy->exp = exp;
+        world.oblist.push_back(std::move(entity));
+    };
+    add_session(FAMILY_SOLDIER, 61, 6u, 0u, 0, "LIVE_SIX", 6000u);
+    add_session(FAMILY_ARCHER, 71, 7u, 1u, 1, "LIVE_SEVEN", 7000u);
+    add_session(FAMILY_MAGE, 81, 8u, 2u, 2, "LIVE_OTHER", 8000u);
+
+    const std::array<std::uint8_t, 3> owners = {
+        6u,
+        7u,
+        guy::kNoOwner,
+    };
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_finalize_win(
+        *scr,
+        /*next_level=*/2,
+        /*networked=*/true,
+        std::span<const std::uint8_t>(owners)));
+
+    SaveData persisted;
+    ASSERT_TRUE(persisted.load("save0"));
+    ASSERT_EQ(3, persisted.team_size);
+    ASSERT_NE(nullptr, persisted.team_list[0]);
+    ASSERT_NE(nullptr, persisted.team_list[1]);
+    ASSERT_NE(nullptr, persisted.team_list[2]);
+    EXPECT_STREQ("LIVE_SIX", persisted.team_list[0]->name.c_str());
+    EXPECT_EQ(6000u, persisted.team_list[0]->exp);
+    EXPECT_STREQ("LIVE_SEVEN", persisted.team_list[1]->name.c_str());
+    EXPECT_EQ(7000u, persisted.team_list[1]->exp)
+        << "the second local seat must be persisted by the span overload";
+    EXPECT_STREQ("BASE_OTHER", persisted.team_list[2]->name.c_str());
+    EXPECT_EQ(800u, persisted.team_list[2]->exp)
+        << "an owner absent from the span must retain its private roster data";
+    EXPECT_EQ(2, persisted.scen_num);
+    EXPECT_TRUE(persisted.is_level_completed(1));
+
+}
+
+TEST(SaveLoadTeam,
+     single_owner_persist_uses_session_team_and_no_owner_is_a_true_noop)
+{
+    namespace fs = std::filesystem;
+
+    // A private slot keeps this test independent from every real/test company.
+    // Snapshot every path the LevelWin autosave can touch so the filesystem is
+    // restored byte-for-byte even if this exact test slot survived an earlier
+    // interrupted run.
+    constexpr const char* kSlot = "persist-owned-u8-overload";
+    const fs::path save_dir = fs::path(get_user_path()) / "save";
+    const fs::path backup_dir = save_dir / "backups";
+    std::vector<std::unique_ptr<og::test::ScopedPhysicalFileState>> file_guards;
+    const auto guard_file = [&](const fs::path& path) {
+        auto guard =
+            std::make_unique<og::test::ScopedPhysicalFileState>(path);
+        EXPECT_TRUE(guard->ready())
+            << "failed to snapshot " << path << ": "
+            << guard->error().message();
+        file_guards.push_back(std::move(guard));
+    };
+    guard_file(save_dir / (std::string(kSlot) + ".gtl"));
+    guard_file(save_dir / (std::string(kSlot) + ".tmp.gtl"));
+
+    const std::vector<og::data::CompanyBackupInfo> backups_before =
+        og::data::list_company_backups(kSlot);
+    int next_backup_sequence = 1;
+    for (const og::data::CompanyBackupInfo& backup : backups_before)
+    {
+        guard_file(backup_dir / backup.filename);
+        next_backup_sequence =
+            std::max(next_backup_sequence, backup.seq + 1);
+    }
+    const std::string next_backup_name =
+        std::format("{}.{:03}.gtl", kSlot, next_backup_sequence);
+    guard_file(backup_dir / next_backup_name);
+    guard_file(backup_dir / (next_backup_name + ".tmp"));
+    ASSERT_TRUE(std::all_of(
+        file_guards.begin(), file_guards.end(),
+        [](const auto& guard) { return guard->ready(); }));
+
+    og::data::ScopedActiveCompany active_company(kSlot);
+    ASSERT_TRUE(active_company.applied());
+    og::test::ScopedCampaignMountState mount_restore;
+
+    og::runtime::GameSession::Config session_config;
+    session_config.numviews = 1;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+
+    SaveData private_save;
+    private_save.reset();
+    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.current_levels[private_save.current_campaign] = 1;
+    private_save.scen_num = 1;
+    for (std::size_t team = 0; team < std::size(private_save.m_totalcash);
+         ++team)
+    {
+        private_save.m_totalcash[team] =
+            1000u + static_cast<std::uint32_t>(team) * 111u;
+        private_save.m_totalscore[team] =
+            2000u + static_cast<std::uint32_t>(team) * 222u;
+    }
+    private_save.totalcash = private_save.m_totalcash[0];
+    private_save.totalscore = private_save.m_totalscore[0];
+
+    auto own_base = std::make_unique<guy>(FAMILY_SOLDIER);
+    own_base->id = 61;
+    own_base->name = "OWN_BASE";
+    own_base->exp = 600u;
+    private_save.team_list[0] = std::move(own_base);
+    auto foreign_base = std::make_unique<guy>(FAMILY_MAGE);
+    foreign_base->id = 71;
+    foreign_base->name = "FOREIGN_OLD";
+    foreign_base->exp = 700u;
+    private_save.team_list[1] = std::move(foreign_base);
+    private_save.team_size = 2;
+    ASSERT_TRUE(private_save.save(kSlot));
+
+    const fs::path company_path = save_dir / (std::string(kSlot) + ".gtl");
+    const auto read_company_bytes = [&company_path]() {
+        std::ifstream input(company_path, std::ios::binary);
+        return std::vector<char>(std::istreambuf_iterator<char>(input),
+                                 std::istreambuf_iterator<char>());
+    };
+    const std::vector<char> bytes_before_no_owner = read_company_bytes();
+    ASSERT_FALSE(bytes_before_no_owner.empty());
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = private_save.current_campaign;
+    scr->save_data.current_levels[scr->save_data.current_campaign] = 2;
+    scr->save_data.scen_num = 2;
+    scr->save_data.my_team = 3;
+    scr->save_data.keep_fallen_heroes = 1;
+    scr->world().id = 1;
+
+    auto add_session_member = [&](int family, int id, std::uint8_t owner,
+                                  std::uint8_t save_slot, short team,
+                                  const char* name, std::uint32_t exp) {
+        guy member(family);
+        member.id = id;
+        member.name = name;
+        member.teamnum = team;
+        member.deployed = true;
+        std::unique_ptr<walker> entity =
+            guy_create_walker_owned(member, scr);
+        ASSERT_NE(nullptr, entity);
+        entity->set_dead(0);
+        entity->set_team_num(static_cast<unsigned char>(team));
+        entity->myguy->owner_player_index = owner;
+        entity->myguy->owner_save_slot = save_slot;
+        entity->myguy->deployed = true;
+        entity->myguy->exp = exp;
+        scr->world().oblist.push_back(std::move(entity));
+    };
+    add_session_member(FAMILY_SOLDIER, 61, 6u, 0u, 1, "OWN_LIVE", 6000u);
+    add_session_member(FAMILY_MAGE, 71, 7u, 1u, 2, "FOREIGN_NEW", 7000u);
+
+    og::runtime::detail::persist_owned_characters_to_save0(
+        *scr, guy::kNoOwner);
+    EXPECT_EQ(bytes_before_no_owner, read_company_bytes())
+        << "kNoOwner must not rewrite the company file";
+    EXPECT_EQ(backups_before.size(),
+              og::data::list_company_backups(kSlot).size())
+        << "kNoOwner must not create a LevelWin backup";
+
+    og::runtime::detail::persist_owned_characters_to_save0(*scr, 6u);
+
+    SaveData persisted;
+    ASSERT_EQ(SaveDataIoError::None, persisted.load_with_error(kSlot));
+    ASSERT_EQ(2, persisted.team_size);
+    ASSERT_NE(nullptr, persisted.team_list[0]);
+    ASSERT_NE(nullptr, persisted.team_list[1]);
+    EXPECT_EQ("OWN_LIVE", persisted.team_list[0]->name);
+    EXPECT_EQ(6000u, persisted.team_list[0]->exp)
+        << "the selected owner's live character must be merged";
+    EXPECT_EQ("FOREIGN_OLD", persisted.team_list[1]->name);
+    EXPECT_EQ(700u, persisted.team_list[1]->exp)
+        << "another owner's private roster entry must remain untouched";
+    EXPECT_EQ(2, persisted.scen_num);
+    EXPECT_EQ(1, persisted.keep_fallen_heroes);
+    EXPECT_EQ(private_save.m_totalcash[3], persisted.totalcash)
+        << "the uint8 overload must bind the owner to save_data.my_team";
+    EXPECT_EQ(private_save.m_totalscore[3], persisted.totalscore);
+
+    const std::vector<og::data::CompanyBackupInfo> backups_after =
+        og::data::list_company_backups(kSlot);
+    EXPECT_TRUE(std::any_of(
+        backups_after.begin(), backups_after.end(),
+        [next_backup_sequence](const og::data::CompanyBackupInfo& backup) {
+            return backup.seq == next_backup_sequence;
+        })) << "the real single-owner persist must take its LevelWin backup";
 }
 
 TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)

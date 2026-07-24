@@ -185,7 +185,7 @@ GameWorld::EntityList::const_reverse_iterator GameWorld::EntityList::crend() con
 
 GameWorld::EntityList::operator const Storage&() const noexcept
 {
-    return entities_;
+    return raw();
 }
 
 bool GameWorld::EntityList::empty() const noexcept

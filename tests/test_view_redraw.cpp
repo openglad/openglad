@@ -353,6 +353,65 @@ TEST(ViewRedraw,
     EXPECT_FLOAT_EQ(48.75f, draw_pos.ypos);
 }
 
+TEST(ViewRedraw,
+     resolve_walker_render_position_falls_back_when_client_has_no_entity_state)
+{
+    prepare_view_world();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    walker* const actor = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(0u, actor->entity_id());
+    actor->setworldxy(37.25f, 58.75f);
+
+    MockTransport transport;
+    constexpr og::sim::PeerId kPeerId = 7u;
+    og::sim::GameClient empty_client(transport, kPeerId);
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(&empty_client, 1.0f);
+    GameplayActiveGuard gameplay_active;
+    vs->control = actor;
+
+    const bool previous_trace_enabled = og::runtime::runtime_trace_enabled();
+    og::runtime::set_runtime_trace_enabled(true);
+    og::runtime::clear_runtime_trace();
+
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*actor, 0.25f);
+    const std::vector<og::runtime::RuntimeTraceRecord> records =
+        og::runtime::copy_runtime_trace();
+    const auto fallback_trace = std::find_if(
+        records.begin(),
+        records.end(),
+        [](const og::runtime::RuntimeTraceRecord& record) {
+            return record.category == "render" &&
+                record.event == "resolve_control_render_position_fallback";
+        });
+
+    og::runtime::clear_runtime_trace();
+    og::runtime::set_runtime_trace_enabled(previous_trace_enabled);
+    vs->control = nullptr;
+
+    EXPECT_FLOAT_EQ(37.25f, draw_pos.worldx);
+    EXPECT_FLOAT_EQ(58.75f, draw_pos.worldy);
+    EXPECT_FLOAT_EQ(37.25f, draw_pos.xpos);
+    EXPECT_FLOAT_EQ(58.75f, draw_pos.ypos);
+    ASSERT_NE(records.end(), fallback_trace);
+    EXPECT_NE(0u, fallback_trace->trace_seq);
+    EXPECT_EQ(1u,
+              std::count_if(
+                  records.begin(), records.end(),
+                  [](const og::runtime::RuntimeTraceRecord& record) {
+                      return record.category == "render" &&
+                          record.event ==
+                          "resolve_control_render_position_fallback";
+                  }));
+}
+
 TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
 {
     viewscreen* const vs =
@@ -496,6 +555,28 @@ TEST(ViewRedrawJitter, render_sample_seq_increments_once_per_primary_redraw)
     vs->control = nullptr;
 }
 
+TEST(ViewRedrawJitter, no_control_render_sample_reports_zero_control_coordinates)
+{
+    prepare_view_world();
+    GameplayActiveGuard gameplay_active;
+    og::runtime::reset_runtime_trace_capture_state();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    vs->control = nullptr;
+
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const auto sample = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(sample.has_value());
+    EXPECT_EQ(0, sample->view_index);
+    EXPECT_FLOAT_EQ(0.0f, sample->control_worldx);
+    EXPECT_FLOAT_EQ(0.0f, sample->control_worldy);
+    EXPECT_FLOAT_EQ(0.0f, sample->control_render_x);
+    EXPECT_FLOAT_EQ(0.0f, sample->control_render_y);
+}
+
 
 TEST(ViewRedraw, no_control)
 {
@@ -547,6 +628,33 @@ TEST(ViewRedraw, view_draw_obs_with_level_data)
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
     vs->draw_obs(&og::runtime::current_session->myscreen_->level_runtime_data());
+}
+
+TEST(ViewRedraw, active_screen_refresh_and_draw_wrappers)
+{
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    EXPECT_TRUE(vs->refresh());
+    EXPECT_TRUE(vs->draw_obs());
+}
+
+TEST(ViewRedraw, damage_number_context_erases_one_index_without_touching_siblings)
+{
+    DamageNumberRenderContext context;
+    const DamageNumberRenderSnapshot first{.value = 10.0f};
+    const DamageNumberRenderSnapshot second{.value = 20.0f};
+    context.prepare_state(42u, 0u, first);
+    context.prepare_state(42u, 1u, second);
+    ASSERT_EQ(2u, context.state_count());
+
+    context.erase_index(42u, 0u);
+    EXPECT_EQ(1u, context.state_count());
+    EXPECT_FLOAT_EQ(20.0f, context.prepare_state(42u, 0u, second).snapshot.value);
+
+    context.erase_index(42u, 0u);
+    EXPECT_EQ(0u, context.state_count());
 }
 
 
@@ -644,6 +752,34 @@ TEST(ViewRedraw, view_refresh_display_text_refreshes_matching_overlay_within_sam
     vs->display_text();
     EXPECT_TRUE(vs->textlist[0].empty());
 
+    active->world().tick_count_ = saved_tick;
+    vs->clear_text();
+}
+
+TEST(ViewRedraw, zero_cycle_display_text_expires_on_its_creation_tick)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const std::uint32_t saved_tick = active->world().tick_count_;
+    active->world().tick_count_ = 73u;
+    vs->clear_text();
+    vs->set_display_text("ONE FRAME", 0);
+
+    EXPECT_EQ("ONE FRAME", vs->textlist[0]);
+    EXPECT_EQ(0, vs->textcycles[0]);
+    EXPECT_EQ(73u, vs->text_expire_ticks[0]);
+
+    active->world().tick_count_ = 74u;
+    vs->refresh_display_text("ONE FRAME", 0);
+    EXPECT_EQ("ONE FRAME", vs->textlist[0]);
+    EXPECT_EQ(0, vs->textcycles[0]);
+    EXPECT_EQ(74u, vs->text_expire_ticks[0]);
+
+    vs->display_text();
+    EXPECT_TRUE(vs->textlist[0].empty());
     active->world().tick_count_ = saved_tick;
     vs->clear_text();
 }

@@ -28,8 +28,10 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
+#include <algorithm>
 #include <format>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <vector>
@@ -648,3 +650,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
 	    return ret_value;
 }
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/campaign_picker_internal.inc"
+#endif

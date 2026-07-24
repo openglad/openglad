@@ -2,9 +2,11 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -229,6 +231,112 @@ TEST_F(HeadlessServerRuntimeTest,
     for (const short marker_team : guest_marker_teams)
         EXPECT_EQ(1, marker_team)
             << "the authoritative guest must not borrow a red start marker";
+}
+
+TEST_F(HeadlessServerRuntimeTest,
+       invalid_saved_level_falls_back_to_first_shipped_level)
+{
+    constexpr short kInvalidLevel = 9999;
+    constexpr short kFirstGladiatorLevel = 1;
+    const std::string campaign = "org.openglad.gladiator";
+
+    active_save_.current_campaign = campaign;
+    active_save_.scen_num = kInvalidLevel;
+    active_save_.current_levels[campaign] = kFirstGladiatorLevel;
+    create_level_runtime_data(kInvalidLevel);
+
+    testing::internal::CaptureStderr();
+    const bool loaded = with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_, active_save_, /*difficulty_setting=*/1, events_,
+            /*authoritative=*/true);
+    });
+    const std::string diagnostics = testing::internal::GetCapturedStderr();
+
+    ASSERT_TRUE(loaded) << diagnostics;
+    EXPECT_EQ(kFirstGladiatorLevel, active_save_.scen_num);
+    EXPECT_EQ(kFirstGladiatorLevel, active_save_.current_levels[campaign]);
+    EXPECT_EQ(kFirstGladiatorLevel, level_data_->world().id);
+    EXPECT_EQ(kFirstGladiatorLevel, level_data_->world().current_scenario);
+    EXPECT_FALSE(level_data_->world().oblist.empty())
+        << "the fallback must load the real first shipped level";
+
+    EXPECT_NE(std::string::npos,
+              diagnostics.find(
+                  "headless_server_level_mismatch "
+                  "campaign=org.openglad.gladiator save_level=9999 "
+                  "current_level=1"));
+    EXPECT_NE(std::string::npos,
+              diagnostics.find(
+                  "headless_server_level_load_failed level=9999 "
+                  "action=fallback_to_1"));
+    EXPECT_EQ(std::string::npos,
+              diagnostics.find("headless_server_level_fallback_failed"));
+}
+
+TEST_F(HeadlessServerRuntimeTest,
+       production_callback_installer_syncs_completes_exits_and_withdraws)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Lead", FAMILY_SOLDIER, 0),
+    };
+    initialize_from_lobby(lobby_save);
+
+    std::shared_ptr<og::sim::InProcessTransport> transport =
+        og::sim::InProcessTransport::create_server();
+    og::sim::GameServer game_server(
+        level_data_->world(), events_, *transport);
+    og::server::install_headless_server_callbacks(
+        game_server,
+        *level_data_,
+        active_save_,
+        checkpoint_save_,
+        /*difficulty_setting=*/1,
+        events_);
+
+    ASSERT_TRUE(static_cast<bool>(game_server.on_save_sync));
+    ASSERT_TRUE(static_cast<bool>(game_server.on_level_transition));
+    ASSERT_TRUE(static_cast<bool>(game_server.on_exit_accepted));
+    ASSERT_TRUE(static_cast<bool>(game_server.on_withdraw_accepted));
+
+    level_data_->world().m_score[0] = 41u;
+    game_server.on_save_sync();
+    EXPECT_EQ(41u, active_save_.m_score[0]);
+
+    level_data_->world().m_score[0] = 7u;
+    ASSERT_TRUE(with_context([&] {
+        return game_server.on_level_transition(2);
+    }));
+    EXPECT_EQ(2, active_save_.scen_num);
+    EXPECT_EQ(2, checkpoint_save_.scen_num);
+    EXPECT_EQ(2, level_data_->world().current_scenario);
+    EXPECT_TRUE(active_save_.is_level_completed(1));
+
+    level_data_->world().m_score[0] = 5u;
+    ASSERT_TRUE(with_context([&] {
+        return game_server.on_exit_accepted(3);
+    }));
+    EXPECT_EQ(3, active_save_.scen_num);
+    EXPECT_EQ(3, checkpoint_save_.scen_num);
+    EXPECT_EQ(3, level_data_->world().current_scenario);
+    EXPECT_TRUE(active_save_.is_level_completed(2));
+
+    const std::uint32_t checkpoint_cash = checkpoint_save_.m_totalcash[0];
+    active_save_.m_totalcash[0] = checkpoint_cash + 999u;
+    level_data_->world().m_score[0] = 123u;
+    ASSERT_TRUE(with_context([&] {
+        return game_server.on_withdraw_accepted(2);
+    }));
+    EXPECT_EQ(2, active_save_.scen_num);
+    EXPECT_EQ(2, checkpoint_save_.scen_num);
+    EXPECT_EQ(2, level_data_->world().current_scenario);
+    EXPECT_EQ(checkpoint_cash, active_save_.m_totalcash[0]);
+    EXPECT_EQ(checkpoint_cash, checkpoint_save_.m_totalcash[0]);
+    EXPECT_EQ(0u, active_save_.m_score[0]);
 }
 
 // §4.2 LOCAL assembly filter: a benched (deployed == false) save member is

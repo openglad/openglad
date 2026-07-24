@@ -29,6 +29,7 @@ struct CursesPickerOptions {
     bool allow_unicode = true;
     bool allow_color = true;
     int difficulty = 1; // index into the difficulty table
+    int host_port = 0;  // 0 => default WebSocket port
 };
 
 // Terminal front-end for the shared picker state machine. Implements

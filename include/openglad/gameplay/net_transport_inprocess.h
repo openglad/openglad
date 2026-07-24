@@ -6,11 +6,23 @@
 #include <mutex>
 #include <unordered_map>
 
+#ifdef TESTING
+#include <array>
+#include <string>
+#endif
+
 #ifndef OPENGLAD_VALIDATE_SERIALIZATION
 #define OPENGLAD_VALIDATE_SERIALIZATION 0
 #endif
 
 namespace og::sim {
+
+#ifdef TESTING
+// Exercise the otherwise-unreachable mismatch diagnostics without weakening
+// the lossless serializer invariant that guards the production call sites.
+[[nodiscard]] std::array<std::string, 16>
+inprocess_transport_validation_diagnostics_for_testing();
+#endif
 
 inline constexpr bool kInProcessTransportValidateSerializationDefault =
     OPENGLAD_VALIDATE_SERIALIZATION != 0;

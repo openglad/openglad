@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "test_game_world_fixture.h"
@@ -142,6 +143,17 @@ void expect_snapshot_eq(const og::sim::WorldSnapshot& expected,
               og::sim::serialize_snapshot(actual));
 }
 
+void write_u32_le(std::vector<std::uint8_t>& bytes,
+                  std::size_t offset,
+                  std::uint32_t value)
+{
+    ASSERT_GE(bytes.size(), offset + sizeof(value));
+    bytes[offset] = static_cast<std::uint8_t>(value & 0xffu);
+    bytes[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    bytes[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
+    bytes[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+}
+
 } // namespace
 
 TEST(Replay, file_roundtrip_preserves_header_and_frames)
@@ -235,6 +247,71 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
     truncated.pop_back();
     EXPECT_FALSE(og::sim::deserialize_replay(truncated, &io_error).has_value());
     EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+}
+
+TEST(Replay, deserialize_rejects_each_malformed_replay_section)
+{
+    const og::sim::ReplayHeader header = {
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 1u,
+        .level_id = 2,
+        .player_count = 1,
+        .timer_wait = 6,
+        .my_team = 1,
+        .allied_mode = 0,
+        .difficulty = 100,
+        .campaign_id = "org.openglad.gladiator",
+    };
+    const std::array<og::sim::InputStateMessage, 1> frames = {{
+        {7u, make_sparse_input()},
+    }};
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_replay(header, make_initial_snapshot(), frames);
+    ASSERT_TRUE(og::sim::deserialize_replay(bytes).has_value());
+
+    const auto expect_rejection = [](const std::vector<std::uint8_t>& malformed,
+                                     og::sim::ReplayIoError expected_error) {
+        og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+        EXPECT_FALSE(
+            og::sim::deserialize_replay(malformed, &io_error).has_value());
+        EXPECT_EQ(expected_error, io_error);
+    };
+
+    const std::vector<std::uint8_t> short_header(
+        og::sim::kReplayHeaderSize - 1u,
+        0u);
+    expect_rejection(short_header, og::sim::ReplayIoError::InvalidHeader);
+
+    auto too_many_players = bytes;
+    too_many_players[5] = static_cast<std::uint8_t>(MAX_PLAYERS + 1);
+    expect_rejection(too_many_players, og::sim::ReplayIoError::MalformedData);
+
+    auto oversized_campaign = bytes;
+    write_u32_le(oversized_campaign, 24u, 0xffffffffu);
+    expect_rejection(oversized_campaign, og::sim::ReplayIoError::MalformedData);
+
+    auto empty_campaign = bytes;
+    write_u32_le(empty_campaign, 24u, 0u);
+    expect_rejection(empty_campaign, og::sim::ReplayIoError::MalformedData);
+
+    auto empty_snapshot = bytes;
+    write_u32_le(empty_snapshot, 28u, 0u);
+    expect_rejection(empty_snapshot, og::sim::ReplayIoError::MalformedData);
+
+    auto corrupt_snapshot = bytes;
+    const std::size_t snapshot_offset =
+        og::sim::kReplayHeaderSize + header.campaign_id.size();
+    ASSERT_LT(snapshot_offset, corrupt_snapshot.size());
+    corrupt_snapshot[snapshot_offset] = 0xffu;
+    expect_rejection(corrupt_snapshot, og::sim::ReplayIoError::MalformedData);
+
+    auto invalid_input_frame = bytes;
+    ASSERT_GE(invalid_input_frame.size(), og::sim::kSerializedInputMessageSize);
+    const std::size_t frame_offset =
+        invalid_input_frame.size() - og::sim::kSerializedInputMessageSize;
+    ASSERT_LT(frame_offset + 1u, invalid_input_frame.size());
+    invalid_input_frame[frame_offset + 1u] = og::sim::kSnapshotMessageType;
+    expect_rejection(invalid_input_frame, og::sim::ReplayIoError::MalformedData);
 }
 
 TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
@@ -357,6 +434,42 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;
+        expected.ctf_flags[0].state = og::sim::CtfFlagState::AtHome;
+        actual.ctf_flags[0].state = og::sim::CtfFlagState::Carried;
+        expect_diff(expected,
+                    actual,
+                    "ctf_flags[0].state",
+                    "0",
+                    "1");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.ctf_captures[0] = 2u;
+        actual.ctf_captures[0] = 4u;
+        expect_diff(expected,
+                    actual,
+                    "ctf_captures[0]",
+                    "2",
+                    "4");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.ctf_anchor_x[0][0] = 5;
+        actual.ctf_anchor_x[0][0] = 8;
+        expect_diff(expected,
+                    actual,
+                    "ctf_anchor_x[0][0]",
+                    "5",
+                    "8");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
         expected.full_grid_data = {1u, 2u};
         actual.full_grid_data = {1u, 2u, 3u};
         expect_diff(expected,
@@ -364,6 +477,30 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
                     "full_grid_data.size",
                     "2",
                     "3");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.full_grid_data = {1u, 2u};
+        actual.full_grid_data = {1u, 9u};
+        expect_diff(expected,
+                    actual,
+                    "full_grid_data[1]",
+                    "2",
+                    "9");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.grid_dirty_tiles.push_back({.x = 1, .y = 2, .value = 3u});
+        actual.grid_dirty_tiles.push_back({.x = 1, .y = 2, .value = 7u});
+        expect_diff(expected,
+                    actual,
+                    "grid_dirty_tiles[0].value",
+                    "3",
+                    "7");
     }
 
     {
@@ -426,6 +563,93 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
                     "2",
                     true);
     }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.fxlist.push_back({.entity_id = 41u});
+        actual.fxlist.push_back({.entity_id = 42u});
+        expect_diff(expected,
+                    actual,
+                    "fxlist[0].entity_id",
+                    "41",
+                    "42");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.weaplist.push_back({.xpos = 12});
+        actual.weaplist.push_back({.xpos = 13});
+        expect_diff(expected,
+                    actual,
+                    "weaplist[0].xpos",
+                    "12",
+                    "13");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        expected.grid_dirty_tiles.push_back({.x = 1, .y = 1, .value = 2u});
+        expected.removed_entity_ids = {70u};
+        og::sim::WorldSnapshot actual = expected;
+        actual.removed_entity_ids[0] = 71u;
+        expect_diff(expected,
+                    actual,
+                    "removed_entity_ids[0]",
+                    "70",
+                    "71");
+    }
+}
+
+TEST(Replay, recorder_zero_tick_keyframe_becomes_initial_snapshot)
+{
+    og::sim::ReplayRecorder recorder;
+    const og::sim::WorldSnapshot initial = make_initial_snapshot();
+
+    recorder.record_snapshot(
+        0u,
+        initial,
+        og::sim::ReplayCheckpointKind::Keyframe);
+
+    ASSERT_TRUE(recorder.has_initial_snapshot());
+    expect_snapshot_eq(initial, recorder.initial_snapshot());
+    ASSERT_EQ(1u, recorder.checkpoints().size());
+    EXPECT_EQ(0u, recorder.checkpoints().front().tick);
+    EXPECT_EQ(og::sim::ReplayCheckpointKind::Keyframe,
+              recorder.checkpoints().front().kind);
+    expect_snapshot_eq(initial, recorder.checkpoints().front().snapshot);
+}
+
+TEST(Replay, file_errors_report_the_failed_operation)
+{
+    const og::sim::ReplayHeader header = {
+        .version = og::sim::kReplayFormatVersion,
+        .player_count = 1,
+        .campaign_id = "org.openglad.gladiator",
+    };
+    og::sim::ReplayRecorder recorder(header);
+    recorder.set_initial_snapshot(make_initial_snapshot());
+
+    const std::filesystem::path missing_parent =
+        std::filesystem::temp_directory_path() /
+        "openglad_test_replay_parent_does_not_exist";
+    const std::filesystem::path write_path = missing_parent / "replay.ogr";
+    std::error_code ec;
+    std::filesystem::remove_all(missing_parent, ec);
+    ASSERT_FALSE(std::filesystem::exists(missing_parent));
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    EXPECT_FALSE(recorder.write_file(write_path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::OpenWriteFailed, io_error);
+
+    og::sim::ReplayPlayer player;
+    EXPECT_FALSE(player.load_file(write_path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::OpenReadFailed, io_error);
+
+    EXPECT_FALSE(player.load_file(std::filesystem::temp_directory_path(),
+                                  &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::OpenReadFailed, io_error);
 }
 
 TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)
@@ -480,9 +704,14 @@ TEST(Replay, replay_player_verify_world_tracks_first_divergence)
         .kind = og::sim::ReplayCheckpointKind::Keyframe,
         .snapshot = og::sim::peek_keyframe_snapshot(world),
     };
+    const og::sim::ReplayCheckpoint stale_checkpoint = {
+        .tick = checkpoint.tick - 2u,
+        .kind = og::sim::ReplayCheckpointKind::Keyframe,
+        .snapshot = checkpoint.snapshot,
+    };
 
     og::sim::ReplayPlayer player;
-    player.set_checkpoints({checkpoint});
+    player.set_checkpoints({checkpoint, stale_checkpoint});
 
     EXPECT_FALSE(player.verify_world(world, checkpoint.tick - 1, false).has_value());
     EXPECT_FALSE(player.first_divergence().has_value());

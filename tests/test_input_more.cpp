@@ -1,5 +1,6 @@
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
@@ -73,15 +74,19 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
 {
     clear_keyboard();
 
-    handle_events(nullptr);
-    handle_text_event(nullptr);
+    // Cast explicitly to the native pointer overload.  A bare nullptr would
+    // bind the generic EventT reference adapter and test the address of a
+    // std::nullptr_t object instead of the public null-event contract.
+    const void* const no_event = nullptr;
+    handle_events(no_event);
+    handle_text_event(no_event);
     ASSERT_TRUE(query_text_input() == nullptr) << "null text event should not set text";
 
-    handle_mouse_event(nullptr);
+    handle_mouse_event(no_event);
     ASSERT_EQ(0, (int)get_and_reset_scroll_amount()) << "null mouse event should not scroll";
 
-    ASSERT_TRUE(!query_key_event(SDLK_A, nullptr)) << "null event should not match key";
-    quit_if_quit_event(nullptr);
+    ASSERT_TRUE(!query_key_event(SDLK_A, no_event)) << "null event should not match key";
+    quit_if_quit_event(no_event);
 
     SDL_Event text{};
     text.type = SDL_EVENT_TEXT_INPUT;
@@ -97,6 +102,13 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
     up.type = SDL_EVENT_KEY_UP;
     up.key.key = SDLK_A;
     ASSERT_TRUE(!isKeyboardEvent(up)) << "keyup is not keyboard input for this predicate";
+
+    SDL_Event quit_event{};
+    quit_event.type = SDL_EVENT_QUIT;
+    trace_clear();
+    quit_if_quit_event(quit_event);
+    EXPECT_TRUE(trace_contains("picker", "quit called"))
+        << "quit events should reach the picker quit action in TESTING";
 }
 
 TEST(InputMore, reset_mouse_click_tracking_discards_old_clicks_and_keeps_fresh_taps)
@@ -145,5 +157,39 @@ TEST(InputMore, reset_mouse_click_tracking_discards_old_clicks_and_keeps_fresh_t
     EXPECT_TRUE(take_pending_left_click());
     EXPECT_FALSE(take_pending_left_click());
 
+    reset_mouse_click_tracking();
+}
+
+TEST(InputMore, collapsed_right_click_is_delivered_exactly_once)
+{
+    clear_events();
+    mouse_state.left = false;
+    mouse_state.right = false;
+    input_hardware_state().picker_was_left_down = false;
+    input_hardware_state().picker_was_right_down = false;
+    reset_mouse_click_tracking();
+
+    auto right_event = [](Uint32 type) {
+        SDL_Event event{};
+        event.type = type;
+        event.button.button = SDL_BUTTON_RIGHT;
+        event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+        event.button.clicks = 1;
+        event.button.x = og::runtime::current_session->viewport_offset_x_ +
+            og::runtime::current_session->viewport_w_ / 2.0f;
+        event.button.y = og::runtime::current_session->viewport_offset_y_ +
+            og::runtime::current_session->viewport_h_ / 2.0f;
+        return event;
+    };
+
+    SDL_Event down = right_event(SDL_EVENT_MOUSE_BUTTON_DOWN);
+    SDL_Event up = right_event(SDL_EVENT_MOUSE_BUTTON_UP);
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+
+    EXPECT_TRUE(take_pending_right_click())
+        << "a down/up pair in one event pump must survive until the menu polls";
+    EXPECT_FALSE(take_pending_right_click())
+        << "the collapsed click is a one-shot event";
     reset_mouse_click_tracking();
 }

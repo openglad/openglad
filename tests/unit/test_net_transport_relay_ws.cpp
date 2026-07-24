@@ -81,6 +81,26 @@ public:
         };
     }
 
+    bool send_control_message(og::sim::PeerId target_peer_id,
+                              const std::string& text)
+    {
+        const std::shared_ptr<ix::WebSocket> socket =
+            socket_for_peer(target_peer_id);
+        return socket && socket->send(text).success;
+    }
+
+    bool send_binary_message(og::sim::PeerId target_peer_id,
+                             std::span<const std::uint8_t> bytes)
+    {
+        const std::shared_ptr<ix::WebSocket> socket =
+            socket_for_peer(target_peer_id);
+        if (!socket)
+            return false;
+
+        const std::string payload(bytes.begin(), bytes.end());
+        return socket->sendBinary(payload).success;
+    }
+
 private:
     struct PeerState {
         og::sim::PeerId peer_id = 0;
@@ -397,6 +417,18 @@ private:
         return {};
     }
 
+    std::shared_ptr<ix::WebSocket> socket_for_peer(
+        og::sim::PeerId peer_id)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& [_, peer] : peers_)
+        {
+            if (peer.peer_id == peer_id)
+                return peer.socket.lock();
+        }
+        return {};
+    }
+
     bool should_drop_binary(og::sim::PeerId from_peer_id,
                             std::optional<og::sim::PeerId> target_peer_id)
     {
@@ -505,6 +537,204 @@ og::sim::InitialSetupMessage make_initial_setup_for_test()
 }
 
 TEST(NetTransportRelayWs,
+     validates_configuration_and_preserves_idle_state_on_noop_operations)
+{
+    EXPECT_THROW(
+        {
+            og::sim::RelayWebSocketTransport transport(" \t\n ");
+        },
+        std::invalid_argument);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.min_reconnect_wait_ms = 250u;
+    options.max_reconnect_wait_ms = 5u;
+    auto transport = std::make_unique<og::sim::RelayWebSocketTransport>(
+        "ws://127.0.0.1:1/api/room/IDLE", options);
+
+    const std::uint8_t payload = 0x5au;
+    EXPECT_THROW(transport->send(1u, nullptr, 1u), std::runtime_error);
+    EXPECT_THROW(transport->broadcast(nullptr, 1u), std::runtime_error);
+    EXPECT_NO_THROW(transport->send(1u, &payload, 1u));
+    EXPECT_NO_THROW(transport->broadcast(&payload, 1u));
+    transport->disconnect(0u);
+
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting,
+              transport->link_state());
+    EXPECT_TRUE(transport->connected_peers().empty());
+    EXPECT_FALSE(transport->local_peer_id().has_value());
+    EXPECT_FALSE(transport->host_peer_id().has_value());
+
+    transport.reset();
+}
+
+TEST(NetTransportRelayWs,
+     malformed_protocol_frames_are_ignored_without_corrupting_peer_state)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-PROTOCOL", port),
+        options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+    ASSERT_EQ(std::optional<og::sim::PeerId>(1u), transport.local_peer_id());
+
+    // Peer 20 is deliberately blocked before the relay advertises it. The
+    // final peer list is an ordering sentinel: seeing it proves every malformed
+    // control frame sent before it has also been consumed by poll().
+    transport.disconnect(20u);
+    ASSERT_TRUE(server.send_control_message(1u, R"({"missing":"field"})"));
+    ASSERT_TRUE(server.send_control_message(1u, R"({"type"})"));
+    ASSERT_TRUE(server.send_control_message(1u, R"({"type":   )"));
+    ASSERT_TRUE(server.send_control_message(1u, R"({"type":7})"));
+    ASSERT_TRUE(
+        server.send_control_message(1u, R"({"type":"unterminated})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u, R"({"type":"not\"recognized"})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_joined","peer_id":17,"is_host":true})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_joined","peer_id":4294967296,"is_host":false})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_joined","peer_id":"oops","is_host":false})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u, R"({"type":"peer_joined","peer_id":18})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_joined","peer_id":19,"is_host":null})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u, R"({"type":"peer_list","peers":null,"host":17})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u, R"({"type":"host_changed","new_host":0})"));
+    ASSERT_TRUE(server.send_control_message(1u, R"({"type":"joined"})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u, R"({"type":"joined","peer_id":1,"host":17})"));
+    ASSERT_TRUE(server.send_control_message(
+        1u,
+        R"({"type":"peer_list","peers":[ 0 , 1 , 17 , 20 ],"host":17})"));
+
+    const std::array<std::uint8_t, 3> too_short{{2u, 17u, 0u}};
+    const std::array<std::uint8_t, 5> wrong_tag{{9u, 17u, 0u, 0u, 0u}};
+    const std::array<std::uint8_t, 5> zero_peer{{2u, 0u, 0u, 0u, 0u}};
+    const std::array<std::uint8_t, 6> blocked_peer{
+        {2u, 20u, 0u, 0u, 0u, 0xeeu}};
+    const std::array<std::uint8_t, 6> valid_peer{
+        {2u, 17u, 0u, 0u, 0u, 0xaau}};
+    ASSERT_TRUE(server.send_binary_message(1u, too_short));
+    ASSERT_TRUE(server.send_binary_message(1u, wrong_tag));
+    ASSERT_TRUE(server.send_binary_message(1u, zero_peer));
+    ASSERT_TRUE(server.send_binary_message(1u, blocked_peer));
+    ASSERT_TRUE(server.send_binary_message(1u, valid_peer));
+
+    std::vector<og::sim::ReceivedMessage> received_messages;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            std::vector<og::sim::ReceivedMessage> polled = transport.poll();
+            received_messages.insert(
+                received_messages.end(),
+                std::make_move_iterator(polled.begin()),
+                std::make_move_iterator(polled.end()));
+            return received_messages.size() == 1u &&
+                transport.local_peer_id() ==
+                std::optional<og::sim::PeerId>(1u) &&
+                transport.host_peer_id() ==
+                std::optional<og::sim::PeerId>(17u) &&
+                transport.connected_peers() ==
+                std::vector<og::sim::PeerId>{17u};
+        },
+        5s));
+
+    ASSERT_EQ(1u, received_messages.size());
+    EXPECT_EQ(17u, received_messages.front().peer_id);
+    EXPECT_EQ((std::vector<std::uint8_t>{0xaau}),
+              received_messages.front().data);
+    EXPECT_EQ(og::sim::TransportLinkState::Connected,
+              transport.link_state());
+}
+
+TEST(NetTransportRelayWs,
+     oversized_binary_frame_disconnects_without_delivering_payload)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-LARGE-BINARY", port),
+        options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+
+    constexpr std::size_t kMaximumInboundFrameBytes = 128u * 1024u;
+    const std::vector<std::uint8_t> oversized_frame(
+        kMaximumInboundFrameBytes + 1u, 0xa5u);
+    ASSERT_TRUE(server.send_binary_message(
+        *transport.local_peer_id(), oversized_frame));
+
+    std::vector<og::sim::ReceivedMessage> received_messages;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            std::vector<og::sim::ReceivedMessage> polled = transport.poll();
+            received_messages.insert(
+                received_messages.end(),
+                std::make_move_iterator(polled.begin()),
+                std::make_move_iterator(polled.end()));
+            return transport.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        5s));
+
+    EXPECT_TRUE(received_messages.empty());
+    EXPECT_TRUE(transport.connected_peers().empty());
+    EXPECT_FALSE(transport.local_peer_id().has_value());
+    EXPECT_FALSE(transport.host_peer_id().has_value());
+}
+
+TEST(NetTransportRelayWs,
+     oversized_control_frame_disconnects_and_clears_peer_identity)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-LARGE-TEXT", port),
+        options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+
+    constexpr std::size_t kMaximumInboundControlBytes = 8u * 1024u;
+    const std::string oversized_control(
+        kMaximumInboundControlBytes + 1u, 'x');
+    ASSERT_TRUE(server.send_control_message(
+        *transport.local_peer_id(), oversized_control));
+
+    bool received_unexpected_payload = false;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            if (!transport.poll().empty())
+                received_unexpected_payload = true;
+            return transport.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        5s));
+
+    EXPECT_FALSE(received_unexpected_payload);
+    EXPECT_TRUE(transport.connected_peers().empty());
+    EXPECT_FALSE(transport.local_peer_id().has_value());
+    EXPECT_FALSE(transport.host_peer_id().has_value());
+}
+
+TEST(NetTransportRelayWs,
      relay_targeted_frames_roundtrip_with_distinct_peer_ids)
 {
     IxNetSystemScope net_system;
@@ -553,6 +783,11 @@ TEST(NetTransportRelayWs,
     ASSERT_EQ(1u, client_messages.size());
     EXPECT_EQ(1u, client_messages.front().peer_id);
     EXPECT_EQ(33u, decode_keyframe_request_tick(client_messages.front().data));
+
+    client.disconnect(host_peer_id);
+    EXPECT_TRUE(client.connected_peers().empty());
+    EXPECT_FALSE(client.host_peer_id().has_value());
+    client.disconnect(0u);
 }
 
 TEST(NetTransportRelayWs, relay_broadcast_reaches_all_other_connected_peers)

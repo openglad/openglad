@@ -46,6 +46,22 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_PushEvent(&event);
 }
 
+static int count_nonzero_pixels(screen& scr, int x0, int y0, int x1, int y1)
+{
+    int count = 0;
+    for (int y = y0; y < y1; ++y)
+    {
+        for (int x = x0; x < x1; ++x)
+        {
+            int color = 0;
+            scr.get_pixel(x, y, &color);
+            if (color != 0)
+                ++count;
+        }
+    }
+    return count;
+}
+
 TEST(Menu, mainmenu_buttons) {
     // Create a simple button array using the button struct constructor
     button test_buttons[3] = {
@@ -133,6 +149,102 @@ TEST(Menu, button_misc_paths)
     ASSERT_EQ(-1, (int)b.rightclick(0)) << "rightclick should reject hidden buttons";
 }
 
+TEST(Menu, graphic_and_alert_buttons_render_their_labels)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+
+    vbutton graphic(12, 12, 20, 10, 0, 0, "GFX", 0,
+                    KEYSTATE_UNKNOWN);
+    ASSERT_NE(nullptr, graphic.mypixie);
+    scr->clearbuffer();
+    graphic.vdisplay();
+    EXPECT_GT(count_nonzero_pixels(*scr, graphic.xloc, graphic.yloc,
+                                   graphic.xend, graphic.yend), 0)
+        << "a graphic button should paint its sprite and centered label";
+
+    scr->clearbuffer();
+    graphic.vdisplay(1);
+    EXPECT_GT(count_nonzero_pixels(*scr, graphic.xloc, graphic.yloc,
+                                   graphic.xend, graphic.yend), 0)
+        << "a depressed graphic button keeps its label visible";
+
+    vbutton alert(70, 12, 50, 14, 0, 0, "ALERT", KEYSTATE_UNKNOWN);
+    scr->clearbuffer();
+    alert.vdisplay(2);
+    EXPECT_GT(count_nonzero_pixels(*scr, alert.xloc, alert.yloc,
+                                   alert.xend, alert.yend), 0)
+        << "status-2 buttons should paint the red face and centered label";
+}
+
+TEST(Menu, button_dispatches_hotkey_and_right_click_actions)
+{
+    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
+    int numkeys = 0;
+    bool* const keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    ASSERT_GE(q, 0);
+    ASSERT_LT(q, numkeys);
+
+    vbutton hotkey_button(
+        10, 10, 30, 10, button_action_id(ButtonAction::YesOrNo), 73,
+        "HOT", q);
+    keys[q] = true;
+    SDL_Thread* raw_releaser = SDL_CreateThread(
+        release_scancode_after_delay, "release_q_for_action", &q);
+    ASSERT_NE(nullptr, raw_releaser);
+    EXPECT_EQ(73, hotkey_button.leftclick(1))
+        << "the configured action and argument should run from its hotkey";
+    int release_result = 0;
+    SDL_WaitThread(raw_releaser, &release_result);
+    EXPECT_EQ(0, release_result);
+
+    vbutton right_button(10, 30, 40, 12, 9999, 0, "RIGHT",
+                         KEYSTATE_UNKNOWN);
+    clear_events();
+    push_mouse_motion_game_coords(20, 35);
+    EXPECT_EQ(4, right_button.rightclick(0))
+        << "right clicks should dispatch through the right-action table";
+}
+
+TEST(Menu, rightclick_search_skips_misses_and_draw_tolerates_empty_slots)
+{
+    button descriptors[2] = {
+        button("miss", "MISS", SDLK_M, 100, 100, 30, 12, 0, 0, MenuNav{}),
+        button("hit", "HIT", SDLK_H, 10, 10, 30, 12, 0, 0, MenuNav{}),
+    };
+    vbutton* const first = init_buttons(descriptors, 2);
+    ASSERT_NE(nullptr, first);
+
+    clear_events();
+    push_mouse_motion_game_coords(20, 15);
+    EXPECT_EQ(0, first->rightclick(descriptors))
+        << "the search should pass the first miss and activate the second row";
+
+    clear_allbuttons();
+    ASSERT_EQ(nullptr, og::runtime::current_session->allbuttons_[0]);
+    draw_buttons(descriptors, 2);
+    clear_allbuttons();
+}
+
+TEST(Menu, legacy_button_actions_reach_their_compatible_dispatchers)
+{
+    vbutton dispatcher;
+
+    trace_clear();
+    EXPECT_EQ(1, dispatcher.do_call(
+                     button_action_id(ButtonAction::QuitMenu), 17));
+    EXPECT_TRUE(trace_contains("picker", "quit called"));
+
+    const std::string old_render = cfg.get_setting("graphics", "render");
+    const std::string expected_render = old_render == "sai"
+        ? "eagle"
+        : (old_render == "eagle" ? "normal" : "sai");
+    EXPECT_EQ(2, dispatcher.do_call(
+                     button_action_id(ButtonAction::ToggleRenderingEngine), 0));
+    EXPECT_EQ(expected_render, cfg.get_setting("graphics", "render"));
+    cfg.apply_setting("graphics", "render", old_render);
+}
+
 
 TEST(Menu, hover_highlight_draws_without_click_and_persists)
 {
@@ -168,4 +280,3 @@ TEST(Menu, hover_highlight_draws_without_click_and_persists)
 
     clear_allbuttons();
 }
-

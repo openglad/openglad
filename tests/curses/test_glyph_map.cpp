@@ -79,6 +79,29 @@ TEST(GlyphMap, treasure_and_weapon_glyphs)
     EXPECT_EQ(entity_glyph(Order::Treasure, FAMILY_KEY, 0, false, 0).ascii, '[');
     EXPECT_TRUE(entity_glyph(Order::Treasure, FAMILY_STAIN, 0, false, 0).skip)
         << "blood stains are floor decals, not drawn as entities";
+
+    for (int family : {FAMILY_DRUMSTICK, FAMILY_SILVER_BAR,
+                       FAMILY_TELEPORTER, FAMILY_LIFE_GEM,
+                       FAMILY_MAGIC_POTION, FAMILY_INVIS_POTION,
+                       FAMILY_INVULNERABLE_POTION, FAMILY_FLIGHT_POTION,
+                       FAMILY_SPEED_POTION, 999}) {
+        const Glyph glyph =
+            entity_glyph(Order::Treasure, family, 0, false, 0);
+        EXPECT_FALSE(glyph.skip) << family;
+        EXPECT_GT(glyph.ascii, ' ') << family;
+    }
+
+    for (int family : {FAMILY_TENT, FAMILY_TOWER, FAMILY_BONES,
+                       FAMILY_TREEHOUSE, 999}) {
+        const Glyph glyph =
+            entity_glyph(Order::Generator, family, 3, false, 0);
+        EXPECT_FALSE(glyph.skip) << family;
+        EXPECT_NE(glyph.fg, Color::Default) << family;
+    }
+
+    EXPECT_TRUE(entity_glyph(Order::Special, 0, 0, false, 0).skip);
+    EXPECT_TRUE(entity_glyph(Order::Button1, 0, 0, false, 0).skip);
+    EXPECT_TRUE(entity_glyph(static_cast<Order>(255), 0, 0, false, 0).skip);
 }
 
 // Every weapon family (a projectile/thrown thing a character fires) renders a
@@ -92,6 +115,7 @@ TEST(GlyphMap, every_weapon_family_is_visible)
         EXPECT_FALSE(g.skip) << "weapon family " << f << " is skipped (invisible)";
         EXPECT_GT(g.ascii, ' ') << "weapon family " << f << " has a blank glyph";
     }
+    EXPECT_EQ('*', entity_glyph(Order::Weapon, 999, 0, false, 0).ascii);
 }
 
 // Every effect family (the visible part of specials: boomerang, magic shield,
@@ -108,6 +132,7 @@ TEST(GlyphMap, every_effect_family_is_visible)
     const Glyph boom = entity_glyph(Order::FX, FAMILY_BOOMERANG, 0, false, 0);
     EXPECT_FALSE(boom.skip);
     EXPECT_EQ(boom.ascii, '%') << "the boomerang renders as '%'";
+    EXPECT_EQ('*', entity_glyph(Order::FX, 999, 0, false, 0).ascii);
 }
 
 TEST(GlyphMap, tile_genres_map_to_expected_glyphs)
@@ -121,6 +146,14 @@ TEST(GlyphMap, tile_genres_map_to_expected_glyphs)
     // Unknown / unmapped genres render as blank space.
     EXPECT_EQ(tile_glyph(TYPE_UNKNOWN).ascii, ' ');
     EXPECT_EQ(tile_glyph(12345).ascii, ' ');
+
+    for (int genre : {TYPE_GRASS_DARK, TYPE_GRASS_LIGHT, TYPE_DIRT,
+                      TYPE_DIRT_DARK, TYPE_COBBLE, TYPE_CARPET, TYPE_TREES,
+                      TYPE_AIR, TYPE_DROP_BLOCK}) {
+        const Glyph glyph = tile_glyph(genre);
+        EXPECT_GT(glyph.ascii, ' ') << genre;
+        EXPECT_FALSE(glyph.skip) << genre;
+    }
 }
 
 TEST(GlyphMap, zstair_glyphs_show_direction)

@@ -595,6 +595,37 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
 {
     while (og::input_native::poll_event() != nullptr) {}
 
+    const bool* const native_keys_before =
+        og::input_native::keyboard_state();
+    ASSERT_NE(nullptr, native_keys_before);
+    int native_key_count = 0;
+    const bool* const sdl_keys_before =
+        SDL_GetKeyboardState(&native_key_count);
+    ASSERT_EQ(sdl_keys_before, native_keys_before);
+    ASSERT_GE(native_key_count, SDL_SCANCODE_COUNT);
+    std::array<bool, SDL_SCANCODE_COUNT> native_key_snapshot{};
+    std::copy_n(native_keys_before, native_key_snapshot.size(),
+                native_key_snapshot.begin());
+
+    og::input_native::set_virtual_back_key(true);
+    const bool* const native_keys_while_set =
+        og::input_native::keyboard_state();
+    ASSERT_NE(nullptr, native_keys_while_set);
+    EXPECT_TRUE(std::equal(native_key_snapshot.begin(),
+                           native_key_snapshot.end(),
+                           native_keys_while_set))
+        << "the web-only virtual BACK state must not alter native keys";
+    EXPECT_EQ(nullptr, og::input_native::poll_event())
+        << "the native no-op must not synthesize an input event";
+
+    og::input_native::set_virtual_back_key(false);
+    const bool* const native_keys_after =
+        og::input_native::keyboard_state();
+    ASSERT_NE(nullptr, native_keys_after);
+    EXPECT_TRUE(std::equal(native_key_snapshot.begin(),
+                           native_key_snapshot.end(), native_keys_after));
+    EXPECT_EQ(nullptr, og::input_native::poll_event());
+
     const std::uint32_t ticks_before = og::input_native::ticks_ms();
     ASSERT_TRUE(og::input_native::keyboard_state() != nullptr) << "keyboard_state should return SDL state buffer";
     ASSERT_TRUE(og::input_native::scancode_from_key(SDLK_Q) >= 0) << "scancode lookup should succeed";
@@ -634,6 +665,17 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     ASSERT_TRUE(mouse_event != nullptr) << "wait_event should return the queued mouse event";
     ASSERT_TRUE(og::input_native::decode_event(mouse_event, out)) << "queued mouse event should decode";
     ASSERT_EQ((int)og::input_native::EventType::MouseButtonDown, (int)out.type) << "queued mouse event should remain mouse button down";
+
+    while (og::input_native::poll_event() != nullptr) {}
+    og::input_native::push_mouse_button_event_css(
+        false, SDL_BUTTON_RIGHT, 17, 19, 0, 0);
+    const void* css_mouse_event = og::input_native::wait_event();
+    ASSERT_NE(nullptr, css_mouse_event);
+    ASSERT_TRUE(og::input_native::decode_event(css_mouse_event, out));
+    EXPECT_EQ(og::input_native::EventType::MouseButtonUp, out.type);
+    EXPECT_EQ(SDL_BUTTON_RIGHT, out.button);
+    EXPECT_EQ(17, out.button_x);
+    EXPECT_EQ(19, out.button_y);
 
     while (og::input_native::poll_event() != nullptr) {}
     og::input_native::push_touch_event(og::input_native::EventType::FingerDown, 0.25f, 0.5f, 0.1f, -0.2f, 77);

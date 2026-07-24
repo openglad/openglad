@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -137,6 +138,92 @@ std::uint32_t decode_keyframe_request_tick(std::span<const std::uint8_t> bytes)
     const auto decoded = og::sim::deserialize_keyframe_request_message(bytes);
     EXPECT_TRUE(decoded.has_value());
     return decoded ? decoded->last_seen_tick : 0u;
+}
+
+TEST(NetTransportWebSocketClient,
+     validates_configuration_and_preserves_idle_state_on_noop_operations)
+{
+    EXPECT_THROW(
+        {
+            og::sim::WebSocketClientTransport client("");
+        },
+        std::invalid_argument);
+
+    og::sim::WebSocketClientTransport::Options invalid_peer_options;
+    invalid_peer_options.remote_peer_id = 0u;
+    EXPECT_THROW(
+        {
+            og::sim::WebSocketClientTransport client(
+                "ws://127.0.0.1:1", invalid_peer_options);
+        },
+        std::invalid_argument);
+
+    og::sim::WebSocketClientTransport::Options options;
+    options.remote_peer_id = 42u;
+    options.min_reconnect_wait_ms = 250u;
+    options.max_reconnect_wait_ms = 5u;
+    auto client = std::make_unique<og::sim::WebSocketClientTransport>(
+        "ws://127.0.0.1:1", options);
+
+    const std::uint8_t payload = 0x5au;
+    EXPECT_THROW(client->send(options.remote_peer_id, nullptr, 1u),
+                 std::runtime_error);
+    EXPECT_NO_THROW(client->send(99u, &payload, 1u));
+    client->disconnect(99u);
+
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting, client->link_state());
+    EXPECT_TRUE(client->connected_peers().empty());
+
+    client->disconnect(options.remote_peer_id);
+    EXPECT_EQ(og::sim::TransportLinkState::Failed, client->link_state());
+    EXPECT_TRUE(client->poll().empty());
+    client.reset();
+}
+
+TEST(NetTransportWebSocketClient,
+     oversized_server_frame_disconnects_without_delivering_payload)
+{
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server(port, server_options);
+    server.accept_connections();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 73u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port), client_options);
+    client.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(server, 1u));
+    ASSERT_EQ(og::sim::TransportLinkState::Connected, client.link_state());
+
+    constexpr std::size_t kMaximumInboundFrameBytes = 128u * 1024u;
+    const std::vector<std::uint8_t> oversized_payload(
+        kMaximumInboundFrameBytes + 1u, 0xa5u);
+    server.send(server.connected_peers().front(),
+                oversized_payload.data(),
+                oversized_payload.size());
+
+    std::vector<og::sim::ReceivedMessage> received_messages;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            std::vector<og::sim::ReceivedMessage> polled = client.poll();
+            received_messages.insert(
+                received_messages.end(),
+                std::make_move_iterator(polled.begin()),
+                std::make_move_iterator(polled.end()));
+            (void)server.poll();
+            return client.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        5s));
+
+    EXPECT_TRUE(received_messages.empty());
+    EXPECT_TRUE(client.connected_peers().empty());
+    EXPECT_TRUE(poll_until_peer_count(server, 0u));
 }
 
 TEST(NetTransportWebSocketClient,

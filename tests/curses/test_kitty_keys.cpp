@@ -268,6 +268,30 @@ TEST(KittyKeys, malformed_or_unknown_sequences_are_skipped_and_resync)
     EXPECT_EQ(k.ch, U'g');
 }
 
+TEST(KittyKeys, oversized_params_garbage_final_and_bare_escape_resync)
+{
+    kitty::Decoder decoder;
+    Key key;
+
+    decoder.feed("\x1b[999999999999999999999999u\x1b[103u");
+    ASSERT_TRUE(decoder.next(key));
+    EXPECT_TRUE(key.is_char(U'g'));
+
+    decoder.clear();
+    decoder.feed(std::string("\x1b[1\x01\x1b[104u", 10));
+    bool saw_h = false;
+    while (decoder.next(key))
+        saw_h = saw_h || key.is_char(U'h');
+    EXPECT_TRUE(saw_h);
+
+    decoder.clear();
+    decoder.feed("\x1bx");
+    ASSERT_TRUE(decoder.next(key));
+    EXPECT_EQ(key.code, KeyCode::Escape);
+    ASSERT_TRUE(decoder.next(key));
+    EXPECT_TRUE(key.is_char(U'x'));
+}
+
 TEST(KittyKeys, response_indicates_support_detects_kitty_reply)
 {
     bool done = false;

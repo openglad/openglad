@@ -308,6 +308,27 @@ TEST(NetTransportMultiplex, poll_typed_assigns_distinct_public_peer_ids)
               messages[1].kind);
 }
 
+TEST(NetTransportMultiplex, raw_poll_maps_native_peer_and_skips_peer_zero)
+{
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    const std::array<std::uint8_t, 2> ignored = {9u, 8u};
+    const std::array<std::uint8_t, 3> payload = {1u, 2u, 3u};
+    raw_transport->enqueue_raw(0u, ignored);
+    raw_transport->enqueue_raw(77u, payload);
+
+    og::sim::MultiplexTransport transport({raw_transport});
+    const std::vector<og::sim::ReceivedMessage> messages = transport.poll();
+
+    ASSERT_EQ(1u, messages.size());
+    EXPECT_NE(0u, messages.front().peer_id);
+    EXPECT_EQ(std::vector<std::uint8_t>(payload.begin(), payload.end()),
+              messages.front().data);
+    const std::vector<og::sim::PeerId> connected = transport.connected_peers();
+    EXPECT_NE(connected.end(),
+              std::find(connected.begin(), connected.end(),
+                        messages.front().peer_id));
+}
+
 TEST(NetTransportMultiplex, typed_send_routes_to_matching_underlying_transport)
 {
     auto server_a = og::sim::InProcessTransport::create_server();

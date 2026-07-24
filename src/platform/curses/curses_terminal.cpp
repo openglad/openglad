@@ -9,8 +9,8 @@
  * buffer, color, refresh); input goes through the Kitty keyboard protocol instead
  * of getch(), so we get key-up/down, real modifiers, and standalone Ctrl/Alt. The
  * protocol is mandatory: if the terminal does not support it, construction throws
- * and the client aborts (there is no legacy fallback). Not exercised in CI (needs
- * a TTY); the parsing it depends on is tested via kitty_keys / HeadlessTerminal.
+ * and the client aborts (there is no legacy fallback). CI exercises construction
+ * against a controlled pseudoterminal; parsing also has focused decoder tests.
  */
 #include <openglad/platform/curses/curses_terminal.h>
 
@@ -21,14 +21,19 @@
 #include <atomic>
 #include <cerrno>
 #include <clocale>
+#include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <csignal>
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 // ncursesw: wide-character ncurses for UTF-8 glyphs. Force the wide prototypes
@@ -74,7 +79,7 @@ int pair_id(Color fg, Color bg)
 
 std::atomic<bool> g_needs_restore{false};
 
-void write_all(int fd, std::string_view s)
+bool write_all(int fd, std::string_view s)
 {
     std::size_t off = 0;
     while (off < s.size()) {
@@ -86,6 +91,7 @@ void write_all(int fd, std::string_view s)
         }
         off += static_cast<std::size_t>(n);
     }
+    return off == s.size();
 }
 
 void restore_terminal()
@@ -141,6 +147,10 @@ bool detect_kitty_support(int in_fd, int out_fd)
     }
     return supported;
 }
+
+#ifdef TESTING
+#include "../../../tests/curses/curses_terminal_support_internal.inc"
+#endif
 
 } // namespace
 
@@ -331,112 +341,7 @@ void CursesTerminal::set_cursor_visible(bool visible)
 void CursesTerminal::beep() { ::beep(); }
 
 #ifdef TESTING
-// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
-int curses_terminal_testing_exercise_internal_helpers()
-{
-    int check_index = 0;
-    int failed_check = 0;
-    const auto check = [&check_index, &failed_check](bool condition) {
-        ++check_index;
-        if (!condition && failed_check == 0)
-            failed_check = check_index;
-    };
-    bool default_constructor_failed = false;
-    try {
-        CursesTerminal terminal(CursesTerminal::Options{});
-        (void)terminal;
-    } catch (const std::runtime_error&) {
-        default_constructor_failed = true;
-    }
-    check(default_constructor_failed);
-
-    restore_terminal();
-    on_sigwinch(SIGWINCH);
-    check(g_resize_pending);
-    if (g_resize_pending) {
-        g_resize_pending = 0;
-    }
-
-    {
-        CursesTerminal term(CursesTerminal::TestingTag{});
-        term.impl_->unicode = true;
-        term.impl_->color = false;
-        term.impl_->handle_resize();
-        check(term.supports_unicode());
-        check(!term.supports_color());
-        (void)term.rows();
-        (void)term.cols();
-
-        int in_pipe[2]{};
-        if (::pipe(in_pipe) == 0) {
-            term.impl_->in_fd = in_pipe[0];
-            write_all(in_pipe[1], "\x1b[113u");
-            const Key key = term.poll_key(false);
-            check(key.is_char(U'q'));
-            ::close(in_pipe[1]);
-            ::close(in_pipe[0]);
-            term.impl_->in_fd = STDIN_FILENO;
-        }
-
-        int empty_pipe[2]{};
-        if (::pipe(empty_pipe) == 0) {
-            ::close(empty_pipe[1]);
-            term.impl_->in_fd = empty_pipe[0];
-            check(term.poll_key(false).is_none());
-            ::close(empty_pipe[0]);
-            term.impl_->in_fd = STDIN_FILENO;
-        }
-    }
-
-    check(to_ncurses_color(Color::Black) == COLOR_BLACK);
-    check(to_ncurses_color(Color::Red) == COLOR_RED);
-    check(to_ncurses_color(Color::Green) == COLOR_GREEN);
-    check(to_ncurses_color(Color::Yellow) == COLOR_YELLOW);
-    check(to_ncurses_color(Color::Blue) == COLOR_BLUE);
-    check(to_ncurses_color(Color::Magenta) == COLOR_MAGENTA);
-    check(to_ncurses_color(Color::Cyan) == COLOR_CYAN);
-    check(to_ncurses_color(Color::White) == COLOR_WHITE);
-    check(to_ncurses_color(Color::Default) == -1);
-    check(pair_id(Color::Red, Color::Blue) != pair_id(Color::Blue, Color::Red));
-
-    int write_pipe[2]{};
-    if (::pipe(write_pipe) == 0) {
-        write_all(write_pipe[1], "terminal-write-test");
-        ::close(write_pipe[1]);
-        char buf[64]{};
-        const ssize_t n = ::read(write_pipe[0], buf, sizeof(buf));
-        check(n == 19 && std::string(buf, static_cast<std::size_t>(n)) == "terminal-write-test");
-        ::close(write_pipe[0]);
-    }
-
-    auto probe = [&](std::string_view reply, bool expected) {
-        int in_pipe[2]{};
-        int out_pipe[2]{};
-        if (::pipe(in_pipe) != 0)
-            return;
-        if (::pipe(out_pipe) != 0) {
-            ::close(in_pipe[0]);
-            ::close(in_pipe[1]);
-            return;
-        }
-        write_all(in_pipe[1], reply);
-        ::close(in_pipe[1]);
-        const bool supported = detect_kitty_support(in_pipe[0], out_pipe[1]);
-        ::close(in_pipe[0]);
-        ::close(out_pipe[1]);
-        std::vector<char> written(kitty::kQuery.size());
-        const ssize_t n = ::read(out_pipe[0], written.data(), written.size());
-        ::close(out_pipe[0]);
-        check(supported == expected &&
-            n == static_cast<ssize_t>(kitty::kQuery.size()) &&
-            std::string_view(written.data(), written.size()) == kitty::kQuery);
-    };
-    probe("\x1b[?11u\x1b[?62;1c", true);
-    probe("\x1b[?62;1c", false);
-
-    return failed_check == 0 ? 0 : -failed_check;
-}
-// GCOVR_EXCL_STOP
+#include "../../../tests/curses/curses_terminal_internal.inc"
 #endif
 
 } // namespace og::curses

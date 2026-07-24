@@ -3452,3 +3452,160 @@ TEST(LobbyServer, local_session_equivalent_keeps_benched_slots)
            "save seed) with its flag intact";
     EXPECT_EQ("Reserve", equivalent.team_list[1].character.name);
 }
+
+TEST(LobbyServer, raw_poll_rejects_bad_envelope_before_same_peer_message)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_raw_message(11u, {0xffu});
+    transport.queue_lobby_message(
+        11u,
+        make_join_message(
+            "Rejected",
+            0,
+            {make_slot(0u, 100, "Rejected Guy", FAMILY_SOLDIER)}));
+    const auto hello = og::sim::serialize_hello(og::sim::HelloMessage{});
+    transport.queue_raw_message(
+        22u,
+        std::vector<std::uint8_t>(hello.begin(), hello.end()));
+
+    EXPECT_NO_THROW(server.poll_incoming_messages());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}),
+              transport.disconnected_peers());
+    EXPECT_TRUE(server.state().players.empty())
+        << "a valid message later in the malformed peer's batch is discarded";
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(22u, transport.sent_messages().front().peer_id);
+    const og::sim::LobbyState promoted =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_TRUE(promoted.players.empty());
+    EXPECT_TRUE(promoted.local_peer_is_host);
+}
+
+TEST(LobbyServer, blank_multiseat_rejoin_and_reconnect_preserve_identity)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+
+    og::sim::LobbyMessage join = make_join_message(
+        "",
+        0,
+        {make_slot(0u, 100, "First", FAMILY_SOLDIER),
+         make_slot(0u, 999, "Duplicate", FAMILY_MAGE)});
+    og::sim::LobbyPlayer extra;
+    extra.team = 0;
+    extra.character_slots = {
+        make_slot(1u, 101, "Second", FAMILY_ARCHER),
+    };
+    std::get<og::sim::LobbyJoinMessage>(join.payload)
+        .extra_players.push_back(extra);
+
+    transport.queue_lobby_message(11u, join);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ("Player 1", server.state().players[0].name);
+    EXPECT_EQ("Player 1#1", server.state().players[1].name);
+    ASSERT_EQ(1u, server.state().players[0].character_slots.size());
+    EXPECT_EQ(100, server.state().players[0].character_slots[0].character.guy_id)
+        << "duplicate save-slot declarations keep the first character";
+    const og::sim::LobbyState first_state = server.state();
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, join);
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ("Player 1", server.state().players[0].name);
+    EXPECT_EQ("Player 1#1", server.state().players[1].name);
+    EXPECT_EQ(first_state.players[0].seat_id,
+              server.state().players[0].seat_id);
+    EXPECT_EQ(first_state.players[1].seat_id,
+              server.state().players[1].seat_id);
+
+    const og::sim::LobbyState before_reconnect = server.state();
+    transport.clear_sent_messages();
+    server.connect_client(11u);
+    EXPECT_EQ(before_reconnect, server.state());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    const og::sim::LobbyState reconnect_echo =
+        decode_lobby_state(transport.sent_messages().front());
+    EXPECT_EQ((std::vector<og::sim::LobbySeatId>{
+                  before_reconnect.players[0].seat_id,
+                  before_reconnect.players[1].seat_id}),
+              reconnect_echo.local_seat_ids);
+
+    transport.clear_sent_messages();
+    server.disconnect_client(99u);
+    EXPECT_EQ((std::vector<og::sim::PeerId>{99u}),
+              transport.disconnected_peers());
+    EXPECT_EQ(before_reconnect, server.state());
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
+
+TEST(LobbyServer, unjoined_peer_is_not_a_player_or_ready_blocker)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message(
+            "Host",
+            0,
+            {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyState echoed = decode_lobby_state(sent);
+        ASSERT_EQ(1u, echoed.players.size());
+        EXPECT_EQ("Host", echoed.players.front().name);
+        if (sent.peer_id == 22u)
+        {
+            EXPECT_TRUE(echoed.local_seat_ids.empty());
+        }
+    }
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 700u));
+    server.poll_incoming_messages();
+
+    EXPECT_TRUE(server.start_game_requested());
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        const og::sim::LobbyMessage confirmation = decode_lobby_message(sent);
+        ASSERT_EQ(og::sim::LobbyMessageKind::StartGame,
+                  confirmation.kind());
+        EXPECT_EQ(700u,
+                  std::get<og::sim::LobbyStartGameMessage>(
+                      confirmation.payload)
+                      .request_id);
+    }
+}
+
+TEST(LobbyServer, shared_team_fallback_handles_invalid_and_benched_leaders)
+{
+    og::sim::LobbyState state;
+    og::sim::LobbyPlayer leader;
+    leader.team = -1;
+    state.players.push_back(leader);
+    EXPECT_EQ(0, og::sim::shared_allied_gameplay_team(state));
+
+    state.players.front().team = 3;
+    og::sim::LobbyCharacterSlot benched =
+        make_slot(0u, 100, "Reserve", FAMILY_SOLDIER, 3);
+    benched.deployed = false;
+    state.players.front().character_slots = {benched};
+    EXPECT_EQ(3, og::sim::shared_allied_gameplay_team(state));
+}

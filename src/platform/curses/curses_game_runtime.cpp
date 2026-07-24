@@ -228,6 +228,11 @@ public:
         og::server::copy_headless_server_save_data(save_ref_, server_save_);
     }
 
+#ifdef TESTING
+    bool inject_exit_prompt_for_testing(std::string prompt,
+                                        std::uint32_t synchronized_score);
+#endif
+
 private:
     LocalCursesSession(SaveData& save) : save_ref_(save) {}
 
@@ -402,6 +407,10 @@ std::unique_ptr<CursesGameSession> make_local_session(SaveData& save, int diffic
         error->clear();
     return LocalCursesSession::create(save, difficulty, error);
 }
+
+#ifdef TESTING
+#include "../../../tests/curses/curses_game_runtime_internal.inc"
+#endif
 
 std::string mission_verdict_line(const GameRunResult& result,
                                  const SaveData* save, const GameWorld* world)

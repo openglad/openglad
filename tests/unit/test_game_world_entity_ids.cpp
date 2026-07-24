@@ -55,6 +55,21 @@ TEST_F(GameWorldEntityIdsFixture, assigns_unique_non_zero_ids_and_finds_entities
     EXPECT_EQ(nullptr, world.find_by_id(999999));
 }
 
+TEST_F(GameWorldEntityIdsFixture, const_storage_view_preserves_entity_order)
+{
+    walker* first = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* second = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    using Storage = GameWorld::EntityList::Storage;
+    const GameWorld::EntityList& entities = world.oblist;
+    const Storage& storage = entities;
+    ASSERT_EQ(2u, storage.size());
+    EXPECT_EQ(first, storage.front().get());
+    EXPECT_EQ(second, storage.back().get());
+}
+
 TEST_F(GameWorldEntityIdsFixture, remove_ob_erases_entities_from_id_index)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);

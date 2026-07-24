@@ -144,6 +144,23 @@ TEST(SessionRaii, game_session_cfg_accessible)
     (void)cfg; // Just verify it's accessible
 }
 
+TEST(SessionRaii, session_accessors_and_base_transport_state_report_owned_values)
+{
+    og::runtime::SessionState base;
+    EXPECT_FALSE(base.has_local_transport_runtime());
+
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    og::runtime::GameSession session(session_cfg);
+
+    EXPECT_EQ(nullptr, session.screen_ptr());
+    EXPECT_EQ(nullptr, session.prefs_ptr());
+    EXPECT_EQ(&cfg, &session.config());
+    EXPECT_FALSE(session.has_local_transport_runtime());
+}
+
 // ---------------------------------------------------------------------------
 // SessionScope isolation tests
 // ---------------------------------------------------------------------------
@@ -176,6 +193,23 @@ TEST(SessionRaii, session_scope_activates_and_restores_globals)
     // After scope destruction: globals should be restored
     ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
     ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
+}
+
+TEST(SessionRaii, moved_session_scope_retains_activation_until_new_owner_dies)
+{
+    og::runtime::SessionState* const baseline = og::runtime::current_session;
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    og::runtime::GameSession session(session_cfg);
+
+    {
+        auto original = session.activate(false);
+        auto moved = std::move(original);
+        EXPECT_EQ(&session, og::runtime::current_session);
+    }
+    EXPECT_EQ(baseline, og::runtime::current_session);
 }
 
 TEST(SessionRaii, session_scope_context_isolation)

@@ -7,6 +7,7 @@ class LevelRuntimeData;
 class SaveData;
 
 namespace og::sim {
+class GameServer;
 class SimEventLog;
 }
 
@@ -40,5 +41,15 @@ bool withdraw_headless_level(LevelRuntimeData& level_data,
                              int difficulty_setting,
                              og::sim::SimEventLog& events,
                              int destination_level);
+
+// Install the authoritative dedicated-server persistence/transition hooks on
+// a live GameServer. Kept here so the production server and headless runtime
+// tests exercise the same callback closures.
+void install_headless_server_callbacks(og::sim::GameServer& game_server,
+                                       LevelRuntimeData& level_data,
+                                       SaveData& active_save,
+                                       SaveData& checkpoint_save,
+                                       int difficulty_setting,
+                                       og::sim::SimEventLog& events);
 
 } // namespace og::server

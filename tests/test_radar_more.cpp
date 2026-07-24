@@ -6,6 +6,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/colors.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
@@ -171,14 +172,63 @@ TEST_F(RadarMore, radar_update_and_draw_covers_key_paths)
 
 TEST_F(RadarMore, radar_start_default_uses_myscreen_level_data)
 {
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    screen* const active_screen = og::runtime::current_session->myscreen_;
+    viewscreen* vs = active_screen->viewob[0].get();
     ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
-    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    GameWorld& world = active_screen->world();
+    const bool created_grid = !world.grid.valid();
+    if (created_grid)
+        world.create_new_grid();
+    struct GridRestore
+    {
+        GameWorld& world;
+        bool created;
+        ~GridRestore()
+        {
+            if (created)
+                world.delete_grid();
+        }
+    } grid_restore{world, created_grid};
+
+    ASSERT_TRUE(world.grid.valid());
+    ASSERT_NE(nullptr, world.grid.data.get());
+
+    struct ByteRestore
+    {
+        unsigned char* value;
+        unsigned char original;
+        ~ByteRestore()
+        {
+            if (value != nullptr)
+                *value = original;
+        }
+    };
+
+    ByteRestore tile_restore{world.grid.data.get(), world.grid.data[0]};
+    unsigned char* decor_cell = world.decor.valid()
+        ? world.decor.data.get()
+        : nullptr;
+    ByteRestore decor_restore{
+        decor_cell, decor_cell != nullptr ? *decor_cell : DECOR_NONE};
+
+    world.grid.data[0] = PIX_GRASS1;
+    if (decor_cell != nullptr)
+        *decor_cell = DECOR_NONE;
+
+    radar r(vs, active_screen, 0);
     r.start(); // wrapper path start(&myscreen->level_runtime_data())
-    (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
+    ASSERT_FALSE(r.bmp.empty());
+    const unsigned char grass_color = r.bmp[0];
+    EXPECT_EQ(COLOR_GREEN + 3, static_cast<int>(grass_color));
+
+    world.grid.data[0] = PIX_WATER1;
+    r.update(); // wrapper path update(&myscreen->level_runtime_data())
+    ASSERT_FALSE(r.bmp.empty());
+    EXPECT_NE(grass_color, r.bmp[0]);
+    EXPECT_EQ(1, r.draw());
 }
 
 // Westlands terrain radar colors: snow reads white, lava a STATIC ember

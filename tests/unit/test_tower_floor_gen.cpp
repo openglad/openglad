@@ -250,6 +250,29 @@ TEST(TowerFallback, t0_fallback_is_audit_clean)
             joined += e + "\n";
         EXPECT_TRUE(failures.empty()) << joined;
         EXPECT_LE(world.floor_count(), 2) << "fallback keeps it simple";
+
+        ASSERT_FALSE(world.oblist.empty());
+        walker* const entity = world.oblist.front().get();
+        ASSERT_NE(nullptr, entity);
+        const Order order = entity->query_order();
+        const int family = entity->family();
+        const PixieData* const graphics =
+            world.configure_existing_entity(*entity, order, family);
+        ASSERT_NE(nullptr, graphics);
+        EXPECT_EQ(order, entity->query_order());
+        EXPECT_EQ(family, entity->family());
+        entity->set_stepsize(-101.0f);
+        entity->set_normal_stepsize(-102.0f);
+        entity->set_lineofsight(-103);
+        entity->set_damage(-104.0f);
+        entity->set_fire_frequency(-105.0f);
+        world.set_entity_derived_stats(
+            entity, entity->query_order(), entity->family());
+        EXPECT_NE(-101.0f, entity->stepsize());
+        EXPECT_FLOAT_EQ(entity->stepsize(), entity->normal_stepsize());
+        EXPECT_NE(-103, entity->lineofsight());
+        EXPECT_NE(-104.0f, entity->damage());
+        EXPECT_NE(-105.0f, entity->fire_frequency());
     }
 }
 

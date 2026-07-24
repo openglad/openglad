@@ -10,9 +10,12 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/platform/game_session.h>
+#include "test_save_state_guard.h"
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);
@@ -124,6 +127,70 @@ TEST(LoadLevels, level_data_integrity) {
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
+TEST(LoadLevels, completed_non_ctf_level_purges_only_replayable_hostiles)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ASSERT_TRUE(prepare_default_level_load());
+
+    og::runtime::GameSession::Config session_config;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+
+    SaveData& save = scr->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.numplayers = 0; // spectator: no roster spawn obscures authored objects
+    save.completed_levels[save.current_campaign].insert(save.scen_num);
+
+    ASSERT_EQ(LoadSavedGameError::None,
+              load_saved_game_with_error(nullptr, scr));
+    ASSERT_EQ(0, scr->world().type & GameWorld::TYPE_CTF);
+
+    const auto protected_replay_object = [](const walker& object) {
+        const Order order = object.query_order();
+        const short family = object.family();
+        return ((object.team_num() == 0 || object.myguy != nullptr) &&
+                order == Order::Living) ||
+               (order == Order::Treasure && family == FAMILY_EXIT) ||
+               (order == Order::Treasure && family == FAMILY_TELEPORTER);
+    };
+
+    std::size_t purged = 0;
+    std::size_t protected_alive = 0;
+    const auto verify_list = [&](const auto& objects) {
+        for (const auto& object : objects)
+        {
+            ASSERT_NE(nullptr, object);
+            if (protected_replay_object(*object))
+            {
+                if (!object->dead())
+                    ++protected_alive;
+            }
+            else
+            {
+                EXPECT_TRUE(object->dead())
+                    << "completed-level hostile/object must not replay";
+                if (object->dead())
+                    ++purged;
+            }
+        }
+    };
+    verify_list(scr->world().oblist);
+    verify_list(scr->world().weaplist);
+    verify_list(scr->world().fxlist);
+
+    EXPECT_GT(purged, 0u);
+    EXPECT_GT(protected_alive, 0u)
+        << "team-zero actors, exits, or teleporters remain replayable";
+}
+
 
 
 // Test: Loading a nonexistent level falls back to level 1
@@ -172,6 +239,42 @@ TEST(LoadLevels, load_advances_world_rng_state)
 
     level.world().delete_objects();
     expected_world.delete_objects();
+}
+
+TEST(LoadLevels, sdl_level_hooks_create_render_aware_entity_factory)
+{
+    const LevelDataHooks& hooks = sdl_level_data_hooks();
+    ASSERT_NE(nullptr, hooks.create_entity_factory);
+
+    const EntityFactory factory = hooks.create_entity_factory();
+    EXPECT_TRUE(static_cast<bool>(factory.attach_render));
+    EXPECT_TRUE(static_cast<bool>(factory.report_error));
+}
+
+TEST(LoadLevels, compatibility_overload_runs_preparation_and_returns_metadata)
+{
+    ASSERT_TRUE(prepare_default_level_load());
+
+    GameWorld world(1);
+    sdl_level_data_hooks().wire_world_entity_services(&world, nullptr);
+    std::string grid_file;
+    std::list<std::string> description;
+    bool prepared = false;
+    og::data::LevelFileIoError error =
+        og::data::LevelFileIoError::ParseFailed;
+
+    ASSERT_TRUE(og::data::load_level(
+        "scen1.fss",
+        world,
+        grid_file,
+        description,
+        [&prepared] { prepared = true; },
+        &error));
+    EXPECT_TRUE(prepared);
+    EXPECT_EQ(og::data::LevelFileIoError::None, error);
+    EXPECT_FALSE(grid_file.empty());
+    EXPECT_FALSE(description.empty());
+    EXPECT_FALSE(world.oblist.empty());
 }
 
 TEST(LoadLevels, load_resets_future_entity_ids_to_loaded_world_state)

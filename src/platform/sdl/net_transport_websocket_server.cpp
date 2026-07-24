@@ -201,7 +201,7 @@ struct WebSocketServerTransport::Impl
                     // PeerId space exhausted; the next increment would wrap to
                     // the reserved 'no peer' sentinel (0). Drop the connection
                     // rather than register a ghost peer.
-                    break; // GCOVR_EXCL_LINE -- unreachable without 2^32 live peers
+                    break;
                 }
 
                 const PeerId peer_id = next_peer_id++;

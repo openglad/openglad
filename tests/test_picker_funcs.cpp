@@ -9,6 +9,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/gparser.h>
@@ -68,6 +69,8 @@ bool picker_replace_lobby_client(
     bool show_success_popup = true);
 bool picker_join_game(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client);
+std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client();
+int picker_testing_exercise_sdl_client_internal_paths();
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 void level_editor_testing_prompt_queue_clear();
@@ -1168,6 +1171,60 @@ TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
     level_editor_testing_prompt_queue_clear();
 }
 
+TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
+{
+    picker_lobby_shutdown();
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    std::unique_ptr<og::ui::IPickerClient> client =
+        picker_testing_create_sdl_client();
+    ASSERT_NE(nullptr, client);
+
+    // The concrete host adapter owns port validation, before any transport is
+    // created.  A rejected port must leave the session local and explain why.
+    trace_clear();
+    level_editor_testing_prompt_queue_push("0");
+    EXPECT_FALSE(client->host_game());
+    EXPECT_TRUE(trace_contains("popup", "1 to 65535"));
+
+    // The concrete join adapter must delegate to the same checked factory as
+    // the public join flow, preserving a failed connection as a clean false.
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions&)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        throw std::runtime_error("adapter join failure");
+    };
+    set_platform_bridge(std::move(bridge));
+    picker_testing_yes_or_no_queue_push(true);
+    level_editor_testing_prompt_queue_push("127.0.0.1:24567");
+    trace_clear();
+    EXPECT_FALSE(client->join_game());
+    EXPECT_TRUE(trace_contains("popup", "adapter join failure"));
+
+    // Loading with no display is a supported cancellation edge in the real
+    // Company List wrapper; the adapter must propagate it without mutation.
+    screen* const saved_screen = og::runtime::current_session->myscreen_;
+    og::runtime::current_session->myscreen_ = nullptr;
+    EXPECT_FALSE(client->load_game());
+    og::runtime::current_session->myscreen_ = saved_screen;
+
+    // The retired manual-save transition is a real autosave of the active
+    // company, and reports the write result to the picker state machine.
+    EXPECT_TRUE(client->save_game());
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    client.reset();
+    picker_lobby_shutdown();
+}
+
+TEST(PickerFuncs, concrete_sdl_client_relay_state_machine_paths)
+{
+    EXPECT_EQ(0, picker_testing_exercise_sdl_client_internal_paths());
+}
+
 // (do_load retired with the slot menus; the lobby sync-on-load behavior is
 // exercised by the Company List open path — open_company_slot -> load ->
 // picker_lobby_sync_from_save — in the og_test_basecamp flows.)
@@ -2090,11 +2147,33 @@ TEST(PickerFuncs,
     {
         auto client = og::ui::create_local_picker_lobby_client();
         client->initialize_from_save();
+        ActivePickerLobbyClientGuard active_client(client.get());
         EXPECT_FALSE(client->is_networked_session())
             << "local sessions are not networked";
         EXPECT_FALSE(client->local_ready());
 
+        const std::optional<std::uint8_t> authoritative_mask =
+            client->authoritative_team_mask();
+        ASSERT_TRUE(authoritative_mask.has_value());
+        EXPECT_EQ(authoritative_mask,
+                  picker_lobby_authoritative_team_mask());
+        EXPECT_TRUE(picker_lobby_status_lines().empty())
+            << "the local lobby intentionally has no network status banner";
+
+        // The compatibility request targets this machine's first seat and
+        // updates SaveData::my_team only after the authoritative echo lands.
+        EXPECT_TRUE(picker_lobby_request_team_change(2));
         std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        std::sort(players.begin(), players.end(),
+                  [](const auto& lhs, const auto& rhs) {
+                      return lhs.player_index < rhs.player_index;
+                  });
+        ASSERT_EQ(3u, players.size());
+        EXPECT_EQ(2, players[0].team);
+        EXPECT_EQ(2, save.my_team);
+        EXPECT_TRUE(picker_lobby_request_team_change(0));
+
+        players = client->lobby_players();
         std::sort(players.begin(), players.end(),
                   [](const auto& lhs, const auto& rhs) {
                       return lhs.player_index < rhs.player_index;
@@ -2108,7 +2187,7 @@ TEST(PickerFuncs,
             // A seat assignment is independent of roster colors: Player 2 can
             // choose empty team 3, and changing it must not reseat Player 1 or
             // rewrite the compatibility my_team field.
-            EXPECT_TRUE(client->request_seat_team_change(p2, 3));
+            EXPECT_TRUE(picker_lobby_request_seat_team_change(p2, 3));
             players = client->lobby_players();
             std::sort(players.begin(), players.end(),
                       [](const auto& lhs, const auto& rhs) {

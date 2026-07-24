@@ -43,6 +43,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -52,6 +53,7 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -60,6 +62,7 @@
 #include <optional>
 #include <string>
 #include <set>
+#include <stdexcept>
 #include <vector>
 #include <algorithm>
 #include <cstdint>
@@ -645,6 +648,11 @@ bool picker_join_game(
 
 class SdlPickerClient final : public og::ui::IPickerClient
 {
+    // The definition lives in tests/coverage_internal and only exists in
+    // TESTING builds.  Friendship exposes state-machine state without adding
+    // a test branch to any shipped behavior.
+    friend struct PickerSdlClientTestAccess;
+
 public:
     SdlPickerClient()
         : lobby_client_(og::ui::create_local_picker_lobby_client())
@@ -1492,6 +1500,10 @@ private:
     PickerRelayRoomListState relay_rooms_;
     std::unique_ptr<og::ui::IPickerLobbyClient> lobby_client_;
 };
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/picker_sdl_client_factory.inc"
+#endif
 
 void picker_main(Sint32 argc, char  **argv)
 {
@@ -3036,11 +3048,11 @@ Sint32 change_display_mode()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   // SDL may reject exclusive fullscreen and leave the window in borderless
+	// SDL may reject exclusive fullscreen and leave the window in borderless
    // (or windowed) mode. The platform apply normalizes cfg to that real
    // state, and the engine spec's LabelBinding reads cfg back every frame,
-   // so the button never displays the request (label writes removed — G8).
-   return MENU_OK;
+	// so the button never displays the request (label writes removed — G8).
+	return MENU_OK;
 }
 
 // The resolution lap uses desktop-derived window sizes only outside exclusive
@@ -3094,6 +3106,22 @@ Sint32 change_resolution()
    scr->apply_display_settings_from_cfg();
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
+
+#ifdef TESTING
+   const std::pair<int, int> normalized = og::ui::parse_resolution(
+       cfg.get_setting("graphics", "width"),
+       cfg.get_setting("graphics", "height"));
+   const int actual_w = static_cast<int>(
+       og::runtime::current_session->window_w_);
+   const int actual_h = static_cast<int>(
+       og::runtime::current_session->window_h_);
+   TRACE("display_resolution_apply",
+         "requested=%dx%d normalized=%dx%d actual=%dx%d min_zoom=%d match=%d",
+         next.first, next.second, normalized.first, normalized.second,
+         actual_w, actual_h, scr->minimum_world_zoom_steps(),
+         next == normalized && actual_w == normalized.first &&
+             actual_h == normalized.second);
+#endif
 
    return MENU_OK;
 }

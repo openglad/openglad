@@ -186,6 +186,17 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
               og::data::read_campaign_yaml(bad_path.string().c_str(), partial));
     ASSERT_TRUE(partial.saw_title);
     ASSERT_EQ("Partial", partial.title);
+
+    const fs::path default_path =
+        fs::path("temp") / "io_platform_default_campaign.yaml";
+    ASSERT_TRUE(og::data::write_default_campaign_yaml(
+        default_path.string().c_str()));
+    og::data::CampaignYaml defaults;
+    ASSERT_EQ(og::data::CampaignYamlReadResult::Ok,
+              og::data::read_campaign_yaml(
+                  default_path.string().c_str(), defaults));
+    EXPECT_EQ("New Campaign", defaults.title);
+    EXPECT_EQ(1, defaults.first_level);
 }
 
 

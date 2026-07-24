@@ -15,6 +15,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -23,6 +24,7 @@ bool isDir(const std::string& filename);
 bool sort_scen(const std::string& first, const std::string& second);
 // campaign_picker.cpp helper
 int toInt(const std::string& s);
+int campaign_picker_testing_exercise_entry_draw_paths();
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
 
@@ -160,6 +162,19 @@ static int level_picker_delete_then_cancel_injector(void* data)
     return 0;
 }
 
+static int level_picker_scroll_then_choose_first_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(500);
+    inject_click(180, 155, 100); // NEXT: shift previews up and re-index them
+    SDL_Delay(250);
+    inject_click(24, 23, 100);   // Select the entry shifted into the first row
+    SDL_Delay(150);
+    inject_click(280, 175, 100); // OK
+    return 0;
+}
+
 TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
 {
     cleanup_leftover_test_campaigns();
@@ -169,7 +184,13 @@ TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
 
     ASSERT_TRUE(sort_scen("level2", "level10")) << "sort_scen should order numeric suffixes";
     ASSERT_TRUE(!sort_scen("abc9", "abc2")) << "sort_scen should not invert numeric suffix ordering";
+    ASSERT_TRUE(!sort_scen("levelx", "level2"))
+        << "a malformed numeric suffix should use deterministic lexical ordering";
+    ASSERT_TRUE(sort_scen("alpha1", "beta1"))
+        << "different prefixes should use deterministic lexical ordering";
     ASSERT_EQ(42, toInt("42")) << "toInt should parse decimal text";
+    ASSERT_EQ(0, toInt("not-an-integer"))
+        << "toInt should reject malformed input instead of accepting a prefix";
 
     std::map<std::string, int> current_levels;
     const std::string mounted = get_mounted_campaign();
@@ -189,6 +210,11 @@ TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
     CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     og::runtime::current_session->myscreen_->world().end = old_end;
     ASSERT_TRUE(canceled.id.empty()) << "campaign picker early-exit should return empty campaign id";
+}
+
+TEST(CampaignAndLevelPicker, campaign_entry_draws_real_metadata_states)
+{
+    EXPECT_EQ(0, campaign_picker_testing_exercise_entry_draw_paths());
 }
 
 
@@ -355,6 +381,16 @@ TEST(CampaignAndLevelPicker, level_picker_cancel_esc_returns_default)
     ASSERT_EQ(9, exits.back()) << "getLevelStats exits should include highest exit level";
     ld.delete_objects();
 
+    LevelRuntimeData empty_level(1);
+    empty_level.create_new_grid();
+    avg_enemy = -1.0f;
+    exits = {99};
+    getLevelStats(empty_level, nullptr, &avg_enemy, nullptr, nullptr, exits);
+    ASSERT_EQ(0.0f, avg_enemy)
+        << "an enemy-free level should have a defined zero average";
+    ASSERT_TRUE(exits.empty())
+        << "getLevelStats should replace, rather than append to, exit data";
+
     char old_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 1;
     int canceled = pick_level(og::runtime::current_session->myscreen_, 1, false);
@@ -391,6 +427,40 @@ TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
     ASSERT_EQ(1, canceled_after_delete_prompt) << "delete prompt + cancel should keep default level";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+TEST(CampaignAndLevelPicker, level_picker_scroll_repositions_preview_entries)
+{
+    ViewportGuard guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    const std::vector<int> levels = list_levels_v();
+    ASSERT_GT(levels.size(), 3u)
+        << "the picker needs another full preview window to exercise NEXT";
+    const int starting_level = levels.front();
+    const int expected_level_after_scroll = levels[1];
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    const char saved_end = end;
+    end = 0;
+
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_scroll_then_choose_first_injector,
+        "level_picker_scroll_choose", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const int chosen = pick_level(
+        og::runtime::current_session->myscreen_, starting_level, false);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(expected_level_after_scroll, chosen)
+        << "NEXT must move the second level into the first preview's clickable row";
+    end = saved_end;
 }
 
 // picker_main_menu.cpp: the new-game flow under test below.

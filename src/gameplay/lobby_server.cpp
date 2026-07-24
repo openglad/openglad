@@ -491,20 +491,6 @@ std::int16_t LobbyServer::resolve_team(
     std::int16_t requested_team,
     std::optional<std::int16_t> current_team) const noexcept
 {
-    return resolve_seat_team(peer_id, requested_team, current_team, {});
-}
-
-std::int16_t LobbyServer::resolve_seat_team(
-    PeerId peer_id,
-    std::int16_t requested_team,
-    std::optional<std::int16_t> current_team,
-    const std::vector<std::int16_t>& sibling_teams) const noexcept
-{
-    // The argument remains in the private helper signature to keep the
-    // lowered-CTF-count and legacy call sites straightforward. Sibling teams
-    // are no longer exclusions: explicit assignments deliberately permit
-    // multiple seats of one machine to share a team.
-    (void)sibling_teams;
     const auto seat_available = [&](std::int16_t team) noexcept {
         return is_team_available(team, peer_id);
     };
@@ -521,6 +507,20 @@ std::int16_t LobbyServer::resolve_seat_team(
     }
 
     return current_team.value_or(static_cast<std::int16_t>(-1));
+}
+
+std::int16_t LobbyServer::resolve_seat_team(
+    PeerId peer_id,
+    std::int16_t requested_team,
+    std::optional<std::int16_t> current_team,
+    const std::vector<std::int16_t>& sibling_teams) const noexcept
+{
+    // The argument remains in the private helper signature to keep the
+    // lowered-CTF-count and legacy call sites straightforward. Sibling teams
+    // are no longer exclusions: explicit assignments deliberately permit
+    // multiple seats of one machine to share a team.
+    (void)sibling_teams;
+    return resolve_team(peer_id, requested_team, current_team);
 }
 
 std::size_t LobbyServer::remaining_team_capacity(PeerId peer_id) const noexcept

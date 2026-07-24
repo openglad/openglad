@@ -37,8 +37,15 @@
 #include <format>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
@@ -54,7 +61,13 @@ struct PickerFixture {
     FakeClock clock;
     TextPickerConfig config;
     CursesPickerOptions options;
-    CursesPickerClient client{term, clock, config, options};
+    CursesPickerClient client;
+
+    explicit PickerFixture(CursesPickerOptions initial_options = {})
+        : options(std::move(initial_options)),
+          client(term, clock, config, options)
+    {
+    }
 
     HeadlessTerminal& t() { return term; }
     SaveData& save() { return client.save_data(); }
@@ -107,6 +120,32 @@ int main_menu_item_index(PickerMenuCommand command, int arg = 0)
             def.items[static_cast<size_t>(i)].arg == arg)
             return i;
     return -1;
+}
+
+std::optional<int> dynamically_free_tcp_port()
+{
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0)
+        return std::nullopt;
+
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = htons(0);
+    if (::bind(fd, reinterpret_cast<const sockaddr*>(&address),
+               sizeof(address)) != 0) {
+        (void)::close(fd);
+        return std::nullopt;
+    }
+
+    socklen_t length = sizeof(address);
+    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) != 0) {
+        (void)::close(fd);
+        return std::nullopt;
+    }
+    const int port = ntohs(address.sin_port);
+    (void)::close(fd);
+    return port > 0 ? std::optional<int>(port) : std::nullopt;
 }
 
 } // namespace
@@ -296,6 +335,21 @@ TEST(CursesPickerClient, name_entry_escape_cancels_without_founding)
         << "cancel must not overwrite the loaded company name";
 }
 
+TEST(CursesPickerClient, name_entry_clamps_the_company_display_name)
+{
+    PickerFixture f;
+    for (int i = 0; i < 80; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    const std::string long_name(og::ui::kCompanyNameMaxLen + 12u, 'A');
+    f.t().push_string(long_name);
+    f.t().push_special(KeyCode::Enter);
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, f.save().save_name.size());
+    EXPECT_EQ(std::string(og::ui::kCompanyNameMaxLen, 'A'),
+              f.save().save_name);
+}
+
 // --- difficulty ----------------------------------------------------------
 
 // Handling the Difficulty item (now in the Difficulty submenu) cycles
@@ -342,6 +396,24 @@ TEST(CursesPickerClient,
     EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
     EXPECT_NE(f.t().dump().find("supports one local player"),
               std::string::npos) << f.t().dump();
+
+    const og::ui::PickerMenuItem one_player{
+        "legacy-one-player", "One Player",
+        PickerMenuCommand::SetPlayerMode, 1};
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Main, one_player);
+    EXPECT_EQ(static_cast<int>(f.save().numplayers), 1);
+    EXPECT_NE(f.t().dump().find("Player mode set to 1"), std::string::npos);
+
+    const short allied_before = f.save().allied_mode;
+    const og::ui::PickerMenuItem legacy_allied{
+        "legacy-allied", "Legacy Allied",
+        PickerMenuCommand::ToggleAlliedMode, 0};
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Main, legacy_allied);
+    EXPECT_EQ(allied_before, f.save().allied_mode);
+    EXPECT_NE(f.t().dump().find("Choose this player's team from Matchup"),
+              std::string::npos);
 }
 
 // --- seat assignment -----------------------------------------------------
@@ -446,6 +518,43 @@ TEST(CursesPickerClient, view_roster_renders_names)
     EXPECT_TRUE(found) << "roster should render the member's name; got:\n" << f.t().dump();
 }
 
+TEST(CursesPickerClient, view_roster_handles_empty_team)
+{
+    PickerFixture f;
+    f.save().team_size = 0;
+    for (auto& member : f.save().team_list)
+        member.reset();
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_NE(f.t().dump().find("(empty)"), std::string::npos);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, roster_keys_wrap_toggle_deploy_and_show_ready_notice)
+{
+    PickerFixture f;
+    ASSERT_TRUE(f.save().team_list[0]);
+    ASSERT_TRUE(f.save().team_list[0]->deployed);
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Up);      // wrap through selectable rows
+    f.t().push_char(U'd');                // roster extra-key: bench row
+    f.t().push_char(U'r');                // roster extra-key: ready notice
+    dismiss(f.t());                       // dismiss that notice
+    f.t().push_special(KeyCode::Escape);  // leave the redrawn roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_FALSE(f.save().team_list[0]->deployed);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
 // --- hire ----------------------------------------------------------------
 
 // Hiring a recruit adds a team member and deducts gold.
@@ -526,6 +635,51 @@ TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
 
     EXPECT_EQ(team_count(f.save()), before_count);
+}
+
+TEST(CursesPickerClient, hire_rejects_an_unaffordable_recruit)
+{
+    PickerFixture f;
+    const int before_count = team_count(f.save());
+    f.save().m_totalcash[0] = 0;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter); // attempt highlighted Hire
+    dismiss(f.t());                     // dismiss Can't hire
+    f.t().push_char(U'q');              // leave hire screen
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(before_count, team_count(f.save()));
+    EXPECT_EQ(0u, f.save().m_totalcash[0]);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, hiring_the_last_open_slot_reports_a_full_team)
+{
+    PickerFixture f;
+    f.save().m_totalcash[0] = 1'000'000u;
+    for (auto& member : f.save().team_list)
+        member.reset();
+    f.save().team_size = 0;
+    for (int slot = 0; slot < MAX_TEAM_SIZE - 1; ++slot) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->teamnum = 0;
+        f.save().team_list[static_cast<std::size_t>(slot)] = std::move(member);
+        ++f.save().team_size;
+    }
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter); // hire final member
+    dismiss(f.t());                     // Hired
+    dismiss(f.t());                     // Team is now full
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(MAX_TEAM_SIZE, team_count(f.save()));
+    EXPECT_TRUE(f.t().input_exhausted());
 }
 
 // --- train ---------------------------------------------------------------
@@ -636,6 +790,28 @@ TEST(CursesPickerClient, train_navigation_next_prev_and_back)
     EXPECT_EQ(f.save().team_list[1]->strength, member1_before);
 }
 
+TEST(CursesPickerClient, train_rejects_changes_when_gold_is_insufficient)
+{
+    PickerFixture f;
+    ASSERT_TRUE(f.save().team_list[0]);
+    const short strength_before = f.save().team_list[0]->strength;
+    f.save().m_totalcash[0] = 0;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter); // increase working STR
+    f.t().push_char(U'7');              // jump to Accept training
+    f.t().push_special(KeyCode::Enter); // reject for insufficient gold
+    dismiss(f.t());                     // dismiss Can't afford
+    f.t().push_char(U'q');              // leave training
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(strength_before, f.save().team_list[0]->strength);
+    EXPECT_EQ(0u, f.save().m_totalcash[0]);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
 // --- set level -----------------------------------------------------------
 
 // Set Level updates both the config and the save's scenario number.
@@ -736,6 +912,18 @@ TEST(CursesPickerClient, save_then_load_round_trips_team)
     EXPECT_EQ(config.level, 3) << "level should restore from the save's scen_num";
 }
 
+TEST(CursesPickerClient, save_reports_an_unsafe_slot_without_writing)
+{
+    PickerFixture f;
+    f.config.save_name = "unsafe/slot";
+    f.config.team_families.clear();
+    dismiss(f.t());
+
+    EXPECT_FALSE(f.client.save_game());
+    EXPECT_NE(f.t().dump().find("Save failed"), std::string::npos);
+    EXPECT_FALSE(user_file_exists("save/unsafe/slot.gtl"));
+}
+
 TEST(CursesPickerClient, team_build_dispatches_deploy_ready_progress_network_and_campaign)
 {
     PickerFixture f;
@@ -797,6 +985,37 @@ TEST(CursesPickerClient, team_build_dispatches_deploy_ready_progress_network_and
     f.client.handle_menu_item(PickerMenuId::Scenario, *campaign_item);
 
     EXPECT_EQ(f.save().current_campaign, f.config.campaign);
+}
+
+TEST(CursesPickerClient, deploy_handles_empty_and_invalid_roster_selections)
+{
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleDeploy);
+    ASSERT_NE(item, nullptr);
+
+    {
+        PickerFixture empty;
+        empty.save().team_size = 0;
+        for (auto& member : empty.save().team_list)
+            member.reset();
+        dismiss(empty.t());
+        empty.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+        EXPECT_NE(empty.t().dump().find("empty roster"), std::string::npos);
+    }
+
+    PickerFixture invalid;
+    ASSERT_TRUE(invalid.save().team_list[0]);
+    ASSERT_TRUE(invalid.save().team_list[0]->deployed);
+    invalid.t().push_special(KeyCode::Backspace);
+    invalid.t().push_char(U'9');
+    invalid.t().push_special(KeyCode::Enter);
+    dismiss(invalid.t());
+    invalid.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_TRUE(invalid.save().team_list[0]->deployed);
+    EXPECT_NE(invalid.t().dump().find("Invalid roster row"),
+              std::string::npos);
+    EXPECT_TRUE(invalid.t().input_exhausted());
 }
 
 // Progress shows human titles. The scenario title is read off the MOUNTED
@@ -888,6 +1107,26 @@ TEST(CursesPickerClient, company_list_open_repoints_slot)
     EXPECT_EQ("wp3curb", f.config.save_name)
         << "[SAVE-R2] opening repoints the terminal slot";
     EXPECT_EQ("BRAVO BAND", f.save().save_name);
+}
+
+TEST(CursesPickerClient, company_list_rejects_an_out_of_range_row)
+{
+    CursesSlotCleanup cleanup{{"wp3cur-invalid"}};
+    ASSERT_TRUE(seed_curses_company(
+        "wp3cur-invalid", "INVALID ROW TEST", 9000));
+
+    PickerFixture f;
+    const std::string slot_before = f.config.save_name;
+    pick(f.t(), 0);                       // Open Company
+    f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("99");
+    f.t().push_special(KeyCode::Enter);   // invalid row
+    dismiss(f.t());                       // Invalid company selection
+    f.t().push_special(KeyCode::Escape);  // leave company list
+
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(slot_before, f.config.save_name);
+    EXPECT_TRUE(f.t().input_exhausted());
 }
 
 // Esc backs out (nothing opened, slot untouched), and the §2.4 backups
@@ -1188,11 +1427,21 @@ TEST(CursesPickerClient, press_any_key_ignores_release_and_repeat)
 }
 
 // --- networking ----------------------------------------------------------
-//
-// host_game() builds a real WebSocket lobby and blocks in the lobby loop until a
-// game starts or the user cancels, so it is exercised end-to-end by the
-// CursesNetwork suite (in-process, no real sockets) rather than here. These
-// picker tests cover only the menu navigation around it.
+
+TEST(CursesPickerClient, host_game_builds_real_lobby_and_can_cancel)
+{
+    const std::optional<int> port = dynamically_free_tcp_port();
+    ASSERT_TRUE(port.has_value());
+    CursesPickerOptions options;
+    options.host_port = *port;
+    PickerFixture f(options);
+    pick(f.t(), 0); // Networking -> Host Game
+    f.t().push_char(U'q');
+
+    EXPECT_TRUE(f.client.configure_networking())
+        << "the native WebSocket host should bind and enter its lobby";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
 
 TEST(CursesPickerClient, networking_join_cancel_returns_false)
 {
@@ -1200,6 +1449,18 @@ TEST(CursesPickerClient, networking_join_cancel_returns_false)
     // Cancel the URL prompt: join_game should report false without a lobby.
     f.t().push_special(KeyCode::Escape);
     EXPECT_FALSE(f.client.join_game());
+}
+
+TEST(CursesPickerClient, configure_networking_routes_join_to_a_real_lobby)
+{
+    PickerFixture f;
+    pick(f.t(), 1); // Networking -> Join Game
+    f.t().push_string("ws://127.0.0.1:1");
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'q'); // cancel the disconnected lobby
+
+    EXPECT_TRUE(f.client.configure_networking());
+    EXPECT_TRUE(f.t().input_exhausted());
 }
 
 // configure_networking opens the Host/Join/Back submenu; Back returns false.
@@ -1226,6 +1487,34 @@ TEST(CursesPickerClient, run_picker_quit_unwinds)
         << "run_picker should consume exactly the scripted Quit and then return";
     // The picker returns to the team-build screen after a game (here, after quit).
     EXPECT_EQ(f.client.screen_after_game(), og::ui::PickerScreen::TeamBuild);
+}
+
+TEST(CursesPickerClient, convenience_entry_point_quits_cleanly)
+{
+    HeadlessTerminal term(40, 100);
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    term.push_special(KeyCode::Escape);
+
+    run_curses_picker(term, clock, config, options);
+
+    EXPECT_TRUE(term.input_exhausted());
+}
+
+TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
+{
+    PickerFixture f;
+    f.config.level = 1;
+    f.config.team_families.clear();
+    f.t().push_special(KeyCode::Escape);
+
+    f.client.run_game();
+
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ((std::vector<int>{FAMILY_SOLDIER}), f.config.team_families);
+    EXPECT_GT(f.t().present_count(), 0);
 }
 
 // A richer run_picker: cycle difficulty through the Main menu's Difficulty

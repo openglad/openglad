@@ -104,4 +104,10 @@ TEST(HeadlessTerminal, resize_dump_and_beep_cover_remaining_helpers)
     EXPECT_FALSE(term.supports_unicode());
     EXPECT_FALSE(term.supports_color());
     EXPECT_EQ(term.presented_char_at(99, 99), 0);
+
+    term.clear();
+    term.put(0, 0, U'\u03a9', Color::Default, Color::Default, false);
+    EXPECT_EQ(term.text_row(0), "?   ")
+        << "the diagnostic text view preserves blank cells and marks Unicode";
+    EXPECT_TRUE(term.text_row(-1).empty());
 }

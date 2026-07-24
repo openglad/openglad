@@ -58,8 +58,12 @@ PlatformBridge make_sdl_platform_bridge()
     bridge.stop_music = [] {};
 
     bridge.create_surface = [](int, int) -> video* {
-        // ownership transferred to caller's RAII immediately
-        return new sdl_video(true);
+        // The bridge creates the process's owning display. Use the canonical
+        // owning constructor: it creates a Windowed baseline, reflects that
+        // real state, then reapplies a saved Borderless/Exclusive request via
+        // the same tracked transaction as the DISPLAY menu. The bool overload
+        // exists for explicit non-owning session surfaces.
+        return new sdl_video();
     };
 
     bridge.create_host_picker_lobby_client =

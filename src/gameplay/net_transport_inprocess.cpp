@@ -400,6 +400,10 @@ std::vector<std::uint8_t> copy_raw_bytes(const std::uint8_t* data, std::size_t l
 
 namespace og::sim {
 
+#ifdef TESTING
+#include "../../tests/coverage_internal/net_transport_inprocess_validation.inc"
+#endif
+
 std::shared_ptr<InProcessTransport> InProcessTransport::create_server()
 {
     return create_server(Options{});

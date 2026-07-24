@@ -2,6 +2,7 @@
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/interface/screen.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -10,6 +11,7 @@
 #include "test_input_helpers.h"
 
 #include <string>
+#include <array>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -22,7 +24,10 @@ Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
+void picker_request_start_game();
+void view_team(short left, short top, short right, short bottom);
 int picker_team_build_testing_exercise_internal_paths();
+extern bool g_start_game_requested;
 
 namespace
 {
@@ -62,6 +67,33 @@ struct TeamSlotGuard
 	guy* saved;
 	TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[slot_].release()) {}
 	~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[slot].reset(saved); }
+};
+
+struct SaveRosterGuard
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> team;
+    unsigned char team_size = save.team_size;
+    unsigned char numplayers = save.numplayers;
+    short my_team = save.my_team;
+    int teams_menu_guy_slot = pks().teams_menu_guy_slot;
+
+    SaveRosterGuard()
+    {
+        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+            team[slot] = std::move(save.team_list[slot]);
+    }
+
+    ~SaveRosterGuard()
+    {
+        picker_lobby_shutdown();
+        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+            save.team_list[slot] = std::move(team[slot]);
+        save.team_size = team_size;
+        save.numplayers = numplayers;
+        save.my_team = my_team;
+        pks().teams_menu_guy_slot = teams_menu_guy_slot;
+    }
 };
 
 struct ButtonSlotGuard
@@ -210,4 +242,55 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 TEST(PickerUncovered, picker_team_build_internal_paths)
 {
     ASSERT_EQ(0, picker_team_build_testing_exercise_internal_paths());
+}
+
+TEST(PickerUncovered, matchup_team_selection_and_roster_cursor_use_lobby_state)
+{
+    SaveRosterGuard guard;
+    SaveData& save = guard.save;
+    for (auto& member : save.team_list)
+        member.reset();
+
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Red";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[3] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[3]->name = "Blue";
+    save.team_list[3]->teamnum = 2;
+    save.team_list[3]->deployed = true;
+    save.team_size = 2;
+    save.numplayers = 1;
+    save.my_team = 0;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK, teams_join_team(-1));
+    EXPECT_EQ(MENU_OK, teams_join_team(1));
+    EXPECT_TRUE(trace_contains("popup", "NO HEROES"));
+    EXPECT_EQ(MENU_OK, teams_join_team(2));
+    EXPECT_EQ(2, save.my_team)
+        << "an accepted first-seat change must update the compatibility team";
+
+    pks().teams_menu_guy_slot = 0;
+    EXPECT_EQ(MENU_OK, teams_cycle_guy(1));
+    EXPECT_EQ(3, pks().teams_menu_guy_slot);
+    EXPECT_EQ(MENU_OK, teams_cycle_guy(-1));
+    EXPECT_EQ(0, pks().teams_menu_guy_slot);
+
+    g_start_game_requested = false;
+    picker_request_start_game();
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_TRUE(picker_lobby_has_game_start_config());
+
+    screen* const scr = og::runtime::current_session->myscreen_;
+    scr->redrawme = 0;
+    view_team(10, 10, 310, 100);
+    EXPECT_EQ(1, scr->redrawme);
+    EXPECT_EQ("Red", save.team_list[0]->name);
+    EXPECT_EQ("Blue", save.team_list[3]->name);
+
+    g_start_game_requested = false;
 }

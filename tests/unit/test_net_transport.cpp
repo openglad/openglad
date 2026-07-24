@@ -3363,6 +3363,34 @@ TEST(NetTransport, game_server_disconnects_peers_that_send_malformed_messages)
     EXPECT_TRUE(server.last_polled_messages().empty());
 }
 
+TEST(NetTransport, game_server_set_player_control_updates_bound_seat_and_notifies_peer)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    walker* first = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* replacement = fixture.world().add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, replacement);
+    server.bind_player(7u, 0u, fixture.world().my_team, first);
+    transport.clear_sent_messages();
+
+    server.set_player_control(0u, replacement);
+    EXPECT_EQ(replacement, server.player_control(0u));
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    const auto change = og::sim::deserialize_control_change_message(
+        transport.sent_messages().front().data);
+    ASSERT_TRUE(change.has_value());
+    EXPECT_EQ(0u, change->player_index);
+    EXPECT_EQ(replacement->entity_id(), change->entity_id);
+
+    server.set_player_control(og::sim::kMaxGlobalPlayers, first);
+    EXPECT_EQ(nullptr, server.player_control(og::sim::kMaxGlobalPlayers));
+}
+
 TEST(NetTransport, game_server_disconnects_peers_that_send_unknown_raw_message_types)
 {
     TestGameWorld fixture;

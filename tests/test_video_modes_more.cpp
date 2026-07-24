@@ -217,6 +217,82 @@ TEST(VideoModesMore, video_clipping_and_accel_surface_edge_paths)
     og::runtime::current_session->myscreen_->walkputbuffertext_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 40, 128);
 }
 
+TEST(VideoModesMore, generic_pixel_format_blitters_preserve_transparency_and_team_colors)
+{
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->render);
+
+    // Normal gameplay renders into ARGB8888 and uses optimized row writers.
+    // SDL still permits other software-surface formats, so exercise the real
+    // generic paths against RGB24 and verify their observable pixel results.
+    SurfacePtr rgb24(SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGB24));
+    ASSERT_NE(nullptr, rgb24);
+    ASSERT_EQ(3, SDL_GetPixelFormatDetails(rgb24->format)->bytes_per_pixel);
+
+    SDL_Surface* const saved_render = E_Screen->render;
+    struct RenderSurfaceRestore
+    {
+        SDL_Surface*& slot;
+        SDL_Surface* saved;
+        ~RenderSurfaceRestore() { slot = saved; }
+    } restore{E_Screen->render, saved_render};
+    E_Screen->render = rgb24.get();
+
+    sdl_video video(false);
+    ASSERT_TRUE(SDL_FillSurfaceRect(rgb24.get(), nullptr, 0));
+
+    // Select the no-buffer overload: screen's virtual forwarding normally
+    // uses the legacy overload with an explicit destination flag.
+    video.draw_box(1, 1, 5, 4, 200, 1);
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    video.get_pixel(2, 2, &red, &green, &blue);
+    EXPECT_NE(0, static_cast<int>(red) + static_cast<int>(green) +
+                     static_cast<int>(blue));
+
+    std::array<unsigned char, 16> pixels{
+        0, 250, 42, 43,
+        44, 45, 0, 46,
+        47, 48, 49, 50,
+        51, 52, 53, 54,
+    };
+    const auto indexed = std::span<const unsigned char>(pixels);
+
+    // RGB24 selects putbuffer's format-independent conversion loop. The
+    // indexed tile blitter is opaque, including palette index zero.
+    video.putbuffer(2, 2, 4, 4, 0, 0, 16, 16, indexed);
+    int tile_index = -1;
+    EXPECT_EQ(250, video.get_pixel(3, 2, &tile_index));
+    EXPECT_EQ(250, tile_index) << "tile pixels retain their original palette index";
+
+    // Sprite zeroes are transparent and values above 247 are recolored from
+    // the supplied team ramp. RGB24 forces the non-ARGB optimized fallback.
+    ASSERT_TRUE(SDL_FillSurfaceRect(rgb24.get(), nullptr, 0));
+    video.walkputbuffer(2, 2, 4, 4, 0, 0, 16, 16, indexed, 40);
+    int transparent_index = -1;
+    EXPECT_EQ(0, video.get_pixel(2, 2, &transparent_index));
+    EXPECT_EQ(0, transparent_index);
+    int team_index = -1;
+    EXPECT_EQ(45, video.get_pixel(3, 2, &team_index));
+    EXPECT_EQ(45, team_index) << "250 maps to team color 40 + (255 - 250)";
+
+    // A negative destination that remains partly inside its clipping port
+    // selects walkputbuffer_alpha's bounds-safe generic loop.
+    video.walkputbuffer_alpha(-1, 7, 4, 4, -2, 0, 16, 16,
+                              indexed, 40, 255);
+    video.get_pixel(0, 7, &red, &green, &blue);
+    EXPECT_NE(0, static_cast<int>(red) + static_cast<int>(green) +
+                     static_cast<int>(blue));
+
+    // The mode-aware overload's NORMAL behavior has its own legacy loop.
+    // Pin both transparency and team remapping through visible pixels.
+    video.walkputbuffer(2, 11, 4, 4, 0, 0, 16, 16, indexed, 40,
+                        static_cast<unsigned char>(NORMAL_MODE), 0, 0, 0);
+    EXPECT_EQ(0, video.get_pixel(2, 11, &transparent_index));
+    EXPECT_EQ(45, video.get_pixel(3, 11, &team_index));
+}
+
 
 TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
 {

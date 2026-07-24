@@ -19,6 +19,9 @@
 #include <vector>
 #include <string>
 #include <format>
+#ifdef TESTING
+#include <atomic>
+#endif
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/resources/io_common.h>
@@ -50,6 +53,8 @@ inline short& help_end_of_file()
 
 #ifdef TESTING
 bool s_help_force_scroll_text = false;
+std::atomic<bool> s_help_test_page_up{false};
+std::atomic<bool> s_help_test_page_down{false};
 #endif
 } // namespace
 
@@ -109,7 +114,11 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
+#ifdef TESTING
+		    || s_help_test_page_down.load(std::memory_order_acquire)
+#endif
+		)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -141,7 +150,11 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
+#ifdef TESTING
+		    || s_help_test_page_up.load(std::memory_order_acquire)
+#endif
+		)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -477,7 +490,12 @@ Sint32 show_general_help()
 	// Track previous mouse state for click detection
 	bool prev_mouse_left = false;
 
-	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
+	// Key-state polling preserves held-key behavior. The key-event latch also
+	// catches a short Escape press (including the web Back-key remap) that begins
+	// and ends between two frames. Do not use input_continue here: ordinary
+	// mouse-down events set that shared modal latch too, including tab clicks.
+	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE] &&
+	       !(query_key_press_event() && query_key() == KEYCODE_ESCAPE))
 	{
 		YIELD_SLEEP(10);
 		get_input_events(POLL);
@@ -549,7 +567,11 @@ Sint32 show_general_help()
 			}
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
+#ifdef TESTING
+		    || s_help_test_page_down.load(std::memory_order_acquire)
+#endif
+		)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -581,7 +603,11 @@ Sint32 show_general_help()
 			}
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
+#ifdef TESTING
+		    || s_help_test_page_up.load(std::memory_order_acquire)
+#endif
+		)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -674,58 +700,5 @@ Sint32 show_general_help()
 }
 
 #ifdef TESTING
-// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
-Sint32 help_testing_exercise_internal_paths()
-{
-	int check_index = 0;
-	int failed_check = 0;
-	const auto check = [&check_index, &failed_check](bool condition) {
-		++check_index;
-		if (!condition && failed_check == 0)
-			failed_check = check_index;
-	};
-
-	std::vector<std::string> lines;
-	check(!load_help_file("__missing_help_file__.txt", lines) &&
-	      !lines.empty());
-
-	help_files_loaded = false;
-	load_help_files();
-	check(help_files_loaded);
-	load_help_files();
-
-	classes_help_lines = {"Class line 1", "Class line 2"};
-	editor_help_lines = {"Editor line 1"};
-	const TabContent controls = get_tab_content(HelpTab::Controls);
-	const TabContent classes = get_tab_content(HelpTab::Classes);
-	const TabContent editor = get_tab_content(HelpTab::Editor);
-	const TabContent fallback =
-		get_tab_content(static_cast<HelpTab>(99));
-	check(!controls.is_dynamic && controls.num_lines == NUM_CONTROLS_LINES);
-	check(classes.is_dynamic && classes.num_lines == 2);
-	check(editor.is_dynamic && editor.num_lines == 1);
-	check(!fallback.is_dynamic && fallback.num_lines == NUM_CONTROLS_LINES);
-	check(std::strcmp(get_content_line(controls, 0),
-	                  controls_help_lines[0]) == 0);
-	check(std::strcmp(get_content_line(classes, 1), "Class line 2") == 0);
-	check(std::strcmp(get_content_line(editor, 0), "Editor line 1") == 0);
-	check(std::strcmp(get_content_line(editor, 3), "") == 0);
-	check(std::strcmp(get_content_line(editor, -1), "") == 0);
-
-	screen* const scr = og::runtime::current_session->myscreen_;
-	const std::string saved_campaign = scr->save_data.current_campaign;
-	scr->save_data.current_campaign = "__missing_campaign__";
-	check(read_campaign_intro(scr) == 1);
-	scr->save_data.current_campaign = saved_campaign;
-	const auto saved_description = scr->level_description();
-	scr->level_description().clear();
-	check(read_scenario(scr) == 1);
-	scr->level_description() = saved_description;
-
-	help_files_loaded = false;
-	classes_help_lines.clear();
-	editor_help_lines.clear();
-	return failed_check == 0 ? 0 : -failed_check;
-}
-// GCOVR_EXCL_STOP
+#include "../../../tests/coverage_internal/help_internal.inc"
 #endif

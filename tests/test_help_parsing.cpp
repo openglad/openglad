@@ -65,3 +65,18 @@ TEST(HelpParsing, help_fill_help_array_reads_multiple_lines)
     ASSERT_STREQ("line2", arr[1]) << "line 1 should match";
 }
 
+TEST(HelpParsing, help_read_one_line_returns_an_exact_width_record)
+{
+    std::string text(static_cast<std::size_t>(HELP_WIDTH), 'x');
+    MemOgFile file(text.data(), text.size());
+
+    og::runtime::current_session->help_end_of_file_ = 0;
+    const std::string line = read_one_line(file, HELP_WIDTH);
+    EXPECT_EQ(static_cast<std::size_t>(HELP_WIDTH), line.size());
+    EXPECT_EQ(text, line);
+    EXPECT_EQ(0, og::runtime::current_session->help_end_of_file_)
+        << "consuming exactly the requested width is not an early EOF";
+
+    EXPECT_TRUE(read_one_line(file, HELP_WIDTH).empty());
+    EXPECT_EQ(1, og::runtime::current_session->help_end_of_file_);
+}
