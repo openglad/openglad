@@ -1,5 +1,9 @@
 #include <openglad/platform/sai2x.h>
 
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
+
 int picker_team_build_testing_exercise_internal_paths()
 {
     struct TestLobbyClient final : og::ui::IPickerLobbyClient
@@ -749,6 +753,125 @@ int picker_team_build_testing_exercise_internal_paths()
     check(destination.family == source.family &&
         destination.name == source.name &&
         destination.exp == source.exp);
+
+    // --- SELL row handler + its inline backup-checkpoint lambda -----------
+    // Drives picker_train_menu_engine_on_spec_row through every observable
+    // shape: the guard legs, the declined prompt, the CheckpointFailed leg
+    // (which EXECUTES the []{ backup_company_now(active_company_slot()) }
+    // lambda against a slot with no company file — sell_current invokes the
+    // checkpoint BEFORE deciding failure), and both Sold shapes against a
+    // real seeded company file.
+    {
+        picker_testing_yes_or_no_queue_clear();
+        const std::string saved_slot = og::data::active_company_slot();
+        std::array<std::uint32_t, 4> saved_cash;
+        for (int i = 0; i < 4; ++i)
+            saved_cash[i] = save.m_totalcash[i];
+        const std::int64_t saved_stamp = save.last_played_unix_s;
+
+        // Guard: empty session (team_size < 1 leaves no working copy).
+        for (auto& member : save.team_list)
+            member.reset();
+        save.team_size = 0;
+        og::ui::TrainSession empty_sell_session(save);
+        pks().train_session = &empty_sell_session;
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_OK);
+
+        save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[0]->name = "SELLA";
+        save.team_list[0]->teamnum = 0;
+        save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+        save.team_list[1]->name = "SELLB";
+        save.team_list[1]->teamnum = 0;
+        save.team_size = 2;
+        save.m_totalcash[0] = 500;
+        og::ui::TrainSession sell_session(save);
+
+        // Guard: no session at all.
+        pks().train_session = nullptr;
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_OK);
+        pks().train_session = &sell_session;
+        // Guard: wrong row.
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex - 1, nullptr) == MENU_OK);
+        // Guard: non-editable slot (empty() applies the same predicate via
+        // original_member(), so the first guard absorbs this shape).
+        client.editable = false;
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_OK);
+        client.editable = true;
+
+        // Declined prompt: an empty override queue falls back to the
+        // handler's default_value=false — nothing is touched.
+        trace_clear();
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_REDRAW);
+        check(trace_contains("confirm", "SELL SELLA FOR"));
+        check(save.team_size == 2 && save.m_totalcash[0] == 500);
+
+        // CheckpointFailed: the inline backup lambda runs against an active
+        // slot whose company file does not exist, so backup_company_now
+        // returns false and the sale is refused before any mutation.
+        check(!user_file_exists("save/sellmiss.gtl"));
+        check(og::data::set_active_company_slot("sellmiss"));
+        picker_testing_yes_or_no_queue_push(true);
+        trace_clear();
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_REDRAW);
+        check(trace_contains("popup", "BACKUP FAILED"));
+        check(save.team_size == 2 && save.m_totalcash[0] == 500);
+
+        // Sold with a survivor: seed a real company file so the checkpoint
+        // succeeds; the wallet is credited and the session moves to the
+        // surviving member.
+        check(og::data::set_active_company_slot("sellcov"));
+        {
+            SaveData seed;
+            seed.save_name = "SELL COVERAGE";
+            check(seed.save("sellcov"));
+        }
+        const std::uint32_t first_payout = sell_session.current_sell_value();
+        picker_testing_yes_or_no_queue_push(true);
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_REDRAW);
+        check(save.team_size == 1 &&
+              save.m_totalcash[0] == 500 + first_payout);
+        check(!sell_session.empty() &&
+              sell_session.working_copy().name == "SELLB");
+        check(og::runtime::current_session->current_guy_ != nullptr &&
+              og::runtime::current_session->current_guy_->name == "SELLB" &&
+              og::runtime::current_session->editguy_ == 0);
+
+        // Sold to empty: the last member leaves and TRAIN exits.
+        const std::uint32_t second_payout = sell_session.current_sell_value();
+        picker_testing_yes_or_no_queue_push(true);
+        check(picker_train_menu_engine_on_spec_row(
+                  kTrainMenuSellIndex, nullptr) == MENU_EXIT);
+        check(save.team_size == 0 && sell_session.empty());
+        check(save.m_totalcash[0] == 500 + first_payout + second_payout);
+        check(og::runtime::current_session->current_guy_ == nullptr &&
+              pks().old_guy == nullptr &&
+              og::runtime::current_session->editguy_ == -1);
+
+        // Restore everything the SharedStateGuard does not cover: the sell
+        // legs' company files/backups, the active slot, the wallet, and the
+        // autosave timestamp.
+        check(picker_testing_yes_or_no_queue_remaining() == 0);
+        picker_testing_yes_or_no_queue_clear();
+        pks().train_session = nullptr;  // before the local sessions die
+        for (const og::data::CompanyBackupInfo& backup :
+             og::data::list_company_backups("sellcov"))
+        {
+            (void)remove_user_file("save/backups/" + backup.filename);
+        }
+        (void)remove_user_file("save/sellcov.gtl");
+        check(og::data::set_active_company_slot(saved_slot));
+        for (int i = 0; i < 4; ++i)
+            save.m_totalcash[i] = saved_cash[i];
+        save.last_played_unix_s = saved_stamp;
+    }
 
     g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
