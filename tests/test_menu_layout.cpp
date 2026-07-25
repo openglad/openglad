@@ -316,13 +316,14 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // 14px pitch from y=45 (padded grey roster panel (6,28)..(313,160)), the page
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
-// column is DELETED: the TEAM chip (61,y,10,10) cycles team and the row body
-// (84,y,228,10) opens training. Spec ordinals group by kind (dep
+// column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
+// (84,y,214,10) opens training, and ^ at x=302 moves a member up. Spec
+// ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
-// seat-assignment rail is appended at 33-40, preserving every old ordinal.
-// Its far-right + owns the new final slot; the layout is identical for
-// classic and CTF campaigns.
+// seat-assignment rail is appended at 33-40, followed by move-up controls
+// 41-48, preserving every old ordinal. The layout is identical for classic
+// and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -348,14 +349,14 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_dep_5", "", 23, 115, 14, 10, MenuNav{.up = 4, .down = 6, .right = 21}, false},
         {"roster_dep_6", "", 23, 129, 14, 10, MenuNav{.up = 5, .down = 7, .right = 22}, false},
         {"roster_dep_7", "", 23, 143, 14, 10, MenuNav{.up = 6, .down = 27, .right = 23}, false},
-        {"roster_row_0", "", 84, 45, 228, 10, MenuNav{.down = 9, .left = 16}, false, true},
-        {"roster_row_1", "", 84, 59, 228, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
-        {"roster_row_2", "", 84, 73, 228, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
-        {"roster_row_3", "", 84, 87, 228, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
-        {"roster_row_4", "", 84, 101, 228, 10, MenuNav{.up = 11, .down = 13, .left = 20}, false, true},
-        {"roster_row_5", "", 84, 115, 228, 10, MenuNav{.up = 12, .down = 14, .left = 21}, false, true},
-        {"roster_row_6", "", 84, 129, 228, 10, MenuNav{.up = 13, .down = 15, .left = 22}, false, true},
-        {"roster_row_7", "", 84, 143, 228, 10, MenuNav{.up = 14, .down = 31, .left = 23}, false, true},
+        {"roster_row_0", "", 84, 45, 214, 10, MenuNav{.down = 9, .left = 16}, false, true},
+        {"roster_row_1", "", 84, 59, 214, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
+        {"roster_row_2", "", 84, 73, 214, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
+        {"roster_row_3", "", 84, 87, 214, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
+        {"roster_row_4", "", 84, 101, 214, 10, MenuNav{.up = 11, .down = 13, .left = 20}, false, true},
+        {"roster_row_5", "", 84, 115, 214, 10, MenuNav{.up = 12, .down = 14, .left = 21}, false, true},
+        {"roster_row_6", "", 84, 129, 214, 10, MenuNav{.up = 13, .down = 15, .left = 22}, false, true},
+        {"roster_row_7", "", 84, 143, 214, 10, MenuNav{.up = 14, .down = 31, .left = 23}, false, true},
         {"roster_team_0", "", 61, 45, 10, 10, MenuNav{.down = 17, .left = 0, .right = 8}, false, true},
         {"roster_team_1", "", 61, 59, 10, 10, MenuNav{.up = 16, .down = 18, .left = 1, .right = 9}, false, true},
         {"roster_team_2", "", 61, 73, 10, 10, MenuNav{.up = 17, .down = 19, .left = 2, .right = 10}, false, true},
@@ -393,6 +394,22 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
          MenuNav{.down = 31, .left = 38}, true},
         {"add_seat", "+", 297, 164, 14, 10,
          MenuNav{.down = 31, .left = 39}, false},
+        {"roster_up_0", "^", 302, 45, 10, 10,
+         MenuNav{.left = 8}, true},
+        {"roster_up_1", "^", 302, 59, 10, 10,
+         MenuNav{.left = 9}, true},
+        {"roster_up_2", "^", 302, 73, 10, 10,
+         MenuNav{.left = 10}, true},
+        {"roster_up_3", "^", 302, 87, 10, 10,
+         MenuNav{.left = 11}, true},
+        {"roster_up_4", "^", 302, 101, 10, 10,
+         MenuNav{.left = 12}, true},
+        {"roster_up_5", "^", 302, 115, 10, 10,
+         MenuNav{.left = 13}, true},
+        {"roster_up_6", "^", 302, 129, 10, 10,
+         MenuNav{.left = 14}, true},
+        {"roster_up_7", "^", 302, 143, 10, 10,
+         MenuNav{.left = 15}, true},
     };
 
     for (const char* campaign :
@@ -404,8 +421,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         ASSERT_EQ(kCreateMenuButtonCount, count)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
                "hit zone + 5 strip buttons + the hidden READY twin + "
-               "8 appended seat-rail controls";
-        ASSERT_EQ(41, count);
+               "8 seat-rail controls + 8 move-up controls";
+        ASSERT_EQ(49, count);
 
         for (int i = 0; i < count; ++i)
         {
@@ -450,7 +467,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampSeatCardBase, 35);
         EXPECT_EQ(kBaseCampSeatPageNextIndex, 39);
         EXPECT_EQ(kBaseCampAddSeatIndex, 40);
-        EXPECT_EQ(kCreateMenuButtonCount, 41);
+        EXPECT_EQ(kBaseCampMoveUpBase, 41);
+        EXPECT_EQ(kCreateMenuButtonCount, 49);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -476,6 +494,10 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                           buttons[kBaseCampTeamChipBase + r].sizex,
                       buttons[kBaseCampRowBodyBase + r].x)
                 << "team chip overlaps the training zone on row " << r;
+            EXPECT_LT(buttons[kBaseCampRowBodyBase + r].x +
+                          buttons[kBaseCampRowBodyBase + r].sizex,
+                      buttons[kBaseCampMoveUpBase + r].x)
+                << "training zone needs a gutter before move-up on row " << r;
         }
 
         // The compact rail uses an interior keyboard-focus ring; its one- and
@@ -1830,7 +1852,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     const int face_width = buttons[kDifficultyMenuDifficultyIndex].sizex;
     ASSERT_EQ(140, face_width);
     SaveData save;
-    for (int step = 0; step < 3; ++step)
+    for (int step = 0; step < 4; ++step)
     {
         EXPECT_LE(static_cast<int>(og::ui::format_difficulty_label(step).size()) * 6,
                   face_width)

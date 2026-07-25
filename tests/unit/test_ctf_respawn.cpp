@@ -328,6 +328,9 @@ TEST(CtfRespawn, live_duplicate_character_cancels_the_revive)
     duplicate->myguy->id = 7;
 
     arena.kill(runner);
+    EXPECT_FALSE(og::sim::respawn_retains_player_control(
+        arena.world(), runner))
+        << "a cleric-resurrected copy must be claimable immediately";
     arena.fx.tick(7);
 
     ASSERT_TRUE(runner->dead()) << "duplicate character must cancel the revive";

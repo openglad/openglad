@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <format>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 
@@ -170,6 +171,19 @@ std::uint32_t calculate_train_cost(const guy& current, const guy& original)
         return 0;
 
     return static_cast<std::uint32_t>(temp);
+}
+
+std::uint32_t calculate_sell_value(const guy& member)
+{
+    // query_heart_value() is the death-drop valuation. It is historically
+    // non-const, so query a copy while keeping this helper pure.
+    guy valued(member);
+    const std::int32_t heart_value = valued.query_heart_value();
+    if (heart_value <= 0)
+        return 0;
+
+    return static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(heart_value) * 3u / 4u);
 }
 
 // --- Name generation ---
@@ -542,9 +556,19 @@ void cycle_respawn_mode(SaveData& save)
 {
     switch (save.respawn_mode)
     {
-        case 0: save.respawn_mode = 1; break;
-        case 1: save.respawn_mode = 2; break;
-        default: save.respawn_mode = 0; break;
+        case og::sim::kRespawnModeOff:
+            save.respawn_mode = og::sim::kRespawnModeHeroes;
+            break;
+        case og::sim::kRespawnModeHeroes:
+            save.respawn_mode = og::sim::kRespawnModeEveryone;
+            break;
+        case og::sim::kRespawnModeEveryone:
+            save.respawn_mode = og::sim::kRespawnModeTeamOneHeroes;
+            break;
+        case og::sim::kRespawnModeTeamOneHeroes:
+        default:
+            save.respawn_mode = og::sim::kRespawnModeOff;
+            break;
     }
 }
 
@@ -968,12 +992,21 @@ og::data::CompanyAutosaveContext company_autosave_context(
 }
 
 SaveDataIoError company_autosave_after_mutation(SaveData& save,
-                                                bool networked_lobby_active)
+                                                bool networked_lobby_active,
+                                                int additional_owned_team)
 {
+    og::data::CompanyAutosaveContext context =
+        company_autosave_context(save, networked_lobby_active);
+    if (networked_lobby_active && additional_owned_team >= 0 &&
+        additional_owned_team < SCORE_TEAM_COUNT)
+    {
+        context.owned_teams[static_cast<std::size_t>(
+            additional_owned_team)] = true;
+    }
     return og::data::company_autosave(
         save,
         og::data::CompanyAutosaveKind::BaseCampMutation,
-        company_autosave_context(save, networked_lobby_active));
+        context);
 }
 
 std::vector<int> collect_base_camp_slots(const SaveData& save)
@@ -1003,6 +1036,20 @@ bool toggle_deploy_slot(SaveData& save, int slot)
     guy& member = *save.team_list[slot];
     member.deployed = !member.deployed;
     return member.deployed;
+}
+
+int move_team_member_up(SaveData& save, int slot)
+{
+    if (slot <= 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+        return -1;
+
+    for (int previous = slot - 1; previous >= 0; --previous) {
+        if (!save.team_list[previous])
+            continue;
+        std::swap(save.team_list[previous], save.team_list[slot]);
+        return previous;
+    }
+    return -1;
 }
 
 namespace {
@@ -1618,10 +1665,12 @@ std::string format_ctf_troops_label(const SaveData& save)
 
 std::string format_respawn_mode_label(const SaveData& save)
 {
-    if (save.respawn_mode <= 0)
+    if (save.respawn_mode <= og::sim::kRespawnModeOff)
         return "Respawns: Off";
-    if (save.respawn_mode == 1)
+    if (save.respawn_mode == og::sim::kRespawnModeHeroes)
         return "Respawns: Heroes";
+    if (save.respawn_mode == og::sim::kRespawnModeTeamOneHeroes)
+        return "Respawns: Team 1 Heroes";
     return "Respawns: Everyone";
 }
 
@@ -2265,6 +2314,82 @@ bool TrainSession::accept(bool force)
     return true;
 }
 
+TrainSession::SellResult TrainSession::sell_current(
+    const std::function<bool()>& checkpoint)
+{
+    const guy* const member = original_member();
+    if (!working_ || !member)
+        return SellResult::NoMember;
+
+    const int sold_slot = edit_slot_;
+    const int cash_team = std::clamp(
+        static_cast<int>(member->teamnum), 0,
+        static_cast<int>(SCORE_TEAM_COUNT) - 1);
+    const std::uint32_t payout = calculate_sell_value(*member);
+
+    // The callback is intentionally the final fallible operation before the
+    // wallet/roster mutation. A sale never proceeds without a durable way
+    // back to the exact pre-sale company.
+    if (!checkpoint || !checkpoint())
+        return SellResult::CheckpointFailed;
+
+    const std::uint64_t cash_after =
+        static_cast<std::uint64_t>(save_.m_totalcash[cash_team]) + payout;
+    save_.m_totalcash[cash_team] = static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(
+            cash_after, std::numeric_limits<std::uint32_t>::max()));
+
+    // SaveData serialization requires a dense [0, team_size) roster. Remove
+    // the selected member and stable-compact every survivor, including
+    // defensive recovery from a sparse in-memory roster.
+    int write_slot = 0;
+    int preferred_slot = 0;
+    for (int read_slot = 0; read_slot < MAX_TEAM_SIZE; ++read_slot)
+    {
+        if (!save_.team_list[read_slot])
+            continue;
+        if (read_slot == sold_slot)
+        {
+            preferred_slot = write_slot;
+            continue;
+        }
+        if (write_slot != read_slot)
+            save_.team_list[write_slot] =
+                std::move(save_.team_list[read_slot]);
+        ++write_slot;
+    }
+    for (int slot = write_slot; slot < MAX_TEAM_SIZE; ++slot)
+        save_.team_list[slot].reset();
+    save_.team_size = static_cast<unsigned char>(write_slot);
+
+    if (write_slot == 0)
+    {
+        edit_slot_ = 0;
+        working_.reset();
+        return SellResult::Sold;
+    }
+
+    // Prefer the character that followed the sold member; when the last
+    // member was sold, stay on the new last member. Skip any foreign network
+    // rows exactly as PREV/NEXT do.
+    const int first_candidate = std::min(preferred_slot, write_slot - 1);
+    for (int offset = 0; offset < write_slot; ++offset)
+    {
+        const int candidate = (first_candidate + offset) % write_slot;
+        if (save_.team_list[candidate] &&
+            picker_lobby_save_slot_editable(candidate))
+        {
+            edit_slot_ = candidate;
+            select_current_slot();
+            return SellResult::Sold;
+        }
+    }
+
+    edit_slot_ = 0;
+    working_.reset();
+    return SellResult::Sold;
+}
+
 bool TrainSession::resync_if_promoted()
 {
     const guy* const original = original_member();
@@ -2296,6 +2421,12 @@ std::uint32_t TrainSession::current_cost() const
     if (!working_ || !original)
         return 0;
     return calculate_train_cost(*working_, *original);
+}
+
+std::uint32_t TrainSession::current_sell_value() const
+{
+    const guy* const member = original_member();
+    return member != nullptr ? calculate_sell_value(*member) : 0;
 }
 
 bool TrainSession::level_increased() const

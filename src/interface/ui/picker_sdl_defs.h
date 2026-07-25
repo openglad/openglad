@@ -166,8 +166,8 @@ int picker_company_backups_button_count();
 // regridded §9.10) -----------------------------------------------------------
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
 // clear top/bottom margins): 8 roster rows/page (deploy toggle at x=23, team
-// color/cycler at x=61, row-body train zone at x=84..311, y=45+14r), the
-// page cluster top-right,
+// color/cycler at x=61, row-body train zone at x=84..297, and move-up at
+// x=302, y=45+14r), the page cluster top-right,
 // and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
 // y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24
@@ -200,8 +200,12 @@ inline constexpr int kBaseCampSeatPagePrevIndex = 34;
 inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
 inline constexpr int kBaseCampSeatPageNextIndex = 39;
 inline constexpr int kBaseCampAddSeatIndex = 40;
+// Per-row move-up controls are appended so every established Base Camp
+// ordinal remains stable. Only owned rows after the first owned roster member
+// expose one; activating it swaps that member with its predecessor.
+inline constexpr int kBaseCampMoveUpBase = 41; // roster_up_0..7 = 41..48
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
-inline constexpr int kCreateMenuButtonCount = 41;
+inline constexpr int kCreateMenuButtonCount = 49;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
@@ -287,6 +291,7 @@ int teams_menu_selected_guy_slot();
 // the ChangeTeam/cycle callbacks write its live label/outline by this index
 // (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).
 inline constexpr int kTrainMenuChangeTeamIndex = 17;
+inline constexpr int kTrainMenuSellIndex = 19;
 
 // --- VIEW LEVEL (scenario viewer) layout contract --------------------------
 inline constexpr int kViewScenarioBackIndex = 0;
@@ -359,3 +364,6 @@ og::ui::ReadyGoPresentation picker_compute_ready_go_presentation();
 // roster mutation: deploy toggle, hire, train accept, rename, promote,
 // per-character team cycle.
 void picker_base_camp_after_roster_mutation();
+// Sale overload: keeps the removed character's wallet in the networked
+// owner-preserving merge even when no remaining member names that team.
+void picker_base_camp_after_roster_mutation(int additional_owned_team);

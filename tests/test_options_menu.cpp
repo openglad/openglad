@@ -1132,7 +1132,7 @@ int menu_difficulty_injector(void* data)
         struct RowPlan { const char* id; int clicks; };
         static const RowPlan kRows[5] = {
             {"difficulty", 3},     // Battle -> Slaughter -> Skirmish -> Battle
-            {"respawn_mode", 3},   // Off -> Heroes -> Everyone -> Off
+            {"respawn_mode", 4},   // Off -> Heroes -> Everyone -> Team 1 -> Off
             {"respawn_delay", 3},  // Normal -> Fast -> Slow -> Normal
             {"permadeath", 2},     // On -> Off -> On
             {"generator_rate", 3}, // Normal -> Calm -> Frenzy -> Normal

@@ -1526,6 +1526,73 @@ TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
     save.reset();
 }
 
+TEST(ViewTeam, base_camp_move_up_pages_and_autosaves_roster_order)
+{
+    trace_clear();
+    struct LobbyShutdownGuard {
+        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
+    } lobby_guard;
+    picker_lobby_shutdown();
+    og::data::set_active_company_slot("save0");
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    for (int slot = 0; slot < 9; ++slot) {
+        auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+        member->name = std::format("MEMBER{:02}", slot);
+        save.team_list[slot] = std::move(member);
+    }
+    save.team_size = 9;
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = kBaseCampRowBodyBase;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_TRUE(buttons[kBaseCampMoveUpBase].hidden)
+        << "the first roster member has no predecessor";
+    EXPECT_FALSE(buttons[kBaseCampMoveUpBase + 1].hidden);
+    EXPECT_EQ(kBaseCampMoveUpBase + 1,
+              buttons[kBaseCampRowBodyBase + 1].nav.right);
+
+    ASSERT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampPageNextIndex, &state));
+    ASSERT_EQ(1, state.page.page);
+    buttons = picker_createmenu_buttons();
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kBaseCampMoveUpBase].hidden)
+        << "page two's first row can move ahead of page one's last row";
+    EXPECT_EQ(kBaseCampMoveUpBase,
+              buttons[kBaseCampRowBodyBase].nav.right);
+
+    ASSERT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase, &state));
+    ASSERT_NE(nullptr, save.team_list[7]);
+    ASSERT_NE(nullptr, save.team_list[8]);
+    EXPECT_EQ("MEMBER08", save.team_list[7]->name);
+    EXPECT_EQ("MEMBER07", save.team_list[8]->name);
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=8 to=7"));
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"))
+        << "move-up must use the shared Base Camp mutation autosave";
+    ASSERT_NE(nullptr, reloaded.team_list[7]);
+    ASSERT_NE(nullptr, reloaded.team_list[8]);
+    EXPECT_EQ("MEMBER08", reloaded.team_list[7]->name);
+    EXPECT_EQ("MEMBER07", reloaded.team_list[8]->name);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
 // Team chips retain the four gameplay ramps and overlay their one-based team
 // number. Pin every glyph pixel so 1-4 cannot disappear into the colored face
 // or regress to the shaded font treatment used elsewhere.
@@ -2112,12 +2179,19 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     EXPECT_FALSE(buttons[kBaseCampRowBodyBase + 0].hidden);
     EXPECT_TRUE(buttons[kBaseCampTeamChipBase + 0].hidden)
         << "network team assignment makes the color chip read-only";
+    EXPECT_TRUE(buttons[kBaseCampMoveUpBase + 0].hidden)
+        << "the first owned roster member has no move-up action";
+    EXPECT_FALSE(buttons[kBaseCampMoveUpBase + 1].hidden)
+        << "a later owned member remains reorderable in multiplayer";
     EXPECT_TRUE(buttons[2].no_draw) << "foreign row = no_draw hit zone";
     EXPECT_EQ(12, buttons[2].x);
     EXPECT_EQ(300, buttons[2].sizex)
         << "foreign rows use the full padded roster width";
     EXPECT_TRUE(buttons[kBaseCampRowBodyBase + 2].hidden)
         << "foreign rows have no row-body train zone";
+    EXPECT_TRUE(buttons[kBaseCampMoveUpBase + 2].hidden);
+    EXPECT_TRUE(buttons[kBaseCampMoveUpBase + 3].hidden)
+        << "foreign roster rows never expose reorder controls";
     EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden)
         << "joiner machine: GO hidden by the production rewire";
 

@@ -58,6 +58,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <openglad/core/test_trace.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -236,6 +237,46 @@ walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
     if (candidate != nullptr && !control_pointer_is_live(level, candidate))
         view.control = nullptr;
     return view.control;
+}
+
+struct ClassicRespawnCameraFocus
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    Sint32 floor = 0;
+};
+
+// Classic respawns carry their exact eventual destination in the pending
+// entry, including cross-floor spawns. CTF entries intentionally do not use
+// x/y when firing (anchor rotation decides), so they must never enter this
+// camera path.
+std::optional<ClassicRespawnCameraFocus> classic_respawn_camera_focus(
+    const GameWorld& world, const walker* control)
+{
+    if (control == nullptr || !control->dead() ||
+        !og::sim::classic_respawn_active(world))
+    {
+        return std::nullopt;
+    }
+
+    for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
+    {
+        if (entry.kind != 0 ||
+            entry.walker_entity_id != control->entity_id() ||
+            entry.x < 0 || entry.y < 0)
+        {
+            continue;
+        }
+        const Sint32 max_floor =
+            std::max<Sint32>(0, static_cast<Sint32>(world.floor_count()) - 1);
+        return ClassicRespawnCameraFocus{
+            .x = static_cast<float>(entry.x),
+            .y = static_cast<float>(entry.y),
+            .floor = std::clamp<Sint32>(
+                static_cast<Sint32>(entry.floor), 0, max_floor),
+        };
+    }
+    return std::nullopt;
 }
 
 void publish_primary_render_sample(const viewscreen& view,
@@ -461,12 +502,15 @@ static float floor_glide_z_at(Sint32 i, Sint32 n, float from_eff, float to,
 // advances the render-only floor-glide dolly around it. Every suppression
 // rung and every unclassified (Teleport/Unknown) change snaps — i.e. is
 // byte-identical to the pre-glide behavior.
-void viewscreen::update_floor_glide(GameWorld& vworld, walker* controlob)
+void viewscreen::update_floor_glide(GameWorld& vworld, walker* controlob,
+                                    Sint32 camera_floor_override)
 {
 	const Sint32 prev_floor = current_floor_;
 	const Sint32 new_floor = (editor_floor_override_ >= 0)
 	    ? editor_floor_override_
-	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	    : (camera_floor_override >= 0
+	           ? camera_floor_override
+	           : (controlob ? static_cast<Sint32>(controlob->floor()) : 0));
 	const std::uint32_t frame = effects_frame_tick();
 	const std::uint32_t control_id = controlob ? controlob->entity_id() : 0;
 
@@ -490,6 +534,7 @@ void viewscreen::update_floor_glide(GameWorld& vworld, walker* controlob)
 	const bool s2_single_floor = vworld.floor_count() <= 1;
 	const bool s3_editor_override = editor_floor_override_ >= 0;
 	const bool s4_authoring = editor_authoring_view_;
+	const bool s5_camera_override = camera_floor_override >= 0;
 	// The dust path calls the fall tracker only when cfg "dust" is on, so the
 	// classifier would silently never baseline with dust off: run it here
 	// under the glide's own gate (the once-per-frame guard makes the later
@@ -501,11 +546,12 @@ void viewscreen::update_floor_glide(GameWorld& vworld, walker* controlob)
 	    s2_single_floor ||                               // S2 structural gate
 	    s3_editor_override ||                            // S3 editor floor cut
 	    s4_authoring ||                                  // S4 authoring view
-	    controlob == nullptr ||                          // S5 (baseline id -> 0)
-	    control_id != glide_prev_control_id_ ||          // S6 possession/handoff
-	    &vworld != glide_world_key_ ||                   // S7 world identity...
+	    s5_camera_override ||                            // S5 respawn focus snaps
+	    controlob == nullptr ||                          // S6 (baseline id -> 0)
+	    control_id != glide_prev_control_id_ ||          // S7 possession/handoff
+	    &vworld != glide_world_key_ ||                   // S8 world identity...
 	    vworld.tick_count_ < glide_world_tick_ ||        //    ...or tick reset
-	    frame - glide_last_seen_frame_ > 2;              // S8 staleness (pause/menu)
+	    frame - glide_last_seen_frame_ > 2;              // S9 staleness (pause/menu)
 	if (suppressed)
 	{
 		snap();
@@ -699,15 +745,21 @@ bool viewscreen::redraw()
 	{
         const WalkerRenderPosition control_pos =
             resolve_walker_render_position(*controlob, interpolation_alpha);
+        const std::optional<ClassicRespawnCameraFocus> respawn_focus =
+            classic_respawn_camera_focus(vworld, controlob);
         control_worldx = control_pos.worldx;
         control_worldy = control_pos.worldy;
         control_render_x = control_pos.xpos;
         control_render_y = control_pos.ypos;
+        const float camera_x =
+            respawn_focus.has_value() ? respawn_focus->x : control_pos.xpos;
+        const float camera_y =
+            respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
         camera_topx_float =
-            control_pos.xpos -
+            camera_x -
             static_cast<float>(xview - controlob->sizex()) / 2.0f;
         camera_topy_float =
-            control_pos.ypos -
+            camera_y -
             static_cast<float>(yview - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
@@ -737,7 +789,11 @@ bool viewscreen::redraw()
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	update_floor_glide(vworld, controlob);
+	const std::optional<ClassicRespawnCameraFocus> respawn_focus =
+	    classic_respawn_camera_focus(vworld, controlob);
+	update_floor_glide(
+	    vworld, controlob,
+	    respawn_focus.has_value() ? respawn_focus->floor : Sint32{-1});
 	// Multi-floor: draw stacked floors bottom-up, interleaving each floor's tiles
 	// + entities at a per-floor opacity (floors below fade with depth, the camera
 	// floor is opaque, floors above are faint ghosts). The opaque camera floor
@@ -987,15 +1043,21 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	{
         const WalkerRenderPosition control_pos =
             resolve_walker_render_position(*controlob, interpolation_alpha);
+        const std::optional<ClassicRespawnCameraFocus> respawn_focus =
+            classic_respawn_camera_focus(vworld, controlob);
         control_worldx = control_pos.worldx;
         control_worldy = control_pos.worldy;
         control_render_x = control_pos.xpos;
         control_render_y = control_pos.ypos;
+        const float camera_x =
+            respawn_focus.has_value() ? respawn_focus->x : control_pos.xpos;
+        const float camera_y =
+            respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
         camera_topx_float =
-            control_pos.xpos -
+            camera_x -
             static_cast<float>(xview - controlob->sizex()) / 2.0f;
         camera_topy_float =
-            control_pos.ypos -
+            camera_y -
             static_cast<float>(yview - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
@@ -1022,7 +1084,11 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	update_floor_glide(vworld, controlob);
+	const std::optional<ClassicRespawnCameraFocus> respawn_focus =
+	    classic_respawn_camera_focus(vworld, controlob);
+	update_floor_glide(
+	    vworld, controlob,
+	    respawn_focus.has_value() ? respawn_focus->floor : Sint32{-1});
 	// Multi-floor: draw stacked floors bottom-up with per-floor opacity and
 	// interleaved entities (see the no-arg redraw() for the rationale). Single-
 	// floor draws one opaque pass (byte-identical).
@@ -1444,7 +1510,8 @@ void viewscreen::process_input(const InputState& input_state)
 
 	// Handle render-layer effects from the sim result
 	if (result.endgame_requested &&
-	    !og::sim::respawn_suppress_team_wipe_endgame(active_screen()->world()))
+	    !og::sim::respawn_suppress_team_wipe_endgame(
+	        active_screen()->world(), my_team))
 	{
 		active_screen()->endgame(result.endgame_type);
 		return;

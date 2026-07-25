@@ -1,6 +1,8 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <gtest/gtest.h>
 #include <openglad/resources/save_data.h>
@@ -57,3 +59,38 @@ TEST(GameLaunch, level_load_initial_view_centers_on_player_control)
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
+TEST(GameLaunch, reordered_same_team_roster_sets_initial_player_controls)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    SaveData& save = game->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.my_team = 0;
+    save.allied_mode = 1;
+
+    auto first = std::make_unique<guy>(FAMILY_SOLDIER);
+    first->name = "FIRST CONTROL";
+    first->teamnum = 0;
+    auto second = std::make_unique<guy>(FAMILY_ARCHER);
+    second->name = "SECOND CONTROL";
+    second->teamnum = 0;
+    save.team_list[0] = std::move(first);
+    save.team_list[1] = std::move(second);
+    save.team_size = 2;
+
+    ASSERT_EQ(0, og::ui::move_team_member_up(save, 1));
+    ASSERT_TRUE(load_saved_game("", game));
+    ASSERT_NE(nullptr, game->viewob[0]);
+    ASSERT_NE(nullptr, game->viewob[1]);
+    ASSERT_NE(nullptr, game->viewob[0]->control);
+    ASSERT_NE(nullptr, game->viewob[1]->control);
+    ASSERT_NE(nullptr, game->viewob[0]->control->myguy);
+    ASSERT_NE(nullptr, game->viewob[1]->control->myguy);
+    EXPECT_EQ("SECOND CONTROL", game->viewob[0]->control->myguy->name);
+    EXPECT_EQ("FIRST CONTROL", game->viewob[1]->control->myguy->name);
+
+    game->world().delete_objects();
+    save.reset();
+}

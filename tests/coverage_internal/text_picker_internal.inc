@@ -530,7 +530,7 @@ int text_picker_testing_exercise_internal_paths()
             client.handle_menu_item(PickerMenuId::Difficulty, *item);
         check(changed && current() == previous);
     };
-    check_difficulty_rule(PickerMenuCommand::CycleRespawnMode, 3,
+    check_difficulty_rule(PickerMenuCommand::CycleRespawnMode, 4,
         [&] { return save.respawn_mode; });
     check_difficulty_rule(PickerMenuCommand::CycleRespawnDelay, 3,
         [&] { return save.ctf_respawn_ticks; });

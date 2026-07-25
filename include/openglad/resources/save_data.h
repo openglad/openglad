@@ -79,7 +79,8 @@ public:
     short ctf_respawn_ticks = 0;
     short ctf_strip_scenario_troops = 0; // 0 = keep authored troops (classic)
     // Difficulty submenu settings (0 = legacy default behavior for all three).
-    short respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
+    // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
+    short respawn_mode = 0;
     short generator_rate = 0;     // percent; 0 = default (100)
     short keep_fallen_heroes = 0; // 0 = permadeath on win (classic), 1 = keep
     // Cross-control (protocol v8, company-basecamp design §4.1): host-only

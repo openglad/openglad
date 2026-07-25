@@ -30,6 +30,14 @@ inline constexpr int kCtfCpPulsePeriod = 300;
 inline constexpr int kCtfCpPulseRadius = 96;                     // px, localized speed pulse
 inline constexpr int kCtfAiCadenceTicks = 15;
 
+// SaveData/lobby/world values for the classic (non-CTF) respawn selector.
+// Keep the existing numeric meanings stable for saved companies and network
+// peers; the Team 1-only option is appended as value 3.
+inline constexpr short kRespawnModeOff = 0;
+inline constexpr short kRespawnModeHeroes = 1;
+inline constexpr short kRespawnModeEveryone = 2;
+inline constexpr short kRespawnModeTeamOneHeroes = 3;
+
 enum class CtfFlagState : std::uint8_t { AtHome = 0, Carried = 1, Dropped = 2 };
 
 struct CtfFlag
@@ -112,9 +120,10 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world);
 // --- Classic (non-CTF) respawn engine ---------------------------------------
 // Reuses the CtfState respawn substate (respawn_queue / respawn_ticks) with
 // classic fire rules: player corpses revive at their recorded spawn point (in
-// place when it is blocked), and mode 2 additionally respawns unowned AI
-// livings at their authored placement. Never draws world.rng_, and leaves
-// ctf.active false so every CTF-only consumer keeps keying off it.
+// place when it is blocked), mode 2 additionally respawns unowned AI livings
+// at their authored placement, and mode 3 respawns only Team 1 heroes (the
+// player-facing Team 1 is internal team 0). Never draws world.rng_, and
+// leaves ctf.active false so every CTF-only consumer keeps keying off it.
 
 // Requested-delay clamp for classic respawns (the SaveData/lobby
 // ctf_respawn_ticks knob rides the same channel; out-of-range requests fall
@@ -125,8 +134,15 @@ inline constexpr short kClassicMaxRespawnTicks = 1200;
 inline constexpr std::uint16_t kClassicBlockedRetryTicks = 12;
 
 // True when the classic respawn engine owns respawns on this level: a non-CTF
-// world with respawn_mode 1 (heroes) or 2 (heroes + unowned AI livings).
+// world with one of the supported nonzero respawn modes.
 bool classic_respawn_active(const GameWorld& world);
+
+// True when a dead player-controlled hero is guaranteed to remain in the
+// active respawn engine instead of being replaced by the normal control
+// reacquisition scan. Used by the authoritative input path so a seat keeps
+// the same entity assignment throughout its countdown.
+bool respawn_retains_player_control(const GameWorld& world,
+                                    const walker* control);
 
 // The classic per-tick engine, called from GameWorld::tick() AFTER the level
 // completion decision (its end-of-level revive-all must observe game_ended
@@ -152,7 +168,8 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world);
 // Combined gate for the endgame_requested / team-wipe EndGame consumers: an
 // active CTF match or an active classic respawn mode keeps a team wipe from
 // ending the level (respawns give the wiped team a way back in).
-bool respawn_suppress_team_wipe_endgame(const GameWorld& world);
+bool respawn_suppress_team_wipe_endgame(const GameWorld& world,
+                                        short wiped_team = -1);
 
 // Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW"),
 // matching the rendered palette ramps (team*16+40). Shared by the sim

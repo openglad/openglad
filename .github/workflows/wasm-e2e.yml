@@ -7,12 +7,19 @@ on:
 
 permissions:
   contents: read
+  deployments: write
+
+# Only the newest revision of a PR should be able to update its stable preview
+# alias. Push runs keep their unique run IDs and are not cancelled here.
+concurrency:
+  group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   wasm-e2e:
     name: Playwright WASM Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +54,29 @@ jobs:
       - name: Copy web assets to dist
         run: cp web/index.html web/help.html web/_worker.js dist/
 
+      - name: Verify deploy assets
+        run: |
+          required_assets=(
+            index.html
+            help.html
+            _worker.js
+            manifest.webmanifest
+            icon.svg
+            icon-192.png
+            icon-512.png
+            apple-touch-icon.png
+            play.html
+            play.js
+            play.wasm
+            play.data
+          )
+          for asset in "${required_assets[@]}"; do
+            if [[ ! -s "dist/${asset}" ]]; then
+              echo "::error file=dist/${asset}::Missing or empty deploy asset"
+              exit 1
+            fi
+          done
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -75,6 +105,41 @@ jobs:
           npx playwright test --workers=1
           --project=webkit-iphone
           --project=webkit-iphone-portrait
+
+      # pull_request workflows do not receive repository secrets for forks.
+      # Keep the privileged deploy in this same-repository-only path rather
+      # than using pull_request_target with untrusted PR code or artifacts.
+      - name: Deploy PR preview to Cloudflare Pages
+        id: preview
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy dist
+            --project-name=openglad
+            --branch=pr-${{ github.event.pull_request.number }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add preview link to workflow summary
+        if: steps.preview.outcome == 'success'
+        env:
+          PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.openglad.pages.dev
+          IMMUTABLE_URL: ${{ steps.preview.outputs.deployment-url }}
+        run: |
+          {
+            echo "### Play this PR"
+            echo
+            echo "[${PREVIEW_URL}](${PREVIEW_URL})"
+            echo
+            echo "This stable address tracks the latest successful WASM build for PR #${{ github.event.pull_request.number }}."
+            echo
+            echo "Immutable deployment: ${IMMUTABLE_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test results
         if: ${{ !cancelled() }}

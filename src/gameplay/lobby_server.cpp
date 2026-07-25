@@ -2,6 +2,7 @@
 
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/tower_constants.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 
 #include <algorithm>
 #include <format>
@@ -89,8 +90,11 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }
-    if (sanitized.respawn_mode < 0 || sanitized.respawn_mode > 2)
+    if (sanitized.respawn_mode < og::sim::kRespawnModeOff ||
+        sanitized.respawn_mode > og::sim::kRespawnModeTeamOneHeroes)
+    {
         sanitized.respawn_mode = fallback.respawn_mode;
+    }
     if (sanitized.generator_rate != 0)
     {
         sanitized.generator_rate =

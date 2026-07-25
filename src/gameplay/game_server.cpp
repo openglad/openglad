@@ -1627,7 +1627,8 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::respawn_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(
+                world_, disconnected.team_num))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2477,7 +2478,8 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::respawn_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(
+                world_, seat.team_num))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))

@@ -161,8 +161,12 @@ TEST(MenuSpec, match_rule_labels_full_cycles)
 
     EXPECT_EQ("Respawns: Off",
               og::ui::menu_item_label(*respawns, context_for(save)));
-    const char* respawn_labels[] = {"Respawns: Heroes", "Respawns: Everyone",
-                                    "Respawns: Off"};
+    const char* respawn_labels[] = {
+        "Respawns: Heroes",
+        "Respawns: Everyone",
+        "Respawns: Team 1 Heroes",
+        "Respawns: Off",
+    };
     for (const char* label : respawn_labels) {
         og::ui::cycle_respawn_mode(save);
         EXPECT_EQ(label, og::ui::menu_item_label(*respawns, context_for(save)));

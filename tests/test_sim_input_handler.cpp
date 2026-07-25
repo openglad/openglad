@@ -2,6 +2,7 @@
  * These are integration tests (require SDL for walker creation).
  */
 #include <openglad/gameplay/sim_input_handler.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/input_action.h>
 #include <openglad/resources/gloader.h>
@@ -129,6 +130,58 @@ TEST(SimInputHandler, sim_input_assigns_control)
     ASSERT_TRUE(result.control_hp_changed) << "HP should be updated";
     ASSERT_TRUE(result.control_hp == 42.0f) << "HP should match";
 
+    teardown();
+}
+
+// A respawning death must not run the normal auto-claim scan even when
+// another same-team hero is available. Keeping the dead entity pointer is
+// what preserves the authoritative control mapping through the countdown.
+TEST(SimInputHandler, respawning_dead_hero_does_not_switch_to_teammate)
+{
+    auto dead_up = make_living(0, 0);
+    auto teammate_up = make_living(0, -1);
+    ASSERT_NE(nullptr, dead_up);
+    ASSERT_NE(nullptr, teammate_up);
+
+    dead_up->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    teammate_up->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    dead_up->set_act_type(ACT_CONTROL);
+    dead_up->set_dead(1);
+    walker* const dead_hero = dead_up.get();
+    walker* const teammate = teammate_up.get();
+
+    GameWorld& world =
+        og::runtime::current_session->myscreen_->world();
+    const short saved_respawn_mode = world.respawn_mode;
+    const char saved_type = world.type;
+    world.respawn_mode = 1;
+    world.type = 0;
+    world.oblist.push_back(std::move(dead_up));
+    world.oblist.push_back(std::move(teammate_up));
+
+    InputState input;
+    input.clear();
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+    walker* control = dead_hero;
+
+    const SimInputResult retained = sim_process_player_input(
+        input.players[0], control, world, 0, 0, debounce, special_names, &log);
+    EXPECT_EQ(dead_hero, control);
+    EXPECT_EQ(dead_hero, retained.new_control);
+    EXPECT_EQ(-1, teammate->user());
+    EXPECT_FALSE(retained.endgame_requested);
+
+    // The same shape with respawns off retains legacy auto-switch behavior.
+    world.respawn_mode = 0;
+    const SimInputResult switched = sim_process_player_input(
+        input.players[0], control, world, 0, 0, debounce, special_names, &log);
+    EXPECT_EQ(teammate, control);
+    EXPECT_TRUE(switched.control_hp_changed);
+
+    world.respawn_mode = saved_respawn_mode;
+    world.type = saved_type;
     teardown();
 }
 

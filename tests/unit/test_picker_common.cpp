@@ -20,6 +20,7 @@
 #include <cstring>
 #include <format>
 #include <list>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <set>
@@ -160,6 +161,25 @@ TEST(PickerCommon, calculate_train_cost_no_downgrade)
     trained.strength = static_cast<short>(original.strength - 3);
     std::uint32_t cost = og::ui::calculate_train_cost(trained, original);
     ASSERT_TRUE(cost == 0);
+}
+
+TEST(PickerCommon, calculate_sell_value_matches_death_salvage_basis)
+{
+    init_family_registry();
+    guy member(FAMILY_SOLDIER);
+    EXPECT_EQ(187u, og::ui::calculate_sell_value(member))
+        << "a base soldier sells for 75% of its 250-gold heart value";
+
+    member.strength = static_cast<short>(member.strength + 8);
+    guy valued(member);
+    const std::uint32_t heart_value =
+        static_cast<std::uint32_t>(valued.query_heart_value());
+    EXPECT_EQ(static_cast<std::uint32_t>(
+                  static_cast<std::uint64_t>(heart_value) * 3u / 4u),
+              og::ui::calculate_sell_value(member));
+
+    member.family = 99;
+    EXPECT_EQ(0u, og::ui::calculate_sell_value(member));
 }
 
 // --- count_family_members ---
@@ -849,6 +869,94 @@ TEST(PickerCommon, train_session_accept_force)
     ASSERT_TRUE(session.accept(true)); // force=true bypasses cost
     ASSERT_TRUE(save.team_list[0]->strength == orig_str + 5);
     ASSERT_TRUE(save.m_totalcash[0] == 0); // gold unchanged
+}
+
+TEST(PickerCommon, train_session_sell_checkpoint_failure_is_atomic)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[3] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[3]->name = "Bravo";
+    save.team_list[3]->teamnum = 2;
+    save.team_list[7] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[7]->name = "Charlie";
+    save.team_list[7]->teamnum = 1;
+    save.team_size = 3;
+    save.m_totalcash[2] = 1000;
+
+    og::ui::TrainSession session(save);
+    ASSERT_TRUE(session.seek_slot(3));
+    const std::uint32_t payout = session.current_sell_value();
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 9);
+    EXPECT_EQ(payout, session.current_sell_value())
+        << "unaccepted edits must not inflate the real member's sale price";
+
+    bool checkpoint_saw_intact_roster = false;
+    EXPECT_EQ(
+        og::ui::TrainSession::SellResult::CheckpointFailed,
+        session.sell_current([&] {
+            checkpoint_saw_intact_roster =
+                save.team_size == 3 && save.team_list[3] &&
+                save.team_list[3]->name == "Bravo" &&
+                save.m_totalcash[2] == 1000;
+            return false;
+        }));
+    EXPECT_TRUE(checkpoint_saw_intact_roster)
+        << "checkpoint must run before the first sale mutation";
+    EXPECT_EQ(3, save.team_size);
+    ASSERT_NE(nullptr, save.team_list[3]);
+    EXPECT_EQ("Bravo", save.team_list[3]->name);
+    EXPECT_EQ(1000u, save.m_totalcash[2]);
+    EXPECT_EQ(3, session.current_slot());
+    EXPECT_GT(session.working_copy().strength, session.original().strength);
+
+    EXPECT_EQ(
+        og::ui::TrainSession::SellResult::Sold,
+        session.sell_current([&] {
+            EXPECT_EQ(3, save.team_size);
+            EXPECT_EQ("Bravo", save.team_list[3]->name);
+            EXPECT_EQ(1000u, save.m_totalcash[2]);
+            return true;
+        }));
+    EXPECT_EQ(2, save.team_size);
+    EXPECT_EQ(1000u + payout, save.m_totalcash[2]);
+    ASSERT_NE(nullptr, save.team_list[0]);
+    ASSERT_NE(nullptr, save.team_list[1]);
+    EXPECT_EQ("Alpha", save.team_list[0]->name);
+    EXPECT_EQ("Charlie", save.team_list[1]->name);
+    for (int slot = 2; slot < MAX_TEAM_SIZE; ++slot)
+        EXPECT_EQ(nullptr, save.team_list[slot])
+            << "sale must leave the serialized roster prefix dense";
+    EXPECT_EQ(1, session.current_slot());
+    EXPECT_EQ("Charlie", session.working_copy().name);
+}
+
+TEST(PickerCommon, train_session_sell_last_member_clamps_and_saturates_wallet)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 99;
+    save.team_size = 1;
+    save.m_totalcash[SCORE_TEAM_COUNT - 1] =
+        std::numeric_limits<std::uint32_t>::max() - 10u;
+
+    og::ui::TrainSession session(save);
+    int checkpoint_calls = 0;
+    EXPECT_EQ(
+        og::ui::TrainSession::SellResult::Sold,
+        session.sell_current([&] {
+            ++checkpoint_calls;
+            return true;
+        }));
+    EXPECT_EQ(1, checkpoint_calls);
+    EXPECT_TRUE(session.empty());
+    EXPECT_EQ(0, save.team_size);
+    EXPECT_EQ(nullptr, save.team_list[0]);
+    EXPECT_EQ(std::numeric_limits<std::uint32_t>::max(),
+              save.m_totalcash[SCORE_TEAM_COUNT - 1]);
 }
 
 // Bug A9: the DETAILS submenu's promote button mutates the REAL team member
@@ -2188,7 +2296,11 @@ TEST(PickerCommon, cycle_respawn_mode_sequence)
     og::ui::cycle_respawn_mode(save);
     ASSERT_EQ(2, (int)save.respawn_mode) << "Heroes -> Everyone";
     og::ui::cycle_respawn_mode(save);
-    ASSERT_EQ(0, (int)save.respawn_mode) << "Everyone wraps back to Off";
+    ASSERT_EQ(3, (int)save.respawn_mode)
+        << "Everyone -> Team 1 Heroes Only";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode)
+        << "Team 1 Heroes Only wraps back to Off";
     og::ui::cycle_respawn_mode(save);
     ASSERT_EQ(1, (int)save.respawn_mode) << "the cycle repeats";
 
@@ -2270,6 +2382,9 @@ TEST(PickerCommon, format_respawn_mode_label)
     ASSERT_EQ("Respawns: Heroes", og::ui::format_respawn_mode_label(save));
     save.respawn_mode = 2;
     ASSERT_EQ("Respawns: Everyone", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 3;
+    ASSERT_EQ("Respawns: Team 1 Heroes",
+              og::ui::format_respawn_mode_label(save));
 
     // Out-of-set values render as the nearest sane end of the range.
     save.respawn_mode = -1;
@@ -2324,7 +2439,7 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
     // so every variant of every row label must fit.
     SaveData save;
     std::vector<std::string> labels;
-    for (short mode : {short(0), short(1), short(2)})
+    for (short mode : {short(0), short(1), short(2), short(3)})
     {
         save.respawn_mode = mode;
         labels.push_back(og::ui::format_respawn_mode_label(save));
@@ -3108,6 +3223,32 @@ TEST(BaseCampRoster, toggle_deploy_slot_flips_and_guards)
     EXPECT_EQ(0, og::ui::count_deployed_members(save));
     EXPECT_TRUE(og::ui::toggle_deploy_slot(save, 2)) << "flip back";
     EXPECT_TRUE(save.team_list[2]->deployed);
+}
+
+TEST(BaseCampRoster, move_up_swaps_with_previous_occupied_slot)
+{
+    SaveData save;
+    save.team_list[1] = make_base_camp_member("FIRST", FAMILY_SOLDIER);
+    save.team_list[4] = make_base_camp_member("SECOND", FAMILY_ARCHER);
+    save.team_list[7] = make_base_camp_member("THIRD", FAMILY_MAGE);
+    save.team_size = 3;
+
+    EXPECT_EQ(-1, og::ui::move_team_member_up(save, -1));
+    EXPECT_EQ(-1, og::ui::move_team_member_up(save, 0));
+    EXPECT_EQ(-1, og::ui::move_team_member_up(save, 2))
+        << "an empty slot is never a reorder target";
+    EXPECT_EQ(-1, og::ui::move_team_member_up(save, 1))
+        << "the first occupied slot cannot move farther up";
+
+    EXPECT_EQ(4, og::ui::move_team_member_up(save, 7))
+        << "sparse holes are skipped when finding the predecessor";
+    ASSERT_NE(nullptr, save.team_list[4]);
+    ASSERT_NE(nullptr, save.team_list[7]);
+    EXPECT_EQ("THIRD", save.team_list[4]->name);
+    EXPECT_EQ("SECOND", save.team_list[7]->name);
+    EXPECT_EQ(1, og::ui::move_team_member_up(save, 4));
+    EXPECT_EQ("THIRD", save.team_list[1]->name);
+    EXPECT_EQ("FIRST", save.team_list[4]->name);
 }
 
 TEST(BaseCampRoster, format_row_clips_every_column)

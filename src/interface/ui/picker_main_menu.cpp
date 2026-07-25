@@ -100,9 +100,8 @@ bool picker_prepare_new_game_setup()
 	grab_mouse();
 	game->clear();
 
-	// Clear the labeling counter
-	for (int i = 0; i < NUM_FAMILIES; i++)
-		og::runtime::current_session->numbought_[i] = 0;
+	// Clear the playable-family labeling counters.
+	og::runtime::current_session->numbought_.fill(0);
 
     return true;
 }

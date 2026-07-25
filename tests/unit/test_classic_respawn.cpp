@@ -162,13 +162,20 @@ TEST(ClassicRespawn, predicate_and_suppression_truth_table)
     EXPECT_FALSE(og::sim::classic_respawn_active(w));
     EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w));
 
-    // Classic world, heroes / everyone: active, team wipe suppressed.
+    // Classic world, heroes / everyone: active, every team wipe suppressed.
     w.respawn_mode = 1;
     EXPECT_TRUE(og::sim::classic_respawn_active(w));
     EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
     w.respawn_mode = 2;
     EXPECT_TRUE(og::sim::classic_respawn_active(w));
     EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
+
+    // Team 1 Heroes mode is active but protects only internal team 0.
+    w.respawn_mode = 3;
+    EXPECT_TRUE(og::sim::classic_respawn_active(w));
+    EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
+    EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w, 0));
+    EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w, 1));
 
     // CTF world type: the classic engine never activates, even with the
     // mode set. An inactive CTF match suppresses nothing.
@@ -185,6 +192,43 @@ TEST(ClassicRespawn, predicate_and_suppression_truth_table)
     EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
     w.ctf.winner_team = 0;
     EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w));
+}
+
+TEST(ClassicRespawn, team_one_heroes_mode_filters_corpses_and_control_retention)
+{
+    ClassicWorld fx;
+    GameWorld& w = fx.world();
+    w.respawn_mode = og::sim::kRespawnModeTeamOneHeroes;
+    w.ctf_requested_respawn_ticks = 120;
+
+    walker* const team_one_hero =
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 160, 160, 1);
+    walker* const team_two_hero =
+        fx.spawn_hero(FAMILY_ARCHER, 1, 224, 160, 2);
+    walker* const team_one_ai =
+        fx.spawn_living(FAMILY_SOLDIER, 0, 288, 160);
+    ASSERT_NE(nullptr, team_one_hero);
+    ASSERT_NE(nullptr, team_two_hero);
+    ASSERT_NE(nullptr, team_one_ai);
+    team_one_hero->set_spawn_point(128, 128, 0);
+    team_two_hero->set_spawn_point(192, 128, 0);
+    team_one_ai->set_spawn_point(256, 128, 0);
+
+    fx.kill(team_one_hero);
+    fx.kill(team_two_hero);
+    fx.kill(team_one_ai);
+
+    EXPECT_TRUE(
+        og::sim::respawn_retains_player_control(w, team_one_hero));
+    EXPECT_FALSE(
+        og::sim::respawn_retains_player_control(w, team_two_hero));
+    EXPECT_FALSE(og::sim::respawn_retains_player_control(w, team_one_ai));
+
+    og::sim::classic_respawn_run_tick(w);
+    ASSERT_EQ(1u, w.ctf.respawn_queue.size());
+    EXPECT_EQ(team_one_hero->entity_id(),
+              w.ctf.respawn_queue.front().walker_entity_id);
+    EXPECT_EQ(0, w.ctf.respawn_queue.front().team);
 }
 
 TEST(ClassicRespawn, hero_scheduled_on_death_and_revives_at_spawn_point)
@@ -496,18 +540,23 @@ TEST(ClassicRespawn, server_reclaims_control_after_classic_revive)
 
     fx.kill(hero);
     bool reclaimed = false;
+    bool retained_assignment = true;
     for (int i = 0; i < 40 && !reclaimed; ++i)
     {
         server.step();
+        retained_assignment =
+            retained_assignment && server.player_control(0) == hero;
         reclaimed = (server.player_control(0) == hero && !hero->dead());
     }
 
     ASSERT_TRUE(reclaimed)
-        << "the server must rebind the revived walker to its player";
+        << "the server must leave the revived walker bound to its player";
+    EXPECT_TRUE(retained_assignment)
+        << "the authoritative seat must keep the same entity while dead";
     EXPECT_EQ(0, fx.world().ending)
         << "an active classic respawn mode suppresses the team-wipe endgame";
-    EXPECT_GT(fx.world().tick_count_, 13u)
-        << "the authoritative world must keep ticking through the death";
+    EXPECT_GE(fx.world().tick_count_, 13u)
+        << "the authoritative world must run the full respawn delay";
     EXPECT_EQ(0, hero->user());
     EXPECT_EQ(128, hero->xpos());
     EXPECT_EQ(128, hero->ypos());
@@ -635,6 +684,10 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
     w.respawn_mode = 2;
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "pending hostile AI";
+    w.respawn_mode = 3;
+    EXPECT_FALSE(og::sim::classic_respawn_pending_hostile_foe(w))
+        << "Team 1 Heroes mode never adopts AI queue entries";
+    w.respawn_mode = 2;
     w.allied_mode = 1;
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "PVP seating mode does not change AI hostility";

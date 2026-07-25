@@ -19,7 +19,8 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0;
-    // Difficulty submenu settings (0 = legacy default behavior for all three).
+    // Difficulty submenu settings (respawn_mode: 0 off, 1 heroes,
+    // 2 everyone, 3 Team 1 heroes only).
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
     std::int16_t keep_fallen_heroes = 0;

@@ -166,7 +166,7 @@ void picker_set_train_seed_slot(int slot)
 // (networked lobbies take the [SAVE-F1] owner-preserving merge write).
 // Called from every roster-mutation site: deploy toggle, hire, train accept,
 // TRAIN/Base Camp team change, and rename.
-void picker_base_camp_after_roster_mutation()
+void picker_base_camp_after_roster_mutation(int additional_owned_team)
 {
     picker_lobby_sync_roster_from_save();
     (void)picker_lobby_set_ready(false);
@@ -174,7 +174,12 @@ void picker_base_camp_after_roster_mutation()
     // failed autosave (§3.8 — callers surface but don't crash).
     (void)og::ui::company_autosave_after_mutation(
         og::runtime::current_session->myscreen_->save_data,
-        picker_lobby_is_networked());
+        picker_lobby_is_networked(), additional_owned_team);
+}
+
+void picker_base_camp_after_roster_mutation()
+{
+    picker_base_camp_after_roster_mutation(-1);
 }
 
 // §2.6: gather the lobby/save inputs for the pure GO/READY state table.
@@ -1798,11 +1803,63 @@ void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
         buttons[13].nav.right = -1;  // inc_level
         buttons[15].nav.down = -1;   // rename
         buttons[16].nav.down = -1;   // details
+        if (num_buttons > kTrainMenuSellIndex)
+            buttons[kTrainMenuSellIndex].nav.up = 16; // sell -> details
     }
 #else
     (void)buttons;
     (void)num_buttons;
 #endif
+}
+
+Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
+{
+    if (row != kTrainMenuSellIndex || !pks().train_session ||
+        pks().train_session->empty())
+    {
+        return MENU_OK;
+    }
+    if (!picker_lobby_save_slot_editable(
+            pks().train_session->current_slot()))
+    {
+        return MENU_OK;
+    }
+
+    const guy& member = pks().train_session->original();
+    const int sold_team = std::clamp(
+        static_cast<int>(member.teamnum), 0,
+        static_cast<int>(SCORE_TEAM_COUNT) - 1);
+    const std::uint32_t payout =
+        pks().train_session->current_sell_value();
+    const std::string message = std::format(
+        "SELL {} FOR {} GOLD?", member.name, payout);
+    if (!yes_or_no_prompt("SELL CHARACTER?", message.c_str(), false))
+        return MENU_REDRAW;
+
+    const og::ui::TrainSession::SellResult result =
+        pks().train_session->sell_current([] {
+            return og::data::backup_company_now(
+                og::data::active_company_slot());
+        });
+    if (result == og::ui::TrainSession::SellResult::CheckpointFailed)
+    {
+        popup_dialog("SELL CHARACTER", "BACKUP FAILED\nCHARACTER NOT SOLD");
+        return MENU_REDRAW;
+    }
+    if (result != og::ui::TrainSession::SellResult::Sold)
+        return MENU_OK;
+
+    picker_base_camp_after_roster_mutation(sold_team);
+    if (pks().train_session->empty())
+    {
+        og::runtime::current_session->current_guy_.reset();
+        pks().old_guy = nullptr;
+        og::runtime::current_session->editguy_ = -1;
+        return MENU_EXIT;
+    }
+
+    sync_current_guy_from_train();
+    return MENU_REDRAW;
 }
 
 // The legacy reset tail. On MENU_REDRAW resets: the DETAILS submenu can

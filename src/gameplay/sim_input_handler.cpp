@@ -11,6 +11,7 @@
 
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -134,6 +135,17 @@ SimInputResult sim_process_player_input(
     }
     if (!control || control->dead())
     {
+        // Respawning players keep their exact entity assignment. The normal
+        // death path below auto-claims another teammate, which makes the
+        // player miss the countdown and then leaves the revived hero as AI.
+        // This predicate also covers the just-died, pre-death-scan tick.
+        if (control != nullptr &&
+            og::sim::respawn_retains_player_control(level, control))
+        {
+            result.new_control = control;
+            return result;
+        }
+
         // §4.4 site 2 (death auto-switch / entry claim): Follow ⇒ null seat,
         // NO endgame request (server broadcasts ControlChange entity 0);
         // EndGame ⇒ today's result fields; Claimed ⇒ today's claim tail.

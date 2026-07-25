@@ -401,7 +401,7 @@ TEST(MenuEnginePins, trainmenu_exact_table)
         // one; kTrainMenuChangeTeamIndex (17) anchors the live label write.
         {"accept", "ACCEPT", KEYSTATE_UNKNOWN, 80, 170, 80, 20,
          button_action_id(ButtonAction::EditGuy), -1,
-         MenuNav{.up = 13, .left = 18}},
+         MenuNav{.up = 13, .left = 18, .right = 19}},
         {"rename", "RENAME", KEYSTATE_UNKNOWN, 174, 8, 64, 22,
          button_action_id(ButtonAction::NameGuy), 1,
          MenuNav{.down = 17, .left = 1, .right = 16}},
@@ -410,12 +410,15 @@ TEST(MenuEnginePins, trainmenu_exact_table)
          MenuNav{.down = 17, .left = 15}},
         {"change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133,
          22, button_action_id(ButtonAction::ChangeTeam), 1,
-         MenuNav{.up = 16, .down = 14, .left = 13}},
+         MenuNav{.up = 16, .down = 19, .left = 13}},
         {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
          MenuNav{.up = 12, .right = 14}},
+        {"sell", "SELL", KEYSTATE_UNKNOWN, 240, 170, 64, 20,
+         button_action_id(ButtonAction::MenuSpecRow), 19,
+         MenuNav{.up = 17, .left = 14}},
     };
-    static_assert(std::size(kExpected) == 19,
+    static_assert(std::size(kExpected) == 20,
                   "train table: change_team at kTrainMenuChangeTeamIndex");
     button* buttons = picker_trainmenu_buttons();
     const int count = picker_trainmenu_button_count();

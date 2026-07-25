@@ -102,6 +102,7 @@ void picker_train_menu_engine_rewire(button* buttons, int num_buttons,
                                      int& highlighted_button);
 void picker_train_menu_engine_on_reset(void* screen_state);
 void picker_train_menu_engine_draw_content(void* screen_state);
+Sint32 picker_train_menu_engine_on_spec_row(int row, void* screen_state);
 // PROGRESS / VIEW LEVEL engine hooks (§1.8 step 6; defined beside their
 // file-local helpers in picker_team_build.cpp).
 void picker_progress_menu_engine_draw_background(void* screen_state);
@@ -1558,7 +1559,7 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "accept", .label = "ACCEPT",
      .x = 80, .y = 170, .w = 80, .h = 20,
      .action = ButtonAction::EditGuy, .arg = -1,
-     .nav = {.up = 13, .left = 18}},
+     .nav = {.up = 13, .left = 18, .right = kTrainMenuSellIndex}},
     {.id = "rename", .label = "RENAME",
      .x = 174, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::NameGuy, .arg = 1,
@@ -1570,15 +1571,19 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "change_team", .label = "Playing on Team X",
      .x = 174, .y = 138, .w = 133, .h = 22,
      .action = ButtonAction::ChangeTeam, .arg = 1,
-     .nav = {.up = 16, .down = 14, .left = 13},
+     .nav = {.up = 16, .down = kTrainMenuSellIndex, .left = 13},
      .state_override = &train_change_team_row_state},
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 170, .w = 40, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
      .nav = {.up = 12, .right = 14}},
+    {.id = "sell", .label = "SELL",
+     .x = 240, .y = 170, .w = 64, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kTrainMenuSellIndex,
+     .nav = {.up = kTrainMenuChangeTeamIndex, .left = 14}},
 };
 
-static_assert(std::size(kTrainMenuRows) == 19,
+static_assert(std::size(kTrainMenuRows) == 20,
               "train table anchor: change_team sits at "
               "kTrainMenuChangeTeamIndex");
 
@@ -1648,8 +1653,9 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // VIEW TEAM screen retired into it): 8 rows/page at the round-6 14px pitch
 // (§9.14 — round 4 trades one row for clear header/hint margins) — a deploy
 // toggle (23,45+14r,14,10), team-color cycler (61,45+14r,10,10), and the
-// §9.11 row-body train zone (84,45+14r,228,10; the TRAIN column is deleted,
-// clicking the row trains) — the page cluster top-right (< p/N >), and the bottom command
+// §9.11 row-body train zone (84,45+14r,214,10; the TRAIN column is deleted,
+// clicking the row trains), right-edge move-up button — the page cluster
+// top-right (< p/N >), and the bottom command
 // strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
@@ -1685,9 +1691,9 @@ constexpr int kBaseCampTeamHeaderX = 54;
 constexpr int kBaseCampNameColumnX = 88;
 constexpr int kBaseCampSoloClassColumnX = 164;
 constexpr int kBaseCampSoloLevelColumnX = 236;
-constexpr int kBaseCampSoloExpColumnX = 274;
+constexpr int kBaseCampSoloExpColumnX = 264;
 constexpr int kBaseCampNetCompanyColumnX = 160;
-constexpr int kBaseCampNetLevelColumnX = 292;
+constexpr int kBaseCampNetLevelColumnX = 280;
 constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
@@ -1783,9 +1789,10 @@ RowState base_camp_add_seat_row_state(
 // Static nav encodes the full-page shape (8 visible rows, pagers hidden,
 // GO visible); the per-frame rewire recomputes every link from the live
 // state anyway (§2.5 keyboard-nav pattern b). §9.11 (G4): the TRAIN column
-// is deleted — the row BODY (84,y,228,10) is a no_draw hit zone spanning
+// is deleted — the row BODY (84,y,214,10) is a no_draw hit zone spanning
 // name/class/level/exp ink. The separate TEAM color chip at x=61 cycles the
-// character's team in solo play. no_draw, not a quiet face: the row text IS the affordance
+// character's team in solo play and the right-edge ^ moves it up. no_draw,
+// not a quiet face: the row text IS the affordance
 // (a bevel would double-frame every row against the §9.5.2 panel), and the
 // keyboard draw_highlight pulse draws regardless of no_draw, so the row
 // highlight reads — the §2.5 foreign-hit-zone precedent.
@@ -1798,7 +1805,7 @@ RowState base_camp_add_seat_row_state(
              .right = kBaseCampTeamChipBase + (i)}}
 #define OG_BASE_CAMP_ROW(i)                                                  \
     {.id = "roster_row_" #i, .label = "",                                    \
-     .x = 84, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 228,        \
+     .x = 84, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 214,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampRowBodyBase + (i),                                      \
      .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
@@ -1816,6 +1823,13 @@ RowState base_camp_add_seat_row_state(
                             : kCreateMenuGoIndex,                             \
              .left = (i), .right = kBaseCampRowBodyBase + (i)},              \
      .no_draw = true}
+#define OG_BASE_CAMP_MOVE_UP(i)                                              \
+    {.id = "roster_up_" #i, .label = "^",                                    \
+     .x = 302, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 10,        \
+     .h = 10, .action = ButtonAction::MenuSpecRow,                           \
+     .arg = kBaseCampMoveUpBase + (i),                                       \
+     .nav = {.left = kBaseCampRowBodyBase + (i)},                            \
+     .hidden = true}
 
 constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_DEP(0), OG_BASE_CAMP_DEP(1), OG_BASE_CAMP_DEP(2),
@@ -1937,11 +1951,16 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .nav = {.down = kCreateMenuGoIndex,
              .left = kBaseCampSeatPageNextIndex},
      .state_override = &base_camp_add_seat_row_state},
+    OG_BASE_CAMP_MOVE_UP(0), OG_BASE_CAMP_MOVE_UP(1),
+    OG_BASE_CAMP_MOVE_UP(2), OG_BASE_CAMP_MOVE_UP(3),
+    OG_BASE_CAMP_MOVE_UP(4), OG_BASE_CAMP_MOVE_UP(5),
+    OG_BASE_CAMP_MOVE_UP(6), OG_BASE_CAMP_MOVE_UP(7),
 };
 
 #undef OG_BASE_CAMP_DEP
 #undef OG_BASE_CAMP_ROW
 #undef OG_BASE_CAMP_TEAM
+#undef OG_BASE_CAMP_MOVE_UP
 
 static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
@@ -2545,14 +2564,24 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     }
 
     // Ownership per visible row (own row => a real deploy toggle + the
-    // §9.11 row-body train zone; solo adds the team-color cycler).
+    // §9.11 row-body train zone; solo adds the team-color cycler). Every
+    // owned member except the first also exposes a right-edge move-up button.
     std::array<bool, kBaseCampRosterRowsPerPage> owned_row{};
+    std::array<bool, kBaseCampRosterRowsPerPage> movable_row{};
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         if (r >= visible)
             continue;
+        const int display_index = first + r;
         const BaseCampDisplaySlot& slot =
-            st->slots[static_cast<std::size_t>(first + r)];
+            st->slots[static_cast<std::size_t>(display_index)];
         owned_row[static_cast<std::size_t>(r)] = slot.owned;
+        movable_row[static_cast<std::size_t>(r)] =
+            slot.owned &&
+            std::any_of(st->slots.begin(),
+                        st->slots.begin() + display_index,
+                        [](const BaseCampDisplaySlot& candidate) {
+                            return candidate.owned;
+                        });
     }
     const auto next_owned = [&](int from) {
         for (int r = from; r < visible; ++r)
@@ -2568,17 +2597,33 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     };
     const int first_owned = next_owned(0);
     const int last_owned = prev_owned(visible - 1);
+    const auto next_movable = [&](int from) {
+        for (int r = from; r < visible; ++r)
+            if (movable_row[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
+    const auto prev_movable = [&](int from) {
+        for (int r = from; r >= 0; --r)
+            if (movable_row[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
 
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         const bool on = r < visible;
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
         const bool team_cycler = own && !networked;
+        const bool move_up =
+            on && movable_row[static_cast<std::size_t>(r)];
         button& dep = buttons[r];
         button& body = buttons[kBaseCampRowBodyBase + r];
         button& chip = buttons[kBaseCampTeamChipBase + r];
+        button& move = buttons[kBaseCampMoveUpBase + r];
         dep.hidden = !on;
         body.hidden = !own;
         chip.hidden = !team_cycler;
+        move.hidden = !move_up;
         if (!on)
             continue;
 
@@ -2628,7 +2673,22 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                     ? kBaseCampRowBodyBase + down_owned
                     : seat_card_anchor,
                 .left = team_cycler ? kBaseCampTeamChipBase + r : r,
-                .right = pagers ? kBaseCampPagePrevIndex : -1};
+                .right = move_up
+                    ? kBaseCampMoveUpBase + r
+                    : (pagers ? kBaseCampPagePrevIndex : -1)};
+            if (move_up) {
+                const int up_movable = prev_movable(r - 1);
+                const int down_movable = next_movable(r + 1);
+                move.nav = {
+                    .up = up_movable >= 0
+                        ? kBaseCampMoveUpBase + up_movable
+                        : -1,
+                    .down = down_movable >= 0
+                        ? kBaseCampMoveUpBase + down_movable
+                        : seat_card_anchor,
+                    .left = kBaseCampRowBodyBase + r,
+                    .right = pagers ? kBaseCampPagePrevIndex : -1};
+            }
             if (team_cycler) {
                 chip.nav = {
                     .up = r > 0 ? kBaseCampTeamChipBase + r - 1 : -1,
@@ -3059,8 +3119,8 @@ void base_camp_on_reset(void* screen_state)
     base_camp_refresh_rows(*state);
 }
 
-// G3 row dispatch: deploy toggles, team-color cyclers, the §9.11 row-body
-// train affordance, and the pagers.
+// G3 row dispatch: deploy toggles, team-color cyclers, roster move-up
+// controls, the §9.11 row-body train affordance, and the pagers.
 Sint32 base_camp_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
@@ -3193,11 +3253,16 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     const bool is_team_chip =
         row >= kBaseCampTeamChipBase &&
         row < kBaseCampTeamChipBase + kBaseCampRosterRowsPerPage;
-    if (!is_deploy && !is_row_body && !is_team_chip)
+    const bool is_move_up =
+        row >= kBaseCampMoveUpBase &&
+        row < kBaseCampMoveUpBase + kBaseCampRosterRowsPerPage;
+    if (!is_deploy && !is_row_body && !is_team_chip && !is_move_up)
         return 0;
     const int visual_row = is_row_body
         ? row - kBaseCampRowBodyBase
-        : (is_team_chip ? row - kBaseCampTeamChipBase : row);
+        : (is_team_chip
+               ? row - kBaseCampTeamChipBase
+               : (is_move_up ? row - kBaseCampMoveUpBase : row));
     const int idx = st->page.first_index() + visual_row;
     if (idx < 0 || idx >= static_cast<int>(st->slots.size()))
         return 0;  // stale click on a row hidden this frame
@@ -3219,6 +3284,20 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     const int slot = display.save_slot;
     if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
         return 0;
+
+    if (is_move_up) {
+        if (!picker_lobby_save_slot_editable(slot)) {
+            popup_dialog("ORDER", "LOCKED");
+            return MENU_OK;
+        }
+        const int moved_to = move_team_member_up(save, slot);
+        if (moved_to >= 0) {
+            TRACE("basecamp", "move_up slot=%d to=%d", slot, moved_to);
+            picker_base_camp_after_roster_mutation();
+            base_camp_refresh_rows(*st);
+        }
+        return MENU_OK;
+    }
 
     if (is_team_chip) {
         // Multiplayer assigns teams through lobby seats, so this solo-only
@@ -4290,6 +4369,7 @@ const MenuScreenSpec& train_menu_screen_spec()
         // The legacy MENU_REDRAW reset tail (promotion resync, bug A9) —
         // harmless on MENU_OK resets; see the hook comment.
         .on_reset = &picker_train_menu_engine_on_reset,
+        .on_spec_row = &picker_train_menu_engine_on_spec_row,
         // Every exit-bearing path carried MENU_EXIT; the wrapper folds it
         // to MENU_REDRAW unless a start was selected (legacy shape).
         .exit_value = MENU_EXIT,

@@ -2985,17 +2985,17 @@ TEST(WorldSnapshot, difficulty_submenu_world_scalars_round_trip_to_mirror)
     source.resize_grid(32, 32);
     fill_world_grid(source, PIX_GRASS1);
 
-    source.respawn_mode = 2;
+    source.respawn_mode = 3;
     source.generator_rate = 200;
 
     const og::sim::WorldSnapshot keyframe =
         og::sim::capture_keyframe_snapshot(source);
-    EXPECT_EQ(2, keyframe.respawn_mode);
+    EXPECT_EQ(3, keyframe.respawn_mode);
     EXPECT_EQ(200, keyframe.generator_rate);
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
     const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
-    EXPECT_EQ(2, decoded.respawn_mode);
+    EXPECT_EQ(3, decoded.respawn_mode);
     EXPECT_EQ(200, decoded.generator_rate);
 
     TestGameWorld mirror_fx;
@@ -3004,7 +3004,7 @@ TEST(WorldSnapshot, difficulty_submenu_world_scalars_round_trip_to_mirror)
     ASSERT_EQ(0, mirror.respawn_mode);
     ASSERT_EQ(0, mirror.generator_rate);
     og::sim::apply_snapshot(mirror, decoded);
-    EXPECT_EQ(2, mirror.respawn_mode)
+    EXPECT_EQ(3, mirror.respawn_mode)
         << "respawn_mode must reach the mirror world through apply";
     EXPECT_EQ(200, mirror.generator_rate)
         << "generator_rate must reach the mirror world through apply";
@@ -3012,7 +3012,7 @@ TEST(WorldSnapshot, difficulty_submenu_world_scalars_round_trip_to_mirror)
     // Delta merge carries the scalars onto a stale baseline.
     og::sim::WorldSnapshot baseline;
     og::sim::apply_delta(baseline, decoded);
-    EXPECT_EQ(2, baseline.respawn_mode);
+    EXPECT_EQ(3, baseline.respawn_mode);
     EXPECT_EQ(200, baseline.generator_rate);
 }
 
