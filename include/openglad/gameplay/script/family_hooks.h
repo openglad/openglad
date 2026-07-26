@@ -149,6 +149,12 @@ std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
 std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
                                     treasure* self, walker* eater);
 
+// Generator-family hook: post-processes a freshly generated spawn after the
+// descriptor-driven setup (level roll, lifetime, ani). Pure script hook —
+// the C++ generator descriptors carry no callbacks.
+bool generator_customize_spawn(int generator_family, walker* generator,
+                               walker* spawn);
+
 // Level-script hooks (og.register_level_hooks / og.set_entity_hooks). All
 // are inert (cheap early-out) when no pack registered matching hooks, so
 // script-less sims stay byte-identical.

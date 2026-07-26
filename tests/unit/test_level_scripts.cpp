@@ -154,6 +154,29 @@ TEST_F(LevelScriptsTest, fx_spawns_do_not_fire_entity_spawn)
     EXPECT_EQ(1u, vm_log().size()) << "generator spawns dispatch";
 }
 
+TEST_F(LevelScriptsTest, generator_customize_spawn_dispatches)
+{
+    register_pack_script(
+        {"test.pack", "gen.lua",
+         "og.register_hooks('generator', 'core:tent', {\n"
+         "  customize_spawn = function(gen, spawn)\n"
+         "    og.log('customized', og.entity_id(gen), og.entity_id(spawn))\n"
+         "    spawn:set_lifetime(123)\n"
+         "  end,\n"
+         "})\n"});
+    walker* generator = world.add_ob(Order::Generator, 0 /*FAMILY_TENT*/);
+    walker* spawn = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, generator);
+    ASSERT_NE(nullptr, spawn);
+    const bool ran = hooks::generator_customize_spawn(0, generator, spawn);
+    EXPECT_TRUE(ran);
+    EXPECT_EQ(123, spawn->lifetime());
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("customized\t" + std::to_string(generator->entity_id()) + "\t" +
+                  std::to_string(spawn->entity_id()),
+              vm_log().back());
+}
+
 TEST_F(LevelScriptsTest, no_level_hooks_means_no_vm_activity)
 {
     register_pack_script(

@@ -649,6 +649,10 @@ walker  * walker::fire()
 				if (gfd->clear_owner)
 					weapon->set_owner(nullptr);
 			}
+			// Scripted generators post-process the configured spawn
+			// (inert unless a pack registered customize_spawn).
+			og::script::hooks::generator_customize_spawn(family(), this,
+			                                             weapon);
 		}
 		// Living-family() weapon modifications handled by on_fire_weapon above
 		return weapon;
