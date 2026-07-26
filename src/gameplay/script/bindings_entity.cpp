@@ -613,6 +613,14 @@ int s_frozen_delay_raw(lua_State* L)
     return 1;
 }
 
+// Pre-transform family (cleric resurrect restores the corpse's old family).
+int s_old_family(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(stats_arg(L)->old_family()));
+    return 1;
+}
+
 int s_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
@@ -1056,8 +1064,36 @@ int og_emit_notification(lua_State* L)
         return luaL_error(L, "no active context");
     size_t len = 0;
     const char* s = luaL_checklstring(L, 1, &len);
-    og::sim::emit_notification(current_game->sim_events,
-                               std::string(s, len));
+    const auto duration =
+        static_cast<std::uint32_t>(luaL_optinteger(L, 2, 0));
+    og::sim::emit_notification(current_game->sim_events, std::string(s, len),
+                               duration);
+    return 0;
+}
+
+// og.emit_event(kind, a, b) — raw sim event (kinds in og.C.EVENT_*).
+int og_emit_event(lua_State* L)
+{
+    if (current_game == nullptr)
+        return luaL_error(L, "no active context");
+    og::sim::emit_event(
+        current_game->sim_events,
+        static_cast<og::sim::EventKind>(luaL_checkinteger(L, 1)),
+        static_cast<std::uint32_t>(luaL_optinteger(L, 2, 0)),
+        static_cast<std::uint32_t>(luaL_optinteger(L, 3, 0)));
+    return 0;
+}
+
+int og_my_team(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(world_arg(L)->my_team));
+    return 1;
+}
+
+int og_set_palette(lua_State* L)
+{
+    world_arg(L)->current_palette_id =
+        static_cast<std::uint8_t>(luaL_checkinteger(L, 1));
     return 0;
 }
 
@@ -1310,6 +1346,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_frozen_delay", s_frozen_delay},
     {"s_set_frozen_delay", s_set_frozen_delay},
     {"s_frozen_delay_raw", s_frozen_delay_raw},
+    {"s_old_family", s_old_family},
     {"s_current_distance", s_current_distance},
     {"s_set_current_distance", s_set_current_distance},
     {"s_last_distance", s_last_distance},
@@ -1396,6 +1433,9 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"emit_sound", og_emit_sound},
     {"emit_positional_sound", og_emit_positional_sound},
     {"emit_notification", og_emit_notification},
+    {"emit_event", og_emit_event},
+    {"my_team", og_my_team},
+    {"set_palette", og_set_palette},
     {"soften", og_soften},
     {"charm_duration", og_charm_duration},
     {"freeze_duration", og_freeze_duration},
@@ -1496,6 +1536,17 @@ const NamedConst kConstants[] = {
     {"SOUND_ROAR", SOUND_ROAR},
     {"SOUND_MONEY", SOUND_MONEY},
     {"SOUND_EAT", SOUND_EAT},
+    // Sim event kinds (og.emit_event)
+    {"EVENT_PLAY_SOUND",
+     static_cast<lua_Integer>(og::sim::EventKind::PlaySound)},
+    {"EVENT_NOTIFICATION",
+     static_cast<lua_Integer>(og::sim::EventKind::Notification)},
+    {"EVENT_SET_PALETTE",
+     static_cast<lua_Integer>(og::sim::EventKind::SetPalette)},
+    {"EVENT_REQUEST_REDRAW",
+     static_cast<lua_Integer>(og::sim::EventKind::RequestRedraw)},
+    {"EVENT_DAMAGE_TILE",
+     static_cast<lua_Integer>(og::sim::EventKind::DamageTile)},
     // Combat caps used by family code
     {"SHOT_DRAIN_CAP", og::combat::kShotDrainCap},
     {"MP_POOL_DAMAGE_CAP", og::combat::kMpPoolDamageCap},
