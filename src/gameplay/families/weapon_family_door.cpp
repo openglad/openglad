@@ -5,34 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+// Behavior lives in packs/core/scripts/weapon_door.lua (design doc §9a);
+// this file now carries descriptor DATA only.
 #include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/gameplay/weap.h>
-#include <openglad/gameplay/statistics.h>
-#include <openglad/core/terrain_types.h>
 #include <openglad/core/sound_ids.h>
-
-static bool door_on_death(weap* self)
-{
-    walker* newob = current_game->world->add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
-    if (!newob)
-        return false;
-    newob->set_ani_type(ANI_DOOR_OPEN);
-    newob->set_floor(self->floor());  // opened door stays on its floor (A8)
-    newob->setxy(self->xpos(), self->ypos());
-    newob->stats()->set_level(self->stats()->level());
-    newob->set_team_num(self->team_num());
-    // What way are we 'facing'?
-    if (current_game->world->mysmoother.query_genre_x_y((self->xpos()/GRID_SIZE),(self->ypos()/GRID_SIZE)-1)
-            == TYPE_WALL) // a wall above us?
-    {
-        newob->set_curdir(FACE_RIGHT);
-    }
-    else
-    {
-        self->set_curdir(FACE_UP);
-    }
-    return true;
-}
+#include <openglad/core/constants.h>
 
 const WeaponFamilyDescriptor& describe_weapon_door()
 {
@@ -45,7 +22,7 @@ const WeaponFamilyDescriptor& describe_weapon_door()
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,
-        .on_death = door_on_death,
+        .on_death = nullptr,
         .on_animate = nullptr,
         .on_hit_target = nullptr,
     };

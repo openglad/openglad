@@ -6,6 +6,8 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
@@ -367,7 +369,6 @@ TEST(CoverageMisc, coverage_r17_save_data_reset_defaults)
 } // namespace detail_coverage_r17
 
 // --- From test_coverage_r18.cpp ---
-const FamilyDescriptor& describe_family_cleric();
 
 namespace detail_coverage_r18 {
 namespace {
@@ -751,7 +752,7 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
 
 TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
@@ -1062,7 +1063,7 @@ void assign_short_ani(walker* w)
 TEST(CoverageMisc, coverage_r19_family_cleric_check_special_true_paths)
 {
     R19Fixture fx;
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
 
     living* self = add_living(fx, FAMILY_CLERIC, 0, 64, 64);
     living* ally = add_living(fx, FAMILY_SOLDIER, 0, 70, 64);
@@ -1138,8 +1139,6 @@ TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
 } // namespace detail_coverage_r19
 
 // --- From test_coverage_r20.cpp ---
-const FamilyDescriptor& describe_family_mage();
-const FamilyDescriptor& describe_family_druid();
 
 namespace detail_coverage_r20 {
 namespace {
@@ -1433,7 +1432,7 @@ TEST(CoverageMisc, coverage_r20_smooth_dark_grass_specific_branches)
 
 TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     living self;
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
@@ -1468,7 +1467,7 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
 
 TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
 {
-    const FamilyDescriptor& desc = describe_family_mage();
+    const FamilyDescriptor& desc = describe_family(FAMILY_MAGE);
     living self;
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
@@ -1495,7 +1494,7 @@ TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
 
 TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
 {
-    const FamilyDescriptor& desc = describe_family_druid();
+    const FamilyDescriptor& desc = describe_family(FAMILY_DRUID);
     R20Fixture fx;
 
     living* self = add_living(fx, FAMILY_DRUID, 0, 64, 64);

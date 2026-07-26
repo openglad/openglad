@@ -18,13 +18,16 @@
 
 struct FamilyDescriptor;
 
-// Returns the descriptor for the given living family ID: the core pins
-// (0..NUM_FAMILIES-1) plus any slot a class pack has installed (ids up to
-// NUM_FAMILY_SLOTS-1). Returns nullptr for out-of-range IDs and for slots no
-// pack has claimed — "nullptr means this family does not exist".
+// Returns the descriptor for the given living family ID. EVERY slot starts
+// free: the core ids (0..NUM_FAMILIES-1) are declared by packs/core, the
+// rest by whatever mod packs are mounted, and both arrive through
+// install_classpacks(). Returns nullptr for out-of-range IDs and for slots
+// no pack has claimed — "nullptr means this family does not exist".
 const FamilyDescriptor* get_family_descriptor(int family_id);
 
-// Initialize the family registry. Call once at startup before any lookups.
+// Lays down the registry's per-slot defaults. Call once at startup; it no
+// longer installs any family (design doc §9a stage B), so a lookup before
+// the class packs are mounted answers nullptr.
 void init_family_registry();
 
 // Overwrites one living-family slot (classpack install: copy the current
@@ -43,6 +46,22 @@ bool set_family_descriptor(int family_id, const FamilyDescriptor& d);
 const FamilyDescriptor* get_family_descriptor_install_slot(int family_id);
 
 // Drops every pack-installed living family (ids >= NUM_FAMILIES) back to
-// "free"; the core pins are untouched. Runs before a fresh install pass so
-// an unmounted pack leaves no family behind.
+// "free"; the core span is untouched (it is re-installed from the core pack
+// moments later). Runs before a fresh install pass so an unmounted pack
+// leaves no family behind.
 void reset_family_registry_mod_slots();
+
+// The lowest core living id (< NUM_FAMILIES) no mounted pack has declared,
+// or -1 when the core span is complete. Feeds the startup check below.
+int first_unpopulated_core_family_slot();
+
+// Throws std::runtime_error unless every core slot of all five registries
+// has been installed by a mounted class pack. `context` names the caller
+// ("io_init") and appears in the message.
+//
+// The core pack is a hard runtime dependency, exactly like the user data
+// path and the default campaign that io_init already refuses to start
+// without: without packs/core the game has no families at all, and the
+// failure modes downstream (a null descriptor per lookup) are far harder to
+// read than one message at startup.
+void require_core_families_installed(const char* context);

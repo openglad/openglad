@@ -882,3 +882,131 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
     for (std::size_t i = installs_before; i < status_log.size(); ++i)
         EXPECT_EQ(std::string::npos, status_log[i].find("Receiving pack"));
 }
+
+// --- content-addressed cache reuse ------------------------------------------
+
+namespace {
+
+// A pack that only ever exists in the received-pack cache: it is never
+// mounted from the asset tree, so `pack_locally_available` can only answer
+// true by finding and verifying the cached copy on disk.
+class PackCacheReuseTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        manifest_.pack_id = kCachedPackId;
+        manifest_.pack_index = 0;
+        manifest_.pack_count = 1;
+        add_file("classpack.yaml", "pack: org.test.cachedpack\nversion: 1\n");
+        add_file("scripts/hello.lua", "og.log('cached pack loaded')\n");
+        cache_dir_ = fs::path(get_user_path()) /
+                     ("packs_cache/" + std::string(kCachedPackId) + "@" +
+                      og::sim::pack_manifest_content_hash_hex(manifest_));
+    }
+
+    void TearDown() override
+    {
+        og::resources::unmount_session_packs();
+        (void)og::resources::refresh_pack_scripts();
+        std::error_code ec;
+        fs::remove_all(fs::path(get_user_path()) / "packs_cache", ec);
+    }
+
+    void add_file(const char* path, std::string_view text)
+    {
+        std::vector<std::uint8_t> bytes(text.begin(), text.end());
+        og::sim::PackManifestFileEntry entry;
+        entry.path = path;
+        entry.size_bytes = static_cast<std::uint32_t>(bytes.size());
+        entry.hash64 = og::core::fnv1a64(bytes.data(), bytes.size());
+        manifest_.files.push_back(std::move(entry));
+        contents_.push_back(std::move(bytes));
+    }
+
+    static constexpr const char* kCachedPackId = "org.test.cachedpack";
+    og::sim::PackManifestMessage manifest_;
+    std::vector<std::vector<std::uint8_t>> contents_;
+    fs::path cache_dir_;
+};
+
+} // namespace
+
+TEST_F(PackCacheReuseTest, a_cached_pack_is_remounted_without_a_second_transfer)
+{
+    // First session: the bytes arrive over the wire and land in the cache.
+    ASSERT_TRUE(og::resources::install_received_pack(manifest_, contents_));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest_));
+
+    // Second session (return to lobby, or a fresh process): the mount is
+    // gone but the content-addressed cache is not.
+    og::resources::unmount_session_packs();
+    ASSERT_FALSE(og::resources::mounted_pack_matches_manifest(manifest_))
+        << "the session mount must really be gone for this to prove anything";
+
+    EXPECT_TRUE(og::resources::pack_locally_available(manifest_))
+        << "a verified cache hit must satisfy the join without a transfer";
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest_))
+        << "the cache hit must also mount the pack";
+}
+
+TEST_F(PackCacheReuseTest, a_corrupted_cache_entry_forces_a_fresh_transfer)
+{
+    ASSERT_TRUE(og::resources::install_received_pack(manifest_, contents_));
+    og::resources::unmount_session_packs();
+
+    // Same byte count, different bytes: only the hash check can catch this,
+    // and it must, or a torn/edited cache would feed the deterministic sim.
+    const fs::path victim = cache_dir_ / manifest_.files[1].path;
+    {
+        std::ofstream out(victim, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good()) << victim;
+        out << std::string(manifest_.files[1].size_bytes, 'x');
+    }
+
+    EXPECT_FALSE(og::resources::pack_locally_available(manifest_))
+        << "a hash mismatch in the cache must not satisfy the join";
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest_));
+}
+
+TEST_F(PackCacheReuseTest, a_missing_cache_entry_forces_a_fresh_transfer)
+{
+    ASSERT_TRUE(og::resources::install_received_pack(manifest_, contents_));
+    og::resources::unmount_session_packs();
+
+    std::error_code ec;
+    fs::remove(cache_dir_ / manifest_.files[0].path, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    EXPECT_FALSE(og::resources::pack_locally_available(manifest_))
+        << "a partially-deleted cache must not satisfy the join";
+}
+
+TEST_F(PackCacheReuseTest, install_re_validates_the_manifest_it_is_handed)
+{
+    // install_received_pack writes to disk, so it re-checks independently of
+    // the gameplay client that already validated the stream.
+    std::vector<std::vector<std::uint8_t>> short_payload = contents_;
+    short_payload.pop_back();
+    EXPECT_FALSE(
+        og::resources::install_received_pack(manifest_, short_payload))
+        << "file count must match the manifest";
+
+    std::vector<std::vector<std::uint8_t>> drifted = contents_;
+    drifted[0].push_back('!');
+    EXPECT_FALSE(og::resources::install_received_pack(manifest_, drifted))
+        << "a file whose size drifted from the manifest must be refused";
+
+    og::sim::PackManifestMessage unsafe = manifest_;
+    unsafe.pack_id = "../escape";
+    EXPECT_FALSE(og::resources::install_received_pack(unsafe, contents_))
+        << "an unsafe pack id must never reach the filesystem";
+
+    og::sim::PackManifestMessage traversal = manifest_;
+    traversal.files[0].path = "../escape.txt";
+    EXPECT_FALSE(og::resources::install_received_pack(traversal, contents_))
+        << "a traversing file path must never reach the filesystem";
+
+    EXPECT_FALSE(fs::exists(cache_dir_))
+        << "no rejected install may leave anything behind";
+}

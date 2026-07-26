@@ -22,6 +22,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/sound_ids.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -990,6 +991,28 @@ int og_query_object_passable(lua_State* L)
     return 1;
 }
 
+// og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain
+// genre for a TILE coordinate (the passable queries above all take pixels;
+// this one does not, because smoother::query_genre_x_y does not). Compare
+// against og.C.TYPE_*. weapon_family_door.cpp's
+// `mysmoother.query_genre_x_y(xpos()/GRID_SIZE, (ypos()/GRID_SIZE)-1)`
+// is the only sim caller that had to reach terrain by genre rather than by
+// passability. query_genre_x_y is total — out-of-range tiles report
+// TYPE_GRASS — so there is no nil case.
+int og_query_genre(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const auto tx = static_cast<std::int32_t>(luaL_checkinteger(L, 1));
+    const auto ty = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    smoother& sm =
+        lua_isnoneornil(L, 3)
+            ? world->mysmoother
+            : world->smoother_for_floor(
+                  static_cast<int>(luaL_checkinteger(L, 3)));
+    lua_pushinteger(L, static_cast<lua_Integer>(sm.query_genre_x_y(tx, ty)));
+    return 1;
+}
+
 // og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand
 // override when installed (so captured dumps match master's dual-RNG-stream
 // behavior without observing the sim rng_state), else the sim RNG — exactly
@@ -1708,6 +1731,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"query_passable", og_query_passable},
     {"query_grid_passable", og_query_grid_passable},
     {"query_object_passable", og_query_object_passable},
+    {"query_genre", og_query_genre},
     {"cosmetic_rand", og_cosmetic_rand},
     {"level_id", og_level_id},
     {"level_tick", og_level_tick},
@@ -1815,6 +1839,36 @@ const NamedConst kConstants[] = {
     {"ANI_BOMB", ANI_BOMB},
     {"ANI_SPIN", ANI_SPIN},
     {"GRID_SIZE", GRID_SIZE},
+    // Facings (walker::curdir)
+    {"FACE_UP", FACE_UP},
+    {"FACE_UP_RIGHT", FACE_UP_RIGHT},
+    {"FACE_RIGHT", FACE_RIGHT},
+    {"FACE_DOWN_RIGHT", FACE_DOWN_RIGHT},
+    {"FACE_DOWN", FACE_DOWN},
+    {"FACE_DOWN_LEFT", FACE_DOWN_LEFT},
+    {"FACE_LEFT", FACE_LEFT},
+    {"FACE_UP_LEFT", FACE_UP_LEFT},
+    {"NUM_FACINGS", NUM_FACINGS},
+    // Terrain genres (og.query_genre)
+    {"TYPE_GRASS", TYPE_GRASS},
+    {"TYPE_WATER", TYPE_WATER},
+    {"TYPE_TREES", TYPE_TREES},
+    {"TYPE_DIRT", TYPE_DIRT},
+    {"TYPE_COBBLE", TYPE_COBBLE},
+    {"TYPE_GRASS_DARK", TYPE_GRASS_DARK},
+    {"TYPE_DIRT_DARK", TYPE_DIRT_DARK},
+    {"TYPE_WALL", TYPE_WALL},
+    {"TYPE_CARPET", TYPE_CARPET},
+    {"TYPE_GRASS_LIGHT", TYPE_GRASS_LIGHT},
+    {"TYPE_AIR", TYPE_AIR},
+    {"TYPE_GLASS", TYPE_GLASS},
+    {"TYPE_DROP_BLOCK", TYPE_DROP_BLOCK},
+    {"TYPE_ZSTAIRS", TYPE_ZSTAIRS},
+    {"TYPE_SNOW", TYPE_SNOW},
+    {"TYPE_LAVA", TYPE_LAVA},
+    {"TYPE_MARSH", TYPE_MARSH},
+    {"TYPE_ASH", TYPE_ASH},
+    {"TYPE_UNKNOWN", TYPE_UNKNOWN},
     // Act types
     {"ACT_RANDOM", ACT_RANDOM},
     {"ACT_FIRE", ACT_FIRE},

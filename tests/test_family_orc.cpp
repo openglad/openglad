@@ -1,4 +1,6 @@
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -17,8 +19,6 @@
 #include "test_gameplay_context_scope.h"
 #include "test_family_hook_dispatch.h"
 
-const FamilyDescriptor& describe_family_orc();
-const FamilyDescriptor& describe_family_big_orc();
 
 namespace {
 
@@ -78,7 +78,7 @@ walker* add_stain(OrcR15Fixture& fx, short x, short y, unsigned char team, char 
 
 TEST(FamilyOrc, family_big_orc_r15_level_up_and_orc_descriptor_hooks)
 {
-    const FamilyDescriptor& big_orc = describe_family_big_orc();
+    const FamilyDescriptor& big_orc = describe_family(FAMILY_BIG_ORC);
     ASSERT_TRUE(big_orc.family_id == FAMILY_BIG_ORC);
     ASSERT_TRUE(og::test::has_level_up(big_orc));
 
@@ -95,7 +95,7 @@ TEST(FamilyOrc, family_big_orc_r15_level_up_and_orc_descriptor_hooks)
     ASSERT_TRUE(captain.intelligence > old_int);
     ASSERT_TRUE(captain.armor > old_arm);
 
-    const FamilyDescriptor& orc = describe_family_orc();
+    const FamilyDescriptor& orc = describe_family(FAMILY_ORC);
     ASSERT_TRUE(orc.family_id == FAMILY_ORC);
     ASSERT_TRUE(og::test::has_do_special(orc));
     ASSERT_TRUE(og::test::has_check_special_ai(orc));
@@ -124,7 +124,7 @@ TEST(FamilyOrc, family_big_orc_r15_level_up_and_orc_descriptor_hooks)
 
 TEST(FamilyOrc, r15_special_howl_and_eat_paths)
 {
-    const FamilyDescriptor& orc = describe_family_orc();
+    const FamilyDescriptor& orc = describe_family(FAMILY_ORC);
     {
         OrcR15Fixture fx;
         living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
@@ -164,7 +164,7 @@ TEST(FamilyOrc, r15_special_howl_and_eat_paths)
 
 TEST(FamilyOrc, r15_check_ai_and_guard_failures)
 {
-    const FamilyDescriptor& orc = describe_family_orc();
+    const FamilyDescriptor& orc = describe_family(FAMILY_ORC);
     OrcR15Fixture fx;
 
     living* self = add_living(fx, 1, FAMILY_ORC, 50, 50);

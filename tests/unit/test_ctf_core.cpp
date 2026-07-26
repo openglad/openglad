@@ -1186,6 +1186,40 @@ TEST(CtfCore, control_point_capture_and_contender_reset)
     ASSERT_TRUE(has_notification(fx.events, "GREEN TAKES WAYPOINT!"));
 }
 
+// core:waypoint's on_eat hook hardcodes `return true` instead of binding
+// through to og::sim::ctf_on_point_touch, which is byte-correct ONLY while
+// that function is itself a no-op that touches nothing (control points are
+// occupancy-driven and settled by run_control_points during the tick). This
+// pins the equivalence: give the function a body without also giving the
+// waypoint a real binding and this test goes red instead of the behavior
+// silently disappearing.
+TEST(CtfCore, control_point_touch_is_the_no_op_the_lua_hook_assumes)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    fx.spawn_flag(1, 544, 800);
+    walker* point = fx.spawn_point(320, 320);
+    walker* toucher = fx.spawn_living(FAMILY_SOLDIER, 1, 352, 320);
+    fx.tick();
+    ASSERT_EQ(1, fx.world().ctf.cp_count);
+
+    const og::sim::CtfControlPoint before = fx.world().ctf.cps[0];
+    const std::uint32_t score_before = fx.world().m_score[1];
+    const std::size_t events_before = fx.events.events().size();
+    const int team_before = point->team_num();
+
+    EXPECT_TRUE(og::sim::ctf_on_point_touch(point, toucher));
+
+    const og::sim::CtfControlPoint& after = fx.world().ctf.cps[0];
+    EXPECT_EQ(before.owner, after.owner);
+    EXPECT_EQ(before.progress, after.progress);
+    EXPECT_EQ(before.progress_team, after.progress_team);
+    EXPECT_EQ(team_before, point->team_num());
+    EXPECT_EQ(score_before, fx.world().m_score[1]);
+    EXPECT_EQ(events_before, fx.events.events().size())
+        << "a touch must not emit anything the occupancy pass did not";
+}
+
 // --- Waypoint retake dynamics (majority contender + symmetric decay) ------
 
 namespace {

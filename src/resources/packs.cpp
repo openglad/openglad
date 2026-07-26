@@ -139,11 +139,51 @@ int resolve_wire_id(const std::string& wire_id, Order order,
     return *parsed;
 }
 
-// Resolves a family reference ("core:knife") against the given order's
-// registry. Unresolved references keep the current descriptor value.
+// Every wire id one pack claims, resolved BEFORE anything installs.
+//
+// Two jobs. First, the ids are taken in a fixed sequence (entries in YAML
+// order, per order counter), which is what makes auto ids reproducible on
+// every peer — so they must be taken exactly once, here, and handed to the
+// installers rather than re-derived. Second, and the reason this exists at
+// all: a family may reference another family THE SAME PACK DECLARES LOWER
+// DOWN THE FILE. The core pack does it (core:mage promotes_to core:archmage,
+// fourteen entries below it), and a registry lookup cannot see a slot that
+// has not been installed yet, so without this table the reference would
+// resolve or not depending on where the target happens to sit in the file.
+struct PackWireIds {
+    std::vector<int> ids[8];  // per order, parallel to the pack's entry lists
+    std::vector<std::pair<std::string, int>> declared[8];
+
+    void take(Order order, const std::string& declared_id,
+              const std::string& wire_id, AutoWireIds& autos)
+    {
+        const int id = resolve_wire_id(wire_id, order, autos, declared_id);
+        ids[static_cast<int>(order)].push_back(id);
+        if (id >= 0 && !declared_id.empty())
+            declared[static_cast<int>(order)].emplace_back(declared_id, id);
+    }
+
+    // The wire id this pack gave `ref`, or -1. Matches the fully-qualified
+    // `id:` exactly; a bare-name reference still goes through the registry.
+    [[nodiscard]] int find(Order order, const std::string& ref) const
+    {
+        for (const auto& [declared_id, id] : declared[static_cast<int>(order)]) {
+            if (declared_id == ref)
+                return id;
+        }
+        return -1;
+    }
+};
+
+// Resolves a family reference ("core:knife") against the pack's own
+// declarations first, then the given order's registry. Unresolved references
+// keep the current descriptor value.
 int resolve_ref(Order order, const std::string& ref, const char* field,
-                const std::string& id)
+                const std::string& id, const PackWireIds& wire_ids)
 {
+    const int same_pack = wire_ids.find(order, ref);
+    if (same_pack >= 0)
+        return same_pack;
     const int target =
         og::families::resolve_family_string_id(order, ref.c_str());
     if (target < 0)
@@ -407,10 +447,9 @@ void apply_presentation(const og::data::ClasspackPresentation& p,
 
 // --- per-order installers (entries must already live in the store) ------
 
-bool install_living(const og::data::ClasspackLivingEntry& e,
-                    AutoWireIds& autos, const PackAnims& anims)
+bool install_living(const og::data::ClasspackLivingEntry& e, int id,
+                    const PackAnims& anims, const PackWireIds& wire_ids)
 {
-    const int id = resolve_wire_id(e.wire_id, Order::Living, autos, e.id);
     if (id < 0)
         return false;
     // The install slot: an occupied slot hands back its live descriptor, a
@@ -459,7 +498,7 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
         d.weapon_cost = static_cast<short>(*e.weapon_cost);
     if (e.default_weapon) {
         const int weapon = resolve_ref(Order::Weapon, *e.default_weapon,
-                                       "default_weapon", e.id);
+                                       "default_weapon", e.id, wire_ids);
         if (weapon >= 0)
             d.default_weapon = weapon;
     }
@@ -498,8 +537,9 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
         if (e.promotes_to.is_null)
             d.promotes_to = -1;
         else {
-            const int target = resolve_ref(
-                Order::Living, e.promotes_to.value, "promotes_to", e.id);
+            const int target =
+                resolve_ref(Order::Living, e.promotes_to.value, "promotes_to",
+                            e.id, wire_ids);
             if (target >= 0)
                 d.promotes_to = target;
         }
@@ -541,10 +581,9 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
     return set_family_descriptor(id, d);
 }
 
-bool install_weapon(const og::data::ClasspackWeaponEntry& e,
-                    AutoWireIds& autos, const PackAnims& anims)
+bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
+                    const PackAnims& anims)
 {
-    const int id = resolve_wire_id(e.wire_id, Order::Weapon, autos, e.id);
     if (id < 0)
         return false;
     const WeaponFamilyDescriptor* current =
@@ -592,10 +631,9 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e,
     return set_weapon_family_descriptor(id, d);
 }
 
-bool install_effect(const og::data::ClasspackEffectEntry& e,
-                    AutoWireIds& autos, const PackAnims& anims)
+bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
+                    const PackAnims& anims)
 {
-    const int id = resolve_wire_id(e.wire_id, Order::FX, autos, e.id);
     if (id < 0)
         return false;
     const EffectFamilyDescriptor* current =
@@ -629,10 +667,9 @@ bool install_effect(const og::data::ClasspackEffectEntry& e,
     return set_effect_family_descriptor(id, d);
 }
 
-bool install_treasure(const og::data::ClasspackTreasureEntry& e,
-                      AutoWireIds& autos, const PackAnims& anims)
+bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
+                      const PackAnims& anims)
 {
-    const int id = resolve_wire_id(e.wire_id, Order::Treasure, autos, e.id);
     if (id < 0)
         return false;
     const TreasureFamilyDescriptor* current =
@@ -661,10 +698,9 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e,
     return set_treasure_family_descriptor(id, d);
 }
 
-bool install_generator(const og::data::ClasspackGeneratorEntry& e,
-                       AutoWireIds& autos, const PackAnims& anims)
+bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
+                       const PackAnims& anims, const PackWireIds& wire_ids)
 {
-    const int id = resolve_wire_id(e.wire_id, Order::Generator, autos, e.id);
     if (id < 0)
         return false;
     const GeneratorFamilyDescriptor* current =
@@ -682,7 +718,7 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e,
     if (e.default_weapon) {
         // Generator default_weapon names the LIVING family produced.
         const int living = resolve_ref(Order::Living, *e.default_weapon,
-                                       "default_weapon", e.id);
+                                       "default_weapon", e.id, wire_ids);
         if (living >= 0)
             d.default_weapon = living;
     }
@@ -704,27 +740,52 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e,
     return set_generator_family_descriptor(id, d);
 }
 
-// Installs every entry of a STORED pack. Order: the pack's animation sets
-// first (families reference them by name), then weapons and the other
-// non-living orders, then livings (whose default_weapon may name a weapon
-// this pack just installed), then generators (whose default_weapon may name
-// a living this pack just installed). Animation sets are pack-local: a
-// family only ever resolves a set its own pack declares.
+// Installs every entry of a STORED pack. Wire ids are claimed first, for the
+// whole pack, so a family may name any other family the pack declares no
+// matter where in the file it sits (PackWireIds). Then the animation sets
+// (families reference them by name), then the entries themselves.
 int install_pack_families(const og::data::ClasspackData& pack,
                           AutoWireIds& autos)
 {
+    // Same sequence the installers used to take them in — entries in YAML
+    // order, one counter per order — so auto ids land exactly where they did.
+    PackWireIds wire_ids;
+    for (const auto& e : pack.weapons)
+        wire_ids.take(Order::Weapon, e.id, e.wire_id, autos);
+    for (const auto& e : pack.effects)
+        wire_ids.take(Order::FX, e.id, e.wire_id, autos);
+    for (const auto& e : pack.treasures)
+        wire_ids.take(Order::Treasure, e.id, e.wire_id, autos);
+    for (const auto& e : pack.living)
+        wire_ids.take(Order::Living, e.id, e.wire_id, autos);
+    for (const auto& e : pack.generators)
+        wire_ids.take(Order::Generator, e.id, e.wire_id, autos);
+
     const PackAnims anims = materialize_anims(pack);
     int installed = 0;
+    std::size_t n = 0;
     for (const auto& e : pack.weapons)
-        installed += install_weapon(e, autos, anims) ? 1 : 0;
+        installed += install_weapon(
+            e, wire_ids.ids[static_cast<int>(Order::Weapon)][n++], anims) ? 1 : 0;
+    n = 0;
     for (const auto& e : pack.effects)
-        installed += install_effect(e, autos, anims) ? 1 : 0;
+        installed += install_effect(
+            e, wire_ids.ids[static_cast<int>(Order::FX)][n++], anims) ? 1 : 0;
+    n = 0;
     for (const auto& e : pack.treasures)
-        installed += install_treasure(e, autos, anims) ? 1 : 0;
+        installed += install_treasure(
+            e, wire_ids.ids[static_cast<int>(Order::Treasure)][n++], anims)
+            ? 1 : 0;
+    n = 0;
     for (const auto& e : pack.living)
-        installed += install_living(e, autos, anims) ? 1 : 0;
+        installed += install_living(
+            e, wire_ids.ids[static_cast<int>(Order::Living)][n++], anims,
+            wire_ids) ? 1 : 0;
+    n = 0;
     for (const auto& e : pack.generators)
-        installed += install_generator(e, autos, anims) ? 1 : 0;
+        installed += install_generator(
+            e, wire_ids.ids[static_cast<int>(Order::Generator)][n++], anims,
+            wire_ids) ? 1 : 0;
     return installed;
 }
 

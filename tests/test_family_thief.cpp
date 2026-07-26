@@ -1,4 +1,6 @@
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
@@ -18,13 +20,12 @@
 #include "test_family_hook_dispatch.h"
 
 // --- From test_family_thief_coverage_push.cpp ---
-const FamilyDescriptor& describe_family_thief();
 
 namespace detail_family_thief_coverage_push {
 
 TEST(FamilyThief, descriptor_shape_and_level_up)
 {
-    const FamilyDescriptor& desc = describe_family_thief();
+    const FamilyDescriptor& desc = describe_family(FAMILY_THIEF);
     ASSERT_TRUE(desc.family_id == FAMILY_THIEF);
     ASSERT_TRUE(og::test::has_do_special(desc));
     ASSERT_TRUE(og::test::has_check_special_ai(desc));
@@ -47,7 +48,7 @@ TEST(FamilyThief, descriptor_shape_and_level_up)
 
 TEST(FamilyThief, check_special_ai_foe_distance_paths)
 {
-    const FamilyDescriptor& desc = describe_family_thief();
+    const FamilyDescriptor& desc = describe_family(FAMILY_THIEF);
     living self;
     living foe;
     self.set_current_special(1);
@@ -66,7 +67,7 @@ TEST(FamilyThief, check_special_ai_foe_distance_paths)
 
 TEST(FamilyThief, do_special_busy_and_cloak_paths)
 {
-    const FamilyDescriptor& desc = describe_family_thief();
+    const FamilyDescriptor& desc = describe_family(FAMILY_THIEF);
     living self;
     FixedRandom rng(7);
     self.stats()->set_level(3);
@@ -127,7 +128,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 
 TEST(FamilyThief, r12_check_ai_and_special_paths)
 {
-    const FamilyDescriptor& desc = describe_family_thief();
+    const FamilyDescriptor& desc = describe_family(FAMILY_THIEF);
     ThiefR12Fixture fx;
 
     living* thief = add_living(fx, 0, FAMILY_THIEF);

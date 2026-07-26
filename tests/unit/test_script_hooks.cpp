@@ -15,6 +15,7 @@
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -437,4 +438,187 @@ TEST_F(ScriptBindingTest, ctf_flag_touch_forwards_to_the_ctf_engine)
     ASSERT_EQ(1u, vm_log().size());
     EXPECT_EQ("ctf\ttrue\ttrue\tfalse", vm_log()[0]);
     EXPECT_EQ(0u, world.m_score[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Binding-table reachability
+//
+// Every row of kWalkerMethods / kOgWorldFuncs is public modding API: a pack
+// author reads docs/modding/api-reference.md and calls it. A row that no
+// test and no shipped script exercises is a row that can be renamed, given
+// the wrong arity, or wired to the wrong C++ member without anything going
+// red. The tests below drive the rows the core pack happens not to use, and
+// assert the value actually round-trips through the intended C++ member —
+// not merely that the call did not raise.
+// ---------------------------------------------------------------------------
+
+TEST_F(ScriptBindingTest, walker_field_rows_round_trip_through_the_members)
+{
+    spawn->set_sizez(7);
+    spawn->set_worldz(3.0f);
+
+    run("spawn:set_death_called(1)\n"
+        "spawn:set_fire_frequency(4)\n"
+        "spawn:set_default_weapon(3)\n"
+        "spawn:set_speed_bonus(2)\n"
+        "spawn:set_cycle(2)\n"
+        "spawn:set_summoned(true)\n"
+        "spawn:set_save_all_protected(true)\n"
+        // og.trunc keeps float-valued rows out of Lua's float formatting so
+        // the expectation is exact on every platform.
+        "og.log('ints', spawn:sizez(), spawn:death_called(),\n"
+        "               spawn:default_weapon(), spawn:cycle())\n"
+        "og.log('floats', og.trunc(spawn:worldz()),\n"
+        "                 og.trunc(spawn:fire_frequency()),\n"
+        "                 og.trunc(spawn:speed_bonus()))\n"
+        "og.log('bools', spawn:summoned(), spawn:save_all_protected())\n");
+
+    ASSERT_EQ(3u, vm_log().size());
+    EXPECT_EQ("ints\t7\t1\t3\t2", vm_log()[0]);
+    EXPECT_EQ("floats\t3\t4\t2", vm_log()[1]);
+    EXPECT_EQ("bools\ttrue\ttrue", vm_log()[2]);
+
+    // The setters landed on the real members, not on a Lua-side shadow.
+    EXPECT_EQ(1, spawn->death_called());
+    EXPECT_FLOAT_EQ(4.0f, spawn->fire_frequency());
+    EXPECT_EQ(3, spawn->default_weapon());
+    EXPECT_EQ(2, spawn->cycle());
+    EXPECT_FLOAT_EQ(2.0f, spawn->speed_bonus());
+    EXPECT_TRUE(spawn->summoned());
+    EXPECT_TRUE(spawn->save_all_protected());
+}
+
+TEST_F(ScriptBindingTest, statistics_rows_round_trip_through_the_members)
+{
+    ASSERT_NE(nullptr, spawn->stats());
+    spawn->stats()->set_controller(generator);
+
+    run("spawn:s_set_max_magicpoints(40)\n"
+        "spawn:s_set_armor(6)\n"
+        "spawn:s_set_magic_per_round(3)\n"
+        "spawn:s_set_heal_per_round(2)\n"
+        "spawn:s_set_weapon_cost(9)\n"
+        "spawn:s_set_frozen_delay(11)\n"
+        "spawn:s_set_current_distance(21)\n"
+        "spawn:s_set_last_distance(22)\n"
+        "spawn:s_set_max_heal_delay(31)\n"
+        "spawn:s_set_current_heal_delay(32)\n"
+        "spawn:s_set_max_magic_delay(41)\n"
+        "spawn:s_set_current_magic_delay(42)\n"
+        "spawn:s_set_special_cost(1, 77)\n"
+        "og.log('ints', spawn:s_weapon_cost(), spawn:s_frozen_delay(),\n"
+        "               spawn:s_current_distance(), spawn:s_last_distance(),\n"
+        "               spawn:s_max_heal_delay(), spawn:s_current_heal_delay(),\n"
+        "               spawn:s_max_magic_delay(), spawn:s_current_magic_delay(),\n"
+        "               spawn:s_special_cost(1))\n"
+        "og.log('floats', og.trunc(spawn:s_max_magicpoints()),\n"
+        "                 og.trunc(spawn:s_armor()),\n"
+        "                 og.trunc(spawn:s_magic_per_round()),\n"
+        "                 og.trunc(spawn:s_heal_per_round()))\n"
+        // The controller row hands back a live handle to the controlling
+        // walker, not a copy or a stale id.
+        "og.log('controller', spawn:s_controller() == gen)\n");
+
+    ASSERT_EQ(3u, vm_log().size());
+    EXPECT_EQ("ints\t9\t11\t21\t22\t31\t32\t41\t42\t77", vm_log()[0]);
+    EXPECT_EQ("floats\t40\t6\t3\t2", vm_log()[1]);
+    EXPECT_EQ("controller\ttrue", vm_log()[2]);
+
+    statistics* st = spawn->stats();
+    ASSERT_NE(nullptr, st);
+    EXPECT_FLOAT_EQ(40.0f, st->max_magicpoints());
+    EXPECT_FLOAT_EQ(6.0f, st->armor());
+    EXPECT_EQ(9, st->weapon_cost());
+    EXPECT_EQ(77, st->special_cost(1));
+}
+
+TEST_F(ScriptBindingTest, special_cost_rows_reject_an_out_of_range_index)
+{
+    // The bounds check is the whole point of the pair: NUM_SPECIALS-sized
+    // array, index straight from a pack script.
+    register_pack_script(
+        {"test.pack", "bind.lua",
+         "og.register_hooks('generator', 'core:tent', {\n"
+         "  customize_spawn = function(gen, spawn)\n"
+         "    local ok = pcall(function() spawn:s_special_cost(-1) end)\n"
+         "    og.log('get', ok)\n"
+         "    ok = pcall(function() spawn:s_set_special_cost(99, 1) end)\n"
+         "    og.log('set', ok)\n"
+         "  end,\n})\n"});
+    ASSERT_TRUE(hooks::generator_customize_spawn(0, generator, spawn));
+    ASSERT_TRUE(world.scripts().host().errors().empty());
+    ASSERT_EQ(2u, vm_log().size());
+    EXPECT_EQ("get\tfalse", vm_log()[0]) << "negative index must raise";
+    EXPECT_EQ("set\tfalse", vm_log()[1]) << "index past NUM_SPECIALS must raise";
+}
+
+TEST_F(ScriptBindingTest, guy_rows_round_trip_and_myguy_moves_between_walkers)
+{
+    spawn->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    ASSERT_NE(nullptr, spawn->myguy);
+    spawn->myguy->level = 4;
+
+    run("spawn:g_set_strength(11)\n"
+        "spawn:g_set_dexterity(12)\n"
+        "spawn:g_set_constitution(13)\n"
+        "spawn:g_set_intelligence(14)\n"
+        "spawn:g_set_armor(15)\n"
+        "spawn:g_set_total_hits(16)\n"
+        "spawn:g_set_scen_hits(17)\n"
+        "og.log('guy', spawn:g_strength(), spawn:g_dexterity(),\n"
+        "              spawn:g_constitution(), spawn:g_intelligence(),\n"
+        "              spawn:g_armor(), spawn:g_level(),\n"
+        "              spawn:g_total_hits(), spawn:g_scen_hits())\n"
+        // slime.lua's split path: the record follows the new body, and the
+        // old one is left without one.
+        "spawn:move_myguy_to(gen)\n"
+        "og.log('moved', spawn:has_guy(), gen:has_guy())\n"
+        "gen:clear_myguy()\n"
+        "og.log('cleared', gen:has_guy())\n");
+
+    ASSERT_EQ(3u, vm_log().size());
+    EXPECT_EQ("guy\t11\t12\t13\t14\t15\t4\t16\t17", vm_log()[0]);
+    EXPECT_EQ("moved\tfalse\ttrue", vm_log()[1]);
+    EXPECT_EQ("cleared\tfalse", vm_log()[2]);
+    EXPECT_EQ(nullptr, spawn->myguy);
+    EXPECT_EQ(nullptr, generator->myguy);
+}
+
+TEST_F(ScriptBindingTest, world_query_rows_read_the_live_world)
+{
+    world.id = 91;
+    world.game_ended = 0;
+
+    run("local w = og.add_weap_ob('weapon', 0)\n"
+        "og.log('weap', w ~= nil, w:order() == og.C.ORDER_WEAPON)\n"
+        "og.log('world', og.level_id(), og.level_tick(), og.game_ended())\n"
+        "og.log('foes', og.remaining_foes(spawn))\n"
+        // freeze_duration draws the sim RNG; the result must be a real
+        // non-negative duration, not nil.
+        "og.log('freeze', og.freeze_duration(10, 3) >= 0)\n"
+        // walker:collide(other) records the collision partner.
+        "og.log('collide', spawn:collide(gen), spawn:collide_ob() == gen)\n"
+        "og.log('alive', og.is_alive(spawn), tostring(spawn))\n");
+
+    ASSERT_EQ(6u, vm_log().size());
+    EXPECT_EQ("weap\ttrue\ttrue", vm_log()[0]);
+    EXPECT_EQ("world\t91\t0\tfalse", vm_log()[1]);
+    // The binding must forward to GameWorld::remaining_foes for THIS walker.
+    EXPECT_EQ("foes\t" + std::to_string(world.remaining_foes(spawn)),
+              vm_log()[2]);
+    EXPECT_EQ("freeze\ttrue", vm_log()[3]);
+    EXPECT_EQ("collide\ttrue\ttrue", vm_log()[4]);
+    EXPECT_EQ("alive\ttrue\tentity#" + std::to_string(spawn->entity_id()),
+              vm_log()[5])
+        << "__tostring must be address-free (entity id, never a pointer)";
+    EXPECT_EQ(generator, spawn->collide_ob());
+}
+
+TEST_F(ScriptBindingTest, host_is_reachable_through_a_const_world_scripts)
+{
+    run("og.log('hello')\n");
+    const og::script::WorldScripts& scripts = world.scripts();
+    EXPECT_TRUE(scripts.host().errors().empty());
+    ASSERT_EQ(1u, scripts.host().log().size());
+    EXPECT_EQ("hello", scripts.host().log()[0]);
 }

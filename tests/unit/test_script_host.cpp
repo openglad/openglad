@@ -20,6 +20,7 @@
 #include <string>
 
 using og::script::kMaxStoredScriptErrors;
+using og::script::kMaxStoredScriptLogLines;
 using og::script::ScriptError;
 using og::script::ScriptHost;
 using og::script::ScriptLimits;
@@ -436,6 +437,67 @@ TEST(ScriptErrorStore, distinct_where_and_message_are_both_part_of_identity)
     EXPECT_EQ(2u, host.errors()[0].count);
     EXPECT_EQ(1u, host.errors()[1].count);
     EXPECT_EQ(1u, host.errors()[2].count);
+}
+
+TEST(ScriptLogStore, log_keeps_the_most_recent_lines_and_counts_the_rest)
+{
+    // A pack that logs every tick would otherwise grow this vector for the
+    // life of the GameWorld (the defect the error store already fixed). The
+    // tail is the useful part, so eviction is oldest-first and log().back()
+    // stays "most recent".
+    ScriptHost host;
+    constexpr std::size_t kExtra = 40;
+    const std::size_t total = kMaxStoredScriptLogLines + kExtra;
+    std::string chunk;
+    for (std::size_t i = 0; i < total; i++)
+        chunk += "og.log(" + std::to_string(i) + ")\n";
+    ASSERT_TRUE(host.run_chunk("logspam", chunk));
+
+    ASSERT_EQ(kMaxStoredScriptLogLines, host.log().size());
+    EXPECT_EQ(static_cast<std::uint64_t>(kExtra),
+              host.dropped_log_line_count());
+    EXPECT_EQ(std::to_string(total - 1), host.log().back())
+        << "the newest line must survive";
+    EXPECT_EQ(std::to_string(kExtra), host.log().front())
+        << "exactly the oldest kExtra lines were evicted";
+}
+
+TEST(ScriptLogStore, an_unfilled_log_drops_nothing)
+{
+    ScriptHost host;
+    ASSERT_TRUE(host.run_chunk("quiet", "og.log('a')\nog.log('b')\n"));
+    EXPECT_EQ(2u, host.log().size());
+    EXPECT_EQ(0u, host.dropped_log_line_count());
+}
+
+// ---------------------------------------------------------------------------
+// Pack-script registry
+// ---------------------------------------------------------------------------
+
+TEST(PackScriptRegistry, unregister_removes_one_packs_chunks_and_bumps_the_gen)
+{
+    og::script::clear_pack_scripts();
+    og::script::register_pack_script({"pack.a", "a1.lua", "-- a1\n"});
+    og::script::register_pack_script({"pack.a", "a2.lua", "-- a2\n"});
+    og::script::register_pack_script({"pack.b", "b1.lua", "-- b1\n"});
+    ASSERT_EQ(3u, og::script::pack_scripts().size());
+    const unsigned before = og::script::pack_scripts_generation();
+
+    // Unmounting one pack must take exactly that pack's chunks with it —
+    // this is what keeps a stale family hook from surviving a campaign
+    // switch and feeding the deterministic sim.
+    og::script::unregister_pack_scripts("pack.a");
+
+    ASSERT_EQ(1u, og::script::pack_scripts().size());
+    EXPECT_EQ("pack.b", og::script::pack_scripts()[0].pack_id);
+    EXPECT_NE(before, og::script::pack_scripts_generation())
+        << "the generation must move so cached VMs rebuild";
+
+    // Unregistering an id that is not present is a no-op, not a crash.
+    og::script::unregister_pack_scripts("pack.missing");
+    EXPECT_EQ(1u, og::script::pack_scripts().size());
+
+    og::script::clear_pack_scripts();
 }
 
 // ---------------------------------------------------------------------------

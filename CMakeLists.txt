@@ -190,45 +190,12 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
     ${SRC_DIR}/gameplay/families/family_string_ids.cpp
-    ${SRC_DIR}/gameplay/families/family_archer.cpp
-    ${SRC_DIR}/gameplay/families/family_archmage.cpp
-    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
-    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_cleric.cpp
-    ${SRC_DIR}/gameplay/families/family_druid.cpp
-    ${SRC_DIR}/gameplay/families/family_elf.cpp
-    ${SRC_DIR}/gameplay/families/family_faerie.cpp
-    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
-    ${SRC_DIR}/gameplay/families/family_ghost.cpp
-    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_golem.cpp
-    ${SRC_DIR}/gameplay/families/family_mage.cpp
-    ${SRC_DIR}/gameplay/families/family_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_slime.cpp
-    ${SRC_DIR}/gameplay/families/family_soldier.cpp
-    ${SRC_DIR}/gameplay/families/family_thief.cpp
-    ${SRC_DIR}/gameplay/families/family_tower1.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/interface/guy_create.cpp
@@ -405,45 +372,12 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
     ${SRC_DIR}/gameplay/families/family_string_ids.cpp
-    ${SRC_DIR}/gameplay/families/family_archer.cpp
-    ${SRC_DIR}/gameplay/families/family_archmage.cpp
-    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
-    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_cleric.cpp
-    ${SRC_DIR}/gameplay/families/family_druid.cpp
-    ${SRC_DIR}/gameplay/families/family_elf.cpp
-    ${SRC_DIR}/gameplay/families/family_faerie.cpp
-    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
-    ${SRC_DIR}/gameplay/families/family_ghost.cpp
-    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_golem.cpp
-    ${SRC_DIR}/gameplay/families/family_mage.cpp
-    ${SRC_DIR}/gameplay/families/family_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_slime.cpp
-    ${SRC_DIR}/gameplay/families/family_soldier.cpp
-    ${SRC_DIR}/gameplay/families/family_thief.cpp
-    ${SRC_DIR}/gameplay/families/family_tower1.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
     ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/gameplay/guy.cpp
     ${SRC_DIR}/gameplay/living.cpp

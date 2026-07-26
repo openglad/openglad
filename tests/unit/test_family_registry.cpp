@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/weapon_family_descriptor.h>
+#include <openglad/gameplay/effect_family_descriptor.h>
+#include <openglad/gameplay/treasure_family_descriptor.h>
+#include <openglad/gameplay/generator_family_descriptor.h>
 #include <openglad/legacy/base.h>
 #include <openglad/gameplay/statistics.h>
 #include <cstring>
@@ -225,4 +230,84 @@ TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
             << get_family_descriptor(family)->name;
     EXPECT_FALSE(has(FAMILY_SOLDIER, FamilyHook::LevelUp));
     EXPECT_FALSE(has(FAMILY_CLERIC, FamilyHook::LevelUp));
+}
+
+// --- stage B: the registries hold only what a class pack installed --------
+
+TEST(FamilyRegistry, core_span_is_fully_declared_by_the_mounted_packs)
+{
+    og::test::mount_core_pack();
+    // Design doc §9a stage B: init_*_registry() installs nothing at all —
+    // every slot starts free and the core pack fills the core span. A gap
+    // here is the exact condition require_core_families_installed() refuses
+    // to start on, so assert the same thing it does, per order.
+    EXPECT_EQ(-1, first_unpopulated_core_family_slot()) << "living";
+    EXPECT_EQ(-1, first_unpopulated_core_weapon_family_slot()) << "weapon";
+    EXPECT_EQ(-1, first_unpopulated_core_effect_family_slot()) << "effect";
+    EXPECT_EQ(-1, first_unpopulated_core_treasure_family_slot()) << "treasure";
+    EXPECT_EQ(-1, first_unpopulated_core_generator_family_slot()) << "generator";
+    EXPECT_NO_THROW(require_core_families_installed("unit test"));
+}
+
+TEST(FamilyRegistry, every_core_family_carries_its_pack_declared_id)
+{
+    og::test::mount_core_pack();
+    // declared_id is stamped by the classpack installer and by nothing else,
+    // so a "core:" id on every core slot is the direct proof that the data
+    // came from packs/core/classpack.yaml rather than from compiled-in C++.
+    auto declared = [](const char* id, const char* order, int slot) {
+        ASSERT_NE(nullptr, id) << order << " slot " << slot
+                               << " was not declared by any pack";
+        EXPECT_EQ(0, std::strncmp(id, "core:", 5))
+            << order << " slot " << slot << " declared as " << id;
+    };
+    for (int i = 0; i < NUM_FAMILIES; i++)
+        declared(get_family_descriptor(i)->declared_id, "living", i);
+    for (int i = 0; i < 20; i++)
+        declared(get_weapon_family_descriptor(i)->declared_id, "weapon", i);
+    for (int i = 0; i < 13; i++)
+        declared(get_effect_family_descriptor(i)->declared_id, "effect", i);
+    for (int i = 0; i < 15; i++)
+        declared(get_treasure_family_descriptor(i)->declared_id, "treasure", i);
+    for (int i = 0; i < 4; i++)
+        declared(get_generator_family_descriptor(i)->declared_id, "generator", i);
+}
+
+TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_yaml_order)
+{
+    og::test::mount_core_pack();
+    // A pack may name a family it declares LOWER DOWN the same file. The
+    // core pack does exactly that: core:mage promotes_to core:archmage, and
+    // core:tent's generator names core:skeleton. Nothing pre-populates those
+    // slots any more, so the installer has to resolve same-pack references
+    // from its own declarations (packs.cpp: PackWireIds) rather than from a
+    // registry lookup that would depend on file order.
+    EXPECT_EQ(FAMILY_ARCHMAGE, get_family_descriptor(FAMILY_MAGE)->promotes_to);
+    EXPECT_EQ(FAMILY_BIG_ORC, get_family_descriptor(FAMILY_ORC)->promotes_to);
+    EXPECT_EQ(-1, get_family_descriptor(FAMILY_SOLDIER)->promotes_to);
+    // living -> weapon (declared in an order installed before livings) and
+    // generator -> living (installed after them).
+    EXPECT_EQ(FAMILY_KNIFE, get_family_descriptor(FAMILY_SOLDIER)->default_weapon);
+    EXPECT_EQ(FAMILY_SKELETON,
+              get_generator_family_descriptor(FAMILY_TENT)->default_weapon);
+    EXPECT_EQ(FAMILY_MAGE,
+              get_generator_family_descriptor(FAMILY_TOWER)->default_weapon);
+}
+
+TEST(FamilyRegistry, promotion_formula_survives_the_pack_install)
+{
+    og::test::mount_core_pack();
+    // promotion_new_level is the one descriptor field classpack.yaml cannot
+    // spell (it is a formula, not a value), so family_registry.cpp seeds it
+    // into the free slot and the installer — which copies the slot it
+    // patches — carries it through. If that ever stops working, every mage
+    // silently promotes to level 1.
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    ASSERT_NE(nullptr, mage->promotion_new_level);
+    EXPECT_EQ(3, static_cast<int>(mage->promotion_new_level(10)));
+    EXPECT_EQ(1, static_cast<int>(mage->promotion_new_level(6)));
+    const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);
+    ASSERT_NE(nullptr, orc->promotion_new_level);
+    EXPECT_EQ(1, static_cast<int>(orc->promotion_new_level(42)));
+    EXPECT_EQ(nullptr, get_family_descriptor(FAMILY_SOLDIER)->promotion_new_level);
 }

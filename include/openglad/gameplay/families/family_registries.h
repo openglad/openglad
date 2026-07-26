@@ -64,7 +64,19 @@ void reset_effect_family_registry_mod_slots();
 void reset_treasure_family_registry_mod_slots();
 void reset_generator_family_registry_mod_slots();
 
-// Initialize all five family registries. Call once at startup before any lookups.
+// Per-order counterparts of first_unpopulated_core_family_slot(): the lowest
+// core id no mounted pack declared, or -1 when the order is complete.
+// require_core_families_installed() folds all five into one check.
+int first_unpopulated_core_weapon_family_slot();
+int first_unpopulated_core_effect_family_slot();
+int first_unpopulated_core_treasure_family_slot();
+int first_unpopulated_core_generator_family_slot();
+
+// Lay down all five registries' per-slot defaults. Call once at startup.
+// This installs NO families (design doc §9a stage B) — every descriptor,
+// core or mod, arrives from a mounted class pack via
+// og::resources::install_classpacks(). Until that runs, every
+// get_*_family_descriptor answers nullptr.
 inline void init_all_registries()
 {
     init_family_registry();
@@ -75,7 +87,7 @@ inline void init_all_registries()
 }
 
 // Frees every pack-installed slot in all five registries, leaving the core
-// pins alone. The classpack installer calls this before a fresh pass so the
+// span alone. The classpack installer calls this before a fresh pass so the
 // registries mirror exactly the packs mounted right now.
 inline void reset_all_registry_mod_slots()
 {

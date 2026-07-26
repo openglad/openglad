@@ -13,18 +13,27 @@
 // wire byte) + init-once + bounds-checked getter + bounds-checked overwrite
 // (classpack install).
 //
-// SPARSE, not dense: slots 0..CORE_NUM-1 belong to the core pack and are
-// populated by init(); everything above CORE_NUM is a free slot a class pack
-// may claim. A free slot is *never* visible through get() — it answers
-// nullptr, exactly as an out-of-range id did before the registries grew — so
-// every "descriptor == nullptr means this family does not exist" check in the
-// codebase keeps working. install_slot() is the one accessor that sees a free
-// slot, because the classpack installer needs the defaults-initialised
-// descriptor to patch and set() back.
+// EVERY SLOT STARTS FREE. init() only lays down the order's defaults; nothing
+// is populated until a mounted class pack installs it (design doc §9a stage
+// B: the engine carries no family data of its own, core families arrive from
+// packs/core/classpack.yaml through exactly the same door as a mod's). A free
+// slot is *never* visible through get() — it answers nullptr, exactly as an
+// out-of-range id did before the registries grew — so every "descriptor ==
+// nullptr means this family does not exist" check in the codebase keeps
+// working. install_slot() is the one accessor that sees a free slot, because
+// the classpack installer needs the defaults-initialised descriptor to patch
+// and set() back.
+//
+// CORE_NUM is no longer "how many slots init() fills"; it is the span of wire
+// ids the engine's own constants name (FAMILY_SOLDIER..FAMILY_TOWER1 and the
+// other orders' equivalents). Two things use it: reset_mod_slots(), which
+// frees only the ids above it, and first_unpopulated_core_slot(), the
+// startup check that turns "the core pack is missing or malformed" into one
+// diagnosable error instead of a half-populated registry.
 //
 // Usage:
 //   static FamilyRegistryBase<MyDescriptor, NUM_CORE> s_registry;
-//   s_registry.init(apply_defaults, populate);  // once at startup
+//   s_registry.init(apply_defaults);            // once at startup
 //   return s_registry.get(id);                  // in getter
 //   return s_registry.install_slot(id);         // classpack install (read)
 //   s_registry.set(id, descriptor);             // classpack install (write)
@@ -36,19 +45,22 @@ public:
                   "core families must fit inside the registry capacity");
 
     using DefaultsFn = void(*)(Descriptor&);
-    using PopulateFn = void(*)(Descriptor*);
+    using SeedFn = void(*)(Descriptor*);
 
-    void init(DefaultsFn apply_defaults, PopulateFn populate) {
+    // `seed` is optional and writes fields that the pack format cannot
+    // express yet (see family_registry.cpp's promotion formulas). It runs on
+    // the defaults-initialised entries and does NOT populate anything: the
+    // classpack installer copies the install slot, patches the declared
+    // fields and sets it back, so a seeded field rides through the install
+    // untouched — the same mechanism that used to carry behavior callbacks.
+    void init(DefaultsFn apply_defaults, SeedFn seed = nullptr) {
         if (initialized_)
             return;
         defaults_ = apply_defaults;
         for (int i = 0; i < CAPACITY; i++)
             reset_slot(i);
-        populate(entries_);
-        // The core pins are populated by definition: populate() fills every
-        // one of them, and an id below CORE_NUM has always resolved.
-        for (int i = 0; i < CORE_NUM; i++)
-            populated_[i] = true;
+        if (seed != nullptr)
+            seed(entries_);
         initialized_ = true;
     }
 
@@ -83,10 +95,25 @@ public:
         return true;
     }
 
-    // Drops every pack-installed slot back to "free", leaving the core pins
+    // The lowest core id no pack has declared, or -1 when the whole core
+    // span is installed. The startup check reports it: a missing or
+    // malformed core pack must fail with one diagnostic naming the gap, not
+    // hand the game a registry that answers nullptr for SOLDIER.
+    [[nodiscard]] int first_unpopulated_core_slot() const {
+        for (int i = 0; i < CORE_NUM; i++) {
+            if (!populated_[i])
+                return i;
+        }
+        return -1;
+    }
+
+    // Drops every pack-installed slot back to "free", leaving the core span
     // untouched. Called before a fresh install pass so the registries mirror
     // exactly the packs that are mounted now (a pack that went away must not
-    // leave a family behind).
+    // leave a family behind). The core span is deliberately sticky: it is
+    // re-installed from the core pack moments later, and holding the last
+    // good copy in the meantime keeps a stray reinstall (a campaign mount
+    // that happens while packs/ is not mounted) from blanking the game.
     void reset_mod_slots() {
         for (int i = CORE_NUM; i < CAPACITY; i++) {
             if (!populated_[i])

@@ -1,4 +1,6 @@
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
@@ -7,14 +9,13 @@
 
 #include "test_family_hook_dispatch.h"
 
-const FamilyDescriptor& describe_family_druid();
 
 // Druid behavior lives in packs/core/scripts/druid.lua; the descriptor
 // carries data only. Everything here dispatches the way the sim does.
 
 TEST(FamilyDruid, descriptor_level_up_and_difficulty)
 {
-    const FamilyDescriptor& desc = describe_family_druid();
+    const FamilyDescriptor& desc = describe_family(FAMILY_DRUID);
     ASSERT_TRUE(desc.family_id == FAMILY_DRUID);
     ASSERT_TRUE(og::test::has_do_special(desc));
     ASSERT_TRUE(og::test::has_set_difficulty(desc));
@@ -46,7 +47,7 @@ TEST(FamilyDruid, descriptor_level_up_and_difficulty)
 
 TEST(FamilyDruid, do_special_reveal_and_busy_paths)
 {
-    const FamilyDescriptor& desc = describe_family_druid();
+    const FamilyDescriptor& desc = describe_family(FAMILY_DRUID);
     og::test::ScopedHookFailureGuard guard;
     living self;
     self.stats()->set_level(4);

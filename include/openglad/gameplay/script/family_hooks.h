@@ -20,9 +20,9 @@
 //
 // Stage A (design doc §9a) retired the C++ callback of every converted
 // family: for those the Lua hook is the ONLY implementation, so an erroring
-// hook means nothing runs at all — hence the HookFailure latch below. The
-// C++ branch survives for families that still have no Lua twin (the wave,
-// door and animate weapon families) and for mod descriptors that ship none.
+// hook means nothing runs at all — hence the HookFailure latch below. Every
+// core family now has a Lua twin; the C++ branch survives only for mod
+// descriptors that ship a native callback and no script.
 
 #include <openglad/core/order.h>
 

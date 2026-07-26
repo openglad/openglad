@@ -1,4 +1,6 @@
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
@@ -20,13 +22,12 @@
 #include "test_family_hook_dispatch.h"
 
 // --- From test_family_cleric_coverage_push.cpp ---
-const FamilyDescriptor& describe_family_cleric();
 
 namespace detail_family_cleric_coverage_push {
 
 TEST(FamilyCleric, descriptor_difficulty_and_customize_weapon)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ASSERT_TRUE(desc.family_id == FAMILY_CLERIC);
     ASSERT_TRUE(og::test::has_do_special(desc));
     ASSERT_TRUE(og::test::has_check_special_ai(desc));
@@ -55,7 +56,7 @@ TEST(FamilyCleric, descriptor_difficulty_and_customize_weapon)
 
 TEST(FamilyCleric, check_ai_default_and_do_special_busy_returns)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     living self;
 
     self.set_current_special(0); // default true branch in check_special_ai
@@ -128,7 +129,7 @@ walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, char old_
 
 TEST(FamilyCleric, r11_check_ai_and_heal_fail_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
@@ -158,7 +159,7 @@ TEST(FamilyCleric, r11_check_ai_and_heal_fail_paths)
 
 TEST(FamilyCleric, r11_heal_and_mace_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     living* ally = add_living(fx, 0, FAMILY_SOLDIER);
@@ -199,7 +200,7 @@ TEST(FamilyCleric, r11_heal_and_mace_paths)
 
 TEST(FamilyCleric, r11_turn_and_raise_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
@@ -239,7 +240,7 @@ TEST(FamilyCleric, r11_turn_and_raise_paths)
 
 TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericFixture fx;
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
@@ -265,8 +266,6 @@ TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
 } // namespace detail_family_cleric_r11
 
 // --- From test_family_cleric_r12.cpp ---
-const FamilyDescriptor& describe_family_mage();
-const FamilyDescriptor& describe_family_soldier();
 
 namespace detail_family_cleric_r12 {
 namespace {
@@ -318,7 +317,7 @@ walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, char o
 
 TEST(FamilyCleric, r12_ghost_raise_and_resurrect_penalty_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR12Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
@@ -369,7 +368,7 @@ TEST(FamilyCleric, r12_ghost_raise_and_resurrect_penalty_paths)
 
 TEST(FamilyCleric, family_mage_r12_descriptor_paths)
 {
-    const FamilyDescriptor& mage = describe_family_mage();
+    const FamilyDescriptor& mage = describe_family(FAMILY_MAGE);
     ClericR12Fixture fx;
 
     living* self = add_living(fx, 0, FAMILY_MAGE);
@@ -416,7 +415,7 @@ TEST(FamilyCleric, family_mage_r12_descriptor_paths)
 
 TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
 {
-    const FamilyDescriptor& soldier = describe_family_soldier();
+    const FamilyDescriptor& soldier = describe_family(FAMILY_SOLDIER);
     ClericR12Fixture fx;
 
     auto s = std::make_unique<living>();
@@ -486,7 +485,7 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
 
 TEST(FamilyCleric, r12_shoved_ai_and_turn_undead_guard_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR12Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
@@ -599,7 +598,7 @@ walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, char o
 
 TEST(FamilyCleric, r14_lines_110_132_160_heal_plural_and_mystic_mace_branches)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR14Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
@@ -640,7 +639,7 @@ TEST(FamilyCleric, r14_lines_110_132_160_heal_plural_and_mystic_mace_branches)
 
 TEST(FamilyCleric, r14_lines_187_189_192_203_206_243_246_turn_undead_and_raise_paths)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR14Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
@@ -669,7 +668,7 @@ TEST(FamilyCleric, r14_lines_187_189_192_203_206_243_246_turn_undead_and_raise_p
 
 TEST(FamilyCleric, r14_lines_291_302_304_306_311_325_resurrect_variants)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR14Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
@@ -754,7 +753,7 @@ walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char o
 
 TEST(FamilyCleric, r15_low_magic_heal_branch_and_mystic_mace_guard)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR15Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);
@@ -777,7 +776,7 @@ TEST(FamilyCleric, r15_low_magic_heal_branch_and_mystic_mace_guard)
 
 TEST(FamilyCleric, r15_turn_undead_raise_and_resurrect_branches)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR15Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);

@@ -348,6 +348,7 @@ void load_decor_data(PixieData*)
 // ---------------------------------------------------------------------------
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/packs.h>
+#include <openglad/gameplay/family_registry.h>
 
 void io_init(int argc, char* argv[])
 {
@@ -408,11 +409,13 @@ void io_init(int argc, char* argv[])
     }
     // Same call as the SDL io_init, deliberately: refresh_pack_scripts
     // registers the pack behavior SCRIPTS *and* installs classpack.yaml
-    // family descriptor DATA. Headless clients (openglad_text,
+    // family descriptor DATA — the only path by which any family, core or
+    // mod, reaches the registries. Headless clients (openglad_text,
     // openglad_server, openglad_curses) run the identical sim, so both
     // halves must be wired the same way or the two paths drift the moment
     // a family's behavior lives only in Lua.
     og::resources::refresh_pack_scripts();
+    require_core_families_installed("io_init(headless)");
 
     Log("io_init(headless): done\n");
 }

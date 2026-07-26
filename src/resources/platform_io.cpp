@@ -24,6 +24,7 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/packs.h>
+#include <openglad/gameplay/family_registry.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/core/pixdefs.h>
 #include <cstring>
@@ -386,9 +387,12 @@ void io_init(int argc, char* argv[])
     }
     // Scripts + family descriptor DATA both come from the mounted packs
     // (core pack = packs/core). refresh_pack_scripts rescans scripts AND
-    // reinstalls classpack.yaml data; behavior callbacks stay untouched —
-    // the installer preserves them.
+    // installs classpack.yaml data — which is now the ONLY way any family
+    // reaches the registries (design doc §9a stage B).
     og::resources::refresh_pack_scripts();
+    // Hard runtime dependency, same footing as the user path and the default
+    // campaign above: without packs/core there are no families at all.
+    require_core_families_installed("io_init");
 }
 
 void io_exit()

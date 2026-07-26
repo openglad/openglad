@@ -2381,10 +2381,10 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_glow_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 100,
-    "self->set_lifetime(lifetime - 1);",
-    "self->set_lifetime(lifetime - 1); self->set_xpos(self->xpos() + 1);",
-    "Injects a +1px/tick x-displacement into glow_on_animate so the cleric's GLOW aura moves instead of staying fixed. The seq=0 weapon_track then shows max consecutive step = 100 centi-px/tick and pathlen ~14300 centi-px over ticks 7..150, so WeaponSpeed(FAMILY_GLOW,0,50) (100 > 50) and WeaponNetTravel(FAMILY_GLOW,STATIONARY,50) (pathlen 14300 > 50) both flip. The prior target (registry e[FAMILY_GLOW]->e[0] index swap) was not observed by any trajectory predicate."
+    "packs/core/scripts/weapon_animate.lua", 103,
+    "  self:set_lifetime(lifetime - 1)",
+    "  self:set_lifetime(lifetime - 1) self:setxy(self:xpos() + 1, self:ypos())",
+    "Injects a +1px/tick x-displacement into glow_on_animate so the cleric's GLOW aura moves instead of staying fixed. The seq=0 weapon_track then shows max consecutive step = 100 centi-px/tick and pathlen ~14300 centi-px over ticks 7..150, so WeaponSpeed(FAMILY_GLOW,0,50) (100 > 50) and WeaponNetTravel(FAMILY_GLOW,STATIONARY,50) (pathlen 14300 > 50) both flip. The prior target (registry e[FAMILY_GLOW]->e[0] index swap) was not observed by any trajectory predicate. Retargeted 2026-07-26 to the Lua twin: glow_on_animate moved to packs/core/scripts/weapon_animate.lua and the C++ callback slot is now nullptr, so the old weapon_family_animate.cpp:100 pin had nothing left to mutate. Verified on the staged tree: this substitution flips weapon_glow_emission_scen99 AND effect_magic_shield_emission_scen99 pass->fail."
 };
 
 inline constexpr InputEvent kInputsWaveSpecialEmit[] = {
@@ -2606,10 +2606,10 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 84,
-    "self->center_on(self->owner());",
-    "self->setxy(self->xpos() + 2, self->ypos() + 0);",
-    "Replaces the per-tick recenter-on-owner (a no-op for the owner-less direct-spawn ring, hence stationary) with a fixed +2px/tick x-displacement; the FAMILY_CIRCLE_PROTECTION track then walks 122,124,...,(120+2*149) so max consecutive-tick step jumps 0->200 centi-px/tick and pathlen 0->~29800 centi-px, flipping BOTH WeaponSpeed([0,0] -> speed=200 out of range) and WeaponNetTravel(STATIONARY pathlen 0<=50 -> 29800>50). The +0 on ypos keeps both setxy args int so the unambiguous setxy(int32_t,int32_t) overload binds (xpos()+2 alone vs short ypos() is ambiguous)."
+    "packs/core/scripts/weapon_animate.lua", 88,
+    "  self:center_on(owner)",
+    "  self:setxy(self:xpos() + 2, self:ypos())",
+    "Replaces the per-tick recenter-on-owner with a fixed +2px/tick x-displacement; the FAMILY_CIRCLE_PROTECTION track then walks 122,124,...,(120+2*149) so max consecutive-tick step jumps 0->200 centi-px/tick and pathlen 0->~29800 centi-px, flipping BOTH WeaponSpeed([0,0] -> speed=200 out of range) and WeaponNetTravel(STATIONARY pathlen 0<=50 -> 29800>50). Retargeted 2026-07-26 to the Lua twin: circle_protection_on_animate moved to packs/core/scripts/weapon_animate.lua and the C++ callback slot is now nullptr, so the old weapon_family_animate.cpp:84 pin had nothing left to mutate. Verified on the staged tree: this substitution flips weapon_circle_protection_emission_scen99, effect_protection_emit_scen99 and coverage_catchall_scen99 pass->fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_hammer_emission[] = {
@@ -2743,10 +2743,10 @@ inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_expand_emission = {
-    "src/gameplay/effect_family_registry.cpp", 55,
-    "e[FAMILY_DOOR_OPEN]",
-    "e[0]",
-    "Moves the persistent-FX-emitting effect descriptor off its registry slot (slot 11) onto slot 0. The scenario seeds an FX-order emitter whose on_act normally pushes exactly one persistent effect into fxlist; after the swap get_effect_family_descriptor(slot 11) returns the default no-callback descriptor, so effect::act() finds no on_act, emits nothing, and EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) flips 1->0. (The prior FAMILY_EXPAND-slot mutation was a no-op because FAMILY_EXPAND==0, and EXPAND is a decorative data-only family with no emittable behavior.)"
+    "packs/core/scripts/effect_door_open.lua", 38,
+    "  on_act = on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:door_open's on_act hook exactly as a null C++ callback used to: returning false means \"not handled\", which is what the dispatcher assumes when no hook is registered, so effect::act runs the plain animate path. The hand-off that spawns the persistent opened-door FX never happens, so EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) flips 1->0 as the original effect animates out and nothing replaces it. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_ghost_scare_emit_scen99[] = {
@@ -2783,10 +2783,10 @@ inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_ghost_scare_emission = {
-    "src/gameplay/effect_family_registry.cpp", 49,
-    "e[FAMILY_GHOST_SCARE]",
-    "e[0]",
-    "Edits the FAMILY_GHOST_SCARE effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_ghost_scare.lua", 80,
+    "  on_death = on_death,",
+    "  on_death = function() return false end,",
+    "Neuters core:ghost_scare's on_death hook (returning false = \"not handled\", the no-registered-hook path), so the scare never force_commands the frightened foe away from the ghost; the soldier walks LEFT to melee instead of being shoved RIGHT and the whole trajectory diverges from the golden. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_bomb_emission_scen99[] = {
@@ -2828,10 +2828,10 @@ inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_emission = {
-    "src/gameplay/effect_family_registry.cpp", 56,
-    "e[FAMILY_BOMB]",
-    "e[0]",
-    "Edits the FAMILY_BOMB effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_bomb.lua", 98,
+    "  on_death = bomb_on_death,",
+    "  on_death = function() return false end,",
+    "Neuters core:bomb's on_death hook (false = \"not handled\", the no-registered-hook path), so the thief's dropped bomb expires without detonating: no EXPLOSION effect is spawned and no blast damage lands, flipping the scenario's effect-count and surviving-HP predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
@@ -2866,10 +2866,10 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_explosion_emission = {
-    "src/gameplay/effect_family_registry.cpp", 57,
-    "e[FAMILY_EXPLOSION]",
-    "e[0]",
-    "Edits the FAMILY_EXPLOSION effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_bomb.lua", 102,
+    "  on_death = explosion_on_death,",
+    "  on_death = function() return false end,",
+    "Neuters core:explosion's on_death hook (false = \"not handled\", the no-registered-hook path), so the blast's terminal damage/sound pass never runs and the explosion FX simply expires, flipping the scenario's explosion-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
@@ -2921,10 +2921,10 @@ inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_magic_shield_emission = {
-    "src/gameplay/effect_family_registry.cpp", 50,
-    "e[FAMILY_MAGIC_SHIELD]",
-    "e[0]",
-    "Edits the FAMILY_MAGIC_SHIELD effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_shield.lua", 98,
+    "  on_act = magic_shield_on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:magic_shield's on_act hook (false = \"not handled\", the no-registered-hook path), so the shield stops orbiting and re-centring on its owner and falls to the default animate path, flipping the shield-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
@@ -2945,10 +2945,10 @@ inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_knife_back_emission = {
-    "src/gameplay/effect_family_registry.cpp", 52,
-    "e[FAMILY_KNIFE_BACK]",
-    "e[0]",
-    "Edits the FAMILY_KNIFE_BACK effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_knife_back.lua", 78,
+    "  on_act = on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:knife_back's on_act hook (false = \"not handled\", the no-registered-hook path), so the returning blade never homes back to its thrower and expires wherever it was, flipping the knife-back emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr InputEvent kInputsBoomerangEmission[] = {
@@ -2990,10 +2990,10 @@ inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_boomerang_emission = {
-    "src/gameplay/effect_family_registry.cpp", 51,
-    "e[FAMILY_BOOMERANG]",
-    "e[0]",
-    "Edits the FAMILY_BOOMERANG effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_shield.lua", 102,
+    "  on_act = boomerang_on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:boomerang's on_act hook (false = \"not handled\", the no-registered-hook path), so the boomerang stops flying its arc and returning to the soldier, flipping the boomerang-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
@@ -3014,10 +3014,10 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_cloud_emission = {
-    "src/gameplay/effect_family_registry.cpp", 53,
-    "e[FAMILY_CLOUD]",
-    "e[0]",
-    "Edits the FAMILY_CLOUD effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_cloud.lua", 82,
+    "  on_act = on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:cloud's on_act hook (false = \"not handled\", the no-registered-hook path), so the cloud stops drifting and damaging what it covers, flipping the cloud-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_marker_emission_generator[] = {
@@ -3052,10 +3052,10 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_marker_emission = {
-    "src/gameplay/effect_family_registry.cpp", 44,
-    "    e[FAMILY_MARKER].loops_animation = true;",
-    "    e[FAMILY_MARKER].loops_animation = false;",
-    "Disables FAMILY_MARKER animation looping; per effect.cpp:88-113 a non-looping FX falls to ANI_WALK then set_dead(1), so the teleport markers the generator-spawned mages place no longer persist — every marker is reaped from oblist within a couple ticks, dropping the team-1 alive count below the WalkerOfTeamAlive(1,12,30) floor."
+    "packs/core/classpack.yaml", 1397,
+    "      loops_animation: true",
+    "      loops_animation: false",
+    "Disables FAMILY_MARKER animation looping at its live source, core:marker's classpack.yaml entry; per effect.cpp:88-113 a non-looping FX falls to ANI_WALK then set_dead(1), so the teleport markers the generator-spawned mages place no longer persist — every marker is reaped from oblist within a couple ticks, dropping the team-1 alive count below its pin. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr InputEvent kInputsChainEmission[] = {
@@ -3100,10 +3100,10 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
-    "src/gameplay/effect_family_registry.cpp", 54,
-    "e[FAMILY_CHAIN]",
-    "e[0]",
-    "Edits the FAMILY_CHAIN effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_chain.lua", 148,
+    "  on_act = on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
@@ -3120,10 +3120,10 @@ inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_door_open_emission = {
-    "src/gameplay/effect_family_registry.cpp", 55,
-    "e[FAMILY_DOOR_OPEN]",
-    "e[0]",
-    "Edits the FAMILY_DOOR_OPEN effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "packs/core/scripts/effect_door_open.lua", 38,
+    "  on_act = on_act,",
+    "  on_act = function() return false end,",
+    "Neuters core:door_open's on_act hook (false = \"not handled\", the no-registered-hook path), so the opened door is never handed off to a fresh persistent effect and the door_open FX count flips. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
@@ -3174,10 +3174,10 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
-    "src/gameplay/generator_family_registry.cpp", 24,
-    ".default_weapon = FAMILY_SKELETON,",
-    ".default_weapon = FAMILY_GHOST,",
-    "Repoints the FAMILY_TENT generator descriptor's default_weapon (the living family it emits) from SKELETON to GHOST; gloader.cpp:693 copies gfd->default_weapon into the generator and walker.cpp:1059 emits add_ob(Order::Living, default_weapon()), so this changes every emitted walker's family from FAMILY_SKELETON to FAMILY_GHOST, flipping WalkerFamilyCount(FAMILY_SKELETON,1,6)."
+    "packs/core/classpack.yaml", 1669,
+    "      default_weapon: core:skeleton",
+    "      default_weapon: core:ghost",
+    "Repoints the FAMILY_TENT generator's emitted living family from SKELETON to GHOST at its live source, core:tent's classpack.yaml entry; gloader.cpp:693 copies gfd->default_weapon into the generator and walker.cpp:1059 emits add_ob(Order::Living, default_weapon()), so every emitted walker changes family and WalkerFamilyCount(FAMILY_SKELETON,...) flips to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_generator_tower[] = {
@@ -3199,10 +3199,10 @@ inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_tower_emission = {
-    "src/gameplay/generator_family_registry.cpp", 33,
-    ".default_weapon = FAMILY_MAGE,",
-    ".default_weapon = FAMILY_SKELETON,",
-    "Repoints the FAMILY_TOWER generator's emitted living-family from FAMILY_MAGE to FAMILY_SKELETON; the tower then spawns no MAGE walkers, so WalkerFamilyCount(FAMILY_MAGE,...) drops to 0 and flips."
+    "packs/core/classpack.yaml", 1686,
+    "      default_weapon: core:mage",
+    "      default_weapon: core:skeleton",
+    "Repoints the FAMILY_TOWER generator's emitted living family from MAGE to SKELETON at its live source, core:tower's classpack.yaml entry; the tower then spawns no MAGE walkers, so WalkerFamilyCount(FAMILY_MAGE,...) drops to 0 and flips. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_generator_bones[] = {
@@ -3217,10 +3217,10 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
-    "src/gameplay/generator_family_registry.cpp", 42,
-    ".default_weapon = FAMILY_GHOST,",
-    ".default_weapon = FAMILY_ELF,",
-    "Changes the FAMILY_BONES generator's emitted-walker family from FAMILY_GHOST to FAMILY_ELF; gloader.cpp:691-693 sets the spawned walker's family from gfd->default_weapon, so the BONES generator stops emitting GHOST walkers and the dump's FAMILY_GHOST count drops to 0."
+    "packs/core/classpack.yaml", 1703,
+    "      default_weapon: core:ghost",
+    "      default_weapon: core:elf",
+    "Repoints the FAMILY_BONES generator's emitted living family from GHOST to ELF at its live source, core:bones's classpack.yaml entry; the BONES generator stops emitting GHOST walkers and the dump's FAMILY_GHOST count drops to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_generator_treehouse[] = {
@@ -3237,10 +3237,10 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {
-    "src/gameplay/generator_family_registry.cpp", 51,
-    ".default_weapon = FAMILY_ELF,",
-    ".default_weapon = FAMILY_SOLDIER,",
-    "Repoints the FAMILY_TREEHOUSE generator's emitted-walker family from FAMILY_ELF to FAMILY_SOLDIER; create_weapon() does add_ob(Order::Living, default_weapon()) (walker.cpp:1059), so the generator's spawned walkers serialize as FAMILY_SOLDIER instead of FAMILY_ELF, dropping the FAMILY_ELF walker count to 0."
+    "packs/core/classpack.yaml", 1720,
+    "      default_weapon: core:elf",
+    "      default_weapon: core:soldier",
+    "Repoints the FAMILY_TREEHOUSE generator's emitted living family from ELF to SOLDIER at its live source, core:treehouse's classpack.yaml entry; create_weapon() does add_ob(Order::Living, default_weapon()) (walker.cpp:1059), so the spawned walkers serialize as FAMILY_SOLDIER and the FAMILY_ELF walker count drops to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
 };
 
 inline constexpr FactPredicate kFacts_event_notification_emission_scen99[] = {

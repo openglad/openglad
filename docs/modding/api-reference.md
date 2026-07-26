@@ -363,6 +363,14 @@ C++ iteration order — walk them with `for i = 1, #t` (there is no `pairs`).
 `→ bool`, all take pixel coordinates. `og.query_object_passable` **draws from
 the RNG** through the obmap miss roll.
 
+`og.query_genre(tile_x, tile_y [, floor]) → int` asks what the terrain *is*
+rather than whether it can be walked on — compare the result against
+`og.C.TYPE_*` (`TYPE_WALL`, `TYPE_WATER`, `TYPE_TREES`, …). It is the one
+terrain call that takes **tile** coordinates, because the smoother it reads
+does; divide pixels by `og.C.GRID_SIZE` first. Out-of-range tiles report
+`TYPE_GRASS`, so there is no nil case. Omitting `floor` reads the
+default-floor smoother.
+
 ### Family data
 
 `og.family_flag(order, family_byte, flag_name) → bool | nil` — a read-only
@@ -490,6 +498,8 @@ pack mounts and unmounts with the campaign.
 | Sounds | `SOUND_` + `BOW CLANG DIE1 BLAST SPARKLE TELEPORT YO BOLT HEAL CHARGE FWIP EXPLODE DIE2 ROAR MONEY EAT` |
 | Sim event kinds | `EVENT_` + `PLAY_SOUND NOTIFICATION SET_PALETTE REQUEST_REDRAW DAMAGE_TILE` |
 | Combat caps | `SHOT_DRAIN_CAP MP_POOL_DAMAGE_CAP ENEMY_FREEZE_BANK_CAP` |
+| Facings | `FACE_` + `UP UP_RIGHT RIGHT DOWN_RIGHT DOWN DOWN_LEFT LEFT UP_LEFT`, plus `NUM_FACINGS` |
+| Terrain genres | `TYPE_` + `GRASS WATER TREES DIRT COBBLE GRASS_DARK DIRT_DARK WALL CARPET GRASS_LIGHT AIR GLASS DROP_BLOCK ZSTAIRS SNOW LAVA MARSH ASH UNKNOWN` |
 | Misc | `GRID_SIZE NUM_SPECIALS MAXOBS` |
 
 ## Script errors and logging
@@ -629,7 +639,7 @@ og.register_hooks("living", "example:emberwisp", {
 
 | Pattern | Read |
 |---|---|
-| Transliterating a C++ family, canonical style | `packs/core/scripts/soldier.lua` beside `src/gameplay/families/family_soldier.cpp` |
+| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside its `core:soldier` entry in `packs/core/classpack.yaml` (the C++ `family_soldier.cpp` it was transliterated from is gone — see design doc §9a) |
 | Rand-guarding, raw frozen-delay, guy exp | `packs/core/scripts/orc.lua` |
 | Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |

@@ -16,8 +16,9 @@ reference documents, in reading order for any non-trivial task:
    method, constant, and hook signature, plus a guided tour of the runnable
    example pack in `docs/modding/examples/emberwisp/` (yaml + lua + art).
 
-Real code to read side by side: `packs/core/scripts/soldier.lua` against
-`src/gameplay/families/family_soldier.cpp` (canonical style),
+Real code to read side by side: `packs/core/scripts/soldier.lua` against its
+`core:soldier` entry in `packs/core/classpack.yaml` (canonical style — the
+engine has no C++ family sources left to compare with),
 `packs/core/scripts/orc.lua` (rand-guarding, raw frozen-delay, guy exp), and
 `tools/concept_mapgen/showcase_pack.cpp` (the Ninefold Court's `court.lua` —
 level hooks, per-entity hooks, generator `customize_spawn`).
