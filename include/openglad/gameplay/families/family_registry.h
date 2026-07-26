@@ -24,3 +24,9 @@ const FamilyDescriptor* get_family_descriptor(int family_id);
 
 // Initialize the family registry. Call once at startup before any lookups.
 void init_family_registry();
+
+// Overwrites one living-family slot (classpack install: copy the current
+// descriptor, patch data fields, preserve callbacks, set it back). Entry
+// addresses are stable across set. Returns false when family_id is
+// outside the registry's capacity. Initializes the registry if needed.
+bool set_family_descriptor(int family_id, const FamilyDescriptor& d);

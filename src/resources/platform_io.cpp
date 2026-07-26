@@ -385,6 +385,11 @@ void io_init(int argc, char* argv[])
         LogWarn("Failed to mount default packs path\n");
     }
     og::resources::register_mounted_pack_scripts();
+    // Family descriptor DATA comes from the mounted packs' classpack.yaml
+    // (core pack = packs/core). Behavior callbacks stay untouched — the
+    // installer preserves them; behavior lives in the pack scripts
+    // registered above.
+    og::resources::install_classpacks();
 }
 
 void io_exit()

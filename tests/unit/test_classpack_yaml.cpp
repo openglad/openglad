@@ -23,12 +23,17 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/generator_family_descriptor.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/resources/classpack_yaml.h>
+#include <openglad/resources/packs.h>
 
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 using og::data::ClasspackData;
 using og::data::parse_classpack_yaml;
@@ -428,4 +433,168 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
     // Every living entry's wire_id is the pinned legacy byte.
     for (std::size_t i = 0; i < data.living.size(); i++)
         ASSERT_EQ(data.living[i].wire_id, std::to_string(i));
+}
+
+// ---------------------------------------------------------------------------
+// Registry install: YAML data overwrites, callbacks preserved
+// ---------------------------------------------------------------------------
+
+TEST(ClasspackInstall, overrides_data_preserves_callbacks)
+{
+    init_all_registries();
+    const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
+
+    og::data::ClasspackData data;
+    data.pack = "test";
+    og::data::ClasspackLivingEntry e;
+    e.id = "test:soldier_override";
+    e.wire_id = "0"; // pins the soldier slot
+    e.base_stats = std::vector<std::int32_t>{99, 6, 12, 8, 9, 1};
+    e.death_message.present = true;
+    e.death_message.value = "SOLDIER TESTED";
+    e.names = std::vector<std::string>{"Alpha", "Beta"};
+    data.living.push_back(std::move(e));
+
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* after = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(after, nullptr);
+    // Declared fields reflect the YAML override...
+    ASSERT_EQ(after->base_stats[0], 99);
+    ASSERT_STREQ(after->death_message, "SOLDIER TESTED");
+    ASSERT_EQ(after->name_pool_size, 2);
+    ASSERT_STREQ(after->name_pool[0], "Alpha");
+    ASSERT_STREQ(after->name_pool[1], "Beta");
+    // ...undeclared data fields keep their current values...
+    ASSERT_EQ(after->base_stats[1], before.base_stats[1]);
+    ASSERT_EQ(after->hiring_cost, before.hiring_cost);
+    ASSERT_STREQ(after->name, "SOLDIER");
+    ASSERT_EQ(after->description, before.description)
+        << "absent description must keep the exact current pointer";
+    ASSERT_EQ(after->default_weapon, before.default_weapon);
+    // ...and EVERY behavior callback pointer is preserved unchanged.
+    ASSERT_EQ(after->promotion_new_level, before.promotion_new_level);
+    ASSERT_EQ(after->do_special, before.do_special);
+    ASSERT_EQ(after->check_special_ai, before.check_special_ai);
+    ASSERT_EQ(after->hit_response, before.hit_response);
+    ASSERT_EQ(after->set_difficulty, before.set_difficulty);
+    ASSERT_EQ(after->level_up, before.level_up);
+    ASSERT_EQ(after->on_death, before.on_death);
+    ASSERT_EQ(after->on_act_living, before.on_act_living);
+    ASSERT_EQ(after->on_shoved, before.on_shoved);
+    ASSERT_EQ(after->on_fire_weapon, before.on_fire_weapon);
+    ASSERT_EQ(after->handle_teleport, before.handle_teleport);
+    ASSERT_EQ(after->on_create, before.on_create);
+    ASSERT_EQ(after->customize_weapon, before.customize_weapon);
+    ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
+    ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
+
+    // Restore the pristine descriptor for the rest of the process.
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
+}
+
+TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
+{
+    init_all_registries();
+    const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
+    const GeneratorFamilyDescriptor before_tent =
+        *get_generator_family_descriptor(FAMILY_TENT);
+
+    og::data::ClasspackData data;
+    {
+        og::data::ClasspackLivingEntry e;
+        e.id = "test:mage_override";
+        e.wire_id = "3"; // FAMILY_MAGE
+        e.default_weapon = "core:rock";
+        e.promotes_to.present = true; // explicit ~ → no promotion
+        e.promotes_to.is_null = true;
+        data.living.push_back(std::move(e));
+    }
+    {
+        og::data::ClasspackGeneratorEntry g;
+        g.id = "test:tent_override";
+        g.wire_id = "0"; // FAMILY_TENT
+        g.default_weapon = "core:ghost"; // living family reference
+        data.generators.push_back(std::move(g));
+    }
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
+
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    ASSERT_EQ(mage->default_weapon, FAMILY_ROCK)
+        << "default_weapon resolves through the weapon registry";
+    ASSERT_EQ(mage->promotes_to, -1) << "explicit ~ clears the promotion";
+    ASSERT_EQ(mage->do_special, before_mage.do_special);
+
+    const GeneratorFamilyDescriptor* tent =
+        get_generator_family_descriptor(FAMILY_TENT);
+    ASSERT_EQ(tent->default_weapon, FAMILY_GHOST)
+        << "generator default_weapon resolves through the living registry";
+
+    ASSERT_TRUE(set_family_descriptor(FAMILY_MAGE, before_mage));
+    ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, before_tent));
+}
+
+TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
+{
+    init_all_registries();
+    const WeaponFamilyDescriptor before_rock =
+        *get_weapon_family_descriptor(FAMILY_ROCK);
+    const FamilyDescriptor before_elf = *get_family_descriptor(FAMILY_ELF);
+
+    og::data::ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  weapon:\n"
+        "    - id: test:rock\n"
+        "      wire_id: 1\n"
+        "      fire_sound: 42\n"
+        "      init_bit_flags: [MAGICAL, FIRE]\n"
+        "  living:\n"
+        "    - id: test:elf\n"
+        "      wire_id: 1\n"
+        "      default_weapon: test:no_such_weapon\n"
+        "      animation: moonwalk\n"
+        "      hiring_cost: 7\n",
+        data, "install-yaml"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
+
+    const WeaponFamilyDescriptor* rock =
+        get_weapon_family_descriptor(FAMILY_ROCK);
+    ASSERT_EQ(rock->fire_sound, 42);
+    ASSERT_EQ(rock->init_bit_flags, BIT_MAGICAL | BIT_FIRE);
+    ASSERT_EQ(rock->on_death, before_rock.on_death);
+    ASSERT_EQ(rock->on_animate, before_rock.on_animate);
+    ASSERT_EQ(rock->on_hit_target, before_rock.on_hit_target);
+
+    const FamilyDescriptor* elf = get_family_descriptor(FAMILY_ELF);
+    ASSERT_EQ(elf->hiring_cost, 7) << "good fields apply";
+    ASSERT_EQ(elf->default_weapon, before_elf.default_weapon)
+        << "unresolved reference keeps the current value";
+    ASSERT_EQ(elf->animation_type, before_elf.animation_type)
+        << "unknown animation name keeps the current value";
+
+    ASSERT_TRUE(set_weapon_family_descriptor(FAMILY_ROCK, before_rock));
+    ASSERT_TRUE(set_family_descriptor(FAMILY_ELF, before_elf));
+}
+
+TEST(ClasspackInstall, auto_wire_id_beyond_capacity_is_skipped)
+{
+    init_all_registries();
+    og::data::ClasspackData data;
+    {
+        og::data::ClasspackLivingEntry e;
+        e.id = "mod:brand_new";
+        e.wire_id = "auto"; // first free id >= 21; living capacity is 21
+        e.hiring_cost = 1;
+        data.living.push_back(std::move(e));
+    }
+    {
+        og::data::ClasspackLivingEntry e;
+        e.id = "mod:bad_wire";
+        e.wire_id = "banana";
+        data.living.push_back(std::move(e));
+    }
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 0)
+        << "no capacity above the core pins yet — skipped with a warning";
+    ASSERT_EQ(get_family_descriptor(NUM_FAMILIES), nullptr);
 }

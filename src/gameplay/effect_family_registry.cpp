@@ -68,3 +68,11 @@ const EffectFamilyDescriptor* get_effect_family_descriptor(int family_id)
         init_effect_family_registry();
     return s_registry.get(family_id);
 }
+
+bool set_effect_family_descriptor(int family_id,
+                                  const EffectFamilyDescriptor& d)
+{
+    if (!s_registry.is_initialized())
+        init_effect_family_registry();
+    return s_registry.set(family_id, d);
+}
