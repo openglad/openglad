@@ -1740,6 +1740,9 @@ bool walker::death()
 				{
 					generate_bloodspot();
 				}
+				// Level-script per-entity / level-wide death hooks (inert
+				// without registered level scripts).
+				og::script::hooks::level_entity_death(this);
 			}  // end of family() dispatch
 			break;  // end of order() livings case
 		case Order::Generator:  // go up in flames :>

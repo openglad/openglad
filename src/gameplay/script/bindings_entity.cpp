@@ -979,6 +979,39 @@ int og_cosmetic_rand(lua_State* L)
     return 1;
 }
 
+int og_level_id(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(world_arg(L)->id));
+    return 1;
+}
+
+int og_level_tick(lua_State* L)
+{
+    lua_pushinteger(
+        L, static_cast<lua_Integer>(world_arg(L)->level_tick_count()));
+    return 1;
+}
+
+int og_level_done(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(world_arg(L)->level_done));
+    return 1;
+}
+
+int og_game_ended(lua_State* L)
+{
+    lua_pushboolean(L, world_arg(L)->game_ended ? 1 : 0);
+    return 1;
+}
+
+int og_remaining_foes(lua_State* L)
+{
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world_arg(L)->remaining_foes(w)));
+    return 1;
+}
+
 int og_enemy_freeze(lua_State* L)
 {
     lua_pushinteger(L,
@@ -1353,6 +1386,11 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"query_grid_passable", og_query_grid_passable},
     {"query_object_passable", og_query_object_passable},
     {"cosmetic_rand", og_cosmetic_rand},
+    {"level_id", og_level_id},
+    {"level_tick", og_level_tick},
+    {"level_done", og_level_done},
+    {"game_ended", og_game_ended},
+    {"remaining_foes", og_remaining_foes},
     {"enemy_freeze", og_enemy_freeze},
     {"set_enemy_freeze", og_set_enemy_freeze},
     {"emit_sound", og_emit_sound},

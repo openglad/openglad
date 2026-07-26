@@ -155,7 +155,33 @@ cost; `og.scare_duration(level)`, `og.elemental_lifetime(level)`,
 `og.apply_difficulty_scaling(self, level, hp, mp, dmg, armor)`,
 `og.check_special_ai_distance(self, threshold)`.
 
+World state: `og.level_id()`, `og.level_tick()`, `og.level_done()`,
+`og.game_ended()`, `og.remaining_foes(self)`.
+
 `og.log(...)` / `print(...)`: diagnostics (shows under TESTING traces).
+
+## Level scripts
+
+```lua
+og.register_level_hooks(level_id, {   -- level_id -1 = every level
+  on_load = function(level) ... end,          -- first tick of the level on
+                                              -- THIS peer (fresh or
+                                              -- mid-join); derive state
+                                              -- from the world, idempotent
+  on_tick = function(level, tick) ... end,    -- every tick, pre-acts
+  on_entity_death = function(ent) ... end,    -- living deaths
+  on_entity_spawn = function(ent) ... end,    -- sim-authored living/
+                                              -- generator spawns only
+})
+og.set_entity_hooks(ent, { on_death = function(ent) ... end })
+```
+
+Per-entity hooks are registered at runtime (typically from `on_load` or
+`on_entity_spawn` after selecting entities via `og.oblist()` / position /
+family) and are consumed when they fire. Exact-level registrations shadow
+wildcard ones per hook kind. Win/lose logic lives in `on_tick` via the
+world-state getters. A campaign ships level scripts inside its embedded
+pack (`packs/<id>/scripts/` in the campaign zip) keyed by its level ids.
 
 ## Constants (`og.C.*`)
 

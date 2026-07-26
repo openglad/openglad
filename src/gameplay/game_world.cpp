@@ -605,7 +605,14 @@ walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
     if (order == Order::Weapon)
         return add_to_list(order, family, weaplist, false, atstart);
 
-    return add_to_list(order, family, oblist, order == Order::Living, atstart);
+    walker* added =
+        add_to_list(order, family, oblist, order == Order::Living, atstart);
+    // Level-script on_entity_spawn: sim-authored livings/generators only
+    // (snapshot/replay insertion paths bypass add_ob and stay silent).
+    if (added != nullptr &&
+        (order == Order::Living || order == Order::Generator))
+        og::script::hooks::level_entity_spawn(added);
+    return added;
 }
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
@@ -1655,6 +1662,10 @@ void GameWorld::tick()
     {
         last_level_id_ = id;
         level_tick_count_ = 0;
+        // Level-script on_load: fires on each peer's first tick of a level
+        // (fresh start or mid-level join alike — scripts derive state from
+        // the world, not from "how long the level existed elsewhere").
+        og::script::hooks::level_load(this);
     }
     level_tick_count_++;
 
@@ -1674,6 +1685,9 @@ void GameWorld::tick()
         og::sim::classic_respawn_flush_pending(*this);
         return;
     }
+
+    // Level-script on_tick: fixed pre-act point, after the timeout guard.
+    og::script::hooks::level_tick(this);
 
     if (enemy_freeze)
         enemy_freeze--;

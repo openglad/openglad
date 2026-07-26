@@ -399,6 +399,92 @@ int og_entity_id(lua_State* L)
     return 1;
 }
 
+// ---------------------------------------------------------------------------
+// Level-script hooks
+// ---------------------------------------------------------------------------
+
+constexpr lua_Integer kLevelKeyStride = 65536;
+
+lua_Integer level_hook_key(LevelHook kind, int level_id)
+{
+    // level_id -1 = wildcard (all levels), stored in the +0 slot; concrete
+    // levels at +(id+1).
+    const lua_Integer level_part =
+        level_id < 0 ? 0 : static_cast<lua_Integer>(level_id) + 1;
+    return static_cast<lua_Integer>(kind) * kLevelKeyStride + level_part;
+}
+
+struct LevelHookName {
+    const char* name;
+    LevelHook kind;
+};
+
+constexpr LevelHookName kLevelHookNames[] = {
+    {"on_load", LevelHook::Load},
+    {"on_tick", LevelHook::Tick},
+    {"on_entity_death", LevelHook::EntityDeath},
+    {"on_entity_spawn", LevelHook::EntitySpawn},
+};
+
+// og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=,
+// on_entity_spawn= }). level_id -1 registers for every level.
+int og_register_level_hooks(lua_State* L)
+{
+    const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
+    luaL_checktype(L, 2, LUA_TTABLE);
+    VmState* st = get_vm_state(L);
+    if (st == nullptr || st->owner == nullptr)
+        return luaL_error(L, "og.register_level_hooks: no world scripts");
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
+    int registered = 0;
+    for (const auto& h : kLevelHookNames) {
+        lua_getfield(L, 2, h.name);
+        if (lua_isnil(L, -1)) {
+            lua_pop(L, 1);
+            continue;
+        }
+        if (!lua_isfunction(L, -1))
+            return luaL_error(L, "og.register_level_hooks: '%s' must be a "
+                                 "function", h.name);
+        lua_rawseti(L, -2, level_hook_key(h.kind, level_id));
+        st->level_hook_kinds |= 1u << static_cast<unsigned>(h.kind);
+        registered++;
+    }
+    lua_pop(L, 1);
+    if (registered == 0)
+        return luaL_error(
+            L, "og.register_level_hooks: no valid hooks (check names)");
+    return 0;
+}
+
+// og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides,
+// registered from a level script (typically in on_load after finding the
+// entity). Cleared automatically when the entity's death hook fires.
+int og_set_entity_hooks(lua_State* L)
+{
+    auto* h = static_cast<WalkerHandle*>(
+        luaL_checkudata(L, 1, kWalkerMeta));
+    luaL_checktype(L, 2, LUA_TTABLE);
+    if (h->entity_id == 0)
+        return luaL_error(L, "og.set_entity_hooks: entity is untracked");
+    VmState* st = get_vm_state(L);
+    if (st == nullptr)
+        return luaL_error(L, "og.set_entity_hooks: no world scripts");
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
+    lua_newtable(L);
+    lua_getfield(L, 2, "on_death");
+    if (!lua_isnil(L, -1) && !lua_isfunction(L, -1))
+        return luaL_error(L, "og.set_entity_hooks: 'on_death' must be a "
+                             "function");
+    lua_rawseti(L, -2, static_cast<lua_Integer>(LevelHook::EntityDeath));
+    lua_rawseti(L, -2, static_cast<lua_Integer>(h->entity_id));
+    lua_pop(L, 1);
+    st->has_entity_hooks = true;
+    return 0;
+}
+
 // og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets
 // scripts compare walker:family() against named families).
 int og_family_id(lua_State* L)
@@ -435,6 +521,10 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
 
     lua_newtable(L);
     detail_->state.hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
+    detail_->state.level_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
+    detail_->state.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     ensure_handle_metatables(L, &detail_->state);
     install_entity_bindings(L, &detail_->state);
@@ -445,6 +535,10 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     install_entity_bindings_into_og(L);
     lua_pushcfunction(L, og_register_hooks);
     lua_setfield(L, -2, "register_hooks");
+    lua_pushcfunction(L, og_register_level_hooks);
+    lua_setfield(L, -2, "register_level_hooks");
+    lua_pushcfunction(L, og_set_entity_hooks);
+    lua_setfield(L, -2, "set_entity_hooks");
     lua_pushcfunction(L, og_rand);
     lua_setfield(L, -2, "rand");
     lua_pushcfunction(L, og_family_id);
@@ -914,6 +1008,149 @@ std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
     if (tfd->on_eat != nullptr)
         return tfd->on_eat(self, eater);
     return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------
+// Level-script dispatch
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Cheap gate shared by all level dispatchers: no packs → no VM creation, no
+// cost, byte-identical sims for script-less runs.
+VmState* level_vm_state(std::uint32_t kind_bit)
+{
+    if (pack_scripts().empty())
+        return nullptr;
+    WorldScripts& ws = active_world_scripts();
+    VmState* st = get_vm_state(ws.host().impl().L);
+    if (st == nullptr || (st->level_hook_kinds & kind_bit) == 0)
+        return nullptr;
+    return st;
+}
+
+// Pushes the registered fn for (kind, level) — exact slot first, then the
+// wildcard — or returns false with the stack clean.
+bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
+                        int level_id)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
+    lua_rawgeti(L, -1, level_hook_key(kind, level_id));
+    if (lua_isfunction(L, -1)) {
+        lua_remove(L, -2);
+        return true;
+    }
+    lua_pop(L, 1);
+    lua_rawgeti(L, -1, level_hook_key(kind, -1));
+    if (lua_isfunction(L, -1)) {
+        lua_remove(L, -2);
+        return true;
+    }
+    lua_pop(L, 2);
+    return false;
+}
+
+}  // namespace
+
+void level_load(GameWorld* world)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::Load));
+    if (st == nullptr || world == nullptr)
+        return;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::Load, world->id))
+        return;
+    st->dispatch_gen++;
+    lua_pushinteger(impl.L, world->id);
+    impl.protected_call("level:on_load", 1, 0);
+}
+
+void level_tick(GameWorld* world)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::Tick));
+    if (st == nullptr || world == nullptr)
+        return;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::Tick, world->id))
+        return;
+    st->dispatch_gen++;
+    lua_pushinteger(impl.L, world->id);
+    lua_pushinteger(impl.L,
+                    static_cast<lua_Integer>(world->level_tick_count()));
+    impl.protected_call("level:on_tick", 2, 0);
+}
+
+void level_entity_death(walker* self)
+{
+    if (self == nullptr || pack_scripts().empty())
+        return;
+    WorldScripts& ws = active_world_scripts();
+    VmState* st = get_vm_state(ws.host().impl().L);
+    if (st == nullptr)
+        return;
+    ScriptHost::Impl& impl = ws.host().impl();
+    lua_State* L = impl.L;
+
+    // Per-entity hook first (registered via og.set_entity_hooks); the entry
+    // is consumed — a dead entity id never fires twice.
+    if (st->has_entity_hooks && self->entity_id() != 0) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
+        lua_rawgeti(L, -1, static_cast<lua_Integer>(self->entity_id()));
+        if (lua_istable(L, -1)) {
+            lua_rawgeti(L, -1,
+                        static_cast<lua_Integer>(LevelHook::EntityDeath));
+            if (lua_isfunction(L, -1)) {
+                lua_remove(L, -2);   // entity's hook table
+                lua_pushnil(L);
+                lua_rawseti(L, -3,
+                            static_cast<lua_Integer>(self->entity_id()));
+                lua_remove(L, -2);   // entity_hooks root
+                st->dispatch_gen++;
+                push_walker_handle(L, self, st->dispatch_gen);
+                impl.protected_call("entity:on_death", 1, 0);
+            } else {
+                lua_pop(L, 3);
+            }
+        } else {
+            lua_pop(L, 2);
+        }
+    }
+
+    // Level-wide hook.
+    if ((st->level_hook_kinds &
+         (1u << static_cast<unsigned>(LevelHook::EntityDeath))) == 0)
+        return;
+    GameWorld* world =
+        (current_game != nullptr) ? current_game->world : nullptr;
+    if (world == nullptr)
+        return;
+    if (!push_level_hook_fn(L, st, LevelHook::EntityDeath, world->id))
+        return;
+    st->dispatch_gen++;
+    push_walker_handle(L, self, st->dispatch_gen);
+    impl.protected_call("level:on_entity_death", 1, 0);
+}
+
+void level_entity_spawn(walker* spawned)
+{
+    if (spawned == nullptr)
+        return;
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::EntitySpawn));
+    if (st == nullptr)
+        return;
+    GameWorld* world =
+        (current_game != nullptr) ? current_game->world : nullptr;
+    if (world == nullptr)
+        return;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::EntitySpawn, world->id))
+        return;
+    st->dispatch_gen++;
+    push_walker_handle(impl.L, spawned, st->dispatch_gen);
+    impl.protected_call("level:on_entity_spawn", 1, 0);
 }
 
 }  // namespace hooks

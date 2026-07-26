@@ -41,6 +41,19 @@ struct VmState {
     std::uint64_t dispatch_gen = 0;
     int hooks_ref = -1;           // table: order/family key → hook table
     int walker_methods_ref = -1;  // __index table for walker handles
+    int level_hooks_ref = -1;     // table: kind*65536 + (level+1) → fn
+    int entity_hooks_ref = -1;    // table: entity_id → { kind → fn }
+    std::uint32_t level_hook_kinds = 0;  // bitmask of registered kinds
+    bool has_entity_hooks = false;
+};
+
+// Level-script hook kinds (bit positions in level_hook_kinds and the kind
+// component of level_hooks_ref keys).
+enum class LevelHook : int {
+    Load = 0,
+    Tick = 1,
+    EntityDeath = 2,
+    EntitySpawn = 3,
 };
 
 VmState* get_vm_state(lua_State* L);

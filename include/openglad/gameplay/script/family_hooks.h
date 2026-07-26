@@ -32,6 +32,7 @@ class guy;
 class weap;
 class effect;
 class treasure;
+class GameWorld;
 struct FamilyDescriptor;
 struct WeaponFamilyDescriptor;
 struct EffectFamilyDescriptor;
@@ -147,6 +148,14 @@ std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
 // Treasure-family hooks.
 std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
                                     treasure* self, walker* eater);
+
+// Level-script hooks (og.register_level_hooks / og.set_entity_hooks). All
+// are inert (cheap early-out) when no pack registered matching hooks, so
+// script-less sims stay byte-identical.
+void level_load(GameWorld* world);         // first tick of a level id
+void level_tick(GameWorld* world);         // every tick, before entity acts
+void level_entity_death(walker* self);     // living deaths
+void level_entity_spawn(walker* spawned);  // sim-authored living/generator
 
 }  // namespace hooks
 
