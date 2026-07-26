@@ -2771,6 +2771,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_packs.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp

@@ -16,6 +16,12 @@
 
 namespace og::resources {
 
+int refresh_pack_scripts()
+{
+    og::script::clear_pack_scripts();
+    return register_mounted_pack_scripts();
+}
+
 int register_mounted_pack_scripts()
 {
     int registered = 0;

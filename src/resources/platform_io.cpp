@@ -384,7 +384,7 @@ void io_init(int argc, char* argv[])
     {
         LogWarn("Failed to mount default packs path\n");
     }
-    og::resources::register_mounted_pack_scripts();
+    og::resources::refresh_pack_scripts();
 }
 
 void io_exit()

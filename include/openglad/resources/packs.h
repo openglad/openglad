@@ -20,4 +20,10 @@ namespace og::resources {
 // scripts registered. Safe to call again after mounts change.
 int register_mounted_pack_scripts();
 
+// Drop every registered pack script and rescan the mounted set. The one
+// call sites use when mounts CHANGE (campaign mount/unmount — campaign
+// zips may embed packs/ that merge into the virtual tree). World VMs
+// rebuild lazily on their next dispatch via the generation counter.
+int refresh_pack_scripts();
+
 }  // namespace og::resources
