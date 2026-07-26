@@ -2,14 +2,10 @@
 -- weapon_family_knife.cpp. Cookbook (docs/lua-classpacks-design.md §3)
 -- applies.
 --
--- MISSING BINDING: the C++ gate reads the knife OWNER's living-family
--- descriptor — get_family_descriptor(owner->family())->has_returning_weapon
--- — and no og.* binding exposes living-descriptor data yet. Per the
--- conversion rule, the hook errors at branch entry (before any mutation)
--- via the og.MISSING_* convention, so dispatch falls back to the
--- still-registered C++ knife_on_death (R9) and stays byte-identical.
--- When og.family_has_returning_weapon(family_byte) lands, drop the
--- MISSING_ prefix and the spawn body below goes live as-is.
+-- The C++ gate reads the knife OWNER's living-family descriptor —
+-- get_family_descriptor(owner->family())->has_returning_weapon — which is
+-- og.family_flag("living", family_byte, "has_returning_weapon") here. A nil
+-- owner is the C++ `owner_fd == nullptr` case: no special handling.
 
 local C = og.C
 local FX_KNIFE_BACK = og.family_id("fx", "core:knife_back")

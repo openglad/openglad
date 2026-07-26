@@ -7,6 +7,7 @@
  */
 #include <openglad/gameplay/families/family_string_ids.h>
 
+#include <openglad/core/constants.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/family_registries.h>
@@ -116,11 +117,13 @@ std::string family_string_id(Order order, int family_id)
     // (golem/giant_skeleton/tower1 all answer to BEAST, the slime trio to
     // SLIME): every member of a collision group uses "core:#<id>" so the
     // exported ids stay unique and resolve back to the exact family.
-    for (int other = 0; other < 256; other++) {
+    for (int other = 0; other < NUM_FAMILY_SLOTS; other++) {
         const char* other_name = descriptor_name(order, other);
         if (other_name == nullptr) {
-            // Registries are dense arrays; first miss ends the scan.
-            break;
+            // A free slot, not the end of the registry: class packs land
+            // above the core pins, so the scan must cover the whole byte
+            // range rather than stopping at the first gap.
+            continue;
         }
         if (other != family_id &&
             normalize_family_name(other_name) == normalized)
@@ -136,17 +139,18 @@ int resolve_family_string_id(Order order, const char* family_str)
     if (name_part[0] == '#') {
         char* end = nullptr;
         const long id = std::strtol(name_part + 1, &end, 10);
-        if (end != name_part + 1 && *end == '\0' && id >= 0 && id < 256 &&
+        if (end != name_part + 1 && *end == '\0' && id >= 0 &&
+            id < NUM_FAMILY_SLOTS &&
             descriptor_name(order, static_cast<int>(id)) != nullptr)
             return static_cast<int>(id);
         return -1;
     }
     const std::string want = normalize_family_name(name_part);
-    for (int id = 0; id < 256; id++) {
+    for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
         const char* name = descriptor_name(order, id);
         if (name == nullptr) {
-            // Registries are dense arrays; first miss ends the scan.
-            break;
+            // Free slot — keep scanning; pack families sit above the pins.
+            continue;
         }
         if (normalize_family_name(name) == want)
             return id;

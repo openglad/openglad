@@ -1764,6 +1764,11 @@ bool walker::death()
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
 			}
+			// Generators are the canonical scripted "object": a level script
+			// must be able to react to a tent/tower/pillar falling, exactly
+			// as it reacts to a living death. Emitted after the death FX so
+			// the hook observes the same world a living-death hook would.
+			og::script::hooks::level_entity_death(this);
 			break;
 		case Order::FX:
 			//case Order::Treasure:

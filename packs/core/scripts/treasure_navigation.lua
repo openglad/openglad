@@ -2,28 +2,20 @@
 -- src/gameplay/families/treasure_family_navigation.cpp (exit pad and
 -- teleporter pad). Cookbook (docs/lua-classpacks-design.md §3) applies.
 --
--- core:teleporter is fully live.
---
--- MISSING BINDINGS (core:exit only). The exit pad reads and writes campaign
--- progression state that no og.* binding reaches yet:
---   * get_scenario_title("scen<N>")          navigation.cpp:54  (title lookup)
---   * world.type & GameWorld::TYPE_CAN_EXIT_WHENEVER
---                                            navigation.cpp:63
---   * world.completed_levels.count(level)    navigation.cpp:25 (via :64-65)
---   * world.current_scenario                 navigation.cpp:65
---   * world.withdraw_requested / withdraw_level
---                                            navigation.cpp:87-88
---   * emit_event_text(EventKind::RequestExitConfirmation, prompt, level, flag)
---                                            navigation.cpp:72-76, 89-93
---   * emit_event(EventKind::WithdrawToLevel, level, 0)
---                                            navigation.cpp:94-96
--- The FIRST of those (the title lookup) sits AFTER the hook's first
--- mutation (eater->set_skip_exit(10), navigation.cpp:45), so the guard is
--- raised at branch entry — right after the pure early-return prefix and
--- before set_skip_exit — and R9 hands the whole dispatch back to the still
--- registered C++ exit_on_eat with the sim untouched. The body below the
--- guard is the finished transliteration, ready to go live once the
--- bindings land.
+-- The exit pad reads and writes campaign progression state through its own
+-- bindings:
+--   * og.scenario_title("scen<N>")     get_scenario_title (title lookup;
+--                                      "none" when no reader is installed,
+--                                      the same answer a failed read gives)
+--   * og.world_can_exit_whenever()     world.type & TYPE_CAN_EXIT_WHENEVER
+--   * og.level_completed(level)        world.completed_levels.count(level)
+--   * og.current_scenario()            world.current_scenario
+--   * og.set_withdraw_request(level)   world.withdraw_requested/withdraw_level
+--   * og.emit_exit_confirmation(...)   EventKind::RequestExitConfirmation
+--   * og.emit_withdraw_to_level(level) EventKind::WithdrawToLevel
+-- can_exit_now/can_withdraw are C++ locals computed before the branch; Lua's
+-- and/or short-circuits, which is safe here because every one of those reads
+-- is pure (no sim writes, no draws).
 
 local C = og.C
 local FX_FLASH = og.family_id("fx", "core:flash")
@@ -45,9 +37,6 @@ local function exit_on_eat(self, eater)
     return true
   end
 
-  -- MISSING-binding guard, pre-side-effect (see the header note).
-  og.MISSING_scenario_title(string.format("scen%d", self:s_level()))
-
   eater:set_skip_exit(10)
   -- See if there are any enemies left ...
   local guys_here
@@ -57,23 +46,22 @@ local function exit_on_eat(self, eater)
     guys_here = 0
   end
   -- Get the name of our exit..
-  local exitname =
-      og.MISSING_scenario_title(string.format("scen%d", self:s_level()))
+  local exitname = og.scenario_title(string.format("scen%d", self:s_level()))
   if exitname == "none" then
     exitname = string.format("Level %d", self:s_level())
   end
 
   local destination_level = og.i16(self:s_level())
-  local can_exit_now = guys_here == 0 or og.MISSING_world_can_exit_whenever()
-  local can_withdraw = og.MISSING_level_completed(destination_level)
-      and not og.MISSING_level_completed(og.MISSING_current_scenario())
+  local can_exit_now = guys_here == 0 or og.world_can_exit_whenever()
+  local can_withdraw = og.level_completed(destination_level)
+      and not og.level_completed(og.current_scenario())
 
   -- Exit path: all enemies dead, or scenario allows free exit. Checked
   -- BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels show the
   -- normal "Exit to X?" dialog instead of "Withdraw to X?".
   if can_exit_now then
-    og.MISSING_emit_exit_confirmation(format_exit_prompt(exitname, false),
-                                      destination_level, 0)
+    og.emit_exit_confirmation(format_exit_prompt(exitname, false),
+                              destination_level, 0)
     return true
   end
 
@@ -81,10 +69,10 @@ local function exit_on_eat(self, eater)
   -- completed, current scenario not yet completed. Abort the current level
   -- and revert to the autosave, then jump to the exit's destination level.
   if can_withdraw then
-    og.MISSING_set_withdraw_request(destination_level)
-    og.MISSING_emit_exit_confirmation(format_exit_prompt(exitname, true),
-                                      destination_level, 1)
-    og.MISSING_emit_withdraw_to_level(destination_level)
+    og.set_withdraw_request(destination_level)
+    og.emit_exit_confirmation(format_exit_prompt(exitname, true),
+                              destination_level, 1)
+    og.emit_withdraw_to_level(destination_level)
   else
     -- Neither exitable nor withdrawable: foes still stand and the
     -- destination is unearned. Say why; the set_skip_exit(10) throttle

@@ -2,16 +2,11 @@
 -- src/gameplay/families/treasure_family_valuables.cpp (gold bar, silver bar,
 -- life gem, key). Cookbook (docs/lua-classpacks-design.md §3) applies.
 --
--- MISSING BINDING: the three scoring families all run the file-local
--- award_score() helper, which mutates world->m_score[team] and emits an
--- EventKind::ScoreChange (treasure_family_valuables.cpp:26-35). No og.*
--- binding reaches the score table (og.emit_event only knows the five
--- og.C.EVENT_* kinds, and none of them writes m_score), so those three
--- hooks raise og.MISSING_award_score at BRANCH ENTRY — before touching any
--- sim state — and R9 hands the dispatch back to the still-registered C++
--- callback byte-identically. When og.award_score(team, points) lands, drop
--- the MISSING_ prefix and the bodies below go live as written.
--- core:key needs nothing new and is live.
+-- The three scoring families bank through og.award_score(team, points) — the
+-- binding for the file-local award_score() helper, which adds to
+-- world->m_score[team] and emits EventKind::ScoreChange. Teams outside the
+-- score table are dropped inside the binding, exactly like the C++
+-- is_valid_score_team() guard, so callers pass the raw team number.
 
 local C = og.C
 local FX_FLASH = og.family_id("fx", "core:flash")
@@ -20,7 +15,7 @@ local FX_FLASH = og.family_id("fx", "core:flash")
 -- roster character (myguy) can cash a bar in.
 local function gold_bar_on_eat(self, eater)
   if eater:team_num() == 0 or eater:has_guy() then
-    og.MISSING_award_score(eater:team_num(), 200 * self:s_level())
+    og.award_score(eater:team_num(), 200 * self:s_level())
     self:set_dead(1)
     og.emit_sound(C.SOUND_MONEY)
   end
@@ -30,7 +25,7 @@ end
 -- silver_bar_on_eat: same shape, 50*level.
 local function silver_bar_on_eat(self, eater)
   if eater:team_num() == 0 or eater:has_guy() then
-    og.MISSING_award_score(eater:team_num(), 50 * self:s_level())
+    og.award_score(eater:team_num(), 50 * self:s_level())
     self:set_dead(1)
     og.emit_sound(C.SOUND_MONEY)
   end
@@ -47,7 +42,7 @@ local function life_gem_on_eat(self, eater)
   if hp < 0.0 then
     hp = 0.0
   end
-  og.MISSING_award_score(eater:team_num(), og.trunc(hp))
+  og.award_score(eater:team_num(), og.trunc(hp))
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
     flash:set_ani_type(C.ANI_EXPAND_8)

@@ -63,6 +63,38 @@ cmake --build --preset ci-test --target stage_runtime_assets  # after .lua edits
   (`script_error` category); `og.log(...)` output lands in the `script`
   trace category.
 
+### Choosing a perturbation that actually proves dispatch
+
+The parity dump records sim state, not presentation. Perturbing these
+proves nothing — they are **parity-invisible**:
+
+| Invisible | Visible |
+|---|---|
+| sounds, notifications | hitpoints, dead flag |
+| lifetimes, MP grants¹ | positions, weapon tracks |
+| damage values that never land² | level, team, charm/freeze state |
+
+¹ potion stat grants are invisible; only the *consumption* (set_dead) shows.
+² an explosion nobody is standing in changes no recorded state.
+
+If every perturbation you try is inert, the honest conclusion is usually
+"this path has no parity coverage" — say so rather than inventing a proof.
+
+### Order-of-evaluation traps
+
+C++ leaves evaluation order unspecified where Lua does not. Adjudicated
+per site by parity, and the answers genuinely differ:
+
+- `rng(a) >= rng(b)` (comparison operands) → **left-first** (thief, orc)
+- `f(..., rng(3), rng(3))` (call arguments) → **right-first** (slime grow)
+
+Write explicit temporaries, pick an order, and flip it if parity fails.
+Never assume the previous site's answer generalises.
+
+Also: calls that *look* pure can consume the RNG stream. `attack()` and
+`query_object_passable()` (via the obmap miss roll) both draw. Reordering
+or short-circuiting them changes the stream even if nothing else differs.
+
 ## New-class quickstart
 
 1. Copy the closest core family's YAML block in `packs/core/classpack.yaml`
@@ -72,6 +104,19 @@ cmake --build --preset ci-test --target stage_runtime_assets  # after .lua edits
    {...})` — start from soldier.lua's shape.
 3. Stage + run the game (or `openglad_text`) — the class appears in the
    hire menu when `playable: true`.
+
+## Shipping a family that replaces a core one
+
+Registration is last-wins, and pack scripts load filename-lexicographically
+within a pack, packs in pack-id order. So a mod pack registering
+`core:soldier` overrides the core pack's soldier — that is the supported
+way to reskin a stock class. The engine logs a warning naming the family
+and hook when a slot is re-registered, so an *accidental* collision is
+diagnosable rather than silent.
+
+Consequence for multi-file packs: if two of your own scripts register the
+same family, the lexicographically later filename wins. Split by family,
+not by concern.
 
 ## Gotchas index
 

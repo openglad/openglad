@@ -32,8 +32,10 @@ struct ScriptHost::Impl {
     lua_State* L = nullptr;
     ScriptLimits limits;
     AllocState alloc;
-    std::vector<ScriptError> errors;
-    std::vector<std::string> log_lines;
+    std::vector<ScriptError> errors;  // capped at kMaxStoredScriptErrors
+    std::uint64_t dropped_errors = 0;
+    std::vector<std::string> log_lines;  // bounded tail, see og_log
+    std::uint64_t dropped_log_lines = 0;
 
     // Registry ref of the shared read-only sandbox root table.
     int sandbox_root_ref = 0;

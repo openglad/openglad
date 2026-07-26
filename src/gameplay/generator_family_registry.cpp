@@ -55,9 +55,17 @@ static void populate(GeneratorFamilyDescriptor* e)
     };
 }
 
+// Only free (pack-claimable) slots ever keep these: populate() assigns the
+// four core generators whole-struct. A name is what makes a slot resolvable
+// by string id, so a pack generator that declares no name still gets one.
+static void apply_defaults(GeneratorFamilyDescriptor& d)
+{
+    d.name = "GENERATOR";
+}
+
 void init_generator_family_registry()
 {
-    s_registry.init(nullptr, populate);
+    s_registry.init(apply_defaults, populate);
 }
 
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id)
@@ -73,4 +81,19 @@ bool set_generator_family_descriptor(int family_id,
     if (!s_registry.is_initialized())
         init_generator_family_registry();
     return s_registry.set(family_id, d);
+}
+
+const GeneratorFamilyDescriptor* get_generator_family_descriptor_install_slot(
+    int family_id)
+{
+    if (!s_registry.is_initialized())
+        init_generator_family_registry();
+    return s_registry.install_slot(family_id);
+}
+
+void reset_generator_family_registry_mod_slots()
+{
+    if (!s_registry.is_initialized())
+        init_generator_family_registry();
+    s_registry.reset_mod_slots();
 }

@@ -192,7 +192,16 @@ int og_log(lua_State* L)
         lua_pop(L, 1);
     }
     TRACE("script", "%s", line.c_str());
+    // The trace above is the unconditional live signal; the stored transcript
+    // is a bounded tail. A pack logging every tick would otherwise grow this
+    // for the life of the GameWorld (the same defect the error store had).
+    // Oldest-first eviction keeps log().back() meaning "most recent", which is
+    // what callers actually read.
     impl->log_lines.push_back(std::move(line));
+    if (impl->log_lines.size() > kMaxStoredScriptLogLines) {
+        impl->log_lines.erase(impl->log_lines.begin());
+        impl->dropped_log_lines++;
+    }
     return 0;
 }
 
@@ -352,9 +361,27 @@ void ScriptHost::Impl::push_environment(std::string_view env_key)
 
 void ScriptHost::Impl::record_error(const char* where, const char* message)
 {
-    errors.push_back({where != nullptr ? where : "?",
-                      message != nullptr ? message : "(unknown error)"});
-    TRACE("script_error", "%s: %s", where, message);
+    const char* w = (where != nullptr) ? where : "?";
+    const char* m = (message != nullptr) ? message : "(unknown error)";
+
+    // The trace is the live signal and fires on every occurrence; only the
+    // stored vector is bounded.
+    TRACE("script_error", "%s: %s", w, m);
+
+    // Collapse repeats. A hook that errors every tick (a cloud effect's
+    // on_act, a flag's touch handler) would otherwise append a fresh
+    // traceback string per tick for the whole life of the world.
+    for (ScriptError& e : errors) {
+        if (e.where == w && e.message == m) {
+            e.count++;
+            return;
+        }
+    }
+    if (errors.size() >= kMaxStoredScriptErrors) {
+        dropped_errors++;
+        return;
+    }
+    errors.push_back({w, m, 1});
 }
 
 bool ScriptHost::Impl::protected_call(const char* where, int nargs,
@@ -528,9 +555,15 @@ const std::vector<ScriptError>& ScriptHost::errors() const
     return impl_->errors;
 }
 
+std::uint64_t ScriptHost::dropped_error_count() const
+{
+    return impl_->dropped_errors;
+}
+
 void ScriptHost::clear_errors()
 {
     impl_->errors.clear();
+    impl_->dropped_errors = 0;
 }
 
 std::size_t ScriptHost::memory_used() const
@@ -546,6 +579,11 @@ std::size_t ScriptHost::memory_limit() const
 const std::vector<std::string>& ScriptHost::log() const
 {
     return impl_->log_lines;
+}
+
+std::uint64_t ScriptHost::dropped_log_line_count() const
+{
+    return impl_->dropped_log_lines;
 }
 
 }  // namespace og::script

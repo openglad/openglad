@@ -401,13 +401,18 @@ void io_init(int argc, char* argv[])
     og::resources::mount((asset_path + "sound/").c_str(), "sound/", 1);
     og::resources::mount((asset_path + "cfg/").c_str(), "cfg/", 1);
 
-    // Class packs: mount and install family descriptor DATA
-    // (classpack.yaml), keeping headless sims on the same descriptor
-    // values as the SDL client. Behavior scripts are deliberately NOT
-    // registered here yet — headless behavior still dispatches the
-    // preserved C++ callbacks (the Lua conversion owns that wiring).
-    og::resources::mount((asset_path + "packs/").c_str(), "packs/", 1);
-    og::resources::install_classpacks();
+    // Class packs: default packs ship next to pix/cfg; user-installed packs
+    // live in user_path/packs (already reachable through the user mount).
+    if (!og::resources::mount((asset_path + "packs/").c_str(), "packs/", 1)) {
+        LogWarn("io_init(headless): Failed to mount default packs path\n");
+    }
+    // Same call as the SDL io_init, deliberately: refresh_pack_scripts
+    // registers the pack behavior SCRIPTS *and* installs classpack.yaml
+    // family descriptor DATA. Headless clients (openglad_text,
+    // openglad_server, openglad_curses) run the identical sim, so both
+    // halves must be wired the same way or the two paths drift the moment
+    // a family's behavior lives only in Lua.
+    og::resources::refresh_pack_scripts();
 
     Log("io_init(headless): done\n");
 }

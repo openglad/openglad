@@ -327,6 +327,51 @@ Campaign zips gain `scripts/level<N>.lua` plus optional
   locally (`genuine toothless` must stay 0) — Lua family behavior gets its
   own mutation pins (mutate a .lua constant in the core pack, expect flips).
 
+## 9a. Retiring the C++ family implementations
+
+The conversion deliberately kept both implementations alive: `hooks::*`
+tries the Lua hook first and falls back to the descriptor's C++ callback.
+That fallback is what made a 34-file conversion safe to land
+incrementally, but it is not the end state — "no assumptions about
+families left in the engine" means the C++ implementations go away.
+
+Retirement happens in two stages, each independently verifiable:
+
+**Stage A — behavior.** Null every behavior callback slot; keep the
+`describe_family_*` data functions. Parity passing after this is the
+decisive proof that Lua carries 100% of behavior, because there is no
+longer anything to fall back to.
+
+Two consequences to handle in the same change:
+
+- **A hook error stops being harmless.** With a C++ callback present, an
+  erroring hook silently degrades to the old behavior; without one it
+  degrades to *nothing happening*. Script errors must therefore become
+  loud: always traced, and under `TESTING` latched so a test cannot pass
+  while a hook is quietly failing.
+- **Mutation-canary pins anchored in `family_*.cpp` text** must move to
+  the `.lua` equivalents, or the canary silently loses its teeth
+  (`genuine toothless` must stay 0).
+
+**Stage B — data.** Delete the family `.cpp` files entirely; the five
+registries populate from `packs/core/classpack.yaml` alone. After this the
+engine contains no notion of "soldier" or "mage" at all — every family,
+core and mod, arrives through the same door.
+
+Stage B makes the core pack a hard runtime requirement. That is consistent
+with how the engine already treats its other required assets: `io_init`
+throws when the user path or the default campaign is missing. A missing or
+malformed core pack must fail the same way — one clear diagnostic, not a
+crash and not a silent half-populated registry.
+
+**Coverage caveat.** Parity only proves the paths its corpus exercises.
+Conversion work surfaced real gaps (CTF has no scenario at all; several
+`level_up`, on-death and heal paths are never reached). Those paths need
+differential tests — build a world from a fixed seed, run with pack
+scripts registered, then rebuild the identical world with
+`clear_pack_scripts()` and run again, asserting identical state — or new
+parity scenarios, *before* the corresponding C++ callback is deleted.
+
 ## 10. Rollout
 
 1. `og_lua` + ScriptHost + sandbox/budget unit tests.

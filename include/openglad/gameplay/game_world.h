@@ -440,6 +440,13 @@ public:
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
+    // Scenario-title lookup seam. The reader lives in the resources component
+    // (og::data::load_scenario_title) and gameplay may not depend on resources
+    // (docs/architecture-rules.md), so the owning layer installs the provider
+    // when it wires the world's entity services — same injection pattern as
+    // entity_factory above. Unset means "no title reader available": callers
+    // get the same "none" a failed read returns.
+    std::function<std::string(const char*)> scenario_title_provider;
     bool applying_snapshot_ = false;
 
 private:

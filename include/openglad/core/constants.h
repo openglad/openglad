@@ -69,6 +69,16 @@ inline constexpr int NUM_FAMILIES = 21;
 constexpr int PIX(int a, int b) { return NUM_FAMILIES * a + b; }
 constexpr int PIX(Order a, int b) { return NUM_FAMILIES * static_cast<int>(a) + b; }
 
+// Family registry capacity, per order. A family id travels the wire, save
+// files and level files as a single byte, so 256 slots is the hard ceiling
+// for any order. The low ids are pinned to the core pack (NUM_FAMILIES for
+// livings, the per-order core counts for the other four registries) and
+// every id above the core count is a free slot a class pack can claim with
+// `wire_id: auto`. Free slots stay UNPOPULATED — the getters keep returning
+// nullptr for them, so "descriptor == nullptr means this family does not
+// exist" holds exactly as before.
+inline constexpr int NUM_FAMILY_SLOTS = 256;
+
 //Weapon families
 inline constexpr int FAMILY_KNIFE = 0;
 inline constexpr int FAMILY_ROCK = 1;

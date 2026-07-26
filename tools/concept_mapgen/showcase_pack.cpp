@@ -145,22 +145,16 @@ end
 
 -- on_load: fires on each peer's first tick of the level (fresh start or
 -- mid-join alike), so everything here derives from the world and is
--- idempotent. Stamps the ward, seeds the ledger, hangs the victory hook.
+-- idempotent. Stamps the ward and hangs the victory hook.
 local function on_load(level)
   local boss = find_boss()
   if boss == nil then
     return
   end
-  local pillars = live_pillars()
-  -- THE LEDGER: generator deaths never dispatch on_entity_death (only
-  -- living deaths do), so pillar falls are detected by comparing the live
-  -- census against the last announced count. R6 forbids keeping that
-  -- count in a script local — it would diverge from snapshots and
-  -- mid-level joins — so it lives IN THE WORLD, on the boss's keys field.
-  -- The Court has no doors, so keys are inert here; a mid-join peer's
-  -- on_load re-seeds the ledger from its own census.
-  boss:set_keys(pillars)
-  if pillars > 0 then
+  -- The ward state is a pure function of the live pillar census, so a peer
+  -- joining mid-fight arrives at the same answer without any remembered
+  -- history (cookbook R6 — no state hidden in the script).
+  if live_pillars() > 0 then
     boss:s_set_bit_flags(C.BIT_INVINCIBLE, 1)
     og.emit_notification("The Court's wards hold while its pillars stand.",
                          120)
@@ -168,38 +162,46 @@ local function on_load(level)
   og.set_entity_hooks(boss, { on_death = on_boss_death })
 end
 
--- on_tick: the ward phase machine, judged fresh from the world each tick.
+-- on_tick: once unwarded, the Court passes judgment on a fixed cadence.
 local function on_tick(level, tick)
   local boss = find_boss()
   if boss == nil then
-    return -- the bench is broken (or charmed off its team): court adjourned
+    return
   end
-  local pillars = live_pillars()
-  local ledger = boss:keys()
-  if pillars < ledger then
-    boss:set_keys(pillars)
-    if pillars > 0 then
-      og.emit_notification("A pillar falls: " .. pillars .. " wards remain.",
-                           60)
-      og.emit_sound(C.SOUND_CLANG)
-    else
-      -- The last pillar: drop the ward and open the judgment phase.
-      boss:s_set_bit_flags(C.BIT_INVINCIBLE, 0)
-      og.emit_notification("The last pillar falls. The wards fail!", 80)
-      og.emit_sound(C.SOUND_BOLT)
-    end
-  end
-  -- Judgment pulses: while the bench sits unwarded, the Court strikes the
-  -- arena ring every 300 ticks. Anchored to the absolute level tick — a
-  -- "ticks since the wards fell" origin would be remembered state (R6).
-  if pillars == 0 and og.mod(tick, 300) == 0 then
+  -- Anchored to the absolute level tick — a "ticks since the wards fell"
+  -- origin would be remembered state (R6).
+  if live_pillars() == 0 and og.mod(tick, 300) == 0 then
     judgment_pulse(boss)
   end
 end
 
--- Level-wide death hook (living deaths only): strike promoted Adjutants
--- from the rolls. Their stamped name is the marker — no bookkeeping.
+-- Level-wide death hook. Generators dispatch it exactly like livings do,
+-- so a pillar falling is an EVENT rather than something polled for — the
+-- ward phase machine needs no census diffing and no ledger to keep in sync.
 local function on_entity_death(ent)
+  if ent:order() == C.ORDER_GENERATOR then
+    if ent:team_num() == 0 then
+      return -- not one of the Court's pillars
+    end
+    local boss = find_boss()
+    if boss == nil then
+      return -- the bench is already broken: court adjourned
+    end
+    -- The dying generator is already flagged dead, so it is out of this count.
+    local remaining = live_pillars()
+    if remaining > 0 then
+      og.emit_notification("A pillar falls: " .. remaining .. " wards remain.",
+                           60)
+      og.emit_sound(C.SOUND_CLANG)
+    else
+      boss:s_set_bit_flags(C.BIT_INVINCIBLE, 0)
+      og.emit_notification("The last pillar falls. The wards fail!", 80)
+      og.emit_sound(C.SOUND_BOLT)
+    end
+    return
+  end
+  -- A body fell: strike promoted Adjutants from the rolls. Their stamped
+  -- name is the marker — no bookkeeping.
   if ent:team_num() ~= 0 and ent:s_name() == "Adjutant" then
     og.emit_notification("An Adjutant is struck from the rolls.", 50)
   end

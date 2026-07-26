@@ -99,11 +99,14 @@ ClasspackStore& classpack_store()
 }
 
 // Deterministic wire-id assignment for one install run: core packs pin
-// explicit ids; wire_id auto/absent takes the first free id >= 21 per
-// order in encounter order (packs are visited pack-id-lexicographically,
-// entries in YAML order). Ids 0..20 are reserved for the core pins, so a
-// simple counter IS "first free" — entries past a registry's capacity are
-// rejected later by the slot lookup.
+// explicit ids; wire_id auto/absent takes the next id >= 21 per order in
+// encounter order (packs are visited pack-id-lexicographically, entries in
+// YAML order). Ids 0..20 are reserved for the core pins, and every install
+// pass starts from a registry whose mod slots were just freed, so the
+// counter reproduces the same assignment on every peer. A pack that pins an
+// id >= 21 explicitly can still collide with an auto id — pin the whole
+// pack or none of it. Entries past a registry's capacity (256 ids per
+// order) are rejected by the slot lookup.
 struct AutoWireIds {
     std::int32_t next[8] = {21, 21, 21, 21, 21, 21, 21, 21};
 
@@ -196,7 +199,9 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
     const int id = resolve_wire_id(e.wire_id, Order::Living, autos, e.id);
     if (id < 0)
         return false;
-    const FamilyDescriptor* current = get_family_descriptor(id);
+    // The install slot: an occupied slot hands back its live descriptor, a
+    // free one the order's defaults. nullptr means the id is past capacity.
+    const FamilyDescriptor* current = get_family_descriptor_install_slot(id);
     if (current == nullptr) {
         LogWarn("classpack {}: no living registry slot {} (capacity)\n",
                 e.id, id);
@@ -318,7 +323,8 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e,
     const int id = resolve_wire_id(e.wire_id, Order::Weapon, autos, e.id);
     if (id < 0)
         return false;
-    const WeaponFamilyDescriptor* current = get_weapon_family_descriptor(id);
+    const WeaponFamilyDescriptor* current =
+        get_weapon_family_descriptor_install_slot(id);
     if (current == nullptr) {
         LogWarn("classpack {}: no weapon registry slot {} (capacity)\n",
                 e.id, id);
@@ -361,7 +367,8 @@ bool install_effect(const og::data::ClasspackEffectEntry& e,
     const int id = resolve_wire_id(e.wire_id, Order::FX, autos, e.id);
     if (id < 0)
         return false;
-    const EffectFamilyDescriptor* current = get_effect_family_descriptor(id);
+    const EffectFamilyDescriptor* current =
+        get_effect_family_descriptor_install_slot(id);
     if (current == nullptr) {
         LogWarn("classpack {}: no effect registry slot {} (capacity)\n",
                 e.id, id);
@@ -391,7 +398,7 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e,
     if (id < 0)
         return false;
     const TreasureFamilyDescriptor* current =
-        get_treasure_family_descriptor(id);
+        get_treasure_family_descriptor_install_slot(id);
     if (current == nullptr) {
         LogWarn("classpack {}: no treasure registry slot {} (capacity)\n",
                 e.id, id);
@@ -416,7 +423,7 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e,
     if (id < 0)
         return false;
     const GeneratorFamilyDescriptor* current =
-        get_generator_family_descriptor(id);
+        get_generator_family_descriptor_install_slot(id);
     if (current == nullptr) {
         LogWarn("classpack {}: no generator registry slot {} (capacity)\n",
                 e.id, id);
@@ -471,6 +478,11 @@ int install_classpacks()
     int packs_seen = 0;
     int installed = 0;
     AutoWireIds autos;
+    // A full re-install: free the slots the previous pass claimed so the
+    // registries end up describing exactly the packs mounted right now (an
+    // unmounted pack must not leave a family behind, and auto ids must
+    // restart from the same place on every peer). Core pins are untouched.
+    reset_all_registry_mod_slots();
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {

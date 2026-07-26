@@ -23,9 +23,23 @@
 namespace og::script {
 
 struct ScriptError {
-    std::string where;    // chunk name or hook identifier
-    std::string message;  // Lua error text (with traceback when available)
+    std::string where;      // chunk name or hook identifier
+    std::string message;    // Lua error text (with traceback when available)
+    std::uint64_t count = 1;  // occurrences collapsed into this record
 };
+
+// Upper bound on distinct error records a host keeps. Hooks that error live
+// on hot paths (an effect's on_act erroring once per tick per instance), and
+// nothing in production drains the store, so it must not grow without bound.
+// Repeats collapse into ScriptError::count and the first errors — the ones
+// that actually explain a broken pack — are the ones retained.
+inline constexpr std::size_t kMaxStoredScriptErrors = 64;
+
+// Upper bound on stored og.log()/print() lines, for the same reason: a pack
+// that logs every tick would grow the transcript for the life of the world.
+// Unlike errors, the log evicts OLDEST-first — the recent tail is the useful
+// part, and it keeps log().back() meaning "most recent".
+inline constexpr std::size_t kMaxStoredScriptLogLines = 512;
 
 struct ScriptLimits {
     // Whole-VM allocation cap; blowing it raises a deterministic Lua error.
@@ -63,14 +77,25 @@ public:
     // non-nil value in the sandbox root. Used by tests to pin the sandbox.
     bool sandbox_has(std::string_view dotted_path);
 
+    // Stored error records, in first-seen order. Bounded by
+    // kMaxStoredScriptErrors; repeats of an already-stored (where, message)
+    // pair bump that record's count instead of appending.
     const std::vector<ScriptError>& errors() const;
+    // Occurrences discarded because the store was full — the "+N more" of a
+    // diagnostic. Repeats folded into a stored record are not counted here.
+    std::uint64_t dropped_error_count() const;
     void clear_errors();
 
     std::size_t memory_used() const;
     std::size_t memory_limit() const;
 
     // Lines emitted by scripts through print()/og.log(), in emission order.
+    // Bounded to the most recent kMaxStoredScriptLogLines; every line is
+    // traced unconditionally regardless of what the store keeps.
     const std::vector<std::string>& log() const;
+
+    // Log lines evicted because the transcript was full.
+    std::uint64_t dropped_log_line_count() const;
 
     // Internal access for the og.* binding layer (src/gameplay/script/ only;
     // Impl is defined in script_host_impl.h which is private to that dir).

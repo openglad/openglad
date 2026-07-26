@@ -7,11 +7,10 @@
 -- guarded because og.rand raises on a zero bound while C++ rng.next(0)
 -- returns 0 without advancing the stream.
 --
--- MISSING BINDING: the C++ body does `self->set_frame(self->ani[curdir()][0])`
--- — a read of the walker's animation table, which no og.* binding exposes.
--- The check below makes the hook fail at entry (before any sim mutation, so
--- cookbook R9 hands the tick back to the C++ callback intact) until
--- `og.ani_frame(entity, row, index)` lands. See the agent report.
+-- The frame poke `self->set_frame(self->ani[curdir()][0])` reads the walker's
+-- animation table through og.ani_frame(entity, row, index); nil covers every
+-- case where the C++ `if (self->ani)` guard would have failed, so the
+-- set_frame is simply skipped then.
 
 local C = og.C
 local FX_EXPLOSION = og.family_id("fx", "core:explosion")
@@ -35,12 +34,6 @@ end
 -- chain_on_act: the bolt homes on its leader; on contact it detonates and
 -- forks into up to rand(owner level)+1 new bolts aimed at nearby foes.
 local function on_act(self)
-  -- Capability gate (see the MISSING BINDING note above). Runs before any
-  -- state is touched, so an error here is a clean fall-through to C++.
-  if og.ani_frame == nil then
-    og.MISSING_walker_ani_frame(self)
-  end
-
   local leader = self:leader()
   if not leader or self:lineofsight() < 1 or not self:owner() then
     self:set_dead(1)

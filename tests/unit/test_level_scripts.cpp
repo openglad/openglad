@@ -140,6 +140,27 @@ TEST_F(LevelScriptsTest, spawn_and_death_hooks_with_per_entity_override)
     EXPECT_EQ("level death\t" + std::to_string(id), vm_log().back());
 }
 
+TEST_F(LevelScriptsTest, generator_deaths_dispatch_entity_death)
+{
+    // Generators are the canonical scripted object; a level script must be
+    // able to observe one falling (the showcase's pillar mechanic).
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_entity_death = function(ent)\n"
+         "    og.log('died', og.entity_id(ent))\n"
+         "  end,\n"
+         "})\n"});
+    world.tick();
+    walker* tent = world.add_ob(Order::Generator, 0 /*FAMILY_TENT*/);
+    ASSERT_NE(nullptr, tent);
+    const std::uint32_t id = tent->entity_id();
+    tent->set_dead(1);
+    tent->death();
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("died\t" + std::to_string(id), vm_log().back());
+}
+
 TEST_F(LevelScriptsTest, fx_spawns_do_not_fire_entity_spawn)
 {
     register_pack_script(

@@ -81,3 +81,18 @@ bool set_treasure_family_descriptor(int family_id,
         init_treasure_family_registry();
     return s_registry.set(family_id, d);
 }
+
+const TreasureFamilyDescriptor* get_treasure_family_descriptor_install_slot(
+    int family_id)
+{
+    if (!s_registry.is_initialized())
+        init_treasure_family_registry();
+    return s_registry.install_slot(family_id);
+}
+
+void reset_treasure_family_registry_mod_slots()
+{
+    if (!s_registry.is_initialized())
+        init_treasure_family_registry();
+    s_registry.reset_mod_slots();
+}

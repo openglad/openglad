@@ -421,38 +421,36 @@ TEST_F(ConceptCampaignTest, court_script_runs_the_ninefold_fight)
     EXPECT_FALSE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
         << "the ward is script-stamped, not level data";
 
-    // Tick 1: on_load stamps the ward, seeds the ledger, announces.
+    // Tick 1: on_load stamps the ward and announces the gimmick.
     world.tick();
     std::vector<std::string> lines = drain_notifications(fx.events);
     EXPECT_TRUE(contains_text(lines, "wards hold"))
         << "on_load announces the gimmick";
     EXPECT_TRUE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
         << "the Magistrate is warded while pillars stand";
-    EXPECT_EQ(4, static_cast<int>(boss->keys()))
-        << "the pillar ledger lives on the boss (keys are inert here)";
 
-    // One pillar falls: announced with the live count, ward still up.
+    // One pillar falls. Generator deaths dispatch on_entity_death, so the
+    // announcement lands during death() itself -- no tick has to elapse and
+    // the script keeps no pillar ledger of its own.
     pillars[0]->set_dead(1);
     pillars[0]->death();
-    world.tick();
     lines = drain_notifications(fx.events);
     EXPECT_TRUE(contains_text(lines, "A pillar falls: 3 wards remain."))
-        << "per-pillar fall notification";
+        << "pillar fall is event-driven, not polled";
     EXPECT_TRUE(boss->stats()->query_bit_flags(BIT_INVINCIBLE));
-    EXPECT_EQ(3, static_cast<int>(boss->keys()));
 
-    // The rest fall: the ward breaks.
+    // The rest fall: the ward breaks on the last one, again immediately.
     for (std::size_t i = 1; i < pillars.size(); ++i)
     {
         pillars[i]->set_dead(1);
         pillars[i]->death();
     }
-    world.tick();
     lines = drain_notifications(fx.events);
     EXPECT_TRUE(contains_text(lines, "The wards fail"))
         << "last pillar drops the ward";
     EXPECT_FALSE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
         << "the Magistrate stands exposed";
+    world.tick();
 
     // Let the pillar-death explosions burn out, then discard their events.
     while (world.level_tick_count() < 30u)

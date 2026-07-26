@@ -3,33 +3,14 @@
 -- applies: og.div for integer division, setters narrow like the C++ field
 -- types, og.rand preserves draw order and count.
 --
--- MISSING BINDING (on_death only): the fright is applied through
--- statistics::force_fright(iterations, dx, dy) (src/gameplay/stats.cpp:286),
--- the scare-merge variant of force_command that inspects the command queue
--- front (forced + COMMAND_WALK → refresh count/direction instead of
--- prepending). No og.* binding exposes it, and s_force_command is NOT a
--- substitute: it would stack overlapping scares end-to-end, which is exactly
--- what runaway-specials §3.2 removed. Per the conversion rule the hook raises
--- og.MISSING_s_force_fright at branch entry — before any mutation and before
--- the rng(constitution) draw — so dispatch falls back to the still-registered
--- C++ ghost_scare_on_death (R9) and stays byte-identical. When
--- walker:s_force_fright(n, dx, dy) lands, delete that one line and the body
--- below goes live as-is.
+-- on_death applies the fright through walker:s_force_fright(iterations,
+-- dx, dy) — statistics::force_fright, the scare-MERGE variant of
+-- force_command that inspects the command queue front (forced +
+-- COMMAND_WALK → refresh count/direction instead of prepending).
+-- s_force_command is NOT a substitute: it stacks overlapping scares
+-- end-to-end, which is exactly what runaway-specials §3.2 removed.
 
 local C = og.C
-
--- og::combat::scare_radius(level) (core/combat_math.h:257): legacy 50 + 10*L,
--- capped at kScareRadiusCap = 250 px. Pure integer arithmetic, so it is
--- inlined here rather than bound.
-local kScareRadiusCap = 250
-
-local function scare_radius(level)
-  local raw = 50 + 10 * level
-  if raw < kScareRadiusCap then
-    return raw
-  end
-  return kScareRadiusCap
-end
 
 -- ghost_scare_on_act: the scare cloud rides its caster for its whole life.
 local function on_act(self)
@@ -43,19 +24,18 @@ end
 -- ghost_scare_on_death: when the cloud expires, every living foe inside the
 -- caster's scare radius is pushed into a forced flee-walk away from the cloud.
 local function on_death(self)
-  -- MISSING BINDING (see header): raised before any state mutation so the
-  -- hook is treated as absent (R9) and the C++ callback runs untouched.
-  og.MISSING_s_force_fright(0, 0, 0)
-
   local owner = self:owner()
-  if not owner or owner:dead() then
+  -- dead() hands back the C++ int, and 0 is TRUTHY in Lua: the comparison
+  -- against 0 is what makes this the `!self->owner()->dead()` test.
+  if not owner or owner:dead() ~= 0 then
     return false
   end
 
   -- Runaway-specials §2.3: radius capped at 250 px (legacy 50 + 10*L goes
-  -- off-screen at L27); binds only at L21+, draw-free.
+  -- off-screen at L27); binds only at L21+, draw-free. og.scare_radius is the
+  -- binding for og::combat::scare_radius (core/combat_math.h).
   local foelist, howmany =
-    og.find_foes_in_range("ob", scare_radius(owner:s_level()), owner)
+    og.find_foes_in_range("ob", og.scare_radius(owner:s_level()), owner)
   if howmany < 1 then
     return false
   end

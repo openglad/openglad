@@ -43,6 +43,27 @@ bool set_treasure_family_descriptor(int family_id,
 bool set_generator_family_descriptor(int family_id,
                                      const GeneratorFamilyDescriptor& d);
 
+// Install-slot accessors (same contract as
+// get_family_descriptor_install_slot in family_registry.h): the live
+// descriptor for a populated slot, the defaults blank for a free mod slot,
+// nullptr past the registry capacity. Only the classpack installer uses
+// these; ordinary lookups go through the get_*_family_descriptor getters,
+// which keep answering nullptr for free slots.
+const WeaponFamilyDescriptor* get_weapon_family_descriptor_install_slot(
+    int family_id);
+const EffectFamilyDescriptor* get_effect_family_descriptor_install_slot(
+    int family_id);
+const TreasureFamilyDescriptor* get_treasure_family_descriptor_install_slot(
+    int family_id);
+const GeneratorFamilyDescriptor* get_generator_family_descriptor_install_slot(
+    int family_id);
+
+// Per-order counterparts of reset_family_registry_mod_slots().
+void reset_weapon_family_registry_mod_slots();
+void reset_effect_family_registry_mod_slots();
+void reset_treasure_family_registry_mod_slots();
+void reset_generator_family_registry_mod_slots();
+
 // Initialize all five family registries. Call once at startup before any lookups.
 inline void init_all_registries()
 {
@@ -51,4 +72,16 @@ inline void init_all_registries()
     init_effect_family_registry();
     init_treasure_family_registry();
     init_generator_family_registry();
+}
+
+// Frees every pack-installed slot in all five registries, leaving the core
+// pins alone. The classpack installer calls this before a fresh pass so the
+// registries mirror exactly the packs mounted right now.
+inline void reset_all_registry_mod_slots()
+{
+    reset_family_registry_mod_slots();
+    reset_weapon_family_registry_mod_slots();
+    reset_effect_family_registry_mod_slots();
+    reset_treasure_family_registry_mod_slots();
+    reset_generator_family_registry_mod_slots();
 }

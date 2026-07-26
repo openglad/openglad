@@ -7,11 +7,20 @@
  */
 #include <gtest/gtest.h>
 
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
+using og::script::kMaxStoredScriptErrors;
+using og::script::ScriptError;
 using og::script::ScriptHost;
 using og::script::ScriptLimits;
 
@@ -357,4 +366,146 @@ TEST(ScriptHostBasics, integer_arithmetic_is_int64_exact)
     auto wb = host.eval_boolean("math.maxinteger + 1 == math.mininteger");
     ASSERT_TRUE(wb.has_value());
     EXPECT_TRUE(*wb);
+}
+
+// ---------------------------------------------------------------------------
+// Error store bounds
+//
+// Nothing in production drains errors(); a hook that errors on a hot path
+// (an effect's on_act, once per tick per live instance) would otherwise
+// append a fresh traceback string for the entire life of the world.
+// ---------------------------------------------------------------------------
+
+TEST(ScriptErrorStore, repeated_identical_error_collapses_into_one_record)
+{
+    ScriptHost host;
+    constexpr int kReps = 10000;
+    bool all_failed = true;
+    for (int i = 0; i < kReps; i++)
+        all_failed &= !host.run_chunk("hot_hook", "error('every tick')");
+    EXPECT_TRUE(all_failed);
+
+    ASSERT_EQ(1u, host.errors().size()) << "repeats must not allocate records";
+    EXPECT_EQ("hot_hook", host.errors()[0].where);
+    EXPECT_EQ(static_cast<std::uint64_t>(kReps), host.errors()[0].count);
+    EXPECT_NE(std::string::npos, host.errors()[0].message.find("every tick"));
+    EXPECT_EQ(0u, host.dropped_error_count())
+        << "a collapsed repeat is retained, not dropped";
+}
+
+TEST(ScriptErrorStore, distinct_errors_are_capped_with_the_first_ones_kept)
+{
+    ScriptHost host;
+    constexpr std::size_t kExtra = 25;
+    const std::size_t total = kMaxStoredScriptErrors + kExtra;
+    for (std::size_t i = 0; i < total; i++) {
+        const std::string name = "chunk" + std::to_string(i);
+        (void)host.run_chunk(name, "error('boom')");
+    }
+
+    ASSERT_EQ(kMaxStoredScriptErrors, host.errors().size());
+    EXPECT_EQ(static_cast<std::uint64_t>(kExtra), host.dropped_error_count());
+    // First-seen order, so the earliest (root-cause) failures are the ones
+    // that survive the cap.
+    EXPECT_EQ("chunk0", host.errors().front().where);
+    EXPECT_EQ("chunk" + std::to_string(kMaxStoredScriptErrors - 1),
+              host.errors().back().where);
+    for (const ScriptError& e : host.errors())
+        EXPECT_EQ(1u, e.count) << e.where;
+
+    // A repeat of an already-stored error still folds, even with the store
+    // full — only genuinely new records are dropped.
+    (void)host.run_chunk("chunk0", "error('boom')");
+    EXPECT_EQ(kMaxStoredScriptErrors, host.errors().size());
+    EXPECT_EQ(2u, host.errors().front().count);
+    EXPECT_EQ(static_cast<std::uint64_t>(kExtra), host.dropped_error_count());
+
+    host.clear_errors();
+    EXPECT_TRUE(host.errors().empty());
+    EXPECT_EQ(0u, host.dropped_error_count());
+}
+
+TEST(ScriptErrorStore, distinct_where_and_message_are_both_part_of_identity)
+{
+    ScriptHost host;
+    (void)host.run_chunk("a", "error('one')");
+    (void)host.run_chunk("a", "error('two')");   // same where, new message
+    (void)host.run_chunk("b", "error('one')");   // same message, new where
+    (void)host.run_chunk("a", "error('one')");   // exact repeat of the first
+    ASSERT_EQ(3u, host.errors().size());
+    EXPECT_EQ(2u, host.errors()[0].count);
+    EXPECT_EQ(1u, host.errors()[1].count);
+    EXPECT_EQ(1u, host.errors()[2].count);
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate hook registration diagnostic
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class ScriptHostPackTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        init_all_registries();
+        og::script::clear_pack_scripts();
+    }
+    void TearDown() override { og::script::clear_pack_scripts(); }
+};
+
+}  // namespace
+
+TEST_F(ScriptHostPackTest, duplicate_hook_registration_is_reported_and_wins)
+{
+    // Pack chunks load filename-lexicographically; a second chunk claiming a
+    // hook the first already registered used to overwrite it in silence.
+    og::script::register_pack_script(
+        {"test.pack", "a_first.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self) og.log('first') return true end,\n"
+         "})\n"});
+    og::script::register_pack_script(
+        {"test.pack", "b_second.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self) og.log('second') return true end,\n"
+         "})\n"});
+
+    og::script::WorldScripts& ws = og::script::active_world_scripts();
+
+    // Reported...
+    ASSERT_EQ(1u, ws.host().errors().size());
+    const std::string& msg = ws.host().errors()[0].message;
+    EXPECT_NE(std::string::npos, msg.find("duplicate hook registration"))
+        << msg;
+    EXPECT_NE(std::string::npos, msg.find("core:soldier")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("do_special")) << msg;
+    EXPECT_NE(std::string::npos, ws.host().errors()[0].where.find("b_second"))
+        << "the offending chunk is named: " << ws.host().errors()[0].where;
+
+    // ...but last-registration-wins is unchanged.
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    auto result = og::script::hooks::do_special(fd, nullptr);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(*result);
+    ASSERT_FALSE(ws.host().log().empty());
+    EXPECT_EQ("second", ws.host().log().back());
+    EXPECT_TRUE(ws.has_hook(Order::Living, FAMILY_SOLDIER,
+                            og::script::FamilyHook::DoSpecial));
+}
+
+TEST_F(ScriptHostPackTest, distinct_hooks_for_one_family_are_not_a_duplicate)
+{
+    og::script::register_pack_script(
+        {"test.pack", "a_first.lua",
+         "og.register_hooks('living', 'core:soldier', "
+         "{ do_special = function() return true end })\n"});
+    og::script::register_pack_script(
+        {"test.pack", "b_second.lua",
+         "og.register_hooks('living', 'core:soldier', "
+         "{ on_death = function() return true end })\n"});
+    og::script::WorldScripts& ws = og::script::active_world_scripts();
+    EXPECT_TRUE(ws.host().errors().empty())
+        << ws.host().errors().front().message;
 }

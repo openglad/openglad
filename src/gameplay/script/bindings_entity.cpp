@@ -22,6 +22,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/sound_ids.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -729,6 +730,29 @@ int s_controller(lua_State* L)
     return 1;
 }
 
+// walker:s_force_fright(iterations, info1, info2) — statistics::force_fright,
+// the ghost-scare fright injection (stats.cpp). NOT interchangeable with
+// s_force_command: it MERGES into an existing forced COMMAND_WALK at the
+// queue front (runaway-specials §3.2) instead of prepending, so overlapping
+// scares cannot stack end-to-end.
+int s_force_fright(lua_State* L)
+{
+    stats_arg(L)->force_fright(
+        static_cast<std::int32_t>(luaL_checkinteger(L, 2)),
+        static_cast<std::int32_t>(luaL_checkinteger(L, 3)),
+        static_cast<std::int32_t>(luaL_checkinteger(L, 4)));
+    return 0;
+}
+
+// walker:s_do_command() → short — runs the queued command one step
+// (statistics::do_command). The s_*_command family only manipulates the
+// queue; this is the only binding that executes it.
+int s_do_command(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(stats_arg(L)->do_command()));
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Guy accessors (guy handle or walker's myguy; g_*)
 // ---------------------------------------------------------------------------
@@ -1292,6 +1316,211 @@ int og_check_special_ai_distance(lua_State* L)
     return 1;
 }
 
+int og_scare_radius(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::scare_radius(
+                           static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Animation tables (walker::ani)
+// ---------------------------------------------------------------------------
+
+// Sentinel scan bound, identical to walker::animate / weapon_animate_step: a
+// row with no -1 terminator inside this many entries is malformed and is
+// reported as "no such sequence" rather than read further.
+inline constexpr int kAniScanCap = 128;
+
+// ani[row] with the walker ani_count invariant applied: when the loader
+// recorded this family's real table length (ani_count > 0) rows past it do
+// not exist, so a snapshot/save-driven index cannot walk off the end;
+// ani_count == 0 marks a test-built walker that assigned `ani` directly and
+// keeps the legacy direct-index behavior. nullptr = no such row.
+const signed char* ani_row_ptr(walker* w, lua_Integer row)
+{
+    if (w->ani == nullptr || row < 0)
+        return nullptr;
+    if (w->ani_count > 0 && row >= static_cast<lua_Integer>(w->ani_count))
+        return nullptr;
+    return w->ani[static_cast<std::size_t>(row)];
+}
+
+// Frame count before the -1 sentinel; -1 when the row is malformed.
+int ani_row_len(const signed char* seq)
+{
+    int len = 0;
+    while (len < kAniScanCap && seq[len] != -1)
+        len++;
+    return len >= kAniScanCap ? -1 : len;
+}
+
+// og.ani_frame(entity, row, index) → frame | nil.
+// The single-frame read `self->ani[row][index]` (effect_family_chain.cpp
+// does `if (self->ani) self->set_frame(self->ani[curdir()][0])`). nil means
+// the C++ `if (self->ani)` guard would have failed — or the row/index does
+// not exist — so the transliteration simply skips its set_frame. The
+// sentinel slot itself is addressable (index == length) so a legitimately
+// empty row reads back the same -1 the C++ would have handed set_frame.
+int og_ani_frame(lua_State* L)
+{
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    const signed char* seq = ani_row_ptr(w, luaL_checkinteger(L, 2));
+    const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
+    const lua_Integer index = luaL_checkinteger(L, 3);
+    if (len < 0 || index < 0 || index > static_cast<lua_Integer>(len)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, static_cast<lua_Integer>(seq[index]));
+    return 1;
+}
+
+// og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to
+// (excluding) the -1 sentinel, for the row-walking form
+// (weapon_family_animate.cpp's `const signed char* seq = self->ani[i];` then
+// iterate to -1). nil covers every case where the C++ bails out early: no
+// table, row past ani_count, null row, missing sentinel. An empty table is a
+// present-but-zero-length sequence (the C++ `seq_len <= 0` stop).
+int og_ani_row(lua_State* L)
+{
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    const signed char* seq = ani_row_ptr(w, luaL_checkinteger(L, 2));
+    const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
+    if (len < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_createtable(L, len, 0);
+    for (int i = 0; i < len; ++i) {
+        lua_pushinteger(L, static_cast<lua_Integer>(seq[i]));
+        lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
+    }
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Score / campaign progression / exit flow
+// ---------------------------------------------------------------------------
+
+// og.award_score(team, points) — the treasure families' score credit
+// (the file-local award_score in treasure_family_valuables.cpp): bump
+// GameWorld::m_score and emit ScoreChange with the same payload. Teams
+// outside the score table are silently ignored, exactly like the C++
+// is_valid_score_team() guard.
+int og_award_score(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const auto team = static_cast<unsigned char>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 1)));
+    const auto points = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
+    if (team >= SCORE_TEAM_COUNT)
+        return 0;
+    world->m_score[team] += points;
+    og::sim::emit_event(current_game->sim_events,
+                        og::sim::EventKind::ScoreChange,
+                        static_cast<std::uint32_t>(team), points);
+    return 0;
+}
+
+int og_world_can_exit_whenever(lua_State* L)
+{
+    lua_pushboolean(
+        L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1
+                                                                        : 0);
+    return 1;
+}
+
+int og_level_completed(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const auto level = static_cast<int>(luaL_checkinteger(L, 1));
+    lua_pushboolean(L, world->completed_levels.count(level) > 0 ? 1 : 0);
+    return 1;
+}
+
+int og_current_scenario(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(world_arg(L)->current_scenario));
+    return 1;
+}
+
+// og.set_withdraw_request(level) — the exit pad's withdraw latch
+// (treasure_family_navigation.cpp sets both fields together).
+int og_set_withdraw_request(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    world->withdraw_requested = true;
+    world->withdraw_level = static_cast<short>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 1)));
+    return 0;
+}
+
+// og.emit_exit_confirmation(prompt, dest_level, is_withdraw) —
+// EventKind::RequestExitConfirmation with the exit pad's payload
+// (a = dest_level, b = 1 for the withdraw prompt).
+int og_emit_exit_confirmation(lua_State* L)
+{
+    if (current_game == nullptr)
+        return luaL_error(L, "no active context");
+    size_t len = 0;
+    const char* prompt = luaL_checklstring(L, 1, &len);
+    const auto dest = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
+    const auto is_withdraw = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(luaL_optinteger(L, 3, 0)));
+    og::sim::emit_event_text(current_game->sim_events,
+                             og::sim::EventKind::RequestExitConfirmation,
+                             std::string(prompt, len), dest, is_withdraw);
+    return 0;
+}
+
+// og.emit_withdraw_to_level(level) — EventKind::WithdrawToLevel (a = level).
+int og_emit_withdraw_to_level(lua_State* L)
+{
+    if (current_game == nullptr)
+        return luaL_error(L, "no active context");
+    og::sim::emit_event(
+        current_game->sim_events, og::sim::EventKind::WithdrawToLevel,
+        static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(luaL_checkinteger(L, 1))),
+        0);
+    return 0;
+}
+
+// og.scenario_title(name) → title string ("none" when unreadable).
+// The reader lives in the resources component (og::data::load_scenario_title)
+// and gameplay may not depend on it, so it arrives through the
+// GameWorld::scenario_title_provider seam the owning layer installs when it
+// wires the world's entity services. No provider ⇒ "none", i.e. the same
+// answer a failed read gives, so callers keep their existing fallback.
+int og_scenario_title(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const char* name = luaL_checkstring(L, 1);
+    if (!world->scenario_title_provider) {
+        lua_pushliteral(L, "none");
+        return 1;
+    }
+    const std::string title = world->scenario_title_provider(name);
+    lua_pushlstring(L, title.data(), title.size());
+    return 1;
+}
+
+// og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch
+// operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped
+// as one call exactly like the C++ treasure hook delegates to it. CTF rules
+// stay in the CTF engine.
+int og_ctf_on_flag_touch(lua_State* L)
+{
+    walker* flag = resolve_walker(L, 1, /*required=*/true);
+    walker* eater = resolve_walker(L, 2, /*required=*/true);
+    lua_pushboolean(L, og::sim::ctf_on_flag_touch(flag, eater) ? 1 : 0);
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Registration tables
 // ---------------------------------------------------------------------------
@@ -1423,6 +1652,8 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_clear_command", s_clear_command},
     {"s_has_commands", s_has_commands},
     {"s_forward_blocked", s_forward_blocked},
+    {"s_force_fright", s_force_fright},
+    {"s_do_command", s_do_command},
     {"s_name", s_name}, {"s_set_name", s_set_name},
     {"s_controller", s_controller},
     // guy (g_ prefix; walker must have myguy)
@@ -1498,6 +1729,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"freeze_duration", og_freeze_duration},
     {"heal_amount", og_heal_amount},
     {"scare_duration", og_scare_duration},
+    {"scare_radius", og_scare_radius},
     {"elemental_lifetime", og_elemental_lifetime},
     {"image_lifetime", og_image_lifetime},
     {"entity_display_name", og_entity_display_name},
@@ -1505,6 +1737,21 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"apply_level_up", og_apply_level_up},
     {"apply_difficulty_scaling", og_apply_difficulty_scaling},
     {"check_special_ai_distance", og_check_special_ai_distance},
+    {"ani_frame", og_ani_frame},
+    {"ani_row", og_ani_row},
+    {"award_score", og_award_score},
+    {"world_can_exit_whenever", og_world_can_exit_whenever},
+    {"level_completed", og_level_completed},
+    {"current_scenario", og_current_scenario},
+    {"set_withdraw_request", og_set_withdraw_request},
+    {"emit_exit_confirmation", og_emit_exit_confirmation},
+    {"emit_withdraw_to_level", og_emit_withdraw_to_level},
+    {"scenario_title", og_scenario_title},
+    // Both spellings resolve to the same wrapper: ctf_on_flag_touch matches
+    // the C++ entry point it delegates to, ctf_flag_touch the og.* verb
+    // shape used elsewhere in this table.
+    {"ctf_on_flag_touch", og_ctf_on_flag_touch},
+    {"ctf_flag_touch", og_ctf_on_flag_touch},
     {nullptr, nullptr},
 };
 

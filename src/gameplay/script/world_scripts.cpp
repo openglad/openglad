@@ -24,6 +24,7 @@
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/core/util.h>
 
 #include "script_internal.h"
 
@@ -245,6 +246,34 @@ lua_Integer hook_table_key(Order order, int family_id)
     return static_cast<lua_Integer>(order) * 4096 + family_id;
 }
 
+// Pack scripts load filename-lexicographically, so a chunk that registers a
+// hook another chunk already claimed silently wins with nothing to show for
+// it. Last-registration-wins stays the dispatch rule — this only makes the
+// collision visible (trace + host error record + operator-facing warning).
+void report_duplicate_hook(lua_State* L, VmState* st, const char* order_str,
+                           const char* family_str, const char* hook_name)
+{
+    luaL_where(L, 1);  // "chunkname:line: ", or "" with no debug info
+    std::string where = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    while (!where.empty() && (where.back() == ' ' || where.back() == ':'))
+        where.pop_back();
+    if (where.empty()) where = "og.register_hooks";  // no debug info
+
+    std::string message = "duplicate hook registration: ";
+    message += order_str;
+    message += " '";
+    message += family_str;
+    message += "' hook '";
+    message += hook_name;
+    message += "' was already registered by an earlier chunk in this pack "
+               "load; the later registration wins";
+
+    LogWarn("class pack: {}: {}\n", where, message);
+    // Also traces (script_error) and folds repeats into one record.
+    st->owner->host().impl().record_error(where.c_str(), message.c_str());
+}
+
 int og_register_hooks(lua_State* L)
 {
     const char* order_str = luaL_checkstring(L, 1);
@@ -286,6 +315,13 @@ int og_register_hooks(lua_State* L)
         if (!lua_isfunction(L, -1))
             return luaL_error(L, "og.register_hooks: '%s' must be a function",
                               oi->hooks[i].name);
+        // Stack: hooks_root, family_tbl, fn — family_tbl is at -2.
+        lua_rawgeti(L, -2, static_cast<lua_Integer>(oi->hooks[i].hook));
+        const bool occupied = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+        if (occupied)
+            report_duplicate_hook(L, st, order_str, family_str,
+                                  oi->hooks[i].name);
         lua_rawseti(L, -2, static_cast<lua_Integer>(oi->hooks[i].hook));
         st->owner->note_hook(oi->order, family_id, oi->hooks[i].hook);
         registered++;

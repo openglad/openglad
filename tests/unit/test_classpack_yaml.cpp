@@ -23,6 +23,7 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/effect_family_descriptor.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
@@ -335,11 +336,11 @@ TEST(FamilyStringIds, canonical_ids_and_resolution)
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure,
                             Order::Generator, Order::FX};
     for (Order order : orders) {
-        for (int id = 0; id < 256; id++) {
+        for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
             const std::string sid =
                 og::families::family_string_id(order, id);
             if (sid.empty())
-                break; // dense registries: first miss ends the order
+                continue; // free slot, not the end: pack ids sit above the pins
             ASSERT_EQ(og::families::resolve_family_string_id(order,
                                                              sid.c_str()),
                       id)
@@ -577,24 +578,279 @@ TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
     ASSERT_TRUE(set_family_descriptor(FAMILY_ELF, before_elf));
 }
 
-TEST(ClasspackInstall, auto_wire_id_beyond_capacity_is_skipped)
+// ---------------------------------------------------------------------------
+// Mod families above the core pins
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The five registries are process-global and every install test shares
+// them. Frees the pack-installed slots on the way IN and OUT, so a
+// shuffled run order can never leak a mod family into a test that counts
+// core families (and so each test's `auto` ids start from the same place).
+// Core pins are never touched by reset_all_registry_mod_slots().
+class ModSlotGuard {
+public:
+    ModSlotGuard()
+    {
+        init_all_registries();
+        reset_all_registry_mod_slots();
+    }
+    ~ModSlotGuard() { reset_all_registry_mod_slots(); }
+
+    ModSlotGuard(const ModSlotGuard&) = delete;
+    ModSlotGuard& operator=(const ModSlotGuard&) = delete;
+};
+
+// Which ids of one order currently answer a descriptor. Used to prove an
+// install changes exactly one slot and leaves every never-populated id
+// answering nullptr.
+template <typename GetFn>
+std::vector<bool> populated_map(GetFn get)
 {
-    init_all_registries();
+    std::vector<bool> out(static_cast<std::size_t>(NUM_FAMILY_SLOTS), false);
+    for (int id = 0; id < NUM_FAMILY_SLOTS; id++)
+        out[static_cast<std::size_t>(id)] = get(id) != nullptr;
+    return out;
+}
+
+}  // namespace
+
+// The headline third-party-class case: a pack entry with `wire_id: auto`
+// must land in a real slot above the core pins, become visible through the
+// ordinary getter, and resolve by string id — while every id the install
+// did NOT claim keeps answering nullptr.
+TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
+{
+    ModSlotGuard guard;
+
+    const std::vector<bool> living_before =
+        populated_map(get_family_descriptor);
+    const std::vector<bool> weapon_before =
+        populated_map(get_weapon_family_descriptor);
+    const std::vector<bool> effect_before =
+        populated_map(get_effect_family_descriptor);
+    ASSERT_EQ(get_family_descriptor(NUM_FAMILIES), nullptr)
+        << "the first living mod slot starts free";
+
     og::data::ClasspackData data;
+    data.pack = "mod";
     {
         og::data::ClasspackLivingEntry e;
-        e.id = "mod:brand_new";
-        e.wire_id = "auto"; // first free id >= 21; living capacity is 21
+        e.id = "mod:warlock";
+        e.wire_id = "auto";
+        e.name = "WARLOCK";
+        e.hiring_cost = 250;
+        e.default_weapon = "core:knife";
+        e.death_message.present = true;
+        e.death_message.value = "WARLOCK UNDONE";
+        data.living.push_back(std::move(e));
+    }
+    {
+        // The weapon core count is 20 and the auto counter starts at 21, so
+        // this lands ABOVE a free slot 20 — a hole the id scans must walk
+        // past rather than mistake for the end of the registry.
+        og::data::ClasspackWeaponEntry w;
+        w.id = "mod:hexbolt";
+        w.wire_id = "auto";
+        w.name = "HEXBOLT";
+        w.fire_sound = 42;
+        data.weapons.push_back(std::move(w));
+    }
+    {
+        // Effects pin only 13 core ids, so this one sits above EIGHT
+        // consecutive free slots (13..20).
+        og::data::ClasspackEffectEntry fx;
+        fx.id = "mod:hexburst";
+        fx.wire_id = "auto";
+        fx.name = "HEXBURST";
+        fx.loops_animation = true;
+        data.effects.push_back(std::move(fx));
+    }
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 3);
+
+    // (a) the auto ids land above the core pins.
+    const int living_id =
+        og::families::resolve_family_string_id(Order::Living, "mod:warlock");
+    const int weapon_id =
+        og::families::resolve_family_string_id(Order::Weapon, "mod:hexbolt");
+    const int effect_id =
+        og::families::resolve_family_string_id(Order::FX, "mod:hexburst");
+    ASSERT_GE(living_id, NUM_FAMILIES) << "mod living family below the pins";
+    ASSERT_GE(weapon_id, NUM_FAMILIES) << "mod weapon family below the pins";
+    ASSERT_GE(effect_id, NUM_FAMILIES) << "mod effect family below the pins";
+    // A fresh auto counter starts each order at the first id past the
+    // living pins, so the assignment is exactly reproducible.
+    EXPECT_EQ(living_id, NUM_FAMILIES);
+    EXPECT_EQ(weapon_id, NUM_FAMILIES);
+    EXPECT_EQ(effect_id, NUM_FAMILIES);
+
+    // (b) the ordinary getters hand the mod descriptors back.
+    const FamilyDescriptor* warlock = get_family_descriptor(living_id);
+    ASSERT_NE(warlock, nullptr);
+    EXPECT_EQ(warlock->family_id, living_id);
+    EXPECT_STREQ(warlock->name, "WARLOCK");
+    EXPECT_EQ(warlock->hiring_cost, 250);
+    EXPECT_EQ(warlock->default_weapon, FAMILY_KNIFE)
+        << "a mod family's references resolve against the core registries";
+    EXPECT_STREQ(warlock->death_message, "WARLOCK UNDONE");
+
+    const WeaponFamilyDescriptor* hexbolt =
+        get_weapon_family_descriptor(weapon_id);
+    ASSERT_NE(hexbolt, nullptr);
+    EXPECT_STREQ(hexbolt->name, "HEXBOLT");
+    EXPECT_EQ(hexbolt->fire_sound, 42);
+
+    const EffectFamilyDescriptor* hexburst =
+        get_effect_family_descriptor(effect_id);
+    ASSERT_NE(hexburst, nullptr);
+    EXPECT_STREQ(hexburst->name, "HEXBURST");
+    EXPECT_TRUE(hexburst->loops_animation);
+
+    // (c) the canonical string id round trips through the mod slot.
+    const std::string living_sid =
+        og::families::family_string_id(Order::Living, living_id);
+    ASSERT_FALSE(living_sid.empty());
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     living_sid.c_str()),
+              living_id);
+    const std::string effect_sid =
+        og::families::family_string_id(Order::FX, effect_id);
+    ASSERT_FALSE(effect_sid.empty());
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::FX,
+                                                     effect_sid.c_str()),
+              effect_id);
+
+    // (d) exactly one slot per order changed; every id in between — and
+    // every id above — still answers nullptr.
+    const std::vector<bool> living_after =
+        populated_map(get_family_descriptor);
+    const std::vector<bool> weapon_after =
+        populated_map(get_weapon_family_descriptor);
+    const std::vector<bool> effect_after =
+        populated_map(get_effect_family_descriptor);
+    for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
+        const auto i = static_cast<std::size_t>(id);
+        EXPECT_EQ(living_after[i], living_before[i] || id == living_id)
+            << "living slot " << id;
+        EXPECT_EQ(weapon_after[i], weapon_before[i] || id == weapon_id)
+            << "weapon slot " << id;
+        EXPECT_EQ(effect_after[i], effect_before[i] || id == effect_id)
+            << "effect slot " << id;
+    }
+    // Spelled out for the specific holes the scans have to survive.
+    EXPECT_EQ(get_weapon_family_descriptor(weapon_id - 1), nullptr)
+        << "weapon slot 20 is free and must stay invisible";
+    for (int id = 13; id < effect_id; id++)
+        EXPECT_EQ(get_effect_family_descriptor(id), nullptr)
+            << "effect slot " << id << " was never populated";
+}
+
+// An explicitly pinned mod id far above the pins: the id scans must walk
+// the whole byte range, not stop at the first free slot.
+TEST(ClasspackInstall, pinned_mod_id_resolves_across_a_gap)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id = "mod:lich";
+    e.wire_id = "40";  // deliberate gap: 21..39 stay free
+    e.name = "LICH";
+    e.hiring_cost = 900;
+    data.living.push_back(std::move(e));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* lich = get_family_descriptor(40);
+    ASSERT_NE(lich, nullptr);
+    EXPECT_STREQ(lich->name, "LICH");
+    EXPECT_EQ(lich->family_id, 40);
+    EXPECT_EQ(lich->hiring_cost, 900);
+
+    for (int id = NUM_FAMILIES; id < 40; id++)
+        EXPECT_EQ(get_family_descriptor(id), nullptr) << "gap slot " << id;
+
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "mod:lich"),
+              40)
+        << "the name scan must walk past the 21..39 gap";
+    const std::string sid = og::families::family_string_id(Order::Living, 40);
+    ASSERT_FALSE(sid.empty());
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     sid.c_str()),
+              40);
+
+    // A gap slot has no string id and no positional escape.
+    EXPECT_EQ(og::families::family_string_id(Order::Living, 30), "");
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "core:#30"),
+              -1)
+        << "an unpopulated id must not become resolvable";
+}
+
+// The top of the byte range is a usable slot; anything outside it is not.
+TEST(ClasspackInstall, wire_ids_outside_the_byte_range_are_skipped)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    for (const char* bad : {"256", "-1", "banana", "12x"}) {
+        og::data::ClasspackLivingEntry e;
+        e.id = std::string("mod:bad_") + bad;
+        e.wire_id = bad;
         e.hiring_cost = 1;
         data.living.push_back(std::move(e));
     }
     {
         og::data::ClasspackLivingEntry e;
-        e.id = "mod:bad_wire";
-        e.wire_id = "banana";
+        e.id = "mod:edge";
+        e.wire_id = "255";  // the last slot a family byte can name
+        e.name = "EDGE";
         data.living.push_back(std::move(e));
     }
-    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 0)
-        << "no capacity above the core pins yet — skipped with a warning";
-    ASSERT_EQ(get_family_descriptor(NUM_FAMILIES), nullptr);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1)
+        << "only the in-range pin installs";
+
+    const FamilyDescriptor* edge =
+        get_family_descriptor(NUM_FAMILY_SLOTS - 1);
+    ASSERT_NE(edge, nullptr);
+    EXPECT_STREQ(edge->name, "EDGE");
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "mod:edge"),
+              NUM_FAMILY_SLOTS - 1);
+}
+
+// reset_all_registry_mod_slots() is what makes a re-install mirror exactly
+// the packs mounted now: an unmounted pack must leave no family behind,
+// and the core pins must survive untouched.
+TEST(ClasspackInstall, reset_mod_slots_frees_pack_families_and_keeps_core)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id = "mod:transient";
+    e.wire_id = "auto";
+    e.name = "TRANSIENT";
+    data.living.push_back(std::move(e));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+    ASSERT_NE(get_family_descriptor(NUM_FAMILIES), nullptr);
+
+    reset_all_registry_mod_slots();
+
+    EXPECT_EQ(get_family_descriptor(NUM_FAMILIES), nullptr)
+        << "the pack family is gone";
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "mod:transient"),
+              -1)
+        << "and is no longer resolvable by string id";
+    for (int id = 0; id < NUM_FAMILIES; id++)
+        EXPECT_NE(get_family_descriptor(id), nullptr)
+            << "core pin " << id << " must survive the reset";
+    EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->name, "SOLDIER");
+    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
+              "core:soldier");
 }

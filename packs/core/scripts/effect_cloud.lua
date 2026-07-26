@@ -4,19 +4,11 @@
 -- narrowing inside the hits() overlap test, and the drift deltas stay
 -- integers (the C++ floats only ever hold -1/0/1, which cast exactly).
 --
--- MISSING BINDING: the drift step is statistics::do_command()
--- (src/gameplay/stats.cpp:362), reached from
--- `self->stats()->do_command()` at effect_family_cloud.cpp:47 whenever the
--- cloud already has a queued walk — which is every tick after the first, so
--- the hook is unusable without it. Nothing in the og.* surface runs a queued
--- command (s_add_command / s_force_command / s_set_command / s_clear_command
--- / s_has_commands only manipulate the queue). The branch sits AFTER the
--- lifetime decrement, the invisibility update and the attack sweep, so it
--- cannot be raised in place without half-applying the tick; per the
--- conversion rule the probe is raised at function entry instead, before any
--- mutation, so dispatch falls back to the still-registered C++ cloud_on_act
--- (R9) byte-identically. When walker:s_do_command() lands, delete that one
--- line and the body below goes live as-is.
+-- The drift step is statistics::do_command() (src/gameplay/stats.cpp), reached
+-- from `self->stats()->do_command()` whenever the cloud already has a queued
+-- walk — which is every tick after the first. walker:s_do_command() is the
+-- only binding that EXECUTES the queue (the other s_*_command calls just
+-- manipulate it); its short return value is discarded here exactly as in C++.
 
 local C = og.C
 
@@ -46,10 +38,6 @@ end
 -- cloud_on_act: a poison cloud ages out, fades as it expires, damages any foe
 -- it overlaps, and drifts one random step at a time.
 local function on_act(self)
-  -- MISSING BINDING (see header): raised before any state mutation so the
-  -- hook is treated as absent (R9) and the C++ callback runs untouched.
-  og.MISSING_s_do_command()
-
   if self:lifetime() > 0 then
     self:set_lifetime(self:lifetime() - 1)
   else

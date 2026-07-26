@@ -18,15 +18,31 @@
 
 struct FamilyDescriptor;
 
-// Returns the descriptor for the given living family ID (0..NUM_FAMILIES-1).
-// Returns nullptr for out-of-range IDs.
+// Returns the descriptor for the given living family ID: the core pins
+// (0..NUM_FAMILIES-1) plus any slot a class pack has installed (ids up to
+// NUM_FAMILY_SLOTS-1). Returns nullptr for out-of-range IDs and for slots no
+// pack has claimed — "nullptr means this family does not exist".
 const FamilyDescriptor* get_family_descriptor(int family_id);
 
 // Initialize the family registry. Call once at startup before any lookups.
 void init_family_registry();
 
 // Overwrites one living-family slot (classpack install: copy the current
-// descriptor, patch data fields, preserve callbacks, set it back). Entry
-// addresses are stable across set. Returns false when family_id is
-// outside the registry's capacity. Initializes the registry if needed.
+// descriptor, patch data fields, preserve callbacks, set it back) and marks
+// the slot populated, so a pack family above the core pins becomes visible
+// to get_family_descriptor. Entry addresses are stable across set. Returns
+// false when family_id is outside the registry's capacity. Initializes the
+// registry if needed.
 bool set_family_descriptor(int family_id, const FamilyDescriptor& d);
+
+// The slot a classpack install starts from: the live descriptor when the
+// slot is populated, the defaults-initialised blank when the slot is a free
+// mod slot, nullptr only when family_id is outside the registry capacity.
+// Only the installer wants this — everything else asks
+// get_family_descriptor, which hides free slots.
+const FamilyDescriptor* get_family_descriptor_install_slot(int family_id);
+
+// Drops every pack-installed living family (ids >= NUM_FAMILIES) back to
+// "free"; the core pins are untouched. Runs before a fresh install pass so
+// an unmounted pack leaves no family behind.
+void reset_family_registry_mod_slots();
