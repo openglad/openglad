@@ -254,9 +254,17 @@ int scripted_poll_adapter(SDL_Event* out)
     return scripted_poll(g_script, out);
 }
 
+// Ceiling for "the other thread should get there shortly", not a latency
+// assertion: the loop polls every 5ms and returns the moment the predicate
+// holds, so a generous ceiling costs a passing test nothing and only bounds
+// how long a genuinely stuck one takes to report. ctest runs this suite at
+// --jobs 24 alongside 27 other integration binaries, where a 3s ceiling was
+// tight enough to flake under load; 15s stays well inside the group's 180s
+// ctest TIMEOUT. Raising it cannot mask a real break — the predicate still
+// has to become true.
 template <typename Predicate>
 bool wait_until(Predicate&& predicate,
-                std::chrono::milliseconds timeout = 3s)
+                std::chrono::milliseconds timeout = 15s)
 {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline)
@@ -875,7 +883,7 @@ poll_lobby_messages(og::sim::ITransport& transport)
 }
 
 bool wait_until_host_owns_room(og::sim::RelayWebSocketTransport& transport,
-                               std::chrono::milliseconds timeout = 3s)
+                               std::chrono::milliseconds timeout = 15s)
 {
     return wait_until(
         [&] {
@@ -1171,7 +1179,7 @@ public:
 
     [[nodiscard]] bool wait_for_room_list_request_after(
         std::size_t previous_request_count,
-        std::chrono::milliseconds timeout = 5s)
+        std::chrono::milliseconds timeout = 15s)
     {
         std::unique_lock<std::mutex> lock(mutex_);
         return room_list_condition_.wait_for(lock, timeout, [&] {

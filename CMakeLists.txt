@@ -760,6 +760,19 @@ add_custom_target(check_render_no_sim_writes
     VERBATIM
 )
 
+# Mutation-canary pins name a file, a LINE and the exact text to replace. Any
+# insertion earlier in a pinned file silently shifts them off their anchor, and
+# a pin that no longer matches mutates nothing — the canary then reports a
+# clean run for a scenario it is no longer guarding. Cheap to check, invisible
+# if you do not.
+add_custom_target(check_mutation_pins
+    COMMAND ${CMAKE_COMMAND} -E env python3
+            ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking mutation-canary pins still anchor"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
@@ -2678,6 +2691,10 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
         )
         add_dependencies(og_test_parity scenario_facts_generated)
+        # Building the parity harness also re-validates the canary pins, so
+        # pin rot surfaces on the next build rather than as a quietly
+        # toothless canary run weeks later.
+        add_dependencies(og_test_parity check_mutation_pins)
 
         # Standalone smoke runner — Phase 02 verifier and the launcher
         # extended in Phase 07 to enumerate scenarios via --list.
