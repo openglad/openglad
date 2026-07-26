@@ -141,10 +141,18 @@ Terrain: `og.query_passable(x, y, self[, floor])`,
 `og.query_grid_passable(...)`, `og.query_object_passable(...)`.
 
 Events: `og.emit_sound(id)`, `og.emit_positional_sound(self, id)`,
-`og.emit_notification(text)` (integers and plain strings only — never
-format floats into sim-visible text).
+`og.emit_notification(text[, duration])` (integers and plain strings only —
+never format floats into sim-visible text), `og.emit_event(kind, a, b)`
+with kinds in `og.C.EVENT_*` (PLAY_SOUND, NOTIFICATION, SET_PALETTE,
+REQUEST_REDRAW, DAMAGE_TILE).
 
-World state: `og.enemy_freeze()`, `og.set_enemy_freeze(v)`.
+World state: `og.enemy_freeze()`, `og.set_enemy_freeze(v)`, `og.my_team()`,
+`og.set_palette(id)` (pair it with an `EVENT_SET_PALETTE` emit like the C++
+did). Stats extras: `s_frozen_delay_raw` (unmasked; negatives are the
+thaw-immunity phase), `s_old_family`. Guy extras: `g_set_exp`,
+`og.exp_from_action(self, target, action, value)` with action ∈ attack,
+kill, heal, turn_undead, raise_skeleton, raise_ghost, resurrect,
+resurrect_penalty, protection, eat_corpse.
 
 Shared helpers (identical to the C++ family helpers):
 `og.soften(raw, knee, ceiling)`, `og.charm_duration(level_diff)`,
