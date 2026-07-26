@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 #include "test_gameplay_context_scope.h"
+#include "test_family_hook_dispatch.h"
 
 namespace {
 
@@ -182,7 +183,7 @@ void cast_scare(BatteryFixture& fx, living* ghost)
 const WeaponFamilyDescriptor& sprinkle_descriptor()
 {
     const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(FAMILY_SPRINKLE);
-    EXPECT_TRUE(wfd != nullptr && wfd->on_hit_target != nullptr);
+    EXPECT_TRUE(wfd != nullptr && og::test::has_on_hit_target(*wfd));
     return *wfd;
 }
 
@@ -378,7 +379,7 @@ SprinkleRunStats run_player_victim_sprinkle(BatteryFixture& fx, living* faerie,
         if (t % cadence == 0)
         {
             fx.script_next_roll(roll);
-            wfd.on_hit_target(faerie, victim, faerie);
+            og::test::on_hit_target(wfd, faerie, victim, faerie);
             // Stream discipline: exactly one draw per hit, refused or not.
             EXPECT_TRUE(fx.one_draw_consumed(roll)) << "tick " << t;
         }
@@ -518,7 +519,7 @@ TEST(SillinessBattery, sprinkle_ai_victim_gate_window_and_escape)
         {
             const int pre = victim->stats()->frozen_delay();
             fx.script_next_roll(roll);
-            wfd.on_hit_target(faerie, victim, faerie);
+            og::test::on_hit_target(wfd, faerie, victim, faerie);
             EXPECT_TRUE(fx.one_draw_consumed(roll)) << "tick " << t;
             const int post = victim->stats()->frozen_delay();
             if (pre > og::combat::kSprinkleRefreshFloor)
@@ -566,7 +567,7 @@ TEST(SillinessBattery, sprinkle_refresh_gate_level_boundary_and_immunity)
     l21->set_team_num(1);
     victim->stats()->set_frozen_delay(50);
     fx.script_next_roll(60);
-    wfd.on_hit_target(l21, victim, l21);
+    og::test::on_hit_target(wfd, l21, victim, l21);
     ASSERT_EQ(50, victim->stats()->frozen_delay()) << "refresh gate holds at L21";
     ASSERT_TRUE(fx.one_draw_consumed(60)) << "the refused SET still drew once";
 
@@ -578,7 +579,7 @@ TEST(SillinessBattery, sprinkle_refresh_gate_level_boundary_and_immunity)
     l20->set_team_num(1);
     victim->stats()->set_frozen_delay(50);
     fx.script_next_roll(60); // L20 con-0 bound 80, roll 60 <= knee 79: identity
-    wfd.on_hit_target(l20, victim, l20);
+    og::test::on_hit_target(wfd, l20, victim, l20);
     ASSERT_EQ(60, victim->stats()->frozen_delay())
         << "L20 keeps the legacy re-SET (golden-protecting boundary)";
 
@@ -586,7 +587,7 @@ TEST(SillinessBattery, sprinkle_refresh_gate_level_boundary_and_immunity)
     // fix is not level-gated.
     victim->stats()->set_frozen_delay(static_cast<short>(-5));
     fx.script_next_roll(60);
-    wfd.on_hit_target(l20, victim, l20);
+    og::test::on_hit_target(wfd, l20, victim, l20);
     ASSERT_EQ(-5, static_cast<int>(victim->stats()->frozen_delay_raw()));
     ASSERT_TRUE(fx.one_draw_consumed(60)) << "immunity-refused SET still drew";
 }
@@ -814,7 +815,7 @@ TEST(SillinessBattery, cleric_glow_flat_cap)
 {
     BatteryFixture fx;
     const FamilyDescriptor* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(cleric_fd != nullptr && cleric_fd->customize_weapon != nullptr);
+    ASSERT_TRUE(cleric_fd != nullptr && og::test::has_customize_weapon(*cleric_fd));
 
     // BEFORE (init 350 + 110*L): L20 2550 / L30 3650 / L50 5850 (up to 477 s
     // of MAXOBS pressure at 8 MP each). AFTER: bonus = min(110*L, 2200), so
@@ -826,7 +827,7 @@ TEST(SillinessBattery, cleric_glow_flat_cap)
         living* cleric = add_caster(fx, FAMILY_CLERIC, level, 60, 60);
         living* glow = add_living(fx, FAMILY_GLOW, 0, 60, 60, 1);
         glow->set_lifetime(350);
-        cleric_fd->customize_weapon(cleric, glow);
+        og::test::customize_weapon(*cleric_fd, cleric, glow);
         ASSERT_EQ(2550, static_cast<int>(glow->lifetime())) << "L" << level;
     }
 }

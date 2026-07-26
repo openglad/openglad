@@ -51,18 +51,22 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <climits>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <mutex>
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 // External declarations
@@ -97,6 +101,293 @@ struct DemoSession {
     std::atomic<bool> finished{false};
 };
 
+// Default campaign for the scenario pool above.
+inline constexpr std::string_view DEFAULT_CAMPAIGN = "org.openglad.gladiator";
+
+// ---------------------------------------------------------------------------
+// Environment parsing helpers
+// ---------------------------------------------------------------------------
+// Every knob below is opt-in: with the variable unset the demo behaves exactly
+// as it did before (scripts/test_demo_smoke.sh pins that production path).
+static const char* env_or_null(const char* name)
+{
+    const char* raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0')
+        return nullptr;
+    return raw;
+}
+
+static int env_int(const char* name, int fallback, int minimum)
+{
+    const char* raw = env_or_null(name);
+    if (raw == nullptr)
+        return fallback;
+    const std::string_view text(raw);
+    int value = 0;
+    const auto parsed = std::from_chars(
+        text.data(), text.data() + text.size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) {
+        throw std::runtime_error(std::format(
+            "{} must be an integer, got '{}'", name, text));
+    }
+    return std::max(minimum, value);
+}
+
+// OPENGLAD_DEMO_SCENARIOS=605 or 1,7,9411 — an explicit scenario list that
+// replaces the shuffled production pool (assigned to cells in order, wrapping).
+static std::vector<int> env_scenario_list(const char* name)
+{
+    std::vector<int> ids;
+    const char* raw = env_or_null(name);
+    if (raw == nullptr)
+        return ids;
+    const std::string_view text(raw);
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t comma = text.find(',', start);
+        const std::string_view field = text.substr(
+            start, comma == std::string_view::npos ? text.size() - start
+                                                   : comma - start);
+        int value = 0;
+        const auto parsed = std::from_chars(
+            field.data(), field.data() + field.size(), value);
+        if (field.empty() || parsed.ec != std::errc{} ||
+            parsed.ptr != field.data() + field.size()) {
+            throw std::runtime_error(std::format(
+                "{} must be a comma-separated scenario id list, got '{}'",
+                name, text));
+        }
+        ids.push_back(value);
+        if (comma == std::string_view::npos)
+            break;
+        start = comma + 1;
+    }
+    return ids;
+}
+
+// ---------------------------------------------------------------------------
+// Opt-in frame capture (docs/media)
+// ---------------------------------------------------------------------------
+// Where the captured session's camera looks. "player" is the demo's own
+// follow-a-hero camera; the other two exist because a showcase frame wants the
+// arena, not whichever hero the AI walked off with.
+enum class CaptureFocus {
+    Player,  // unchanged demo behaviour
+    Boss,    // follow the strongest live hostile
+    Center,  // static wide shot of the map centre
+};
+
+struct CaptureSettings {
+    std::string dir;          // empty ⇒ capture disabled
+    int every = 1;            // dump every Nth rendered frame
+    int start = 0;            // ignore this many rendered frames first
+    int limit = 0;            // 0 ⇒ unlimited; otherwise stop after N dumps
+    int session_index = 0;    // which grid cell to dump; -1 ⇒ the whole grid
+    CaptureFocus focus = CaptureFocus::Player;
+
+    [[nodiscard]] bool enabled() const noexcept { return !dir.empty(); }
+};
+
+// Re-aim the captured session's camera. Called once per rendered frame, before
+// the draw, with the session scope active.
+static void apply_capture_focus(screen& s, CaptureFocus focus)
+{
+    if (focus == CaptureFocus::Player)
+        return;
+    viewscreen* view = s.viewob[0].get();
+    if (view == nullptr)
+        return;
+
+    if (focus == CaptureFocus::Center) {
+        // viewscreen::redraw falls back to the LevelVisuals camera whenever it
+        // has no control walker — the same free camera the level editor uses.
+        view->control = nullptr;
+        view->following_ = false;
+        s.level_visuals().topx = std::max(
+            0, (s.world().pixmaxx - view->xview) / 2);
+        s.level_visuals().topy = std::max(
+            0, (s.world().pixmaxy - view->yview) / 2);
+        return;
+    }
+
+    // Boss: the highest-level live hostile living, re-derived every frame so
+    // the camera hands off cleanly when one dies.
+    walker* boss = nullptr;
+    for (auto& uptr : s.world().oblist) {
+        walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->order() != Order::Living ||
+            w->team_num() == 0)
+            continue;
+        if (boss == nullptr || w->stats()->level() > boss->stats()->level())
+            boss = w;
+    }
+    if (boss != nullptr) {
+        view->control = boss;
+        // §4.5 spectator follow: the watched walker is not user-tagged, so the
+        // HUD and radar stay quiet for an AI target.
+        view->following_ = true;
+    }
+}
+
+static CaptureSettings capture_settings_from_env()
+{
+    CaptureSettings settings;
+    const char* dir = env_or_null("OPENGLAD_DEMO_CAPTURE_DIR");
+    if (dir == nullptr)
+        return settings;
+    settings.dir = dir;
+    settings.every = env_int("OPENGLAD_DEMO_CAPTURE_EVERY", 1, 1);
+    settings.start = env_int("OPENGLAD_DEMO_CAPTURE_START", 0, 0);
+    settings.limit = env_int("OPENGLAD_DEMO_CAPTURE_LIMIT", 0, 0);
+    // -1 captures the composited grid instead of a single cell.
+    settings.session_index = env_int("OPENGLAD_DEMO_CAPTURE_SESSION", 0, -1);
+    if (const char* focus = env_or_null("OPENGLAD_DEMO_CAPTURE_FOCUS")) {
+        const std::string_view name(focus);
+        if (name == "player")
+            settings.focus = CaptureFocus::Player;
+        else if (name == "boss")
+            settings.focus = CaptureFocus::Boss;
+        else if (name == "center")
+            settings.focus = CaptureFocus::Center;
+        else
+            throw std::runtime_error(std::format(
+                "OPENGLAD_DEMO_CAPTURE_FOCUS must be player, boss or center, "
+                "got '{}'", name));
+    }
+    return settings;
+}
+
+// Writes captured frames as 8-bit indexed BMPs, which is what
+// scripts/media/bmp2gif.py and bmp2png.py consume. The game renders into a
+// 32bpp canvas, but every pixel it plots comes from the 256-entry session
+// palette, so the frame can be turned back into the indexed image it really
+// is. Colours that are not palette-exact (blends, filtered scaling) fall back
+// to a nearest-entry search, memoized per distinct pixel value.
+class IndexedFrameWriter {
+public:
+    // Writes `src` (the session's 32bpp canvas) to `path` as an 8-bit BMP,
+    // using `pal6` (the session's live 6-bit palette) as the colour table.
+    // `width`/`height` of 0 mean the whole surface; otherwise only that
+    // top-left region is written (the composite surface is display-sized but
+    // only its grid area carries sessions).
+    bool write(SDL_Surface* src, const std::array<unsigned char, 768>& pal6,
+               const std::string& path, int width = 0, int height = 0)
+    {
+        if (src == nullptr)
+            return false;
+        const int w = width > 0 ? std::min(width, src->w) : src->w;
+        const int h = height > 0 ? std::min(height, src->h) : src->h;
+        if (!ensure_surface(w, h))
+            return false;
+        refresh_palette(src->format, pal6);
+
+        const bool must_lock = SDL_MUSTLOCK(src);
+        if (must_lock && !SDL_LockSurface(src))
+            return false;
+        const auto* base = static_cast<const unsigned char*>(src->pixels);
+        auto* out_base = static_cast<unsigned char*>(indexed_->pixels);
+        for (int y = 0; y < h; ++y) {
+            const auto* row = reinterpret_cast<const Uint32*>(
+                base + static_cast<std::ptrdiff_t>(y) * src->pitch);
+            unsigned char* out =
+                out_base + static_cast<std::ptrdiff_t>(y) * indexed_->pitch;
+            for (int x = 0; x < w; ++x)
+                out[x] = index_for(row[x] & rgb_mask_);
+        }
+        if (must_lock)
+            SDL_UnlockSurface(src);
+
+        return SDL_SaveBMP(indexed_.get(), path.c_str());
+    }
+
+private:
+    using SurfacePtr = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
+
+    bool ensure_surface(int w, int h)
+    {
+        if (indexed_ && indexed_->w == w && indexed_->h == h)
+            return true;
+        indexed_ = SurfacePtr(
+            SDL_CreateSurface(w, h, SDL_PIXELFORMAT_INDEX8), SDL_DestroySurface);
+        if (!indexed_)
+            return false;
+        surface_palette_ = SDL_CreateSurfacePalette(indexed_.get());
+        have_palette_ = false;
+        return surface_palette_ != nullptr;
+    }
+
+    void refresh_palette(SDL_PixelFormat src_format,
+                         const std::array<unsigned char, 768>& pal6)
+    {
+        if (have_palette_ && src_format == lut_format_ && pal6 == cached_pal_)
+            return;
+        cached_pal_ = pal6;
+        lut_format_ = src_format;
+        details_ = SDL_GetPixelFormatDetails(src_format);
+        rgb_mask_ = details_ != nullptr
+                        ? (details_->Rmask | details_->Gmask | details_->Bmask)
+                        : 0xFFFFFFFFu;
+
+        exact_.clear();
+        nearest_.clear();
+        for (int i = 0; i < 256; ++i) {
+            const auto idx = static_cast<std::size_t>(i) * 3;
+            // The engine stores 6-bit VGA components; *4 is how every draw
+            // path widens them (see palette_color_lut in video_sdl.cpp).
+            colors_[static_cast<std::size_t>(i)] = SDL_Color{
+                static_cast<Uint8>(cached_pal_[idx] * 4),
+                static_cast<Uint8>(cached_pal_[idx + 1] * 4),
+                static_cast<Uint8>(cached_pal_[idx + 2] * 4), 255};
+            const SDL_Color& c = colors_[static_cast<std::size_t>(i)];
+            const Uint32 mapped =
+                SDL_MapRGB(details_, nullptr, c.r, c.g, c.b) & rgb_mask_;
+            exact_.emplace(mapped, static_cast<unsigned char>(i));
+        }
+        SDL_SetPaletteColors(surface_palette_, colors_.data(), 0, 256);
+        have_palette_ = true;
+    }
+
+    unsigned char index_for(Uint32 pixel)
+    {
+        if (const auto it = exact_.find(pixel); it != exact_.end())
+            return it->second;
+        if (const auto it = nearest_.find(pixel); it != nearest_.end())
+            return it->second;
+
+        Uint8 r = 0;
+        Uint8 g = 0;
+        Uint8 b = 0;
+        SDL_GetRGB(pixel, details_, nullptr, &r, &g, &b);
+        int best = 0;
+        long best_distance = LONG_MAX;
+        for (int i = 0; i < 256; ++i) {
+            const SDL_Color& c = colors_[static_cast<std::size_t>(i)];
+            const long dr = static_cast<long>(c.r) - r;
+            const long dg = static_cast<long>(c.g) - g;
+            const long db = static_cast<long>(c.b) - b;
+            const long distance = dr * dr + dg * dg + db * db;
+            if (distance < best_distance) {
+                best_distance = distance;
+                best = i;
+            }
+        }
+        const auto index = static_cast<unsigned char>(best);
+        nearest_.emplace(pixel, index);
+        return index;
+    }
+
+    SurfacePtr indexed_{nullptr, SDL_DestroySurface};
+    SDL_Palette* surface_palette_ = nullptr;
+    const SDL_PixelFormatDetails* details_ = nullptr;
+    std::array<unsigned char, 768> cached_pal_{};
+    std::array<SDL_Color, 256> colors_{};
+    std::unordered_map<Uint32, unsigned char> exact_;
+    std::unordered_map<Uint32, unsigned char> nearest_;
+    Uint32 rgb_mask_ = 0xFFFFFFFFu;
+    SDL_PixelFormat lut_format_ = SDL_PIXELFORMAT_UNKNOWN;
+    bool have_palette_ = false;
+};
+
 // ---------------------------------------------------------------------------
 // Worker synchronization
 // ---------------------------------------------------------------------------
@@ -118,7 +409,7 @@ struct WorkerSync {
 // ---------------------------------------------------------------------------
 // Scans the level for enemy living entities, then creates a player team
 // with the same size and roughly matching levels but randomized classes.
-static void spawn_random_player_team(screen* s, std::mt19937& rng)
+static void spawn_random_player_team(screen* s, std::mt19937& rng, int forced_size)
 {
     // Collect enemy levels
     std::vector<int> enemy_levels;
@@ -127,6 +418,17 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
         if (w && !w->dead() && w->order() == Order::Living && w->team_num() != 0) {
             enemy_levels.push_back(static_cast<int>(w->stats()->level()));
         }
+    }
+
+    // OPENGLAD_DEMO_TEAM_SIZE pins the roster instead of matching the level's
+    // living enemies one-for-one. Boss levels field a single high-level
+    // defender behind generators, which is not a fight one AI can carry.
+    if (forced_size > 0) {
+        const int strongest =
+            enemy_levels.empty()
+                ? 1
+                : *std::max_element(enemy_levels.begin(), enemy_levels.end());
+        enemy_levels.resize(static_cast<std::size_t>(forced_size), strongest);
     }
 
     if (enemy_levels.empty()) return;
@@ -143,19 +445,39 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
         walker* w = guy_create_and_add_walker(g, s);
         if (w) {
             w->set_team_num(0);
-            w->teleport();
+            // Deploy onto the level's authored team-0 start markers exactly
+            // like the real game (game.cpp), consuming one marker per member
+            // and scattering only the overflow. Levels that stage the player
+            // team somewhere specific — a boss arena's petitioners' floor,
+            // say — then read the way the author meant them to.
+            walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM, 0);
+            if (marker) {
+                // set_floor MUST precede setxy: setxy re-buckets the
+                // floor-keyed obmap at the walker's current floor.
+                w->set_floor(marker->floor());
+                w->setxy(marker->xpos(), marker->ypos());
+                marker->set_dead(1);
+            } else {
+                w->teleport();
+            }
             // Record the level-entry spawn point (mirrors the game.cpp deploy
-            // loop; the demo's teleport scatter is the entry position).
+            // loop; read it back so the teleport fallback is captured exactly).
             w->set_spawn_point(w->xpos(), w->ypos(),
                                static_cast<std::uint8_t>(w->floor()));
         }
+    }
+
+    // Retire the unused markers, as the deploy loop does.
+    while (walker* marker = s->first_of(Order::Special, FAMILY_RESERVED_TEAM)) {
+        marker->set_dead(1);
     }
 }
 
 // ---------------------------------------------------------------------------
 // Session initialization (called from main thread)
 // ---------------------------------------------------------------------------
-static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
+static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
+                              const std::string& campaign, int forced_team_size)
 {
     auto scope = demo.session->activate();
     screen* s = og::runtime::current_session->myscreen_;
@@ -163,7 +485,7 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 
     s->save_data.numplayers = 0; // spectator mode
     s->save_data.scen_num = static_cast<short>(scen_id);
-    s->save_data.current_campaign = "org.openglad.gladiator";
+    s->save_data.current_campaign = campaign;
 
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).
@@ -179,7 +501,7 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     }
 
     // Spawn a random player team to fight the enemies
-    spawn_random_player_team(s, rng);
+    spawn_random_player_team(s, rng, forced_team_size);
 
     // Point the camera at a player team member.  load_saved_game set
     // view->control before the team existed, so it's still nullptr.
@@ -260,7 +582,7 @@ static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_
 // ---------------------------------------------------------------------------
 // This does the rendering half of game_frame: redraw + refresh.
 // Must be called with the session's SessionScope active.
-static void render_session_frame(screen& s)
+static void render_session_frame(screen& s, SDL_Surface* session_surface)
 {
     if (s.redrawme) {
         s.draw_panels(s.numviews);
@@ -269,6 +591,18 @@ static void render_session_frame(screen& s)
     }
     s.redraw();
     s.refresh();
+
+    // SessionScope points E_Screen->render at this session's cell surface, but
+    // that swap does not survive a frame: redraw() opens with
+    // begin_gameplay_frame(), and set_active_canvas() re-derives render from
+    // the display Screen's own world/UI canvases. So the finished frame is
+    // sitting in the display's active canvas, not in the cell surface the
+    // compositor blits. Copy it across here — the demo pins the world canvas
+    // classic, so this is a straight 320x200 copy.
+    if (session_surface != nullptr && E_Screen != nullptr &&
+        E_Screen->render != nullptr && E_Screen->render != session_surface) {
+        SDL_BlitSurface(E_Screen->render, nullptr, session_surface, nullptr);
+    }
 }
 
 // Blit a 320x200 session surface into a sub-region of the composite surface.
@@ -312,6 +646,31 @@ int main(int argc, char* argv[])
             }
         }
         Log("openglad_demo: seed {}\n", demo_seed);
+
+        // Opt-in targeting/capture knobs. All strictly inert when unset.
+        const char* campaign_env = env_or_null("OPENGLAD_DEMO_CAMPAIGN");
+        const std::string demo_campaign =
+            campaign_env != nullptr ? std::string(campaign_env)
+                                    : std::string(DEFAULT_CAMPAIGN);
+        const std::vector<int> scenario_override =
+            env_scenario_list("OPENGLAD_DEMO_SCENARIOS");
+        const int forced_team_size = env_int("OPENGLAD_DEMO_TEAM_SIZE", 0, 0);
+        const CaptureSettings capture = capture_settings_from_env();
+        std::unique_ptr<IndexedFrameWriter> capture_writer;
+        if (capture.enabled()) {
+            std::error_code ec;
+            std::filesystem::create_directories(capture.dir, ec);
+            if (ec) {
+                throw std::runtime_error(std::format(
+                    "OPENGLAD_DEMO_CAPTURE_DIR '{}' is not usable: {}",
+                    capture.dir, ec.message()));
+            }
+            capture_writer = std::make_unique<IndexedFrameWriter>();
+            Log("openglad_demo: capturing session {} to {} "
+                "(every {} frames, start {}, limit {})\n",
+                capture.session_index, capture.dir, capture.every,
+                capture.start, capture.limit);
+        }
 
         // OPENGLAD_DEMO_MAX_FRAMES bounds only the main loop. Grid sizing and
         // scenario selection remain the real demo paths; automation can pick a
@@ -421,6 +780,15 @@ int main(int argc, char* argv[])
         std::mt19937 demo_rng(demo_seed);
         auto pick_scenarios = [&]() {
             std::vector<int> picks;
+            if (!scenario_override.empty()) {
+                // Explicit list: assigned in order so a capture run always
+                // lands the same level in the same cell.
+                for (int i = 0; i < num_sessions; i++) {
+                    picks.push_back(scenario_override[
+                        static_cast<size_t>(i) % scenario_override.size()]);
+                }
+                return picks;
+            }
             std::vector<int> pool(SCENARIO_POOL.begin(), SCENARIO_POOL.end());
             std::shuffle(pool.begin(), pool.end(), demo_rng);
             for (int i = 0; i < num_sessions; i++)
@@ -433,10 +801,12 @@ int main(int argc, char* argv[])
         E_Screen->suppress_present = true;
         for (int i = 0; i < num_sessions; i++) {
             init_session_game(demos[static_cast<size_t>(i)],
-                              chosen[static_cast<size_t>(i)], demo_rng);
+                              chosen[static_cast<size_t>(i)], demo_rng,
+                              demo_campaign, forced_team_size);
         }
         E_Screen->suppress_present = false;
 
+        Log("openglad_demo: campaign {}\n", demo_campaign);
         for (int i = 0; i < num_sessions; i++) {
             Log("  session {}: scenario {}\n", i, chosen[static_cast<size_t>(i)]);
         }
@@ -459,6 +829,7 @@ int main(int argc, char* argv[])
 
         bool running = true;
         int frames_run = 0;
+        int captured_frames = 0;
 
         while (running) {
             auto frame_start = std::chrono::steady_clock::now();
@@ -498,6 +869,18 @@ int main(int argc, char* argv[])
                 });
             }
 
+            // Frame gating for the opt-in capture, decided once so the
+            // single-cell and whole-grid paths cannot disagree.
+            const bool capture_this_frame =
+                capture_writer != nullptr &&
+                frames_run >= capture.start &&
+                ((frames_run - capture.start) % capture.every) == 0 &&
+                (capture.limit == 0 || captured_frames < capture.limit);
+            const auto capture_path = [&] {
+                return std::format("{}/frame{:05d}.bmp", capture.dir,
+                                   captured_frames);
+            };
+
             // --- Phase 4: Render each session to its surface (main thread) ---
             // This is sequential: only the main thread touches E_Screen.
             E_Screen->suppress_present = true;
@@ -511,7 +894,26 @@ int main(int argc, char* argv[])
                 screen* s = og::runtime::current_session->myscreen_;
                 if (!s) continue;
 
-                render_session_frame(*s);
+                if (capture_writer &&
+                    (capture.session_index < 0 || i == capture.session_index))
+                    apply_capture_focus(*s, capture.focus);
+
+                render_session_frame(
+                    *s, demos[static_cast<size_t>(i)].session->session_surface_);
+
+                // --- Phase 4b: opt-in frame dump (docs/media) ---
+                if (capture_this_frame && i == capture.session_index) {
+                    const std::string path = capture_path();
+                    og::runtime::GameSession& sess =
+                        *demos[static_cast<size_t>(i)].session;
+                    if (!capture_writer->write(sess.session_surface_,
+                                               sess.curpal_, path)) {
+                        throw std::runtime_error(std::format(
+                            "openglad_demo failed to write capture frame {}: {}",
+                            path, SDL_GetError()));
+                    }
+                    captured_frames++;
+                }
             }
             E_Screen->suppress_present = false;
 
@@ -522,6 +924,21 @@ int main(int argc, char* argv[])
                 int col = i % grid_cols;
                 int row = i / grid_cols;
                 composite_session(composite_surface.get(), src, col, row);
+            }
+
+            // Whole-grid dump: every cell at once, cropped to the grid area
+            // (the composite surface itself is display-sized).
+            if (capture_this_frame && capture.session_index < 0) {
+                const std::string path = capture_path();
+                if (!capture_writer->write(composite_surface.get(),
+                                           host_session.curpal_, path,
+                                           grid_cols * CELL_W,
+                                           grid_rows * CELL_H)) {
+                    throw std::runtime_error(std::format(
+                        "openglad_demo failed to write capture frame {}: {}",
+                        path, SDL_GetError()));
+                }
+                captured_frames++;
             }
 
             SDL_UpdateTexture(composite_tex.get(), nullptr,
@@ -539,22 +956,35 @@ int main(int argc, char* argv[])
                 E_Screen->suppress_present = true;
                 for (int i = 0; i < num_sessions; i++) {
                     init_session_game(demos[static_cast<size_t>(i)],
-                                      chosen[static_cast<size_t>(i)], demo_rng);
+                                      chosen[static_cast<size_t>(i)], demo_rng,
+                                      demo_campaign, forced_team_size);
                 }
                 E_Screen->suppress_present = false;
             }
 
             // Frame pacing: sleep remainder of the target frame period.
-            auto elapsed = std::chrono::steady_clock::now() - frame_start;
-            auto remaining = FRAME_PERIOD - elapsed;
-            if (remaining > std::chrono::microseconds(1000)) {
-                std::this_thread::sleep_for(remaining);
+            // A capture run has no viewer, so it takes the frames as fast as
+            // the simulation produces them.
+            if (!capture.enabled()) {
+                auto elapsed = std::chrono::steady_clock::now() - frame_start;
+                auto remaining = FRAME_PERIOD - elapsed;
+                if (remaining > std::chrono::microseconds(1000)) {
+                    std::this_thread::sleep_for(remaining);
+                }
             }
 
             frames_run++;
             if (max_frames > 0 && frames_run >= max_frames) {
                 running = false;
             }
+            if (capture.limit > 0 && captured_frames >= capture.limit) {
+                running = false;
+            }
+        }
+
+        if (capture_writer) {
+            Log("openglad_demo: captured {} frames to {}\n",
+                captured_frames, capture.dir);
         }
 
         // --- Shutdown worker threads ---

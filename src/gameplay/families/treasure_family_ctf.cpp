@@ -6,19 +6,8 @@
  * (at your option) any later version.
  */
 #include <openglad/core/ctf_constants.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
-#include <openglad/gameplay/treasure.h>
-
-static bool flag_on_eat(treasure* self, walker* eater)
-{
-    return og::sim::ctf_on_flag_touch(self, eater);
-}
-
-static bool ctf_point_on_eat(treasure* self, walker* eater)
-{
-    return og::sim::ctf_on_point_touch(self, eater);
-}
+#include <openglad/core/constants.h>
 
 const TreasureFamilyDescriptor& describe_treasure_flag()
 {
@@ -27,7 +16,7 @@ const TreasureFamilyDescriptor& describe_treasure_flag()
         .name = "FLAG",
         .init_ignore = false,
         .init_frame = 0,
-        .on_eat = flag_on_eat,
+        .on_eat = nullptr,
     };
     return desc;
 }
@@ -39,7 +28,7 @@ const TreasureFamilyDescriptor& describe_treasure_ctf_point()
         .name = "WAYPOINT",
         .init_ignore = false,
         .init_frame = 0,
-        .on_eat = ctf_point_on_eat,
+        .on_eat = nullptr,
     };
     return desc;
 }

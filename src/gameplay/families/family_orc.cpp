@@ -5,112 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/living.h>
-#include <openglad/gameplay/walker.h>
-#include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
-#include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/sim_emit.h>
-#include <openglad/core/test_trace.h>
-#include <format>
-#include <list>
-#include <string>
 
 inline constexpr int BASE_GUY_HP = 30;
-
-short exp_from_action(ExpAction action, walker* w, walker* target, short value);
-
-static bool orc_do_special(walker* self)
-{
-    walker* newob;
-    std::int32_t tempx, tempy;
-    std::int32_t howmany;
-    std::uint32_t distance;
-    std::string message;
-
-    switch (self->current_special())
-    {
-        case 1: // yell and 'freeze' foes
-            if (self->busy() > 0)
-                return false;
-            self->set_busy(self->busy() + 2.0f);
-
-            {
-                std::list<walker*> newlist = current_game->world->find_foes_in_range(
-                    current_game->world->oblist,
-                    og::combat::yell_radius(self->stats()->level()), &howmany, self); // §2.5: legacy 160 + 20*L, flat cap 420 = f(13)
-
-                for (auto* ob : newlist)
-                {
-                    if (ob)
-                    {
-                        if (ob->myguy)
-                            tempx = ob->myguy->constitution;
-                        else
-                            tempx = static_cast<std::int32_t>(ob->stats()->hitpoints() / 30.0f);
-                        std::int32_t tempx_clamped = (tempx > 0) ? tempx : 0;
-                        tempy = 10
-                            + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->stats()->level() * 10)))
-                            - static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(tempx_clamped * 10)));
-                        if (tempy < 0) tempy = 0;
-                        if (ob->stats()->frozen_delay_raw() < 0) { TRACE("combat", "orc yell stun add discarded: thaw immunity"); }
-                        ob->stats()->set_frozen_delay(static_cast<short>(og::combat::stun_total(ob->stats()->frozen_delay_raw(), tempy))); // §2.4: both rng draws above are verbatim; victim TOTAL from yells capped at 150
-                    }
-                }
-
-                og::sim::emit_sound(current_game->sim_events, SOUND_ROAR);
-            }
-            break;
-        case 2: // eat corpse for health
-        case 3:
-        case 4:
-        default:
-            if (self->stats()->hitpoints() >= self->stats()->max_hitpoints())
-                return false;
-            newob = current_game->world->find_nearest_blood(self);
-            if (!newob)
-                return false;
-            distance = static_cast<std::uint32_t>(self->distance_to_ob_center(newob));
-            if (distance > 24)
-                return false;
-            self->stats()->set_hitpoints(self->stats()->hitpoints() + static_cast<float>(newob->stats()->level()) * 5.0f);
-            self->do_heal_effects(nullptr, self, static_cast<short>(newob->stats()->level() * 5));
-            // Print the eating notice
-            if (self->myguy)
-            {
-                self->myguy->exp += exp_from_action(ExpAction::EatCorpse, self, newob, 0);
-            }
-            message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
-
-            og::sim::emit_notification(current_game->sim_events, message);
-            if (self->stats()->hitpoints() > self->stats()->max_hitpoints())
-                self->stats()->set_hitpoints(self->stats()->max_hitpoints());
-            newob->set_dead(1);
-            newob->death();
-            break;
-    }
-    return true;
-}
-
-static bool orc_check_special_ai(living* self)
-{
-    return check_special_ai_distance(self, 130);
-}
-
-static void orc_set_difficulty(living* self, std::uint32_t level)
-{
-    apply_difficulty_scaling(self, level, {14.0f, 7.0f, 6.0f, 3.0f});
-}
-
-static void orc_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {12, 3, 12, 4, 1});
-}
 
 static short orc_promotion_level([[maybe_unused]] int old_level)
 {
@@ -146,11 +45,11 @@ const FamilyDescriptor& describe_family_orc()
         .promotion_level_req = 5,
         .promotion_new_level = orc_promotion_level,
         .death_message = "ORC DIED",
-        .do_special = orc_do_special,
-        .check_special_ai = orc_check_special_ai,
+        .do_special = nullptr,
+        .check_special_ai = nullptr,
         .hit_response = nullptr,
-        .set_difficulty = orc_set_difficulty,
-        .level_up = orc_level_up,
+        .set_difficulty = nullptr,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

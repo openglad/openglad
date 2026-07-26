@@ -15,6 +15,7 @@ Options:
     --loop N      loop count, 0 = forever (default 0)
     --scale N     integer nearest-neighbour upscale (default 1)
     --skip N      keep every Nth frame (default 1 = keep all)
+    --diff        store only what changed since the previous frame
 """
 
 from __future__ import annotations
@@ -164,8 +165,89 @@ class LzwEncoder:
         return bytes(out)
 
 
+def changed_region(rows: list[bytes], previous: list[bytes]):
+    """Bounding box of the pixels that differ, or None if the frames match."""
+    min_x = min_y = max_x = max_y = -1
+    for y, (current, old) in enumerate(zip(rows, previous)):
+        if current == old:
+            continue
+        left = 0
+        while current[left] == old[left]:
+            left += 1
+        right = len(current) - 1
+        while current[right] == old[right]:
+            right -= 1
+        if min_y < 0:
+            min_y = y
+            min_x, max_x = left, right
+        else:
+            min_x = min(min_x, left)
+            max_x = max(max_x, right)
+        max_y = y
+    if min_y < 0:
+        return None
+    return min_x, min_y, max_x, max_y
+
+
+def _write_frame(out, x: int, y: int, width: int, height: int, pixels: bytes,
+                 delay: int, transparent: int | None, dispose: int) -> None:
+    packed = (dispose & 0x07) << 2
+    if transparent is not None:
+        packed |= 0x01
+    out.write(b"\x21\xF9\x04")
+    out.write(bytes((packed,)))
+    out.write(struct.pack("<H", delay))
+    out.write(bytes((transparent if transparent is not None else 0, 0)))
+    # Image descriptor: no local color table, not interlaced.
+    out.write(b"\x2C")
+    out.write(struct.pack("<HHHHB", x, y, width, height, 0x00))
+    out.write(bytes((8,)))  # LZW minimum code size for 8-bit indices
+    out.write(LzwEncoder(8).encode(pixels))
+
+
+def _write_delta_frame(out, rows: list[bytes], previous: list[bytes],
+                       delay: int) -> None:
+    """Emit only the changed sub-rectangle, unchanged pixels transparent.
+
+    Gameplay frames are a static backdrop with a handful of moving sprites, so
+    the redundancy between consecutive frames is the bulk of the file. Disposal
+    method 1 ("do not dispose") leaves the previous frame on the canvas, and a
+    transparent index inside the dirty rectangle keeps the parts of it that did
+    not move. The transparent index is chosen per frame from the entries this
+    frame does not paint -- the game draws a few dozen of the 256 palette
+    entries per frame, so one is always free.
+    """
+    box = changed_region(rows, previous)
+    if box is None:
+        # Nothing moved: a 1x1 fully transparent patch is a pure delay.
+        _write_frame(out, 0, 0, 1, 1, bytes((0,)), delay, 0, 1)
+        return
+
+    min_x, min_y, max_x, max_y = box
+    painted = set()
+    for y in range(min_y, max_y + 1):
+        current = rows[y]
+        old = previous[y]
+        for x in range(min_x, max_x + 1):
+            if current[x] != old[x]:
+                painted.add(current[x])
+    transparent = next((i for i in range(256) if i not in painted), None)
+
+    chunks = []
+    for y in range(min_y, max_y + 1):
+        current = rows[y][min_x:max_x + 1]
+        if transparent is None:
+            chunks.append(current)
+            continue
+        old = previous[y][min_x:max_x + 1]
+        chunks.append(bytes(c if c != o else transparent
+                            for c, o in zip(current, old)))
+    _write_frame(out, min_x, min_y, max_x - min_x + 1, max_y - min_y + 1,
+                 b"".join(chunks), delay, transparent, 1)
+
+
 def write_gif(path: str, frames: list[BmpFrame], delay: int, loop: int,
-              scale: int) -> None:
+              scale: int, diff: bool = False) -> None:
     if not frames:
         raise ValueError("no frames to write")
 
@@ -185,23 +267,19 @@ def write_gif(path: str, frames: list[BmpFrame], delay: int, loop: int,
         out.write(struct.pack("<H", loop))
         out.write(b"\x00")
 
+        previous: list[bytes] | None = None
         for index, frame in enumerate(frames):
             if frame.width != frames[0].width or frame.height != frames[0].height:
                 raise ValueError(
                     f"frame {index} is {frame.width}x{frame.height}, expected "
                     f"{frames[0].width}x{frames[0].height}")
             rows = scale_rows(frame.rows, scale)
-            pixels = b"".join(rows)
-
-            # Graphic control extension: delay, no transparency, keep frame.
-            out.write(b"\x21\xF9\x04\x00")
-            out.write(struct.pack("<H", delay))
-            out.write(b"\x00\x00")
-            # Image descriptor: full-frame, no local color table.
-            out.write(b"\x2C")
-            out.write(struct.pack("<HHHHB", 0, 0, width, height, 0x00))
-            out.write(bytes((8,)))  # LZW minimum code size for 8-bit indices
-            out.write(LzwEncoder(8).encode(pixels))
+            if diff and previous is not None:
+                _write_delta_frame(out, rows, previous, delay)
+            else:
+                _write_frame(out, 0, 0, width, height, b"".join(rows), delay,
+                             None, 1 if diff else 0)
+            previous = rows
 
         out.write(b"\x3B")  # trailer
 
@@ -216,6 +294,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--loop", type=int, default=0)
     parser.add_argument("--scale", type=int, default=1)
     parser.add_argument("--skip", type=int, default=1)
+    parser.add_argument("--diff", action="store_true",
+                        help="store only the changed rectangle per frame")
     args = parser.parse_args(argv)
 
     paths = list(args.frames)
@@ -227,7 +307,8 @@ def main(argv: list[str]) -> int:
         parser.error("no input frames (pass paths or --glob)")
 
     frames = [read_indexed_bmp(p) for p in paths]
-    write_gif(args.output, frames, args.delay, args.loop, max(1, args.scale))
+    write_gif(args.output, frames, args.delay, args.loop, max(1, args.scale),
+              diff=args.diff)
     print(f"{args.output}: {len(frames)} frames, "
           f"{frames[0].width * args.scale}x{frames[0].height * args.scale}")
     return 0

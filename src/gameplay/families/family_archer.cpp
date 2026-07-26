@@ -5,110 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/living.h>
-#include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
-
 #include <iterator>
 
 inline constexpr int BASE_GUY_HP = 30;
-
-static bool archer_do_special(walker* self)
-{
-    walker* newob;
-
-    switch (self->current_special())
-    {
-        case 1: // fire arrows
-        {
-            self->set_curdir(-1);
-            self->set_lastx(0);
-            self->set_lasty(0);
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 8.0f * static_cast<float>(self->stats()->weapon_cost()));
-            self->stats()->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, -1);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, 0);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, 1);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 0, 1);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, 1);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, 0);
-            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, -1);
-            self->stats()->add_command(COMMAND_RESET_WEAPON, 1, 0, 0);
-            break;
-        }
-        case 2: // flurry of arrows
-            if (self->busy())
-                return false;
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 3.0f * static_cast<float>(self->stats()->weapon_cost()));
-            self->fire();
-            self->fire();
-            self->fire();
-            self->set_busy(self->busy() + (self->fire_frequency() * 2.0f));
-            break;
-        case 3: // exploding arrows
-        case 4:
-        default:
-        {
-            if (self->busy())
-                return false;
-            unsigned short old_weapon = self->current_weapon();
-            self->set_current_weapon(FAMILY_FIRE_ARROW);
-            newob = self->fire();
-            self->set_current_weapon(old_weapon);
-            if (!newob)
-                return false;
-            newob->set_skip_exit(5000);
-            newob->stats()->set_hitpoints(500);
-            newob->set_damage(newob->damage() * 2.0f);
-            break;
-        }
-    }
-    return true;
-}
-
-static bool archer_check_special_ai(living* self)
-{
-    return check_special_ai_distance(self, 130);
-}
-
-static void archer_hit_response(statistics* stats, walker* foe)
-{
-    walker* controller = stats->controller();
-    if (!controller->foe() || controller->foe() != foe)
-    {
-        controller->set_foe(foe);
-        stats->clear_command();
-        stats->set_current_distance(15000);
-        stats->set_last_distance(15000);
-    }
-    std::int32_t distance = controller->distance_to_ob(foe);
-    if (distance < 64)
-    {
-        std::int32_t deltax = static_cast<short>(controller->xpos() - foe->xpos());
-        if (deltax)
-            deltax = static_cast<short>(deltax / abs(deltax));
-        std::int32_t deltay = static_cast<short>(controller->ypos() - foe->ypos());
-        if (deltay)
-            deltay = static_cast<short>(deltay / abs(deltay));
-        stats->force_command(COMMAND_WALK, 8, deltax, deltay);
-    }
-}
-
-static void archer_set_difficulty(living* self, std::uint32_t level)
-{
-    apply_difficulty_scaling(self, level, {11.0f, 12.0f, 4.0f, 1.0f});
-}
-
-static void archer_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {4, 9, 8, 8, 1});
-}
 
 static const char* const archer_names[] = {"Robin", "Green Arrow", "Legolas", "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"};
 
@@ -139,11 +40,11 @@ const FamilyDescriptor& describe_family_archer()
         .promotion_level_req = 0,
         .promotion_new_level = nullptr,
         .death_message = "ARCHER DIED",
-        .do_special = archer_do_special,
-        .check_special_ai = archer_check_special_ai,
-        .hit_response = archer_hit_response,
-        .set_difficulty = archer_set_difficulty,
-        .level_up = archer_level_up,
+        .do_special = nullptr,
+        .check_special_ai = nullptr,
+        .hit_response = nullptr,
+        .set_difficulty = nullptr,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

@@ -8,16 +8,20 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/packs.h>
 #include <openglad/resources/save_data.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
 #endif
+
+std::string get_asset_path();
 
 namespace {
 
@@ -55,6 +59,29 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const ch
     }
 
     return true;
+}
+
+// Family BEHAVIOR lives in the core class pack (design doc §9a): the
+// descriptors carry no C++ behavior callbacks any more, so a headless unit
+// binary that skips io_init's asset mounts would run a sim whose specials,
+// potions and effects all silently do nothing. Mount the shipped packs/ tree
+// the same way io_init does. Idempotent, and re-asserted after every test:
+// a test that tears PhysFS down (or remounts a campaign, which rescans
+// packs/) must not leave later tests with no family behavior at all.
+void mount_core_pack()
+{
+    const bool mounted = og::resources::mount(
+        (get_asset_path() + "packs/").c_str(), "packs/", 1);
+    if (!mounted)
+    {
+        std::fprintf(stderr,
+                     "error: core class pack not mounted (%s) — family "
+                     "behavior will be absent\n",
+                     og::resources::filesystem_last_error().c_str());
+        return;
+    }
+    if (og::script::pack_scripts().empty())
+        og::resources::refresh_pack_scripts();
 }
 
 class HeadlessSessionListener final : public ::testing::EmptyTestEventListener
@@ -102,6 +129,7 @@ public:
         const std::string user_path = get_user_path();
         (void)og::resources::set_write_dir(user_path);
         (void)og::resources::mount(user_path.c_str(), nullptr, 1);
+        mount_core_pack();
     }
 
 private:
@@ -165,6 +193,8 @@ int main(int argc, char** argv)
     current_game = &session.game_;
 
     init_all_registries();
+    mount_core_pack();
+
     ::testing::TestEventListeners& listeners =
         ::testing::UnitTest::GetInstance()->listeners();
     listeners.Append(new HeadlessSessionListener(

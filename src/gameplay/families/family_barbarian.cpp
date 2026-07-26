@@ -5,68 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
-#include <openglad/gameplay/statistics.h>
-
 #include <iterator>
 
 inline constexpr int BASE_GUY_HP = 30;
-
-static void barbarian_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {12, 3, 12, 4, 1});
-}
-
-static bool barbarian_do_special(walker* self)
-{
-    if (self->busy() > 0)
-        return false;
-    walker* newob = self->fire();
-    if (!newob)
-        return false;
-    walker* alive = current_game->world->add_ob(Order::Weapon, FAMILY_BOULDER);
-    if (!alive) return false;
-    alive->set_floor(newob->floor());  // boulder rolls on the thrower's floor (A8)
-    alive->center_on(newob);
-    alive->set_owner(self);
-    alive->stats()->set_level(self->stats()->level());
-    alive->set_lastx(newob->lastx());
-    alive->set_lasty(newob->lasty());
-    if (self->myguy)
-    {
-        alive->set_stepsize(1.0f + self->myguy->strength / 7);
-        alive->set_damage(alive->damage() + self->myguy->strength / 5.0f);
-    }
-    else
-    {
-        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 2.0f);
-        alive->set_damage(alive->damage() + static_cast<float>(self->stats()->level()));
-    }
-    if (alive->stepsize() < 1)
-        alive->set_stepsize(1);
-    if (alive->stepsize() > 15)
-        alive->set_stepsize(15);
-    if (alive->lasty() > 0)
-        alive->set_lasty(alive->stepsize());
-    else if (alive->lasty() < 0)
-        alive->set_lasty(-(alive->stepsize()));
-    if (alive->lastx() > 0)
-        alive->set_lastx(alive->stepsize());
-    else if (alive->lastx() < 0)
-        alive->set_lastx(-(alive->stepsize()));
-    if (self->current_special() == 2)
-        alive->set_skip_exit(5000);
-    else
-        alive->set_skip_exit(0);
-    newob->set_dead(1);
-    self->set_busy(self->busy() + 1.0f + static_cast<float>(self->current_special()) * 5.0f);
-    return true;
-}
 
 static const char* const barbarian_names[] = {"Thor", "Conan", "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", "Titan"};
 
@@ -97,11 +40,11 @@ const FamilyDescriptor& describe_family_barbarian()
         .promotion_level_req = 0,
         .promotion_new_level = nullptr,
         .death_message = "SOMEONE DIED",
-        .do_special = barbarian_do_special,
+        .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = barbarian_level_up,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

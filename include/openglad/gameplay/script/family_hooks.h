@@ -17,6 +17,12 @@
 // hook must fail BEFORE mutating sim state or not at all: a partial script
 // run followed by the full C++ callback double-executes side effects.
 // Script errors therefore belong at branch entry (design doc R9).
+//
+// Stage A (design doc §9a) retired the C++ callback of every converted
+// family: for those the Lua hook is the ONLY implementation, so an erroring
+// hook means nothing runs at all — hence the HookFailure latch below. The
+// C++ branch survives for families that still have no Lua twin (the wave,
+// door and animate weapon families) and for mod descriptors that ship none.
 
 #include <openglad/core/order.h>
 
@@ -24,6 +30,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 class walker;
 class living;
@@ -110,6 +117,24 @@ private:
 WorldScripts& active_world_scripts();
 
 namespace hooks {
+
+// Loud-failure latch (design doc §9a). The C++ family callbacks are retired:
+// a hook that errors no longer degrades to the old behavior, it degrades to
+// *nothing happening*. Every failed family-hook dispatch is therefore traced
+// ("script_error"), logged at error level, and counted here — so a test
+// cannot pass while a hook is quietly failing. Assert
+// `hook_failures().count == 0`, or diff the count around the code under test.
+//
+// This is process-global bookkeeping, never sim state: no hook, snapshot or
+// peer ever reads it, so production stays deterministic and non-fatal.
+struct HookFailure {
+    std::uint64_t count = 0;   // failed dispatches since reset_hook_failures()
+    std::string where;         // most recent, e.g. "hook:do_special"
+    std::string message;       // most recent Lua error text (with traceback)
+};
+
+const HookFailure& hook_failures();
+void reset_hook_failures();
 
 // Living-family hooks (FamilyDescriptor). Each returns the hook's result,
 // or nullopt when no hook (script or C++) ran.

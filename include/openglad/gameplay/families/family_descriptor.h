@@ -148,4 +148,16 @@ struct FamilyDescriptor {
     // family renders exactly like an unknown family always did.
     og::FamilyGlyph glyph{U'?', '?', og::GlyphColor::Default, false, false};
     og::RadarBlip radar{};             // livings blip in their team colour
+
+    // Fully-qualified id the declaring pack gave this family — the YAML
+    // `id:` value, e.g. "core:soldier" or "mypack:warlock". This is the
+    // name resolution matches FIRST, so two packs may ship families with
+    // the same `name:` and stay distinguishable
+    // (og::families::resolve_family_string_id).
+    // nullptr = no pack declared this slot (a C++ core pin before the core
+    // pack installs over it); resolution then falls back to `name`.
+    // Borrowed, never owned: the installer points this at a string in the
+    // process-lifetime ClasspackStore (src/resources/packs.cpp), exactly
+    // like `name` and the other const char* fields.
+    const char* declared_id = nullptr;
 };

@@ -42,7 +42,7 @@ protected:
 
 }  // namespace
 
-TEST_F(ScriptHooksTest, lua_hook_overrides_cpp_callback)
+TEST_F(ScriptHooksTest, lua_hook_is_the_only_family_behavior)
 {
     register_pack_script(
         {"test.pack", "hooks.lua",
@@ -55,8 +55,8 @@ TEST_F(ScriptHooksTest, lua_hook_overrides_cpp_callback)
 
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    ASSERT_NE(nullptr, fd->do_special)
-        << "test premise: soldier has a C++ do_special to be overridden";
+    ASSERT_EQ(nullptr, fd->do_special)
+        << "stage A premise: the C++ callback is retired, Lua carries it all";
 
     // No world context → dispatch goes through the shared UI instance.
     auto result = hooks::do_special(fd, nullptr);
@@ -98,27 +98,58 @@ TEST_F(ScriptHooksTest, unknown_hook_name_is_a_load_error)
               ws.host().errors().front().message.find("no valid hooks"));
 }
 
-TEST_F(ScriptHooksTest, erroring_hook_falls_back_deterministically)
+TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)
 {
-    // R9: a hook that errors behaves as absent → C++ fallback would run.
-    // Soldier's C++ do_special would crash on nullptr self, so use a hook
-    // that errors on a family whose C++ callback slot we can observe via
-    // return: pick tower1 only if its do_special is null; otherwise skip.
+    // R9: a hook that errors behaves as absent for that dispatch. With the
+    // C++ callbacks retired (§9a) "absent" means NOTHING runs, so the
+    // failure has to be impossible to miss: traced, logged, and latched
+    // where a test can assert on it.
     register_pack_script(
         {"test.pack", "erroring.lua",
          "og.register_hooks('living', 'core:soldier', "
          "{ on_death = function(self) error('boom') return true end })\n"});
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    ASSERT_EQ(nullptr, fd->on_death)
-        << "test premise: soldier has no C++ on_death fallback";
+    ASSERT_EQ(nullptr, fd->on_death) << "stage A: no C++ fallback exists";
+
+    hooks::reset_hook_failures();
+    ASSERT_EQ(0u, hooks::hook_failures().count);
+
     auto result = hooks::on_death(fd, nullptr);
-    EXPECT_FALSE(result.has_value())
-        << "erroring hook with no C++ fallback = nothing ran";
+    EXPECT_FALSE(result.has_value()) << "erroring hook = nothing ran";
+
     WorldScripts& ws = active_world_scripts();
     ASSERT_FALSE(ws.host().errors().empty());
     EXPECT_NE(std::string::npos,
               ws.host().errors().back().message.find("boom"));
+
+    const auto& failure = hooks::hook_failures();
+    EXPECT_EQ(1u, failure.count) << "the dispatch failure must be latched";
+    EXPECT_EQ("hook:on_death", failure.where);
+    EXPECT_NE(std::string::npos, failure.message.find("boom"));
+
+    // Repeats keep counting even though the host folds the error record.
+    (void)hooks::on_death(fd, nullptr);
+    EXPECT_EQ(2u, hooks::hook_failures().count);
+
+    hooks::reset_hook_failures();
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+    EXPECT_TRUE(hooks::hook_failures().where.empty());
+}
+
+TEST_F(ScriptHooksTest, healthy_hook_leaves_the_failure_latch_clear)
+{
+    register_pack_script(
+        {"test.pack", "healthy.lua",
+         "og.register_hooks('living', 'core:soldier', "
+         "{ on_death = function(self) return true end })\n"});
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    hooks::reset_hook_failures();
+    auto result = hooks::on_death(fd, nullptr);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(*result);
+    EXPECT_EQ(0u, hooks::hook_failures().count);
 }
 
 TEST_F(ScriptHooksTest, no_scripts_means_cpp_dispatch_untouched)

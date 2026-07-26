@@ -12,6 +12,7 @@
 #include "script_host_impl.h"
 
 #include <cstdint>
+#include <vector>
 
 class walker;
 class guy;
@@ -39,6 +40,14 @@ struct GuyHandle {
 struct VmState {
     WorldScripts* owner = nullptr;
     std::uint64_t dispatch_gen = 0;
+    // Generations of every dispatch currently ON THE STACK. A hook may
+    // re-enter dispatch (walker:special() runs do_special, a death hook
+    // spawns something that dispatches, ...), which mints a newer
+    // generation; the outer frame's handles must stay usable while its
+    // Lua code is still running, so validity is "any live generation",
+    // not "the newest one". Pushed by HookFrame::begin and the level
+    // dispatchers, popped when the frame unwinds.
+    std::vector<std::uint64_t> live_gens;
     int hooks_ref = -1;           // table: order/family key → hook table
     int walker_methods_ref = -1;  // __index table for walker handles
     int level_hooks_ref = -1;     // table: kind*65536 + (level+1) → fn
@@ -74,6 +83,12 @@ void push_walker_handle(lua_State* L, walker* w, std::uint64_t gen);
 
 // Current dispatch generation (for minting handles outside HookFrame).
 std::uint64_t current_dispatch_gen(lua_State* L);
+
+// Opens a dispatch generation (returns it) and closes it again. Every site
+// that mints walker handles for a Lua call must bracket the call with these
+// so nested dispatches cannot invalidate an outer frame's handles.
+std::uint64_t push_dispatch_gen(lua_State* L);
+void pop_dispatch_gen(lua_State* L, std::uint64_t gen);
 
 // Installs entity/world/constants bindings into the VM (walker method table
 // + og.* API). Called once from the WorldScripts constructor.

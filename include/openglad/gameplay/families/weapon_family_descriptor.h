@@ -43,6 +43,10 @@ struct WeaponFamilyDescriptor {
     og::FamilyGlyph glyph{U'*', '*', og::GlyphColor::White, false, false};
     og::RadarBlip radar{};
 
+    // Pack-declared fully-qualified id ("core:knife"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
+
     bool (*on_death)(weap* self);
     bool (*on_animate)(weap* self);
     bool (*on_hit_target)(walker* weapon, walker* target, walker* owner);

@@ -9,6 +9,8 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/script/family_hooks.h>
@@ -138,6 +140,52 @@ TEST_F(LevelScriptsTest, spawn_and_death_hooks_with_per_entity_override)
     EXPECT_EQ(count_after + 1, vm_log().size())
         << "only the level-wide hook may fire again";
     EXPECT_EQ("level death\t" + std::to_string(id), vm_log().back());
+}
+
+TEST_F(LevelScriptsTest, nested_dispatch_keeps_outer_handles_alive)
+{
+    // A hook that re-enters dispatch (walker:special(), a death hook that
+    // spawns, ...) opens a NEWER dispatch generation while its own frame is
+    // still running. Handle validity is therefore "any generation still on
+    // the stack", not "the newest one" — otherwise a hook invalidates its
+    // own `self` halfway through, which is exactly how fire_elemental's
+    // on_death used to fail silently once the C++ fallback was gone.
+    // The handle must be one the world id index CANNOT resolve, otherwise
+    // find_by_id answers first and the generation check never runs — which
+    // is why this only ever bit loose, untracked walkers.
+    register_pack_script(
+        {"test.pack", "nested.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_entity_spawn = function(ent) end,\n"  // inner dispatch
+         "})\n"
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self)\n"
+         "    -- Opens and closes a NESTED dispatch (add_ob fires the level\n"
+         "    -- on_entity_spawn hook above).\n"
+         "    og.add_ob('living', og.family_id('living', 'core:elf'))\n"
+         "    -- `self` was minted by the OUTER dispatch and is untracked;\n"
+         "    -- it must still resolve here.\n"
+         "    og.log('outer handle survived', self:family())\n"
+         "    return true\n"
+         "  end,\n"
+         "})\n"});
+    world.tick();
+
+    walker loose;  // never added to the world: entity_id stays 0
+    loose.set_order_family(Order::Living, static_cast<char>(FAMILY_SOLDIER));
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+
+    const auto result = hooks::do_special(fd, &loose);
+    const auto& errs = world.scripts().host().errors();
+    ASSERT_TRUE(errs.empty())
+        << "nested dispatch must not invalidate the outer frame's handles: "
+        << errs.front().message;
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(*result);
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("outer handle survived\t" + std::to_string(FAMILY_SOLDIER),
+              vm_log().back());
 }
 
 TEST_F(LevelScriptsTest, generator_deaths_dispatch_entity_death)

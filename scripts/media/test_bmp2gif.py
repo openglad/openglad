@@ -69,11 +69,19 @@ def decode_gif(path: str):
         pos += count * 3
 
     frames = []
+    pending_transparent = None
     while pos < len(data):
         block = data[pos]
         if block == 0x3B:  # trailer
             break
         if block == 0x21:  # extension
+            label = data[pos + 1]
+            if label == 0xF9:  # graphic control extension
+                size = data[pos + 2]
+                packed = data[pos + 3]
+                pending_transparent = data[pos + 6] if packed & 0x01 else None
+                if size != 4:
+                    raise AssertionError(f"bad GCE block size {size}")
             pos += 2  # skip label
             while data[pos]:
                 pos += data[pos] + 1
@@ -100,9 +108,28 @@ def decode_gif(path: str):
 
         indices = lzw_decode(bytes(chunks), min_code_size, fw * fh)
         rows = [bytes(indices[y * fw:(y + 1) * fw]) for y in range(fh)]
-        frames.append(((fx, fy, fw, fh), rows))
+        frames.append(((fx, fy, fw, fh), rows, pending_transparent))
+        pending_transparent = None
 
     return width, height, palette, frames
+
+
+def composite(width: int, height: int, frames) -> list[list[bytes]]:
+    """Play the GIF back the way a viewer does: paint each frame's rectangle
+    over the running canvas, honouring the transparent index."""
+    canvas = [bytearray(width) for _ in range(height)]
+    out = []
+    for (fx, fy, fw, fh), rows, transparent in frames:
+        for y in range(fh):
+            row = rows[y]
+            target = canvas[fy + y]
+            for x in range(fw):
+                value = row[x]
+                if transparent is not None and value == transparent:
+                    continue
+                target[fx + x] = value
+        out.append([bytes(r) for r in canvas])
+    return out
 
 
 def lzw_decode(stream: bytes, min_code_size: int, expected: int) -> bytearray:
@@ -199,7 +226,7 @@ def case_roundtrip(tmp: str, width: int, height: int, frame_count: int,
     assert gpal[1] == (255, 0, 0) and gpal[3] == (0, 0, 255), \
         f"{label}: palette not preserved: {gpal[1]} {gpal[3]}"
 
-    for f, (_, rows) in enumerate(frames):
+    for f, (_, rows, _) in enumerate(frames):
         for y in range(height * scale):
             want = expected_frames[f][y // scale]
             got = rows[y]
@@ -208,6 +235,47 @@ def case_roundtrip(tmp: str, width: int, height: int, frame_count: int,
             assert got == want, \
                 f"{label}: frame {f} row {y} mismatch\n  want {want[:16].hex()}\n  got  {got[:16].hex()}"
     print(f"  ok {label}: {frame_count} frames {gw}x{gh}, pixels identical")
+
+
+def case_diff(tmp: str, label: str, width: int, height: int,
+              make_rows) -> None:
+    """--diff must play back pixel-identically to the full-frame encoding.
+
+    Every frame is compared after compositing, which is the only thing that
+    makes a delta-encoded GIF correct: a frame stores a sub-rectangle whose
+    unchanged pixels are transparent, so what a viewer shows is the running
+    canvas, not the stored block.
+    """
+    palette = make_palette()
+    expected = []
+    paths = []
+    for f in range(len(make_rows)):
+        rows = make_rows[f]
+        expected.append(rows)
+        path = os.path.join(tmp, f"{label}_frame{f:03d}.bmp")
+        write_indexed_bmp(path, width, height, rows, palette)
+        paths.append(path)
+
+    gif_path = os.path.join(tmp, f"{label}.gif")
+    assert bmp2gif.main([gif_path, *paths, "--delay", "5", "--diff"]) == 0
+    full_path = os.path.join(tmp, f"{label}_full.gif")
+    assert bmp2gif.main([full_path, *paths, "--delay", "5"]) == 0
+
+    gw, gh, _, frames = decode_gif(gif_path)
+    assert (gw, gh) == (width, height), f"{label}: gif is {gw}x{gh}"
+    assert len(frames) == len(expected), \
+        f"{label}: decoded {len(frames)} frames, expected {len(expected)}"
+    played = composite(gw, gh, frames)
+    for f, canvas in enumerate(played):
+        for y in range(height):
+            assert canvas[y] == expected[f][y], \
+                f"{label}: composited frame {f} row {y} mismatch"
+
+    delta_size = os.path.getsize(gif_path)
+    full_size = os.path.getsize(full_path)
+    print(f"  ok {label}: {len(frames)} frames composite identical "
+          f"({delta_size} bytes vs {full_size} full-frame)")
+    return delta_size, full_size
 
 
 def main() -> int:
@@ -222,6 +290,35 @@ def main() -> int:
         # Wide frame: forces the LZW code width to grow past 9 bits and the
         # 255-byte sub-block boundary to be crossed many times.
         case_roundtrip(tmp, 320, 200, 2, True, 1, "full_screen")
+
+        print("bmp2gif --diff tests")
+        # A static backdrop with one moving sprite: the shape --diff exists
+        # for, and the case where it must actually save something.
+        backdrop = [bytes((x * 3 + y * 5) % 256 for x in range(64))
+                    for y in range(48)]
+        sprite = []
+        for f in range(6):
+            rows = [bytearray(r) for r in backdrop]
+            for dy in range(4):
+                for dx in range(4):
+                    rows[10 + f + dy][8 + f * 3 + dx] = 1
+            sprite.append([bytes(r) for r in rows])
+        delta, full = case_diff(tmp, "moving_sprite", 64, 48, sprite)
+        assert delta < full, \
+            f"--diff grew the file: {delta} >= {full}"
+
+        # Degenerate inputs: identical frames (empty dirty rectangle) and a
+        # frame that repaints every pixel (full-frame dirty rectangle).
+        flat = [bytes([7] * 32) for _ in range(16)]
+        other = [bytes([9] * 32) for _ in range(16)]
+        case_diff(tmp, "still_then_flip", 32, 16,
+                  [flat, flat, other, other, flat])
+
+        # A frame that uses all 256 palette entries leaves no index free for
+        # transparency; that frame must fall back to an opaque rectangle.
+        saturated = [bytes((y * 32 + x) % 256 for x in range(32))
+                     for y in range(16)]
+        case_diff(tmp, "saturated", 32, 16, [flat, saturated, flat])
         print("all bmp2gif round-trip tests passed")
     return 0
 

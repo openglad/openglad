@@ -5,117 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
-#include <cassert>
-#include <cstdlib>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/weap.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
-
 #include <iterator>
 
 #define BASE_GUY_HP 30
-
-namespace
-{
-IRandom& elf_rng()
-{
-    if (IRandom* override_rng = gameplay_rng_override())
-        return *override_rng;
-
-    if (current_game != nullptr && current_game->world != nullptr)
-        return current_game->world->rng_;
-
-    assert(false && "elf special requires an injected RNG");
-    std::abort();
-}
-
-float next_spread_multiplier(IRandom& rng)
-{
-    // Cosmetic fireball/rock spread jitter: master draws it from libc rand
-    // (`0.8 + 0.4*(rand()%101)/100`), NOT the gameplay RNG. Production draws
-    // from the gameplay RNG (`rng`) for snapshot/replay determinism; the parity
-    // harness's libc-rand cosmetic override (when installed) matches master's
-    // dual-RNG-stream behavior. The rest of the elf special (rock counts, etc.)
-    // stays on elf_rng() / world.rng_ on both branch and master.
-    IRandom& src = (cosmetic_rng_override() != nullptr) ? *cosmetic_rng_override() : rng;
-    return 0.8f + 0.4f * static_cast<float>(src.next(101)) / 100.0f;
-}
-}
-
-static bool elf_do_special(walker* self)
-{
-    weap* fireob;
-    std::int32_t i;
-    IRandom& rng = elf_rng();
-
-    switch (self->current_special())
-    {
-        case 1: // some rocks (normal)
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 2.0f * static_cast<float>(self->stats()->weapon_cost()));
-            fireob = static_cast<weap*>(self->fire());
-            if (!fireob)
-                return false;
-            fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
-            fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
-            fireob = static_cast<weap*>(self->fire());
-            if (!fireob)
-                return false;
-            fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
-            fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
-            break;
-        case 2: // more rocks, and bouncing
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 3.0f * static_cast<float>(self->stats()->weapon_cost()));
-            for (i = 0; i < 2; i++)
-            {
-                fireob = static_cast<weap*>(self->fire());
-                if (!fireob)
-                    return false;
-                fireob->set_lineofsight((fireob->lineofsight() * 3) / 2);
-                fireob->set_do_bounce(1);
-                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
-                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
-            }
-            break;
-        case 3:
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 4.0f * static_cast<float>(self->stats()->weapon_cost()));
-            for (i = 0; i < 3; i++)
-            {
-                fireob = static_cast<weap*>(self->fire());
-                if (!fireob)
-                    return false;
-                fireob->set_lineofsight(fireob->lineofsight() * 2);
-                fireob->set_do_bounce(1);
-                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
-                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
-            }
-            break;
-        case 4:
-        default:
-            self->stats()->set_magicpoints(self->stats()->magicpoints() + 5.0f * static_cast<float>(self->stats()->weapon_cost()));
-            for (i = 0; i < 4; i++)
-            {
-                fireob = static_cast<weap*>(self->fire());
-                if (!fireob)
-                    return false;
-                fireob->set_lineofsight((fireob->lineofsight() * 5) / 2);
-                fireob->set_do_bounce(1);
-                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
-                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
-            }
-            break;
-    }
-    return true;
-}
-
-static void elf_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {6, 9, 6, 8, 1});
-}
 
 static const char* const elf_names[] = {"Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot", "Treewee"};
 
@@ -146,11 +41,11 @@ const FamilyDescriptor& describe_family_elf()
         .promotion_level_req = 0,
         .promotion_new_level = nullptr,
         .death_message = "ELF KILLED",
-        .do_special = elf_do_special,
+        .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = elf_level_up,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

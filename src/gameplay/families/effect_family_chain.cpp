@@ -5,135 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/effect_family_descriptor.h>
-#include <openglad/gameplay/effect.h>
-#include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/guy.h>
-#include <openglad/core/sound_ids.h>
-#include <openglad/gameplay/sim_emit.h>
+#include <openglad/core/constants.h>
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
-
-static bool chain_on_act(effect* self)
-{
-    if (!self->leader() || self->lineofsight()<1 || !self->owner())
-    {
-        self->set_dead(1);
-        self->death();
-        return true;
-    }
-    // Are we at our leader? If so, attack him :)
-    if (hits(self->xpos(), self->ypos(), self->sizex(), self->sizey(),
-             self->leader()->xpos(), self->leader()->ypos(), self->leader()->sizex(), self->leader()->sizey()))
-    {
-        walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
-        if (!newob)
-        {
-            self->set_dead(1);
-            self->death();
-            return true;
-        }
-        newob->set_owner(self->owner());
-        newob->set_team_num(self->team_num());
-        newob->stats()->set_level(self->stats()->level());
-        newob->set_damage(self->damage());
-        newob->set_ani_type(ANI_EXPLODE);
-        newob->set_floor(self->floor());  // strike on the bolt's floor (A8)
-        newob->center_on(self);
-        self->leader()->set_skip_exit(self->leader()->skip_exit() + 3);
-        og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
-        // Now make new objects to seek out foes ..
-        float generic = self->damage() * 0.5f;
-        std::int32_t temp = 0;
-        std::list<walker*> foelist;
-        if (self->owner()->myguy)
-            foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                240+(self->owner()->myguy->intelligence/2), &temp, self);
-        else
-            foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                240+self->stats()->level()*5, &temp, self);
-        if (temp && generic>20)
-        {
-            std::int32_t numfoes = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->owner()->stats()->level()))) + 1;
-            for(auto* w : foelist)
-            {
-                if (numfoes <= 0) break;
-                // Chain lightning must not arc through solid floors: skip
-                // foes on other floors (A8; all-floor-0 on legacy levels so
-                // single-floor behavior is byte-identical).
-                if (w->floor() != self->floor())
-                    continue;
-                if (w != self->leader() && w->skip_exit()<1)
-                {
-                    newob = current_game->world->add_ob(Order::FX, FAMILY_CHAIN);
-                    if (!newob)
-                        return true;
-                    newob->set_owner(self->owner());
-                    newob->set_leader(w);
-                    newob->stats()->set_level(self->stats()->level());
-                    newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                    newob->set_damage(generic);
-                    newob->set_team_num(self->team_num());
-                    newob->set_floor(self->floor());  // seek on our floor (A8)
-                    newob->center_on(self);
-                }
-                numfoes--;
-            }
-        }
-
-        self->set_dead(1);
-        self->death();
-        return true;
-    }
-    // Move toward our leader ..
-    self->set_lineofsight(self->lineofsight() - 1);
-    std::int32_t distance = self->distance_to_ob_center(self->leader());
-    if (static_cast<float>(distance) > self->stepsize()*2)
-    {
-        float xd = 0, yd = 0;
-        if (self->leader()->xpos() > self->xpos())
-        {
-            if ( (self->leader()->xpos() - self->xpos()) > self->stepsize() )
-                xd = self->stepsize();
-            else
-                xd = self->leader()->xpos() - self->xpos();
-        }
-        else if (self->leader()->xpos() < self->xpos())
-        {
-            if ( (self->xpos() - self->leader()->xpos()) > self->stepsize() )
-                xd = -self->stepsize();
-            else
-                xd = self->leader()->xpos() - self->xpos();
-        }
-        if (self->leader()->ypos() > self->ypos())
-        {
-            if ( (self->leader()->ypos() - self->ypos()) > self->stepsize() )
-                yd = self->stepsize();
-            else
-                yd = self->leader()->ypos() - self->ypos();
-        }
-        else if (self->leader()->ypos() < self->ypos())
-        {
-            if ( (self->ypos() - self->leader()->ypos()) > self->stepsize() )
-                yd = -self->stepsize();
-            else
-                yd = self->leader()->ypos() - self->ypos();
-        }
-        self->set_curdir(static_cast<signed char>(self->facing(xd, yd)));
-        if (self->ani)
-        {
-            self->set_frame(self->ani[self->curdir()][0]);
-        }
-        self->setworldxy(self->worldx()+xd, self->worldy()+yd);
-    }
-    else
-    {
-        self->center_on(self->leader());
-    }
-    return true; // skip default animate/die
-}
 
 const EffectFamilyDescriptor& describe_effect_chain()
 {
@@ -143,7 +19,7 @@ const EffectFamilyDescriptor& describe_effect_chain()
         .loops_animation = false,
         .creates_hit_effect = false,
         .init_bit_flags = 0,
-        .on_act = chain_on_act,
+        .on_act = nullptr,
         .on_death = nullptr,
     };
     return desc;

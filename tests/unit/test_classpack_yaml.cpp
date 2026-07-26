@@ -36,6 +36,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -854,6 +855,303 @@ TEST(ClasspackInstall, reset_mod_slots_frees_pack_families_and_keeps_core)
         EXPECT_NE(get_family_descriptor(id), nullptr)
             << "core pin " << id << " must survive the reset";
     EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->name, "SOLDIER");
+    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
+              "core:soldier");
+}
+
+// ---------------------------------------------------------------------------
+// Pack namespaces are a real scope
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One living entry, spelled out because these tests care about exactly two
+// fields: the declared id and the display name.
+og::data::ClasspackData one_living(const char* pack, const char* id,
+                                   const char* wire_id, const char* name,
+                                   std::int32_t hiring_cost)
+{
+    og::data::ClasspackData data;
+    data.pack = pack;
+    og::data::ClasspackLivingEntry e;
+    e.id = id;
+    e.wire_id = wire_id;
+    e.name = name;
+    e.hiring_cost = hiring_cost;
+    data.living.push_back(std::move(e));
+    return data;
+}
+
+// Restores every populated slot of all five registries verbatim. Same
+// reason as CorePinGuard below, for a test that installs a whole pack over
+// the pins.
+class RegistrySnapshotGuard {
+public:
+    RegistrySnapshotGuard()
+        : living_(grab<FamilyDescriptor>(get_family_descriptor)),
+          weapons_(grab<WeaponFamilyDescriptor>(get_weapon_family_descriptor)),
+          effects_(grab<EffectFamilyDescriptor>(get_effect_family_descriptor)),
+          treasures_(
+              grab<TreasureFamilyDescriptor>(get_treasure_family_descriptor)),
+          generators_(grab<GeneratorFamilyDescriptor>(
+              get_generator_family_descriptor))
+    {
+    }
+
+    ~RegistrySnapshotGuard()
+    {
+        put(living_, set_family_descriptor);
+        put(weapons_, set_weapon_family_descriptor);
+        put(effects_, set_effect_family_descriptor);
+        put(treasures_, set_treasure_family_descriptor);
+        put(generators_, set_generator_family_descriptor);
+    }
+
+    RegistrySnapshotGuard(const RegistrySnapshotGuard&) = delete;
+    RegistrySnapshotGuard& operator=(const RegistrySnapshotGuard&) = delete;
+
+private:
+    template <typename Desc, typename Get>
+    static std::vector<std::pair<int, Desc>> grab(Get get)
+    {
+        std::vector<std::pair<int, Desc>> out;
+        for (int id = 0; id < NUM_FAMILY_SLOTS; id++)
+            if (const Desc* d = get(id))
+                out.emplace_back(id, *d);
+        return out;
+    }
+
+    template <typename Desc, typename Set>
+    static void put(const std::vector<std::pair<int, Desc>>& saved, Set set)
+    {
+        for (const auto& entry : saved)
+            (void)set(entry.first, entry.second);
+    }
+
+    std::vector<std::pair<int, FamilyDescriptor>> living_;
+    std::vector<std::pair<int, WeaponFamilyDescriptor>> weapons_;
+    std::vector<std::pair<int, EffectFamilyDescriptor>> effects_;
+    std::vector<std::pair<int, TreasureFamilyDescriptor>> treasures_;
+    std::vector<std::pair<int, GeneratorFamilyDescriptor>> generators_;
+};
+
+// Restores one core pin verbatim. The mod-slot reset deliberately leaves
+// the pins alone, so a test that installs over one has to put it back or
+// every later test (in any --gtest_shuffle order) inherits the edit.
+class CorePinGuard {
+public:
+    explicit CorePinGuard(int family_id)
+        : family_id_(family_id), saved_(*get_family_descriptor(family_id))
+    {
+    }
+    ~CorePinGuard() { set_family_descriptor(family_id_, saved_); }
+
+    CorePinGuard(const CorePinGuard&) = delete;
+    CorePinGuard& operator=(const CorePinGuard&) = delete;
+
+private:
+    int family_id_;
+    FamilyDescriptor saved_;
+};
+
+}  // namespace
+
+// THE pluggability case: two independent packs that each ship a "WARLOCK".
+// Before declared ids these were the same family — resolution threw the
+// namespace away and matched on `name:` alone. Now each is addressable by
+// its own fully-qualified id.
+TEST(FamilyStringIds, two_packs_may_ship_the_same_family_name)
+{
+    ModSlotGuard guard;
+
+    // Explicit wire ids: each install_classpack_data call starts its own
+    // auto counter (a real install pass shares one across all packs), so
+    // two separate calls would both claim the first auto slot.
+    ASSERT_EQ(og::resources::install_classpack_data(
+                  one_living("alpha", "alpha:warlock", "30", "WARLOCK", 111)),
+              1);
+    ASSERT_EQ(og::resources::install_classpack_data(
+                  one_living("beta", "beta:warlock", "31", "WARLOCK", 222)),
+              1);
+
+    const int alpha =
+        og::families::resolve_family_string_id(Order::Living, "alpha:warlock");
+    const int beta =
+        og::families::resolve_family_string_id(Order::Living, "beta:warlock");
+    ASSERT_EQ(alpha, 30);
+    ASSERT_EQ(beta, 31);
+    ASSERT_NE(alpha, beta) << "the namespace is what tells them apart";
+
+    // Each id reaches its OWN descriptor, not merely a valid one.
+    ASSERT_NE(get_family_descriptor(alpha), nullptr);
+    ASSERT_NE(get_family_descriptor(beta), nullptr);
+    EXPECT_EQ(get_family_descriptor(alpha)->hiring_cost, 111);
+    EXPECT_EQ(get_family_descriptor(beta)->hiring_cost, 222);
+    EXPECT_STREQ(get_family_descriptor(alpha)->declared_id, "alpha:warlock");
+    EXPECT_STREQ(get_family_descriptor(beta)->declared_id, "beta:warlock");
+
+    // Case and spaces normalize on both sides, as for bare names.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "Alpha:Warlock"),
+              alpha);
+
+    // Forward: a declared id is unique here, so neither family needs the
+    // positional escape even though their display names collide.
+    EXPECT_EQ(og::families::family_string_id(Order::Living, alpha),
+              "alpha:warlock");
+    EXPECT_EQ(og::families::family_string_id(Order::Living, beta),
+              "beta:warlock");
+
+    // The documented fallbacks: a bare name, or a namespace nobody
+    // declared, still resolve — to the lowest matching byte.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "warlock"),
+              alpha)
+        << "bare names keep working; first match wins";
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "gamma:warlock"),
+              alpha)
+        << "an undeclared namespace falls back to the bare-name match";
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "alpha:no_such"),
+              -1)
+        << "a namespace that exists does not invent families";
+}
+
+// With the real core pack installed, EVERY id it declares — all 73 across
+// the five orders, positional escapes included — must resolve to the byte
+// the pack pinned. This is what every `og.family_id(order, "core:...")` in
+// packs/core/scripts/*.lua depends on.
+TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
+{
+    ModSlotGuard mods;
+    RegistrySnapshotGuard pins;
+
+    std::ifstream in("packs/core/classpack.yaml", std::ios::binary);
+    ASSERT_TRUE(in.good())
+        << "packs/core/classpack.yaml missing (run from the repo root)";
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(buffer.str(), data, "packs/core"));
+
+    // (order, declared id, pinned wire id) for every entry, kept before the
+    // install moves the parsed data into the process-lifetime store.
+    std::vector<std::tuple<Order, std::string, int>> expected;
+    const auto collect = [&expected](Order order, const auto& entries) {
+        for (const auto& e : entries)
+            expected.emplace_back(order, e.id, std::stoi(e.wire_id));
+    };
+    collect(Order::Living, data.living);
+    collect(Order::Weapon, data.weapons);
+    collect(Order::FX, data.effects);
+    collect(Order::Treasure, data.treasures);
+    collect(Order::Generator, data.generators);
+    ASSERT_EQ(expected.size(), 73u) << "the whole core pack";
+
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 73);
+
+    for (const auto& [order, id, wire] : expected) {
+        EXPECT_EQ(og::families::resolve_family_string_id(order, id.c_str()),
+                  wire)
+            << id << " must resolve to its pinned byte";
+        EXPECT_EQ(og::families::family_string_id(order, wire), id)
+            << "byte " << wire << " of order " << static_cast<int>(order)
+            << " must report the id the pack declared";
+    }
+    EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->declared_id,
+                 "core:soldier");
+    // The escapes the core pack ships for its own name collisions.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "core:#19"),
+              FAMILY_GIANT_SKELETON);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "beast"),
+              FAMILY_GOLEM)
+        << "the shared display name still lands on the lowest byte";
+}
+
+// A mod family may reuse a CORE display name without shadowing the core
+// family: "core:soldier" keeps its byte, the mod answers to its own id.
+TEST(FamilyStringIds, a_mod_family_reusing_a_core_name_does_not_shadow_it)
+{
+    ModSlotGuard guard;
+
+    ASSERT_EQ(og::resources::install_classpack_data(one_living(
+                  "mod", "mod:soldier", "30", "SOLDIER", 777)),
+              1);
+
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "core:soldier"),
+              FAMILY_SOLDIER);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "mod:soldier"),
+              30);
+    EXPECT_EQ(get_family_descriptor(FAMILY_SOLDIER)->hiring_cost, 250)
+        << "the core soldier is untouched";
+    EXPECT_EQ(get_family_descriptor(30)->hiring_cost, 777);
+
+    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
+              "core:soldier");
+    EXPECT_EQ(og::families::family_string_id(Order::Living, 30),
+              "mod:soldier");
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "soldier"),
+              FAMILY_SOLDIER)
+        << "the bare name still means the core family (lowest byte)";
+}
+
+// Two slots that declare the SAME id are ambiguous, so both take the
+// positional escape — the same rule the BEAST/SLIME name collisions use,
+// which keeps family_string_id() a function whose result always resolves
+// back to the family it was asked about.
+TEST(FamilyStringIds, duplicate_declared_ids_take_the_positional_escape)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data =
+        one_living("dup", "dup:twin", "30", "FIRST TWIN", 1);
+    {
+        og::data::ClasspackLivingEntry e;
+        e.id = "dup:twin";  // same declared id, different slot
+        e.wire_id = "31";
+        e.name = "SECOND TWIN";
+        e.hiring_cost = 2;
+        data.living.push_back(std::move(e));
+    }
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
+
+    EXPECT_EQ(og::families::family_string_id(Order::Living, 30), "dup:#30");
+    EXPECT_EQ(og::families::family_string_id(Order::Living, 31), "dup:#31");
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "dup:#30"),
+              30);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "dup:#31"),
+              31);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "dup:twin"),
+              30)
+        << "the ambiguous id itself resolves to the lowest byte";
+    // Their display names differ, so the bare-name path still separates them.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "second_twin"),
+              31);
+}
+
+// Overriding a stock family in place — the supported reskin. Pin the core
+// family's wire_id, KEEP its id, and every reference to "core:soldier"
+// (Lua hook registrations included) keeps landing on the same byte.
+TEST(ClasspackInstall, a_pack_may_override_a_core_family_in_place)
+{
+    ModSlotGuard guard;
+    CorePinGuard pin(FAMILY_SOLDIER);
+
+    ASSERT_EQ(og::resources::install_classpack_data(one_living(
+                  "mod", "core:soldier", "0", "SOLDIER", 1234)),
+              1);
+
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(soldier, nullptr);
+    EXPECT_EQ(soldier->hiring_cost, 1234) << "the pack's data won";
+    EXPECT_STREQ(soldier->declared_id, "core:soldier");
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
+                                                     "core:soldier"),
+              FAMILY_SOLDIER)
+        << "the id an overriding pack keeps is the id that still resolves";
     EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
               "core:soldier");
 }

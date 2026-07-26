@@ -6,30 +6,8 @@
  * (at your option) any later version.
  */
 #include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/gameplay/weap.h>
-#include <openglad/gameplay/statistics.h>
 #include <openglad/core/sound_ids.h>
-#include <openglad/gameplay/sim_emit.h>
-
-static bool projectile_explode_on_death(weap* self)
-{
-    if (!self->skip_exit())
-        return false;  // skip_exit means we're supposed to explode :)
-    if (!self->owner() || self->owner()->dead())
-        self->set_owner(self);
-    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!newob)
-        return false; // failsafe
-    og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
-    newob->set_owner(self->owner());
-    newob->stats()->set_hitpoints(0);
-    newob->stats()->set_level(self->owner()->stats()->level());
-    newob->set_ani_type(ANI_EXPLODE);
-    newob->set_floor(self->floor());  // explode on the projectile's floor (A8)
-    newob->center_on(self);
-    newob->set_damage(self->damage()*2);
-    return true;
-}
+#include <openglad/core/constants.h>
 
 const WeaponFamilyDescriptor& describe_weapon_projectiles_fire_arrow()
 {
@@ -42,7 +20,7 @@ const WeaponFamilyDescriptor& describe_weapon_projectiles_fire_arrow()
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,
-        .on_death = projectile_explode_on_death,
+        .on_death = nullptr,
         .on_animate = nullptr,
         .on_hit_target = nullptr,
     };
@@ -60,7 +38,7 @@ const WeaponFamilyDescriptor& describe_weapon_projectiles_boulder()
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,
-        .on_death = projectile_explode_on_death,
+        .on_death = nullptr,
         .on_animate = nullptr,
         .on_hit_target = nullptr,
     };

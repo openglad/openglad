@@ -1153,10 +1153,10 @@ inline constexpr Mutation kMut_walker_ai_wander = {
 };
 
 inline constexpr Mutation kMut_exit_withdraw_path = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 85,
-    "    if (can_withdraw)",
-    "    if (false)",
-    "Forces the withdraw branch of exit_on_eat (the FAMILY_EXIT treasure's on_eat) to be skipped. When the player steps on an EXIT whose destination level is already completed while enemies remain on the current level, the game normally emits WithdrawToLevel + RequestExitConfirmation and sets world.withdraw_requested. Disabling can_withdraw suppresses BOTH events, flipping EventKindExactly(withdraw_to_level=8,1) and EventKindExactly(request_exit_confirmation=7,1) from count=1 to count=0. This is the behavior scripted_input_scen9301 is named for; the prior shared kMut_walker_ai_wander (combat-damage zeroing) is toothless here because the scenario never lands a melee hit (both soldiers end at full 120/120 HP)."
+    "packs/core/scripts/treasure_navigation.lua", 71,
+    "  if can_withdraw then",
+    "  if false then",
+    "Forces the withdraw branch of exit_on_eat (the FAMILY_EXIT treasure's on_eat) to be skipped. When the player steps on an EXIT whose destination level is already completed while enemies remain on the current level, the game normally emits WithdrawToLevel + RequestExitConfirmation and sets world.withdraw_requested. Disabling can_withdraw suppresses BOTH events, flipping EventKindExactly(withdraw_to_level=8,1) and EventKindExactly(request_exit_confirmation=7,1) from count=1 to count=0. This is the behavior scripted_input_scen9301 is named for; the prior shared kMut_walker_ai_wander (combat-damage zeroing) is toothless here because the scenario never lands a melee hit (both soldiers end at full 120/120 HP). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 // (kMut_smoke_score_event, the walker_combat.cpp:99 ScoreChange re-label,
@@ -1213,38 +1213,38 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "src/gameplay/families/family_archmage.cpp", 528,
-    ".do_special = archmage_do_special,",
-    ".do_special = (true ? nullptr : archmage_do_special),",
-    "Descriptor sets archmage do_special to nullptr while still referencing the function symbol (silences -Wunused-function). Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
+    "packs/core/scripts/archmage.lua", 470,
+    "  do_special = do_special,",
+    "  do_special = function() return true end,",
+    "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "src/gameplay/families/family_cleric.cpp", 352,
-    ".do_special = cleric_do_special,",
-    ".do_special = (true ? nullptr : cleric_do_special),",
-    "Descriptor neuters cleric heal/raise specials by setting do_special to nullptr; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates."
+    "packs/core/scripts/cleric.lua", 301,
+    "  do_special = do_special,",
+    "  do_special = function() return true end,",
+    "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "src/gameplay/families/family_mage.cpp", 312,
-    ".do_special = mage_do_special,",
-    ".do_special = (true ? nullptr : mage_do_special),",
-    "Descriptor neuters mage teleport/warp/freeze specials; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates."
+    "packs/core/scripts/mage.lua", 259,
+    "  do_special = do_special,",
+    "  do_special = function() return true end,",
+    "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "src/gameplay/families/family_thief.cpp", 214,
-    ".do_special = thief_do_special,",
-    ".do_special = (true ? nullptr : thief_do_special),",
-    "Descriptor neuters thief bomb/cloak/taunt specials; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates."
+    "packs/core/scripts/thief.lua", 164,
+    "  do_special = do_special,",
+    "  do_special = function() return true end,",
+    "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "src/gameplay/families/family_druid.cpp", 51,
-    "if (self->busy() > 0)",
-    "if (self->busy() > 0 && false)",
-    "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge."
+    "packs/core/scripts/druid.lua", 15,
+    "    if self:busy() > 0 then return false end",
+    "    if false then return false end",
+    "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 // Per-family-row mutations. Each points at the named family's
@@ -1267,84 +1267,84 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 23,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
 };
 
 inline constexpr Mutation kMut_family_elf_init = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 24,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "src/gameplay/families/family_mage.cpp", 293,
+    "src/gameplay/families/family_mage.cpp", 28,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
-    "src/gameplay/families/family_skeleton.cpp", 60,
+    "src/gameplay/families/family_skeleton.cpp", 23,
     "BASE_GUY_HP+30",
     "BASE_GUY_HP+9000",
     "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON)."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 24,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "src/gameplay/families/family_fire_elemental.cpp", 96,
+    "src/gameplay/families/family_fire_elemental.cpp", 25,
     "BASE_GUY_HP+70",
     "BASE_GUY_HP+9000",
     "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
-    "src/gameplay/families/family_faerie.cpp", 34,
+    "src/gameplay/families/family_faerie.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 161,
+    "src/gameplay/families/family_slime.cpp", 24,
     "BASE_GUY_HP+120",
     "10",
     "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 221,
+    "src/gameplay/families/family_slime.cpp", 84,
     "BASE_GUY_HP+50",
     "BASE_GUY_HP+9000",
     "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 281,
+    "src/gameplay/families/family_slime.cpp", 144,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 23,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
@@ -1358,56 +1358,56 @@ inline constexpr Mutation kMut_family_ghost_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 24,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "src/gameplay/families/family_orc.cpp", 130,
+    "src/gameplay/families/family_orc.cpp", 29,
     "BASE_GUY_HP+110",
     "BASE_GUY_HP+9000",
     "Cranks ORC HP; flips WalkerDiedByFinal(ORC)."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
-    "src/gameplay/families/family_big_orc.cpp", 31,
+    "src/gameplay/families/family_big_orc.cpp", 23,
     "BASE_GUY_HP+150",
     "10",
     "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 24,
     "BASE_GUY_HP+120",
     "10",
     "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 23,
     "BASE_GUY_HP+120",
     "10",
     "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
-    "src/gameplay/families/family_golem.cpp", 30,
+    "src/gameplay/families/family_golem.cpp", 21,
     "BASE_GUY_HP+270",
     "10",
     "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "src/gameplay/families/family_giant_skeleton.cpp", 22,
+    "src/gameplay/families/family_giant_skeleton.cpp", 21,
     "BASE_GUY_HP+270",
     "10",
     "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_tower1_init = {
-    "src/gameplay/families/family_tower1.cpp", 22,
+    "src/gameplay/families/family_tower1.cpp", 21,
     "BASE_GUY_HP+100",
     "BASE_GUY_HP+9000",
     "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
@@ -1644,7 +1644,7 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
-    "src/gameplay/families/family_faerie.cpp", 34,
+    "src/gameplay/families/family_faerie.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+90000",
     "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick)."
@@ -1667,10 +1667,10 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_drumstick_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 95,
-    ".on_eat = drumstick_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and TreasureFamilyRemovedFromOblist flips along with the paired play_sound floor."
+    "packs/core/scripts/treasure_consumables.lua", 90,
+    "  on_eat = drumstick_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and TreasureFamilyRemovedFromOblist flips along with the paired play_sound floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_pickup[] = {
@@ -1700,10 +1700,10 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 106,
-    ".on_eat = gold_bar_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
+    "packs/core/scripts/treasure_valuables.lua", 87,
+    "  on_eat = gold_bar_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
@@ -1723,10 +1723,10 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 118,
-    ".on_eat = silver_bar_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
+    "packs/core/scripts/treasure_valuables.lua", 91,
+    "  on_eat = silver_bar_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
@@ -1743,10 +1743,10 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 107,
-    ".on_eat = magic_potion_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so TreasureFamilyRemovedFromOblist flips."
+    "packs/core/scripts/treasure_consumables.lua", 94,
+    "  on_eat = magic_potion_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
@@ -1763,10 +1763,10 @@ inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 143,
-    ".on_eat = invis_potion_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "packs/core/scripts/treasure_consumables.lua", 106,
+    "  on_eat = invis_potion_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
@@ -1783,10 +1783,10 @@ inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 131,
-    ".on_eat = invulnerable_potion_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "packs/core/scripts/treasure_consumables.lua", 102,
+    "  on_eat = invulnerable_potion_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
@@ -1803,10 +1803,10 @@ inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 119,
-    ".on_eat = flight_potion_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "packs/core/scripts/treasure_consumables.lua", 98,
+    "  on_eat = flight_potion_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
@@ -1848,10 +1848,10 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 170,
-    ".on_eat = teleporter_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly."
+    "packs/core/scripts/treasure_navigation.lua", 131,
+    "  on_eat = teleporter_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
@@ -1871,10 +1871,10 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 130,
-    ".on_eat = life_gem_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip."
+    "packs/core/scripts/treasure_valuables.lua", 95,
+    "  on_eat = life_gem_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
@@ -1891,10 +1891,10 @@ inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_key_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 142,
-    ".on_eat = key_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "packs/core/scripts/treasure_valuables.lua", 99,
+    "  on_eat = key_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
@@ -1920,10 +1920,10 @@ inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 155,
-    ".on_eat = speed_potion_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the eater's speed bonus (living.cpp:227-230) is never applied, so under the long-runway input the boosted soldier no longer outruns x=270 — branch_only WalkerPositionMoved(SOLDIER,270,120) flips pass->fail."
+    "packs/core/scripts/treasure_consumables.lua", 110,
+    "  on_eat = speed_potion_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the eater's speed bonus (living.cpp:227-230) is never applied, so under the long-runway input the boosted soldier no longer outruns x=270 — branch_only WalkerPositionMoved(SOLDIER,270,120) flips pass->fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_exit_pickup[] = {
@@ -1959,10 +1959,10 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 158,
-    ".on_eat = exit_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly."
+    "packs/core/scripts/treasure_navigation.lua", 127,
+    "  on_eat = exit_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
@@ -2419,10 +2419,10 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "src/gameplay/families/family_mage.cpp", 235,
-    "            alive->set_lastx(newob->lastx());",
-    "            alive->set_lastx(newob->lastx() / 2);",
-    "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
+    "packs/core/scripts/mage.lua", 212,
+    "    alive:set_lastx(newob:lastx())",
+    "    alive:set_lastx(og.fdiv(newob:lastx(), 2))",
+    "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
@@ -2888,10 +2888,10 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 130,
-    ".on_eat = life_gem_on_eat,",
-    ".on_eat = nullptr,",
-    "Neuters the FAMILY_LIFE_GEM on_eat hook (life_gem_on_eat), which is the FAMILY_FLASH emitter: on pickup it add_ob(Order::FX, FAMILY_FLASH)s the telflash effect, then award_score emits one ScoreChange and set_dead(1) reaps the gem. With the hook nulled the FLASH is never emitted, no ScoreChange fires, and the gem stays alive in oblist -> EventKindAtLeast(score_change,1) flips 1->0. (Substring from-text matches the 8-space-indented line 126 exactly once, mirroring the canary-positive kMut_treasure_gold_bar_pickup/kMut_treasure_life_gem_pickup pattern.)"
+    "packs/core/scripts/treasure_valuables.lua", 95,
+    "  on_eat = life_gem_on_eat,",
+    "  on_eat = function() return true end,",
+    "Neuters the FAMILY_LIFE_GEM on_eat hook (life_gem_on_eat), which is the FAMILY_FLASH emitter: on pickup it add_ob(Order::FX, FAMILY_FLASH)s the telflash effect, then award_score emits one ScoreChange and set_dead(1) reaps the gem. With the hook nulled the FLASH is never emitted, no ScoreChange fires, and the gem stays alive in oblist -> EventKindAtLeast(score_change,1) flips 1->0. (Shares core:life_gem's hook-table line with kMut_treasure_life_gem_pickup, exactly as both pins shared the descriptor's .on_eat line before the retarget.) Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
@@ -3332,7 +3332,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 23,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3351,7 +3351,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 23,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3370,7 +3370,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 23,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3389,7 +3389,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 23,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3408,7 +3408,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3428,7 +3428,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3448,7 +3448,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3468,7 +3468,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 25,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3489,7 +3489,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 24,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3509,7 +3509,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 24,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3534,7 +3534,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 24,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3560,7 +3560,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 293,
+    "src/gameplay/families/family_mage.cpp", 28,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3580,7 +3580,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 293,
+    "src/gameplay/families/family_mage.cpp", 28,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3600,7 +3600,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 293,
+    "src/gameplay/families/family_mage.cpp", 28,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3620,7 +3620,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 293,
+    "src/gameplay/families/family_mage.cpp", 28,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3647,7 +3647,7 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
-    "src/gameplay/families/family_skeleton.cpp", 60,
+    "src/gameplay/families/family_skeleton.cpp", 23,
     "BASE_GUY_HP+30",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3666,7 +3666,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 24,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3685,7 +3685,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 24,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3704,7 +3704,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 24,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3724,7 +3724,7 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "src/gameplay/families/family_fire_elemental.cpp", 96,
+    "src/gameplay/families/family_fire_elemental.cpp", 25,
     "BASE_GUY_HP+70",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3748,7 +3748,7 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 161,
+    "src/gameplay/families/family_slime.cpp", 24,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3767,10 +3767,10 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 125,
-    "    if (self->spaces_clear() > 7)",
-    "    if (false)",
-    "Blocks small_slime_do_special's grow gate so the caster never transform_to(FAMILY_MEDIUM_SLIME): the small slime survives to the final tick and no medium ever exists, flipping WalkerFamilyCount(SMALL_SLIME,0,0), WalkerFamilyCount(MEDIUM_SLIME,1,1) and WalkerDiedByFinal(SMALL_SLIME). Replaces the prior init-HP crank (family_slime.cpp:221), which was runtime-dead: transform_to() gives the grown walker the TARGET family's descriptor stats, so the golden's lone MEDIUM ends at exactly its own 80.0 table max and the small's cranked HP never reaches the final dump (WP7 canary triage 2026-07-20)."
+    "packs/core/scripts/slime.lua", 127,
+    "  if self:spaces_clear() > 7 then",
+    "  if false then",
+    "Blocks small_slime_do_special's grow gate so the caster never transform_to(FAMILY_MEDIUM_SLIME): the small slime survives to the final tick and no medium ever exists, flipping WalkerFamilyCount(SMALL_SLIME,0,0), WalkerFamilyCount(MEDIUM_SLIME,1,1) and WalkerDiedByFinal(SMALL_SLIME). Replaces the prior init-HP crank (family_slime.cpp:221), which was runtime-dead: transform_to() gives the grown walker the TARGET family's descriptor stats, so the golden's lone MEDIUM ends at exactly its own 80.0 table max and the small's cranked HP never reaches the final dump (WP7 canary triage 2026-07-20). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
@@ -3788,10 +3788,10 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 139,
-    "    if (self->spaces_clear() > 7)",
-    "    if (false)",
-    "Blocks medium_slime_do_special's grow gate so the caster never transform_to(FAMILY_SLIME): the medium slime survives to the final tick, flipping WalkerFamilyCount(MEDIUM_SLIME,0,0) (the negative assertion) and dropping the grow/act sounds below the play_sound floor. Replaces the prior init-HP crank (family_slime.cpp:281), which was runtime-dead for the same transform_to reason as the small-slime row (WP7 canary triage 2026-07-20)."
+    "packs/core/scripts/slime.lua", 127,
+    "  if self:spaces_clear() > 7 then",
+    "  if false then",
+    "Blocks medium_slime_do_special's grow gate so the caster never transform_to(FAMILY_SLIME): the medium slime survives to the final tick, flipping WalkerFamilyCount(MEDIUM_SLIME,0,0) (the negative assertion) and dropping the grow/act sounds below the play_sound floor. Replaces the prior init-HP crank (family_slime.cpp:281), which was runtime-dead for the same transform_to reason as the small-slime row (WP7 canary triage 2026-07-20). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_2_scen99[] = {
@@ -3807,7 +3807,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 23,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3833,7 +3833,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 23,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3856,7 +3856,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 23,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3879,7 +3879,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "src/gameplay/families/family_ghost.cpp", 45,
+    "src/gameplay/families/family_ghost.cpp", 25,
     "BASE_GUY_HP+20",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3900,7 +3900,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 24,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3921,7 +3921,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 24,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3940,7 +3940,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 24,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3959,7 +3959,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 24,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3982,7 +3982,7 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "src/gameplay/families/family_orc.cpp", 130,
+    "src/gameplay/families/family_orc.cpp", 29,
     "BASE_GUY_HP+110",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4003,7 +4003,7 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
-    "src/gameplay/families/family_orc.cpp", 130,
+    "src/gameplay/families/family_orc.cpp", 29,
     "BASE_GUY_HP+110",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4024,7 +4024,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 24,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4045,7 +4045,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 24,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4066,7 +4066,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 23,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4085,7 +4085,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 23,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4117,7 +4117,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 23,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4158,10 +4158,10 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 204,
-    "                current_game->world->enemy_freeze += 20 + 11 * self->stats()->level();",
-    "                current_game->world->enemy_freeze += 0;",
-    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
+    "packs/core/scripts/mage.lua", 185,
+    "      og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self:s_level())",
+    "      og.set_enemy_freeze(og.enemy_freeze() + 0)",
+    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_invisibility_thief_scen99[] = {
@@ -4181,10 +4181,10 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 95,
-    "            self->set_invisibility_left(static_cast<short>(og::combat::cloak_total(self->invisibility_left(), 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level())));",
-    "            self->set_invisibility_left(0);",
-    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
+    "packs/core/scripts/thief.lua", 80,
+    "    self:set_invisibility_left(math.max(capped, cur))",
+    "    self:set_invisibility_left(0)",
+    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
@@ -4202,10 +4202,10 @@ inline constexpr FactPredicate kFacts_speed_potion_movement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_speed_potion_movement_scen99 = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 82,
-    "    eater->set_speed_bonus_left(eater->speed_bonus_left() + 50 * self->stats()->level());",
-    "    eater->set_speed_bonus_left(0);",
-    "Clears speed_bonus_left so the eater never accumulates the level-5 potion's 250-tick walking-speed window. The soldier walks at base stepsize for the entire 20-tick K_RIGHT window; observed branch xpos drops from 368 (bonus active, stepsize=9 px/tick) to 288 (base stepsize 4), failing WalkerPositionMoved(FAMILY_SOLDIER, 350, 224)."
+    "packs/core/scripts/treasure_consumables.lua", 83,
+    "  eater:set_speed_bonus_left(eater:speed_bonus_left() + 50 * self:s_level())",
+    "  eater:set_speed_bonus_left(0)",
+    "Clears speed_bonus_left so the eater never accumulates the level-5 potion's 250-tick walking-speed window. The soldier walks at base stepsize for the entire 20-tick K_RIGHT window; observed branch xpos drops from 368 (bonus active, stepsize=9 px/tick) to 288 (base stepsize 4), failing WalkerPositionMoved(FAMILY_SOLDIER, 350, 224). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_invulnerable_potion_scen99[] = {
@@ -4223,10 +4223,10 @@ inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 67,
-    "        eater->set_invulnerable_left(static_cast<short>(eater->invulnerable_left() + (150 * self->stats()->level())));",
-    "        eater->set_invulnerable_left(0);",
-    "Clears invulnerable_left so the soldier loses its invincibility window; team-1 archer arrows now land while the soldier closes melee range, dropping the soldier's HP to ~99 (below the 11500-cent floor) and flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000)."
+    "packs/core/scripts/treasure_consumables.lua", 69,
+    "                                + 150 * self:s_level())",
+    "                                + 0)",
+    "Clears invulnerable_left so the soldier loses its invincibility window; team-1 archer arrows now land while the soldier closes melee range, dropping the soldier's HP to ~99 (below the 11500-cent floor) and flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4263,10 +4263,10 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 };
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 78,
-    "            alive->set_lifetime(og::combat::druid_faerie_lifetime(self->stats()->level()));",
-    "            alive->set_lifetime(99999);",
-    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
+    "packs/core/scripts/druid.lua", 42,
+    "    alive:set_lifetime(og.soften(50 + 40 * self:s_level(), 570, 800))",
+    "    alive:set_lifetime(99999)",
+    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_decrement_faerie_scen99[] = {
@@ -4392,10 +4392,10 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 80,
-    "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng))",
-    "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng) * 2.0f)",
-    "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate."
+    "packs/core/scripts/elf.lua", 45,
+    "      fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))",
+    "      fireob:set_lastx(og.fmul(og.fmul(fireob:lastx(), next_spread_multiplier()), 2.0))",
+    "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
@@ -4414,10 +4414,10 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
-    "src/gameplay/families/effect_family_shield.cpp", 80,
-    "self->center_on(self->owner());",
-    ";",
-    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80). Normally the boomerang re-centers on its owner each tick and adds the drawcycle-scaled orbit offset, so it spirals around the owner; without the anchor the offset accumulates from the previous position and the boomerang drifts off-course. That changes the per-tick weapon_tracks, so the EXACT byte-compare against the golden diverges and the scenario flips pass->fail. The boomerang's spiral is now faithfully captured in the golden because the master companion advances drawcycle in its effect::act (mirroring master's render-loop bump), matching the branch byte-for-byte; the old EffectNetTravel(STATIONARY) fact (which encoded the headless-frozen artifact) was removed."
+    "packs/core/scripts/effect_shield.lua", 90,
+    "  self:center_on(owner)",
+    "  local _ = owner",
+    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80). Normally the boomerang re-centers on its owner each tick and adds the drawcycle-scaled orbit offset, so it spirals around the owner; without the anchor the offset accumulates from the previous position and the boomerang drifts off-course. That changes the per-tick weapon_tracks, so the EXACT byte-compare against the golden diverges and the scenario flips pass->fail. The boomerang's spiral is now faithfully captured in the golden because the master companion advances drawcycle in its effect::act (mirroring master's render-loop bump), matching the branch byte-for-byte; the old EffectNetTravel(STATIONARY) fact (which encoded the headless-frozen artifact) was removed. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
@@ -4440,10 +4440,10 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 47,
-    "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 2.0f);",
-    "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 0.5f);",
-    "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
+    "packs/core/scripts/barbarian.lua", 27,
+    "    alive:set_stepsize(og.fmul(self:s_level(), 2.0))",
+    "    alive:set_stepsize(og.fmul(self:s_level(), 0.5))",
+    "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4503,10 +4503,10 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 241,
-    "                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);",
-    "                        return false;",
-    "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail."
+    "packs/core/scripts/archmage.lua", 227,
+    "        local newob = og.summon(self, \"fx\", FX_EXPLOSION)",
+    "        return false",
+    "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_poison_cloud_emit_scen99[] = {
@@ -4525,10 +4525,10 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 171,
-    "            newob = summon_entity(self, Order::FX, FAMILY_CLOUD);",
-    "            return false;",
-    "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound."
+    "packs/core/scripts/thief.lua", 151,
+    "    local newob = og.summon(self, \"fx\", FX_CLOUD)",
+    "    return false",
+    "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
@@ -4563,10 +4563,10 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 123,
-    "                                alive = summon_entity(newob, Order::Weapon, FAMILY_CIRCLE_PROTECTION);",
-    "                                return false;",
-    "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires."
+    "packs/core/scripts/druid.lua", 78,
+    "            alive = og.summon(newob, \"weapon\", WEAP_CIRCLE_PROTECTION)",
+    "            return false",
+    "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4604,10 +4604,10 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 69,
-    "            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB);",
-    "            return false;",
-    "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor."
+    "packs/core/scripts/thief.lua", 48,
+    "    local newob = og.add_ob(\"fx\", FX_BOMB)",
+    "    return false",
+    "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4744,7 +4744,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 127,
+    "src/gameplay/families/family_archer.cpp", 28,
     ".default_weapon = FAMILY_ARROW,",
     ".default_weapon = FAMILY_KNIFE,",
     "Swaps the archer's default weapon so the post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:193 switch pin was runtime-dead — the parity driver cycles characters itself via cycle_next_character in scenario_runtime.cpp; zero-flip, pre-existing on master). No FAMILY_ARROW is ever emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -4793,10 +4793,10 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 201,
-    "if (self->team_num() ==",
-    "if (false && self->team_num() ==",
-    "Reroutes the player-team FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the foreign-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips."
+    "packs/core/scripts/mage.lua", 184,
+    "    if self:team_num() == og.u8(og.my_team()) then",
+    "    if false and self:team_num() == og.u8(og.my_team()) then",
+    "Reroutes the player-team FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the foreign-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4889,10 +4889,10 @@ inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
 };
 
 inline constexpr Mutation kMut_level_withdraw_scen99 = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 85,
-    "    if (can_withdraw)",
-    "    if (false)",
-    "Skips exit_on_eat's entire can_withdraw branch, so neither RequestExitConfirmation nor WithdrawToLevel is ever emitted and the withdraw completion state is never reached — flipping both EventKindAtLeast rows and LevelDoneEquals(2) (the identical site+edit is kMut_exit_withdraw_path, canary-positive with 5 flips on scripted_input_scen9301). Replaces the prior withdraw_requested=false write at :87, which went runtime-dead: both events emit inside the branch before anything reads the flag and the run still ends level_done=2 with the flag forced false — its rationale's game_world.cpp:1393/1408/1438/1484 line refs predate the z-axis-era refactors (WP7 canary triage 2026-07-20)."
+    "packs/core/scripts/treasure_navigation.lua", 71,
+    "  if can_withdraw then",
+    "  if false then",
+    "Skips exit_on_eat's entire can_withdraw branch, so neither RequestExitConfirmation nor WithdrawToLevel is ever emitted and the withdraw completion state is never reached — flipping both EventKindAtLeast rows and LevelDoneEquals(2) (the identical site+edit is kMut_exit_withdraw_path, canary-positive with 5 flips on scripted_input_scen9301). Replaces the prior withdraw_requested=false write at :87, which went runtime-dead: both events emit inside the branch before anything reads the flag and the run still ends level_done=2 with the flag forced false — its rationale's game_world.cpp:1393/1408/1438/1484 line refs predate the z-axis-era refactors (WP7 canary triage 2026-07-20). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 
@@ -4963,10 +4963,10 @@ inline constexpr FactPredicate kFacts_consumable_inventory_state_scen99[] = {
     // rng_drift: arrow damage plus drumstick heal lands in a broad HP band while no-heal mutation remains below; commit 244d4bcf
 };
 inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
-    "src/gameplay/families/treasure_family_consumables.cpp", 25,
-    "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + amount);",
-    "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + 0);",
-    "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it."
+    "packs/core/scripts/treasure_consumables.lua", 35,
+    "  eater:s_set_hitpoints(og.fadd(eater:s_hitpoints(), amount))",
+    "  eater:s_set_hitpoints(og.fadd(eater:s_hitpoints(), 0))",
+    "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
 // --- Z-axis / multi-floor arenas (branch-internal Invariant) ---------------

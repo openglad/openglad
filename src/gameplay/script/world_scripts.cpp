@@ -28,6 +28,7 @@
 
 #include "script_internal.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -143,9 +144,15 @@ walker* resolve_walker(lua_State* L, int idx, bool required)
     }
     if (w == nullptr && h->raw != nullptr) {
         // Dying entities (on_death and friends) may already be out of the id
-        // index; the handle stays valid for the dispatch that produced it.
+        // index; the handle stays valid for as long as the dispatch that
+        // produced it is still on the stack. "Still on the stack" is not the
+        // same as "newest": a hook that re-enters dispatch (walker:special(),
+        // a death hook that spawns) opens a newer generation while its own
+        // frame is still running, and its handles must survive that.
         VmState* st = get_vm_state(L);
-        if (st != nullptr && h->gen == st->dispatch_gen)
+        if (st != nullptr &&
+            std::find(st->live_gens.begin(), st->live_gens.end(), h->gen) !=
+                st->live_gens.end())
             w = h->raw;
     }
     if (w == nullptr && required)
@@ -165,7 +172,9 @@ guy* resolve_guy(lua_State* L, int idx, bool required)
     auto* h = static_cast<GuyHandle*>(luaL_checkudata(L, idx, kGuyMeta));
     guy* g = nullptr;
     VmState* st = get_vm_state(L);
-    if (st != nullptr && h->gen == st->dispatch_gen)
+    if (st != nullptr &&
+        std::find(st->live_gens.begin(), st->live_gens.end(), h->gen) !=
+            st->live_gens.end())
         g = h->raw;
     if (g == nullptr && required)
         luaL_error(L, "stale guy handle (guys are dispatch-scoped)");
@@ -190,6 +199,28 @@ std::uint64_t current_dispatch_gen(lua_State* L)
 {
     VmState* st = get_vm_state(L);
     return st != nullptr ? st->dispatch_gen : 0;
+}
+
+std::uint64_t push_dispatch_gen(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    if (st == nullptr)
+        return 0;
+    st->dispatch_gen++;
+    st->live_gens.push_back(st->dispatch_gen);
+    return st->dispatch_gen;
+}
+
+void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
+{
+    VmState* st = get_vm_state(L);
+    if (st == nullptr || gen == 0)
+        return;
+    // Erase this frame's generation wherever it sits: a Lua error unwinding
+    // through pcall can skip an inner frame's pop, so do not assume LIFO.
+    auto it = std::find(st->live_gens.begin(), st->live_gens.end(), gen);
+    if (it != st->live_gens.end())
+        st->live_gens.erase(it, st->live_gens.end());
 }
 
 namespace {
@@ -570,6 +601,42 @@ WorldScripts& active_world_scripts()
 
 namespace {
 
+// Loud-failure latch (design doc §9a). The descriptors' C++ callbacks are
+// retired, so an erroring hook no longer degrades to the old behavior — it
+// degrades to nothing happening at all. Count every failed dispatch, keep
+// the most recent one for a test to read back, and shout the first sighting
+// of each distinct error at operator level. Process-global bookkeeping, read
+// by nothing in the sim: peers stay in step and nothing here can throw.
+hooks::HookFailure& hook_failure_state()
+{
+    static hooks::HookFailure state;
+    return state;
+}
+
+void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
+                       bool is_new_error)
+{
+    hooks::HookFailure& state = hook_failure_state();
+    state.count++;
+    state.where = (where != nullptr) ? where : "?";
+    state.message.clear();
+    // record_error folds repeats, so the freshest text for this `where` is
+    // the last matching stored record.
+    for (auto it = impl.errors.rbegin(); it != impl.errors.rend(); ++it) {
+        if (it->where == state.where) {
+            state.message = it->message;
+            break;
+        }
+    }
+    // record_error already traced ("script_error") on every occurrence; this
+    // is the operator-facing half, once per distinct error so a hook failing
+    // every tick cannot drown the log.
+    if (is_new_error)
+        LogError("class pack: family hook {} FAILED — no C++ fallback "
+                 "exists, so nothing ran: {}\n",
+                 state.where, state.message);
+}
+
 // RAII frame for one hook invocation: locates the hook function, pushes
 // arguments, pcalls under the host budget, and converts the result.
 class HookFrame {
@@ -579,13 +646,20 @@ public:
     {
     }
 
+    // Closes this frame's generation however it exits (normal return, early
+    // bail, or a Lua error unwinding out of protected_call), so the live-gen
+    // set never leaks entries.
+    ~HookFrame() { pop_dispatch_gen(L_, gen_); }
+
+    HookFrame(const HookFrame&) = delete;
+    HookFrame& operator=(const HookFrame&) = delete;
+
     bool begin(Order order, int family_id, FamilyHook hook)
     {
         VmState* st = get_vm_state(L_);
         if (st == nullptr)
             return false;
-        st->dispatch_gen++;
-        gen_ = st->dispatch_gen;
+        gen_ = push_dispatch_gen(L_);
         lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
         lua_rawgeti(L_, -1, hook_table_key(order, family_id));
         if (!lua_istable(L_, -1)) {
@@ -633,8 +707,12 @@ public:
     // otherwise the boolean-coerced result (void hooks: true).
     std::optional<bool> call(const char* where, bool wants_result)
     {
-        if (!impl_.protected_call(where, nargs_, wants_result ? 1 : 0))
+        const std::size_t errors_before = impl_.errors.size();
+        if (!impl_.protected_call(where, nargs_, wants_result ? 1 : 0)) {
+            note_hook_failure(where, impl_,
+                              impl_.errors.size() > errors_before);
             return std::nullopt;
+        }
         bool result = true;
         if (wants_result) {
             result = lua_toboolean(L_, -1) != 0;
@@ -699,6 +777,16 @@ std::optional<bool> try_script_hook(Order order, int family_id,
 }  // namespace
 
 namespace hooks {
+
+const HookFailure& hook_failures()
+{
+    return hook_failure_state();
+}
+
+void reset_hook_failures()
+{
+    hook_failure_state() = HookFailure{};
+}
 
 std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self)
 {
@@ -1039,9 +1127,10 @@ void level_load(GameWorld* world)
     ScriptHost::Impl& impl = st->owner->host().impl();
     if (!push_level_hook_fn(impl.L, st, LevelHook::Load, world->id))
         return;
-    st->dispatch_gen++;
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
     lua_pushinteger(impl.L, world->id);
     impl.protected_call("level:on_load", 1, 0);
+    pop_dispatch_gen(impl.L, gen);
 }
 
 void level_tick(GameWorld* world)
@@ -1053,11 +1142,12 @@ void level_tick(GameWorld* world)
     ScriptHost::Impl& impl = st->owner->host().impl();
     if (!push_level_hook_fn(impl.L, st, LevelHook::Tick, world->id))
         return;
-    st->dispatch_gen++;
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
     lua_pushinteger(impl.L, world->id);
     lua_pushinteger(impl.L,
                     static_cast<lua_Integer>(world->level_tick_count()));
     impl.protected_call("level:on_tick", 2, 0);
+    pop_dispatch_gen(impl.L, gen);
 }
 
 void level_entity_death(walker* self)
@@ -1085,9 +1175,10 @@ void level_entity_death(walker* self)
                 lua_rawseti(L, -3,
                             static_cast<lua_Integer>(self->entity_id()));
                 lua_remove(L, -2);   // entity_hooks root
-                st->dispatch_gen++;
-                push_walker_handle(L, self, st->dispatch_gen);
+                const std::uint64_t gen = push_dispatch_gen(L);
+                push_walker_handle(L, self, gen);
                 impl.protected_call("entity:on_death", 1, 0);
+                pop_dispatch_gen(L, gen);
             } else {
                 lua_pop(L, 3);
             }
@@ -1106,9 +1197,10 @@ void level_entity_death(walker* self)
         return;
     if (!push_level_hook_fn(L, st, LevelHook::EntityDeath, world->id))
         return;
-    st->dispatch_gen++;
-    push_walker_handle(L, self, st->dispatch_gen);
+    const std::uint64_t gen = push_dispatch_gen(L);
+    push_walker_handle(L, self, gen);
     impl.protected_call("level:on_entity_death", 1, 0);
+    pop_dispatch_gen(L, gen);
 }
 
 void level_entity_spawn(walker* spawned)
@@ -1126,9 +1218,10 @@ void level_entity_spawn(walker* spawned)
     ScriptHost::Impl& impl = st->owner->host().impl();
     if (!push_level_hook_fn(impl.L, st, LevelHook::EntitySpawn, world->id))
         return;
-    st->dispatch_gen++;
-    push_walker_handle(impl.L, spawned, st->dispatch_gen);
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
+    push_walker_handle(impl.L, spawned, gen);
     impl.protected_call("level:on_entity_spawn", 1, 0);
+    pop_dispatch_gen(impl.L, gen);
 }
 
 }  // namespace hooks

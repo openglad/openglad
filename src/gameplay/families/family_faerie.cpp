@@ -5,21 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
-
 #include <iterator>
 
 #define BASE_GUY_HP 30
-
-static void faerie_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {4, 12, 4, 8, 1});
-}
 
 static const char* const faerie_names[] = {"Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"};
 
@@ -54,7 +45,7 @@ const FamilyDescriptor& describe_family_faerie()
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = faerie_level_up,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

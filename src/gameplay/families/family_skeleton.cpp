@@ -5,47 +5,10 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/living.h>
-#include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
-#include <openglad/gameplay/statistics.h>
-
-static bool skeleton_handle_teleport(walker* self)
-{
-    self->set_ani_type(ANI_TELE_IN);
-    self->set_cycle(0);
-    self->teleport_ranged(self->stats()->level() * 18);
-    return true;
-}
 
 inline constexpr int BASE_GUY_HP = 30;
-
-static bool skeleton_check_special_ai(living* self)
-{
-    std::int32_t howmany = 0;
-    current_game->world->find_foes_in_range(current_game->world->oblist,
-                                 5 * GRID_SIZE, &howmany, self);
-    if (howmany < 1)
-        return true;
-    return false;
-}
-
-static void skeleton_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {8, 12, 4, 4, 1});
-}
-
-static bool skeleton_do_special(walker* self)
-{
-    if (self->ani_type() == ANI_TELE_OUT || self->ani_type() == ANI_TELE_IN)
-        return false;
-    self->set_ani_type(ANI_TELE_OUT);
-    self->set_cycle(0);
-    return true;
-}
 
 static const char* const skeleton_names[] = {"Drybones", "Blackbeard", "Boney", "Femur", "Patella", "Humerus", "Scapula"};
 
@@ -76,16 +39,16 @@ const FamilyDescriptor& describe_family_skeleton()
         .promotion_level_req = 0,
         .promotion_new_level = nullptr,
         .death_message = "SKELETON CRUMBLED",
-        .do_special = skeleton_do_special,
-        .check_special_ai = skeleton_check_special_ai,
+        .do_special = nullptr,
+        .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = skeleton_level_up,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,
         .on_fire_weapon = nullptr,
-        .handle_teleport = skeleton_handle_teleport,
+        .handle_teleport = nullptr,
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,

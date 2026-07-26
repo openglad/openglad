@@ -30,6 +30,10 @@ struct EffectFamilyDescriptor {
     og::FamilyGlyph glyph{U'*', '*', og::GlyphColor::White, false, false};
     og::RadarBlip radar{};
 
+    // Pack-declared fully-qualified id ("core:bomb"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
+
     bool (*on_act)(effect* self);
     bool (*on_death)(effect* self);
 };

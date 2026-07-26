@@ -57,6 +57,41 @@ const char* descriptor_name(Order order, int family_id)
     }
 }
 
+// The fully-qualified id the declaring pack gave this family ("core:soldier",
+// "mypack:warlock"), or nullptr when no pack has declared this slot — free
+// slots included, since the getters hide those.
+const char* descriptor_declared_id(Order order, int family_id)
+{
+    switch (order) {
+        case Order::Living: {
+            const FamilyDescriptor* d = get_family_descriptor(family_id);
+            return d != nullptr ? d->declared_id : nullptr;
+        }
+        case Order::Weapon: {
+            const WeaponFamilyDescriptor* d =
+                get_weapon_family_descriptor(family_id);
+            return d != nullptr ? d->declared_id : nullptr;
+        }
+        case Order::Treasure: {
+            const TreasureFamilyDescriptor* d =
+                get_treasure_family_descriptor(family_id);
+            return d != nullptr ? d->declared_id : nullptr;
+        }
+        case Order::Generator: {
+            const GeneratorFamilyDescriptor* d =
+                get_generator_family_descriptor(family_id);
+            return d != nullptr ? d->declared_id : nullptr;
+        }
+        case Order::FX: {
+            const EffectFamilyDescriptor* d =
+                get_effect_family_descriptor(family_id);
+            return d != nullptr ? d->declared_id : nullptr;
+        }
+        default:
+            return nullptr;
+    }
+}
+
 std::string normalize_family_name(const char* raw)
 {
     std::string out;
@@ -66,6 +101,33 @@ std::string normalize_family_name(const char* raw)
                                : static_cast<char>(std::tolower(c)));
     }
     return out;
+}
+
+// The id a slot answers to before ambiguity is considered: the pack-declared
+// id verbatim when there is one, else the legacy "core:<name>" derived from
+// the registry display name. Empty for a slot no family occupies.
+std::string candidate_string_id(Order order, int family_id)
+{
+    const char* declared = descriptor_declared_id(order, family_id);
+    if (declared != nullptr && declared[0] != '\0')
+        return declared;
+    const char* name = descriptor_name(order, family_id);
+    if (name == nullptr)
+        return {};
+    return "core:" + normalize_family_name(name);
+}
+
+// "<namespace>:#<id>" — the escape that addresses a family by its exact byte
+// when its candidate id is shared with another slot. The namespace is kept
+// for readability only; resolution ignores it for the '#' form.
+std::string positional_string_id(const std::string& candidate, int family_id)
+{
+    const std::size_t colon = candidate.find(':');
+    const std::string ns =
+        colon == std::string::npos ? std::string("core")
+                                   : normalize_family_name(
+                                         candidate.substr(0, colon).c_str());
+    return ns + ":#" + std::to_string(family_id);
 }
 
 struct BitFlagName {
@@ -109,27 +171,30 @@ constexpr AnimationName kAnimationNames[] = {
 
 std::string family_string_id(Order order, int family_id)
 {
-    const char* name = descriptor_name(order, family_id);
-    if (name == nullptr)
+    const std::string mine = candidate_string_id(order, family_id);
+    if (mine.empty())
         return {};
-    const std::string normalized = normalize_family_name(name);
-    // Positional escape when the registry display name is ambiguous
-    // (golem/giant_skeleton/tower1 all answer to BEAST, the slime trio to
-    // SLIME): every member of a collision group uses "core:#<id>" so the
-    // exported ids stay unique and resolve back to the exact family.
+    const std::string key = normalize_family_name(mine.c_str());
+    // Positional escape when the candidate id is ambiguous: two core
+    // families sharing a display name (golem/giant_skeleton/tower1 all
+    // answer to BEAST, the slime trio to SLIME), or two packs pinning the
+    // same declared id into different slots. Every member of a collision
+    // group escapes, so the exported ids stay unique and resolve back to
+    // the exact family.
     for (int other = 0; other < NUM_FAMILY_SLOTS; other++) {
-        const char* other_name = descriptor_name(order, other);
-        if (other_name == nullptr) {
+        if (other == family_id)
+            continue;
+        const std::string theirs = candidate_string_id(order, other);
+        if (theirs.empty()) {
             // A free slot, not the end of the registry: class packs land
             // above the core pins, so the scan must cover the whole byte
             // range rather than stopping at the first gap.
             continue;
         }
-        if (other != family_id &&
-            normalize_family_name(other_name) == normalized)
-            return "core:#" + std::to_string(family_id);
+        if (normalize_family_name(theirs.c_str()) == key)
+            return positional_string_id(mine, family_id);
     }
-    return "core:" + normalized;
+    return mine;
 }
 
 int resolve_family_string_id(Order order, const char* family_str)
@@ -145,6 +210,25 @@ int resolve_family_string_id(Order order, const char* family_str)
             return static_cast<int>(id);
         return -1;
     }
+    // Pass 1 — the namespace IS a scope: an exact match on the declared
+    // pack id wins, so two packs may each ship a "WARLOCK" and stay
+    // distinguishable by "alpha:warlock" / "beta:warlock".
+    const std::string want_full = normalize_family_name(family_str);
+    for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
+        const char* declared = descriptor_declared_id(order, id);
+        if (declared == nullptr || declared[0] == '\0') {
+            // Free slot, or a family no pack declared (a C++ core pin
+            // before the core pack installs over it) — pass 2 covers it.
+            continue;
+        }
+        if (normalize_family_name(declared) == want_full)
+            return id;
+    }
+    // Pass 2 — back-compat / convenience: match the local part against the
+    // registry display name, ignoring the namespace. This is what makes a
+    // bare "soldier" work, and what keeps ids resolving before any pack has
+    // declared them. First (lowest) match wins, so a name shared by two
+    // mounted families is only addressable through pass 1.
     const std::string want = normalize_family_name(name_part);
     for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
         const char* name = descriptor_name(order, id);

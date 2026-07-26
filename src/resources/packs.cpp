@@ -180,6 +180,33 @@ const char* nullable_cstr(const og::data::NullableString& s)
     return s.is_null ? nullptr : s.value.c_str();
 }
 
+// Stamps the entry's fully-qualified `id:` onto the descriptor — the id
+// og::families::resolve_family_string_id matches FIRST, which is what makes
+// two packs' same-named families addressable ("alpha:warlock" vs
+// "beta:warlock"). The returned pointer borrows the stored entry's string,
+// same process-lifetime contract as `name` and every other const char*
+// field (see ClasspackStore).
+//
+// The wire slot is the identity, so installing over a slot that was already
+// declared under a DIFFERENT id retires the old id: it stops resolving
+// (except through the bare-name fallback, if the display name survives).
+// That is the supported way to REPLACE a stock family, and a common wire_id
+// typo, so it warns. Tweaking a stock family in place — the reskin case —
+// means keeping its id: declare `id: core:soldier` with `wire_id: 0` and
+// nothing about resolution changes.
+const char* claim_declared_id(const std::string& id, const char* current,
+                              const char* order_name)
+{
+    if (id.empty())
+        return current;  // no id declared: keep whatever the slot had
+    if (current != nullptr && id != current)
+        LogWarn(
+            "classpack {}: {} wire slot was declared as '{}' — that family "
+            "id no longer resolves\n",
+            id, order_name, current);
+    return id.c_str();
+}
+
 // Builds the name_pool pointer array for one entry in the store; the
 // pointers reference the stored entry's names vector.
 void apply_name_pool(const std::vector<std::string>& names,
@@ -398,6 +425,7 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
     // Copying the live descriptor preserves every behavior callback
     // pointer; only the data fields the YAML declares are overwritten.
     FamilyDescriptor d = *current;
+    d.declared_id = claim_declared_id(e.id, d.declared_id, "living");
     if (e.name)
         d.name = e.name->c_str();
     if (e.short_name.present)
@@ -528,6 +556,7 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e,
     }
 
     WeaponFamilyDescriptor d = *current;
+    d.declared_id = claim_declared_id(e.id, d.declared_id, "weapon");
     if (e.name)
         d.name = e.name->c_str();
     if (e.fire_sound)
@@ -578,6 +607,7 @@ bool install_effect(const og::data::ClasspackEffectEntry& e,
     }
 
     EffectFamilyDescriptor d = *current;
+    d.declared_id = claim_declared_id(e.id, d.declared_id, "effect");
     if (e.name)
         d.name = e.name->c_str();
     if (e.loops_animation)
@@ -614,6 +644,7 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e,
     }
 
     TreasureFamilyDescriptor d = *current;
+    d.declared_id = claim_declared_id(e.id, d.declared_id, "treasure");
     if (e.name)
         d.name = e.name->c_str();
     if (e.init_ignore)
@@ -645,6 +676,7 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e,
     }
 
     GeneratorFamilyDescriptor d = *current;
+    d.declared_id = claim_declared_id(e.id, d.declared_id, "generator");
     if (e.name)
         d.name = e.name->c_str();
     if (e.default_weapon) {

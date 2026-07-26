@@ -55,20 +55,38 @@ og.register_hooks(order, family_id_string, { hook_name = function ... })
 `order` is `"living" | "weapon" | "treasure" | "generator" | "fx"` (`"effect"`
 is an accepted alias for `"fx"`).
 
-**Family ids resolve by descriptor name, not by the namespace.** The engine
-splits the string at the first `:`, ignores everything before it, lowercases
-the rest and replaces spaces with underscores, then scans the order's registry
-for a descriptor whose `name:` normalizes to the same thing
-(`og::families::resolve_family_string_id`). So `core:soldier` and
-`mypack:soldier` resolve to the *same* family, and a mod family whose `name:`
-is `WARLOCK` answers to `anything:warlock`. Two consequences:
+**The namespace is a real scope.** `og::families::resolve_family_string_id`
+tries three forms, in this order:
 
-- Give every mod family a `name:` no other mounted family uses. A living
-  entry that omits `name:` inherits the registry default `BEAST` and will
-  resolve to whichever `BEAST` sits at the lowest byte.
-- When core registry names genuinely collide (golem / giant_skeleton /
-  tower1 are all `BEAST`; the slime trio is all `SLIME`), use the numeric
-  escape `"core:#<id>"` — e.g. `core:#19` for giant_skeleton.
+1. **Positional escape** `"<pack>:#<byte>"` (or bare `"#<byte>"`) — the family
+   at that exact wire byte, valid only if something occupies it. The
+   namespace is ignored here.
+2. **Fully-qualified id** `"<pack>:<name>"` — an exact match against the `id:`
+   a mounted pack declared for the family. This is what makes packs
+   pluggable: two packs may each ship a family named `WARLOCK` and stay
+   addressable as `alpha:warlock` and `beta:warlock`.
+3. **Bare-name fallback** — the part after the first `:` (or the whole string)
+   matched against the descriptor's `name:`, namespace ignored. The lowest
+   matching byte wins.
+
+Matching is case-insensitive and treats a space and an underscore as the same
+character, on both sides. Consequences:
+
+- **Address families by their fully-qualified id.** `og.family_id("living",
+  "mypack:warlock")` means *your* warlock even if three other mounted packs
+  ship one.
+- Form 3 is back-compat, not a scope check: a bare `"soldier"` resolves, and
+  so does a namespace nobody declared — `"mypack:soldier"` still finds core's
+  SOLDIER when `mypack` ships no `soldier`. Don't lean on that; a later pack
+  version that *does* add a `soldier` silently changes what the string means.
+- Give every mod family a `name:` no other mounted family uses if you want the
+  bare form to stay unambiguous. A living entry that omits `name:` inherits
+  the registry default `BEAST` and its bare form resolves to whichever `BEAST`
+  sits at the lowest byte.
+- When registry names genuinely collide (golem / giant_skeleton / tower1 are
+  all `BEAST`; the slime trio is all `SLIME`), form 1 addresses the exact
+  byte — e.g. `core:#19` for giant_skeleton, which is why
+  `packs/core/classpack.yaml` carries ids like `core:#19`.
 
 An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is
@@ -122,7 +140,16 @@ Registering a hook slot a previous chunk already filled is legal and the later
 registration wins. Because pack scripts load pack-id-lexicographically and then
 filename-lexicographically inside a pack, this is the supported way to
 **override a core family**: a mod pack that registers `core:soldier` replaces
-the core pack's soldier behavior.
+the core pack's soldier behavior. Overriding by id keeps working exactly as
+before — `core:soldier` resolves to core's soldier through form 2, since that
+is the id the core pack declared for it.
+
+To override a stock family's *data* (stats, sprite, description) rather than
+its behavior, give your `classpack.yaml` entry that family's `wire_id` **and
+keep its `id:`** — `id: core:soldier`, `wire_id: 0`. The wire slot is the
+family's identity, so an entry that claims slot 0 under a different `id:`
+retires `core:soldier`: the id stops resolving (except through the bare-name
+fallback, if you left `name:` alone) and the install warns.
 
 Every collision logs a warning naming the order, family, hook and the source
 location of the later registration, and is recorded as a script error record,

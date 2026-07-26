@@ -27,4 +27,8 @@ struct GeneratorFamilyDescriptor {
     og::FamilyGlyph glyph{U'#', '#', og::GlyphColor::Default, false, false};
     og::RadarBlip radar{};
     const char* editor_label = "GENERATOR";
+
+    // Pack-declared fully-qualified id ("core:tent"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
 };

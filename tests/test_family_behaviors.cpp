@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <algorithm>
+#include "test_family_hook_dispatch.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -318,12 +319,28 @@ TEST(FamilyBehaviors, on_death_bloodspot_families)
 // Fire elemental: death triggers special (explosion)
 TEST(FamilyBehaviors, on_death_fire_elemental_explodes)
 {
-    auto w = make_guy_for_death(FAMILY_FIREELEMENTAL);
+    // The elemental must live in the world, not be a loose owned walker: its
+    // on_death hook re-enters dispatch through self:special(), and script
+    // handles for an entity outside the world's id index only stay valid for
+    // the one dispatch that produced them.
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    walker* w = world.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
     ASSERT_TRUE(w != nullptr) << "should create fire elemental";
+    w->setxy(100, 100);
+    w->set_team_num(1);  // non-player team (avoids endgame check)
+    w->stats()->set_level(3);
+
+    const std::size_t weapons_before = world.weaplist.size();
+    og::script::hooks::reset_hook_failures();
+
     w->set_dead(1);
-    // death() should call special() which creates explosions
+    // death() runs the on_death hook, which fires the parting starburst.
     w->death();
-    // If we got here without crash, the explosion path worked
+
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count)
+        << og::script::hooks::hook_failures().message;
+    EXPECT_GT(world.weaplist.size(), weapons_before)
+        << "the parting starburst must actually fire";
 }
 
 
@@ -1056,8 +1073,8 @@ TEST(FamilyBehaviors, archmage_on_act_low_level_periodic_gate)
     auto w = make_living(FAMILY_ARCHMAGE);
     ASSERT_TRUE(w != nullptr) << "make archmage";
     auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(fd && fd->on_act_living) << "archmage on_act_living callback exists";
-    if (!(w && fd && fd->on_act_living))
+    ASSERT_TRUE(fd && og::test::has_on_act_living(*fd)) << "archmage on_act_living callback exists";
+    if (!(w && fd && og::test::has_on_act_living(*fd)))
         return;
 
     living* lv = static_cast<living*>(w.get());
@@ -1065,11 +1082,11 @@ TEST(FamilyBehaviors, archmage_on_act_low_level_periodic_gate)
 
     lv->set_drawcycle(1);
     short before = lv->view_all();
-    fd->on_act_living(lv);
+    og::test::on_act_living(*fd, lv);
     ASSERT_EQ(static_cast<int>(before), static_cast<int>(lv->view_all())) << "drawcycle not divisible by temp should not increment view_all";
 
     lv->set_drawcycle(20);
-    fd->on_act_living(lv);
+    og::test::on_act_living(*fd, lv);
     ASSERT_TRUE(lv->view_all() > before) << "drawcycle divisible by temp should increment view_all";
 }
 
@@ -1080,13 +1097,13 @@ TEST(FamilyBehaviors, archmage_handle_teleport_and_special_guards)
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     ASSERT_TRUE(arch != nullptr) << "archmage created";
     const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(fd && fd->handle_teleport && fd->do_special) << "archmage callbacks exist";
-    if (!(arch && fd && fd->handle_teleport && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_handle_teleport(*fd) && og::test::has_do_special(*fd)) << "archmage callbacks exist";
+    if (!(arch && fd && og::test::has_handle_teleport(*fd) && og::test::has_do_special(*fd)))
         return;
 
     arch->set_ani_type(ANI_WALK);
     arch->set_cycle(5);
-    ASSERT_TRUE(fd->handle_teleport(arch)) << "handle_teleport should return true";
+    ASSERT_TRUE(og::test::handle_teleport(*fd, arch)) << "handle_teleport should return true";
     ASSERT_EQ(ANI_TELE_IN, static_cast<int>(arch->ani_type())) << "handle_teleport should set tele-in";
     ASSERT_EQ(0, static_cast<int>(arch->cycle())) << "handle_teleport should reset cycle";
 
@@ -1094,13 +1111,13 @@ TEST(FamilyBehaviors, archmage_handle_teleport_and_special_guards)
     arch->set_current_special(1);
     arch->set_shifter_down(0);
     arch->set_ani_type(ANI_TELE_OUT);
-    ASSERT_TRUE(!fd->do_special(arch)) << "teleport special should fail while already teleporting";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "teleport special should fail while already teleporting";
 
     // case 1 guard: marker path but busy
     arch->set_ani_type(ANI_WALK);
     arch->set_shifter_down(1);
     arch->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(arch)) << "marker path should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "marker path should fail when busy";
 
     // case 1 guard: low intelligence for marker
     arch->set_busy(0);
@@ -1108,7 +1125,7 @@ TEST(FamilyBehaviors, archmage_handle_teleport_and_special_guards)
     low_int->intelligence = 30;
     arch->set_owned_myguy(std::move(low_int));
     arch->set_user(0);
-    ASSERT_TRUE(!fd->do_special(arch)) << "marker path should fail when int<75";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "marker path should fail when int<75";
 }
 
 
@@ -1118,8 +1135,8 @@ TEST(FamilyBehaviors, archmage_special_case2_case3_case4_guard_branches)
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     ASSERT_TRUE(arch != nullptr) << "archmage created";
     const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(fd && fd->do_special) << "archmage do_special callback exists";
-    if (!(arch && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "archmage do_special callback exists";
+    if (!(arch && fd && og::test::has_do_special(*fd)))
         return;
 
     arch->stats()->set_magicpoints(5000);
@@ -1131,11 +1148,11 @@ TEST(FamilyBehaviors, archmage_special_case2_case3_case4_guard_branches)
     arch->set_current_special(2);
     arch->set_busy(1);
     arch->set_shifter_down(0);
-    ASSERT_TRUE(!fd->do_special(arch)) << "heartburst should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "heartburst should fail when busy";
 
     // case 2 guard: no foes in range
     arch->set_busy(0);
-    ASSERT_TRUE(!fd->do_special(arch)) << "heartburst should fail with zero foes";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "heartburst should fail with zero foes";
 
     // case 3 guard: summon elemental needs int >= 150
     arch->set_current_special(3);
@@ -1145,13 +1162,13 @@ TEST(FamilyBehaviors, archmage_special_case2_case3_case4_guard_branches)
     arch->set_owned_myguy(std::move(low_int));
     arch->set_user(0);
     arch->set_busy(0);
-    ASSERT_TRUE(!fd->do_special(arch)) << "true summon should fail when int<150";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "true summon should fail when int<150";
 
     // case 4 guard: no charm candidates nearby
     arch->set_current_special(4);
     arch->set_shifter_down(0);
     arch->set_busy(0);
-    ASSERT_TRUE(!fd->do_special(arch)) << "mind control should fail with no nearby foes";
+    ASSERT_TRUE(!og::test::do_special(*fd, arch)) << "mind control should fail with no nearby foes";
 }
 
 
@@ -1162,8 +1179,8 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 132, 100);
     ASSERT_TRUE(arch != nullptr && foe != nullptr) << "archmage and foe should be created";
     const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
-    ASSERT_TRUE(fd && fd->hit_response) << "archmage hit_response callback exists";
-    if (!(arch && foe && fd && fd->hit_response))
+    ASSERT_TRUE(fd && og::test::has_hit_response(*fd)) << "archmage hit_response callback exists";
+    if (!(arch && foe && fd && og::test::has_hit_response(*fd)))
         return;
 
     arch->stats()->set_special_cost(1, 0);
@@ -1176,7 +1193,7 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
     arch->set_shifter_down(1);
     og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
 
-    fd->hit_response(arch->stats(), foe);
+    og::test::hit_response(*fd, arch->stats(), foe);
     ASSERT_EQ(1, (int)arch->current_special()) << "low HP archmage should choose special 1";
     ASSERT_EQ(0, (int)arch->shifter_down()) << "low HP branch should clear shifter flag";
 
@@ -1186,7 +1203,7 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
     foe->set_foe(nullptr);
     arch->stats()->set_last_distance(1);
     arch->stats()->set_current_distance(2);
-    fd->hit_response(arch->stats(), foe);
+    og::test::hit_response(*fd, arch->stats(), foe);
 
     ASSERT_TRUE(arch->foe() == foe) << "non-threshold branch should retarget controller to attacker";
     ASSERT_TRUE(foe->foe() == arch) << "non-threshold branch should set attacker foe back to controller";
@@ -1201,27 +1218,27 @@ TEST(FamilyBehaviors, cleric_check_special_ai_branch_paths)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->check_special_ai) << "cleric check_special_ai callback exists";
-    if (!(cleric && fd && fd->check_special_ai))
+    ASSERT_TRUE(fd && og::test::has_check_special_ai(*fd)) << "cleric check_special_ai callback exists";
+    if (!(cleric && fd && og::test::has_check_special_ai(*fd)))
         return;
 
     living* lv = static_cast<living*>(cleric);
     lv->set_current_special(2);
-    ASSERT_TRUE(fd->check_special_ai(lv)) << "non-heal special should return true";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, lv)) << "non-heal special should return true";
 
     lv->set_current_special(1);
     lv->stats()->set_magicpoints(0.0f);
     lv->stats()->set_max_magicpoints(100.0f);
-    ASSERT_TRUE(!fd->check_special_ai(lv)) << "heal special should return false with no friends and low magic";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, lv)) << "heal special should return false with no friends and low magic";
 
     lv->stats()->set_magicpoints(60.0f);
-    ASSERT_TRUE(fd->check_special_ai(lv)) << "heal special should return true for mace mode when magic >= half";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, lv)) << "heal special should return true for mace mode when magic >= half";
     ASSERT_EQ(1, (int)lv->shifter_down()) << "mace mode should set shifter_down";
 
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 108, 100);
     ASSERT_TRUE(ally != nullptr) << "ally created";
     lv->stats()->set_magicpoints(1.0f);
-    ASSERT_TRUE(fd->check_special_ai(lv)) << "heal special should return true when multiple allies nearby";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, lv)) << "heal special should return true when multiple allies nearby";
     ASSERT_EQ(0, (int)lv->shifter_down()) << "heal mode should clear shifter_down";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1284,17 +1301,17 @@ TEST(FamilyBehaviors, cleric_check_special_ai_direct_branches)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->check_special_ai) << "cleric check_special_ai present";
+    ASSERT_TRUE(fd && og::test::has_check_special_ai(*fd)) << "cleric check_special_ai present";
 
     cleric->set_current_special(1);
     cleric->stats()->set_max_magicpoints(100);
     cleric->stats()->set_magicpoints(0);
-    bool ok = fd->check_special_ai(static_cast<living*>(cleric));
+    bool ok = og::test::check_special_ai(*fd, static_cast<living*>(cleric));
     ASSERT_TRUE(!ok) << "special=1 without allies and low MP should fail";
 
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 120, 100);
     ASSERT_TRUE(ally != nullptr) << "ally created";
-    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    ok = og::test::check_special_ai(*fd, static_cast<living*>(cleric));
     ASSERT_TRUE(ok) << "special=1 with an ally nearby should pass";
     ASSERT_EQ(0, (int)cleric->shifter_down()) << "heal mode should set shifter_down=0";
 
@@ -1305,12 +1322,12 @@ TEST(FamilyBehaviors, cleric_check_special_ai_direct_branches)
     cleric->set_current_special(1);
     cleric->stats()->set_max_magicpoints(100);
     cleric->stats()->set_magicpoints(50);
-    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    ok = og::test::check_special_ai(*fd, static_cast<living*>(cleric));
     ASSERT_TRUE(ok) << "special=1 with no allies but MP>=half should pass";
     ASSERT_EQ(1, (int)cleric->shifter_down()) << "mace mode should set shifter_down=1";
 
     cleric->set_current_special(2);
-    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    ok = og::test::check_special_ai(*fd, static_cast<living*>(cleric));
     ASSERT_TRUE(ok) << "special!=1 should always pass";
 }
 
@@ -1323,7 +1340,7 @@ TEST(FamilyBehaviors, cleric_heal_special_success_and_noheal_branch)
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
     ASSERT_TRUE(cleric && ally) << "cleric+ally created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
 
     cleric->set_current_special(1);
     cleric->set_shifter_down(0);
@@ -1334,13 +1351,13 @@ TEST(FamilyBehaviors, cleric_heal_special_success_and_noheal_branch)
 
     float hp_before = ally->stats()->hitpoints();
     float mp_before = cleric->stats()->magicpoints();
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "heal special should succeed with an injured ally";
     ASSERT_TRUE(ally->stats()->hitpoints() > hp_before) << "ally HP should increase";
     ASSERT_TRUE(cleric->stats()->magicpoints() < mp_before) << "cleric MP should decrease";
 
     ally->stats()->set_hitpoints(ally->stats()->max_hitpoints());
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(!ok) << "heal special should fail when nobody is healable";
 }
 
@@ -1351,12 +1368,12 @@ TEST(FamilyBehaviors, cleric_mystic_mace_gates)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
 
     cleric->set_current_special(1);
     cleric->set_shifter_down(1);
     cleric->set_busy(1);
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(!ok) << "mystic mace should fail while busy";
 
     cleric->set_busy(0);
@@ -1364,7 +1381,7 @@ TEST(FamilyBehaviors, cleric_mystic_mace_gates)
     low_int->intelligence = 40;
     cleric->set_owned_myguy(std::move(low_int));
     cleric->set_user(0);
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(!ok) << "mystic mace should fail when int<50";
 }
 
@@ -1375,7 +1392,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_branches)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
 
     cleric->set_current_special(2);
     cleric->set_shifter_down(1);
@@ -1383,7 +1400,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_branches)
     low_int->intelligence = 50;
     cleric->set_owned_myguy(std::move(low_int));
     cleric->set_busy(0);
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(!ok) << "turn undead should fail at int<60";
     ASSERT_TRUE(cleric->busy() >= 5) << "failed int gate should add busy delay";
 
@@ -1391,7 +1408,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_branches)
     good_int->intelligence = 80;
     cleric->set_owned_myguy(std::move(good_int));
     cleric->set_busy(0);
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(!ok) << "turn undead should fail when no undead foes are in range";
 
 }
@@ -1403,8 +1420,8 @@ TEST(FamilyBehaviors, cleric_mystic_mace_success_path_direct)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(cleric && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(cleric && fd && og::test::has_do_special(*fd)))
         return;
 
     cleric->set_current_special(1);
@@ -1417,7 +1434,7 @@ TEST(FamilyBehaviors, cleric_mystic_mace_success_path_direct)
     smart->intelligence = 120;
     cleric->set_owned_myguy(std::move(smart));
 
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "mystic mace should succeed with enough INT and not busy";
     ASSERT_TRUE(cleric->busy() > 0) << "mystic mace success should add busy delay";
 
@@ -1452,8 +1469,8 @@ TEST(FamilyBehaviors, cleric_turn_undead_success_with_undead_targets)
     walker* skeleton = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
     ASSERT_TRUE(cleric != nullptr && skeleton != nullptr) << "cleric and skeleton created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(cleric && skeleton && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(cleric && skeleton && fd && og::test::has_do_special(*fd)))
         return;
 
     cleric->set_current_special(2);
@@ -1465,7 +1482,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_success_with_undead_targets)
     // deterministic under shuffled execution as well.
     og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
 
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "turn undead branch should execute when an undead foe is nearby";
     ASSERT_TRUE(skeleton->dead() || skeleton->stats()->hitpoints() <= 0) << "turn undead should remove or kill nearby undead target";
 }
@@ -1475,8 +1492,8 @@ TEST(FamilyBehaviors, cleric_turn_undead_special2_and_3_shifter_notification_pat
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     // Special 2 / shifter_down path with myguy should pass generic>0 branch.
@@ -1497,7 +1514,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_special2_and_3_shifter_notification_pat
     cleric->stats()->set_level(6);
     ConstRandomFamily rng2(0);
     const std::uint32_t exp_before_2 = cleric->myguy ? cleric->myguy->exp : 0u;
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "turn undead special2 shifter path should succeed";
     ASSERT_TRUE(cleric->myguy && cleric->myguy->exp >= exp_before_2) << "turn undead special2 should run exp/notification block when generic is positive";
 
@@ -1521,7 +1538,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_special2_and_3_shifter_notification_pat
     cleric->stats()->set_level(6);
     ConstRandomFamily rng3(0);
     const std::uint32_t exp_before_3 = cleric->myguy ? cleric->myguy->exp : 0u;
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "turn undead special3 shifter path should succeed";
     ASSERT_TRUE(cleric->myguy && cleric->myguy->exp >= exp_before_3) << "turn undead special3 should run exp/notification block when generic is positive";
 }
@@ -1533,8 +1550,8 @@ TEST(FamilyBehaviors, cleric_resurrect_penalty_underflow_clamps_to_zero)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(cleric && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(cleric && fd && og::test::has_do_special(*fd)))
         return;
 
     auto hero = std::make_unique<guy>(FAMILY_CLERIC);
@@ -1548,7 +1565,7 @@ TEST(FamilyBehaviors, cleric_resurrect_penalty_underflow_clamps_to_zero)
         return;
     blood_friend->stats()->set_old_family(FAMILY_SOLDIER);
 
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "resurrect should succeed for nearby friendly blood";
     ASSERT_EQ(90u, cleric->myguy->exp) << "resurrect should clamp the penalty at zero before awarding the fixed resurrect XP";
 }
@@ -1560,14 +1577,14 @@ TEST(FamilyBehaviors, cleric_raise_skeleton_and_ghost_from_blood)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
 
     walker* blood = add_stain_to_fxlist(1, 110, 100);
     ASSERT_TRUE(blood != nullptr) << "blood created";
     cleric->set_current_special(2);
     cleric->set_shifter_down(0);
     cleric->stats()->set_level(6);
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "raise skeleton should succeed when blood is nearby and passable";
     ASSERT_TRUE(blood->dead()) << "blood should be consumed by raise skeleton";
 
@@ -1588,7 +1605,7 @@ TEST(FamilyBehaviors, cleric_raise_skeleton_and_ghost_from_blood)
     ASSERT_TRUE(blood != nullptr) << "second blood created";
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "raise ghost should succeed when blood is close (<30)";
     ASSERT_TRUE(blood->dead()) << "blood should be consumed by raise ghost";
 
@@ -1613,13 +1630,13 @@ TEST(FamilyBehaviors, cleric_resurrect_friendly_and_enemy_blood)
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
 
     walker* blood_friend = add_stain_to_fxlist(0, 110, 100);
     ASSERT_TRUE(blood_friend != nullptr) << "friendly blood created";
     blood_friend->stats()->set_old_family(FAMILY_SOLDIER);
     cleric->set_current_special(4);
-    bool ok = fd->do_special(cleric);
+    bool ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "resurrect should succeed for friendly blood";
     ASSERT_TRUE(blood_friend->dead()) << "friendly blood should be consumed";
 
@@ -1639,7 +1656,7 @@ TEST(FamilyBehaviors, cleric_resurrect_friendly_and_enemy_blood)
     walker* blood_enemy = add_stain_to_fxlist(1, 112, 100);
     ASSERT_TRUE(blood_enemy != nullptr) << "enemy blood created";
     blood_enemy->stats()->set_old_family(FAMILY_ORC);
-    ok = fd->do_special(cleric);
+    ok = og::test::do_special(*fd, cleric);
     ASSERT_TRUE(ok) << "resurrect should also succeed for enemy blood";
     ASSERT_TRUE(blood_enemy->dead()) << "enemy blood should be consumed";
 
@@ -1665,8 +1682,8 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief created";
     const auto* fd = get_family_descriptor(FAMILY_THIEF);
-    ASSERT_TRUE(fd && fd->check_special_ai) << "thief check_special_ai present";
-    if (!(thief && fd && fd->check_special_ai))
+    ASSERT_TRUE(fd && og::test::has_check_special_ai(*fd)) << "thief check_special_ai present";
+    if (!(thief && fd && og::test::has_check_special_ai(*fd)))
         return;
 
     // special 1 with foe at 35<distance<130 should fail.
@@ -1674,11 +1691,11 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     thief->set_foe(foe);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(thief))) << "drop bomb AI should fail at medium range";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "drop bomb AI should fail at medium range";
 
     // special 1 with close foe should pass.
     foe->setxy(120, 100);
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(thief))) << "drop bomb AI should pass when foe is close";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "drop bomb AI should pass when foe is close";
 
     // special 1 without foe needs >=3 nearby foes.
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1690,10 +1707,10 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     walker* e1 = add_living_to_level(FAMILY_ORC, 1, 130, 100);
     walker* e2 = add_living_to_level(FAMILY_ORC, 1, 140, 100);
     ASSERT_TRUE(e1 && e2) << "two nearby foes created";
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(thief))) << "drop bomb AI should fail with fewer than 3 foes";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "drop bomb AI should fail with fewer than 3 foes";
     walker* e3 = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(e3 != nullptr) << "third nearby foe created";
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(thief))) << "drop bomb AI should pass with 3+ foes";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "drop bomb AI should pass with 3+ foes";
 
     // special 3 uses two different ranges depending on shifter_down.
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1703,19 +1720,19 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     thief->set_current_special(3);
     thief->stats()->set_level(1);
     thief->set_shifter_down(0);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(thief))) << "taunt/charm AI should fail without foes";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "taunt/charm AI should fail without foes";
     foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe for special 3 created";
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(thief))) << "taunt/charm AI should pass with foe in normal range";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "taunt/charm AI should pass with foe in normal range";
 
     thief->set_shifter_down(1); // short charm range: 16 + 4*level = 20
     foe->setxy(130, 100);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(thief))) << "charm AI should fail outside short range";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "charm AI should fail outside short range";
     foe->setxy(115, 100);
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(thief))) << "charm AI should pass inside short range";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "charm AI should pass inside short range";
 
     thief->set_current_special(2);
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(thief))) << "non-1/non-3 thief specials should pass AI check";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(thief))) << "non-1/non-3 thief specials should pass AI check";
 }
 
 
@@ -1725,8 +1742,8 @@ TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief created";
     const auto* fd = get_family_descriptor(FAMILY_THIEF);
-    ASSERT_TRUE(fd && fd->do_special) << "thief do_special present";
-    if (!(thief && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "thief do_special present";
+    if (!(thief && fd && og::test::has_do_special(*fd)))
         return;
 
     thief->stats()->set_magicpoints(1000);
@@ -1735,20 +1752,20 @@ TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(thief)) << "taunt should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, thief)) << "taunt should fail when busy";
 
     // taunt success and myguy-name message path.
     thief->set_busy(0);
     auto thief_guy = std::make_unique<guy>(FAMILY_THIEF);
     thief_guy->name = "Sneak";
     thief->set_owned_myguy(std::move(thief_guy));
-    ASSERT_TRUE(fd->do_special(thief)) << "taunt should succeed when not busy";
+    ASSERT_TRUE(og::test::do_special(*fd, thief)) << "taunt should succeed when not busy";
     ASSERT_TRUE(thief->busy() >= 2) << "taunt should add busy time";
 
     // charm busy guard.
     thief->set_shifter_down(1);
     thief->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(thief)) << "charm should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, thief)) << "charm should fail when busy";
 
     // charm no-foe guard.
     thief->set_busy(0);
@@ -1760,7 +1777,7 @@ TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
     thief->set_current_special(3);
     thief->set_shifter_down(1);
     thief->stats()->name = "Sneak";
-    ASSERT_TRUE(!fd->do_special(thief)) << "charm should fail with no targets";
+    ASSERT_TRUE(!og::test::do_special(*fd, thief)) << "charm should fail with no targets";
 
     // deterministic failed charm branch: thief level lower than target.
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 112, 100);
@@ -1768,16 +1785,16 @@ TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
     thief->stats()->set_level(1);
     foe->stats()->set_level(10);
     thief->set_busy(0);
-    ASSERT_TRUE(fd->do_special(thief)) << "charm should run when target is in range";
+    ASSERT_TRUE(og::test::do_special(*fd, thief)) << "charm should run when target is in range";
     ASSERT_TRUE(thief->busy() >= 10) << "charm should add busy time";
     ASSERT_TRUE(foe->foe() == thief) << "failed charm path should make foe attack thief";
 
     // poison cloud guards and success path.
     thief->set_current_special(4);
     thief->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(thief)) << "poison cloud should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, thief)) << "poison cloud should fail when busy";
     thief->set_busy(0);
-    ASSERT_TRUE(fd->do_special(thief)) << "poison cloud should succeed when not busy";
+    ASSERT_TRUE(og::test::do_special(*fd, thief)) << "poison cloud should succeed when not busy";
 }
 
 
@@ -1787,8 +1804,8 @@ TEST(FamilyBehaviors, druid_batch3_special_branches)
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
     ASSERT_TRUE(druid != nullptr) << "druid created";
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(fd && fd->do_special) << "druid do_special present";
-    if (!(druid && fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "druid do_special present";
+    if (!(druid && fd && og::test::has_do_special(*fd)))
         return;
 
     druid->stats()->set_magicpoints(1000);
@@ -1797,30 +1814,30 @@ TEST(FamilyBehaviors, druid_batch3_special_branches)
     // Busy guards for cases 1/2/3/4.
     druid->set_busy(1);
     druid->set_current_special(1);
-    ASSERT_TRUE(!fd->do_special(druid)) << "plant tree should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "plant tree should fail when busy";
     druid->set_current_special(2);
-    ASSERT_TRUE(!fd->do_special(druid)) << "summon faerie should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "summon faerie should fail when busy";
     druid->set_current_special(3);
-    ASSERT_TRUE(!fd->do_special(druid)) << "reveal should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "reveal should fail when busy";
     druid->set_current_special(4);
-    ASSERT_TRUE(!fd->do_special(druid)) << "protection should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "protection should fail when busy";
 
     // Reveal success path.
     druid->set_busy(0);
     druid->set_current_special(3);
     short view_before = druid->view_all();
-    ASSERT_TRUE(fd->do_special(druid)) << "reveal should succeed when not busy";
+    ASSERT_TRUE(og::test::do_special(*fd, druid)) << "reveal should succeed when not busy";
     ASSERT_TRUE(druid->view_all() > view_before) << "reveal should increase view_all";
 
     // Protection fails when only self is present.
     druid->set_current_special(4);
     druid->set_busy(0);
-    ASSERT_TRUE(!fd->do_special(druid)) << "protection should fail with no allies in range";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "protection should fail with no allies in range";
 
     // Protection success: create ally and then refresh existing circle.
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
     ASSERT_TRUE(ally != nullptr) << "ally created";
-    ASSERT_TRUE(fd->do_special(druid)) << "protection should succeed with ally in range";
+    ASSERT_TRUE(og::test::do_special(*fd, druid)) << "protection should succeed with ally in range";
 
     walker* existing_circle = nullptr;
     for (auto& uptr : og::runtime::current_session->myscreen_->world().weaplist)
@@ -1834,7 +1851,7 @@ TEST(FamilyBehaviors, druid_batch3_special_branches)
     }
     ASSERT_TRUE(existing_circle != nullptr) << "protection should spawn circle weapon";
     float hp_before = existing_circle ? existing_circle->stats()->hitpoints() : 0.0f;
-    ASSERT_TRUE(fd->do_special(druid)) << "second protection cast should refresh existing circle";
+    ASSERT_TRUE(og::test::do_special(*fd, druid)) << "second protection cast should refresh existing circle";
     if (existing_circle)
     {
         ASSERT_TRUE(existing_circle->stats()->hitpoints() >= hp_before) << "existing circle HP should not decrease on refresh";
@@ -1848,8 +1865,8 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     ASSERT_TRUE(orc != nullptr) << "orc created";
     const auto* fd = get_family_descriptor(FAMILY_ORC);
-    ASSERT_TRUE(fd && fd->do_special && fd->check_special_ai) << "orc callbacks present";
-    if (!(orc && fd && fd->do_special && fd->check_special_ai))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd)) << "orc callbacks present";
+    if (!(orc && fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd)))
         return;
 
     orc->stats()->set_magicpoints(1000);
@@ -1858,7 +1875,7 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     // Howl busy guard.
     orc->set_current_special(1);
     orc->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(orc)) << "howl should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, orc)) << "howl should fail when busy";
 
     // Howl success with foes both with/without myguy branch.
     orc->set_busy(0);
@@ -1870,21 +1887,21 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     foe_named->set_owned_myguy(std::move(foe_guy));
     short frozen_before_named = foe_named->stats()->frozen_delay();
     short frozen_before_plain = foe_plain->stats()->frozen_delay();
-    ASSERT_TRUE(fd->do_special(orc)) << "howl should succeed when not busy";
+    ASSERT_TRUE(og::test::do_special(*fd, orc)) << "howl should succeed when not busy";
     ASSERT_TRUE(foe_named->stats()->frozen_delay() >= frozen_before_named) << "howl should affect foe with myguy";
     ASSERT_TRUE(foe_plain->stats()->frozen_delay() >= frozen_before_plain) << "howl should affect foe without myguy";
 
     // Eat-corpse guards and success path.
     orc->set_current_special(2);
     orc->stats()->set_hitpoints(orc->stats()->max_hitpoints());
-    ASSERT_TRUE(!fd->do_special(orc)) << "eat corpse should fail at full HP";
+    ASSERT_TRUE(!og::test::do_special(*fd, orc)) << "eat corpse should fail at full HP";
     orc->stats()->set_hitpoints(orc->stats()->max_hitpoints() - 20.0f);
-    ASSERT_TRUE(!fd->do_special(orc)) << "eat corpse should fail without blood";
+    ASSERT_TRUE(!og::test::do_special(*fd, orc)) << "eat corpse should fail without blood";
 
     walker* far_blood = add_stain_to_fxlist(1, 200, 100);
     ASSERT_TRUE(far_blood != nullptr) << "far blood created";
     far_blood->stats()->set_level(3);
-    ASSERT_TRUE(!fd->do_special(orc)) << "eat corpse should fail when blood is too far";
+    ASSERT_TRUE(!og::test::do_special(*fd, orc)) << "eat corpse should fail when blood is too far";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -1898,16 +1915,16 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     walker* near_blood = add_stain_to_fxlist(1, 101, 100);
     ASSERT_TRUE(near_blood != nullptr) << "near blood created";
     near_blood->stats()->set_level(4);
-    ASSERT_TRUE(fd->do_special(orc)) << "eat corpse should succeed when blood is close";
+    ASSERT_TRUE(og::test::do_special(*fd, orc)) << "eat corpse should succeed when blood is close";
     ASSERT_TRUE(near_blood->dead()) << "eaten blood object should be marked dead";
 
     // check_special_ai with preset foe in/out of range.
     walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe for AI checks created";
     orc->set_foe(foe);
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should pass when foe is in range";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc))) << "orc AI should pass when foe is in range";
     foe->setxy(260, 100);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should fail when foe is out of range";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(orc))) << "orc AI should fail when foe is out of range";
 
     // check_special_ai with no foe should query nearest foe.
     orc->set_foe(nullptr);
@@ -1915,10 +1932,10 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     og::runtime::current_session->myscreen_->world().create_new_grid();
     orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     ASSERT_TRUE(orc != nullptr) << "orc recreated for nearest-foe branch";
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should fail when no nearby foe exists";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(orc))) << "orc AI should fail when no nearby foe exists";
     foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "near foe created";
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should pass after finding nearby foe";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc))) << "orc AI should pass after finding nearby foe";
 }
 
 
@@ -1928,8 +1945,8 @@ TEST(FamilyBehaviors, soldier_batch3_special_ai_and_fire_callback_paths)
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     ASSERT_TRUE(soldier != nullptr) << "soldier created";
     const auto* fd = get_family_descriptor(FAMILY_SOLDIER);
-    ASSERT_TRUE(fd && fd->do_special && fd->check_special_ai && fd->on_fire_weapon) << "soldier callbacks present";
-    if (!(soldier && fd && fd->do_special && fd->check_special_ai && fd->on_fire_weapon))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd) && og::test::has_on_fire_weapon(*fd)) << "soldier callbacks present";
+    if (!(soldier && fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd) && og::test::has_on_fire_weapon(*fd)))
         return;
 
     soldier->stats()->set_magicpoints(1000);
@@ -1939,62 +1956,62 @@ TEST(FamilyBehaviors, soldier_batch3_special_ai_and_fire_callback_paths)
     soldier->set_current_special(1);
     soldier->set_curdir(FACE_LEFT);
     soldier->setxy(0, 0);
-    ASSERT_TRUE(!fd->do_special(soldier)) << "charge should fail when forward is blocked";
+    ASSERT_TRUE(!og::test::do_special(*fd, soldier)) << "charge should fail when forward is blocked";
 
     // Whirlwind busy guard.
     soldier->set_current_special(3);
     soldier->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(soldier)) << "whirlwind should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, soldier)) << "whirlwind should fail when busy";
 
     // Disarm guards.
     soldier->set_current_special(4);
     soldier->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(soldier)) << "disarm should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, soldier)) << "disarm should fail when busy";
     soldier->set_busy(0);
     soldier->setxy(100, 100);
     soldier->set_curdir(FACE_RIGHT);
-    ASSERT_TRUE(!fd->do_special(soldier)) << "disarm should fail when forward is not blocked";
+    ASSERT_TRUE(!og::test::do_special(*fd, soldier)) << "disarm should fail when forward is not blocked";
 
     // Make forward blocked and no foes in range -> fail.
     soldier->setxy(0, 100);
     soldier->set_curdir(FACE_LEFT);
-    ASSERT_TRUE(!fd->do_special(soldier)) << "disarm should fail when blocked but no foes are in range";
+    ASSERT_TRUE(!og::test::do_special(*fd, soldier)) << "disarm should fail when blocked but no foes are in range";
 
     // Add a nearby foe so disarm succeeds.
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 8, 100);
     ASSERT_TRUE(foe != nullptr) << "foe for disarm created";
     soldier->set_busy(0);
-    ASSERT_TRUE(fd->do_special(soldier)) << "disarm should succeed when foe is nearby and blocked";
+    ASSERT_TRUE(og::test::do_special(*fd, soldier)) << "disarm should succeed when foe is nearby and blocked";
 
     // check_special_ai direct branches.
     soldier->set_foe(foe);
     foe->setxy(40, 100);
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should pass in 20-75 range";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(soldier))) << "soldier AI should pass in 20-75 range";
     foe->setxy(200, 100);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail when foe too far";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(soldier))) << "soldier AI should fail when foe too far";
     soldier->set_foe(nullptr);
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     ASSERT_TRUE(soldier != nullptr) << "soldier recreated for nearest-foe branch";
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail without nearby foe";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(soldier))) << "soldier AI should fail without nearby foe";
     foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "near foe for AI created";
-    ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should pass after finding nearby foe";
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(soldier))) << "soldier AI should pass after finding nearby foe";
 
     // on_fire_weapon callback: no weapons left path and decrement path.
     walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
     static_cast<living*>(soldier)->set_weapons_left(0);
     float mp_before = soldier->stats()->magicpoints();
-    ASSERT_TRUE(!fd->on_fire_weapon(soldier, weapon)) << "on_fire_weapon should fail when weapons_left<=0";
+    ASSERT_TRUE(!og::test::on_fire_weapon(*fd, soldier, weapon)) << "on_fire_weapon should fail when weapons_left<=0";
     ASSERT_TRUE(weapon->dead()) << "weapon should be marked dead when out of throws";
     ASSERT_TRUE(soldier->stats()->magicpoints() > mp_before) << "failed throw should refund weapon cost";
 
     weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weapon != nullptr) << "second weapon created";
     static_cast<living*>(soldier)->set_weapons_left(2);
-    ASSERT_TRUE(fd->on_fire_weapon(soldier, weapon)) << "on_fire_weapon should succeed when throws remain";
+    ASSERT_TRUE(og::test::on_fire_weapon(*fd, soldier, weapon)) << "on_fire_weapon should succeed when throws remain";
     ASSERT_EQ(1, (int)static_cast<living*>(soldier)->weapons_left()) << "successful throw should decrement weapons_left";
 }
 
@@ -2004,8 +2021,8 @@ TEST(FamilyBehaviors, family_batch4_druid_refresh_oblist_and_failure_branches)
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(fd && fd->do_special) << "druid callback present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "druid callback present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
@@ -2023,15 +2040,15 @@ TEST(FamilyBehaviors, family_batch4_druid_refresh_oblist_and_failure_branches)
     druid->stats()->set_weapon_cost(9999);
     druid->set_current_special(1);
     druid->set_busy(0);
-    (void)fd->do_special(druid);
+    (void)og::test::do_special(*fd, druid);
     druid->set_current_special(2);
-    (void)fd->do_special(druid);
+    (void)og::test::do_special(*fd, druid);
     druid->stats()->set_weapon_cost(0);
 
     // Summon faerie passability failure path.
     druid->set_current_special(2);
     druid->setxy(-200, -200);
-    ASSERT_TRUE(!fd->do_special(druid)) << "summon faerie should fail when spawn tile is impassable";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "summon faerie should fail when spawn tile is impassable";
     druid->setxy(100, 100);
 
     // Protection refresh branch requires existing circle in oblist.
@@ -2043,7 +2060,7 @@ TEST(FamilyBehaviors, family_batch4_druid_refresh_oblist_and_failure_branches)
     }
     druid->set_current_special(4);
     druid->set_busy(0);
-    ASSERT_TRUE(fd->do_special(druid)) << "protection should succeed with multiple allies";
+    ASSERT_TRUE(og::test::do_special(*fd, druid)) << "protection should succeed with multiple allies";
     if (existing)
     {
         ASSERT_TRUE(existing->stats()->hitpoints() >= 5.0f) << "existing protection HP should be refreshed";
@@ -2068,9 +2085,9 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
     ASSERT_TRUE(soldier != nullptr) << "soldier created";
     if (soldier) {
         soldier->set_current_special(99);
-        ASSERT_TRUE(sold_fd->do_special(soldier)) << "unknown soldier special should fall through and succeed";
+        ASSERT_TRUE(og::test::do_special(*sold_fd, soldier)) << "unknown soldier special should fall through and succeed";
         soldier->set_foe(nullptr);
-        ASSERT_TRUE(!sold_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail with no nearby foe";
+        ASSERT_TRUE(!og::test::check_special_ai(*sold_fd, static_cast<living*>(soldier))) << "soldier AI should fail with no nearby foe";
     }
 
     // Orc AI no-foe branch and default corpse message path.
@@ -2078,7 +2095,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
     ASSERT_TRUE(orc != nullptr) << "orc created";
     if (orc) {
         orc->set_foe(nullptr);
-        ASSERT_TRUE(!orc_fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should fail with no nearby foe";
+        ASSERT_TRUE(!og::test::check_special_ai(*orc_fd, static_cast<living*>(orc))) << "orc AI should fail with no nearby foe";
 
         orc->set_current_special(2);
         orc->stats()->set_hitpoints(orc->stats()->max_hitpoints() - 10.0f);
@@ -2088,7 +2105,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
         ASSERT_TRUE(blood != nullptr) << "blood stain for eat-corpse created";
         if (blood)
             blood->stats()->set_level(2);
-        ASSERT_TRUE(orc_fd->do_special(orc)) << "orc should eat corpse via default message branch";
+        ASSERT_TRUE(og::test::do_special(*orc_fd, orc)) << "orc should eat corpse via default message branch";
         ASSERT_EQ(1, (int)orc_fd->promotion_new_level(42)) << "orc promotion callback should return level 1";
     }
 
@@ -2102,7 +2119,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
 
         thief->set_current_special(1);
         thief->set_user(-1);
-        ASSERT_TRUE(thief_fd->do_special(thief)) << "drop bomb should succeed and schedule run-away for AI";
+        ASSERT_TRUE(og::test::do_special(*thief_fd, thief)) << "drop bomb should succeed and schedule run-away for AI";
 
         thief->set_current_special(3);
         thief->set_shifter_down(1);
@@ -2110,7 +2127,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
         thief->stats()->set_level(9);
         foe->stats()->set_level(1);
         thief->set_foe(foe);
-        ASSERT_TRUE(thief_fd->do_special(thief)) << "charm should succeed with favorable deterministic RNG";
+        ASSERT_TRUE(og::test::do_special(*thief_fd, thief)) << "charm should succeed with favorable deterministic RNG";
         ASSERT_TRUE(foe->team_num() == thief->team_num()) << "successful charm should switch foe team";
     }
 }
@@ -2123,8 +2140,8 @@ TEST(FamilyBehaviors, family_batch5_cleric_on_shoved_and_elf_fire_fail_paths)
 
     const auto* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
     const auto* elf_fd = get_family_descriptor(FAMILY_ELF);
-    ASSERT_TRUE(cleric_fd && cleric_fd->on_shoved && elf_fd && elf_fd->do_special) << "cleric/elf callbacks present";
-    if (!(cleric_fd && cleric_fd->on_shoved && elf_fd && elf_fd->do_special))
+    ASSERT_TRUE(cleric_fd && og::test::has_on_shoved(*cleric_fd) && elf_fd && og::test::has_do_special(*elf_fd)) << "cleric/elf callbacks present";
+    if (!(cleric_fd && og::test::has_on_shoved(*cleric_fd) && elf_fd && og::test::has_do_special(*elf_fd)))
         return;
 
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
@@ -2132,7 +2149,7 @@ TEST(FamilyBehaviors, family_batch5_cleric_on_shoved_and_elf_fire_fail_paths)
     if (cleric)
     {
         cleric->set_current_special(4);
-        cleric_fd->on_shoved(cleric);
+        og::test::on_shoved(*cleric_fd, cleric);
         ASSERT_EQ(1, (int)cleric->current_special()) << "cleric on_shoved should force heal special";
     }
 
@@ -2145,13 +2162,13 @@ TEST(FamilyBehaviors, family_batch5_cleric_on_shoved_and_elf_fire_fail_paths)
         elf->stats()->set_magicpoints(-1000);
 
         elf->set_current_special(1);
-        ASSERT_TRUE(!elf_fd->do_special(elf)) << "elf special 1 should fail when fire() fails";
+        ASSERT_TRUE(!og::test::do_special(*elf_fd, elf)) << "elf special 1 should fail when fire() fails";
         elf->set_current_special(2);
-        ASSERT_TRUE(!elf_fd->do_special(elf)) << "elf special 2 should fail when fire() fails";
+        ASSERT_TRUE(!og::test::do_special(*elf_fd, elf)) << "elf special 2 should fail when fire() fails";
         elf->set_current_special(3);
-        ASSERT_TRUE(!elf_fd->do_special(elf)) << "elf special 3 should fail when fire() fails";
+        ASSERT_TRUE(!og::test::do_special(*elf_fd, elf)) << "elf special 3 should fail when fire() fails";
         elf->set_current_special(4);
-        ASSERT_TRUE(!elf_fd->do_special(elf)) << "elf special 4 should fail when fire() fails";
+        ASSERT_TRUE(!og::test::do_special(*elf_fd, elf)) << "elf special 4 should fail when fire() fails";
     }
 }
 
@@ -2162,8 +2179,8 @@ TEST(FamilyBehaviors, druid_batch5_fire_fail_and_existing_protection_refresh_bra
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(fd && fd->do_special) << "druid callback present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "druid callback present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
@@ -2179,10 +2196,10 @@ TEST(FamilyBehaviors, druid_batch5_fire_fail_and_existing_protection_refresh_bra
     druid->set_busy(0);
 
     druid->set_current_special(1);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid special 1 should fail when fire() returns null";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid special 1 should fail when fire() returns null";
 
     druid->set_current_special(2);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid special 2 should fail when fire() returns null";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid special 2 should fail when fire() returns null";
 
     (void)ally;
 }
@@ -2194,15 +2211,15 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     walker* mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
     ASSERT_TRUE(mage != nullptr) << "mage created";
     const auto* fd = get_family_descriptor(FAMILY_MAGE);
-    ASSERT_TRUE(fd && fd->do_special && fd->check_special_ai && fd->promotion_new_level) << "mage callbacks present";
-    if (!(mage && fd && fd->do_special && fd->check_special_ai && fd->promotion_new_level))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd) && fd->promotion_new_level) << "mage callbacks present";
+    if (!(mage && fd && og::test::has_do_special(*fd) && og::test::has_check_special_ai(*fd) && fd->promotion_new_level))
         return;
 
     // check_special_ai false branch (1-3 foes in range).
     mage->set_current_special(1);
     add_living_to_level(FAMILY_ORC, 0, 150, 100);
     add_living_to_level(FAMILY_ORC, 0, 160, 100);
-    ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(mage))) << "mage AI should be false with 2 nearby foes";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(mage))) << "mage AI should be false with 2 nearby foes";
 
     // Teleport marker path without myguy (lifetime from level).
     mage->stats()->set_level(8);
@@ -2211,13 +2228,13 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     mage->set_shifter_down(1);
     mage->set_busy(0);
     mage->set_user(-1);
-    ASSERT_TRUE(fd->do_special(mage)) << "mage marker placement should succeed";
+    ASSERT_TRUE(og::test::do_special(*fd, mage)) << "mage marker placement should succeed";
 
     // Starburst low-mana branch (generic <= 0 path).
     mage->set_current_special(2);
     mage->stats()->set_special_cost(2, 1000);
     mage->stats()->set_magicpoints(1);
-    ASSERT_TRUE(fd->do_special(mage)) << "mage starburst should still execute with low mana";
+    ASSERT_TRUE(og::test::do_special(*fd, mage)) << "mage starburst should still execute with low mana";
 
     // A company-owned Mage on another color must use its own team's
     // bonus-round path, never the active team's global enemy-freeze bank.
@@ -2229,7 +2246,7 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     walker* ally = add_living_to_level(FAMILY_ORC, 1, 110, 100);
     ASSERT_TRUE(ally != nullptr) << "ally for freeze-time created";
     short bonus_before = ally->bonus_rounds();
-    ASSERT_TRUE(fd->do_special(mage)) << "enemy freeze-time should succeed";
+    ASSERT_TRUE(og::test::do_special(*fd, mage)) << "enemy freeze-time should succeed";
     ASSERT_TRUE(ally->bonus_rounds() >= bonus_before) << "enemy freeze-time should add ally bonus rounds";
     ASSERT_EQ(0, og::runtime::current_session->myscreen_->world().enemy_freeze)
         << "the foreign-color caster must not freeze its own side";
@@ -2237,7 +2254,7 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     // Energy wave guard: fire() returns null when weapon_cost > magicpoints.
     mage->set_current_special(4);
     mage->stats()->set_magicpoints(0);
-    ASSERT_TRUE(!fd->do_special(mage)) << "energy wave should fail when fire() cannot create projectile";
+    ASSERT_TRUE(!og::test::do_special(*fd, mage)) << "energy wave should fail when fire() cannot create projectile";
 
     // Heartburst guard: no foes in range.
     mage->set_current_special(5);
@@ -2246,7 +2263,7 @@ TEST(FamilyBehaviors, mage_batch3_special_and_promotion_branches)
     mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
     ASSERT_TRUE(mage != nullptr) << "mage recreated for heartburst guard";
     mage->stats()->set_magicpoints(500);
-    (void)fd->do_special(mage);
+    (void)og::test::do_special(*fd, mage);
 
     ASSERT_EQ(3, (int)fd->promotion_new_level(10)) << "mage promotion level formula should match legacy behavior";
 }
@@ -2260,12 +2277,12 @@ TEST(FamilyBehaviors, family_batch6_soldier_orc_mage_callback_edge_branches)
     const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
     const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
-    ASSERT_TRUE(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai) << "soldier callbacks present";
-    ASSERT_TRUE(orc_fd && orc_fd->do_special) << "orc callbacks present";
-    ASSERT_TRUE(mage_fd && mage_fd->check_special_ai) << "mage callbacks present";
-    if (!(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai &&
-          orc_fd && orc_fd->do_special &&
-          mage_fd && mage_fd->check_special_ai))
+    ASSERT_TRUE(soldier_fd && og::test::has_do_special(*soldier_fd) && og::test::has_check_special_ai(*soldier_fd)) << "soldier callbacks present";
+    ASSERT_TRUE(orc_fd && og::test::has_do_special(*orc_fd)) << "orc callbacks present";
+    ASSERT_TRUE(mage_fd && og::test::has_check_special_ai(*mage_fd)) << "mage callbacks present";
+    if (!(soldier_fd && og::test::has_do_special(*soldier_fd) && og::test::has_check_special_ai(*soldier_fd) &&
+          orc_fd && og::test::has_do_special(*orc_fd) &&
+          mage_fd && og::test::has_check_special_ai(*mage_fd)))
         return;
 
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, -300, -300);
@@ -2275,11 +2292,11 @@ TEST(FamilyBehaviors, family_batch6_soldier_orc_mage_callback_edge_branches)
         // charge blocked branch
         soldier->set_current_special(1);
         soldier->set_curdir(FACE_RIGHT);
-        ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "charge should fail when forward is blocked";
+        ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "charge should fail when forward is blocked";
 
         // check_special_ai no-foe + no-near-foe path
         soldier->set_foe(nullptr);
-        ASSERT_TRUE(!soldier_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail when no foe can be found";
+        ASSERT_TRUE(!og::test::check_special_ai(*soldier_fd, static_cast<living*>(soldier))) << "soldier AI should fail when no foe can be found";
     }
 
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 120, 100);
@@ -2288,7 +2305,7 @@ TEST(FamilyBehaviors, family_batch6_soldier_orc_mage_callback_edge_branches)
     {
         orc->set_current_special(1);
         orc->set_busy(2);
-        ASSERT_TRUE(!orc_fd->do_special(orc)) << "orc howl should fail while busy";
+        ASSERT_TRUE(!og::test::do_special(*orc_fd, orc)) << "orc howl should fail while busy";
     }
 
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
@@ -2298,7 +2315,7 @@ TEST(FamilyBehaviors, family_batch6_soldier_orc_mage_callback_edge_branches)
         // check_special_ai with exactly 1-3 foes in range should return false.
         add_living_to_level(FAMILY_ORC, 1, 120, 100);
         add_living_to_level(FAMILY_ORC, 1, 130, 100);
-        ASSERT_TRUE(!mage_fd->check_special_ai(static_cast<living*>(mage))) << "mage AI should be false with 2 nearby foes";
+        ASSERT_TRUE(!og::test::check_special_ai(*mage_fd, static_cast<living*>(mage))) << "mage AI should be false with 2 nearby foes";
     }
 }
 
@@ -2308,8 +2325,8 @@ TEST(FamilyBehaviors, cleric_raise_and_resurrect_distance_and_busy_guards)
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
@@ -2321,7 +2338,7 @@ TEST(FamilyBehaviors, cleric_raise_and_resurrect_distance_and_busy_guards)
     cleric->set_current_special(2);
     cleric->set_shifter_down(1);
     cleric->set_busy(1);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "turn undead should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "turn undead should fail while busy";
     cleric->set_busy(0);
 
     // Raise skeleton distance guard.
@@ -2329,7 +2346,7 @@ TEST(FamilyBehaviors, cleric_raise_and_resurrect_distance_and_busy_guards)
     ASSERT_TRUE(blood_far != nullptr) << "far blood created";
     cleric->set_current_special(2);
     cleric->set_shifter_down(0);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "raise skeleton should fail when blood is out of range";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "raise skeleton should fail when blood is out of range";
     if (blood_far)
         blood_far->set_dead(1);
 
@@ -2338,7 +2355,7 @@ TEST(FamilyBehaviors, cleric_raise_and_resurrect_distance_and_busy_guards)
     ASSERT_TRUE(blood_far2 != nullptr) << "second far blood created";
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "raise ghost should fail when blood is out of range";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "raise ghost should fail when blood is out of range";
     if (blood_far2)
         blood_far2->set_dead(1);
 
@@ -2346,7 +2363,7 @@ TEST(FamilyBehaviors, cleric_raise_and_resurrect_distance_and_busy_guards)
     walker* blood_far3 = add_stain_to_fxlist(0, 250, 100);
     ASSERT_TRUE(blood_far3 != nullptr) << "third far blood created";
     cleric->set_current_special(4);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "resurrect should fail when blood is out of range";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "resurrect should fail when blood is out of range";
 }
 
 
@@ -2355,8 +2372,8 @@ TEST(FamilyBehaviors, druid_special_busy_and_friend_count_guards)
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(fd && fd->do_special) << "druid do_special present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "druid do_special present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
@@ -2366,17 +2383,17 @@ TEST(FamilyBehaviors, druid_special_busy_and_friend_count_guards)
 
     druid->set_busy(1);
     druid->set_current_special(1);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid tree special should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid tree special should fail while busy";
     druid->set_current_special(2);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid summon special should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid summon special should fail while busy";
     druid->set_current_special(3);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid reveal special should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid reveal special should fail while busy";
     druid->set_current_special(4);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid protection special should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid protection special should fail while busy";
 
     druid->set_busy(0);
     druid->set_current_special(4);
-    ASSERT_TRUE(!fd->do_special(druid)) << "druid protection should fail with no nearby allies";
+    ASSERT_TRUE(!og::test::do_special(*fd, druid)) << "druid protection should fail with no nearby allies";
 }
 
 
@@ -2398,29 +2415,29 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     if (!mage)
         return;
     mage->set_current_special(1);
-    ASSERT_TRUE(mage_fd->check_special_ai(static_cast<living*>(mage))) << "mage AI should allow special when no foes are in range";
+    ASSERT_TRUE(og::test::check_special_ai(*mage_fd, static_cast<living*>(mage))) << "mage AI should allow special when no foes are in range";
     add_living_to_level(FAMILY_SOLDIER, 0, 120, 100);
     add_living_to_level(FAMILY_ORC, 0, 130, 100);
-    ASSERT_TRUE(!mage_fd->check_special_ai(static_cast<living*>(mage))) << "mage AI should reject special when 1-3 foes are in range";
+    ASSERT_TRUE(!og::test::check_special_ai(*mage_fd, static_cast<living*>(mage))) << "mage AI should reject special when 1-3 foes are in range";
     add_living_to_level(FAMILY_SOLDIER, 0, 140, 100);
     add_living_to_level(FAMILY_ORC, 0, 150, 100);
-    ASSERT_TRUE(mage_fd->check_special_ai(static_cast<living*>(mage))) << "mage AI should allow special when many foes are in range";
+    ASSERT_TRUE(og::test::check_special_ai(*mage_fd, static_cast<living*>(mage))) << "mage AI should allow special when many foes are in range";
 
     // Mage teleport guards.
     mage->stats()->set_magicpoints(1000);
     mage->set_current_special(1);
     mage->set_ani_type(ANI_TELE_OUT);
-    ASSERT_TRUE(!mage_fd->do_special(mage)) << "mage teleport should fail while already teleporting";
+    ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage teleport should fail while already teleporting";
     mage->set_ani_type(ANI_WALK);
     mage->set_shifter_down(1);
     mage->set_busy(1);
-    ASSERT_TRUE(!mage_fd->do_special(mage)) << "mage marker path should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage marker path should fail while busy";
     mage->set_busy(0);
     mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     if (mage->myguy)
         mage->myguy->intelligence = 50;
     mage->set_user(0);
-    ASSERT_TRUE(!mage_fd->do_special(mage)) << "mage marker path should fail for low-intelligence player characters";
+    ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage marker path should fail for low-intelligence player characters";
 
     // Thief AI and do_special guards.
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
@@ -2432,24 +2449,24 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     ASSERT_TRUE(thief->foe() != nullptr) << "thief foe created";
     if (thief->foe())
     {
-        ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when foe distance is in drop-bomb window";
+        ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb AI should reject when foe distance is in drop-bomb window";
     }
     thief->set_foe(nullptr);
-    ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when too few foes are nearby";
+    ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb AI should reject when too few foes are nearby";
     thief->set_current_special(5);
-    ASSERT_TRUE(thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief AI default branch should allow special";
+    ASSERT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief AI default branch should allow special";
 
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(1);
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief taunt should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief taunt should fail while busy";
     thief->set_shifter_down(1);
     thief->set_busy(0);
     thief->setxy(300, 100); // Keep charm range clear of foes created above.
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief charm should fail when no targets are in range";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief charm should fail when no targets are in range";
     thief->set_current_special(4);
     thief->set_busy(1);
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief poison cloud should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief poison cloud should fail while busy";
 
     // Soldier special guards.
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 0, 100);
@@ -2459,10 +2476,10 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     soldier->stats()->set_magicpoints(1000);
     soldier->set_current_special(1);
     soldier->set_curdir(FACE_LEFT); // blocked by map edge
-    ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier charge should fail when forward is blocked";
+    ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier charge should fail when forward is blocked";
     soldier->set_current_special(3);
     soldier->set_busy(1);
-    ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier whirlwind should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier whirlwind should fail while busy";
 }
 
 
@@ -2472,8 +2489,8 @@ TEST(FamilyBehaviors, cleric_round6_heal_low_magic_and_undead_raise_no_target_gu
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
-    ASSERT_TRUE(fd && fd->do_special) << "cleric do_special present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "cleric do_special present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
@@ -2488,12 +2505,12 @@ TEST(FamilyBehaviors, cleric_round6_heal_low_magic_and_undead_raise_no_target_gu
     cleric->stats()->set_level(12);
     cleric->stats()->set_magicpoints(1);
     ally->stats()->set_hitpoints(ally->stats()->max_hitpoints() - 20.0f);
-    (void)fd->do_special(cleric);
+    (void)og::test::do_special(*fd, cleric);
 
     // Full-health ally path should produce didheal==0 and return false.
     cleric->stats()->set_magicpoints(200);
     ally->stats()->set_hitpoints(ally->stats()->max_hitpoints());
-    ASSERT_TRUE(!fd->do_special(cleric)) << "heal special should fail when nobody needs healing";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "heal special should fail when nobody needs healing";
 
     // Raise/ghost specials with no blood target should fail via nearest-blood null branches.
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -2504,10 +2521,10 @@ TEST(FamilyBehaviors, cleric_round6_heal_low_magic_and_undead_raise_no_target_gu
         return;
     cleric->set_current_special(2);
     cleric->set_shifter_down(0);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "raise skeleton should fail with no blood target";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "raise skeleton should fail with no blood target";
     cleric->set_current_special(3);
     cleric->set_shifter_down(0);
-    ASSERT_TRUE(!fd->do_special(cleric)) << "raise ghost should fail with no blood target";
+    ASSERT_TRUE(!og::test::do_special(*fd, cleric)) << "raise ghost should fail with no blood target";
 }
 
 
@@ -2517,8 +2534,8 @@ TEST(FamilyBehaviors, druid_round6_protection_existing_circle_and_blocked_faerie
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(fd && fd->do_special) << "druid do_special present";
-    if (!(fd && fd->do_special))
+    ASSERT_TRUE(fd && og::test::has_do_special(*fd)) << "druid do_special present";
+    if (!(fd && og::test::has_do_special(*fd)))
         return;
 
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
@@ -2539,7 +2556,7 @@ TEST(FamilyBehaviors, druid_round6_protection_existing_circle_and_blocked_faerie
     druid->set_current_special(4);
     druid->set_busy(0);
     druid->stats()->set_magicpoints(300);
-    ASSERT_TRUE(fd->do_special(druid)) << "protection with existing circle should succeed";
+    ASSERT_TRUE(og::test::do_special(*fd, druid)) << "protection with existing circle should succeed";
     ASSERT_TRUE(existing->stats()->hitpoints() >= 10.0f) << "existing circle hp should be refreshed";
 
     // Blocked summon destination path for special 2.
@@ -2547,7 +2564,7 @@ TEST(FamilyBehaviors, druid_round6_protection_existing_circle_and_blocked_faerie
     druid->set_busy(0);
     druid->stats()->set_magicpoints(300);
     druid->setxy(0, 0); // edge tends to make summon destination impassable
-    (void)fd->do_special(druid);
+    (void)og::test::do_special(*fd, druid);
 }
 
 
@@ -2559,11 +2576,11 @@ TEST(FamilyBehaviors, family_round8_mage_thief_soldier_callback_edge_paths)
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
     const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
     const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
-    ASSERT_TRUE(mage_fd && mage_fd->check_special_ai && mage_fd->do_special) << "mage callbacks exist";
-    ASSERT_TRUE(thief_fd && thief_fd->check_special_ai) << "thief callback exists";
-    ASSERT_TRUE(soldier_fd && soldier_fd->on_fire_weapon) << "soldier callback exists";
-    if (!(mage_fd && thief_fd && soldier_fd && mage_fd->check_special_ai && mage_fd->do_special &&
-          thief_fd->check_special_ai && soldier_fd->on_fire_weapon))
+    ASSERT_TRUE(mage_fd && og::test::has_check_special_ai(*mage_fd) && og::test::has_do_special(*mage_fd)) << "mage callbacks exist";
+    ASSERT_TRUE(thief_fd && og::test::has_check_special_ai(*thief_fd)) << "thief callback exists";
+    ASSERT_TRUE(soldier_fd && og::test::has_on_fire_weapon(*soldier_fd)) << "soldier callback exists";
+    if (!(mage_fd && thief_fd && soldier_fd && og::test::has_check_special_ai(*mage_fd) && og::test::has_do_special(*mage_fd) &&
+          og::test::has_check_special_ai(*thief_fd) && og::test::has_on_fire_weapon(*soldier_fd)))
         return;
 
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
@@ -2574,12 +2591,12 @@ TEST(FamilyBehaviors, family_round8_mage_thief_soldier_callback_edge_paths)
     // Mage AI returns false when 1-3 foes are in range.
     add_living_to_level(FAMILY_ORC, 1, 120, 100);
     add_living_to_level(FAMILY_ORC, 1, 130, 100);
-    ASSERT_TRUE(!mage_fd->check_special_ai(static_cast<living*>(mage))) << "mage special AI should be false with 1-3 nearby foes";
+    ASSERT_TRUE(!og::test::check_special_ai(*mage_fd, static_cast<living*>(mage))) << "mage special AI should be false with 1-3 nearby foes";
 
     // Teleport special hard guard while already in teleport animation.
     mage->set_current_special(1);
     mage->set_ani_type(ANI_TELE_OUT);
-    ASSERT_TRUE(!mage_fd->do_special(mage)) << "mage teleport special should fail while already teleporting";
+    ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage teleport special should fail while already teleporting";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -2591,7 +2608,7 @@ TEST(FamilyBehaviors, family_round8_mage_thief_soldier_callback_edge_paths)
     {
         thief->set_current_special(1);
         thief->set_foe(foe);
-        ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject medium-range foe distance";
+        ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb AI should reject medium-range foe distance";
     }
 
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
@@ -2602,13 +2619,13 @@ TEST(FamilyBehaviors, family_round8_mage_thief_soldier_callback_edge_paths)
         living* lv = static_cast<living*>(soldier);
         const float mp_before = soldier->stats()->magicpoints();
         lv->set_weapons_left(0);
-        ASSERT_TRUE(!soldier_fd->on_fire_weapon(soldier, weapon)) << "soldier on_fire_weapon should fail and consume weapon when no weapons_left";
+        ASSERT_TRUE(!og::test::on_fire_weapon(*soldier_fd, soldier, weapon)) << "soldier on_fire_weapon should fail and consume weapon when no weapons_left";
         ASSERT_TRUE(weapon->dead() == 1) << "soldier fallback should mark weapon dead";
         ASSERT_TRUE(soldier->stats()->magicpoints() >= mp_before) << "soldier fallback should refund weapon cost to magicpoints";
 
         weapon->set_dead(0);
         lv->set_weapons_left(2);
-        ASSERT_TRUE(soldier_fd->on_fire_weapon(soldier, weapon)) << "soldier on_fire_weapon should succeed when weapons_left > 0";
+        ASSERT_TRUE(og::test::on_fire_weapon(*soldier_fd, soldier, weapon)) << "soldier on_fire_weapon should succeed when weapons_left > 0";
         ASSERT_EQ(1, (int)lv->weapons_left()) << "soldier on_fire_weapon should decrement weapons_left";
     }
 }
@@ -2635,7 +2652,7 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
         return;
     orc->set_current_special(2);
     orc->stats()->set_hitpoints(orc->stats()->max_hitpoints());
-    ASSERT_TRUE(!orc_fd->do_special(orc)) << "orc eat-corpse special should fail at full hp";
+    ASSERT_TRUE(!og::test::do_special(*orc_fd, orc)) << "orc eat-corpse special should fail at full hp";
 
     // GHOST AI: no foe in range should fail, nearby foe should pass.
     walker* ghost = add_living_to_level(FAMILY_GHOST, 0, 120, 100);
@@ -2643,13 +2660,13 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     if (!ghost)
         return;
     ghost->set_foe(nullptr);
-    ASSERT_TRUE(!ghost_fd->check_special_ai(static_cast<living*>(ghost))) << "ghost check_special_ai should fail without nearby foes";
+    ASSERT_TRUE(!og::test::check_special_ai(*ghost_fd, static_cast<living*>(ghost))) << "ghost check_special_ai should fail without nearby foes";
     walker* ghost_foe = add_living_to_level(FAMILY_ORC, 1, 130, 100);
     ASSERT_TRUE(ghost_foe != nullptr) << "ghost foe created";
     if (ghost_foe)
     {
         ghost->set_foe(ghost_foe);
-        ASSERT_TRUE(ghost_fd->check_special_ai(static_cast<living*>(ghost))) << "ghost check_special_ai should pass with close foe";
+        ASSERT_TRUE(og::test::check_special_ai(*ghost_fd, static_cast<living*>(ghost))) << "ghost check_special_ai should pass with close foe";
     }
 
     // ARCHER hit_response: close-range foe should force a walk command away.
@@ -2659,7 +2676,7 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     if (archer && archer_foe)
     {
         archer->stats()->clear_command();
-        archer_fd->hit_response(archer->stats(), archer_foe);
+        og::test::hit_response(*archer_fd, archer->stats(), archer_foe);
         ASSERT_TRUE(archer->foe() == archer_foe) << "archer hit_response should assign foe";
         ASSERT_TRUE(archer->stats()->has_commands()) << "archer hit_response should enqueue retreat command at close range";
     }
@@ -2667,9 +2684,9 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     // SLIME AI: MAXOBS guard branch.
     const int saved_numobs = og::runtime::current_session->myscreen_->world().living_count;
     og::runtime::current_session->myscreen_->world().living_count = MAXOBS;
-    ASSERT_TRUE(!slime_fd->check_special_ai(static_cast<living*>(orc))) << "slime check_special_ai should fail when numobs reaches MAXOBS";
+    ASSERT_TRUE(!og::test::check_special_ai(*slime_fd, static_cast<living*>(orc))) << "slime check_special_ai should fail when numobs reaches MAXOBS";
     og::runtime::current_session->myscreen_->world().living_count = 0;
-    ASSERT_TRUE(slime_fd->check_special_ai(static_cast<living*>(orc))) << "slime check_special_ai should pass when numobs is below MAXOBS";
+    ASSERT_TRUE(og::test::check_special_ai(*slime_fd, static_cast<living*>(orc))) << "slime check_special_ai should pass when numobs is below MAXOBS";
     og::runtime::current_session->myscreen_->world().living_count = saved_numobs;
 
     // ELF special basic branch should execute for case 1 when fire is available.
@@ -2679,7 +2696,7 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     {
         elf->set_current_special(1);
         elf->stats()->set_magicpoints(200);
-        ASSERT_TRUE(elf_fd->do_special(elf)) << "elf special case 1 should succeed in normal conditions";
+        ASSERT_TRUE(og::test::do_special(*elf_fd, elf)) << "elf special case 1 should succeed in normal conditions";
     }
 }
 
@@ -2691,8 +2708,8 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
 
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
     const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);
-    ASSERT_TRUE(mage_fd && mage_fd->do_special && druid_fd && druid_fd->do_special) << "mage/druid callbacks present";
-    if (!(mage_fd && mage_fd->do_special && druid_fd && druid_fd->do_special))
+    ASSERT_TRUE(mage_fd && og::test::has_do_special(*mage_fd) && druid_fd && og::test::has_do_special(*druid_fd)) << "mage/druid callbacks present";
+    if (!(mage_fd && og::test::has_do_special(*mage_fd) && druid_fd && og::test::has_do_special(*druid_fd)))
         return;
 
     // Mage case 1 guard: busy/intelligence marker path (family_mage.cpp:121-130).
@@ -2709,7 +2726,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     if (mage->myguy)
         mage->myguy->intelligence = 50;
-    ASSERT_TRUE(!mage_fd->do_special(mage)) << "mage marker should fail with int < 75";
+    ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage marker should fail with int < 75";
 
     // Mage case 5 heartburst success path (family_mage.cpp:260-289).
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -2723,7 +2740,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     mage->set_current_special(5);
     mage->stats()->set_magicpoints(500);
     const float mp_before = mage->stats()->magicpoints();
-    ASSERT_TRUE(mage_fd->do_special(mage)) << "mage heartburst should succeed with nearby foes";
+    ASSERT_TRUE(og::test::do_special(*mage_fd, mage)) << "mage heartburst should succeed with nearby foes";
     ASSERT_TRUE(mage->busy() >= 5) << "heartburst should add busy delay";
     ASSERT_TRUE(mage->stats()->magicpoints() < mp_before) << "heartburst should consume magic";
 
@@ -2744,7 +2761,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     druid->set_current_special(4);
     druid->set_busy(0);
     druid->stats()->set_magicpoints(500);
-    ASSERT_TRUE(druid_fd->do_special(druid)) << "druid protection should succeed with nearby ally";
+    ASSERT_TRUE(og::test::do_special(*druid_fd, druid)) << "druid protection should succeed with nearby ally";
 }
 
 
@@ -2757,14 +2774,14 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);
     const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
     const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
-    ASSERT_TRUE(cleric_fd && cleric_fd->check_special_ai && cleric_fd->do_special) << "cleric callbacks exist";
-    ASSERT_TRUE(druid_fd && druid_fd->do_special) << "druid callback exists";
-    ASSERT_TRUE(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai) << "soldier callbacks exist";
-    ASSERT_TRUE(thief_fd && thief_fd->do_special && thief_fd->check_special_ai) << "thief callbacks exist";
+    ASSERT_TRUE(cleric_fd && og::test::has_check_special_ai(*cleric_fd) && og::test::has_do_special(*cleric_fd)) << "cleric callbacks exist";
+    ASSERT_TRUE(druid_fd && og::test::has_do_special(*druid_fd)) << "druid callback exists";
+    ASSERT_TRUE(soldier_fd && og::test::has_do_special(*soldier_fd) && og::test::has_check_special_ai(*soldier_fd)) << "soldier callbacks exist";
+    ASSERT_TRUE(thief_fd && og::test::has_do_special(*thief_fd) && og::test::has_check_special_ai(*thief_fd)) << "thief callbacks exist";
     if (!(cleric_fd && druid_fd && soldier_fd && thief_fd &&
-          cleric_fd->check_special_ai && cleric_fd->do_special &&
-          druid_fd->do_special && soldier_fd->do_special && soldier_fd->check_special_ai &&
-          thief_fd->do_special && thief_fd->check_special_ai))
+          og::test::has_check_special_ai(*cleric_fd) && og::test::has_do_special(*cleric_fd) &&
+          og::test::has_do_special(*druid_fd) && og::test::has_do_special(*soldier_fd) && og::test::has_check_special_ai(*soldier_fd) &&
+          og::test::has_do_special(*thief_fd) && og::test::has_check_special_ai(*thief_fd)))
         return;
 
     // Cleric AI special-1 low-friend/low-magic false and non-special-1 true.
@@ -2774,15 +2791,15 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
         return;
     cleric->set_current_special(1);
     cleric->stats()->set_magicpoints(0.0f);
-    ASSERT_TRUE(!cleric_fd->check_special_ai(static_cast<living*>(cleric))) << "cleric check_special_ai should fail for heal with no targets and low mp";
+    ASSERT_TRUE(!og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric))) << "cleric check_special_ai should fail for heal with no targets and low mp";
     cleric->set_current_special(3);
-    ASSERT_TRUE(cleric_fd->check_special_ai(static_cast<living*>(cleric))) << "cleric check_special_ai should default true for non-heal specials";
+    ASSERT_TRUE(og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric))) << "cleric check_special_ai should default true for non-heal specials";
 
     // Cleric turn-undead guard branch: busy rejects immediately.
     cleric->set_current_special(2);
     cleric->set_shifter_down(1);
     cleric->set_busy(1);
-    ASSERT_TRUE(!cleric_fd->do_special(cleric)) << "cleric turn-undead should fail while busy";
+    ASSERT_TRUE(!og::test::do_special(*cleric_fd, cleric)) << "cleric turn-undead should fail while busy";
     cleric->set_busy(0);
 
     // Druid busy and fire-fail guards.
@@ -2792,16 +2809,16 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
         return;
     druid->set_current_special(1);
     druid->set_busy(1);
-    ASSERT_TRUE(!druid_fd->do_special(druid)) << "druid tree special should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*druid_fd, druid)) << "druid tree special should fail when busy";
     druid->set_busy(0);
     druid->set_current_special(2);
     druid->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    ASSERT_TRUE(!druid_fd->do_special(druid)) << "druid faerie summon should fail when fire() fails";
+    ASSERT_TRUE(!og::test::do_special(*druid_fd, druid)) << "druid faerie summon should fail when fire() fails";
     druid->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     druid->set_current_special(4);
     cleric->set_team_num(1); // ensure there are no nearby same-team allies for this guard check
     // No nearby allies except self => howmany <= 1 => false.
-    ASSERT_TRUE(!druid_fd->do_special(druid)) << "druid protection should fail with no nearby allies";
+    ASSERT_TRUE(!og::test::do_special(*druid_fd, druid)) << "druid protection should fail with no nearby allies";
 
     // Soldier special guards.
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 140, 100);
@@ -2814,15 +2831,15 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     soldier->set_curdir(FACE_RIGHT);
     walker* block_front = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos() + 1), soldier->ypos());
     ASSERT_TRUE(block_front != nullptr) << "soldier blocker created";
-    ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier charge should fail when forward is blocked";
+    ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier charge should fail when forward is blocked";
     soldier->set_current_special(3);
     soldier->set_busy(1);
-    ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier whirlwind should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier whirlwind should fail when busy";
     soldier->set_current_special(4);
-    ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier disarm should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier disarm should fail when busy";
     soldier->set_busy(0);
     soldier->set_foe(add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos() + 10), soldier->ypos()));
-    ASSERT_TRUE(!soldier_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier special ai should fail for too-close foe distance";
+    ASSERT_TRUE(!og::test::check_special_ai(*soldier_fd, static_cast<living*>(soldier))) << "soldier special ai should fail for too-close foe distance";
 
     // Thief AI/special guards.
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 180, 100);
@@ -2832,13 +2849,13 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
         return;
     thief->set_current_special(1);
     thief->set_foe(thief_foe);
-    ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb ai should reject medium-range foe distances";
+    ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb ai should reject medium-range foe distances";
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(1);
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief taunt should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief taunt should fail when busy";
     thief->set_shifter_down(1);
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief charm should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief charm should fail when busy";
     thief->set_current_special(4);
-    ASSERT_TRUE(!thief_fd->do_special(thief)) << "thief poison cloud should fail when busy";
+    ASSERT_TRUE(!og::test::do_special(*thief_fd, thief)) << "thief poison cloud should fail when busy";
 }

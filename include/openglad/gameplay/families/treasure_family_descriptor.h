@@ -27,5 +27,9 @@ struct TreasureFamilyDescriptor {
     og::FamilyGlyph glyph{U'$', '$', og::GlyphColor::Yellow, false, false};
     og::RadarBlip radar{};
 
+    // Pack-declared fully-qualified id ("core:gold"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
+
     bool (*on_eat)(treasure* self, walker* eater);
 };

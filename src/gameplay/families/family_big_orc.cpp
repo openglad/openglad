@@ -5,18 +5,10 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
 
 #define BASE_GUY_HP 30
-
-static void big_orc_level_up(guy* self, std::int32_t level_diff)
-{
-    apply_level_up(self, level_diff, {12, 3, 12, 4, 1});
-}
 
 static const char* const orc_names[] = {"Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog", "Krosh"};
 
@@ -51,7 +43,7 @@ const FamilyDescriptor& describe_family_big_orc()
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = big_orc_level_up,
+        .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,

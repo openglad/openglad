@@ -48,12 +48,18 @@ per-family `script:` key — the whole `scripts/` directory is loaded.
 - **Hook errors fall back to any still-present C++ callback** — so fail at
   branch entry or not at all; a partial script run plus the C++ callback
   double-executes side effects.
-- **Family ids resolve by descriptor `name:`, not by namespace.** The engine
-  discards everything before the `:`. `mypack:soldier` IS `core:soldier`.
-  Give a new family a unique `name:` — and never omit it, since a free living
-  slot defaults to `BEAST`, which three core families already answer to.
-  Genuine core collisions use `"core:#<id>"`. `og.family_id(order, id_str)`
-  resolves or returns nil; call it once at chunk load into a `local`.
+- **Family ids resolve fully-qualified first, bare name second.** Three forms
+  in order: `"pack:#<byte>"` (exact byte), `"pack:name"` (exact match on the
+  `id:` a mounted pack declared — the namespace IS a scope, so two packs can
+  both ship a `WARLOCK`), then the bare-name fallback that ignores the
+  namespace and takes the lowest matching `name:`. Case- and space/underscore-
+  insensitive. Always address families by their qualified id; the fallback
+  means `mypack:soldier` still finds core's SOLDIER when your pack has no
+  `soldier`, which is convenience, not a scope check. Give a new family a
+  unique `name:` anyway — and never omit it, since a free living slot defaults
+  to `BEAST`, which three core families already answer to. Genuine core name
+  collisions use `"core:#<id>"`. `og.family_id(order, id_str)` resolves or
+  returns nil; call it once at chunk load into a `local`.
 - **No mutable sim state in globals or upvalues.** There is no per-entity
   script storage (`state_slots:` is a forward-compat key nothing reads).
   Re-derive from the world every dispatch: census via `og.oblist()`, cadence
@@ -158,6 +164,13 @@ the family and hook, so an *accidental* collision is diagnosable.
 Consequence for multi-file packs: if two of your own scripts register the
 same family, the lexicographically later filename wins. Split by family, not
 by concern.
+
+Replacing its **data** (stats, sprite, description) is a `classpack.yaml`
+entry that pins the stock family's `wire_id` and **keeps its `id:`** —
+`id: core:soldier`, `wire_id: 0`. The wire slot is the identity: an entry
+claiming slot 0 under some other `id:` retires `core:soldier`, which then only
+resolves through the bare-name fallback (and not at all if you renamed it
+too). The installer warns when an install changes a slot's declared id.
 
 ## Level scripts
 

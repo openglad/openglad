@@ -1167,6 +1167,16 @@ bool ctf_on_flag_touch(walker* flag, walker* eater)
     return true;
 }
 
+// NOT ON THE LIVE PATH. core:waypoint's on_eat hook (packs/core/scripts/
+// treasure_ctf.lua) hardcodes `return true` instead of binding through to
+// this function, which is byte-correct only because the body below IS that
+// same no-op — control points are occupancy-driven and settled by
+// run_control_points() during the tick, so a touch decides nothing.
+//
+// Anything added here would therefore be silently skipped. If control-point
+// touches ever gain behavior, bind this as an og.* call and have the Lua
+// hook call it (the way core:flag calls og.ctf_on_flag_touch) rather than
+// growing the body in place.
 bool ctf_on_point_touch(walker* point, walker* eater)
 {
     // Control points are occupancy-driven (phase 5); touching is a no-op.

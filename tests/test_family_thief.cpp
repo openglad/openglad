@@ -15,6 +15,7 @@
 #endif
 #include <memory>
 #include "test_gameplay_context_scope.h"
+#include "test_family_hook_dispatch.h"
 
 // --- From test_family_thief_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_thief();
@@ -25,9 +26,9 @@ TEST(FamilyThief, descriptor_shape_and_level_up)
 {
     const FamilyDescriptor& desc = describe_family_thief();
     ASSERT_TRUE(desc.family_id == FAMILY_THIEF);
-    ASSERT_TRUE(desc.do_special != nullptr);
-    ASSERT_TRUE(desc.check_special_ai != nullptr);
-    ASSERT_TRUE(desc.level_up != nullptr);
+    ASSERT_TRUE(og::test::has_do_special(desc));
+    ASSERT_TRUE(og::test::has_check_special_ai(desc));
+    ASSERT_TRUE(og::test::has_level_up(desc));
 
     guy g(FAMILY_THIEF);
     const short old_str = g.strength;
@@ -36,7 +37,7 @@ TEST(FamilyThief, descriptor_shape_and_level_up)
     const short old_int = g.intelligence;
     const short old_armor = g.armor;
 
-    desc.level_up(&g, 2);
+    og::test::level_up(desc, &g, 2);
     ASSERT_TRUE(g.strength > old_str);
     ASSERT_TRUE(g.dexterity > old_dex);
     ASSERT_TRUE(g.constitution > old_con);
@@ -54,13 +55,13 @@ TEST(FamilyThief, check_special_ai_foe_distance_paths)
 
     self.setxy(0, 0);
     foe.setxy(60, 0); // >35 and <130 => false
-    ASSERT_TRUE(!desc.check_special_ai(&self));
+    ASSERT_TRUE(!og::test::check_special_ai(desc, &self));
 
     foe.setxy(10, 0); // <=35 => true
-    ASSERT_TRUE(desc.check_special_ai(&self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, &self));
 
     self.set_current_special(2); // default branch => true
-    ASSERT_TRUE(desc.check_special_ai(&self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, &self));
 }
 
 TEST(FamilyThief, do_special_busy_and_cloak_paths)
@@ -72,16 +73,16 @@ TEST(FamilyThief, do_special_busy_and_cloak_paths)
 
     self.set_current_special(2); // cloak
     self.set_invisibility_left(0);
-    ASSERT_TRUE(desc.do_special(&self));
+    ASSERT_TRUE(og::test::do_special(desc, &self));
     ASSERT_TRUE(self.invisibility_left() > 0);
 
     self.set_current_special(3); // taunt/charm
     self.set_busy(1);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_current_special(4); // poison cloud/default
     self.set_busy(1);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 }
 } // namespace detail_family_thief_coverage_push
 
@@ -140,39 +141,39 @@ TEST(FamilyThief, r12_check_ai_and_special_paths)
     foe1->setxy(200, 200);
     foe2->setxy(210, 200);
     foe3->setxy(220, 200);
-    ASSERT_TRUE(!desc.check_special_ai(thief));
+    ASSERT_TRUE(!og::test::check_special_ai(desc, thief));
 
     foe1->setxy(90, 80);
     foe2->setxy(94, 80);
     foe3->setxy(98, 80);
-    ASSERT_TRUE(desc.check_special_ai(thief));
+    ASSERT_TRUE(og::test::check_special_ai(desc, thief));
 
     thief->set_current_special(3);
     thief->set_shifter_down(0);
-    ASSERT_TRUE(desc.check_special_ai(thief));
+    ASSERT_TRUE(og::test::check_special_ai(desc, thief));
     thief->set_shifter_down(1);
-    ASSERT_TRUE(desc.check_special_ai(thief));
+    ASSERT_TRUE(og::test::check_special_ai(desc, thief));
 
     thief->set_current_special(1);
     thief->set_user(-1);
     thief->stats()->set_level(4);
-    ASSERT_TRUE(desc.do_special(thief));
+    ASSERT_TRUE(og::test::do_special(desc, thief));
 
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(0);
     thief->stats()->name = "Bandit";
-    ASSERT_TRUE(desc.do_special(thief));
+    ASSERT_TRUE(og::test::do_special(desc, thief));
 
     thief->set_current_special(3);
     thief->set_shifter_down(1);
     thief->set_busy(0);
     thief->set_foe(foe1);
     foe1->set_real_team_num(255);
-    ASSERT_TRUE(desc.do_special(thief));
+    ASSERT_TRUE(og::test::do_special(desc, thief));
 
     thief->set_current_special(4);
     thief->set_busy(0);
-    ASSERT_TRUE(desc.do_special(thief));
+    ASSERT_TRUE(og::test::do_special(desc, thief));
 }
 } // namespace detail_family_thief_r12

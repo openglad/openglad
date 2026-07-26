@@ -32,6 +32,7 @@
 #include <openglad/interface/input_state.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include "test_gameplay_context_scope.h"
+#include "test_family_hook_dispatch.h"
 
 // --- From test_coverage_r17.cpp ---
 namespace detail_coverage_r17 {
@@ -169,7 +170,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
 
     self->set_current_special(1);
     self->set_shifter_down(1);
-    ASSERT_TRUE(!mage->do_special(self));
+    ASSERT_TRUE(!og::test::do_special(*mage, self));
 
     self->myguy->intelligence = 90;
     walker* marker = add_fx(fx, FAMILY_MARKER, 66, 64);
@@ -179,14 +180,14 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->set_busy(0);
     self->set_current_special(1);
     self->set_shifter_down(1);
-    ASSERT_TRUE(mage->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*mage, self));
 
     self->set_busy(0);
     self->set_current_special(2);
     self->set_shifter_down(0);
     self->set_lastx(1.0f);
     self->set_lasty(0.0f);
-    ASSERT_TRUE(mage->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*mage, self));
 
     living* foe = add_living(fx, FAMILY_ORC, 1, 96, 64);
     ASSERT_TRUE(foe != nullptr);
@@ -194,7 +195,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->stats()->set_level(5);
     self->set_foe(nullptr);
     foe->set_foe(nullptr);
-    mage->hit_response(self->stats(), foe);
+    og::test::hit_response(*mage, self->stats(), foe);
     ASSERT_TRUE(self->foe() == foe);
     ASSERT_TRUE(foe->foe() == self);
 
@@ -202,7 +203,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     add_living(fx, FAMILY_ORC, 1, 104, 64);
     add_living(fx, FAMILY_ORC, 1, 108, 64);
     self->set_current_special(1);
-    ASSERT_TRUE(mage->check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, self));
 }
 
 TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
@@ -224,7 +225,7 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
     self->set_current_special(1);
     self->set_lastx(1.0f);
     self->set_lasty(0.0f);
-    ASSERT_TRUE(druid->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*druid, self));
 
     walker* existing = fx.level.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr);
@@ -234,14 +235,14 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
 
     self->set_busy(0);
     self->set_current_special(4);
-    ASSERT_TRUE(druid->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*druid, self));
 
     self->set_busy(0);
     self->set_current_special(2);
     self->setxy(0, 0);
     self->set_lastx(-1.0f);
     self->set_lasty(0.0f);
-    (void)druid->do_special(self);
+    (void)og::test::do_special(*druid, self);
 }
 
 TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
@@ -758,7 +759,7 @@ TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
     self.set_current_special(1);
     self.stats()->set_max_magicpoints(100.0f);
     self.stats()->set_magicpoints(1.0f);
-    ASSERT_TRUE(!desc.check_special_ai(&self));
+    ASSERT_TRUE(!og::test::check_special_ai(desc, &self));
 }
 
 TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
@@ -1071,12 +1072,12 @@ TEST(CoverageMisc, coverage_r19_family_cleric_check_special_true_paths)
     self->stats()->set_max_magicpoints(100.0f);
     self->stats()->set_magicpoints(80.0f);
     self->set_shifter_down(1);
-    ASSERT_TRUE(desc.check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, self));
     ASSERT_TRUE(self->shifter_down() == 0);
 
     ally->setxy(300, 300);
     self->set_shifter_down(0);
-    ASSERT_TRUE(desc.check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, self));
     ASSERT_TRUE(self->shifter_down() == 1);
 }
 
@@ -1441,28 +1442,28 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
     self.set_current_special(1);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 40;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_current_special(2);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 30;
     const float old_busy2 = self.busy();
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
     ASSERT_TRUE(self.busy() > old_busy2);
 
     self.set_current_special(3);
     self.set_shifter_down(1);
     self.set_busy(0.0f);
     self.myguy->intelligence = 30;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 }
 
 TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
@@ -1475,20 +1476,20 @@ TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
 
     self.set_current_special(1);
     self.set_ani_type(ANI_TELE_OUT);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_ani_type(ANI_WALK);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 40;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_shifter_down(0);
     self.set_ani_type(ANI_WALK);
-    ASSERT_TRUE(desc.do_special(&self));
+    ASSERT_TRUE(og::test::do_special(desc, &self));
     ASSERT_TRUE(self.ani_type() == ANI_TELE_OUT);
 }
 
@@ -1502,15 +1503,15 @@ TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
 
     self->set_current_special(4);
     self->set_busy(0.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 
     self->set_current_special(1);
     self->set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 
     self->set_current_special(2);
     self->set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 }
 } // namespace detail_coverage_r20
 
@@ -1695,17 +1696,17 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
 
     guy g_mage(FAMILY_MAGE);
     const short old_int = g_mage.intelligence;
-    mage->level_up(&g_mage, 2);
+    og::test::level_up(*mage, &g_mage, 2);
     ASSERT_TRUE(g_mage.intelligence > old_int);
 
     guy g_druid(FAMILY_DRUID);
     const short old_dex = g_druid.dexterity;
-    druid->level_up(&g_druid, 2);
+    og::test::level_up(*druid, &g_druid, 2);
     ASSERT_TRUE(g_druid.dexterity > old_dex);
 
     living self;
     const float hp0 = self.stats()->max_hitpoints();
-    soldier->set_difficulty(&self, 3);
+    og::test::set_difficulty(*soldier, &self, 3);
     ASSERT_TRUE(self.stats()->max_hitpoints() > hp0);
 
     FinalR16Fixture fx2;
@@ -1713,32 +1714,32 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     ASSERT_TRUE(caster != nullptr);
 
     caster->set_current_special(1);
-    ASSERT_TRUE(mage->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, caster));
 
     add_living(fx2, FAMILY_ORC, 1, 74, 64);
     add_living(fx2, FAMILY_ORC, 1, 84, 64);
-    ASSERT_TRUE(!mage->check_special_ai(caster));
+    ASSERT_TRUE(!og::test::check_special_ai(*mage, caster));
 
     add_living(fx2, FAMILY_ORC, 1, 94, 64);
     add_living(fx2, FAMILY_ORC, 1, 104, 64);
-    ASSERT_TRUE(mage->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, caster));
 
     caster->set_foe(add_living(fx2, FAMILY_ORC, 1, 114, 64));
-    ASSERT_TRUE(soldier->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*soldier, caster));
     caster->foe()->setxy(66, 64);
-    ASSERT_TRUE(!soldier->check_special_ai(caster));
+    ASSERT_TRUE(!og::test::check_special_ai(*soldier, caster));
 
     caster->set_current_special(1);
     caster->set_foe(nullptr);
-    ASSERT_TRUE(thief->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
 
     caster->set_current_special(3);
     caster->set_shifter_down(1);
-    ASSERT_TRUE(thief->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
 
     caster->set_current_special(1);
     caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
-    ASSERT_TRUE(cleric->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*cleric, caster));
 }
 
 TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)

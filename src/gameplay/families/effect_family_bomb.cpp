@@ -5,94 +5,8 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/effect_family_descriptor.h>
-#include <openglad/gameplay/effect.h>
-#include <openglad/gameplay/statistics.h>
-#include <openglad/core/sound_ids.h>
-#include <openglad/gameplay/sim_emit.h>
-
-std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
-
-static bool bomb_on_death(effect* self)
-{
-    if (!self->owner() || self->owner()->dead())
-        self->set_owner(self);
-    og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
-    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!newob) return true;
-    newob->set_owner(self->owner());
-    newob->stats()->set_hitpoints(0);
-    newob->stats()->set_level(self->owner()->stats()->level());
-    newob->set_ani_type(ANI_EXPLODE);
-    newob->set_floor(self->floor());  // detonate on the bomb's floor (A8)
-    newob->center_on(self);
-    newob->set_damage(self->damage());
-    return true;
-}
-
-static bool explosion_on_death(effect* self)
-{
-    if (!self->owner() || self->owner()->dead())
-        self->set_owner(self);
-    std::int32_t generic = compute_explosion_range(self->owner()->stats()->level(), self->skip_exit());
-    std::int32_t howmany = 0;
-    auto foelist = current_game->world->find_in_range(current_game->world->oblist, 15+generic,
-        &howmany, self);
-
-    // Emit DamageTile event instead of calling screen directly
-    og::sim::emit_event(current_game->sim_events, og::sim::EventKind::DamageTile,
-        static_cast<std::uint32_t>(self->xpos() + (self->sizex() / 2)),
-        static_cast<std::uint32_t>(self->ypos() + (self->sizey() / 2)));
-    if (howmany < 1)
-        return false;
-
-    for(auto* w : foelist)
-    {
-        if (w && !w->dead() &&
-                // An explosion never blasts through solid floors: only
-                // same-floor walkers take damage (A8). find_in_range is
-                // deliberately floor-blind (cross-floor foe acquisition is a
-                // design decision), so the damage loop filters instead. On
-                // single-floor levels every walker is on floor 0, so legacy
-                // behavior is byte-identical.
-                (w->floor() == self->floor()) &&
-                (w->query_order() != Order::Treasure) &&
-                (w->query_order() != Order::FX) &&
-                (!self->skip_exit() || w != self->owner())
-           )
-        {
-            std::int32_t xdelta = w->xpos() - self->xpos();
-            if (xdelta)
-                xdelta = xdelta/abs(xdelta);
-            std::int32_t ydelta = w->ypos() - self->ypos();
-            if (ydelta)
-                ydelta = ydelta/abs(ydelta);
-            generic = 2+self->owner()->stats()->level()/15;
-            if (generic > 8)
-                generic = 8;
-            w->stats()->force_command(COMMAND_WALK,generic,
-                static_cast<short>(xdelta),static_cast<short>(ydelta));
-            if (w == self->owner())
-            {
-                const float damage = self->damage();
-                self->set_damage(damage / 4.0f);
-                self->attack(w);
-                self->set_damage(damage);
-            }
-            else if (!self->owner()->dead() && self->owner()->is_friendly(w))
-            {
-                const float damage = self->damage();
-                self->set_damage(damage / 2.0f);
-                self->attack(w);
-                self->set_damage(damage);
-            }
-            else
-                self->attack(w);
-        }
-    }
-    return true;
-}
+#include <openglad/core/constants.h>
 
 const EffectFamilyDescriptor& describe_effect_bomb()
 {
@@ -103,7 +17,7 @@ const EffectFamilyDescriptor& describe_effect_bomb()
         .creates_hit_effect = false,
         .init_bit_flags = 0,
         .on_act = nullptr,
-        .on_death = bomb_on_death,
+        .on_death = nullptr,
     };
     return desc;
 }
@@ -117,7 +31,7 @@ const EffectFamilyDescriptor& describe_effect_explosion()
         .creates_hit_effect = false,
         .init_bit_flags = 0,
         .on_act = nullptr,
-        .on_death = explosion_on_death,
+        .on_death = nullptr,
     };
     return desc;
 }

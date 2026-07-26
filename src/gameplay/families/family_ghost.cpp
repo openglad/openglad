@@ -5,32 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/living.h>
-#include <openglad/gameplay/summon.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
-
 #include <iterator>
 
 #define BASE_GUY_HP 30
-
-static bool ghost_check_special_ai(living* self)
-{
-    return check_special_ai_distance(self, 130);
-}
-
-static bool ghost_do_special(walker* self)
-{
-    walker* newob = summon_entity(self, Order::FX, FAMILY_GHOST_SCARE);
-    if (!newob) return false;
-    newob->set_ani_type(ANI_SCARE);
-    newob->setxy(self->xpos() + self->sizex()/2 - newob->sizex()/2,
-                 self->ypos() + self->sizey()/2 - newob->sizey()/2);
-    return true;
-}
 
 static const char* const ghost_names[] = {"Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"};
 
@@ -61,8 +41,8 @@ const FamilyDescriptor& describe_family_ghost()
         .promotion_level_req = 0,
         .promotion_new_level = nullptr,
         .death_message = "GHOST VANISHED",
-        .do_special = ghost_do_special,
-        .check_special_ai = ghost_check_special_ai,
+        .do_special = nullptr,
+        .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = nullptr,

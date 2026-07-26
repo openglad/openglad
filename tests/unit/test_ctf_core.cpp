@@ -8,6 +8,9 @@
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -439,6 +442,53 @@ TEST(CtfCore, pickup_fires_through_obmap_collision)
     (void)fx.world().query_passable(544.0f, 796.0f, runner);
     ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.world().ctf.flags[1].state);
     ASSERT_EQ(runner->entity_id(), fx.world().ctf.flags[1].carrier_entity_id);
+}
+
+// Stage A (design doc §9a) retires the FAMILY_FLAG on_eat C++ callback: the
+// whole flag-touch rule now reaches og::sim::ctf_on_flag_touch only through
+// core:flag's Lua hook. This pins that end-to-end — descriptor slot empty,
+// eater walked onto the flag through the production obmap collision, real
+// CTF side effect observed, and no hook error swallowed on the way.
+TEST(CtfCore, flag_touch_runs_entirely_through_the_pack_hook)
+{
+    const TreasureFamilyDescriptor* tfd =
+        get_treasure_family_descriptor(og::FAMILY_FLAG);
+    ASSERT_NE(nullptr, tfd);
+    ASSERT_EQ(nullptr, tfd->on_eat)
+        << "stage A: the flag's C++ on_eat must be retired";
+
+    CtfWorld fx;
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    ASSERT_NE(nullptr, flag1);
+    fx.spawn_flag(0, 96, 96);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    og::script::hooks::reset_hook_failures();
+
+    // Walk the runner onto the flag's tile: the obmap probe fires eat_me on
+    // whatever overlaps, which is the dispatch the game actually uses.
+    runner->setxy(544, 780);
+    (void)fx.world().query_passable(544.0f, 796.0f, runner);
+
+    const og::sim::CtfFlag& f1 = fx.world().ctf.flags[1];
+    EXPECT_EQ(og::sim::CtfFlagState::Carried, f1.state)
+        << "the Lua hook must carry the whole pickup rule";
+    EXPECT_EQ(runner->entity_id(), f1.carrier_entity_id);
+    EXPECT_EQ(1, flag1->ignore());
+    EXPECT_TRUE(has_notification(fx.events, "GREEN FLAG TAKEN!"));
+
+    // Capture: run the carrier home onto its own flag and bank the score.
+    runner->setxy(96, 80);
+    (void)fx.world().query_passable(96.0f, 96.0f, runner);
+    EXPECT_EQ(og::sim::CtfFlagState::AtHome, f1.state);
+    EXPECT_EQ(1u, fx.world().ctf.captures[0]);
+    EXPECT_TRUE(has_score_change(fx.events, 0, og::sim::kCtfCaptureScore));
+
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count)
+        << og::script::hooks::hook_failures().message;
 }
 
 TEST(CtfCore, own_team_touch_returns_dropped_flag)

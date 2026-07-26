@@ -23,17 +23,33 @@
 
 namespace og::families {
 
-// Canonical string id for a registered family: "core:<name>" where <name>
-// is the registry display name lowercased with spaces mapped to
-// underscores, or the positional escape "core:#<id>" when the display name
-// is shared by more than one family in the order (the BEAST and SLIME
-// groups). Returns an empty string for unknown ids.
+// Canonical string id for a registered family: the fully-qualified id the
+// declaring pack gave it (FamilyDescriptor::declared_id, e.g.
+// "mypack:warlock"), or — for a family no pack has declared — the legacy
+// "core:<name>", where <name> is the registry display name lowercased with
+// spaces mapped to underscores. When that candidate id is shared with
+// another populated slot (two core families answering to BEAST or SLIME,
+// or two packs pinning the same declared id) every member of the collision
+// group takes the positional escape "<namespace>:#<id>" instead, so the id
+// this returns always resolves back to exactly this family. Returns an
+// empty string for unknown ids.
 std::string family_string_id(Order order, int family_id);
 
-// Resolves "core:<name>", a bare "<name>", or the positional escape
-// "core:#<id>" to the family byte for the order. Returns -1 when unknown.
-// Namespace prefixes are not validated: resolution is name-based within
-// the order's registry, so installed mod families resolve the same way.
+// Resolves a family id string to the family byte for the order, or -1.
+// Three forms, tried in this order:
+//   1. "<ns>:#<id>" / "#<id>" — positional escape: the literal byte, valid
+//      only when that slot is populated. The namespace is ignored.
+//   2. "<ns>:<name>" — exact match against a family's declared pack id
+//      (FamilyDescriptor::declared_id). The namespace IS a scope here: two
+//      packs may each ship a family named WARLOCK and stay addressable as
+//      "alpha:warlock" and "beta:warlock".
+//   3. bare-name fallback — the part after the first ':' (or the whole
+//      string) matched against the registry display `name`, namespace
+//      ignored. This is the back-compat path: it resolves "soldier", and it
+//      resolves "core:soldier" against a C++ core pin that no pack has
+//      declared yet. First (lowest) matching byte wins, so a display name
+//      shared by two mounted families is only addressable through form 2.
+// Matching is case-insensitive and treats ' ' and '_' as the same character.
 int resolve_family_string_id(Order order, const char* family_str);
 
 // FamilyAnimationType ↔ classpack.yaml `animation:` name

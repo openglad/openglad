@@ -5,19 +5,10 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <cstdint>
 #include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/living.h>
-#include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/util.h>
 
 inline constexpr int BASE_GUY_HP = 30;
-
-static void golem_set_difficulty(living* self, std::uint32_t level)
-{
-    apply_difficulty_scaling(self, level, {18.0f, 5.0f, 7.0f, 4.0f});
-}
 
 const FamilyDescriptor& describe_family_golem()
 {
@@ -49,7 +40,7 @@ const FamilyDescriptor& describe_family_golem()
         .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
-        .set_difficulty = golem_set_difficulty,
+        .set_difficulty = nullptr,
         .level_up = nullptr,
         .on_death = nullptr,
         .on_act_living = nullptr,
