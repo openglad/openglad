@@ -189,6 +189,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
+    ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/families/family_archer.cpp
     ${SRC_DIR}/gameplay/families/family_archmage.cpp
     ${SRC_DIR}/gameplay/families/family_barbarian.cpp
@@ -397,6 +398,7 @@ set(OG_DATA_SOURCES
 set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
+    ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/families/family_archer.cpp
     ${SRC_DIR}/gameplay/families/family_archmage.cpp
     ${SRC_DIR}/gameplay/families/family_barbarian.cpp
@@ -1515,6 +1517,29 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(concept_mapgen)
+
+    # --- pack_export (class-pack descriptor exporter) ---
+    # SDL-free tool that emits packs/core/classpack.yaml from the compiled-in
+    # family registries (docs/lua-classpacks-design.md §4). Not part of the
+    # default build; rerun whenever descriptor data changes in C++.
+    add_executable(pack_export EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/pack_export/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(pack_export)
+    target_link_libraries(pack_export PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
 
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
     # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
