@@ -317,7 +317,7 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
-// (84,y,214,10) opens training, and ^ at x=302 moves a member up. Spec
+// (84,y,214,10) opens training, and ^ at x=300 moves a member up. Spec
 // ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
@@ -394,21 +394,21 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
          MenuNav{.down = 31, .left = 38}, true},
         {"add_seat", "+", 297, 164, 14, 10,
          MenuNav{.down = 31, .left = 39}, false},
-        {"roster_up_0", "^", 302, 45, 10, 10,
+        {"roster_up_0", "^", 300, 45, 9, 10,
          MenuNav{.left = 8}, true},
-        {"roster_up_1", "^", 302, 59, 10, 10,
+        {"roster_up_1", "^", 300, 59, 9, 10,
          MenuNav{.left = 9}, true},
-        {"roster_up_2", "^", 302, 73, 10, 10,
+        {"roster_up_2", "^", 300, 73, 9, 10,
          MenuNav{.left = 10}, true},
-        {"roster_up_3", "^", 302, 87, 10, 10,
+        {"roster_up_3", "^", 300, 87, 9, 10,
          MenuNav{.left = 11}, true},
-        {"roster_up_4", "^", 302, 101, 10, 10,
+        {"roster_up_4", "^", 300, 101, 9, 10,
          MenuNav{.left = 12}, true},
-        {"roster_up_5", "^", 302, 115, 10, 10,
+        {"roster_up_5", "^", 300, 115, 9, 10,
          MenuNav{.left = 13}, true},
-        {"roster_up_6", "^", 302, 129, 10, 10,
+        {"roster_up_6", "^", 300, 129, 9, 10,
          MenuNav{.left = 14}, true},
-        {"roster_up_7", "^", 302, 143, 10, 10,
+        {"roster_up_7", "^", 300, 143, 9, 10,
          MenuNav{.left = 15}, true},
     };
 

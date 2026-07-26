@@ -1685,7 +1685,10 @@ constexpr int kBaseCampRowY0 = 45;
 constexpr int kBaseCampRowPitch = 14;
 // Round-6 horizontal grid: the panel's inner face is x=8..311, with explicit
 // DEPLOY and TEAM columns before the trainable NAME body. Maximum-width solo
-// and network strings end at x=310/304 respectively.
+// and network row strings end their last digit's ink at x=297/295 (EXP/LV
+// columns at 264/280); the per-row move-up face sits at 300..308 — a
+// two-pixel gutter after the digits and three clear panel pixels before the
+// x=311 inner-face edge.
 constexpr int kBaseCampDeployHeaderX = 12;
 constexpr int kBaseCampTeamHeaderX = 54;
 constexpr int kBaseCampNameColumnX = 88;
@@ -1825,7 +1828,7 @@ RowState base_camp_add_seat_row_state(
      .no_draw = true}
 #define OG_BASE_CAMP_MOVE_UP(i)                                              \
     {.id = "roster_up_" #i, .label = "^",                                    \
-     .x = 302, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 10,        \
+     .x = 300, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 9,         \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampMoveUpBase + (i),                                       \
      .nav = {.left = kBaseCampRowBodyBase + (i)},                            \
