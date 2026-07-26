@@ -220,14 +220,36 @@
             pkg-config
             python3
             zlib
+            # Web target: emcmake/emcc for the web-emscripten preset, so the
+            # wasm build is reachable from the dev shell instead of needing a
+            # separately installed emsdk.
+            emscripten
+            # Headless capture + media: xvfb-run gives an X server for the SDL
+            # client when the dummy driver is not enough, ffmpeg turns captured
+            # frames into video. scripts/media/ deliberately keeps working
+            # without them (pure-Python BMP/GIF/PNG), but having them here means
+            # a contributor is never blocked on the encoder path.
+            xvfb-run
+            ffmpeg
+            # Browser for the Playwright wasm e2e suite. Playwright refuses to
+            # install its own build on some hosts ("does not support chromium
+            # on ubuntu26.04-x64"), so playwright.config.js honours
+            # OG_CHROMIUM_PATH and the shellHook points it here.
+            chromium
+            nodejs
           ];
 
           shellHook = ''
             export CMAKE_PREFIX_PATH="${lodepngHead}''${CMAKE_PREFIX_PATH:+:}''${CMAKE_PREFIX_PATH:-}"
+            # emcc writes its cache next to the (read-only) store path by
+            # default; point it somewhere writable or the first web build dies.
+            export EM_CACHE="''${EM_CACHE:-$PWD/build/.emscripten-cache}"
+            export OG_CHROMIUM_PATH="''${OG_CHROMIUM_PATH:-${pkgs.chromium}/bin/chromium}"
             echo "OpenGlad dev shell"
             echo "  Build:  cmake --preset dev-debug && cmake --build --preset dev-debug"
             echo "  Launch: ./build/dev-debug/openglad"
             echo "  Tests:  cmake --preset ci-test && cmake --build --preset ci-test && ctest --preset ci-test"
+            echo "  Web:    ./scripts/build_web.sh   (emcc $(emcc --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo '?'))"
           '';
         };
     in
