@@ -9,6 +9,7 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
@@ -105,81 +106,9 @@ const OrderInfo* find_order(const char* name)
     return nullptr;
 }
 
-// ---------------------------------------------------------------------------
-// Family string-id resolution ("core:soldier" → family byte)
-// ---------------------------------------------------------------------------
-
-std::string normalize_family_name(const char* raw)
-{
-    std::string out;
-    for (const char* p = raw; *p != '\0'; p++) {
-        const unsigned char c = static_cast<unsigned char>(*p);
-        out.push_back(c == ' ' ? '_'
-                               : static_cast<char>(std::tolower(c)));
-    }
-    return out;
-}
-
-const char* descriptor_name(Order order, int family_id)
-{
-    switch (order) {
-        case Order::Living: {
-            const FamilyDescriptor* d = get_family_descriptor(family_id);
-            return d != nullptr ? d->name : nullptr;
-        }
-        case Order::Weapon: {
-            const WeaponFamilyDescriptor* d =
-                get_weapon_family_descriptor(family_id);
-            return d != nullptr ? d->name : nullptr;
-        }
-        case Order::Treasure: {
-            const TreasureFamilyDescriptor* d =
-                get_treasure_family_descriptor(family_id);
-            return d != nullptr ? d->name : nullptr;
-        }
-        case Order::Generator: {
-            const GeneratorFamilyDescriptor* d =
-                get_generator_family_descriptor(family_id);
-            return d != nullptr ? d->name : nullptr;
-        }
-        case Order::FX: {
-            const EffectFamilyDescriptor* d =
-                get_effect_family_descriptor(family_id);
-            return d != nullptr ? d->name : nullptr;
-        }
-        default:
-            return nullptr;
-    }
-}
-
-// Accepts "core:<name>" (built-in families), a bare "<name>", or the
-// numeric escape "core:#<id>" for families whose registry names collide
-// (golem/giant_skeleton/tower1 all answer to BEAST until classpack.yaml
-// pins first-class string ids). Returns -1 when unknown.
-int resolve_family_id(Order order, const char* family_str)
-{
-    const char* colon = std::strchr(family_str, ':');
-    const char* name_part = colon != nullptr ? colon + 1 : family_str;
-    if (name_part[0] == '#') {
-        char* end = nullptr;
-        const long id = std::strtol(name_part + 1, &end, 10);
-        if (end != name_part + 1 && *end == '\0' && id >= 0 && id < 256 &&
-            descriptor_name(order, static_cast<int>(id)) != nullptr)
-            return static_cast<int>(id);
-        return -1;
-    }
-    const std::string want = normalize_family_name(name_part);
-    for (int id = 0; id < 256; id++) {
-        const char* name = descriptor_name(order, id);
-        if (name == nullptr) {
-            // Registries are dense arrays; first miss ends the scan.
-            break;
-        }
-        if (normalize_family_name(name) == want)
-            return id;
-    }
-    return -1;
-}
+// Family string-id resolution ("core:soldier" → family byte) lives in
+// og::families::resolve_family_string_id (families/family_string_ids.h),
+// shared with the classpack.yaml exporter and reader.
 
 }  // namespace
 
@@ -326,7 +255,8 @@ int og_register_hooks(lua_State* L)
     if (oi == nullptr)
         return luaL_error(L, "og.register_hooks: unknown order '%s'",
                           order_str);
-    const int family_id = resolve_family_id(oi->order, family_str);
+    const int family_id =
+        og::families::resolve_family_string_id(oi->order, family_str);
     if (family_id < 0)
         return luaL_error(L, "og.register_hooks: unknown %s family '%s'",
                           order_str, family_str);
@@ -494,7 +424,8 @@ int og_family_id(lua_State* L)
     const OrderInfo* oi = find_order(order_str);
     if (oi == nullptr)
         return luaL_error(L, "og.family_id: unknown order '%s'", order_str);
-    const int id = resolve_family_id(oi->order, family_str);
+    const int id =
+        og::families::resolve_family_string_id(oi->order, family_str);
     if (id < 0)
         lua_pushnil(L);
     else

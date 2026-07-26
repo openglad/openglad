@@ -347,6 +347,7 @@ void load_decor_data(PixieData*)
 // Headless lifecycle (mirrors SDL io_init/io_exit/sync_filesystem)
 // ---------------------------------------------------------------------------
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/packs.h>
 
 void io_init(int argc, char* argv[])
 {
@@ -399,6 +400,14 @@ void io_init(int argc, char* argv[])
     og::resources::mount((asset_path + "pix/").c_str(), "pix/", 1);
     og::resources::mount((asset_path + "sound/").c_str(), "sound/", 1);
     og::resources::mount((asset_path + "cfg/").c_str(), "cfg/", 1);
+
+    // Class packs: mount and install family descriptor DATA
+    // (classpack.yaml), keeping headless sims on the same descriptor
+    // values as the SDL client. Behavior scripts are deliberately NOT
+    // registered here yet — headless behavior still dispatches the
+    // preserved C++ callbacks (the Lua conversion owns that wiring).
+    og::resources::mount((asset_path + "packs/").c_str(), "packs/", 1);
+    og::resources::install_classpacks();
 
     Log("io_init(headless): done\n");
 }

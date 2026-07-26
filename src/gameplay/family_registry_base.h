@@ -8,12 +8,13 @@
 #pragma once
 
 // Common boilerplate for family registries: static array + init-once
-// + bounds-checked getter.
+// + bounds-checked getter + bounds-checked overwrite (classpack install).
 //
 // Usage:
 //   static FamilyRegistryBase<MyDescriptor, NUM> s_registry;
 //   s_registry.init(apply_defaults, populate);  // once at startup
 //   return s_registry.get(id);                  // in getter
+//   s_registry.set(id, descriptor);             // classpack install
 template <typename Descriptor, int NUM>
 class FamilyRegistryBase {
 public:
@@ -34,6 +35,18 @@ public:
 
     [[nodiscard]] const Descriptor* get(int family_id) const {
         return (family_id >= 0 && family_id < NUM) ? &entries_[family_id] : nullptr;
+    }
+
+    // Overwrites one slot (classpack install). Callers copy the current
+    // descriptor, patch data fields, and set() it back — entry ADDRESSES
+    // never change, so descriptor pointers held elsewhere stay valid.
+    // Returns false when family_id is outside the registry's capacity.
+    bool set(int family_id, const Descriptor& d) {
+        if (family_id < 0 || family_id >= NUM)
+            return false;
+        entries_[family_id] = d;
+        entries_[family_id].family_id = family_id;
+        return true;
     }
 
     [[nodiscard]] bool is_initialized() const { return initialized_; }

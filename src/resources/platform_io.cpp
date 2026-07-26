@@ -384,6 +384,10 @@ void io_init(int argc, char* argv[])
     {
         LogWarn("Failed to mount default packs path\n");
     }
+    // Scripts + family descriptor DATA both come from the mounted packs
+    // (core pack = packs/core). refresh_pack_scripts rescans scripts AND
+    // reinstalls classpack.yaml data; behavior callbacks stay untouched —
+    // the installer preserves them.
     og::resources::refresh_pack_scripts();
 }
 

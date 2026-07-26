@@ -90,3 +90,11 @@ const WeaponFamilyDescriptor* get_weapon_family_descriptor(int family_id)
         init_weapon_family_registry();
     return s_registry.get(family_id);
 }
+
+bool set_weapon_family_descriptor(int family_id,
+                                  const WeaponFamilyDescriptor& d)
+{
+    if (!s_registry.is_initialized())
+        init_weapon_family_registry();
+    return s_registry.set(family_id, d);
+}

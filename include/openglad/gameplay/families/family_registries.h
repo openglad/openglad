@@ -31,6 +31,18 @@ void init_treasure_family_registry();
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id);
 void init_generator_family_registry();
 
+// Slot overwrite for classpack install (same contract as
+// set_family_descriptor in family_registry.h: bounds-checked, stable
+// entry addresses, initializes the registry if needed).
+bool set_weapon_family_descriptor(int family_id,
+                                  const WeaponFamilyDescriptor& d);
+bool set_effect_family_descriptor(int family_id,
+                                  const EffectFamilyDescriptor& d);
+bool set_treasure_family_descriptor(int family_id,
+                                    const TreasureFamilyDescriptor& d);
+bool set_generator_family_descriptor(int family_id,
+                                     const GeneratorFamilyDescriptor& d);
+
 // Initialize all five family registries. Call once at startup before any lookups.
 inline void init_all_registries()
 {

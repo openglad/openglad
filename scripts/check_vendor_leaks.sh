@@ -30,6 +30,7 @@ FS_VENDOR_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${FS_VENDOR}[>\"]"
 if grep -rn --include='*.cpp' --include='*.h' -E "${FS_VENDOR_INCLUDE_REGEX}" src/ \
     | grep -v 'src/resources/io/' \
     | grep -v 'src/resources/campaign_yaml.cpp' \
+    | grep -v 'src/resources/classpack_yaml.cpp' \
     | grep -v 'src/resources/gparser.cpp' \
     | grep -v 'src/resources/platform_io.cpp' \
     | grep -v 'src/platform/sdl/physfs_rwops_bridge.cpp' 2>/dev/null; then
