@@ -305,6 +305,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/resources/packs.cpp
+    ${SRC_DIR}/resources/pack_transfer_io.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -323,6 +324,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/pack_transfer.cpp
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
@@ -371,6 +373,7 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/pack_transfer.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
@@ -392,6 +395,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/resources/packs.cpp
+    ${SRC_DIR}/resources/pack_transfer_io.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -1498,6 +1502,7 @@ if(NOT EMSCRIPTEN)
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/showcase_pack.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
@@ -2688,6 +2693,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp

@@ -30,6 +30,14 @@ void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
     bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
 }
 
+void append_u64(std::vector<std::uint8_t>& bytes, std::uint64_t value)
+{
+    for (int shift = 0; shift < 64; shift += 8)
+    {
+        bytes.push_back(static_cast<std::uint8_t>((value >> shift) & 0xffu));
+    }
+}
+
 void append_i16(std::vector<std::uint8_t>& bytes, std::int16_t value)
 {
     const std::uint16_t raw = static_cast<std::uint16_t>(value);
@@ -56,6 +64,18 @@ void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)
     if (value.size() > std::numeric_limits<std::uint32_t>::max())
     {
         throw std::runtime_error("transport string exceeds maximum size");
+    }
+
+    append_u32(bytes, static_cast<std::uint32_t>(value.size()));
+    bytes.insert(bytes.end(), value.begin(), value.end());
+}
+
+void append_bytes(std::vector<std::uint8_t>& bytes,
+                  const std::vector<std::uint8_t>& value)
+{
+    if (value.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("transport byte blob exceeds maximum size");
     }
 
     append_u32(bytes, static_cast<std::uint32_t>(value.size()));
@@ -179,6 +199,39 @@ public:
         float value = 0.0f;
         std::memcpy(&value, payload_.data() + offset_, sizeof(value));
         offset_ += sizeof(value);
+        return value;
+    }
+
+    std::uint64_t read_u64()
+    {
+        if (offset_ + 8 > payload_.size())
+        {
+            ok_ = false;
+            return 0;
+        }
+
+        std::uint64_t value = 0;
+        for (int shift = 0; shift < 64; shift += 8)
+        {
+            value |= static_cast<std::uint64_t>(payload_[offset_++]) << shift;
+        }
+        return value;
+    }
+
+    std::vector<std::uint8_t> read_bytes(std::size_t max_size)
+    {
+        const std::uint32_t size = read_u32();
+        // Same overflow-safe subtractive bound as read_string below.
+        if (!ok_ || size > payload_.size() - offset_ || size > max_size)
+        {
+            ok_ = false;
+            return {};
+        }
+
+        std::vector<std::uint8_t> value(
+            payload_.begin() + static_cast<std::ptrdiff_t>(offset_),
+            payload_.begin() + static_cast<std::ptrdiff_t>(offset_ + size));
+        offset_ += size;
         return value;
     }
 
@@ -909,6 +962,164 @@ std::optional<SnapshotHashCheckMessage> deserialize_snapshot_hash_check_message(
         });
 }
 
+std::vector<std::uint8_t> serialize_pack_manifest_message(
+    const PackManifestMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_u8(payload, message.pack_index);
+    append_u8(payload, message.pack_count);
+    append_string(payload, message.pack_id);
+    append_string(payload, message.version);
+    append_u32(payload, static_cast<std::uint32_t>(message.files.size()));
+    for (const PackManifestFileEntry& file : message.files)
+    {
+        append_string(payload, file.path);
+        append_u32(payload, file.size_bytes);
+        append_u64(payload, file.hash64);
+    }
+    return wrap_transport_message(kPackManifestMessageType, payload);
+}
+
+std::optional<PackManifestMessage> deserialize_pack_manifest_message(
+    std::span<const std::uint8_t> bytes)
+{
+    // Minimum serialized file entry: u32 path length (empty) + u32 size +
+    // u64 hash.
+    constexpr std::size_t kMinSerializedManifestFileSize = 16;
+
+    return deserialize_message<PackManifestMessage>(
+        bytes, kPackManifestMessageType,
+        [](PayloadReader& reader, PackManifestMessage& message) {
+            message.pack_index = reader.read_u8();
+            message.pack_count = reader.read_u8();
+            message.pack_id = reader.read_string();
+            message.version = reader.read_string();
+            if (!reader.ok() ||
+                message.pack_id.size() > kMaxPackIdLength ||
+                message.version.size() > kMaxPackVersionLength)
+            {
+                reader.fail();
+                return;
+            }
+            if (message.pack_count == 0)
+            {
+                // Explicit "no packs" announcement: nothing else may follow.
+                if (message.pack_index != 0 || !message.pack_id.empty() ||
+                    !message.version.empty() || reader.read_u32() != 0)
+                {
+                    reader.fail();
+                }
+                return;
+            }
+            if (message.pack_index >= message.pack_count ||
+                message.pack_count > kMaxPacksPerSession ||
+                message.pack_id.empty())
+            {
+                reader.fail();
+                return;
+            }
+            const std::uint32_t file_count = reader.read_u32();
+            if (!reader.ok() || file_count > kMaxPackManifestFiles ||
+                file_count >
+                    reader.remaining_bytes() / kMinSerializedManifestFileSize)
+            {
+                reader.fail();
+                return;
+            }
+            message.files.reserve(file_count);
+            for (std::uint32_t i = 0; i < file_count && reader.ok(); ++i)
+            {
+                PackManifestFileEntry file;
+                file.path = reader.read_string();
+                file.size_bytes = reader.read_u32();
+                file.hash64 = reader.read_u64();
+                if (file.path.empty() ||
+                    file.path.size() > kMaxPackRelativePathLength)
+                {
+                    reader.fail();
+                    return;
+                }
+                message.files.push_back(std::move(file));
+            }
+        });
+}
+
+std::vector<std::uint8_t> serialize_pack_request_message(
+    const PackRequestMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_string(payload, message.pack_id);
+    return wrap_transport_message(kPackRequestMessageType, payload);
+}
+
+std::optional<PackRequestMessage> deserialize_pack_request_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<PackRequestMessage>(
+        bytes, kPackRequestMessageType,
+        [](PayloadReader& reader, PackRequestMessage& message) {
+            message.pack_id = reader.read_string();
+            if (message.pack_id.empty() ||
+                message.pack_id.size() > kMaxPackIdLength)
+            {
+                reader.fail();
+            }
+        });
+}
+
+std::vector<std::uint8_t> serialize_pack_file_chunk_message(
+    const PackFileChunkMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_string(payload, message.pack_id);
+    append_u32(payload, message.file_index);
+    append_u32(payload, message.offset);
+    append_bytes(payload, message.data);
+    return wrap_transport_message(kPackFileChunkMessageType, payload);
+}
+
+std::optional<PackFileChunkMessage> deserialize_pack_file_chunk_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<PackFileChunkMessage>(
+        bytes, kPackFileChunkMessageType,
+        [](PayloadReader& reader, PackFileChunkMessage& message) {
+            message.pack_id = reader.read_string();
+            if (message.pack_id.empty() ||
+                message.pack_id.size() > kMaxPackIdLength)
+            {
+                reader.fail();
+                return;
+            }
+            message.file_index = reader.read_u32();
+            message.offset = reader.read_u32();
+            message.data = reader.read_bytes(kPackFileChunkMaxBytes);
+        });
+}
+
+std::vector<std::uint8_t> serialize_pack_transfer_done_message(
+    const PackTransferDoneMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_string(payload, message.pack_id);
+    return wrap_transport_message(kPackTransferDoneMessageType, payload);
+}
+
+std::optional<PackTransferDoneMessage> deserialize_pack_transfer_done_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<PackTransferDoneMessage>(
+        bytes, kPackTransferDoneMessageType,
+        [](PayloadReader& reader, PackTransferDoneMessage& message) {
+            message.pack_id = reader.read_string();
+            if (message.pack_id.empty() ||
+                message.pack_id.size() > kMaxPackIdLength)
+            {
+                reader.fail();
+            }
+        });
+}
+
 bool ITransport::supports_typed_messages() const noexcept
 {
     return false;
@@ -1122,6 +1333,52 @@ void ITransport::send_snapshot_hash_check(
     send(peer_id, bytes.data(), bytes.size());
 }
 
+void ITransport::send_pack_manifest(PeerId peer_id,
+                                    std::shared_ptr<PackManifestMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_pack_manifest_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_pack_request(PeerId peer_id,
+                                   std::shared_ptr<PackRequestMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_pack_request_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_pack_file_chunk(
+    PeerId peer_id,
+    std::shared_ptr<PackFileChunkMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_pack_file_chunk_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_pack_transfer_done(
+    PeerId peer_id,
+    std::shared_ptr<PackTransferDoneMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_pack_transfer_done_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
 {
     TransportEnvelope envelope;
@@ -1328,6 +1585,56 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
             typed_message.kind = TypedReceivedMessageKind::SnapshotHashCheck;
             typed_message.snapshot_hash_check =
                 std::make_shared<SnapshotHashCheckMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPackManifestMessageType:
+        {
+            const auto decoded = deserialize_pack_manifest_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PackManifest;
+            typed_message.pack_manifest =
+                std::make_shared<PackManifestMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPackRequestMessageType:
+        {
+            const auto decoded = deserialize_pack_request_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PackRequest;
+            typed_message.pack_request =
+                std::make_shared<PackRequestMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPackFileChunkMessageType:
+        {
+            const auto decoded =
+                deserialize_pack_file_chunk_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PackFileChunk;
+            typed_message.pack_file_chunk =
+                std::make_shared<PackFileChunkMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPackTransferDoneMessageType:
+        {
+            const auto decoded =
+                deserialize_pack_transfer_done_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PackTransferDone;
+            typed_message.pack_transfer_done =
+                std::make_shared<PackTransferDoneMessage>(std::move(*decoded));
             return typed_message;
         }
 

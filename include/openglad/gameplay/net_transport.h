@@ -39,6 +39,10 @@ enum class NetMessageType : std::uint8_t {
     PauseResponse = 16,
     ControlChange = 17,
     SnapshotHashCheck = 18,
+    PackManifest = 19,
+    PackRequest = 20,
+    PackFileChunk = 21,
+    PackTransferDone = 22,
 };
 
 constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexcept
@@ -97,7 +101,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // an owned middle seat to leave without retargeting its siblings by dense
 // ordinal.
 // Snapshot protocol follows the network version, so replay format moves to v11.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 9;
+// v10: automatic multiplayer class-pack transfer (docs/lua-classpacks-design.md
+// §8). Four new message types: PackManifest (19, host→client: pack_index/
+// pack_count session set, pack id + version, FNV-1a-hashed file table),
+// PackRequest (20, client→host: pack id), PackFileChunk (21, host→client:
+// ≤32 KiB sequential file bytes), PackTransferDone (22, host→client: end of a
+// pack's stream). Manifests are sent by the LobbyServer during the lobby
+// handshake, alongside the initial LobbyState. Existing payload layouts are
+// unchanged; replay format moves to v12 with the envelope byte.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 10;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -155,6 +167,14 @@ inline constexpr std::uint8_t kControlChangeMessageType =
     net_message_type_value(NetMessageType::ControlChange);
 inline constexpr std::uint8_t kSnapshotHashCheckMessageType =
     net_message_type_value(NetMessageType::SnapshotHashCheck);
+inline constexpr std::uint8_t kPackManifestMessageType =
+    net_message_type_value(NetMessageType::PackManifest);
+inline constexpr std::uint8_t kPackRequestMessageType =
+    net_message_type_value(NetMessageType::PackRequest);
+inline constexpr std::uint8_t kPackFileChunkMessageType =
+    net_message_type_value(NetMessageType::PackFileChunk);
+inline constexpr std::uint8_t kPackTransferDoneMessageType =
+    net_message_type_value(NetMessageType::PackTransferDone);
 
 // Hello payload wire format:
 // - byte 0: current protocol version
@@ -283,6 +303,84 @@ struct SnapshotHashCheckMessage {
     bool operator==(const SnapshotHashCheckMessage&) const = default;
 };
 
+// --- Class-pack transfer messages (protocol v10) ---------------------------
+// Class packs are directories under the virtual path packs/<pack_id>/. The
+// host offers its non-core mounted packs; a client that lacks a pack (or
+// whose local content differs) requests it and receives the files over the
+// reliable transport, before play. Path validation and the transfer state
+// machines live in <openglad/gameplay/pack_transfer.h>; the wire-level caps
+// below are enforced by the deserializers themselves.
+
+// Chunk payload cap. Keeps every PackFileChunk comfortably inside the u16
+// transport payload limit (32 KiB data + id/indices < 64 KiB).
+inline constexpr std::size_t kPackFileChunkMaxBytes = 32u * 1024u;
+// Manifest shape caps (wire-structural; the byte-volume caps kMaxPackBytes/
+// kMaxSessionPackBytes are semantic and live in pack_transfer.h).
+inline constexpr std::size_t kMaxPackManifestFiles = 512;
+inline constexpr std::size_t kMaxPackIdLength = 64;
+inline constexpr std::size_t kMaxPackVersionLength = 32;
+inline constexpr std::size_t kMaxPackRelativePathLength = 160;
+inline constexpr std::size_t kMaxPacksPerSession = 16;
+
+// One file of a pack manifest. `path` is relative to the pack root
+// (forward-slash separated, validated by is_safe_pack_relative_path);
+// `hash64` is FNV-1a over the file bytes (integrity/versioning only — see
+// <openglad/core/fnv1a.h>).
+struct PackManifestFileEntry {
+    std::string path;
+    std::uint32_t size_bytes = 0;
+    std::uint64_t hash64 = 0;
+
+    bool operator==(const PackManifestFileEntry&) const = default;
+};
+
+// Host → client. The session's pack set is announced as pack_count messages
+// with pack_index 0..pack_count-1; pack_count == 0 is the explicit "no packs
+// needed" announcement (empty id/version/files). A manifest with
+// pack_index == 0 starts a fresh announcement generation on the client.
+struct PackManifestMessage {
+    std::uint8_t pack_index = 0;
+    std::uint8_t pack_count = 0;
+    std::string pack_id;
+    std::string version;
+    std::vector<PackManifestFileEntry> files;
+
+    [[nodiscard]] std::uint64_t total_bytes() const noexcept
+    {
+        std::uint64_t total = 0;
+        for (const PackManifestFileEntry& file : files)
+            total += file.size_bytes;
+        return total;
+    }
+
+    bool operator==(const PackManifestMessage&) const = default;
+};
+
+// Client → host: send me this pack's files.
+struct PackRequestMessage {
+    std::string pack_id;
+
+    bool operator==(const PackRequestMessage&) const = default;
+};
+
+// Host → client: sequential slice of manifest file `file_index`, starting at
+// byte `offset`. Payload capped at kPackFileChunkMaxBytes (32 KiB).
+struct PackFileChunkMessage {
+    std::string pack_id;
+    std::uint32_t file_index = 0;
+    std::uint32_t offset = 0;
+    std::vector<std::uint8_t> data;
+
+    bool operator==(const PackFileChunkMessage&) const = default;
+};
+
+// Host → client: every chunk of the pack has been sent; verify and mount.
+struct PackTransferDoneMessage {
+    std::string pack_id;
+
+    bool operator==(const PackTransferDoneMessage&) const = default;
+};
+
 struct ReceivedMessage {
     PeerId peer_id = 0;
     std::vector<std::uint8_t> data;
@@ -307,6 +405,10 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     PauseResponse,
     ControlChange,
     SnapshotHashCheck,
+    PackManifest,
+    PackRequest,
+    PackFileChunk,
+    PackTransferDone,
     Malformed,
 };
 
@@ -329,6 +431,10 @@ struct TypedReceivedMessage {
     std::shared_ptr<PauseResponseMessage> pause_response;
     std::shared_ptr<ControlChangeMessage> control_change;
     std::shared_ptr<SnapshotHashCheckMessage> snapshot_hash_check;
+    std::shared_ptr<PackManifestMessage> pack_manifest;
+    std::shared_ptr<PackRequestMessage> pack_request;
+    std::shared_ptr<PackFileChunkMessage> pack_file_chunk;
+    std::shared_ptr<PackTransferDoneMessage> pack_transfer_done;
     std::uint32_t tick = 0;
 };
 
@@ -378,6 +484,22 @@ std::optional<ControlChangeMessage> deserialize_control_change_message(
 std::vector<std::uint8_t> serialize_snapshot_hash_check_message(
     const SnapshotHashCheckMessage& message);
 std::optional<SnapshotHashCheckMessage> deserialize_snapshot_hash_check_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pack_manifest_message(
+    const PackManifestMessage& message);
+std::optional<PackManifestMessage> deserialize_pack_manifest_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pack_request_message(
+    const PackRequestMessage& message);
+std::optional<PackRequestMessage> deserialize_pack_request_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pack_file_chunk_message(
+    const PackFileChunkMessage& message);
+std::optional<PackFileChunkMessage> deserialize_pack_file_chunk_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pack_transfer_done_message(
+    const PackTransferDoneMessage& message);
+std::optional<PackTransferDoneMessage> deserialize_pack_transfer_done_message(
     std::span<const std::uint8_t> bytes);
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message);
 
@@ -460,6 +582,19 @@ public:
     virtual void send_snapshot_hash_check(
         PeerId peer_id,
         std::shared_ptr<SnapshotHashCheckMessage> message);
+    // Pack-transfer sends (v10) intentionally have no typed fast path: they
+    // always serialize and go through send(), so every transport (including
+    // the in-process pair) exercises the real wire encoding.
+    virtual void send_pack_manifest(PeerId peer_id,
+                                    std::shared_ptr<PackManifestMessage> message);
+    virtual void send_pack_request(PeerId peer_id,
+                                   std::shared_ptr<PackRequestMessage> message);
+    virtual void send_pack_file_chunk(
+        PeerId peer_id,
+        std::shared_ptr<PackFileChunkMessage> message);
+    virtual void send_pack_transfer_done(
+        PeerId peer_id,
+        std::shared_ptr<PackTransferDoneMessage> message);
 
     [[nodiscard]] virtual std::vector<ReceivedMessage> poll() = 0;
     [[nodiscard]] virtual std::vector<TypedReceivedMessage> poll_typed();

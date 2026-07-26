@@ -21,4 +21,7 @@ bool physfs_unmount(const std::string& path);
 // Enumerate files in a directory. Returned list is sorted.
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname);
 
+// True when the virtual path exists and is a directory.
+bool physfs_is_directory(const std::string& path);
+
 } // namespace og::io
