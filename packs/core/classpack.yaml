@@ -3,6 +3,13 @@
 # do not hand-edit. Regenerate:
 #   cmake --build --preset ci-test --target pack_export
 #   ./build/ci-test/pack_export packs/core/classpack.yaml
+#
+# The core pack ships no `anims:` section: every core family uses a
+# built-in animation table (animation: standard|mage|skeleton|
+# giant_skeleton|slime|small_slime|static for livings, the gloader
+# EntityDef row for the other orders). A mod pack declares its own
+# frame sets under a top-level `anims:` mapping and names them from a
+# family's `animation:` key — see docs/lua-classpacks-design.md §4.
 pack: core
 version: 1
 title: "OpenGlad Core Families"
@@ -40,6 +47,13 @@ families:
       names: ["Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"]
       playable: true
       playable_order: 0
+      glyph: "S"
+      glyph_ascii: "S"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:elf
       wire_id: 1
       name: "ELF"
@@ -71,6 +85,13 @@ families:
       names: ["Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot", "Treewee"]
       playable: true
       playable_order: 2
+      glyph: "e"
+      glyph_ascii: "e"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:archer
       wire_id: 2
       name: "ARCHER"
@@ -102,6 +123,13 @@ families:
       names: ["Robin", "Green Arrow", "Legolas", "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"]
       playable: true
       playable_order: 3
+      glyph: "a"
+      glyph_ascii: "a"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:mage
       wire_id: 3
       name: "MAGE"
@@ -133,6 +161,13 @@ families:
       names: ["Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry", "Manannan", "Mordack", "Jace"]
       playable: true
       playable_order: 4
+      glyph: "m"
+      glyph_ascii: "m"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:skeleton
       wire_id: 4
       name: "SKELETON"
@@ -164,6 +199,13 @@ families:
       names: ["Drybones", "Blackbeard", "Boney", "Femur", "Patella", "Humerus", "Scapula"]
       playable: true
       playable_order: 10
+      glyph: "k"
+      glyph_ascii: "k"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:cleric
       wire_id: 5
       name: "CLERIC"
@@ -195,6 +237,13 @@ families:
       names: ["Tuck", "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"]
       playable: true
       playable_order: 5
+      glyph: "c"
+      glyph_ascii: "c"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:elemental
       wire_id: 6
       name: "ELEMENTAL"
@@ -226,6 +275,13 @@ families:
       names: ["Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"]
       playable: true
       playable_order: 11
+      glyph: "E"
+      glyph_ascii: "E"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:faerie
       wire_id: 7
       name: "FAERIE"
@@ -257,6 +313,13 @@ families:
       names: ["Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"]
       playable: true
       playable_order: 13
+      glyph: "f"
+      glyph_ascii: "f"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#8
       wire_id: 8
       name: "SLIME"
@@ -288,6 +351,13 @@ families:
       names: ["Grimer", "Goop", "Slurp", "Glopp", "Sludge", "Blob"]
       playable: false
       playable_order: 999
+      glyph: "J"
+      glyph_ascii: "J"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#9
       wire_id: 9
       name: "SLIME"
@@ -319,6 +389,13 @@ families:
       names: ["Grimer", "Goop", "Slurp", "Glopp", "Sludge", "Blob"]
       playable: true
       playable_order: 12
+      glyph: "i"
+      glyph_ascii: "i"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#10
       wire_id: 10
       name: "SLIME"
@@ -350,6 +427,13 @@ families:
       names: ["Grimer", "Goop", "Slurp", "Glopp", "Sludge", "Blob"]
       playable: false
       playable_order: 999
+      glyph: "j"
+      glyph_ascii: "j"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:thief
       wire_id: 11
       name: "THIEF"
@@ -381,6 +465,13 @@ families:
       names: ["Shinobi", "Dismas", "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"]
       playable: true
       playable_order: 7
+      glyph: "t"
+      glyph_ascii: "t"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:ghost
       wire_id: 12
       name: "GHOST"
@@ -412,6 +503,13 @@ families:
       names: ["Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"]
       playable: true
       playable_order: 14
+      glyph: "g"
+      glyph_ascii: "g"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:druid
       wire_id: 13
       name: "DRUID"
@@ -443,6 +541,13 @@ families:
       names: ["Roland", "Merlin", "Hippy", "Green Thumb", "Treefall", "Rain"]
       playable: true
       playable_order: 8
+      glyph: "d"
+      glyph_ascii: "d"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:orc
       wire_id: 14
       name: "ORC"
@@ -474,6 +579,13 @@ families:
       names: ["Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog", "Krosh"]
       playable: true
       playable_order: 9
+      glyph: "o"
+      glyph_ascii: "o"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:orc_captain
       wire_id: 15
       name: "ORC CAPTAIN"
@@ -505,6 +617,13 @@ families:
       names: ["Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog", "Krosh"]
       playable: false
       playable_order: 999
+      glyph: "O"
+      glyph_ascii: "O"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:barbarian
       wire_id: 16
       name: "BARBARIAN"
@@ -536,6 +655,13 @@ families:
       names: ["Thor", "Conan", "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", "Titan"]
       playable: true
       playable_order: 1
+      glyph: "B"
+      glyph_ascii: "B"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:archmage
       wire_id: 17
       name: "ARCHMAGE"
@@ -567,6 +693,13 @@ families:
       names: ["Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry", "Manannan", "Mordack", "Jace"]
       playable: false
       playable_order: 999
+      glyph: "M"
+      glyph_ascii: "M"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#18
       wire_id: 18
       name: "BEAST"
@@ -598,6 +731,13 @@ families:
       names: []
       playable: false
       playable_order: 999
+      glyph: "G"
+      glyph_ascii: "G"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#19
       wire_id: 19
       name: "BEAST"
@@ -629,6 +769,13 @@ families:
       names: []
       playable: false
       playable_order: 999
+      glyph: "K"
+      glyph_ascii: "K"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:#20
       wire_id: 20
       name: "BEAST"
@@ -660,6 +807,13 @@ families:
       names: []
       playable: false
       playable_order: 999
+      glyph: "Y"
+      glyph_ascii: "Y"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
   weapon:
     - id: core:knife
       wire_id: 0
@@ -674,6 +828,15 @@ families:
       gravity: 0.05
       sizez: 0
       can_drop_floors: true
+      sprite: ~
+      animation: ~
+      glyph: "'"
+      glyph_ascii: "'"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:rock
       wire_id: 1
       name: "ROCK"
@@ -687,6 +850,15 @@ families:
       gravity: 0.09
       sizez: 0
       can_drop_floors: true
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:arrow
       wire_id: 2
       name: "ARROW"
@@ -700,6 +872,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "'"
+      glyph_ascii: "'"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:fireball
       wire_id: 3
       name: "FIREBALL"
@@ -713,6 +894,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:tree
       wire_id: 4
       name: "TREE"
@@ -726,6 +916,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "♣"
+      glyph_ascii: "&"
+      glyph_color: green
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:meteor
       wire_id: 5
       name: "METEOR"
@@ -739,6 +938,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:sprinkle
       wire_id: 6
       name: "SPRINKLE"
@@ -752,6 +960,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "·"
+      glyph_ascii: "+"
+      glyph_color: magenta
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:bone
       wire_id: 7
       name: "BONE"
@@ -765,6 +982,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "'"
+      glyph_ascii: "/"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:blood
       wire_id: 8
       name: "BLOOD"
@@ -778,6 +1004,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "·"
+      glyph_ascii: ","
+      glyph_color: red
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:blob
       wire_id: 9
       name: "BLOB"
@@ -791,6 +1026,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "o"
+      glyph_ascii: "o"
+      glyph_color: green
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:fire_arrow
       wire_id: 10
       name: "FIRE_ARROW"
@@ -804,6 +1048,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "'"
+      glyph_ascii: "'"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:lightning
       wire_id: 11
       name: "LIGHTNING"
@@ -817,6 +1070,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "↯"
+      glyph_ascii: "/"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:glow
       wire_id: 12
       name: "GLOW"
@@ -830,6 +1092,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "∘"
+      glyph_ascii: "o"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:wave
       wire_id: 13
       name: "WAVE"
@@ -843,6 +1114,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "≈"
+      glyph_ascii: "~"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:wave2
       wire_id: 14
       name: "WAVE2"
@@ -856,6 +1136,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "≈"
+      glyph_ascii: "~"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:wave3
       wire_id: 15
       name: "WAVE3"
@@ -869,6 +1158,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "≈"
+      glyph_ascii: "~"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:circle_protection
       wire_id: 16
       name: "CIRCLE_PROTECTION"
@@ -882,6 +1180,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "○"
+      glyph_ascii: "O"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:hammer
       wire_id: 17
       name: "HAMMER"
@@ -895,6 +1202,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:door
       wire_id: 18
       name: "DOOR"
@@ -908,6 +1224,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "+"
+      glyph_ascii: "+"
+      glyph_color: yellow
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:boulder
       wire_id: 19
       name: "BOULDER"
@@ -921,6 +1246,15 @@ families:
       gravity: 0
       sizez: 0
       can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
   effect:
     - id: core:expand
       wire_id: 0
@@ -928,154 +1262,406 @@ families:
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:ghost_scare
       wire_id: 1
       name: "GHOST_SCARE"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:bomb
       wire_id: 2
       name: "BOMB"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "◍"
+      glyph_ascii: "o"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:explosion
       wire_id: 3
       name: "EXPLOSION"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "✺"
+      glyph_ascii: "*"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:flash
       wire_id: 4
       name: "FLASH"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:magic_shield
       wire_id: 5
       name: "MAGIC_SHIELD"
       loops_animation: true
       creates_hit_effect: false
       init_bit_flags: [PHANTOM]
+      sprite: ~
+      animation: ~
+      glyph: "○"
+      glyph_ascii: "O"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:knife_back
       wire_id: 6
       name: "KNIFE_BACK"
       loops_animation: true
       creates_hit_effect: true
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "'"
+      glyph_ascii: "'"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:boomerang
       wire_id: 7
       name: "BOOMERANG"
       loops_animation: true
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "%"
+      glyph_ascii: "%"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:cloud
       wire_id: 8
       name: "CLOUD"
       loops_animation: true
       creates_hit_effect: false
       init_bit_flags: [FLYING, NO_COLLIDE]
+      sprite: ~
+      animation: ~
+      glyph: "☁"
+      glyph_ascii: "%"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:marker
       wire_id: 9
       name: "MARKER"
       loops_animation: true
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "+"
+      glyph_ascii: "+"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:chain
       wire_id: 10
       name: "CHAIN"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "╪"
+      glyph_ascii: "#"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:door_open
       wire_id: 11
       name: "DOOR_OPEN"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "/"
+      glyph_ascii: "/"
+      glyph_color: yellow
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:hit
       wire_id: 12
       name: "HIT"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "∗"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
   treasure:
     - id: core:stain
       wire_id: 0
       name: "STAIN"
       init_ignore: true
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: " "
+      glyph_ascii: " "
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: true
+      radar_color: none
+      radar_jitter: 0
     - id: core:drumstick
       wire_id: 1
       name: "DRUMSTICK"
       init_ignore: false
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: "%"
+      glyph_ascii: "%"
+      glyph_color: yellow
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: 136
+      radar_jitter: 2
     - id: core:gold_bar
       wire_id: 2
       name: "GOLD_BAR"
       init_ignore: false
       init_frame: 0
+      sprite: ~
+      animation: ~
+      glyph: "$"
+      glyph_ascii: "$"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 88
+      radar_jitter: 5
     - id: core:silver_bar
       wire_id: 3
       name: "SILVER_BAR"
       init_ignore: false
       init_frame: 1
+      sprite: ~
+      animation: ~
+      glyph: "$"
+      glyph_ascii: "$"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: 23
+      radar_jitter: 5
     - id: core:magic_potion
       wire_id: 4
       name: "MAGIC_POTION"
       init_ignore: false
       init_frame: 0
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 72
+      radar_jitter: 5
     - id: core:invis_potion
       wire_id: 5
       name: "INVIS_POTION"
       init_ignore: false
       init_frame: 1
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 72
+      radar_jitter: 5
     - id: core:invulnerable_potion
       wire_id: 6
       name: "INVULNERABLE_POTION"
       init_ignore: false
       init_frame: 2
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 72
+      radar_jitter: 5
     - id: core:flight_potion
       wire_id: 7
       name: "FLIGHT_POTION"
       init_ignore: false
       init_frame: 11
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 72
+      radar_jitter: 5
     - id: core:exit
       wire_id: 8
       name: "EXIT"
       init_ignore: false
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: ">"
+      glyph_ascii: ">"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 120
+      radar_jitter: 7
     - id: core:teleporter
       wire_id: 9
       name: "TELEPORTER"
       init_ignore: false
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: "<"
+      glyph_ascii: "<"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 120
+      radar_jitter: 7
     - id: core:life_gem
       wire_id: 10
       name: "LIFE_GEM"
       init_ignore: false
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: "+"
+      glyph_ascii: "+"
+      glyph_color: red
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:key
       wire_id: 11
       name: "KEY"
       init_ignore: false
       init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: "["
+      glyph_ascii: "["
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:speed_potion
       wire_id: 12
       name: "SPEED_POTION"
       init_ignore: false
       init_frame: 3
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:flag
       wire_id: 13
       name: "FLAG"
       init_ignore: false
       init_frame: 0
+      sprite: ~
+      animation: ~
+      glyph: "F"
+      glyph_ascii: "F"
+      glyph_color: team
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: team
+      radar_jitter: 7
     - id: core:waypoint
       wire_id: 14
       name: "WAYPOINT"
       init_ignore: false
       init_frame: 0
+      sprite: ~
+      animation: ~
+      glyph: "O"
+      glyph_ascii: "O"
+      glyph_color: team
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: team
+      radar_jitter: 7
   generator:
     - id: core:tent
       wire_id: 0
@@ -1084,6 +1670,16 @@ families:
       has_lifetime: true
       spawn_ani_type: 0
       clear_owner: false
+      sprite: ~
+      animation: ~
+      editor_label: "TENT"
+      glyph: "^"
+      glyph_ascii: "^"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:tower
       wire_id: 1
       name: "TOWER"
@@ -1091,6 +1687,16 @@ families:
       has_lifetime: false
       spawn_ani_type: 3
       clear_owner: true
+      sprite: ~
+      animation: ~
+      editor_label: "MAGE TOWER"
+      glyph: "T"
+      glyph_ascii: "T"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:bones
       wire_id: 2
       name: "BONES"
@@ -1098,6 +1704,16 @@ families:
       has_lifetime: true
       spawn_ani_type: 0
       clear_owner: false
+      sprite: ~
+      animation: ~
+      editor_label: "BONEPILE"
+      glyph: "n"
+      glyph_ascii: "n"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
     - id: core:treehouse
       wire_id: 3
       name: "TREEHOUSE"
@@ -1105,3 +1721,13 @@ families:
       has_lifetime: false
       spawn_ani_type: 0
       clear_owner: true
+      sprite: ~
+      animation: ~
+      editor_label: "TREEHOUSE"
+      glyph: "A"
+      glyph_ascii: "A"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

@@ -8,6 +8,7 @@
 
 #include <openglad/resources/classpack_yaml.h>
 
+#include <openglad/core/family_presentation.h>
 #include <openglad/core/util.h>
 
 #include <yaml.h>
@@ -224,6 +225,49 @@ void set_nullable(const Scalar& v, NullableString& out)
         out.value = v.text;
 }
 
+// `radar_color:` accepts the two sentinel spellings on top of a palette
+// index, so a pack can say "no blip" / "the entity's team colour" without
+// knowing the sentinel numbers.
+bool set_radar_color(Cursor& c, const std::string& key, const Scalar& v,
+                     std::optional<std::int32_t>& out)
+{
+    if (v.null)
+        return true;
+    if (v.text == og::kRadarColorNoneName) {
+        out = og::kRadarColorNone;
+        return true;
+    }
+    if (v.text == og::kRadarColorTeamName) {
+        out = og::kRadarColorTeam;
+        return true;
+    }
+    return set_int(c, key, v, out);
+}
+
+// The presentation sub-keys every order shares. A key that is not one of
+// them falls through untouched (unknown keys are skipped for forward
+// compatibility); the return value is the usual "false = malformed value,
+// abort the pack".
+bool set_presentation_field(Cursor& c, const std::string& key,
+                            const Scalar& v, ClasspackPresentation& p)
+{
+    if (key == "glyph")
+        set_string(v, p.glyph);
+    else if (key == "glyph_ascii")
+        set_string(v, p.glyph_ascii);
+    else if (key == "glyph_color")
+        set_string(v, p.glyph_color);
+    else if (key == "glyph_bold")
+        return set_bool(c, key, v, p.glyph_bold);
+    else if (key == "glyph_transparent")
+        return set_bool(c, key, v, p.glyph_transparent);
+    else if (key == "radar_color")
+        return set_radar_color(c, key, v, p.radar_color);
+    else if (key == "radar_jitter")
+        return set_int(c, key, v, p.radar_jitter);
+    return true;
+}
+
 // --- typed list setters ------------------------------------------------
 
 bool set_int_list(Cursor& c, const std::string& key,
@@ -395,7 +439,11 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
                 return set_bool(c, key, v, e.playable);
             else if (key == "playable_order")
                 return set_int(c, key, v, e.playable_order);
-            // Unknown scalar keys are skipped (forward compatibility).
+            else {
+                // Presentation block; unknown keys are skipped (forward
+                // compatibility).
+                return set_presentation_field(c, key, v, e.presentation);
+            }
             return true;
         },
         [&](const std::string& key, const std::vector<Scalar>& items) {
@@ -450,6 +498,13 @@ bool parse_weapon_entry(Cursor& c, ClasspackWeaponEntry& e)
                 return set_int(c, key, v, e.sizez);
             else if (key == "can_drop_floors")
                 return set_bool(c, key, v, e.can_drop_floors);
+            else if (key == "sprite")
+                set_nullable(v, e.sprite);
+            else if (key == "animation")
+                set_string(v, e.animation);
+            else {
+                return set_presentation_field(c, key, v, e.presentation);
+            }
             return true;
         },
         [&](const std::string& key, const std::vector<Scalar>& items) {
@@ -476,6 +531,13 @@ bool parse_effect_entry(Cursor& c, ClasspackEffectEntry& e)
                 return set_bool(c, key, v, e.loops_animation);
             else if (key == "creates_hit_effect")
                 return set_bool(c, key, v, e.creates_hit_effect);
+            else if (key == "sprite")
+                set_nullable(v, e.sprite);
+            else if (key == "animation")
+                set_string(v, e.animation);
+            else {
+                return set_presentation_field(c, key, v, e.presentation);
+            }
             return true;
         },
         [&](const std::string& key, const std::vector<Scalar>& items) {
@@ -502,6 +564,13 @@ bool parse_treasure_entry(Cursor& c, ClasspackTreasureEntry& e)
                 return set_bool(c, key, v, e.init_ignore);
             else if (key == "init_frame")
                 return set_int(c, key, v, e.init_frame);
+            else if (key == "sprite")
+                set_nullable(v, e.sprite);
+            else if (key == "animation")
+                set_string(v, e.animation);
+            else {
+                return set_presentation_field(c, key, v, e.presentation);
+            }
             return true;
         },
         [&](const std::string&, const std::vector<Scalar>&) { return true; });
@@ -528,9 +597,156 @@ bool parse_generator_entry(Cursor& c, ClasspackGeneratorEntry& e)
                 return set_int(c, key, v, e.spawn_ani_type);
             else if (key == "clear_owner")
                 return set_bool(c, key, v, e.clear_owner);
+            else if (key == "sprite")
+                set_nullable(v, e.sprite);
+            else if (key == "animation")
+                set_string(v, e.animation);
+            else if (key == "editor_label")
+                set_string(v, e.editor_label);
+            else {
+                return set_presentation_field(c, key, v, e.presentation);
+            }
             return true;
         },
         [&](const std::string&, const std::vector<Scalar>&) { return true; });
+}
+
+// --- anims: named frame sets -------------------------------------------
+
+// One row of a set: a nested sequence of frame indices, or a plain `~` for
+// a null row (the legacy anislime table has eight of those).
+bool parse_anim_rows(Cursor& c, const std::string& set_name,
+                     std::vector<ClasspackAnimRow>& out)
+{
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type == YAML_SCALAR_EVENT) {
+            const Scalar s = scalar_of(ev);
+            yaml_event_delete(&ev);
+            if (!s.null) {
+                c.error("anims." + set_name +
+                        ": a frame row must be a list or ~");
+                return false;
+            }
+            ClasspackAnimRow row;
+            row.is_null = true;
+            out.push_back(std::move(row));
+            continue;
+        }
+        if (ev.type != YAML_SEQUENCE_START_EVENT) {
+            yaml_event_delete(&ev);
+            c.error("anims." + set_name + ": a frame row must be a list or ~");
+            return false;
+        }
+        yaml_event_delete(&ev);
+        std::vector<Scalar> items;
+        if (!collect_scalars(c, items))
+            return false;
+        ClasspackAnimRow row;
+        row.frames.reserve(items.size());
+        for (const Scalar& item : items) {
+            const auto parsed = parse_int_strict(item.text);
+            if (item.null || !parsed) {
+                c.error("anims." + set_name + ": bad frame index '" +
+                        item.text + "'");
+                return false;
+            }
+            row.frames.push_back(*parsed);
+        }
+        out.push_back(std::move(row));
+    }
+}
+
+// The body of one named set (MAPPING_START already consumed).
+bool parse_anim_set(Cursor& c, ClasspackAnimSet& set)
+{
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type != YAML_SCALAR_EVENT) {
+            yaml_event_delete(&ev);
+            c.error("anims." + set.name + ": expected a field key");
+            return false;
+        }
+        const std::string key = scalar_of(ev).text;
+        yaml_event_delete(&ev);
+
+        yaml_event_t vev;
+        if (!c.next(vev))
+            return false;
+        if (vev.type == YAML_SCALAR_EVENT) {
+            const Scalar value = scalar_of(vev);
+            yaml_event_delete(&vev);
+            if (key == "rows" &&
+                !set_int(c, "anims." + set.name + ".rows", value, set.rows))
+                return false;
+            continue;
+        }
+        if (vev.type == YAML_SEQUENCE_START_EVENT) {
+            yaml_event_delete(&vev);
+            if (key == "frames") {
+                if (!parse_anim_rows(c, set.name, set.frames))
+                    return false;
+            } else if (!skip_node(c, YAML_SEQUENCE_START_EVENT))
+                return false;
+            continue;
+        }
+        const yaml_event_type_t type = vev.type;
+        yaml_event_delete(&vev);
+        if (!skip_node(c, type))
+            return false;
+    }
+}
+
+// `anims:` — a mapping of set name → { rows, frames } (MAPPING_START
+// already consumed).
+bool parse_anims(Cursor& c, ClasspackData& out)
+{
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type != YAML_SCALAR_EVENT) {
+            yaml_event_delete(&ev);
+            c.error("anims keys must be set names");
+            return false;
+        }
+        ClasspackAnimSet set;
+        set.name = scalar_of(ev).text;
+        yaml_event_delete(&ev);
+        if (set.name.empty()) {
+            c.error("anims: a set without a name");
+            return false;
+        }
+
+        yaml_event_t vev;
+        if (!c.next(vev))
+            return false;
+        if (vev.type != YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&vev);
+            c.error("anims." + set.name + " must be a mapping");
+            return false;
+        }
+        yaml_event_delete(&vev);
+        if (!parse_anim_set(c, set))
+            return false;
+        out.anims.push_back(std::move(set));
+    }
 }
 
 // Parses one families.<order> sequence of entry mappings.
@@ -653,6 +869,20 @@ bool parse_root(Cursor& c, ClasspackData& out)
             }
             yaml_event_delete(&vev);
             if (!parse_families(c, out))
+                return false;
+        } else if (key == "anims") {
+            if (vev.type == YAML_SCALAR_EVENT) {
+                // `anims: ~` — an empty section.
+                yaml_event_delete(&vev);
+                continue;
+            }
+            if (vev.type != YAML_MAPPING_START_EVENT) {
+                yaml_event_delete(&vev);
+                c.error("anims must be a mapping of set names");
+                return false;
+            }
+            yaml_event_delete(&vev);
+            if (!parse_anims(c, out))
                 return false;
         } else if (vev.type == YAML_SCALAR_EVENT) {
             const Scalar value = scalar_of(vev);

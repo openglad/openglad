@@ -1,17 +1,26 @@
 # Lua Class Packs: Hotpluggable Families, Scripted Objects, and Level Scripting
 
-Status: implementation in progress on `feature/lua-classpacks`.
+Status: implementation in progress on `feature/lua-classpacks`. All 21 living
+families plus the weapon/effect/treasure behaviors run as Lua in the core
+pack; the C++ callbacks are still present as a fallback (see §9a).
 
-This document is the reference for the class-pack system: architecture,
-determinism rules, pack format, and dispatch design. Anyone converting a
-family to Lua or writing a mod MUST follow the Determinism Cookbook below;
-`og_test_parity` is the enforcement gate.
+This document is the **architecture and determinism** reference: how packs
+are built, loaded, identified and dispatched, and the rules any sim-facing
+Lua must obey. `og_test_parity` is the enforcement gate.
+
+Companion documents, each in its own lane:
+
+| Document | Lane |
+|---|---|
+| [docs/modding/api-reference.md](modding/api-reference.md) | Symbol-level reference: every `og.*` function, walker/stats/guy method, constant and hook signature, plus a guided tour of the runnable example pack in `docs/modding/examples/emberwisp/`. |
+| [.claude/skills/openglad-modding/SKILL.md](../.claude/skills/openglad-modding/SKILL.md) | The practical playbook: build, stage, test, and *prove* a mod dispatches. |
+| [AGENTS.md](../AGENTS.md) | Router for non-Claude agents. |
 
 ## 1. Goals
 
 - Character families (living/weapon/effect/treasure/generator) defined by
-  **packs**: zip archives carrying YAML descriptors, Lua behavior scripts,
-  sprite PNGs, and animation tables. No native code in packs, ever.
+  **packs**: directories or zips carrying YAML descriptors, Lua behavior
+  scripts, sprite PNGs, and animation tables. No native code in packs, ever.
 - The 21 built-in living families plus weapon/effect/treasure behaviors ship
   as the **core pack**, built from `packs/core/` at build time and mounted
   like builtin campaigns. The engine carries no compiled-in family behavior.
@@ -22,9 +31,10 @@ family to Lua or writing a mod MUST follow the Determinism Cookbook below;
 - Deterministic across gcc/x86_64 and Emscripten/wasm: byte-identical sim,
   parity goldens unchanged for core families.
 
-Non-goals: editor UI for authoring scripts (sidecar YAML + docs + agent
-skills cover authoring); mod security beyond sandbox+budgets (packs are
-data, but Lua runs untrusted — sandbox handles it).
+Non-goals: an editor UI for authoring scripts (hand-written YAML + Lua, with
+the docs and agent skills covering authoring); mod security beyond
+sandbox+budgets (packs are data, but Lua runs untrusted — the sandbox
+handles it).
 
 ## 2. Architecture
 
@@ -43,15 +53,21 @@ resources/packs/               classpack.yaml reader, pack mount/enumerate,
   lib like GTest); resources parses YAML/zip (libyaml/libzip stay behind
   resources IO); `check_vendor_leaks.sh` gains `lua.h|lauxlib.h|lualib.h|lua.hpp`
   patterns, allowed only under `src/gameplay/script/`.
-- **VM ownership**: each `GameWorld` owns a `ScriptHost` (server world and
-  local mirror get separate VMs — same isolation rule as obmap). Hook
-  trampolines resolve the VM via `current_game->world`, the existing context
-  mechanism. A separate ambient **UI host** serves picker-side hooks
-  (`level_up`, `promotion_new_level`) that run outside any world.
-- VM lifecycle: created at world init; executes all mounted packs' scripts
-  (deterministic order: pack id lexicographic, then script path
-  lexicographic); destroyed with the world. Script errors during load =
-  pack rejected (deterministic).
+- **VM ownership**: each `GameWorld` lazily owns a `WorldScripts` (a
+  `ScriptHost` plus the registered-hook bitmasks). Server world and local
+  mirror get separate VMs — the same isolation rule as the obmap. Dispatch
+  resolves the VM via `current_game->world`, the existing context mechanism.
+  A separate ambient **UI instance** serves picker-side hooks (`level_up`)
+  that run outside any world; it rebuilds itself when the pack set changes.
+- VM lifecycle: created on first use; replays every mounted pack's scripts in
+  a deterministic order (pack id lexicographic, then file name lexicographic);
+  destroyed with the world. A chunk that fails to compile or errors at load
+  is recorded and skipped — deterministically, on every peer.
+- Presentation types the descriptors carry (`og::FamilyGlyph`,
+  `og::RadarBlip`, `og::GlyphColor`) are declared in **core**, not in
+  `interface`: descriptors live in `gameplay`, and gameplay may only name
+  types from core or gameplay. `check_vendor_leaks.sh` enforces the whole
+  matrix, including keeping `lua.h` and friends under `src/gameplay/script/`.
 
 ## 3. Determinism Cookbook (MANDATORY for all pack Lua)
 
@@ -95,29 +111,62 @@ produced (oblist order). `tostring` is an address-free variant (no
 `table: 0x...` text) so pointer bits can never influence script behavior.
 
 **R6 — No hidden state.** Hook functions may use locals and read/write
-walker fields and declared per-entity state slots (`og.get_slot(self, i)` /
-`og.set_slot(self, i, int32)`; slots are declared in classpack.yaml,
-serialized in snapshots/saves). Upvalues/globals holding mutable sim state
-are forbidden — they would escape snapshots. Constants are fine.
+walker/stats/guy fields. Upvalues and globals holding mutable sim state are
+forbidden — they would escape snapshots and desync a peer that joins
+mid-level. Constants (resolved family bytes, geometry, lookup tables) are the
+one legitimate upvalue.
+
+There is no per-entity script storage today: derive state from the world on
+every dispatch instead. The world is the only durable place, and everything
+in it is already snapshotted. Practical substitutes, all used in shipped
+scripts:
+
+- **Re-derive a census** each dispatch (`og.oblist()` filtered by order /
+  family / team / `dead()`), rather than remembering a count.
+- **Anchor cadence to the absolute tick** (`og.mod(tick, 300) == 0`), not to
+  a remembered "ticks since X" origin.
+- **Derive a stable subset from the entity id** — ids are assigned
+  identically on every peer, so `og.mod(og.entity_id(spawn), 3) == 0` is a
+  deterministic "every third spawn" with no counter.
+- **Stamp the world itself** when you truly need a mark: a stats bit flag, a
+  name, a lifetime. `s_name() == "Adjutant"` is snapshot-safe; a Lua table
+  keyed by entity id is not.
+
+`state_slots:` survives in some drafts as a *forward-compatibility* key — the
+YAML reader skips it like any other unknown key, and no binding reads it. Do
+not design around it yet.
 
 **R7 — Sandbox floor.** Not available: `io`, `os`, `package`/`require`,
 `load`/`loadstring`/`dofile`/`loadfile`, `collectgarbage`, coroutines,
 `debug`, `utf8`, `pairs`/`next` (R5), `string.dump`, `math.random`, float
-transcendentals (`sin`, `exp`, `log`, `sqrt`, `^` produces floats — avoid).
+transcendentals (`sin`, `exp`, `log`, `sqrt`; `^` produces floats — avoid).
 Available: `string` (incl. `format`; never format floats or tables into
-sim-visible strings), `table`, integer `math` subset (`floor`, `ceil`,
-`abs`, `min`, `max`, `tointeger`, `type`, `maxinteger`, `mininteger`,
-`huge`, `pi`, `ult`), `ipairs`, `select`, address-free `tostring`,
-`tonumber`, `pcall`/`xpcall`, `print` (= `og.log`).
+sim-visible strings), all of `table`, an integer `math` subset (`floor`,
+`ceil`, `abs`, `min`, `max`, `tointeger`, `type`, `maxinteger`,
+`mininteger`, `huge`, `pi`, `ult`), `assert`, `error`, `ipairs`, `select`,
+`type`, `tonumber`, address-free `tostring`, `pcall`/`xpcall`, the four
+`raw*` functions, `setmetatable`/`getmetatable`, `_VERSION`, `_G` (the
+sandbox root), and `print` (= `og.log`). The exact list is `kAllowedBase` /
+`kAllowedMath` in `src/gameplay/script/script_host.cpp`.
 
-**R8 — Budgets.** Per hook invocation: instruction budget (default 5M,
-`LUA_MASKCOUNT` hook) and per-VM memory cap (default 32 MiB, counting
-allocator). Blowing a budget raises a deterministic script error.
+**R8 — Budgets.** Per host entry: instruction budget (default 5M, via a
+`LUA_MASKCOUNT` hook armed on the OUTERMOST call only, so a nested dispatch
+such as `g_upgrade_to_level` re-entering `level_up` does not re-arm it) and
+a per-VM memory cap (default 32 MiB, counting allocator). Blowing a budget
+raises a deterministic script error — a runaway loop is an error on every
+peer, not a hang.
 
-**R9 — Hook errors are deterministic fallbacks.** A hook that errors traces
-(`TRACE("script", ...)`) and behaves as if the hook were absent (descriptor
-default path). Under TESTING builds the error is additionally latched for
-test assertion. Same behavior on every peer, so no divergence.
+**R9 — Hook errors are deterministic non-events.** A hook that errors is
+treated as *absent for that dispatch*: same decision on every peer, so no
+divergence. The error is always traced (`script_error`) and recorded on the
+host (bounded and de-duplicated — see §6).
+
+The consequence that bites: while the C++ callbacks are still present (§9a),
+"absent" means the C++ callback runs next. **A hook must therefore fail
+before it mutates sim state, or not at all** — a partial script run followed
+by the full C++ callback double-executes side effects. Put the failure at
+branch entry. Once the callbacks are deleted, "absent" degrades to *nothing
+happening* instead, which is why script errors must stay loud.
 
 **R10 — String hash seed is fixed** (`luai_makeseed` override) so any
 incidental hash-order exposure is at least identical across builds; R5 still
@@ -126,109 +175,216 @@ applies.
 ## 4. Pack format
 
 ```
-mypack.gladpack (zip; PhysFS-mounted at packs/<pack_id>/)
-├── classpack.yaml
-├── sprites/<name>.png            # indexed-color, LodePNG path
-├── anims/<set>.yaml              # optional custom animation tables
+packs/<pack_id>/                  # a directory, or a zip mounted at this path
+├── classpack.yaml                # descriptor data + animation sets
+├── sprites/<name>.png            # optional pack-shipped art (indexed PNG)
 └── scripts/<file>.lua            # behavior hooks
 ```
 
-`classpack.yaml` (labels follow campaign.yaml conventions):
+Three places a pack can live, all mounted into the same virtual `packs/`
+tree and all read the same way:
+
+| Location | Purpose |
+|---|---|
+| repo `packs/` → staged to the build tree, preloaded on wasm | ships with the game (this is where `packs/core` lives) |
+| `<user_path>/packs/` | user-installed packs |
+| `packs/` inside a campaign zip | mounts and unmounts **with that campaign** |
+
+Loading is a whole-tree rescan (`refresh_pack_scripts`) triggered by
+`io_init`, campaign mount/unmount, and multiplayer pack transfer. It clears
+the registered script set, re-enumerates, and reinstalls descriptor data, so
+an unmounted pack never leaves a family behind. Enumeration is sorted at both
+levels — pack id, then file name — which is what makes script order, auto
+wire-id assignment, and last-registration-wins reproducible on every peer.
+
+Every `*.lua` under a pack's `scripts/` is loaded; there is no per-family
+`script:` key. All of a pack's scripts share one environment.
+
+### `classpack.yaml`
+
+Top level: `pack`, `version`, `title`, `authors`, `families`, `anims`. Under
+`families`, one sequence per order: `living`, `weapon`, `effect` (alias
+`fx`), `treasure`, `generator`.
+
+**Every key except `id` is optional, and an undeclared key changes nothing.**
+The installer copies the registry slot's *current* descriptor, patches only
+the fields the YAML declares, and stores it back — so a pack can restate one
+number about a core family without touching anything else, and a fresh mod
+slot starts from the order's defaults. Unknown keys and unknown nested
+mappings are skipped for forward compatibility; a *malformed value* for a
+known key (a bad integer, a bad boolean) fails the whole pack instead.
+
+Fields, by order (names match the descriptor struct members):
 
 ```yaml
-pack: org.example.mypack
-version: 3
-title: My Pack
-authors: ...
 families:
   living:
-    - id: mypack:warlock          # string id, namespaced by convention
-      wire_id: auto               # core pack pins 0..20; mods use auto
-      name: WARLOCK
-      base_stats: [12, 6, 12, 8, 9, 1]
-      # ... every static FamilyDescriptor field, same names as the struct
-      sprite: sprites/warlock.png
-      animation: mage             # named set: standard|mage|skeleton|... or anims/<set>
-      state_slots: 2              # per-entity int32 slots, snapshot-serialized
-      script: scripts/warlock.lua # registers hooks for this id
-  weapon:  [...]                  # WeaponFamilyDescriptor fields + hooks
-  effect:  [...]
-  treasure: [...]
-  generator: [...]
-```
-
-Concrete field inventory (v1), mirroring the descriptor structs and the
-gloader EntityDef table exactly:
-
-```yaml
-families:
-  living:
-    - id: core:soldier
-      wire_id: 0                     # core pins legacy bytes; mods: auto
-      name: SOLDIER
-      short_name: ~                  # optional picker label
-      base_stats: [12, 6, 12, 8, 9, 1]        # STR DEX CON INT ARMOR LVL
-      hiring_cost: 250
+    - id: core:soldier               # required; the namespace is decorative (§5)
+      wire_id: 0                     # integer 0..255, or `auto` (>= 21)
+      name: "SOLDIER"                # THE identity hooks resolve against (§5)
+      short_name: ~                  # nullable: picker label override
+      base_stats: [12, 6, 12, 8, 9, 1]              # STR DEX CON INT ARMOR LVL
       derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]  # HP MP ATK RATK RNG DEF SPD ATKSPD
-      stat_costs: [6, 10, 6, 25, 50, 200]
-      special_costs: [5000, 25, 100, 120, 150, 5000]
+      stat_costs: [6, 10, 6, 25, 50, 200]           # STR DEX CON INT ARMOR LVL
+      special_costs: [5000, 25, 100, 120, 150, 5000]  # index 0 unused
+      hiring_cost: 250
       weapon_cost: 2
       default_weapon: core:knife     # resolved through the weapon registry
-      init_bit_flags: []             # names: FLYING, SWIMMING, ...
+      init_bit_flags: []             # names minus the BIT_ prefix: FLYING, ...
       init_ani_type: 0
       init_max_magicpoints: 0
-      special_names: [NONE, CHARGE, BOOMERANG, WHIRLWIND, DISARM, NONE]
-      alternate_names: [NONE, NONE, NONE, NONE, NONE, NONE]
+      special_names: ["NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM", "NONE"]
+      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: true
-      magic_damage_modifier: 1.0
+      magic_damage_modifier: 1
       is_stationary: false
       has_returning_weapon: true
       is_undead: false
-      promotes_to: ~                 # family id string or null
+      promotes_to: ~                 # nullable family id string
       promotion_level_req: 0
-      death_message: SOLDIER SLAIN
-      sprite: sprites/footman.png
-      animation: standard            # named set (see anims section)
+      death_message: "SOLDIER SLAIN"
       ai_line_of_sight: 7
-      description: |
-        Your basic grunt...
-      names: [Lothar, Arthur, ...]
+      description: "Your basic grunt..."
+      names: ["Lothar", "Arthur"]    # random-name pool
       playable: true
       playable_order: 0
-      state_slots: 0
+      # + sprite, animation, and the presentation block (below)
   weapon:
     - id: core:knife
       wire_id: 0
-      name: KNIFE
-      sprite: sprites/knife.png
-      animation: knife
-      hitpoints: 6
-      act_type: fire                 # fire|sit|random|control|generate|die
-      stepsize: 5
-      ai_line_of_sight: 7
-      damage: 6
-      fire_frequency: 0
-      fire_sound: fwip
+      name: "KNIFE"
+      fire_sound: 10
       skip_sit_notify: false
       is_auto_attackable: false
       init_bit_flags: []
       init_lifetime: 0
       init_ani_type: 0
-      vz: 0.0
-      gravity: 0.0
+      vz: 0.35
+      gravity: 0.05
       sizez: 0
-      can_drop_floors: false
-  # treasure/generator/fx sections carry their descriptor fields the same way
-anims:
-  # Named frame tables replacing the gloader constexpr arrays. A set is a
-  # list of rows (one per ani_type*8+facing slot; a set may give 8, 16, or
-  # 32 rows, or use `repeat:` shorthand); frames are sprite indices, row
-  # playback ends at the sentinel (no -1 in YAML; row end = end).
-  knife:
-    rows: 16
-    frames:
-      - [0, 1, 2, 3]                 # ...
+      can_drop_floors: true
+  effect:                            # `fx:` is accepted as an alias
+    - id: core:expand
+      name: "EXPAND"
+      loops_animation: false
+      creates_hit_effect: false
+      init_bit_flags: []
+  treasure:
+    - id: core:stain
+      name: "STAIN"
+      init_ignore: true
+      init_frame: -1
+  generator:
+    - id: core:tent
+      name: "TENT"
+      default_weapon: core:skeleton  # what it spawns
+      has_lifetime: true
+      spawn_ani_type: 0
+      clear_owner: false
+      editor_label: "TENT"           # level-editor palette caption
 ```
+
+### Art, animation, and presentation (all five orders)
+
+```yaml
+      sprite: "packs/org.example.mypack/sprites/warlock.png"
+      animation: warlock_walk
+      glyph: "w"                # exactly one UTF-8 codepoint, quoted
+      glyph_ascii: "w"          # exactly one byte
+      glyph_color: magenta      # default black red green yellow blue
+                                # magenta cyan white team
+      glyph_bold: true
+      glyph_transparent: false  # the curses "draw nothing here" flag
+      radar_color: 40           # palette index, or `none` / `team`
+      radar_jitter: 2           # adds rand(jitter); 0 = NO rng call
+```
+
+`sprite:` is nullable (`~` clears it) and its value is passed to the sprite
+loader untouched: the loader tries `pix/<value>` first, then `<value>` as a
+path in the mounted virtual tree. Core families name a bare file in `pix/`;
+a pack shipping its own art gives the full virtual path starting at its mount
+point (`packs/<pack_id>/sprites/<name>.png`). A living family with no sprite
+has no graphics at all and cannot be drawn.
+
+Frame metadata comes from a per-PNG Aseprite "Hash" JSON sidecar named after
+the PNG; a PNG with no sidecar is a single-frame sprite. The sidecar is
+resolved with **whichever prefix opened the PNG** and no other, so a pack's
+`.json` always sits beside its own `.png`: a file under `pix/` cannot shadow
+a pack's sidecar (`pix/` is user-mountable through the sprite-sheet setting)
+and a pack's sidecar can never be applied to core art. `meta.size` must equal
+`frame w` × `frame h × frame count`, which is the cross-check that catches a
+sidecar drifting away from its art.
+
+`animation:` names either one of the seven built-in living tables —
+`standard`, `mage`, `skeleton`, `giant_skeleton`, `slime`, `small_slime`,
+`static` — or one of this pack's `anims:` sets. **Built-in names are reserved
+and win**, so the legacy tables keep working unchanged; naming a built-in on
+a living also clears any pack table back to `nil`. The other four orders can
+only name a pack set (the built-in tables are living-shaped).
+
+Presentation replaces the family switches the UI layers used to carry (the
+curses glyph table, the radar blip colour, the editor's generator captions).
+It lives on the descriptors, so — per the component rules — its types are
+declared in `core`: `og::FamilyGlyph`, `og::RadarBlip`, `og::GlyphColor` in
+`include/openglad/core/family_presentation.h`. `og::GlyphColor` mirrors
+`og::curses::Color` entry-for-entry and adds `Team`, meaning "resolve to the
+entity's team colour". `radar_color` has two sentinels: `none`
+(`og::kRadarColorNone`, draw no blip) and `team` (`og::kRadarColorTeam`).
+`radar_jitter: 0` means *make no RNG call*, matching the legacy draw path
+where only flickering families rolled — the call count is observable.
+
+Presentation is cosmetic, so a malformed value (a multi-character `glyph`, an
+unknown `glyph_color`, a negative `radar_jitter`) warns and keeps the current
+setting rather than sinking the pack.
+
+### `anims:` — pack-shipped frame tables
+
+```yaml
+anims:
+  warlock_walk:
+    rows: 16          # optional: pad to this many rows by cycling the
+                      # declared ones (so one row + rows: 16 reproduces the
+                      # legacy uniform tables). Must be >= rows given.
+    frames:
+      - [0, 1, 2, 3]  # row index = ani_type * 8 + facing
+      - [4, 5, 6, 7]
+      - ~             # an explicit null row (as anislime rows 24..31 are)
+```
+
+Frames are sprite indices; there is no `-1` in the YAML because the row's end
+*is* the end — the loader appends the sentinel. Caps, each a warn-and-drop of
+the whole **set** (families naming a dropped set keep whatever animation they
+had): at most 256 rows, 1..255 frames per row, frame indices `0..127`. A
+duplicate set name keeps the first.
+
+Materialized rows and row-pointer arrays live in the process-lifetime
+classpack store (`src/resources/packs.cpp`), so a descriptor's
+`anim_table` pointer is valid for the life of the process. The descriptor
+carries `anim_table` (nullptr = use the built-in table selected by
+`animation_type`) and `anim_row_count`, which is **authoritative**:
+consumers read both off the descriptor and never re-derive the count.
+`anim_row_count` bounds `walker::ani_count`, which is what keeps the four
+`animate()` sites safe against a snapshot- or save-driven `ani_type`/`curdir`
+walking off the end of a table. `anim_table_count()` only recognises the
+built-in tables and answers 0 for a pack table, and `ani_count == 0` means
+"legacy direct indexing, bounds checks OFF" — so the loader must never
+recompute a count a descriptor already supplied.
+
+### What a pack family does NOT get
+
+Class-pack families claim registry ids at or above 21, which the historic
+`PIX(order, family)` addressing cannot represent, so the loader keeps them in
+a second block appended after the core one. That block is rebuilt from
+descriptors on every `reload_graphics()`, which is what lets an unmounted
+pack's family disappear cleanly.
+
+The consequence: **for the four non-living orders, a pack family gets only
+what its descriptor holds — the sprite and, when it ships one, its animation
+table.** Hitpoints, act type, stepsize, damage and line of sight for
+weapons/effects/treasures/generators come from the loader's `EntityDef`
+table, which pins core ids only, so a mod weapon starts at zero for all of
+them and has to set what it needs on the entity after spawning it. Living
+families have no such gap: their loader stats come from `derived_bonuses`.
 
 Scripts register behavior:
 
@@ -241,7 +397,9 @@ og.register_hooks("living", "mypack:warlock", {
 
 Hook sets per order mirror the existing descriptor callbacks: living (14),
 weapon (`on_death`, `on_animate`, `on_hit_target`), effect (`on_act`,
-`on_death`), treasure (`on_eat`), generator (new: `customize_spawn`).
+`on_death`), treasure (`on_eat`), generator (`customize_spawn`, which has no
+C++ counterpart — generators are pure script). Exact signatures are in
+[the API reference](modding/api-reference.md#hook-signatures).
 
 ## 5. Identity: string ids, wire bytes, palette
 
@@ -256,6 +414,20 @@ weapon (`on_death`, `on_animate`, `on_hit_target`), effect (`on_act`,
   lexicographic, then YAML order, first free byte from 21 up). Level files
   (FSS v11) therefore encode mod families without format changes; the
   campaign's own pack list IS the palette.
+- **String ids resolve by descriptor `name:`, not by namespace.**
+  `og::families::resolve_family_string_id` splits at the first `:`, discards
+  the prefix, lowercases the rest and maps spaces to underscores, then scans
+  the order's registry for a descriptor whose `name` normalizes to the same
+  thing. `mypack:soldier` and `core:soldier` are therefore the same family,
+  and the namespace is documentation rather than a scope. A mod family must
+  pick a `name:` no other mounted family uses — and must not omit it, since
+  a free living slot defaults to `BEAST`, which three core families already
+  answer to.
+- Where core registry names genuinely collide (golem / giant_skeleton /
+  tower1 are all `BEAST`, the slime trio all `SLIME`), the positional escape
+  `core:#<id>` addresses the exact byte. `family_string_id()` emits that form
+  automatically for every member of a collision group, which is why
+  `packs/core/classpack.yaml` carries ids like `core:#19`.
 - Saves: v10 adds an optional pack-provenance chunk (list of
   `(pack_id, version, [family string ids in byte order])`) so a save with
   modded characters can remap or reject cleanly if packs changed. Legacy v9
@@ -267,33 +439,88 @@ weapon (`on_death`, `on_animate`, `on_hit_target`), effect (`on_act`,
 
 ## 6. Dispatch
 
-`FamilyDescriptor` (and the weapon/effect/treasure/generator descriptor
-structs) keep their function-pointer fields. Pack loading installs generic
-**trampolines** for hooks the pack's script registered; the trampoline:
+Sim call sites do not invoke descriptor function pointers directly. They go
+through the `og::script::hooks::*` helpers
+(`include/openglad/gameplay/script/family_hooks.h`), each of which:
 
-1. resolves `current_game->world->script_host()` (or the UI host for
-   picker-side hooks),
-2. looks up `hooks[order][family_byte][hook_name]` in the VM registry,
-3. pushes typed arguments (walker handles), pcalls with budgets armed,
-4. converts the result (bool hooks) and applies R9 on error.
+1. checks a per-`(order, family)` bitmask of registered hooks — a miss costs
+   one bit test and creates no VM, so a script-less sim is byte-identical;
+2. resolves the active `WorldScripts` (the current world's, or a shared UI
+   instance for picker-side hooks like `level_up` that run outside any world,
+   rebuilt whenever the pack set changes);
+3. looks the function up in the VM registry, pushes typed arguments, and
+   pcalls it with the budget armed on the outermost entry;
+4. converts the result and applies R9 on error — and, during the transition,
+   falls through to the descriptor's C++ callback when the script hook is
+   absent or errored (§9a).
 
-Walker handles are validated: a per-world live-set (pointer membership,
-maintained on create/destroy) makes a stale handle a script error instead of
-UB. Handles never outlive the hook invocation (documented; enforced by a
-generation counter bumped per dispatch in TESTING builds).
+Walker handles carry an entity id plus a raw pointer and a dispatch
+generation. Resolution prefers the world's id index; the raw pointer is only
+honoured when the handle's generation matches the current dispatch, which is
+what lets `on_death` still read a `self` that has already left the index
+while making a stashed handle a clean script error (`stale or dead entity
+handle`) instead of UB. Guy handles are generation-only, so they are strictly
+dispatch-scoped.
+
+**Diagnostics are bounded.** Both stores live on the `ScriptHost`:
+
+- Errors always trace (`script_error`, every occurrence). The stored vector
+  holds at most `kMaxStoredScriptErrors` (64) *distinct* `(where, message)`
+  pairs; a repeat bumps that record's `count`, and overflow only increments
+  `dropped_error_count()`. Without this, a hook erroring once per tick per
+  instance — an effect's `on_act`, a flag's touch handler — would append a
+  fresh traceback for the life of the world.
+- `og.log`/`print` always traces (`script`). The transcript keeps the most
+  recent `kMaxStoredScriptLogLines` (512) lines, evicting oldest-first so
+  `log().back()` still means "most recent", with the loss counted in
+  `dropped_log_line_count()`.
+
+**Duplicate hook registration warns; last registration wins.** Since scripts
+replay in pack-id then filename order, that ordering is deterministic — and
+it is the supported way to override a core family (a mod pack registering
+`core:soldier` replaces the core soldier's behavior). The warning names the
+order, family, hook and source location, and is recorded as a script error,
+so an accidental in-pack collision is diagnosable rather than silent.
 
 ## 7. Level and entity scripting
 
-Campaign zips gain `scripts/level<N>.lua` plus optional
-`scripts/level<N>.yaml` (entity selectors → per-entity hooks):
+Level scripts are ordinary pack scripts — a campaign embeds a pack
+(`packs/<pack_id>/scripts/*.lua` inside its zip) that mounts and unmounts
+with the campaign — and they register against level ids rather than families:
 
-- Level hooks: `on_level_load(world)`, `on_level_tick()`, `on_level_win()`,
-  `on_entity_death(ent)`, `on_entity_spawn(ent)`.
-- Entity selectors (YAML): `{order, family, index}` or `{order, family,
-  near: [x, y]}` → attach named hook tables and initial state-slot values to
-  matching level entities at load.
-- Runs in the world's ScriptHost under the same cookbook. `on_level_tick`
-  fires once per sim tick after walker acts (fixed point in the frame).
+```lua
+og.register_level_hooks(level_id, {   -- level_id -1 = every level
+  on_load         = function(level) ... end,
+  on_tick         = function(level, tick) ... end,
+  on_entity_death = function(ent) ... end,
+  on_entity_spawn = function(ent) ... end,
+})
+og.set_entity_hooks(ent, { on_death = function(ent) ... end })
+```
+
+- `on_load` fires on the **first tick of the level on this peer** — fresh
+  start and mid-join alike. It must derive everything from the world and be
+  idempotent; there is no "start of fight" moment it can assume.
+- `on_tick` fires every tick, before entity acts. Win/lose logic lives here.
+- `on_entity_death` fires for living **and generator** deaths. Generators
+  dispatch it after their death FX, so a level script sees a tent, tower or
+  pillar falling as an event rather than something to poll for.
+- `on_entity_spawn` fires only for sim-authored living/generator spawns
+  through `add_ob`; snapshot and replay insertion paths stay silent.
+- An exact-level registration shadows a wildcard one **per hook kind**.
+- `og.set_entity_hooks` attaches a per-entity `on_death` at runtime (usually
+  from `on_load` or `on_entity_spawn`, after selecting the entity via
+  `og.oblist()`, position or family). The registration is consumed when it
+  fires, so an entity id never fires twice, and it requires a tracked entity.
+
+Every level dispatcher early-outs when no pack registered that hook kind, so
+script-less sims pay nothing and stay byte-identical.
+
+The worked showcase is `tools/concept_mapgen/showcase_pack.cpp` — the
+Ninefold Court (scen 605), whose `court.lua` uses `on_load` to stamp ward
+invulnerability and hang a per-entity death hook, `on_entity_death` to run
+the ward phase machine off generator deaths, `on_tick` for the judgment
+cadence, and a generator `customize_spawn` to promote every third spawn.
 
 ## 8. Multiplayer pack transfer (protocol v10)
 
@@ -318,8 +545,7 @@ Campaign zips gain `scripts/level<N>.lua` plus optional
   parsing, provenance chunk round-trip, transfer chunking over loopback.
 - **Parity**: og_test_parity stays green through every family conversion —
   each family lands only when goldens still pass byte-identical. New parity
-  scenarios cover: a Lua-only mod family, level scripting hooks, state
-  slots across snapshot round-trips.
+  scenarios cover a Lua-only mod family and level scripting hooks.
 - **Integration**: picker lists pack families; save/load with mod
   characters; MP transfer e2e (host with pack, vanilla joiner); curses/text
   clients render mod families via descriptor glyphs.
@@ -374,14 +600,14 @@ parity scenarios, *before* the corresponding C++ callback is deleted.
 
 ## 10. Rollout
 
-1. `og_lua` + ScriptHost + sandbox/budget unit tests.
-2. Pack reader + registries with string ids + core pack YAML (stats only;
-   behavior still C++) — parity green checkpoint.
-3. og.* binding layer + soldier converted (cookbook proven) — parity green.
-4. Remaining families in waves (≤3 agents), parity per wave; delete C++
-   behavior files as their Lua twins land.
-5. Generators scripted; UI sweep (glyph/radar/editor/picker from
-   descriptors).
-6. Level/entity scripting; campaign-embedded packs.
-7. MP transfer, protocol v10.
-8. Skills/docs; concept-playground showcase; media; PR.
+| # | Stage | State |
+|---|---|---|
+| 1 | `og_lua` + ScriptHost + sandbox/budget unit tests | done |
+| 2 | Pack reader + registries with string ids + core pack YAML (stats only) | done |
+| 3 | `og.*` binding layer + soldier converted (cookbook proven) | done |
+| 4 | Remaining families in waves, parity per wave | done — all 21 livings plus weapon/effect/treasure behaviors are Lua |
+| 5 | Generators scripted; UI sweep (glyph / radar / editor label from descriptors) | descriptor fields + `classpack.yaml` schema landed; consumer sweep in progress |
+| 6 | Level/entity scripting; campaign-embedded packs | done (showcase: the Ninefold Court, scen 605) |
+| 7 | MP transfer, protocol v10 | done |
+| 8 | Skills/docs; concept-playground showcase; media; PR | in progress |
+| 9 | Retire the C++ implementations (§9a, stages A and B) | not started |

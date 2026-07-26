@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 #include <cstdint>
 
 inline constexpr int FD_NUM_SPECIALS = 6;
@@ -120,9 +122,19 @@ struct FamilyDescriptor {
     void (*on_melee_hit)(walker* self, walker* target);    // called after successful melee attack
 
     // Graphics / loader data (replaces hardcoded gloader.cpp arrays)
-    const char* pix_filename;          // "monk.png", "footman.png", etc.
-    FamilyAnimationType animation_type;  // FamilyAnimationType enum
+    const char* pix_filename;          // "monk.png" or a pack-relative path
+    FamilyAnimationType animation_type;  // built-in table (see anim_table)
     int ai_line_of_sight;              // AI's understanding of ranged attack range
+
+    // Pack-shipped animation table. nullptr = use animation_type's built-in
+    // gloader table; otherwise this is a `anim_row_count`-long array of row
+    // pointers, each row a -1-terminated frame list, owned by the classpack
+    // store for the life of the process. anim_row_count is authoritative for
+    // walker::ani_count (which bounds the animate() index math against
+    // snapshot-controlled ani_type/curdir), so it is NEVER 0 when anim_table
+    // is non-null.
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
 
     // UI / picker data (replaces hardcoded switch statements)
     const char* description;           // multiline class description for team builder
@@ -130,4 +142,10 @@ struct FamilyDescriptor {
     int name_pool_size;                // count of names in pool
     bool is_playable;                  // appears in hire menu
     int playable_order;                // sort order in hire menu (lower = earlier)
+
+    // Presentation data (replaces the family switches in the UI layers).
+    // The defaults are the legacy `default:` branches, so an undeclared mod
+    // family renders exactly like an unknown family always did.
+    og::FamilyGlyph glyph{U'?', '?', og::GlyphColor::Default, false, false};
+    og::RadarBlip radar{};             // livings blip in their team colour
 };

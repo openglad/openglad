@@ -32,6 +32,43 @@ struct NullableString {
     std::string value;       // meaningful only when present && !is_null
 };
 
+// The presentation block every order shares (docs/lua-classpacks-design.md
+// §4). Absent sub-keys leave the descriptor's current values alone.
+//   glyph:            one UTF-8 codepoint, the terminal client's shape
+//   glyph_ascii:      single-byte fallback for non-Unicode terminals
+//   glyph_color:      default|black|red|green|yellow|blue|magenta|cyan|
+//                     white|team ("team" = paint with the entity's team)
+//   glyph_bold:       bright attribute
+//   glyph_transparent: draw nothing (the curses Glyph::skip flag)
+//   radar_color:      palette index, or "team" / "none"
+//   radar_jitter:     rng(N) span added to radar_color (0 = no rng call)
+struct ClasspackPresentation {
+    std::optional<std::string> glyph;        // UTF-8, exactly one codepoint
+    std::optional<std::string> glyph_ascii;  // exactly one byte
+    std::optional<std::string> glyph_color;
+    std::optional<bool> glyph_bold;
+    std::optional<bool> glyph_transparent;
+    std::optional<std::int32_t> radar_color;  // sentinels already folded in
+    std::optional<std::int32_t> radar_jitter;
+};
+
+// One row of an `anims:` frame set. `is_null` is the YAML `~` row, which
+// becomes a nullptr entry in the built table (the legacy anislime table has
+// eight of them).
+struct ClasspackAnimRow {
+    bool is_null = false;
+    std::vector<std::int32_t> frames;  // sprite frame indices, 0..127
+};
+
+// One named set under `anims:`. `rows` is the optional total row count; when
+// it exceeds the declared rows the declared rows repeat cyclically, so
+// `rows: 16` over a single row reproduces the legacy 16x-same-row tables.
+struct ClasspackAnimSet {
+    std::string name;
+    std::optional<std::int32_t> rows;
+    std::vector<ClasspackAnimRow> frames;
+};
+
 // One entry under families.living. YAML keys per design doc §4; field
 // names match the keys, values mirror FamilyDescriptor's data fields.
 struct ClasspackLivingEntry {
@@ -59,13 +96,14 @@ struct ClasspackLivingEntry {
     NullableString promotes_to;            // living family string id or ~
     std::optional<std::int32_t> promotion_level_req;
     NullableString death_message;
-    NullableString sprite;                 // pix filename
-    std::optional<std::string> animation;  // standard|mage|skeleton|...
+    NullableString sprite;                 // pix filename or pack-relative path
+    std::optional<std::string> animation;  // built-in name or an anims: set
     std::optional<std::int32_t> ai_line_of_sight;
     NullableString description;
     std::optional<std::vector<std::string>> names;  // random-name pool
     std::optional<bool> playable;
     std::optional<std::int32_t> playable_order;
+    ClasspackPresentation presentation;
 };
 
 // One entry under families.weapon (WeaponFamilyDescriptor data fields).
@@ -83,6 +121,9 @@ struct ClasspackWeaponEntry {
     std::optional<float> gravity;
     std::optional<std::int32_t> sizez;     // WeaponFamilyDescriptor.init_sizez
     std::optional<bool> can_drop_floors;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
 };
 
 // One entry under families.effect (EffectFamilyDescriptor data fields).
@@ -93,6 +134,9 @@ struct ClasspackEffectEntry {
     std::optional<bool> loops_animation;
     std::optional<bool> creates_hit_effect;
     std::optional<std::vector<std::string>> init_bit_flags;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
 };
 
 // One entry under families.treasure (TreasureFamilyDescriptor data fields).
@@ -102,6 +146,9 @@ struct ClasspackTreasureEntry {
     std::optional<std::string> name;
     std::optional<bool> init_ignore;
     std::optional<std::int32_t> init_frame;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
 };
 
 // One entry under families.generator (GeneratorFamilyDescriptor data
@@ -114,6 +161,10 @@ struct ClasspackGeneratorEntry {
     std::optional<bool> has_lifetime;
     std::optional<std::int32_t> spawn_ani_type;
     std::optional<bool> clear_owner;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> editor_label;  // level-editor palette caption
+    ClasspackPresentation presentation;
 };
 
 struct ClasspackData {
@@ -126,6 +177,7 @@ struct ClasspackData {
     std::vector<ClasspackEffectEntry> effects;
     std::vector<ClasspackTreasureEntry> treasures;
     std::vector<ClasspackGeneratorEntry> generators;
+    std::vector<ClasspackAnimSet> anims;  // `anims:` section, YAML order
 };
 
 // Parses classpack.yaml text into out. Strict: malformed YAML, a bad

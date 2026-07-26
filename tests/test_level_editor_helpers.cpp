@@ -7,6 +7,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/ui/level_editor_state.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -136,6 +138,40 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+// The editor's generator captions come off GeneratorFamilyDescriptor
+// (editor_label), so a class-pack generator names itself in the palette.
+// Patch the descriptor the way a pack install does and the caption follows;
+// a generator no pack claimed keeps the struct default, which is the
+// `default:` branch the deleted switch ended with.
+TEST(LevelEditorHelpers, generator_editor_labels_come_from_the_descriptor)
+{
+    std::array<std::string, NUM_FAMILIES> test_livings;
+    const char* test_treasures[NUM_FAMILIES] = {};
+    const char* test_weapons[NUM_FAMILIES] = {};
+
+    const GeneratorFamilyDescriptor* original =
+        get_generator_family_descriptor(FAMILY_TOWER);
+    ASSERT_NE(nullptr, original);
+    const GeneratorFamilyDescriptor saved = *original;
+
+    GeneratorFamilyDescriptor patched = saved;
+    patched.editor_label = "OBSIDIAN SPIRE";
+    ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TOWER, patched));
+    const std::string modded = get_editor_family_label(
+        Order::Generator, FAMILY_TOWER, test_livings, test_treasures, test_weapons);
+    ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TOWER, saved));
+
+    ASSERT_EQ("OBSIDIAN SPIRE", modded) << "pack label reaches the palette";
+    ASSERT_EQ("MAGE TOWER",
+              get_editor_family_label(Order::Generator, FAMILY_TOWER,
+                                      test_livings, test_treasures, test_weapons))
+        << "descriptor restored";
+    ASSERT_EQ("GENERATOR",
+              get_editor_family_label(Order::Generator, NUM_FAMILIES - 1,
+                                      test_livings, test_treasures, test_weapons))
+        << "an id no generator pack claimed keeps the legacy default";
 }
 
 // BASE + DECOR tile layering, migrated-content e2e: a grid_migrate-produced

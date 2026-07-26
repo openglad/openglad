@@ -5,8 +5,14 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/decordefs.h>
+#include <openglad/core/family_presentation.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
 
 using namespace og::curses;
 
@@ -133,6 +139,108 @@ TEST(GlyphMap, every_effect_family_is_visible)
     EXPECT_FALSE(boom.skip);
     EXPECT_EQ(boom.ascii, '%') << "the boomerang renders as '%'";
     EXPECT_EQ('*', entity_glyph(Order::FX, 999, 0, false, 0).ascii);
+}
+
+// --- descriptor-driven glyphs -------------------------------------------
+//
+// The glyph tables that used to live in glyph_map.cpp are gone: every entity
+// glyph is read off its family descriptor, which is what a class pack writes
+// when it installs. Patching a descriptor here is exactly what a pack does, so
+// these pin that a mod family draws itself with no engine change.
+
+TEST(GlyphMap, living_glyph_follows_the_family_descriptor)
+{
+    const FamilyDescriptor* original = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, original);
+    const FamilyDescriptor saved = *original;
+
+    FamilyDescriptor patched = saved;
+    patched.glyph = {U'Ω', 'w', og::GlyphColor::Default, false, false};
+    ASSERT_TRUE(set_family_descriptor(FAMILY_GOLEM, patched));
+
+    const Glyph shape = living_glyph(FAMILY_GOLEM);
+    const Glyph drawn = entity_glyph(Order::Living, FAMILY_GOLEM, /*team*/ 1,
+                                     false, /*my_team*/ 0);
+
+    ASSERT_TRUE(set_family_descriptor(FAMILY_GOLEM, saved));
+
+    EXPECT_EQ(U'Ω', shape.unicode);
+    EXPECT_EQ('w', shape.ascii);
+    EXPECT_EQ(Color::Default, shape.fg) << "living_glyph returns the shape only";
+    EXPECT_EQ('w', drawn.ascii);
+    EXPECT_EQ(team_color(1), drawn.fg) << "a Default living is painted by team";
+
+    EXPECT_EQ('G', living_glyph(FAMILY_GOLEM).ascii) << "descriptor restored";
+}
+
+TEST(GlyphMap, treasure_and_effect_glyphs_follow_their_descriptors)
+{
+    const TreasureFamilyDescriptor* t = get_treasure_family_descriptor(FAMILY_KEY);
+    const EffectFamilyDescriptor* e = get_effect_family_descriptor(FAMILY_CLOUD);
+    ASSERT_NE(nullptr, t);
+    ASSERT_NE(nullptr, e);
+    const TreasureFamilyDescriptor saved_t = *t;
+    const EffectFamilyDescriptor saved_e = *e;
+
+    TreasureFamilyDescriptor patched_t = saved_t;
+    patched_t.glyph = {U'¤', 'k', og::GlyphColor::Green, true, false};
+    EffectFamilyDescriptor patched_e = saved_e;
+    patched_e.glyph = {U'§', 'S', og::GlyphColor::Blue, false, false};
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_KEY, patched_t));
+    ASSERT_TRUE(set_effect_family_descriptor(FAMILY_CLOUD, patched_e));
+
+    const Glyph key = entity_glyph(Order::Treasure, FAMILY_KEY, 0, false, 0);
+    const Glyph cloud = entity_glyph(Order::FX, FAMILY_CLOUD, 0, false, 0);
+
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_KEY, saved_t));
+    ASSERT_TRUE(set_effect_family_descriptor(FAMILY_CLOUD, saved_e));
+
+    EXPECT_EQ('k', key.ascii);
+    EXPECT_EQ(Color::Green, key.fg);
+    EXPECT_TRUE(key.bold);
+    EXPECT_EQ('S', cloud.ascii);
+    EXPECT_EQ(Color::Blue, cloud.fg);
+
+    EXPECT_EQ('[', entity_glyph(Order::Treasure, FAMILY_KEY, 0, false, 0).ascii);
+    EXPECT_EQ('%', entity_glyph(Order::FX, FAMILY_CLOUD, 0, false, 0).ascii);
+}
+
+// GlyphColor::Team is the one colour that is not a terminal colour: it means
+// "paint me in the entity's team colour", which is how the CTF flag and
+// control point tint. Any family may ask for it.
+TEST(GlyphMap, team_colored_glyphs_resolve_per_entity)
+{
+    const TreasureFamilyDescriptor* original =
+        get_treasure_family_descriptor(FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, original);
+    const TreasureFamilyDescriptor saved = *original;
+
+    TreasureFamilyDescriptor patched = saved;
+    patched.glyph = {U'+', '+', og::GlyphColor::Team, true, false};
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, patched));
+
+    const Glyph a = entity_glyph(Order::Treasure, FAMILY_LIFE_GEM, 0, false, 0);
+    const Glyph b = entity_glyph(Order::Treasure, FAMILY_LIFE_GEM, 2, false, 0);
+
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, saved));
+
+    EXPECT_EQ(team_color(0), a.fg);
+    EXPECT_EQ(team_color(2), b.fg);
+    EXPECT_EQ(Color::Red, entity_glyph(Order::Treasure, FAMILY_LIFE_GEM, 2,
+                                       false, 0).fg)
+        << "restored descriptor is team-independent again";
+}
+
+// A family with no descriptor at all (an id no pack claimed) falls back to the
+// descriptor struct's default glyph — which is exactly the `default:` branch
+// the deleted switches ended with, per order.
+TEST(GlyphMap, unregistered_families_keep_the_legacy_default_glyphs)
+{
+    EXPECT_EQ('?', living_glyph(200).ascii);
+    EXPECT_EQ('$', entity_glyph(Order::Treasure, 200, 0, false, 0).ascii);
+    EXPECT_EQ('*', entity_glyph(Order::Weapon, 200, 0, false, 0).ascii);
+    EXPECT_EQ('*', entity_glyph(Order::FX, 200, 0, false, 0).ascii);
+    EXPECT_EQ('#', entity_glyph(Order::Generator, 200, 0, false, 0).ascii);
 }
 
 TEST(GlyphMap, tile_genres_map_to_expected_glyphs)

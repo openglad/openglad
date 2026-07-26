@@ -19,6 +19,8 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <openglad/core/core_pack_presentation.h>
+#include <openglad/core/family_presentation.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -34,6 +36,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <string>
@@ -168,6 +171,80 @@ std::string flow_bit_flags(std::int32_t flags, const char* context)
     return out;
 }
 
+// --- presentation block ---------------------------------------------------
+//
+// The UI presentation data (curses glyph, radar blip, editor label) is
+// seeded from the core-pack transcription tables in
+// include/openglad/core/core_pack_presentation.h, because the C++ family
+// registries do not populate those descriptor fields — the pack does, at
+// mount time. A registry that DOES set one (anything other than the struct's
+// default) wins, so this stays correct once the registries are fed from YAML.
+
+std::string radar_color_scalar(int color)
+{
+    if (color == og::kRadarColorNone)
+        return og::kRadarColorNoneName;
+    if (color == og::kRadarColorTeam)
+        return og::kRadarColorTeamName;
+    return std::to_string(color);
+}
+
+std::string presentation_block(const og::FamilyGlyph& g,
+                               const og::RadarBlip& r, const char* context)
+{
+    const std::string utf8 = og::glyph_to_utf8(g.codepoint);
+    if (utf8.empty())
+        fail(std::format("{}: glyph codepoint U+{:04X} is not encodable",
+                         context, static_cast<std::uint32_t>(g.codepoint)));
+    const char ascii[2] = {g.ascii, '\0'};
+    std::string y;
+    y += std::format("      glyph: {}\n", quoted(utf8.c_str()));
+    y += std::format("      glyph_ascii: {}\n", quoted(ascii));
+    y += std::format("      glyph_color: {}\n", og::glyph_color_name(g.color));
+    y += std::format("      glyph_bold: {}\n", g.bold);
+    y += std::format("      glyph_transparent: {}\n", g.transparent);
+    y += std::format("      radar_color: {}\n", radar_color_scalar(r.color));
+    y += std::format("      radar_jitter: {}\n", r.jitter);
+    return y;
+}
+
+// The four non-living orders have no built-in `animation:` vocabulary: their
+// tables come from the gloader EntityDef rows, and an installed pack table
+// cannot be named back from its pointer. The exporter runs on pristine
+// registries, so this is always null — a non-null table means someone
+// exported after installing a pack, which would silently lose data.
+std::string anim_set_scalar(const signed char* const* table,
+                            const char* context)
+{
+    if (table != nullptr)
+        fail(std::format("{}: an installed animation table cannot be exported",
+                         context));
+    return "~";
+}
+
+// "the descriptor's value if a registry set one, else the core-pack seed".
+og::FamilyGlyph seeded_glyph(const og::FamilyGlyph& from_registry,
+                             const og::FamilyGlyph& registry_default,
+                             const og::FamilyGlyph& seed)
+{
+    return from_registry == registry_default ? seed : from_registry;
+}
+
+og::RadarBlip seeded_radar(const og::RadarBlip& from_registry,
+                           const og::RadarBlip& seed)
+{
+    return from_registry == og::RadarBlip{} ? seed : from_registry;
+}
+
+// Same rule for the level editor's generator caption.
+const char* seeded_editor_label(const char* from_registry, int family_id)
+{
+    const char* blank = GeneratorFamilyDescriptor{}.editor_label;
+    if (from_registry != nullptr && std::strcmp(from_registry, blank) != 0)
+        return from_registry;
+    return og::corepack::generator_editor_label(family_id);
+}
+
 // Canonical string id ("core:knife" / positional "core:#19") for a family
 // reference; export fails when the target family does not exist.
 std::string family_ref(Order order, int family_id, const char* context)
@@ -245,6 +322,10 @@ void export_living(std::string& y)
                                          : 0));
         y += std::format("      playable: {}\n", d->is_playable);
         y += std::format("      playable_order: {}\n", d->playable_order);
+        y += presentation_block(
+            seeded_glyph(d->glyph, FamilyDescriptor{}.glyph,
+                         og::corepack::living_glyph(id)),
+            seeded_radar(d->radar, og::RadarBlip{}), sid.c_str());
     }
 }
 
@@ -270,6 +351,13 @@ void export_weapons(std::string& y)
         y += std::format("      gravity: {}\n", fmt_float(d->gravity));
         y += std::format("      sizez: {}\n", d->init_sizez);
         y += std::format("      can_drop_floors: {}\n", d->can_drop_floors);
+        y += std::format("      sprite: {}\n", opt_quoted(d->pix_filename));
+        y += std::format("      animation: {}\n",
+                         anim_set_scalar(d->anim_table, sid.c_str()));
+        y += presentation_block(
+            seeded_glyph(d->glyph, WeaponFamilyDescriptor{}.glyph,
+                         og::corepack::weapon_glyph(id)),
+            seeded_radar(d->radar, og::RadarBlip{}), sid.c_str());
     }
 }
 
@@ -287,6 +375,13 @@ void export_effects(std::string& y)
                          d->creates_hit_effect);
         y += std::format("      init_bit_flags: {}\n",
                          flow_bit_flags(d->init_bit_flags, sid.c_str()));
+        y += std::format("      sprite: {}\n", opt_quoted(d->pix_filename));
+        y += std::format("      animation: {}\n",
+                         anim_set_scalar(d->anim_table, sid.c_str()));
+        y += presentation_block(
+            seeded_glyph(d->glyph, EffectFamilyDescriptor{}.glyph,
+                         og::corepack::effect_glyph(id)),
+            seeded_radar(d->radar, og::RadarBlip{}), sid.c_str());
     }
 }
 
@@ -301,6 +396,14 @@ void export_treasures(std::string& y)
         y += std::format("      name: {}\n", quoted(d->name));
         y += std::format("      init_ignore: {}\n", d->init_ignore);
         y += std::format("      init_frame: {}\n", d->init_frame);
+        y += std::format("      sprite: {}\n", opt_quoted(d->pix_filename));
+        y += std::format("      animation: {}\n",
+                         anim_set_scalar(d->anim_table, sid.c_str()));
+        y += presentation_block(
+            seeded_glyph(d->glyph, TreasureFamilyDescriptor{}.glyph,
+                         og::corepack::treasure_glyph(id)),
+            seeded_radar(d->radar, og::corepack::treasure_radar(id)),
+            sid.c_str());
     }
 }
 
@@ -324,6 +427,15 @@ void export_generators(std::string& y)
         y += std::format("      spawn_ani_type: {}\n",
                          static_cast<int>(d->spawn_ani_type));
         y += std::format("      clear_owner: {}\n", d->clear_owner);
+        y += std::format("      sprite: {}\n", opt_quoted(d->pix_filename));
+        y += std::format("      animation: {}\n",
+                         anim_set_scalar(d->anim_table, sid.c_str()));
+        y += std::format("      editor_label: {}\n",
+                         quoted(seeded_editor_label(d->editor_label, id)));
+        y += presentation_block(
+            seeded_glyph(d->glyph, GeneratorFamilyDescriptor{}.glyph,
+                         og::corepack::generator_glyph(id)),
+            seeded_radar(d->radar, og::RadarBlip{}), sid.c_str());
     }
 }
 
@@ -341,6 +453,13 @@ int main(int argc, char* argv[])
     y += "# do not hand-edit. Regenerate:\n";
     y += "#   cmake --build --preset ci-test --target pack_export\n";
     y += "#   ./build/ci-test/pack_export packs/core/classpack.yaml\n";
+    y += "#\n";
+    y += "# The core pack ships no `anims:` section: every core family uses a\n";
+    y += "# built-in animation table (animation: standard|mage|skeleton|\n";
+    y += "# giant_skeleton|slime|small_slime|static for livings, the gloader\n";
+    y += "# EntityDef row for the other orders). A mod pack declares its own\n";
+    y += "# frame sets under a top-level `anims:` mapping and names them from a\n";
+    y += "# family's `animation:` key — see docs/lua-classpacks-design.md §4.\n";
     y += "pack: core\n";
     y += "version: 1\n";
     y += "title: \"OpenGlad Core Families\"\n";

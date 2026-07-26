@@ -19,6 +19,8 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
+#include <openglad/core/family_presentation.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -26,6 +28,7 @@
 #include <openglad/gameplay/effect_family_descriptor.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/packs.h>
@@ -853,4 +856,628 @@ TEST(ClasspackInstall, reset_mod_slots_frees_pack_families_and_keeps_core)
     EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->name, "SOLDIER");
     EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
               "core:soldier");
+}
+
+// ---------------------------------------------------------------------------
+// Presentation fields (glyph + radar + editor label)
+// ---------------------------------------------------------------------------
+
+TEST(ClasspackYaml, parse_presentation_block)
+{
+    const char* yaml =
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:wisp\n"
+        "      glyph: \"\xe2\x99\xa3\"\n"  // U+2663 CLUB, 3 UTF-8 bytes
+        "      glyph_ascii: \"&\"\n"
+        "      glyph_color: magenta\n"
+        "      glyph_bold: true\n"
+        "      glyph_transparent: false\n"
+        "      radar_color: 88\n"
+        "      radar_jitter: 5\n"
+        "  treasure:\n"
+        "    - id: mod:relic\n"
+        "      radar_color: team\n"
+        "      radar_jitter: 7\n"
+        "    - id: mod:dust\n"
+        "      radar_color: none\n"
+        "  generator:\n"
+        "    - id: mod:hut\n"
+        "      editor_label: \"HUT\"\n"
+        "      glyph_color: team\n";
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "presentation"));
+
+    const auto& p = data.living[0].presentation;
+    ASSERT_EQ(p.glyph.value_or(""), "\xe2\x99\xa3");
+    ASSERT_EQ(p.glyph_ascii.value_or(""), "&");
+    ASSERT_EQ(p.glyph_color.value_or(""), "magenta");
+    ASSERT_EQ(p.glyph_bold.value_or(false), true);
+    ASSERT_EQ(p.glyph_transparent.value_or(true), false);
+    ASSERT_EQ(p.radar_color.value_or(0), 88);
+    ASSERT_EQ(p.radar_jitter.value_or(-1), 5);
+
+    // The two radar sentinel spellings fold to their numeric values.
+    ASSERT_EQ(data.treasures[0].presentation.radar_color.value_or(0),
+              og::kRadarColorTeam);
+    ASSERT_EQ(data.treasures[0].presentation.radar_jitter.value_or(-1), 7);
+    ASSERT_EQ(data.treasures[1].presentation.radar_color.value_or(0),
+              og::kRadarColorNone);
+
+    ASSERT_EQ(data.generators[0].editor_label.value_or(""), "HUT");
+    ASSERT_EQ(data.generators[0].presentation.glyph_color.value_or(""),
+              "team");
+}
+
+// The committed core pack must carry an exact transcription of the UI
+// switch tables, so the sweep that deletes them changes no pixel.
+TEST(ClasspackYaml, committed_core_pack_carries_ui_presentation)
+{
+    std::ifstream in("packs/core/classpack.yaml", std::ios::binary);
+    ASSERT_TRUE(in.good())
+        << "packs/core/classpack.yaml missing (run from the repo root)";
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(buffer.str(), data, "packs/core"));
+
+    // Every core family of every order declares the whole block: the sweep
+    // agent may read the descriptor unconditionally.
+    auto complete = [](const og::data::ClasspackPresentation& p) {
+        return p.glyph && p.glyph_ascii && p.glyph_color && p.glyph_bold &&
+               p.glyph_transparent && p.radar_color && p.radar_jitter;
+    };
+    for (const auto& e : data.living)
+        EXPECT_TRUE(complete(e.presentation)) << e.id;
+    for (const auto& e : data.weapons)
+        EXPECT_TRUE(complete(e.presentation)) << e.id;
+    for (const auto& e : data.effects)
+        EXPECT_TRUE(complete(e.presentation)) << e.id;
+    for (const auto& e : data.treasures)
+        EXPECT_TRUE(complete(e.presentation)) << e.id;
+    for (const auto& e : data.generators) {
+        EXPECT_TRUE(complete(e.presentation)) << e.id;
+        EXPECT_TRUE(e.editor_label.has_value()) << e.id;
+    }
+
+    // Spot pins against the legacy switch bodies.
+    EXPECT_EQ(data.living[FAMILY_SOLDIER].presentation.glyph.value_or(""),
+              "S");
+    EXPECT_EQ(data.living[FAMILY_TOWER1].presentation.glyph.value_or(""), "Y");
+    EXPECT_EQ(data.weapons[FAMILY_TREE].presentation.glyph.value_or(""),
+              "\xe2\x99\xa3");
+    EXPECT_EQ(data.weapons[FAMILY_TREE].presentation.glyph_ascii.value_or(""),
+              "&");
+    EXPECT_EQ(data.weapons[FAMILY_TREE].presentation.glyph_color.value_or(""),
+              "green");
+    EXPECT_EQ(data.treasures[FAMILY_STAIN]
+                  .presentation.glyph_transparent.value_or(false),
+              true);
+    EXPECT_EQ(data.treasures[FAMILY_GOLD_BAR].presentation.radar_color.value_or(0),
+              88);
+    EXPECT_EQ(
+        data.treasures[FAMILY_GOLD_BAR].presentation.radar_jitter.value_or(0),
+        5);
+    EXPECT_EQ(
+        data.treasures[FAMILY_SILVER_BAR].presentation.radar_color.value_or(0),
+        23);
+    EXPECT_EQ(
+        data.treasures[FAMILY_DRUMSTICK].presentation.radar_color.value_or(0),
+        136);
+    EXPECT_EQ(
+        data.treasures[FAMILY_DRUMSTICK].presentation.radar_jitter.value_or(0),
+        2);
+    EXPECT_EQ(data.treasures[FAMILY_EXIT].presentation.radar_color.value_or(0),
+              120);
+    EXPECT_EQ(data.treasures[FAMILY_EXIT].presentation.radar_jitter.value_or(0),
+              7);
+    // SPEED_POTION is deliberately absent from the radar potion case list.
+    EXPECT_EQ(
+        data.treasures[FAMILY_SPEED_POTION].presentation.radar_color.value_or(0),
+        og::kRadarColorNone);
+    EXPECT_EQ(data.treasures[og::FAMILY_FLAG].presentation.radar_color.value_or(0),
+              og::kRadarColorTeam);
+    EXPECT_EQ(data.generators[FAMILY_TOWER].editor_label.value_or(""),
+              "MAGE TOWER");
+    EXPECT_EQ(data.generators[FAMILY_BONES].editor_label.value_or(""),
+              "BONEPILE");
+}
+
+TEST(ClasspackInstall, presentation_lands_on_every_order)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    {
+        og::data::ClasspackLivingEntry e;
+        e.id = "mod:wisp";
+        e.wire_id = "auto";
+        e.presentation.glyph = "\xe2\x86\xaf";  // U+21AF
+        e.presentation.glyph_ascii = "/";
+        e.presentation.glyph_color = "team";
+        e.presentation.glyph_bold = true;
+        e.presentation.radar_color = og::kRadarColorTeam;
+        e.presentation.radar_jitter = 7;
+        data.living.push_back(std::move(e));
+    }
+    {
+        og::data::ClasspackGeneratorEntry g;
+        g.id = "mod:hut";
+        g.wire_id = "auto";
+        g.editor_label = "HUT";
+        g.presentation.glyph = "H";
+        g.presentation.glyph_transparent = true;
+        data.generators.push_back(std::move(g));
+    }
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
+
+    const FamilyDescriptor* living = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(living, nullptr);
+    EXPECT_EQ(living->glyph.codepoint, U'↯');
+    EXPECT_EQ(living->glyph.ascii, '/');
+    EXPECT_EQ(living->glyph.color, og::GlyphColor::Team);
+    EXPECT_TRUE(living->glyph.bold);
+    EXPECT_FALSE(living->glyph.transparent) << "undeclared keeps the default";
+    EXPECT_EQ(living->radar.color, og::kRadarColorTeam);
+    EXPECT_EQ(living->radar.jitter, 7);
+
+    const GeneratorFamilyDescriptor* gen =
+        get_generator_family_descriptor(4);  // 4 core generators, auto = 21
+    (void)gen;
+    const GeneratorFamilyDescriptor* installed =
+        get_generator_family_descriptor(21);
+    ASSERT_NE(installed, nullptr);
+    EXPECT_STREQ(installed->editor_label, "HUT");
+    EXPECT_EQ(installed->glyph.codepoint, U'H');
+    EXPECT_TRUE(installed->glyph.transparent);
+    EXPECT_EQ(installed->glyph.color, og::GlyphColor::Default)
+        << "an undeclared colour keeps the generator default";
+}
+
+// A mod family that declares no presentation renders exactly like an
+// unknown family always did: the order's legacy `default:` branch.
+TEST(ClasspackInstall, undeclared_presentation_is_the_legacy_default)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id = "mod:blob";
+    e.wire_id = "auto";
+    data.living.push_back(std::move(e));
+    og::data::ClasspackWeaponEntry w;
+    w.id = "mod:shard";
+    w.wire_id = "auto";
+    data.weapons.push_back(std::move(w));
+    og::data::ClasspackTreasureEntry t;
+    t.id = "mod:coin";
+    t.wire_id = "auto";
+    data.treasures.push_back(std::move(t));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 3);
+
+    EXPECT_EQ(get_family_descriptor(NUM_FAMILIES)->glyph.codepoint, U'?');
+    EXPECT_EQ(get_weapon_family_descriptor(21)->glyph.codepoint, U'*');
+    EXPECT_EQ(get_weapon_family_descriptor(21)->glyph.color,
+              og::GlyphColor::White);
+    EXPECT_EQ(get_treasure_family_descriptor(21)->glyph.codepoint, U'$');
+    EXPECT_EQ(get_treasure_family_descriptor(21)->glyph.color,
+              og::GlyphColor::Yellow);
+    EXPECT_EQ(get_treasure_family_descriptor(21)->radar.color,
+              og::kRadarColorNone);
+}
+
+// A malformed cosmetic value warns and keeps the current setting — it must
+// never sink the pack (behaviour data is what a pack really ships).
+TEST(ClasspackInstall, malformed_presentation_keeps_the_current_value)
+{
+    ModSlotGuard guard;
+
+    og::data::ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id = "mod:garbled";
+    e.wire_id = "auto";
+    e.presentation.glyph = "ab";           // two characters
+    e.presentation.glyph_ascii = "";       // zero bytes
+    e.presentation.glyph_color = "puce";   // not in the vocabulary
+    e.presentation.radar_jitter = -3;      // negative span
+    data.living.push_back(std::move(e));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->glyph.codepoint, U'?');
+    EXPECT_EQ(d->glyph.ascii, '?');
+    EXPECT_EQ(d->glyph.color, og::GlyphColor::Default);
+    EXPECT_EQ(d->radar.jitter, 0);
+}
+
+// ---------------------------------------------------------------------------
+// anims: pack-defined animation tables
+// ---------------------------------------------------------------------------
+
+TEST(ClasspackYaml, parse_anims_section)
+{
+    const char* yaml =
+        "anims:\n"
+        "  wisp_walk:\n"
+        "    rows: 16\n"
+        "    frames:\n"
+        "      - [0, 1, 2, 3]\n"
+        "      - [4, 5]\n"
+        "      - ~\n"
+        "  wisp_idle:\n"
+        "    frames:\n"
+        "      - [7]\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:wisp\n"
+        "      animation: wisp_walk\n";
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "anims"));
+
+    ASSERT_EQ(data.anims.size(), 2u);
+    EXPECT_EQ(data.anims[0].name, "wisp_walk");
+    EXPECT_EQ(data.anims[0].rows.value_or(-1), 16);
+    ASSERT_EQ(data.anims[0].frames.size(), 3u);
+    EXPECT_EQ(data.anims[0].frames[0].frames,
+              (std::vector<std::int32_t>{0, 1, 2, 3}));
+    EXPECT_FALSE(data.anims[0].frames[0].is_null);
+    EXPECT_EQ(data.anims[0].frames[1].frames,
+              (std::vector<std::int32_t>{4, 5}));
+    EXPECT_TRUE(data.anims[0].frames[2].is_null);
+
+    EXPECT_EQ(data.anims[1].name, "wisp_idle");
+    EXPECT_FALSE(data.anims[1].rows.has_value());
+    ASSERT_EQ(data.anims[1].frames.size(), 1u);
+
+    ASSERT_EQ(data.living.size(), 1u);
+    EXPECT_EQ(data.living[0].animation.value_or(""), "wisp_walk");
+}
+
+TEST(ClasspackYaml, malformed_anims_fail_the_pack)
+{
+    ClasspackData a;
+    EXPECT_FALSE(parse_classpack_yaml("anims: [not, a, mapping]\n", a, "a"));
+
+    ClasspackData b;
+    EXPECT_FALSE(parse_classpack_yaml(
+        "anims:\n  bad:\n    frames:\n      - [0, oops]\n", b, "b"));
+
+    ClasspackData c;
+    EXPECT_FALSE(parse_classpack_yaml(
+        "anims:\n  bad:\n    frames:\n      - 7\n", c, "c"))
+        << "a bare non-null scalar is not a frame row";
+
+    // `anims: ~` is a legal empty section.
+    ClasspackData d;
+    EXPECT_TRUE(parse_classpack_yaml("anims: ~\npack: mod\n", d, "d"));
+    EXPECT_TRUE(d.anims.empty());
+}
+
+// The headline Feature-2 case: a pack-defined set survives parse → install
+// → descriptor, with the row pointers, the -1 sentinels and — critically —
+// the explicit row count that bounds walker::ani_count.
+TEST(ClasspackInstall, pack_animation_set_reaches_the_descriptor)
+{
+    ModSlotGuard guard;
+
+    const char* yaml =
+        "pack: mod\n"
+        "anims:\n"
+        "  wisp_walk:\n"
+        "    rows: 16\n"
+        "    frames:\n"
+        "      - [0, 1, 2]\n"
+        "      - ~\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:wisp\n"
+        "      wire_id: auto\n"
+        "      animation: wisp_walk\n"
+        "      sprite: packs/mod/sprites/wisp.png\n";
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "packanim"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(d, nullptr);
+    ASSERT_NE(d->anim_table, nullptr);
+    EXPECT_EQ(d->anim_row_count, 16)
+        << "the row count must be explicit: gloader's anim_table_count() "
+           "registry lookup answers 0 for a pack table, and ani_count == 0 "
+           "disables the animate() bounds checks";
+
+    // Row 0 is the declared frame list plus the -1 end sentinel; row 1 is
+    // the explicit null row; the remaining rows repeat cyclically.
+    ASSERT_NE(d->anim_table[0], nullptr);
+    EXPECT_EQ(d->anim_table[0][0], 0);
+    EXPECT_EQ(d->anim_table[0][1], 1);
+    EXPECT_EQ(d->anim_table[0][2], 2);
+    EXPECT_EQ(d->anim_table[0][3], -1);
+    EXPECT_EQ(d->anim_table[1], nullptr);
+    EXPECT_EQ(d->anim_table[2], d->anim_table[0]);
+    EXPECT_EQ(d->anim_table[15], d->anim_table[1]);
+
+    // The pack-relative sprite path is passed through untouched:
+    // read_pixie_file tries "pix/<name>" first and then the raw name.
+    ASSERT_NE(d->pix_filename, nullptr);
+    EXPECT_STREQ(d->pix_filename, "packs/mod/sprites/wisp.png");
+}
+
+// Built-in animation names stay reserved and keep working; naming one
+// clears any pack table the slot was carrying.
+TEST(ClasspackInstall, builtin_animation_names_still_win)
+{
+    ModSlotGuard guard;
+
+    ClasspackData first;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "anims:\n"
+        "  custom:\n"
+        "    frames:\n"
+        "      - [0]\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:shifter\n"
+        "      wire_id: auto\n"
+        "      animation: custom\n",
+        first, "first"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(first)), 1);
+    ASSERT_NE(get_family_descriptor(NUM_FAMILIES)->anim_table, nullptr);
+
+    ClasspackData second;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:shifter\n"
+        "      wire_id: 21\n"
+        "      animation: skeleton\n",
+        second, "second"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(second)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->animation_type, FamilyAnimationType::FAMILY_ANIM_SKELETON);
+    EXPECT_EQ(d->anim_table, nullptr)
+        << "a built-in name returns the family to the gloader table";
+    EXPECT_EQ(d->anim_row_count, 0);
+}
+
+// A set the installer rejects leaves the family's animation alone rather
+// than planting a table with a bogus row count.
+TEST(ClasspackInstall, rejected_animation_sets_leave_the_family_alone)
+{
+    ModSlotGuard guard;
+
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "anims:\n"
+        "  too_short:\n"
+        "    rows: 1\n"
+        "    frames:\n"
+        "      - [0]\n"
+        "      - [1]\n"        // rows < declared rows
+        "  bad_frame:\n"
+        "    frames:\n"
+        "      - [999]\n"      // outside 0..127
+        "  empty_row:\n"
+        "    frames:\n"
+        "      - []\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:a\n"
+        "      wire_id: 21\n"
+        "      animation: too_short\n"
+        "    - id: mod:b\n"
+        "      wire_id: 22\n"
+        "      animation: bad_frame\n"
+        "    - id: mod:c\n"
+        "      wire_id: 23\n"
+        "      animation: empty_row\n"
+        "    - id: mod:d\n"
+        "      wire_id: 24\n"
+        "      animation: nope\n",
+        data, "rejects"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
+
+    for (int id = 21; id <= 24; id++) {
+        const FamilyDescriptor* d = get_family_descriptor(id);
+        ASSERT_NE(d, nullptr) << id;
+        EXPECT_EQ(d->anim_table, nullptr) << id;
+        EXPECT_EQ(d->anim_row_count, 0) << id;
+    }
+}
+
+// The remaining set-level rejections: no frames at all, a row count past
+// the cap, an over-long row, and a duplicate set name (first wins).
+TEST(ClasspackInstall, animation_set_bounds_are_enforced)
+{
+    ModSlotGuard guard;
+
+    std::string yaml =
+        "anims:\n"
+        "  no_frames:\n"
+        "    rows: 4\n"
+        "  too_many_rows:\n"
+        "    rows: 257\n"
+        "    frames:\n"
+        "      - [0]\n"
+        "  long_row:\n"
+        "    frames:\n"
+        "      - [";
+    for (int i = 0; i < 256; i++)
+        yaml += (i > 0 ? ", 1" : "1");
+    yaml +=
+        "]\n"
+        "  twice:\n"
+        "    frames:\n"
+        "      - [1]\n"
+        "  twice:\n"
+        "    frames:\n"
+        "      - [2]\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:a\n"
+        "      wire_id: 21\n"
+        "      animation: no_frames\n"
+        "    - id: mod:b\n"
+        "      wire_id: 22\n"
+        "      animation: too_many_rows\n"
+        "    - id: mod:c\n"
+        "      wire_id: 23\n"
+        "      animation: long_row\n"
+        "    - id: mod:d\n"
+        "      wire_id: 24\n"
+        "      animation: twice\n";
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "bounds"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
+
+    for (int id = 21; id <= 23; id++) {
+        const FamilyDescriptor* d = get_family_descriptor(id);
+        ASSERT_NE(d, nullptr) << id;
+        EXPECT_EQ(d->anim_table, nullptr) << id;
+    }
+    // The duplicate name keeps the FIRST definition.
+    const FamilyDescriptor* dup = get_family_descriptor(24);
+    ASSERT_NE(dup, nullptr);
+    ASSERT_NE(dup->anim_table, nullptr);
+    EXPECT_EQ(dup->anim_table[0][0], 1);
+    EXPECT_EQ(dup->anim_row_count, 1);
+}
+
+// A non-living family naming a set that does not exist keeps its table.
+TEST(ClasspackInstall, unknown_animation_name_on_a_weapon_keeps_the_table)
+{
+    ModSlotGuard guard;
+
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  weapon:\n"
+        "    - id: mod:shard\n"
+        "      wire_id: auto\n"
+        "      animation: nope\n",
+        data, "unknown"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+    ASSERT_NE(get_weapon_family_descriptor(21), nullptr);
+    EXPECT_EQ(get_weapon_family_descriptor(21)->anim_table, nullptr);
+    EXPECT_EQ(get_weapon_family_descriptor(21)->anim_row_count, 0);
+}
+
+// Every non-living order can carry a pack table too, and the row count
+// travels with it.
+TEST(ClasspackInstall, pack_animation_sets_reach_the_other_orders)
+{
+    ModSlotGuard guard;
+
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "anims:\n"
+        "  spin:\n"
+        "    rows: 24\n"
+        "    frames:\n"
+        "      - [3, 4]\n"
+        "families:\n"
+        "  weapon:\n"
+        "    - id: mod:shard\n"
+        "      wire_id: auto\n"
+        "      animation: spin\n"
+        "      sprite: packs/mod/sprites/shard.png\n"
+        "  effect:\n"
+        "    - id: mod:spark\n"
+        "      wire_id: auto\n"
+        "      animation: spin\n"
+        "  treasure:\n"
+        "    - id: mod:relic\n"
+        "      wire_id: auto\n"
+        "      animation: spin\n"
+        "  generator:\n"
+        "    - id: mod:hut\n"
+        "      wire_id: auto\n"
+        "      animation: spin\n",
+        data, "orders"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
+
+    const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
+    ASSERT_NE(w, nullptr);
+    ASSERT_NE(w->anim_table, nullptr);
+    EXPECT_EQ(w->anim_row_count, 24);
+    EXPECT_EQ(w->anim_table[0][0], 3);
+    EXPECT_EQ(w->anim_table[0][2], -1);
+    EXPECT_STREQ(w->pix_filename, "packs/mod/sprites/shard.png");
+
+    ASSERT_NE(get_effect_family_descriptor(21), nullptr);
+    EXPECT_EQ(get_effect_family_descriptor(21)->anim_row_count, 24);
+    ASSERT_NE(get_treasure_family_descriptor(21), nullptr);
+    EXPECT_EQ(get_treasure_family_descriptor(21)->anim_row_count, 24);
+    ASSERT_NE(get_generator_family_descriptor(21), nullptr);
+    EXPECT_EQ(get_generator_family_descriptor(21)->anim_row_count, 24);
+    // All four share the one materialized table.
+    EXPECT_EQ(get_effect_family_descriptor(21)->anim_table, w->anim_table);
+}
+
+// Animation sets are pack-local: pack B cannot name pack A's set.
+TEST(ClasspackInstall, animation_sets_do_not_leak_between_packs)
+{
+    ModSlotGuard guard;
+
+    ClasspackData a;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "anims:\n  shared:\n    frames:\n      - [0]\n", a, "a"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(a)), 0);
+
+    ClasspackData b;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  living:\n"
+        "    - id: modb:thief\n"
+        "      wire_id: auto\n"
+        "      animation: shared\n",
+        b, "b"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(b)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(d, nullptr);
+    EXPECT_EQ(d->anim_table, nullptr);
+    EXPECT_EQ(d->anim_row_count, 0);
+}
+
+// ---------------------------------------------------------------------------
+// UTF-8 helpers behind the `glyph:` scalar
+// ---------------------------------------------------------------------------
+
+TEST(FamilyPresentation, glyph_utf8_round_trips)
+{
+    for (const char32_t cp : {U'S', U'$', U' ', U'é', U'♣', U'↯',
+                              U'✺', U'◍', U'\U0001F600'}) {
+        const std::string encoded = og::glyph_to_utf8(cp);
+        ASSERT_FALSE(encoded.empty()) << static_cast<std::uint32_t>(cp);
+        char32_t back = U'\0';
+        ASSERT_TRUE(og::glyph_from_utf8(encoded, back))
+            << static_cast<std::uint32_t>(cp);
+        EXPECT_EQ(back, cp);
+    }
+
+    char32_t out = U'\0';
+    EXPECT_FALSE(og::glyph_from_utf8("", out));
+    EXPECT_FALSE(og::glyph_from_utf8("ab", out)) << "two characters";
+    EXPECT_FALSE(og::glyph_from_utf8("\xC0\x80", out)) << "overlong NUL";
+    EXPECT_FALSE(og::glyph_from_utf8("\xE2\x99", out)) << "truncated";
+    EXPECT_FALSE(og::glyph_from_utf8("\x80", out)) << "lone continuation";
+    EXPECT_FALSE(og::glyph_from_utf8("\xED\xA0\x80", out)) << "surrogate";
+    EXPECT_TRUE(og::glyph_to_utf8(static_cast<char32_t>(0x110000u)).empty());
+
+    // The colour vocabulary round-trips both ways.
+    for (std::size_t i = 0; i < og::kGlyphColorNames.size(); i++) {
+        og::GlyphColor c{};
+        ASSERT_TRUE(og::glyph_color_from_name(og::kGlyphColorNames[i], c));
+        EXPECT_EQ(static_cast<std::size_t>(c), i);
+        EXPECT_STREQ(og::glyph_color_name(c), og::kGlyphColorNames[i]);
+    }
+    og::GlyphColor unknown{};
+    EXPECT_FALSE(og::glyph_color_from_name("puce", unknown));
 }

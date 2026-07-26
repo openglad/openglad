@@ -426,6 +426,81 @@ TEST(PickerCommon, get_random_name_covers_non_hirelist_and_default_families)
     }
 }
 
+namespace {
+
+std::vector<std::string> name_pool_of(int family)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    std::vector<std::string> names;
+    if (fd != nullptr && fd->name_pool != nullptr)
+        for (int i = 0; i < fd->name_pool_size; i++)
+            names.emplace_back(fd->name_pool[i]);
+    return names;
+}
+
+} // namespace
+
+// Several families deliberately draw from the SAME name list: the archmage
+// from the mage names, the orc captain from the orc names, all three slimes
+// from one slime list. The hardcoded switch spelled those aliases out; now the
+// descriptors carry them, and this pins that the aliasing survived the move.
+TEST(PickerCommon, families_that_share_a_name_pool_still_share_it)
+{
+    EXPECT_FALSE(name_pool_of(FAMILY_MAGE).empty());
+    EXPECT_EQ(name_pool_of(FAMILY_MAGE), name_pool_of(FAMILY_ARCHMAGE));
+    EXPECT_FALSE(name_pool_of(FAMILY_ORC).empty());
+    EXPECT_EQ(name_pool_of(FAMILY_ORC), name_pool_of(FAMILY_BIG_ORC));
+    EXPECT_FALSE(name_pool_of(FAMILY_SLIME).empty());
+    EXPECT_EQ(name_pool_of(FAMILY_SLIME), name_pool_of(FAMILY_MEDIUM_SLIME));
+    EXPECT_EQ(name_pool_of(FAMILY_SLIME), name_pool_of(FAMILY_SMALL_SLIME));
+}
+
+// The names come off the descriptor, so a class-pack family names its own
+// recruits with no engine change: patch the pool a pack install would write
+// and every generated name comes from it.
+TEST(PickerCommon, get_random_name_follows_the_descriptor_name_pool)
+{
+    const FamilyDescriptor* original = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, original);
+    const FamilyDescriptor saved = *original;
+
+    static const char* const kPackNames[] = {"Quartzite", "Basalt"};
+    FamilyDescriptor patched = saved;
+    patched.name_pool = kPackNames;
+    patched.name_pool_size = 2;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_GOLEM, patched));
+
+    std::set<std::string> seen;
+    std::srand(7);
+    for (int i = 0; i < 200; i++)
+        seen.insert(og::ui::get_random_name(FAMILY_GOLEM));
+
+    ASSERT_TRUE(set_family_descriptor(FAMILY_GOLEM, saved));
+    EXPECT_EQ(std::set<std::string>({"Quartzite", "Basalt"}), seen);
+}
+
+// A family with no pool of its own borrows the soldier pool — the fallback the
+// replaced switch spelled out as its `default:` branch, and what the core pack
+// relies on for the three unhireable families (golem, giant skeleton, tower).
+TEST(PickerCommon, get_random_name_without_a_pool_borrows_the_soldier_pool)
+{
+    const std::vector<std::string> soldier = name_pool_of(FAMILY_SOLDIER);
+    ASSERT_FALSE(soldier.empty());
+    const std::set<std::string> soldier_set(soldier.begin(), soldier.end());
+
+    for (int family : {FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1}) {
+        ASSERT_TRUE(name_pool_of(family).empty())
+            << "family " << family << " is expected to ship no names";
+    }
+
+    std::srand(19);
+    for (int i = 0; i < 100; i++) {
+        const char* name = og::ui::get_random_name(FAMILY_GOLEM);
+        ASSERT_NE(nullptr, name);
+        EXPECT_EQ(1u, soldier_set.count(name)) << "unexpected name " << name;
+    }
+}
+
 TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
 {
     SaveData save;

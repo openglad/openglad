@@ -7,14 +7,25 @@
  */
 #include <gtest/gtest.h>
 
+#include <openglad/core/constants.h>
+#include <openglad/core/order.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/packs.h>
 #include <openglad/resources/zip_api.h>
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 
 std::string get_asset_path();
@@ -130,4 +141,153 @@ TEST_F(CampaignPacksTest, core_pack_survives_campaign_cycling)
         << "the shipped core pack stays registered across campaign mounts";
     EXPECT_NE(gen_before, og::script::pack_scripts_generation())
         << "mount must bump the generation so world VMs rebuild";
+}
+
+// ---------------------------------------------------------------------------
+// Pack-shipped graphics and animations, end to end
+// ---------------------------------------------------------------------------
+// docs/modding/examples/emberwisp is a complete mod pack that borrows nothing
+// from the core families: its own indexed sprite sheet, its own `anims:` set,
+// its own descriptor data and its own Lua hooks. It lives under docs/ rather
+// than packs/ precisely so it is NOT auto-mounted — a new living family in the
+// shipped build would move the picker and the auto-assigned wire ids.
+
+namespace {
+
+constexpr const char* kExamplePackDir = "docs/modding/examples/emberwisp";
+constexpr const char* kExamplePackMount = "packs/emberwisp/";
+constexpr const char* kExampleSprite = "packs/emberwisp/sprites/emberwisp.png";
+
+// Mounts the example pack, refreshes the pack registries, and puts both back
+// on the way out (the unmount refresh frees the mod slot the pack claimed).
+class ExamplePackMount
+{
+public:
+    ExamplePackMount()
+        : mounted_(og::resources::mount(kExamplePackDir, kExamplePackMount, 1))
+    {
+        og::resources::refresh_pack_scripts();
+    }
+
+    ~ExamplePackMount()
+    {
+        if (mounted_)
+            (void)og::resources::unmount(kExamplePackDir);
+        og::resources::refresh_pack_scripts();
+    }
+
+    ExamplePackMount(const ExamplePackMount&) = delete;
+    ExamplePackMount& operator=(const ExamplePackMount&) = delete;
+
+    [[nodiscard]] bool ok() const { return mounted_; }
+
+private:
+    bool mounted_;
+};
+
+}  // namespace
+
+TEST(ExampleClassPack, ships_its_own_sprite_and_animation_table)
+{
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+    EXPECT_TRUE(script_registered("emberwisp"))
+        << "the mount point names the pack id the scripts register under";
+
+    const int family = og::families::resolve_family_string_id(
+        Order::Living, "example:emberwisp");
+    ASSERT_GE(family, NUM_FAMILIES)
+        << "wire_id: auto must land in a mod slot above the core pins";
+
+    // --- the descriptor carries the pack's own table, with its row count ---
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(fd, nullptr);
+    ASSERT_NE(fd->anim_table, nullptr)
+        << "the pack's anims: set must reach the descriptor";
+    ASSERT_EQ(fd->anim_row_count, 16)
+        << "16 rows = 2 ani_types x 8 facings, as classpack.yaml declares";
+    ASSERT_NE(fd->anim_table[0], nullptr);
+    const signed char walk_row[] = {0, 1, 2, 3, 2, 1, -1};
+    for (int i = 0; i < 7; i++)
+        EXPECT_EQ(fd->anim_table[0][i], walk_row[i]) << "walk row frame " << i;
+    ASSERT_NE(fd->anim_table[8], nullptr);
+    const signed char attack_row[] = {4, 5, 6, 7, -1};
+    for (int i = 0; i < 5; i++)
+        EXPECT_EQ(fd->anim_table[8][i], attack_row[i])
+            << "attack row (ani_type 1) frame " << i;
+
+    // --- the loader honours both the sprite path and the table -------------
+    loader l{EntityFactory{}};
+
+    const PixieData* pix = l.graphics_for(Order::Living, family);
+    ASSERT_NE(pix, nullptr)
+        << "a pack-relative sprite path must load through read_pixie_file";
+    EXPECT_EQ(static_cast<int>(pix->frames), 8)
+        << "the pack's Aseprite sidecar declares eight frames; a sidecar that "
+           "failed to resolve would silently degrade to one";
+    EXPECT_EQ(static_cast<int>(pix->w), 16);
+    EXPECT_EQ(static_cast<int>(pix->h), 16);
+
+    std::unique_ptr<walker> w = l.create_walker_owned(Order::Living, family);
+    ASSERT_NE(w, nullptr) << "a pack family must be constructible";
+    EXPECT_EQ(static_cast<int>(static_cast<unsigned char>(w->family())),
+              family);
+    EXPECT_EQ(w->ani, fd->anim_table);
+    EXPECT_EQ(w->ani_count, fd->anim_row_count)
+        << "ani_count must carry the pack's explicit row count: 0 means "
+           "'legacy direct indexing' and turns the animate() bounds checks "
+           "off for a snapshot-controlled ani_type/curdir";
+    EXPECT_GT(w->ani_count, 0);
+
+    // --- and the pack's Lua compiles and binds to that same family ---------
+    // An unknown hook name or an unresolvable family id rejects the whole
+    // chunk at load, so this is what keeps the example honest.
+    og::script::WorldScripts scripts;
+    for (const og::script::ScriptError& e : scripts.host().errors())
+        ADD_FAILURE() << "pack script error in " << e.where << ": "
+                      << e.message;
+    EXPECT_TRUE(scripts.has_hook(Order::Living, family,
+                                 og::script::FamilyHook::OnCreate));
+    EXPECT_TRUE(scripts.has_hook(Order::Living, family,
+                                 og::script::FamilyHook::OnFireWeapon));
+}
+
+// The frame sidecar is resolved beside the PNG that actually opened. This is
+// not hypothetical: pix/ takes a user-chosen sprite pack (graphics.sprite_sheet),
+// so a file mounted there at a pack sprite's path would otherwise supply that
+// sprite's frame metadata — and a two-frame answer for eight-frame art fails
+// the total-height cross-check, rejecting the sprite outright.
+TEST(ExampleClassPack, a_pix_sidecar_cannot_shadow_a_pack_sprite)
+{
+    namespace fs = std::filesystem;
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+
+    const fs::path shadow = fs::path(get_user_path()) / "sidecar_shadow";
+    const fs::path shadow_dir = shadow / "packs" / "emberwisp" / "sprites";
+    std::error_code ec;
+    fs::remove_all(shadow, ec);
+    fs::create_directories(shadow_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(shadow_dir / "emberwisp.json", std::ios::binary);
+        out << R"({"frames":{"a":{"frame":{"w":16,"h":16}},)"
+               R"("b":{"frame":{"w":16,"h":16}}},)"
+               R"("meta":{"size":{"w":16,"h":32}}})";
+        ASSERT_TRUE(out.good());
+    }
+    ASSERT_TRUE(og::resources::mount(shadow.string().c_str(), "pix/", 1));
+    ASSERT_FALSE(og::resources::read_file(
+                     "pix/packs/emberwisp/sprites/emberwisp.json")
+                     .empty())
+        << "the decoy must really be reachable under pix/, or this test "
+           "proves nothing about which sidecar wins";
+
+    const PixieData pix = read_pixie_file(kExampleSprite);
+    EXPECT_TRUE(pix.valid())
+        << "the pack's own sidecar must win, so the height cross-check passes";
+    EXPECT_EQ(static_cast<int>(pix.frames), 8);
+
+    (void)og::resources::unmount(shadow.string().c_str());
+    fs::remove_all(shadow, ec);
 }

@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 #include <cstdint>
 
 class walker;
@@ -29,6 +31,17 @@ struct WeaponFamilyDescriptor {
     float gravity = 0.0f;          // per-tick decrease applied to vz (downward arc)
     short init_sizez = 0;          // cylinder height (0 = full-height sentinel)
     bool can_drop_floors = false;  // may fall through "air" to a lower floor
+
+    // Pack-shipped art + motion (see FamilyDescriptor for the contract).
+    // nullptr/0 = the gloader EntityDef row keeps supplying them.
+    const char* pix_filename = nullptr;
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
+
+    // Presentation data (curses glyph + radar blip); defaults are the
+    // legacy `default:` branches of the UI switches.
+    og::FamilyGlyph glyph{U'*', '*', og::GlyphColor::White, false, false};
+    og::RadarBlip radar{};
 
     bool (*on_death)(weap* self);
     bool (*on_animate)(weap* self);

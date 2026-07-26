@@ -7,6 +7,7 @@
  */
 #include <openglad/resources/packs.h>
 
+#include <openglad/core/family_presentation.h>
 #include <openglad/core/order.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -90,6 +91,14 @@ namespace {
 struct ClasspackStore {
     std::vector<std::unique_ptr<og::data::ClasspackData>> packs;
     std::deque<std::vector<const char*>> name_pools;
+    // Pack-defined animation tables. anim_rows holds one -1-terminated
+    // frame list per row; anim_tables holds the row-pointer arrays the
+    // descriptors' anim_table field points at. Both deques are append-only
+    // and their elements are never mutated after the push, so every pointer
+    // handed to a descriptor stays valid for the life of the process —
+    // exactly the contract the borrowed string fields already rely on.
+    std::deque<std::vector<signed char>> anim_rows;
+    std::deque<std::vector<const signed char*>> anim_tables;
 };
 
 ClasspackStore& classpack_store()
@@ -191,10 +200,188 @@ void apply_name_pool(const std::vector<std::string>& names,
         static_cast<int>(classpack_store().name_pools.back().size());
 }
 
+// --- pack-defined animation sets ---------------------------------------
+
+// Bounds on a pack table. kMaxAnimRows keeps ani_count (and therefore the
+// animate() index arithmetic it bounds) inside a sane range; kMaxAnimFrames
+// caps one row's length; frame indices must fit a signed char and stay
+// clear of the -1 end sentinel.
+inline constexpr std::size_t kMaxAnimRows = 256;
+inline constexpr std::size_t kMaxAnimFrames = 255;
+inline constexpr std::int32_t kMaxAnimFrameIndex = 127;
+
+// One pack's materialized `anims:` sets, looked up by name.
+struct PackAnims {
+    struct Entry {
+        std::string name;
+        const signed char* const* table = nullptr;
+        int rows = 0;
+    };
+    std::vector<Entry> entries;
+
+    const Entry* find(const std::string& name) const
+    {
+        for (const Entry& e : entries)
+            if (e.name == name)
+                return &e;
+        return nullptr;
+    }
+};
+
+// Builds the row storage + row-pointer array for every set the pack
+// declares. A malformed set warns and is dropped; families naming it then
+// keep whatever animation they already had.
+PackAnims materialize_anims(const og::data::ClasspackData& pack)
+{
+    PackAnims out;
+    for (const og::data::ClasspackAnimSet& set : pack.anims) {
+        if (set.frames.empty()) {
+            LogWarn("classpack anims '{}': no frame rows — set skipped\n",
+                    set.name);
+            continue;
+        }
+        std::size_t rows = set.frames.size();
+        if (set.rows) {
+            if (*set.rows < static_cast<std::int32_t>(set.frames.size())) {
+                LogWarn(
+                    "classpack anims '{}': rows {} is below the {} declared "
+                    "rows — set skipped\n",
+                    set.name, *set.rows, set.frames.size());
+                continue;
+            }
+            rows = static_cast<std::size_t>(*set.rows);
+        }
+        if (rows > kMaxAnimRows) {
+            LogWarn("classpack anims '{}': {} rows exceeds the {} cap — set "
+                    "skipped\n",
+                    set.name, rows, kMaxAnimRows);
+            continue;
+        }
+        if (out.find(set.name) != nullptr) {
+            LogWarn("classpack anims '{}': duplicate set name — kept the "
+                    "first\n",
+                    set.name);
+            continue;
+        }
+
+        bool ok = true;
+        std::vector<const signed char*> declared;
+        declared.reserve(set.frames.size());
+        for (const og::data::ClasspackAnimRow& row : set.frames) {
+            if (row.is_null) {
+                declared.push_back(nullptr);
+                continue;
+            }
+            if (row.frames.empty() || row.frames.size() > kMaxAnimFrames) {
+                LogWarn("classpack anims '{}': a row has {} frames (1..{})\n",
+                        set.name, row.frames.size(), kMaxAnimFrames);
+                ok = false;
+                break;
+            }
+            std::vector<signed char> data;
+            data.reserve(row.frames.size() + 1);
+            for (const std::int32_t frame : row.frames) {
+                if (frame < 0 || frame > kMaxAnimFrameIndex) {
+                    LogWarn("classpack anims '{}': frame {} outside 0..{}\n",
+                            set.name, frame, kMaxAnimFrameIndex);
+                    ok = false;
+                    break;
+                }
+                data.push_back(static_cast<signed char>(frame));
+            }
+            if (!ok)
+                break;
+            data.push_back(-1);  // end-of-row sentinel
+            classpack_store().anim_rows.push_back(std::move(data));
+            declared.push_back(classpack_store().anim_rows.back().data());
+        }
+        if (!ok) {
+            LogWarn("classpack anims '{}': set skipped\n", set.name);
+            continue;
+        }
+
+        // Expand to the requested row count; declared rows repeat cyclically
+        // so `rows: 16` over one row reproduces the legacy uniform tables.
+        std::vector<const signed char*> table;
+        table.reserve(rows);
+        for (std::size_t i = 0; i < rows; i++)
+            table.push_back(declared[i % declared.size()]);
+        classpack_store().anim_tables.push_back(std::move(table));
+        out.entries.push_back(
+            PackAnims::Entry{set.name,
+                             classpack_store().anim_tables.back().data(),
+                             static_cast<int>(rows)});
+    }
+    return out;
+}
+
+// Points a descriptor at one of this pack's animation sets. Used by the
+// four non-living orders, whose `animation:` can only name a pack set (the
+// built-in FamilyAnimationType tables are living-shaped).
+void apply_pack_animation(const PackAnims& anims, const std::string& name,
+                          const std::string& id,
+                          const signed char* const*& table, int& row_count)
+{
+    if (const PackAnims::Entry* set = anims.find(name)) {
+        table = set->table;
+        row_count = set->rows;
+        return;
+    }
+    LogWarn("classpack {}: no animation set '{}' in this pack — kept\n", id,
+            name);
+}
+
+// Folds a declared presentation block onto a descriptor's glyph/radar.
+// Presentation is cosmetic: a malformed value warns and keeps the current
+// setting instead of sinking the whole pack.
+void apply_presentation(const og::data::ClasspackPresentation& p,
+                        og::FamilyGlyph& glyph, og::RadarBlip& radar,
+                        const std::string& id)
+{
+    if (p.glyph) {
+        char32_t codepoint = U' ';
+        if (og::glyph_from_utf8(*p.glyph, codepoint))
+            glyph.codepoint = codepoint;
+        else
+            LogWarn(
+                "classpack {}: glyph '{}' is not one UTF-8 character — "
+                "kept\n",
+                id, *p.glyph);
+    }
+    if (p.glyph_ascii) {
+        if (p.glyph_ascii->size() == 1)
+            glyph.ascii = (*p.glyph_ascii)[0];
+        else
+            LogWarn("classpack {}: glyph_ascii '{}' is not one byte — kept\n",
+                    id, *p.glyph_ascii);
+    }
+    if (p.glyph_color) {
+        og::GlyphColor color{};
+        if (og::glyph_color_from_name(*p.glyph_color, color))
+            glyph.color = color;
+        else
+            LogWarn("classpack {}: unknown glyph_color '{}' — kept\n", id,
+                    *p.glyph_color);
+    }
+    if (p.glyph_bold)
+        glyph.bold = *p.glyph_bold;
+    if (p.glyph_transparent)
+        glyph.transparent = *p.glyph_transparent;
+    if (p.radar_color)
+        radar.color = *p.radar_color;
+    if (p.radar_jitter) {
+        if (*p.radar_jitter >= 0)
+            radar.jitter = *p.radar_jitter;
+        else
+            LogWarn("classpack {}: negative radar_jitter {} — kept\n", id,
+                    *p.radar_jitter);
+    }
+}
+
 // --- per-order installers (entries must already live in the store) ------
 
 bool install_living(const og::data::ClasspackLivingEntry& e,
-                    AutoWireIds& autos)
+                    AutoWireIds& autos, const PackAnims& anims)
 {
     const int id = resolve_wire_id(e.wire_id, Order::Living, autos, e.id);
     if (id < 0)
@@ -296,12 +483,20 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
     if (e.sprite.present)
         d.pix_filename = nullable_cstr(e.sprite);
     if (e.animation) {
+        // Built-in names are reserved and win, so the seven legacy tables
+        // keep working unchanged; anything else names a pack set.
         FamilyAnimationType type{};
-        if (og::families::animation_type_from_name(*e.animation, type))
+        if (og::families::animation_type_from_name(*e.animation, type)) {
             d.animation_type = type;
-        else
+            d.anim_table = nullptr;  // back to the built-in table
+            d.anim_row_count = 0;
+        } else if (const PackAnims::Entry* set = anims.find(*e.animation)) {
+            d.anim_table = set->table;
+            d.anim_row_count = set->rows;
+        } else {
             LogWarn("classpack {}: unknown animation '{}' — kept\n", e.id,
                     *e.animation);
+        }
     }
     if (e.ai_line_of_sight)
         d.ai_line_of_sight = *e.ai_line_of_sight;
@@ -313,12 +508,13 @@ bool install_living(const og::data::ClasspackLivingEntry& e,
         d.is_playable = *e.playable;
     if (e.playable_order)
         d.playable_order = *e.playable_order;
+    apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
     return set_family_descriptor(id, d);
 }
 
 bool install_weapon(const og::data::ClasspackWeaponEntry& e,
-                    AutoWireIds& autos)
+                    AutoWireIds& autos, const PackAnims& anims)
 {
     const int id = resolve_wire_id(e.wire_id, Order::Weapon, autos, e.id);
     if (id < 0)
@@ -357,12 +553,18 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e,
         d.init_sizez = static_cast<short>(*e.sizez);
     if (e.can_drop_floors)
         d.can_drop_floors = *e.can_drop_floors;
+    if (e.sprite.present)
+        d.pix_filename = nullable_cstr(e.sprite);
+    if (e.animation)
+        apply_pack_animation(anims, *e.animation, e.id, d.anim_table,
+                             d.anim_row_count);
+    apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
     return set_weapon_family_descriptor(id, d);
 }
 
 bool install_effect(const og::data::ClasspackEffectEntry& e,
-                    AutoWireIds& autos)
+                    AutoWireIds& autos, const PackAnims& anims)
 {
     const int id = resolve_wire_id(e.wire_id, Order::FX, autos, e.id);
     if (id < 0)
@@ -387,12 +589,18 @@ bool install_effect(const og::data::ClasspackEffectEntry& e,
         if (fold_bit_flags(*e.init_bit_flags, flags, e.id))
             d.init_bit_flags = flags;
     }
+    if (e.sprite.present)
+        d.pix_filename = nullable_cstr(e.sprite);
+    if (e.animation)
+        apply_pack_animation(anims, *e.animation, e.id, d.anim_table,
+                             d.anim_row_count);
+    apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
     return set_effect_family_descriptor(id, d);
 }
 
 bool install_treasure(const og::data::ClasspackTreasureEntry& e,
-                      AutoWireIds& autos)
+                      AutoWireIds& autos, const PackAnims& anims)
 {
     const int id = resolve_wire_id(e.wire_id, Order::Treasure, autos, e.id);
     if (id < 0)
@@ -412,12 +620,18 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e,
         d.init_ignore = *e.init_ignore;
     if (e.init_frame)
         d.init_frame = static_cast<short>(*e.init_frame);
+    if (e.sprite.present)
+        d.pix_filename = nullable_cstr(e.sprite);
+    if (e.animation)
+        apply_pack_animation(anims, *e.animation, e.id, d.anim_table,
+                             d.anim_row_count);
+    apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
     return set_treasure_family_descriptor(id, d);
 }
 
 bool install_generator(const og::data::ClasspackGeneratorEntry& e,
-                       AutoWireIds& autos)
+                       AutoWireIds& autos, const PackAnims& anims)
 {
     const int id = resolve_wire_id(e.wire_id, Order::Generator, autos, e.id);
     if (id < 0)
@@ -446,28 +660,39 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e,
         d.spawn_ani_type = static_cast<char>(*e.spawn_ani_type);
     if (e.clear_owner)
         d.clear_owner = *e.clear_owner;
+    if (e.sprite.present)
+        d.pix_filename = nullable_cstr(e.sprite);
+    if (e.animation)
+        apply_pack_animation(anims, *e.animation, e.id, d.anim_table,
+                             d.anim_row_count);
+    if (e.editor_label)
+        d.editor_label = e.editor_label->c_str();
+    apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
     return set_generator_family_descriptor(id, d);
 }
 
-// Installs every entry of a STORED pack. Order: weapons and the other
-// non-living orders first, then livings (whose default_weapon may name a
-// weapon this pack just installed), then generators (whose default_weapon
-// may name a living this pack just installed).
+// Installs every entry of a STORED pack. Order: the pack's animation sets
+// first (families reference them by name), then weapons and the other
+// non-living orders, then livings (whose default_weapon may name a weapon
+// this pack just installed), then generators (whose default_weapon may name
+// a living this pack just installed). Animation sets are pack-local: a
+// family only ever resolves a set its own pack declares.
 int install_pack_families(const og::data::ClasspackData& pack,
                           AutoWireIds& autos)
 {
+    const PackAnims anims = materialize_anims(pack);
     int installed = 0;
     for (const auto& e : pack.weapons)
-        installed += install_weapon(e, autos) ? 1 : 0;
+        installed += install_weapon(e, autos, anims) ? 1 : 0;
     for (const auto& e : pack.effects)
-        installed += install_effect(e, autos) ? 1 : 0;
+        installed += install_effect(e, autos, anims) ? 1 : 0;
     for (const auto& e : pack.treasures)
-        installed += install_treasure(e, autos) ? 1 : 0;
+        installed += install_treasure(e, autos, anims) ? 1 : 0;
     for (const auto& e : pack.living)
-        installed += install_living(e, autos) ? 1 : 0;
+        installed += install_living(e, autos, anims) ? 1 : 0;
     for (const auto& e : pack.generators)
-        installed += install_generator(e, autos) ? 1 : 0;
+        installed += install_generator(e, autos, anims) ? 1 : 0;
     return installed;
 }
 
