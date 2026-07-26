@@ -11,8 +11,12 @@
 // helpers below instead of invoking descriptor function pointers directly:
 // each helper tries the current world's registered Lua hook first, then the
 // descriptor's C++ callback, and returns nullopt when neither exists (caller
-// keeps its legacy default path). A Lua hook that errors counts as absent-
-// with-C++-fallback-skipped (deterministic on every peer; see design doc R9).
+// keeps its legacy default path). A Lua hook that ERRORS counts as absent
+// for that dispatch — so the C++ callback (when still present during the
+// conversion transition) runs next. Identical on every peer, but it means a
+// hook must fail BEFORE mutating sim state or not at all: a partial script
+// run followed by the full C++ callback double-executes side effects.
+// Script errors therefore belong at branch entry (design doc R9).
 
 #include <openglad/core/order.h>
 

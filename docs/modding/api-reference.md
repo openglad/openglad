@@ -31,6 +31,7 @@ mutable sim state in globals/upvalues (cookbook R6).
 | `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching C++ casts. |
 | `og.trunc(x)` | `(int64)trunc(double)` — the C cast-float-to-int semantics. Errors on NaN/out-of-range. |
 | `og.rand(n)` | Sim RNG: uniform `[0, n)`. THE only randomness source. Preserve call order/count when transliterating. |
+| `og.cosmetic_rand(n)` | The C++ `cosmetic_rng_override()` pattern: parity-harness cosmetic stream when installed, else the sim RNG. Use ONLY where the C++ drew through that selector (elf spread, path-check cadence). |
 
 ## Hooks
 
@@ -40,7 +41,10 @@ og.register_hooks(order, family_id_string, { hook_name = function ... })
 
 `order` ∈ `"living" | "weapon" | "treasure" | "generator" | "fx"` (alias
 `"effect"`). Family ids: `"core:<name>"` for built-ins (e.g. `core:soldier`,
-`core:boomerang`). Unknown family or hook name = load error (the whole
+`core:boomerang`) — the registry name lowercased with spaces→underscores.
+When registry names collide (golem/giant_skeleton/tower1 all answer to
+BEAST), use the numeric escape `"core:#<id>"` (e.g. `core:#19` for
+giant_skeleton). Unknown family or hook name = load error (the whole
 chunk is rejected). A hook that errors at runtime is treated as absent for
 that dispatch (deterministic on every peer) and the error is recorded.
 
@@ -160,7 +164,8 @@ RANDOM_WALK, DIE, FOLLOW, RUSH, MULTIDO, QUICK_FIRE, SET_WEAPON,
 RESET_WEAPON, SEARCH, ATTACK, RIGHT_WALK, UNCHARM); `BIT_*` (FLYING,
 SWIMMING, ANIMATE, INVINCIBLE, NO_RANGED, IMMORTAL, NO_COLLIDE, PHANTOM,
 NAMED, FORESTWALK, MAGICAL, FIRE, ETHEREAL); `ANI_*` (WALK, ATTACK,
-TELE_OUT, TELE_IN, SKEL_GROW, SLIME_SPLIT, EXPLODE); `ACT_*` (RANDOM, FIRE,
+TELE_OUT, TELE_IN, SKEL_GROW, SLIME_SPLIT, EXPLODE, GROW, GLOWGROW,
+GLOWPULSE, EXPAND_8, DOOR_OPEN, SCARE, BOMB, SPIN); `GRID_SIZE`; `ACT_*` (RANDOM, FIRE,
 CONTROL, GUARD, GENERATE, DIE, SIT); `SOUND_*` (BOW, CLANG, DIE1, BLAST,
 SPARKLE, TELEPORT, YO, BOLT, HEAL, CHARGE, FWIP, EXPLODE, DIE2, ROAR,
 MONEY, EAT); `SHOT_DRAIN_CAP`, `MP_POOL_DAMAGE_CAP`,

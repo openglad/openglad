@@ -1,0 +1,13 @@
+-- core tower1 (FAMILY_TOWER1) — transliterated from family_tower1.cpp.
+--
+-- The tower1 descriptor wires NO behavior callbacks (every hook slot is
+-- nullptr; the family is a stationary shooter driven entirely by descriptor
+-- data and generic walker/living code), so there is nothing to register
+-- here. og.register_hooks with an empty hook table is a load error by
+-- design, so this file deliberately makes no registration call.
+--
+-- Note: the descriptor's display name is "BEAST", which it shares with
+-- FAMILY_GOLEM (18) and FAMILY_GIANT_SKELETON (19). String-id resolution
+-- ("core:beast") returns the first match in registry scan order — the
+-- golem — so tower1 (20) is not addressable by name anyway until core pack
+-- ids are pinned by classpack.yaml (design doc §5).

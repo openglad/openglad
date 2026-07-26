@@ -42,6 +42,10 @@
 #include <list>
 #include <string>
 
+// Walker-level XP wrapper (defined in walker_combat.cpp; no public header).
+short exp_from_action(ExpAction action, walker* w, walker* target,
+                      short value);
+
 namespace og::script {
 
 namespace {
@@ -600,6 +604,15 @@ S_SET_INT(max_magic_delay, std::int32_t)
 S_GET_INT(current_magic_delay)
 S_SET_INT(current_magic_delay, std::int32_t)
 
+// Raw (unmasked) frozen_delay: negatives are the thaw-immunity phase, which
+// the masked s_frozen_delay getter hides (orc howl needs the raw value).
+int s_frozen_delay_raw(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           stats_arg(L)->frozen_delay_raw()));
+    return 1;
+}
+
 int s_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
@@ -739,6 +752,7 @@ G_GET_INT(armor)
 G_SET_INT(armor, short)
 G_GET_INT(level)
 G_GET_INT(exp)
+G_SET_INT(exp, std::uint32_t)
 G_GET_INT(total_shots)
 G_SET_INT(total_shots, std::int32_t)
 G_GET_INT(scen_shots)
@@ -944,6 +958,27 @@ int og_query_object_passable(lua_State* L)
     return 1;
 }
 
+// og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand
+// override when installed (so captured dumps match master's dual-RNG-stream
+// behavior without observing the sim rng_state), else the sim RNG — exactly
+// the C++ cosmetic_rng_override() pattern (see walker.cpp
+// next_path_check_delay / elf spread).
+int og_cosmetic_rand(lua_State* L)
+{
+    const lua_Integer n = luaL_checkinteger(L, 1);
+    if (n <= 0)
+        return luaL_error(L, "og.cosmetic_rand: n must be positive");
+    if (IRandom* cos = cosmetic_rng_override()) {
+        lua_pushinteger(L, static_cast<lua_Integer>(
+                               cos->next(static_cast<std::uint32_t>(n))));
+        return 1;
+    }
+    GameWorld* world = world_arg(L);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->rng_.next(static_cast<std::uint32_t>(n))));
+    return 1;
+}
+
 int og_enemy_freeze(lua_State* L)
 {
     lua_pushinteger(L,
@@ -1067,6 +1102,32 @@ int og_entity_display_name(lua_State* L)
     const std::string_view name =
         entity_display_name(w, std::string_view(fallback, len));
     lua_pushlstring(L, name.data(), name.size());
+    return 1;
+}
+
+// og.exp_from_action(self, target_or_nil, action_name, value) — the
+// walker-level exp_from_action wrapper the family code calls.
+int og_exp_from_action(lua_State* L)
+{
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    walker* target = resolve_walker_or_nil(L, 2);
+    const char* action_name = luaL_checkstring(L, 3);
+    const auto value = static_cast<short>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 4)));
+    ExpAction action;
+    if (std::strcmp(action_name, "attack") == 0) action = ExpAction::Attack;
+    else if (std::strcmp(action_name, "kill") == 0) action = ExpAction::Kill;
+    else if (std::strcmp(action_name, "heal") == 0) action = ExpAction::Heal;
+    else if (std::strcmp(action_name, "turn_undead") == 0) action = ExpAction::TurnUndead;
+    else if (std::strcmp(action_name, "raise_skeleton") == 0) action = ExpAction::RaiseSkeleton;
+    else if (std::strcmp(action_name, "raise_ghost") == 0) action = ExpAction::RaiseGhost;
+    else if (std::strcmp(action_name, "resurrect") == 0) action = ExpAction::Resurrect;
+    else if (std::strcmp(action_name, "resurrect_penalty") == 0) action = ExpAction::ResurrectPenalty;
+    else if (std::strcmp(action_name, "protection") == 0) action = ExpAction::Protection;
+    else if (std::strcmp(action_name, "eat_corpse") == 0) action = ExpAction::EatCorpse;
+    else return luaL_error(L, "og.exp_from_action: unknown action '%s'", action_name);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           exp_from_action(action, w, target, value)));
     return 1;
 }
 
@@ -1215,6 +1276,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_set_weapon_cost", s_set_weapon_cost},
     {"s_frozen_delay", s_frozen_delay},
     {"s_set_frozen_delay", s_set_frozen_delay},
+    {"s_frozen_delay_raw", s_frozen_delay_raw},
     {"s_current_distance", s_current_distance},
     {"s_set_current_distance", s_set_current_distance},
     {"s_last_distance", s_last_distance},
@@ -1247,7 +1309,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"g_intelligence", g_intelligence},
     {"g_set_intelligence", g_set_intelligence},
     {"g_armor", g_armor}, {"g_set_armor", g_set_armor},
-    {"g_level", g_level}, {"g_exp", g_exp},
+    {"g_level", g_level}, {"g_exp", g_exp}, {"g_set_exp", g_set_exp},
     {"g_total_shots", g_total_shots},
     {"g_set_total_shots", g_set_total_shots},
     {"g_scen_shots", g_scen_shots},
@@ -1290,6 +1352,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"query_passable", og_query_passable},
     {"query_grid_passable", og_query_grid_passable},
     {"query_object_passable", og_query_object_passable},
+    {"cosmetic_rand", og_cosmetic_rand},
     {"enemy_freeze", og_enemy_freeze},
     {"set_enemy_freeze", og_set_enemy_freeze},
     {"emit_sound", og_emit_sound},
@@ -1303,6 +1366,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"elemental_lifetime", og_elemental_lifetime},
     {"image_lifetime", og_image_lifetime},
     {"entity_display_name", og_entity_display_name},
+    {"exp_from_action", og_exp_from_action},
     {"apply_level_up", og_apply_level_up},
     {"apply_difficulty_scaling", og_apply_difficulty_scaling},
     {"check_special_ai_distance", og_check_special_ai_distance},
@@ -1360,6 +1424,15 @@ const NamedConst kConstants[] = {
     {"ANI_SKEL_GROW", ANI_SKEL_GROW},
     {"ANI_SLIME_SPLIT", ANI_SLIME_SPLIT},
     {"ANI_EXPLODE", ANI_EXPLODE},
+    {"ANI_GROW", ANI_GROW},
+    {"ANI_GLOWGROW", ANI_GLOWGROW},
+    {"ANI_GLOWPULSE", ANI_GLOWPULSE},
+    {"ANI_EXPAND_8", ANI_EXPAND_8},
+    {"ANI_DOOR_OPEN", ANI_DOOR_OPEN},
+    {"ANI_SCARE", ANI_SCARE},
+    {"ANI_BOMB", ANI_BOMB},
+    {"ANI_SPIN", ANI_SPIN},
+    {"GRID_SIZE", GRID_SIZE},
     // Act types
     {"ACT_RANDOM", ACT_RANDOM},
     {"ACT_FIRE", ACT_FIRE},

@@ -157,6 +157,79 @@ families:
   generator: [...]
 ```
 
+Concrete field inventory (v1), mirroring the descriptor structs and the
+gloader EntityDef table exactly:
+
+```yaml
+families:
+  living:
+    - id: core:soldier
+      wire_id: 0                     # core pins legacy bytes; mods: auto
+      name: SOLDIER
+      short_name: ~                  # optional picker label
+      base_stats: [12, 6, 12, 8, 9, 1]        # STR DEX CON INT ARMOR LVL
+      hiring_cost: 250
+      derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]  # HP MP ATK RATK RNG DEF SPD ATKSPD
+      stat_costs: [6, 10, 6, 25, 50, 200]
+      special_costs: [5000, 25, 100, 120, 150, 5000]
+      weapon_cost: 2
+      default_weapon: core:knife     # resolved through the weapon registry
+      init_bit_flags: []             # names: FLYING, SWIMMING, ...
+      init_ani_type: 0
+      init_max_magicpoints: 0
+      special_names: [NONE, CHARGE, BOOMERANG, WHIRLWIND, DISARM, NONE]
+      alternate_names: [NONE, NONE, NONE, NONE, NONE, NONE]
+      leaves_bloodspot: true
+      magic_damage_modifier: 1.0
+      is_stationary: false
+      has_returning_weapon: true
+      is_undead: false
+      promotes_to: ~                 # family id string or null
+      promotion_level_req: 0
+      death_message: SOLDIER SLAIN
+      sprite: sprites/footman.png
+      animation: standard            # named set (see anims section)
+      ai_line_of_sight: 7
+      description: |
+        Your basic grunt...
+      names: [Lothar, Arthur, ...]
+      playable: true
+      playable_order: 0
+      state_slots: 0
+  weapon:
+    - id: core:knife
+      wire_id: 0
+      name: KNIFE
+      sprite: sprites/knife.png
+      animation: knife
+      hitpoints: 6
+      act_type: fire                 # fire|sit|random|control|generate|die
+      stepsize: 5
+      ai_line_of_sight: 7
+      damage: 6
+      fire_frequency: 0
+      fire_sound: fwip
+      skip_sit_notify: false
+      is_auto_attackable: false
+      init_bit_flags: []
+      init_lifetime: 0
+      init_ani_type: 0
+      vz: 0.0
+      gravity: 0.0
+      sizez: 0
+      can_drop_floors: false
+  # treasure/generator/fx sections carry their descriptor fields the same way
+anims:
+  # Named frame tables replacing the gloader constexpr arrays. A set is a
+  # list of rows (one per ani_type*8+facing slot; a set may give 8, 16, or
+  # 32 rows, or use `repeat:` shorthand); frames are sprite indices, row
+  # playback ends at the sentinel (no -1 in YAML; row end = end).
+  knife:
+    rows: 16
+    frames:
+      - [0, 1, 2, 3]                 # ...
+```
+
 Scripts register behavior:
 
 ```lua

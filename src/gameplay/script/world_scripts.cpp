@@ -27,6 +27,7 @@
 #include "script_internal.h"
 
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -151,14 +152,23 @@ const char* descriptor_name(Order order, int family_id)
     }
 }
 
-// Accepts "core:<name>" (built-in families) or a bare "<name>". Returns -1
-// when unknown. Mod packs get first-class string ids with the pack format;
-// until then the registry name (lowercased, spaces → underscores) is the id.
+// Accepts "core:<name>" (built-in families), a bare "<name>", or the
+// numeric escape "core:#<id>" for families whose registry names collide
+// (golem/giant_skeleton/tower1 all answer to BEAST until classpack.yaml
+// pins first-class string ids). Returns -1 when unknown.
 int resolve_family_id(Order order, const char* family_str)
 {
     const char* colon = std::strchr(family_str, ':');
-    const std::string want =
-        normalize_family_name(colon != nullptr ? colon + 1 : family_str);
+    const char* name_part = colon != nullptr ? colon + 1 : family_str;
+    if (name_part[0] == '#') {
+        char* end = nullptr;
+        const long id = std::strtol(name_part + 1, &end, 10);
+        if (end != name_part + 1 && *end == '\0' && id >= 0 && id < 256 &&
+            descriptor_name(order, static_cast<int>(id)) != nullptr)
+            return static_cast<int>(id);
+        return -1;
+    }
+    const std::string want = normalize_family_name(name_part);
     for (int id = 0; id < 256; id++) {
         const char* name = descriptor_name(order, id);
         if (name == nullptr) {
