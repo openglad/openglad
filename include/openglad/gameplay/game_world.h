@@ -36,6 +36,7 @@ class SaveData;
 class cfg_store;
 struct GameplayContext;
 namespace og::sim { class SimEventLog; }
+namespace og::script { class WorldScripts; }
 
 namespace og::sim {
 
@@ -148,6 +149,11 @@ public:
     GameWorld(const GameWorld&) = delete;
     GameWorld& operator=(const GameWorld&) = delete;
     GameWorld(GameWorld&&) = delete;
+
+    // Per-world scripting VM (class-pack hooks / level scripts). Lazily
+    // created on first use; separate instances per world keep server and
+    // mirror script state isolated (same rule as obmap).
+    og::script::WorldScripts& scripts();
     GameWorld& operator=(GameWorld&&) = delete;
 
     // Level metadata
@@ -462,6 +468,7 @@ private:
     SaveData* gameplay_save_ = nullptr;
     og::sim::SimEventLog* gameplay_sim_events_ = nullptr;
     cfg_store* gameplay_config_ = nullptr;
+    std::unique_ptr<og::script::WorldScripts> scripts_;
 };
 
 // Floor-awareness HUD label. Empty => call sites draw NOTHING (single-floor

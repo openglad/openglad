@@ -23,6 +23,7 @@
 //
 
 #include <cstdint>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
@@ -81,9 +82,9 @@ bool effect::act()
 
 	// Per-family() action dispatch
 	const auto* efd = get_effect_family_descriptor(family());
-	if (efd && efd->on_act)
+	if (auto hook_result = og::script::hooks::effect_on_act(efd, this))
 	{
-		if (efd->on_act(this))
+		if (*hook_result)
 			return 1;
 		// on_act returned false: fall through to animate/die below
 	}
@@ -181,8 +182,7 @@ bool effect::death()
 	set_death_called(1);
 
 	const auto* efd = get_effect_family_descriptor(family());
-	if (efd && efd->on_death)
-		efd->on_death(this);
+	og::script::hooks::effect_on_death(efd, this);
 
 	return 1;
 }

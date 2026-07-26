@@ -12,6 +12,8 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -118,6 +120,20 @@ GameWorld::GameWorld(std::uint32_t seed)
       rng_(seed)
 {
     mysmoother.set_rng(&rng_);
+}
+
+og::script::WorldScripts& GameWorld::scripts()
+{
+    // Rebuild when the mounted pack set changed (campaign packs mount after
+    // world creation; tests remount freely). Rebuild timing is the first
+    // dispatch after the change — identical on every peer given identical
+    // mount sequencing, so this stays deterministic.
+    if (scripts_ != nullptr &&
+        scripts_->built_generation() != og::script::pack_scripts_generation())
+        scripts_.reset();
+    if (scripts_ == nullptr)
+        scripts_ = std::make_unique<og::script::WorldScripts>();
+    return *scripts_;
 }
 
 GameWorld::~GameWorld()

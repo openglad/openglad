@@ -49,6 +49,11 @@ option(OPENGLAD_FETCH_PHYSFS "Fetch PhysFS from upstream when no package target 
 option(OPENGLAD_FETCH_LODEPNG "Fetch lodepng from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_IXWEBSOCKET "Fetch IXWebSocket from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_SDL3 "Fetch SDL3 from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+# Lua is ALWAYS vendored (independent of OPENGLAD_FETCH_DEPS): the scripting
+# VM must be the pinned version compiled as C++ on every platform — a system
+# Lua (C linkage, longjmp error unwinding) would break binding-layer RAII and
+# cross-peer determinism. Offline builds pre-populate FETCHCONTENT_SOURCE_DIR_LUA.
+option(OPENGLAD_FETCH_LUA "Fetch Lua from upstream (always vendored; no system fallback)" ON)
 option(OPENGLAD_USE_PACKAGED_IXWEBSOCKET "Prefer an installed IXWebSocket package over fetching the pinned upstream commit" ON)
 set(OPENGLAD_ZLIB_GIT_REPOSITORY "https://github.com/madler/zlib.git" CACHE STRING "zlib upstream repository")
 set(OPENGLAD_ZLIB_GIT_TAG "v1.3.2" CACHE STRING "zlib upstream tag/commit to use when fetching")
@@ -64,6 +69,8 @@ set(OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY "https://github.com/machinezone/IXWebSoc
 set(OPENGLAD_IXWEBSOCKET_GIT_TAG "64fae7676bd8fe31f7cb4bcde7a6841892dad65e" CACHE STRING "IXWebSocket upstream commit to use when fetching")
 set(OPENGLAD_SDL3_GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git" CACHE STRING "SDL3 upstream repository")
 set(OPENGLAD_SDL3_GIT_TAG "release-3.4.8" CACHE STRING "SDL3 upstream tag/commit to use when fetching")
+set(OPENGLAD_LUA_GIT_REPOSITORY "https://github.com/lua/lua.git" CACHE STRING "Lua upstream repository")
+set(OPENGLAD_LUA_GIT_TAG "v5.4.8" CACHE STRING "Lua upstream tag/commit to use when fetching")
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -151,9 +158,19 @@ if(NOT EMSCRIPTEN)
     )
 endif()
 
+# Deterministic Lua scripting VM (class packs / level scripts). Shared by the
+# SDL game, the component libraries, and the headless clients.
+set(OG_SCRIPT_SOURCES
+    ${SRC_DIR}/gameplay/script/script_host.cpp
+    ${SRC_DIR}/gameplay/script/pack_scripts.cpp
+    ${SRC_DIR}/gameplay/script/world_scripts.cpp
+    ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+)
+
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
+    ${OG_SCRIPT_SOURCES}
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/core/frame_pacing.cpp
     ${SRC_DIR}/core/frame_rate_config.cpp
@@ -287,6 +304,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
+    ${SRC_DIR}/resources/packs.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -373,6 +391,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
+    ${SRC_DIR}/resources/packs.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -532,6 +551,7 @@ set(OG_PLATFORM_SOURCES
 set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${OG_SIM_SOURCES}
     ${OG_ENTITIES_SOURCES}
+    ${OG_SCRIPT_SOURCES}
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/astar.cpp
@@ -1012,6 +1032,71 @@ else()
     message(FATAL_ERROR "lodepng was not found. Enable OPENGLAD_FETCH_LODEPNG or provide a package.")
 endif()
 
+# --- Lua 5.4 (deterministic scripting VM for class packs) ---
+# Always vendored at a pinned tag: the VM must behave identically on every
+# platform and peer, so a system Lua (different version/patches) is never
+# acceptable. Compiled as C++ so Lua errors unwind as exceptions (RAII-safe
+# in the binding layer; the web build already compiles with -fexceptions).
+if(OPENGLAD_FETCH_LUA)
+    FetchContent_Declare(lua
+        GIT_REPOSITORY ${OPENGLAD_LUA_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_LUA_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(lua)
+    FetchContent_GetProperties(lua)
+    set(OG_LUA_SOURCES
+        ${lua_SOURCE_DIR}/lapi.c
+        ${lua_SOURCE_DIR}/lauxlib.c
+        ${lua_SOURCE_DIR}/lbaselib.c
+        ${lua_SOURCE_DIR}/lcode.c
+        ${lua_SOURCE_DIR}/lcorolib.c
+        ${lua_SOURCE_DIR}/lctype.c
+        ${lua_SOURCE_DIR}/ldblib.c
+        ${lua_SOURCE_DIR}/ldebug.c
+        ${lua_SOURCE_DIR}/ldo.c
+        ${lua_SOURCE_DIR}/ldump.c
+        ${lua_SOURCE_DIR}/lfunc.c
+        ${lua_SOURCE_DIR}/lgc.c
+        ${lua_SOURCE_DIR}/llex.c
+        ${lua_SOURCE_DIR}/lmathlib.c
+        ${lua_SOURCE_DIR}/lmem.c
+        ${lua_SOURCE_DIR}/lobject.c
+        ${lua_SOURCE_DIR}/lopcodes.c
+        ${lua_SOURCE_DIR}/loslib.c
+        ${lua_SOURCE_DIR}/lparser.c
+        ${lua_SOURCE_DIR}/lstate.c
+        ${lua_SOURCE_DIR}/lstring.c
+        ${lua_SOURCE_DIR}/lstrlib.c
+        ${lua_SOURCE_DIR}/ltable.c
+        ${lua_SOURCE_DIR}/ltablib.c
+        ${lua_SOURCE_DIR}/ltm.c
+        ${lua_SOURCE_DIR}/lundump.c
+        ${lua_SOURCE_DIR}/lutf8lib.c
+        ${lua_SOURCE_DIR}/lvm.c
+        ${lua_SOURCE_DIR}/lzio.c
+        ${lua_SOURCE_DIR}/linit.c
+        ${lua_SOURCE_DIR}/liolib.c
+        ${lua_SOURCE_DIR}/loadlib.c
+    )
+    add_library(og_lua STATIC ${OG_LUA_SOURCES})
+    configure_openglad_external_target(og_lua)
+    set_source_files_properties(${OG_LUA_SOURCES} PROPERTIES LANGUAGE CXX)
+    target_include_directories(og_lua PUBLIC
+        $<BUILD_INTERFACE:${lua_SOURCE_DIR}>
+    )
+    # Fixed string-hash seed: table/string behavior must not vary per run or
+    # per platform (class packs are part of the deterministic sim). Lua 5.4.8
+    # guards its whole address-mixing default with #if !defined(luai_makeseed),
+    # so this macro replaces it outright. Function-style macros cannot go
+    # through COMPILE_DEFINITIONS (CMake drops them), hence the raw -D.
+    target_compile_options(og_lua PRIVATE "-Dluai_makeseed(L)=0x9e3779b9u")
+    message(STATUS "OpenGlad: using fetched Lua ${OPENGLAD_LUA_GIT_TAG}")
+else()
+    message(FATAL_ERROR "Lua is required. Enable OPENGLAD_FETCH_LUA (Lua is always vendored; system copies are not supported).")
+endif()
+
 if(NOT EMSCRIPTEN)
     set(OG_NATIVE_SDL_AVAILABLE OFF)
     set(OG_NATIVE_SDL_REQUESTED ON)
@@ -1133,6 +1218,7 @@ set(OG_IO_EXTERNAL_LIBS
     og_ext_physfs
     og_ext_libzip
     og_ext_lodepng
+    og_lua
 )
 
 
@@ -1152,7 +1238,7 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
-    target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib)
+    target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib PRIVATE og_lua)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
@@ -1235,6 +1321,7 @@ if(NOT EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/packs ${CMAKE_BINARY_DIR}/packs
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )
@@ -1296,6 +1383,8 @@ if(NOT EMSCRIPTEN)
         ${OG_DATA_SOURCES}
         # entities
         ${OG_ENTITIES_SOURCES}
+        # scripting VM
+        ${OG_SCRIPT_SOURCES}
         # input (SDL-free data structs only)
         ${SRC_DIR}/interface/input/input_state.cpp
         # io (shared SDL-free helpers + PhysFS/zip/yaml)
@@ -1639,6 +1728,7 @@ if(NOT EMSCRIPTEN)
         og_ext_libzip
         og_ext_physfs
         og_ext_ixwebsocket
+        og_lua
         openglad
         EXPORT OpenGladTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -2656,6 +2746,11 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
         )
 
+        og_add_unit_group(og_unit_script FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
+        )
+
         og_add_unit_group(og_unit_entity FILES
             ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_unit.cpp
@@ -3281,6 +3376,7 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/packs@/packs"
     )
 
     set_target_properties(play PROPERTIES

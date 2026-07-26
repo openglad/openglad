@@ -24,6 +24,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/living.h>
@@ -277,8 +278,7 @@ bool living::act()
 	// Per-family periodic auto-powers (e.g. archmage view_all bonus)
 	{
 		const auto* fd = get_family_descriptor(family());
-		if (fd && fd->on_act_living)
-			fd->on_act_living(this);
+		og::script::hooks::on_act_living(fd, this);
 	}
 
 	// Complete previous animations (like firing)
@@ -451,8 +451,7 @@ short living::shove(walker  *target, short x, short y)
 			target->stats()->clear_command();
 			{
 				const auto* fd = get_family_descriptor(target->family());
-				if (fd && fd->on_shoved)
-					fd->on_shoved(target);
+				og::script::hooks::on_shoved(fd, target);
 			}
 			target->stats()->set_command(COMMAND_WALK,4,x ,y );
 			return 1;
@@ -588,8 +587,8 @@ bool living::check_special()
 		set_current_special(1); // make us do default ..
 
 	auto* fd = get_family_descriptor(family());
-	if (fd && fd->check_special_ai)
-		return fd->check_special_ai(this);
+	if (auto hook_result = og::script::hooks::check_special_ai(fd, this))
+		return *hook_result;
 
 	// Default: always allow
 	return true;
@@ -603,9 +602,9 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	const float level_f = static_cast<float>(whatlevel);
 
 	auto* fd = get_family_descriptor(family());
-	if (fd && fd->set_difficulty)
+	if (og::script::hooks::set_difficulty(fd, this, whatlevel))
 	{
-		fd->set_difficulty(this, whatlevel);
+		// Scripted or family-specific scaling ran.
 	}
 	else
 	{

@@ -22,11 +22,20 @@ package build configures with `OPENGLAD_REQUIRE_SYSTEM_DEPS=ON` and
 | PhysFS | `PhysFS::PhysFS`, `PhysFS::physfs`, `unofficial::physfs::physfs`, `physfs`, or `PkgConfig::OG_PHYSFS` | `release-3.2.0` | https://github.com/icculus/physfs |
 | lodepng | `lodepng` library plus `lodepng.h` | `ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a` | https://github.com/lvandeve/lodepng |
 | IXWebSocket | `ixwebsocket::ixwebsocket` or `ixwebsocket` | `64fae7676bd8fe31f7cb4bcde7a6841892dad65e` | https://github.com/machinezone/IXWebSocket |
+| Lua | `og_lua` (always vendored; **no system fallback**) | `v5.4.8` | https://github.com/lua/lua |
 
 SDL2_mixer was removed with the SDL3 migration: audio is implemented directly
 on SDL3 audio streams in `src/platform/sdl/sound.cpp`, so there is no separate
 mixer dependency. The Emscripten build uses the upstream emscripten-ports SDL3
 (`--use-port=sdl3`) rather than the FetchContent pin.
+
+Lua is deliberately exempt from `OPENGLAD_FETCH_DEPS=OFF` / system-package
+preference: the class-pack scripting VM must be the pinned Lua compiled **as
+C++** (errors unwind as exceptions through binding-layer RAII; string-hash
+seed fixed) so that every peer and every platform runs an identical VM. A
+distro `liblua` (C linkage, `longjmp` unwinding, unpatched seed) is not a
+valid substitute. Offline/hermetic builds should pre-populate the source tree
+and set `FETCHCONTENT_SOURCE_DIR_LUA=<path-to-lua-5.4.8-checkout>`.
 
 A* pathfinding no longer depends on the third-party MicroPather library: it is
 provided by the first-party `og::pathfinding::AStar` solver in

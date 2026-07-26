@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <string>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
@@ -58,8 +59,8 @@ bool treasure::act()
 bool treasure::eat_me(walker  * eater)
 {
 	const auto* tfd = get_treasure_family_descriptor(family());
-	if (tfd && tfd->on_eat)
-		return tfd->on_eat(this, eater);
+	if (auto hook_result = og::script::hooks::treasure_on_eat(tfd, this, eater))
+		return *hook_result;
 
 	return 1;
 }

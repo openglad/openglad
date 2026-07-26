@@ -26,6 +26,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
@@ -592,8 +593,7 @@ walker  * walker::fire()
 				if (order() == Order::Living)
 				{
 					const auto* fd = get_family_descriptor(family());
-					if (fd && fd->on_melee_hit)
-						fd->on_melee_hit(this, weapon->collide_ob());
+					og::script::hooks::on_melee_hit(fd, this, weapon->collide_ob());
 				}
 			}
 			if (myguy)
@@ -615,9 +615,9 @@ walker  * walker::fire()
 		if (order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			if (fd && fd->on_fire_weapon)
+			if (auto hook_result = og::script::hooks::on_fire_weapon(fd, this, weapon))
 			{
-				if (!fd->on_fire_weapon(this, weapon))
+				if (!*hook_result)
 					return nullptr;
 			}
 		}
@@ -1068,7 +1068,7 @@ bool walker::animate()
 		if (ani_type() == ANI_TELE_OUT && order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			if (fd && fd->handle_teleport && fd->handle_teleport(this))
+			if (og::script::hooks::handle_teleport(fd, this).value_or(false))
 				return 1;
 			// Default: no teleport handler, just stop
 			set_ani_type(ANI_WALK);
@@ -1078,7 +1078,7 @@ bool walker::animate()
 		if (order() == Order::Living)
 		{
 			const auto* fd2 = get_family_descriptor(family());
-			if (fd2 && fd2->on_ani_complete && fd2->on_ani_complete(this))
+			if (og::script::hooks::on_ani_complete(fd2, this).value_or(false))
 				return 1;
 		}
 
@@ -1191,8 +1191,7 @@ walker  *walker::create_weapon()
 	if (order() == Order::Living)
 	{
 		const auto* fd = get_family_descriptor(family());
-		if (fd && fd->customize_weapon)
-			fd->customize_weapon(this, weapon);
+		og::script::hooks::customize_weapon(fd, this, weapon);
 	}
 	return weapon;
 }
@@ -1729,9 +1728,9 @@ bool walker::death()
 			}
 			{
 				auto* fd = get_family_descriptor(family());
-				if (fd && fd->on_death)
+				if (og::script::hooks::on_death(fd, this).has_value())
 				{
-					fd->on_death(this);
+					// Scripted or family-specific death handling ran.
 				}
 				else if (fd && !fd->leaves_bloodspot)
 				{

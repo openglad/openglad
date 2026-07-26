@@ -23,6 +23,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
+#include <openglad/resources/packs.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/core/pixdefs.h>
 #include <cstring>
@@ -376,6 +377,14 @@ void io_init(int argc, char* argv[])
     {
         LogWarn("Failed to mount default cfg path (may be bundled in campaign)\n");
     }
+
+    // Class packs: default packs ship next to pix/cfg; user-installed packs
+    // live in user_path/packs (already reachable through the user mount).
+    if(!og::resources::mount((get_asset_path() + "packs/").c_str(), "packs/", 1))
+    {
+        LogWarn("Failed to mount default packs path\n");
+    }
+    og::resources::register_mounted_pack_scripts();
 }
 
 void io_exit()

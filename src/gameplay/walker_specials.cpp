@@ -19,6 +19,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/combat_math.h>
@@ -158,12 +159,12 @@ bool walker::special()
 	if (query_order() != Order::Living)
 		return 0;
 
-	// Dispatch via family descriptor callback
+	// Dispatch via scripted hook or family descriptor callback
 	auto* fd = get_family_descriptor(family());
 	bool did_special = false;
-	if (fd && fd->do_special)
+	if (auto hook_result = og::script::hooks::do_special(fd, this))
 	{
-		did_special = fd->do_special(this);
+		did_special = *hook_result;
 		if (did_special)
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}

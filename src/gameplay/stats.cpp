@@ -29,6 +29,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
@@ -661,11 +662,8 @@ void statistics::hit_response(walker  *who)
 		foe = who;
 
 	auto* fd = get_family_descriptor(myfamily);
-	if (fd && fd->hit_response)
-	{
-		fd->hit_response(this, foe);
+	if (og::script::hooks::hit_response(fd, this, foe))
 		return;
-	}
 
 	// Default: attack our attacker
 	if (controller_->check_special() && !rng(3) )

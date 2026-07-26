@@ -26,6 +26,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <cstring>
 #include <limits>
 
@@ -417,9 +418,9 @@ void guy::upgrade_to_level(short new_level, bool set_xp)
     std::int32_t level_diff = static_cast<std::int32_t>(new_level) - static_cast<std::int32_t>(this->level);
 
     auto* fd = get_family_descriptor(family);
-    if (fd && fd->level_up)
+    if (og::script::hooks::level_up(fd, this, level_diff))
     {
-        fd->level_up(this, level_diff);
+        // Scripted or family-specific stat gains ran.
     }
     else
     {
@@ -498,8 +499,7 @@ void guy::update_derived_stats(walker* w)
     // Per-family walker creation hooks (e.g. soldier weapons_left)
     {
         const auto* fd = get_family_descriptor(w->family());
-        if (fd && fd->on_create)
-            fd->on_create(w);
+        og::script::hooks::on_create(fd, w);
     }
 
     // Set the heal delay ..
