@@ -395,7 +395,8 @@ public:
     short ctf_requested_respawn_ticks = 0;
     short ctf_requested_strip_scenario_troops = 0;
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
-    // 2 = heroes + level-authored AI livings respawn ("endless battle").
+    // 2 = heroes + level-authored AI livings respawn ("endless battle"),
+    // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).
     short respawn_mode = 0;
     // Generator spawn-rate percent: 0 = default (100). Scales the level-side
     // Bernoulli bound in walker::act_generate; 100 is an exact integer

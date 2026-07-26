@@ -310,6 +310,7 @@ TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
     expected.pixmaxy = 480;
     expected.my_team = 1;
     expected.allied_mode = 0;
+    expected.respawn_mode = 3;
     expected.current_scenario = 6;
     expected.guys.push_back(make_initial_setup_guy_for_test());
     expected.completed_levels = {1, 2, 3};
@@ -388,6 +389,7 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
             .ctf_capture_limit = 9,
             .ctf_respawn_ticks = 180,
             .ctf_strip_scenario_troops = 1,
+            .respawn_mode = 3,
         },
     };
     messages.push_back(settings_change);

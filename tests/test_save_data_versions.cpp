@@ -599,7 +599,7 @@ TEST(SaveDataVersions, save_data_v12_roundtrip_preserves_difficulty_submenu_sett
 {
     SaveData src;
     src.current_campaign = "org.openglad.gladiator";
-    src.respawn_mode = 1;
+    src.respawn_mode = 3;
     src.generator_rate = 50;
     src.keep_fallen_heroes = 1;
 
@@ -611,7 +611,8 @@ TEST(SaveDataVersions, save_data_v12_roundtrip_preserves_difficulty_submenu_sett
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
               static_cast<int>(loaded.load_with_error("typed_save_difficulty_roundtrip")))
         << "v12 reader should succeed";
-    ASSERT_EQ(1, (int)loaded.respawn_mode) << "respawn_mode should roundtrip";
+    ASSERT_EQ(3, (int)loaded.respawn_mode)
+        << "Team 1 Heroes respawn_mode should roundtrip";
     ASSERT_EQ(50, (int)loaded.generator_rate) << "generator_rate should roundtrip";
     ASSERT_EQ(1, (int)loaded.keep_fallen_heroes)
         << "keep_fallen_heroes should roundtrip";

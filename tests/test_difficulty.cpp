@@ -91,7 +91,7 @@ static int difficulty_injector(void* data)
 
     // Full cycle on every row: each setting ends back at its default.
     interact_times("difficulty", 3);     // Battle -> Slaughter -> Skirmish -> Battle
-    interact_times("respawn_mode", 3);   // Off -> Heroes -> Everyone -> Off
+    interact_times("respawn_mode", 4);   // Off -> Heroes -> Everyone -> Team 1 -> Off
     interact_times("respawn_delay", 3);  // Normal -> Fast -> Slow -> Normal
     interact_times("permadeath", 2);     // On -> Off -> On
     interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal

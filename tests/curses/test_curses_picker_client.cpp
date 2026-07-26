@@ -2320,7 +2320,7 @@ TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
 // the item from the menu model, handle it, assert the save field and the
 // shared label the notice renders.
 
-// Respawns: Off -> Heroes -> Everyone -> Off on save.respawn_mode.
+// Respawns: Off -> Heroes -> Everyone -> Team 1 Heroes -> Off.
 TEST(CursesPickerClient, respawn_mode_cycles_through_sequence)
 {
     PickerFixture f;
@@ -2338,6 +2338,12 @@ TEST(CursesPickerClient, respawn_mode_cycles_through_sequence)
     f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
     EXPECT_EQ(2, (int)f.save().respawn_mode);
     EXPECT_NE(f.t().dump().find("Respawns: Everyone"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(3, (int)f.save().respawn_mode);
+    EXPECT_NE(f.t().dump().find("Respawns: Team 1 Heroes"),
+              std::string::npos);
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Difficulty, *item);

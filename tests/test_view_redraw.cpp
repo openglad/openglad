@@ -1,5 +1,6 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -469,6 +470,91 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
     EXPECT_NE(snapped_topy, vs->topy);
 
     vs->control = nullptr;
+}
+
+TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
+{
+    viewscreen* const vs =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    prepare_view_world();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    GameWorld& world = active->world();
+    walker* const control =
+        world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+
+    control->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    control->setxy(480, 400);
+    control->set_floor(0);
+    control->set_dead(1);
+
+    // Give the queued destination a real second floor so the camera-floor
+    // assertion covers cross-floor classic spawns as well as x/y.
+    world.set_floor_count(2);
+    const int gw = world.grid.w;
+    const int gh = world.grid.h;
+    auto* floor_one =
+        new unsigned char[static_cast<std::size_t>(gw) * gh];
+    std::fill(floor_one,
+              floor_one + static_cast<std::size_t>(gw) * gh,
+              static_cast<unsigned char>(PIX_GRASS1));
+    world.grid_for_floor(1) =
+        PixieData(1, static_cast<unsigned char>(gw),
+                  static_cast<unsigned char>(gh), floor_one);
+    world.smoother_for_floor(1).set_target(world.grid_for_floor(1));
+
+    const short saved_respawn_mode = world.respawn_mode;
+    const char saved_type = world.type;
+    const og::sim::CtfState saved_ctf = world.ctf;
+    world.respawn_mode = og::sim::kRespawnModeHeroes;
+    world.type = 0;
+    world.ctf = {};
+    world.ctf.respawn_ticks = 120;
+
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 0;
+    entry.team = 0;
+    entry.ticks_left = 60;
+    entry.walker_entity_id = control->entity_id();
+    entry.x = 160;
+    entry.y = 176;
+    entry.floor = 1;
+    world.ctf.respawn_queue.push_back(entry);
+    vs->control = control;
+
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const Sint32 spawn_topx =
+        entry.x - (vs->xview - control->sizex()) / 2;
+    const Sint32 spawn_topy =
+        entry.y - (vs->yview - control->sizey()) / 2;
+    EXPECT_EQ(spawn_topx, vs->topx);
+    EXPECT_EQ(spawn_topy, vs->topy);
+    EXPECT_EQ(1, vs->current_floor_);
+
+    // CTF ignores entry.x/y when it fires and rotates through team anchors;
+    // its queue metadata must therefore never redirect the camera.
+    world.type = GameWorld::TYPE_CTF;
+    world.ctf.active = true;
+    world.ctf.team_active[0] = true;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const Sint32 corpse_topx =
+        control->xpos() - (vs->xview - control->sizex()) / 2;
+    const Sint32 corpse_topy =
+        control->ypos() - (vs->yview - control->sizey()) / 2;
+    EXPECT_EQ(corpse_topx, vs->topx);
+    EXPECT_EQ(corpse_topy, vs->topy);
+    EXPECT_EQ(0, vs->current_floor_);
+
+    vs->control = nullptr;
+    world.delete_objects();
+    world.create_new_grid();
+    world.mysmoother.set_target(world.grid);
+    world.respawn_mode = saved_respawn_mode;
+    world.type = saved_type;
+    world.ctf = saved_ctf;
 }
 
 TEST(ViewRedrawJitter, render_sample_preserves_float_camera_while_camera_snaps)

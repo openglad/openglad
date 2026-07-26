@@ -213,6 +213,28 @@ static char ctf_flag_state_glyph(const og::sim::CtfFlag& flag)
     }
 }
 
+// Shared CTF/classic countdown. Classic mode deliberately calls only this
+// helper: capture scores, flags and waypoint progress remain CTF-only.
+static void draw_respawn_countdown(screen* s, walker* control,
+                                   Sint32 lm, Sint32 tm)
+{
+    if (control == nullptr || !control->dead())
+        return;
+
+    const og::sim::CtfState& ctf = s->world_.ctf;
+    for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
+    {
+        if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
+            continue;
+        const int seconds = og::sim::ctf_respawn_seconds_left(ctf, entry);
+        const std::string message = std::format("RESPAWN IN {}", seconds);
+        s->text_normal.write_xy(lm + 4, tm + 12, message.c_str(),
+                                static_cast<unsigned char>(YELLOW),
+                                static_cast<short>(1));
+        break;
+    }
+}
+
 // Per-viewport CTF overlay. Reads only replicated world state (CtfState rides
 // the snapshot), so it works identically on the server and network mirrors.
 static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
@@ -311,10 +333,7 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
         break;
     }
 
-    if (control == nullptr)
-        return;
-
-    if (!control->dead())
+    if (control != nullptr && !control->dead())
     {
         // The viewport's control carries an enemy flag.
         for (int team = 0; team < 4; ++team)
@@ -329,20 +348,6 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
                 break;
             }
         }
-        return;
-    }
-
-    // Dead control with a pending revive entry: countdown in whole seconds.
-    for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
-    {
-        if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
-            continue;
-        const int seconds = og::sim::ctf_respawn_seconds_left(ctf, entry);
-        const std::string message = std::format("RESPAWN IN {}", seconds);
-        mytext.write_xy(lm + 4, tm + 12, message.c_str(),
-                        static_cast<unsigned char>(YELLOW),
-                        static_cast<short>(1));
-        break;
     }
 }
 
@@ -397,6 +402,12 @@ short new_score_panel(screen* s, short /*do_it*/)
 
         if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
             draw_ctf_panel(s, control, lm, tm, rm);
+        if (((s->world_.type & GameWorld::TYPE_CTF) &&
+             s->world_.ctf.active) ||
+            og::sim::classic_respawn_active(s->world_))
+        {
+            draw_respawn_countdown(s, control, lm, tm);
+        }
 
         // §2.8 follow caption: a follow-engaged view names its watched
         // target on a black strip at the viewport's bottom-center,

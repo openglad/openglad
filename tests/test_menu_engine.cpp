@@ -1709,7 +1709,7 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
     // start was selected); nested DETAILS/RENAME MENU_REDRAWs are consumed
     // by reset_buttons; the +/- pixie faces are art bindings. (The VIEW
-    // TEAM door retired with its screen — 19 rows now, §2.5.)
+    // TEAM door retired with its screen; SELL is the 20th row.)
     const og::ui::MenuScreenSpec* train =
         og::ui::menu_screen_host(og::ui::MenuScreenId::Train).spec;
     ASSERT_NE(nullptr, train);
@@ -1719,7 +1719,7 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     EXPECT_TRUE(train->right_click_enabled);
     EXPECT_EQ(1, train->default_highlight);
     EXPECT_NE(nullptr, train->on_reset) << "the bug-A9 promotion resync";
-    ASSERT_EQ(19, train->row_count);
+    ASSERT_EQ(20, train->row_count);
     for (int i = 2; i < 14; ++i) {
         EXPECT_EQ((i % 2 == 0) ? FAMILY_MINUS : FAMILY_PLUS,
                   static_cast<int>(train->rows[i].art_family))

@@ -258,7 +258,8 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
 // Guy ids are only unique per owning player (each client numbers its roster
 // from its own counter), so identity is the (id, owner) pair — owner tags
 // are kNoOwner for everyone in local play, where bare ids suffice.
-[[nodiscard]] bool live_duplicate_exists(GameWorld& world, const walker* corpse)
+[[nodiscard]] bool live_duplicate_exists(const GameWorld& world,
+                                         const walker* corpse)
 {
     if (corpse->myguy == nullptr)
         return false;
@@ -1189,13 +1190,48 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world)
 
 bool classic_respawn_active(const GameWorld& world)
 {
-    return (world.type & GameWorld::TYPE_CTF) == 0 && world.respawn_mode > 0;
+    return (world.type & GameWorld::TYPE_CTF) == 0 &&
+           world.respawn_mode >= kRespawnModeHeroes &&
+           world.respawn_mode <= kRespawnModeTeamOneHeroes;
 }
 
-bool respawn_suppress_team_wipe_endgame(const GameWorld& world)
+bool respawn_retains_player_control(const GameWorld& world,
+                                    const walker* control)
 {
-    return ctf_suppress_team_wipe_endgame(world) ||
-           classic_respawn_active(world);
+    if (control == nullptr || !control->dead() || control->myguy == nullptr ||
+        control->query_order() != Order::Living)
+    {
+        return false;
+    }
+
+    const unsigned char team = control->real_team_num() != 255
+        ? control->real_team_num()
+        : control->team_num();
+    if ((world.type & GameWorld::TYPE_CTF) != 0 && world.ctf.active)
+    {
+        return is_score_team(team) && world.ctf.team_active[team] &&
+               world.ctf.winner_team < 0 &&
+               !live_duplicate_exists(world, control);
+    }
+    if (!classic_respawn_active(world))
+        return false;
+    const bool mode_allows_hero =
+        world.respawn_mode != kRespawnModeTeamOneHeroes || team == 0;
+    return mode_allows_hero && !live_duplicate_exists(world, control);
+}
+
+bool respawn_suppress_team_wipe_endgame(const GameWorld& world,
+                                        short wiped_team)
+{
+    if (ctf_suppress_team_wipe_endgame(world))
+        return true;
+    if (!classic_respawn_active(world))
+        return false;
+    // Modes 1 and 2 respawn heroes on every team. Mode 3 protects only the
+    // player-facing Team 1 (internal team 0); another team's wipe must remain
+    // terminal instead of being swallowed into an unwinnable empty seat.
+    return world.respawn_mode != kRespawnModeTeamOneHeroes ||
+           wiped_team < 0 || wiped_team == 0;
 }
 
 namespace {
@@ -1295,22 +1331,29 @@ void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry)
         classic_fire_ai_respawn(world, entry);
 }
 
-// Classic scheduling eligibility: every dead hero (myguy) for mode >= 1,
-// plus unowned AI livings WITH a recorded (level-authored) spawn point for
-// mode 2. No team_active / score-team filters: classic levels field
-// arbitrary teams. Generator spawns and summons stay the owner's business
-// even after the owner dies — clear_stale_cross_refs nulls owner() the tick
-// the owner dies, so the owner check alone would adopt orphans as permanent
-// respawners; the spawn_x() gate keeps "endless battle" scoped to walkers
-// with an authored placement (classic AI respawn copies inherit theirs).
+// Classic scheduling eligibility: every dead hero (myguy) for mode 1, Team 1
+// heroes only for mode 3, plus heroes and unowned AI livings WITH a recorded
+// (level-authored) spawn point for mode 2. No team_active / score-team
+// filters: classic levels field arbitrary teams. Generator spawns and summons
+// stay the owner's business even after the owner dies — clear_stale_cross_refs
+// nulls owner() the tick the owner dies, so the owner check alone would adopt
+// orphans as permanent respawners; the spawn_x() gate keeps "endless battle"
+// scoped to walkers with an authored placement (classic AI respawn copies
+// inherit theirs).
 [[nodiscard]] bool classic_respawn_corpse_eligible(GameWorld& world, walker* w)
 {
     if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
         return false;
-    const bool eligible =
-        w->myguy != nullptr ||
-        (world.respawn_mode >= 2 && w->owner() == nullptr &&
-         w->spawn_x() >= 0);
+    const std::uint8_t team = w->real_team_num() != 255
+        ? w->real_team_num()
+        : w->team_num();
+    const bool hero_eligible =
+        w->myguy != nullptr &&
+        (world.respawn_mode != kRespawnModeTeamOneHeroes || team == 0);
+    const bool ai_eligible =
+        world.respawn_mode == kRespawnModeEveryone &&
+        w->myguy == nullptr && w->owner() == nullptr && w->spawn_x() >= 0;
+    const bool eligible = hero_eligible || ai_eligible;
     if (!eligible)
         return false;
     if (already_scheduled(world.ctf, w->entity_id()))
@@ -1407,7 +1450,8 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
     // mode 2; kind-0 covers hostile heroes (other players' teams) too.
     for (const CtfRespawnEntry& entry : world.ctf.respawn_queue)
     {
-        if (entry.kind == 1 && world.respawn_mode >= 2 &&
+        if (entry.kind == 1 &&
+            world.respawn_mode == kRespawnModeEveryone &&
             classic_team_hostile(world, entry.team))
             return true;
         if (entry.kind == 0 && classic_team_hostile(world, entry.team))

@@ -12,6 +12,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
@@ -74,6 +75,10 @@ std::uint32_t calculate_hire_cost(const guy& recruit);
 // Training cost: difference between current stats and original stats.
 // Pure function: does not mutate either guy.
 std::uint32_t calculate_train_cost(const guy& current, const guy& original);
+
+// Cash returned for selling a character. This uses the same 75% salvage
+// basis as the life gem dropped on character death.
+std::uint32_t calculate_sell_value(const guy& member);
 
 // --- Name generation ---
 
@@ -177,7 +182,8 @@ void toggle_ctf_scenario_troops(SaveData& save);
 // small closed value sets and normalize any out-of-set stored value back to
 // the default on the next step.
 
-// Cycle respawn mode: 0 (off) -> 1 (heroes) -> 2 (everyone) -> 0.
+// Cycle respawn mode: 0 (off) -> 1 (heroes) -> 2 (everyone) ->
+// 3 (Team 1 heroes only) -> 0.
 void cycle_respawn_mode(SaveData& save);
 
 // Cycle the respawn delay ticks: 0 (normal/map default) -> 60 (fast)
@@ -238,11 +244,12 @@ og::data::CompanyAutosaveContext company_autosave_context(
 // calls this ONCE after any handled click on a flagged screen — replacing
 // per-callback save tails. Routes through og::data::company_autosave
 // (BaseCampMutation) with the [SAVE-F1] context above, so networked-lobby
-// mutations become owner-preserving merge writes. No screen sets the flag
-// yet (WP4 flips it on); until then nothing calls this in production and
-// legacy flows stay byte-identical.
+// mutations become owner-preserving merge writes. `additional_owned_team`
+// preserves a wallet whose last roster member was removed by the mutation
+// (character sale); -1 adds nothing.
 [[nodiscard]] SaveDataIoError company_autosave_after_mutation(
-    SaveData& save, bool networked_lobby_active);
+    SaveData& save, bool networked_lobby_active,
+    int additional_owned_team = -1);
 
 // --- Base camp roster (design §2.5) ---
 
@@ -261,6 +268,12 @@ int count_deployed_members(const SaveData& save);
 // Pure flip — the caller owns the §3.8 autosave and the §4.3 ready-clear
 // (a no-op in solo/local sessions).
 bool toggle_deploy_slot(SaveData& save, int slot);
+
+// Move the member at `slot` one occupied roster position toward the front.
+// Returns the member's new SaveData::team_list slot, or -1 when the slot is
+// empty/out of range or already names the first member. This only changes
+// roster order; the caller owns autosave/lobby propagation.
+int move_team_member_up(SaveData& save, int slot);
 
 // One §2.5 roster row's text columns (solo shape, §9.5.3): the HP column is
 // GONE (it was DERIVED max HP — damage never persists to base camp — and
@@ -596,7 +609,8 @@ std::string format_ctf_caps_label(const SaveData& save);
 // troops, "Troops: Own" when stripping them).
 std::string format_ctf_troops_label(const SaveData& save);
 
-// "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone".
+// "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /
+// "Respawns: Team 1 Heroes".
 std::string format_respawn_mode_label(const SaveData& save);
 
 // "Spawn Delay: Normal" / "Spawn Delay: Fast" / "Spawn Delay: Slow".
@@ -837,6 +851,12 @@ private:
 
 class TrainSession {
 public:
+    enum class SellResult {
+        Sold,
+        NoMember,
+        CheckpointFailed,
+    };
+
     explicit TrainSession(SaveData& save);
 
     bool empty() const;
@@ -868,6 +888,12 @@ public:
     // force=true skips the cost check (for cheat mode).
     bool accept(bool force = false);
 
+    // Sell the selected real roster member (never the unaccepted working
+    // copy). `checkpoint` must durably snapshot the company; it is invoked
+    // after validation and immediately before the irreversible roster
+    // mutation. A failed checkpoint leaves the member and wallet untouched.
+    SellResult sell_current(const std::function<bool()>& checkpoint);
+
     // Re-snapshot the working copy when the real team member was promoted
     // (family changed) underneath this session — e.g. by the DETAILS
     // submenu's promote button, which mutates the real guy in place.
@@ -883,6 +909,7 @@ public:
     const guy& working_copy() const;
     const guy& original() const;
     std::uint32_t current_cost() const;
+    std::uint32_t current_sell_value() const;
     bool level_increased() const;
     bool stats_increased() const;
     int current_slot() const;

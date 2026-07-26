@@ -392,6 +392,62 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
     v->control = old_control;
 }
 
+TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
+{
+    ClassicCtfHudCanvasGuard classic_canvas;
+    CtfScreenWorld fixture;
+    screen* const s = fixture.s;
+    GameWorld& world = s->world();
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    control->set_dead(1);
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* const old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    // Leave conspicuous CTF-only values in the shared state, then make the
+    // world classic. The classic path may render the respawn timer but must
+    // not leak capture segments or waypoint progress.
+    world.type &= static_cast<char>(~GameWorld::TYPE_CTF);
+    world.ctf.active = false;
+    world.respawn_mode = og::sim::kRespawnModeHeroes;
+    world.ctf.captures[0] = 8;
+    world.ctf.captures[1] = 7;
+    world.ctf.cp_count = 1;
+    world.ctf.cps[0].progress_team = 0;
+    world.ctf.cps[0].progress = 23;
+
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 0;
+    entry.team = 0;
+    entry.ticks_left = 60;
+    entry.walker_entity_id = control->entity_id();
+    world.ctf.respawn_queue.clear();
+    world.ctf.respawn_queue.push_back(entry);
+
+    const int lm = v->xloc;
+    const int tm = v->yloc;
+    const int rm = v->endx;
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto frame = capture_rendered_frame(*s);
+    EXPECT_TRUE(box_has_pixels(frame,
+                               lm + 4, tm + 11, lm + 90, tm + 20))
+        << "classic retained control should see RESPAWN IN <s>";
+    EXPECT_FALSE(box_has_pixels(frame,
+                                rm - 92, tm + 3, rm - 59, tm + 12))
+        << "classic mode must not paint CTF capture segments";
+    EXPECT_FALSE(box_has_pixels(frame,
+                                lm + 2, tm + 35, lm + 58, tm + 44))
+        << "classic mode must not paint CTF waypoint progress";
+
+    world.respawn_mode = 0;
+    v->control = old_control;
+}
+
 // Playtest bug A (display side): a dead myguy control with a pending revive
 // entry must SURVIVE the per-batch dead-control cleanup — the binding real
 // play loses — so the score panel renders the RESPAWN IN countdown without

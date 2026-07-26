@@ -159,6 +159,37 @@ cd dist && python3 -m http.server 8080
 # Open http://localhost:8080/index.html
 ```
 
+### Pull Request Previews
+
+After the required WASM Playwright tests pass, CI deploys same-repository pull
+requests to a stable Cloudflare Pages address:
+
+```text
+https://pr-<number>.openglad.pages.dev
+```
+
+Each update to the pull request replaces that alias with the newest successful
+build. The workflow also records the link as a GitHub Deployment and in its job
+summary. Pull requests from forks and Dependabot pull requests still build and
+test, but are not deployed: repository Cloudflare credentials are never made
+available to their code, and their artifacts are not promoted by a privileged
+follow-up workflow.
+
+Maintainer setup for `.github/workflows/wasm-e2e.yml`:
+
+- Configure the `CLOUDFLARE_API_TOKEN` Actions secret with Account /
+  Cloudflare Pages / Edit permission.
+- Configure the `CLOUDFLARE_ACCOUNT_ID` Actions secret for the account that
+  owns the `openglad` Pages project.
+- Keep preview deployments enabled for that project. CI deploys the synthetic
+  branch `pr-<number>`, which Cloudflare aliases to
+  `pr-<number>.openglad.pages.dev`; it does not replace the production
+  `openglad.pages.dev` deployment.
+- If multiplayer should work in previews, configure the Pages preview
+  environment's `RELAY` service binding to the `openglad-relay` Worker.
+  Without that preview binding the static game still loads, but `/relay`
+  requests return `503`.
+
 ---
 
 ## Build Targets

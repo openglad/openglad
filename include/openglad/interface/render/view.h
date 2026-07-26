@@ -124,7 +124,8 @@ class viewscreen
 		// walker / editor override, starting or advancing the render-only
 		// camera dolly on a classified floor change (Stairs/Fall animate,
 		// Teleport and every suppression rung snap — today's behavior).
-		void update_floor_glide(GameWorld& vworld, walker* controlob);
+		void update_floor_glide(GameWorld& vworld, walker* controlob,
+		                       Sint32 camera_floor_override = -1);
 		// Per-floor presentation for one pass of the redraw floor loop.
 		struct FloorPassParams {
 			unsigned char falpha; float fscale; float pf;

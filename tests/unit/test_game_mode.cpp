@@ -81,8 +81,9 @@ TEST(GameModeClassic, classic_defaults_are_identity)
     EXPECT_FALSE(classic.suppress_retry());
 
     // clamp_respawn_mode: identity for every value the difficulty submenu
-    // can produce (0 = off, 1 = heroes, 2 = everyone).
-    for (short requested = 0; requested <= 2; ++requested)
+    // can produce (0 = off, 1 = heroes, 2 = everyone,
+    // 3 = Team 1 heroes only).
+    for (short requested = 0; requested <= 3; ++requested)
         EXPECT_EQ(requested, classic.clamp_respawn_mode(requested));
 
     // ensure_level_available / on_run_ended: no-ops that leave the save

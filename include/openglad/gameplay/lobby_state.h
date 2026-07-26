@@ -201,7 +201,8 @@ struct LobbySettings {
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep authored troops
     // Difficulty submenu settings (0 = legacy default behavior for all three).
-    std::int16_t respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
+    // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
+    std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;     // percent; 0 = default (100)
     std::int16_t keep_fallen_heroes = 0; // 0 = permadeath on win (classic)
     // Host-only cross-control setting (protocol v8, company-basecamp design

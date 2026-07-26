@@ -1633,6 +1633,68 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     EXPECT_EQ(999, reloaded.last_played_unix_s);
 }
 
+TEST(CompanyAutosave, networked_sale_persists_removed_members_wallet)
+{
+    SaveDirSandbox sandbox;
+    ScopedMountRestore mount_guard;
+    ScopedCompanyClock clock(1001);
+    og::data::ScopedActiveCompany active("sell-merge");
+    ASSERT_TRUE(active.applied());
+    restore_default_campaigns();
+
+    {
+        SaveData priv;
+        priv.save_name = "Sale Merge Co";
+        priv.current_campaign = "org.openglad.gladiator";
+        priv.my_team = 0;
+        priv.m_totalcash[2] = 400;
+        priv.team_list[0] =
+            make_test_guy(FAMILY_SOLDIER, "Keeper", 0, true);
+        priv.team_list[1] =
+            make_test_guy(FAMILY_MAGE, "For Sale", 2, true);
+        priv.team_size = 2;
+        ASSERT_TRUE(priv.save("sell-merge"));
+    }
+
+    SaveData session;
+    session.current_campaign = "org.openglad.ctf";
+    session.my_team = 0;
+    session.m_totalcash[2] = 400;
+    session.team_list[0] =
+        make_test_guy(FAMILY_SOLDIER, "Keeper", 0, true);
+    session.team_list[1] =
+        make_test_guy(FAMILY_MAGE, "For Sale", 2, true);
+    session.team_size = 2;
+
+    og::ui::TrainSession train(session);
+    ASSERT_TRUE(train.seek_slot(1));
+    const std::uint32_t payout = train.current_sell_value();
+    ASSERT_EQ(og::ui::TrainSession::SellResult::Sold,
+              train.sell_current([] { return true; }));
+    ASSERT_EQ(1, session.team_size);
+    EXPECT_EQ(400u + payout, session.m_totalcash[2]);
+
+    const og::data::CompanyAutosaveContext post_sale_context =
+        og::ui::company_autosave_context(
+            session, /*networked_lobby_active=*/true);
+    EXPECT_FALSE(post_sale_context.owned_teams[2])
+        << "the removed member no longer advertises its wallet";
+
+    ASSERT_EQ(SaveDataIoError::None,
+              og::ui::company_autosave_after_mutation(
+                  session, /*networked_lobby_active=*/true,
+                  /*additional_owned_team=*/2));
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error("sell-merge"));
+    ASSERT_EQ(1, reloaded.team_size);
+    ASSERT_NE(nullptr, reloaded.team_list[0]);
+    EXPECT_EQ("Keeper", reloaded.team_list[0]->name);
+    EXPECT_EQ(400u + payout, reloaded.m_totalcash[2])
+        << "selling the last team-2 member must persist its credited wallet";
+}
+
 TEST(CompanyAutosave, networked_merge_without_private_file_never_clobbers)
 {
     SaveDirSandbox sandbox;
