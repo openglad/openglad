@@ -220,7 +220,11 @@ compare it side-by-side with the original `family_soldier.cpp` callbacks.
    narrow).
 4. Preserve `og.rand` call order and count exactly. Watch out for C++
    expressions with two `rng.next()` calls in one expression — C++ operand
-   order is unspecified; make the order explicit and let parity adjudicate.
+   order is unspecified; make the order explicit and let parity adjudicate
+   PER SITE. Adjudicated so far: comparison operands (`rng(a) >= rng(b)`)
+   ran LEFT-first (thief, orc); function-call arguments
+   (`f(..., rng(3), rng(3))`) ran RIGHT-first (slime grow). Do not assume
+   either — flip on parity failure.
 5. `for_each_foe_in_range` → `og.foes_in_range`; `world->find_*_in_range`
    → matching `og.find_*` with the correct list selector.
 6. `dynamic_cast<living*>` guards → `self:order() ~= og.C.ORDER_LIVING`.

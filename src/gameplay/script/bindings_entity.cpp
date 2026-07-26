@@ -1090,6 +1090,60 @@ int og_my_team(lua_State* L)
     return 1;
 }
 
+// The world's living head-count bookkeeping (NOT derivable from an oblist
+// scan: the counter can legitimately drift, e.g. editor map-resize erases
+// livings without decrementing — scripts must read the same field the C++
+// read).
+// og.family_flag("living", family_byte, flag_name) → descriptor boolean.
+// Read-only view of living-descriptor flags for scripts that branch on
+// another entity's family traits (knife return gate, undead checks).
+int og_family_flag(lua_State* L)
+{
+    const Order order = order_from_string(L, 1);
+    const int fam = static_cast<int>(luaL_checkinteger(L, 2));
+    const char* flag = luaL_checkstring(L, 3);
+    if (order != Order::Living)
+        return luaL_error(L, "og.family_flag: only 'living' supported");
+    const FamilyDescriptor* fd = get_family_descriptor(fam);
+    if (fd == nullptr) {
+        lua_pushnil(L);
+        return 1;
+    }
+    bool value;
+    if (std::strcmp(flag, "has_returning_weapon") == 0)
+        value = fd->has_returning_weapon;
+    else if (std::strcmp(flag, "is_undead") == 0)
+        value = fd->is_undead;
+    else if (std::strcmp(flag, "leaves_bloodspot") == 0)
+        value = fd->leaves_bloodspot;
+    else if (std::strcmp(flag, "is_stationary") == 0)
+        value = fd->is_stationary;
+    else
+        return luaL_error(L, "og.family_flag: unknown flag '%s'", flag);
+    lua_pushboolean(L, value ? 1 : 0);
+    return 1;
+}
+
+int og_living_count(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(world_arg(L)->living_count));
+    return 1;
+}
+
+int g_upgrade_to_level(lua_State* L)
+{
+    guy* g = guy_arg(L, 1);
+    const auto new_level = static_cast<short>(
+        static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
+    const bool set_xp =
+        lua_isnoneornil(L, 3) ? true : (lua_toboolean(L, 3) != 0);
+    // Re-dispatches the guy's family level_up hook internally (nested VM
+    // entry is fine: budgets arm on the outermost call only).
+    g->upgrade_to_level(new_level, set_xp);
+    return 0;
+}
+
 int og_set_palette(lua_State* L)
 {
     world_arg(L)->current_palette_id =
@@ -1390,6 +1444,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"g_set_scen_hits", g_set_scen_hits},
     {"g_name", g_name},
     {"g_update_derived_stats", g_update_derived_stats},
+    {"g_upgrade_to_level", g_upgrade_to_level},
     {nullptr, nullptr},
 };
 
@@ -1436,6 +1491,8 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"emit_event", og_emit_event},
     {"my_team", og_my_team},
     {"set_palette", og_set_palette},
+    {"living_count", og_living_count},
+    {"family_flag", og_family_flag},
     {"soften", og_soften},
     {"charm_duration", og_charm_duration},
     {"freeze_duration", og_freeze_duration},
@@ -1553,6 +1610,7 @@ const NamedConst kConstants[] = {
     {"ENEMY_FREEZE_BANK_CAP", og::combat::kEnemyFreezeBankCap},
     // Misc
     {"NUM_SPECIALS", NUM_SPECIALS},
+    {"MAXOBS", MAXOBS},
 };
 
 }  // namespace
