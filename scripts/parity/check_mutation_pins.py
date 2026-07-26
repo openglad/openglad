@@ -23,16 +23,33 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TABLE = REPO / "tests" / "parity" / "scenario_table.h"
 
-# {"<path>", <line>, "<from>", ... — path prefixes match the canary's own
-# allow-list (repo-relative source under src/, packs/ or tools/).
+# {"<path>", <line>, "<from>", "<to>", ... — path prefixes match the canary's
+# own allow-list (repo-relative source under src/, packs/ or tools/).
+# Both texts are captured because a pin is equally well anchored whether the
+# tree is clean (line holds `from`) or mid-mutation (line holds `to`) — see
+# accepts() below.
 PIN = re.compile(
-    r'(\{\s*"((?:src|packs|tools)/[^"]+)"\s*,\s*)(\d+)(\s*,\s*"((?:[^"\\]|\\.)*)")',
+    r'(\{\s*"((?:src|packs|tools)/[^"]+)"\s*,\s*)(\d+)'
+    r'(\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)")',
     re.S,
 )
 
 
 def unescape(text: str) -> str:
     return text.encode().decode("unicode_escape")
+
+
+def accepts(line: str, from_text: str, to_text: str) -> bool:
+    """A pin anchors if the line holds either side of its substitution.
+
+    This check is a build dependency of og_test_parity, and the canary
+    rebuilds that target WITH THE MUTATION APPLIED — at which point the pinned
+    line holds `to`, not `from`. Insisting on `from` alone would fail the
+    mutated build and abort the canary before it could measure anything,
+    breaking the very tool this check exists to protect. Accepting either side
+    keeps that honest: a line matching neither really has drifted.
+    """
+    return from_text in line or (bool(to_text) and to_text in line)
 
 
 def check(fix: bool) -> int:
@@ -44,9 +61,10 @@ def check(fix: bool) -> int:
     def visit(match: re.Match) -> str:
         nonlocal total
         total += 1
-        head, path, line_text, tail, from_text = match.groups()
+        head, path, line_text, tail, from_text, to_text = match.groups()
         line = int(line_text)
         wanted = unescape(from_text)
+        mutated = unescape(to_text)
         target = REPO / path
 
         if not target.exists():
@@ -54,10 +72,11 @@ def check(fix: bool) -> int:
             return match.group(0)
 
         lines = target.read_text().splitlines()
-        if 1 <= line <= len(lines) and wanted in lines[line - 1]:
+        if 1 <= line <= len(lines) and accepts(lines[line - 1], wanted, mutated):
             return match.group(0)
 
-        hits = [i + 1 for i, text in enumerate(lines) if wanted in text]
+        hits = [i + 1 for i, text in enumerate(lines)
+                if accepts(text, wanted, mutated)]
         if not hits:
             problems.append(
                 f"{path}:{line} — anchor text no longer present anywhere\n"

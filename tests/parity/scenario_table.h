@@ -1247,10 +1247,20 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
     "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
 };
 
-// Per-family-row mutations. Each points at the named family's
-// `do_special` (the first descriptor entry that Phase 02 can neuter)
-// so the family's combat/identity behaviour breaks and at least one of
-// the row's predicates flips on canary run.
+// Per-family-row mutations. Each cranks the named family's base HP —
+// derived_bonuses[0] — far enough that its arena resolves differently
+// and at least one of the row's predicates flips on a canary run.
+//
+// These pins name packs/core/classpack.yaml, not the C++ family source:
+// og::resources::install_classpacks() overwrites every descriptor field
+// from that YAML at startup, so the compiled-in literal is dead data and
+// mutating it changes nothing. The YAML holds the resolved number (the
+// C++ BASE_GUY_HP+90 exports as 120), and each replacement keeps the
+// anchor as a prefix — "[120" -> "[12000" to crank the stat up, "[300"
+// -> "[300e-2" to crank it down. That prefix rule is not cosmetic:
+// check_mutation_pins.py is a build dependency of og_test_parity, so a
+// replacement that deletes its own anchor fails the canary's rebuild
+// instead of being measured.
 
 inline constexpr Mutation kMut_family_spawn_identity = {
     "src/resources/gloader.cpp", 796,
@@ -1267,87 +1277,87 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "src/gameplay/families/family_soldier.cpp", 23,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
+    "packs/core/classpack.yaml", 25,
+    "[120",
+    "[12000",
+    "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_elf_init = {
-    "src/gameplay/families/family_elf.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
+    "packs/core/classpack.yaml", 63,
+    "[75",
+    "[7500",
+    "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "src/gameplay/families/family_archer.cpp", 24,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
+    "packs/core/classpack.yaml", 101,
+    "[90",
+    "[9000",
+    "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "src/gameplay/families/family_mage.cpp", 28,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
+    "packs/core/classpack.yaml", 139,
+    "[90",
+    "[9000",
+    "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
-    "src/gameplay/families/family_skeleton.cpp", 23,
-    "BASE_GUY_HP+30",
-    "BASE_GUY_HP+9000",
-    "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON)."
+    "packs/core/classpack.yaml", 177,
+    "[60",
+    "[6000",
+    "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "src/gameplay/families/family_cleric.cpp", 24,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
+    "packs/core/classpack.yaml", 215,
+    "[120",
+    "[12000",
+    "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "src/gameplay/families/family_fire_elemental.cpp", 25,
-    "BASE_GUY_HP+70",
-    "BASE_GUY_HP+9000",
-    "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
+    "packs/core/classpack.yaml", 253,
+    "[100",
+    "[10000",
+    "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
-    "src/gameplay/families/family_faerie.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
+    "packs/core/classpack.yaml", 291,
+    "[75",
+    "[7500",
+    "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 24,
-    "BASE_GUY_HP+120",
-    "10",
-    "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 329,
+    "[150",
+    "[150e-2",
+    "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 84,
-    "BASE_GUY_HP+50",
-    "BASE_GUY_HP+9000",
-    "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
+    "packs/core/classpack.yaml", 367,
+    "[80",
+    "[8000",
+    "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 144,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
+    "packs/core/classpack.yaml", 405,
+    "[110",
+    "[11000",
+    "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "src/gameplay/families/family_thief.cpp", 23,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
+    "packs/core/classpack.yaml", 443,
+    "[75",
+    "[7500",
+    "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_ghost_init = {
@@ -1358,59 +1368,59 @@ inline constexpr Mutation kMut_family_ghost_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "src/gameplay/families/family_druid.cpp", 24,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
+    "packs/core/classpack.yaml", 519,
+    "[110",
+    "[11000",
+    "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "src/gameplay/families/family_orc.cpp", 29,
-    "BASE_GUY_HP+110",
-    "BASE_GUY_HP+9000",
-    "Cranks ORC HP; flips WalkerDiedByFinal(ORC)."
+    "packs/core/classpack.yaml", 557,
+    "[140",
+    "[14000",
+    "Cranks ORC HP; flips WalkerDiedByFinal(ORC). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
-    "src/gameplay/families/family_big_orc.cpp", 23,
-    "BASE_GUY_HP+150",
-    "10",
-    "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 595,
+    "[180",
+    "[180e-2",
+    "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "src/gameplay/families/family_barbarian.cpp", 24,
-    "BASE_GUY_HP+120",
-    "10",
-    "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 633,
+    "[150",
+    "[150e-2",
+    "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "src/gameplay/families/family_archmage.cpp", 23,
-    "BASE_GUY_HP+120",
-    "10",
-    "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 671,
+    "[150",
+    "[150e-2",
+    "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
-    "src/gameplay/families/family_golem.cpp", 21,
-    "BASE_GUY_HP+270",
-    "10",
-    "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 709,
+    "[300",
+    "[300e-2",
+    "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "src/gameplay/families/family_giant_skeleton.cpp", 21,
-    "BASE_GUY_HP+270",
-    "10",
-    "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "packs/core/classpack.yaml", 747,
+    "[300",
+    "[300e-2",
+    "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_tower1_init = {
-    "src/gameplay/families/family_tower1.cpp", 21,
-    "BASE_GUY_HP+100",
-    "BASE_GUY_HP+9000",
-    "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
+    "packs/core/classpack.yaml", 785,
+    "[130",
+    "[13000",
+    "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 // --- Phase 04 — per-entity behavioural scenarios (Phase 04 redo) -----------
@@ -1644,10 +1654,10 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
-    "src/gameplay/families/family_faerie.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+90000",
-    "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick)."
+    "packs/core/classpack.yaml", 291,
+    "[75",
+    "[75000",
+    "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
@@ -3332,10 +3342,10 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 23,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 25,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_2_scen99[] = {
@@ -3351,10 +3361,10 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 23,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 25,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_3_scen99[] = {
@@ -3370,10 +3380,10 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 23,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 25,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_4_scen99[] = {
@@ -3389,10 +3399,10 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 23,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 25,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_1_scen99[] = {
@@ -3408,10 +3418,10 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 63,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_2_scen99[] = {
@@ -3428,10 +3438,10 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 63,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_3_scen99[] = {
@@ -3448,10 +3458,10 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 63,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_4_scen99[] = {
@@ -3468,10 +3478,10 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 25,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 63,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_1_scen99[] = {
@@ -3489,10 +3499,10 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 24,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 101,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_2_scen99[] = {
@@ -3509,10 +3519,10 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 24,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 101,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_3_scen99[] = {
@@ -3534,10 +3544,10 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 24,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 101,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_2_scen99[] = {
@@ -3560,10 +3570,10 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 28,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 139,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_3_scen99[] = {
@@ -3580,10 +3590,10 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 28,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 139,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_4_scen99[] = {
@@ -3600,10 +3610,10 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 28,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 139,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_5_scen99[] = {
@@ -3620,10 +3630,10 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 28,
-    "BASE_GUY_HP+60",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 139,
+    "[90",
+    "[9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_skeleton_1_scen99[] = {
@@ -3647,10 +3657,10 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
-    "src/gameplay/families/family_skeleton.cpp", 23,
-    "BASE_GUY_HP+30",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 177,
+    "[60",
+    "[6000",
+    "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_cleric_2_scen99[] = {
@@ -3666,10 +3676,10 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 24,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 215,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_cleric_3_scen99[] = {
@@ -3685,10 +3695,10 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 24,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 215,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_cleric_4_scen99[] = {
@@ -3704,10 +3714,10 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 24,
-    "BASE_GUY_HP+90",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 215,
+    "[120",
+    "[12000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_fireelemental_1_scen99[] = {
@@ -3724,10 +3734,10 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "src/gameplay/families/family_fire_elemental.cpp", 25,
-    "BASE_GUY_HP+70",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 253,
+    "[100",
+    "[10000",
+    "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_slime_1_scen99[] = {
@@ -3748,10 +3758,10 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 24,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 329,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_small_slime_1_scen99[] = {
@@ -3807,10 +3817,10 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 23,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 443,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
@@ -3833,10 +3843,10 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 23,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 443,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_4_scen99[] = {
@@ -3856,10 +3866,10 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 23,
-    "BASE_GUY_HP+45",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 443,
+    "[75",
+    "[7500",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_ghost_1_scen99[] = {
@@ -3879,10 +3889,10 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "src/gameplay/families/family_ghost.cpp", 25,
-    "BASE_GUY_HP+20",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 481,
+    "[50",
+    "[5000",
+    "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_1_scen99[] = {
@@ -3900,10 +3910,10 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 24,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 519,
+    "[110",
+    "[11000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_2_scen99[] = {
@@ -3921,10 +3931,10 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 24,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 519,
+    "[110",
+    "[11000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_3_scen99[] = {
@@ -3940,10 +3950,10 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 24,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 519,
+    "[110",
+    "[11000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_4_scen99[] = {
@@ -3959,10 +3969,10 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 24,
-    "BASE_GUY_HP+80",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 519,
+    "[110",
+    "[11000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_orc_1_scen99[] = {
@@ -3982,10 +3992,10 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "src/gameplay/families/family_orc.cpp", 29,
-    "BASE_GUY_HP+110",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 557,
+    "[140",
+    "[14000",
+    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_orc_2_scen99[] = {
@@ -4003,10 +4013,10 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
-    "src/gameplay/families/family_orc.cpp", 29,
-    "BASE_GUY_HP+110",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 557,
+    "[140",
+    "[14000",
+    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_barbarian_1_scen99[] = {
@@ -4024,10 +4034,10 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 24,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 633,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_barbarian_2_scen99[] = {
@@ -4045,10 +4055,10 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 24,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 633,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_2_scen99[] = {
@@ -4066,10 +4076,10 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 23,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 671,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_3_scen99[] = {
@@ -4085,10 +4095,10 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 23,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 671,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_4_scen99[] = {
@@ -4117,10 +4127,10 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 23,
-    "BASE_GUY_HP+120",
-    "BASE_GUY_HP+9000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/classpack.yaml", 671,
+    "[150",
+    "[15000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 
@@ -4744,10 +4754,10 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 28,
-    ".default_weapon = FAMILY_ARROW,",
-    ".default_weapon = FAMILY_KNIFE,",
-    "Swaps the archer's default weapon so the post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:193 switch pin was runtime-dead — the parity driver cycles characters itself via cycle_next_character in scenario_runtime.cpp; zero-flip, pre-existing on master). No FAMILY_ARROW is ever emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
+    "packs/core/classpack.yaml", 105,
+    "core:arrow",
+    "core:knife  # core:arrow",
+    "Swaps the archer's default weapon so the post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:193 switch pin was runtime-dead — the parity driver cycles characters itself via cycle_next_character in scenario_runtime.cpp; zero-flip, pre-existing on master). No FAMILY_ARROW is ever emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW). Stage B retarget 2026-07-26: default_weapon is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing. The pin now names the YAML line; the original token is kept after the swapped value as an end-of-line comment, so the anchor survives the mutation for check_mutation_pins.py while libyaml sees only core:knife."
 };
 
 // (4) SPECIAL-SLOT WRAP. A player-team mage cycles K_SPECIAL_SWITCH seven
