@@ -847,14 +847,39 @@ void sort_unique(std::vector<T>& v)
 SourceFacts source_facts(std::string_view source, std::string_view chunk_name)
 {
     SourceFacts result;
+    // Binary chunks are rejected by NAME, before any VM exists. A stripped
+    // precompiled chunk carries its function spans but no line info, so
+    // letting it "compile" here minted exactly the truncated grid the
+    // coverage denominator must never contain — 0 lines, functions still
+    // coverable, a gate FAIL flipping to PASS on identical logic (P8-A).
+    // Lua's own loader classifies a chunk as binary on its FIRST byte alone
+    // (LUA_SIGNATURE[0]); a UTF-8 BOM pasted in front of the signature is
+    // the same artifact wearing a disguise, so it gets the same answer. The
+    // engine refuses these chunks too (ScriptHost compiles text-only —
+    // precompiled Lua is the canonical arbitrary-code vector, unchecked by
+    // lundump), so nothing rejected here could ever have executed.
+    std::string_view body = source;
+    if (body.substr(0, 3) == "\xef\xbb\xbf")
+        body.remove_prefix(3);
+    if (!body.empty() && body.front() == LUA_SIGNATURE[0]) {
+        result.error = std::string(chunk_name) +
+                       ": precompiled Lua bytecode (LUA_SIGNATURE); "
+                       "precompiled Lua is not shipped source; commit the "
+                       ".lua text";
+        return result;
+    }
     lua_State* L = luaL_newstate();
     if (L == nullptr) {
         result.error = "out of memory";
         return result;
     }
     const std::string name(chunk_name);
-    if (luaL_loadbuffer(L, source.data(), source.size(), name.c_str()) !=
-        LUA_OK) {
+    // Mode "t" as belt over the signature check above: whatever byte
+    // pattern reaches this compile, it can only ever be parsed as TEXT —
+    // the same mode the engine's two ScriptHost sites enforce, so the
+    // oracle can never mint a grid for a chunk the engine would refuse.
+    if (luaL_loadbufferx(L, source.data(), source.size(), name.c_str(),
+                         "t") != LUA_OK) {
         const char* msg = lua_tostring(L, -1);
         result.error = (msg != nullptr) ? msg : "compile error";
         lua_close(L);

@@ -649,6 +649,34 @@ the repository path, listed alongside every other problem in the run — not
 a mid-flight abort that hides the rest. (Junk outside the shipped roots
 never reaches compilation at all; it is not read.)
 
+### Precompiled bytecode is refused everywhere
+
+A blob that begins with Lua's binary-chunk signature byte (`LUA_SIGNATURE`,
+`"\x1bLua"` — classified on the first byte, exactly as Lua's own loader
+does), with or without a UTF-8 BOM pasted in front, is **precompiled Lua**,
+and precompiled Lua is not shipped source: commit the `.lua` text. The
+demonstrated attack (P8-A): a STRIPPED dump of a pack script keeps every
+function span in its Proto tree but carries no line info, so before this
+rule the oracle handed it a grid of 0 lines with all of its functions still
+coverable — the file's uncovered lines left the line denominator while the
+100 % function bar stayed satisfiable, and a measured gate FAIL flipped to
+PASS on identical logic. The refusal is layered, each layer sufficient on
+its own:
+
+* the **engine** compiles text-only (`luaL_loadbufferx(..., "t")` at both
+  `ScriptHost` compile sites) — a binary chunk is a load error like any
+  syntax error. This is also the canonical Lua security posture: `lundump`
+  performs no consistency checking, so crafted bytecode is an
+  arbitrary-code vector through the sandbox;
+* the **inventory** collects a signature-prefixed blob — on disk, as a
+  `.glad` member, or as an embedded literal — as a named problem and never
+  as an entry (an entry would carry the erased grid the problem exists to
+  keep out);
+* the **oracle** (`og_lua_lines` / `source_facts`) rejects the same prefix
+  with the same named error before any VM exists, and compiles in text-only
+  mode besides, so even a blob that slipped enumeration cannot mint a
+  truncated grid.
+
 ### Embedded Lua is checked by construction, not convention
 
 Every raw string literal, under **any** delimiter, in the **product

@@ -2774,6 +2774,14 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
         )
+        # The P8-A tests forge REAL stripped Lua bytecode through the C API
+        # (string.dump is sandbox-stripped, so the attack artifact has to be
+        # generated in the test) and prove the engine and the report refuse
+        # it. og_lua is already in this binary's link closure via og_game;
+        # naming it here only propagates its include directory to the test
+        # sources. tests/ sits outside the src/ vendor-leak boundary
+        # (scripts/check_vendor_leaks.sh), so the include is legal there.
+        target_link_libraries(og_unit_script PRIVATE og_lua)
 
         og_add_unit_group(og_unit_entity FILES
             ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp

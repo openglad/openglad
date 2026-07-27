@@ -149,6 +149,16 @@ sim-visible strings), all of `table`, an integer `math` subset (`floor`,
 sandbox root), and `print` (= `og.log`). The exact list is `kAllowedBase` /
 `kAllowedMath` in `src/gameplay/script/script_host.cpp`.
 
+Chunks are compiled **text-only** (`luaL_loadbufferx(..., "t")` at both
+`ScriptHost` compile sites): a precompiled binary chunk is a load error,
+exactly like a syntax error. That is the canonical Lua hardening — `lundump`
+does no consistency checking, so crafted bytecode is an arbitrary-code
+vector straight through the sandbox floor above — and it also protects the
+coverage gate: a stripped binary chunk has function spans but no line info,
+which would erase a pack file's line denominator while its function bar
+stayed satisfiable (P8-A; see `scripts/coverage/README.md`). Ship `.lua`
+text, never `luac` output.
+
 **R8 — Budgets.** Per host entry: instruction budget (default 5M, via a
 `LUA_MASKCOUNT` hook armed on the OUTERMOST call only, so a nested dispatch
 such as `g_upgrade_to_level` re-entering `level_up` does not re-arm it) and

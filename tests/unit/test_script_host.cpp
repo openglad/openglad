@@ -20,6 +20,15 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 
+// The vendored Lua C API, for the P8-A tests alone: they need a REAL
+// stripped-bytecode attack artifact, and string.dump is sandbox-stripped, so
+// the artifact has to be forged here through lua_dump. tests/ sits outside
+// the src/ vendor-leak boundary (scripts/check_vendor_leaks.sh restricts Lua
+// headers to src/gameplay/script/); og_unit_script links og_lua for the
+// include path.
+#include <lauxlib.h>
+#include <lua.h>
+
 #include <algorithm>
 #include <csignal>
 #include <cstddef>
@@ -678,6 +687,53 @@ std::vector<std::string> split_fields(const std::string& record)
         start = tab + 1;
     }
 }
+
+int append_dump_writer(lua_State*, const void* p, std::size_t sz, void* ud)
+{
+    static_cast<std::string*>(ud)->append(static_cast<const char*>(p), sz);
+    return 0;
+}
+
+// The REAL P8-A attack artifact: `source` compiled by the vendored Lua and
+// dumped STRIPPED of debug info — the shape whose Proto tree keeps every
+// function span but carries no line info, so before binary chunks were
+// refused everywhere it entered the report as 0 executable lines with all
+// of its functions still coverable.
+std::string dump_stripped_bytecode(const std::string& source)
+{
+    lua_State* L = luaL_newstate();
+    EXPECT_NE(nullptr, L);
+    if (L == nullptr)
+        return {};
+    EXPECT_EQ(LUA_OK, luaL_loadbufferx(L, source.data(), source.size(),
+                                       "generator", "t"));
+    std::string bytes;
+    lua_dump(L, append_dump_writer, &bytes, /*strip=*/1);
+    lua_close(L);
+    EXPECT_FALSE(bytes.empty());
+    if (!bytes.empty()) {
+        EXPECT_EQ(LUA_SIGNATURE[0], bytes.front())
+            << "a Lua dump must begin with the binary-chunk signature";
+    }
+    return bytes;
+}
+
+// A pack-shaped source with a called helper and an uncalled one — the
+// smallest shape where the P8-A flip is visible: uncovered LINES that
+// bytecode would erase from the denominator, while every FUNCTION span
+// stays intact in the stripped Proto tree.
+constexpr const char* kBytecodeProbeSource =
+    "local function helper(x)\n"
+    "  local acc = 0\n"
+    "  for i = 1, x do\n"
+    "    acc = acc + i\n"
+    "  end\n"
+    "  return acc\n"
+    "end\n"
+    "local function unused(y)\n"
+    "  return y * 2\n"
+    "end\n"
+    "return helper(4)\n";
 
 }  // namespace
 
@@ -2632,4 +2688,306 @@ print("ROOT-CASE-OK")
     EXPECT_EQ(0, exit_code) << output;
     EXPECT_NE(std::string::npos, output.find("ROOT-CASE-OK")) << output;
     std::filesystem::remove_all(scratch);
+}
+
+// ---------------------------------------------------------------------------
+// P8-A: precompiled bytecode is refused at every layer
+// ---------------------------------------------------------------------------
+//
+// The demonstrated attack: commit a pack script as STRIPPED Lua bytecode
+// instead of text. Pre-fix, both luaL_loadbuffer sites accepted binary
+// chunks (default "bt" mode), and a stripped Proto tree keeps every
+// function span while carrying no line info — measured at fc39e79a, an
+// 11-line 3-function script read as 0 lines / 3 functions with exit 0. The
+// file's uncovered lines left the denominator while the 100% function bar
+// stayed satisfiable, flipping gate FAIL to PASS on identical logic. Text-
+// only loading is also the canonical Lua security posture: lundump does no
+// consistency checking, so crafted bytecode is an arbitrary-code vector
+// through the sandbox. These tests pin all the layers: the engine refuses
+// the chunk, the oracle refuses to grid it, the inventory refuses to admit
+// it, and the end-to-end report FAILS rather than shrinking.
+
+TEST(ScriptHostSecurity, a_precompiled_binary_chunk_is_refused_not_run)
+{
+    const std::string text = kBytecodeProbeSource;
+    const std::string bytecode = dump_stripped_bytecode(text);
+    ASSERT_FALSE(bytecode.empty());
+
+    ScriptHost host;
+    // The text form compiles and runs...
+    ASSERT_TRUE(host.run_chunk("textual", text));
+    ASSERT_TRUE(host.errors().empty());
+    // ...its bytecode is a LOAD ERROR through the normal script-error
+    // channel, exactly like a syntax error — never a second way to run.
+    EXPECT_FALSE(host.run_chunk("packs/evil/scripts/boss.lua", bytecode));
+    ASSERT_EQ(1u, host.errors().size());
+    EXPECT_EQ("packs/evil/scripts/boss.lua", host.errors()[0].where);
+    EXPECT_NE(std::string::npos,
+              host.errors()[0].message.find("binary chunk"))
+        << host.errors()[0].message;
+
+    // The BOM-wearing variant is refused too (as unparseable text — the
+    // engine never strips a BOM, so it can never reach the binary loader).
+    EXPECT_FALSE(host.run_chunk("packs/evil/scripts/bom.lua",
+                                "\xef\xbb\xbf" + bytecode));
+    ASSERT_EQ(2u, host.errors().size());
+}
+
+TEST(ScriptCoverage, source_facts_rejects_bytecode_not_a_truncated_grid)
+{
+    const std::string text = kBytecodeProbeSource;
+    const cov::SourceFacts honest =
+        cov::source_facts(text, "packs/core/scripts/boss.lua");
+    ASSERT_TRUE(honest.ok) << honest.error;
+    ASSERT_GT(honest.lines.size(), 0u);
+    ASSERT_GT(honest.functions.size(), 1u);
+
+    // The same logic as bytecode: not a 0-line grid — a NAMED error, the
+    // same phrase the inventory uses, so a blob that slipped enumeration
+    // still cannot mint a truncated denominator through og_lua_lines.
+    const std::string bytecode = dump_stripped_bytecode(text);
+    const cov::SourceFacts rejected =
+        cov::source_facts(bytecode, "packs/core/scripts/boss.lua");
+    EXPECT_FALSE(rejected.ok);
+    EXPECT_NE(std::string::npos,
+              rejected.error.find("precompiled Lua bytecode"))
+        << rejected.error;
+    EXPECT_NE(std::string::npos,
+              rejected.error.find("packs/core/scripts/boss.lua"))
+        << rejected.error;
+    EXPECT_NE(std::string::npos, rejected.error.find("commit the .lua text"))
+        << rejected.error;
+    EXPECT_TRUE(rejected.lines.empty());
+    EXPECT_TRUE(rejected.functions.empty());
+
+    // A UTF-8 BOM in front of the signature is the same artifact wearing a
+    // disguise and gets the same named answer.
+    const cov::SourceFacts bom = cov::source_facts(
+        "\xef\xbb\xbf" + bytecode, "packs/core/scripts/boss.lua");
+    EXPECT_FALSE(bom.ok);
+    EXPECT_NE(std::string::npos, bom.error.find("precompiled Lua bytecode"))
+        << bom.error;
+}
+
+// Runs the real scripts/lua_inventory.py over a scratch git repository
+// holding the full plant matrix: bytecode as an on-disk .lua, as a
+// BOM-disguised .lua, as a .glad archive member, and as an embedded
+// R"LUA(...)LUA" literal. Each is a named problem; NONE is a denominator
+// entry (admitting one would carry the erased line grid the problem exists
+// to keep out); a bytecode blob OUTSIDE the shipped roots stays unread and
+// unnamed, like every other non-shipped file.
+TEST(LuaInventory, precompiled_bytecode_is_a_problem_not_a_denominator_entry)
+{
+    const std::filesystem::path repo = find_repo_root();
+    ASSERT_FALSE(repo.empty());
+    const std::filesystem::path scratch =
+        make_unique_temp_dir("og_lua_bytecode_");
+    ASSERT_FALSE(scratch.empty());
+    const std::filesystem::path root = scratch / "repo";
+    const std::filesystem::path scripts =
+        root / "packs" / "core" / "scripts";
+    std::filesystem::create_directories(scripts);
+
+    const std::string bytecode =
+        dump_stripped_bytecode(kBytecodeProbeSource);
+    ASSERT_FALSE(bytecode.empty());
+    write_text_file(scripts / "good.lua", "return 1\n");
+    write_text_file(scripts / "evil.lua", bytecode);
+    write_text_file(scripts / "evil_bom.lua", "\xef\xbb\xbf" + bytecode);
+    std::filesystem::create_directories(root / "tests");
+    write_text_file(root / "tests" / "outside.lua", bytecode);
+    // The embedded-literal plant only needs the classification prefix (the
+    // predicate is the loader's first-byte test); real dump bytes could
+    // contain the literal's own ")LUA" terminator by chance.
+    write_text_file(root / "src" / "gen.cpp",
+                    std::string("const char* k = R\"LUA(") +
+                        LUA_SIGNATURE[0] + "Lua fake)LUA\";\n");
+
+    write_text_file(scratch / "driver.py", std::string(R"PY(
+import pathlib
+import subprocess
+import sys
+import zipfile
+
+sys.path.insert(0, sys.argv[1])  # <repo>/scripts
+import lua_inventory
+
+# The scratch repository must not inherit the REAL repository's embedded-Lua
+# declarations; the one scratch C++ file is declared shipped so its literal
+# is collected and classified.
+lua_inventory.embedded_lua_dispositions = (
+    lambda *a, **k: {"src/gen.cpp": "shipped"})
+
+root = pathlib.Path(sys.argv[2])
+bytecode = (root / "packs" / "core" / "scripts" / "evil.lua").read_bytes()
+assert bytecode.startswith(b"\x1bLua"), bytecode[:8]
+with zipfile.ZipFile(root / "camp.glad", "w") as z:
+    z.writestr("packs/z/scripts/member.lua", "return 4\n")
+    z.writestr("packs/z/scripts/evil_member.lua", bytecode)
+subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+scan = lua_inventory.scan(root)
+paths = sorted(s.path for s in scan.sources)
+# The denominator is exactly what the plants left alone.
+assert paths == ["camp.glad!packs/z/scripts/member.lua",
+                 "packs/core/scripts/good.lua"], paths
+text = "\n".join(scan.problems)
+assert len(scan.problems) == 4, text
+assert "packs/core/scripts/evil.lua" in text, text
+assert "packs/core/scripts/evil_bom.lua" in text, text
+assert "UTF-8 BOM" in text, text
+assert "camp.glad!packs/z/scripts/evil_member.lua" in text, text
+assert 'src/gen.cpp:R"LUA"@1' in text, text
+assert text.count("recompiled Lua is not shipped source") == 4, text
+assert text.count("commit the .lua text") == 4, text
+assert "outside.lua" not in text, text  # non-shipped: unread, unnamed
+print("BYTECODE-INVENTORY-OK")
+)PY"));
+
+    const std::filesystem::path log = scratch / "driver.log";
+    const std::string cmd =
+        "python3 '" + (scratch / "driver.py").string() + "' '" +
+        (repo / "scripts").string() + "' '" + root.string() + "' > '" +
+        log.string() + "' 2>&1";
+    const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+    const int exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+    const int exit_code = rc;
+#endif
+    const std::string output = read_text_file(log);
+    EXPECT_EQ(0, exit_code) << output;
+    EXPECT_NE(std::string::npos, output.find("BYTECODE-INVENTORY-OK"))
+        << output;
+    std::filesystem::remove_all(scratch);
+}
+
+// The end-to-end P8-A shape, against the REAL report over a scratch
+// repository: the same collection run PASSES on a text pack script and
+// FAILS the moment a bytecode pack script is committed next to it — with
+// the denominator unchanged, so the failure can never be the "erased
+// denominator" PASS the attack aimed for. (The pre-fix behavior is pinned
+// in the banner above: 0 lines, intact spans, exit 0.)
+TEST_F(CoverageReportGate, a_bytecode_pack_script_fails_the_gate)
+{
+    // A scratch repository with one honest, fully covered text script.
+    const std::filesystem::path scratch_repo = scratch_ / "repo";
+    const std::string warden_rel = "packs/core/scripts/warden.lua";
+    const std::string warden_text =
+        "local function tick(n)\n"
+        "  return n + 1\n"
+        "end\n"
+        "return tick(1)\n";
+    write_text_file(scratch_repo / warden_rel, warden_text);
+    {
+        const std::string cmd =
+            "git init -q '" + scratch_repo.string() + "'";
+        ASSERT_EQ(0, std::system(cmd.c_str()));
+    }
+
+    RealSource warden;
+    warden.chunk = warden_rel;
+    warden.bytes = warden_text;
+    warden.digest = cov::sha256_hex(warden_text);
+    warden.facts = cov::source_facts(warden_text, warden_rel);
+    ASSERT_TRUE(warden.facts.ok) << warden.facts.error;
+    forge_dump("honest.luacov", "og_forged",
+               forge_s_record(warden.chunk, warden.bytes) +
+                   forge_full_hits(warden.chunk, warden));
+    manifest_args({"og_forged"});
+    fixtures_args();
+
+    // The report is driven through a wrapper so the scratch repository does
+    // not inherit the REAL repository's embedded-Lua declarations (they
+    // name C++ files that do not exist in the scratch tree).
+    write_text_file(scratch_ / "driver.py", std::string(R"PY(
+import json
+import pathlib
+import sys
+
+sys.path.insert(0, sys.argv[1])   # <repo>/scripts
+sys.path.insert(0, sys.argv[2])   # <repo>/scripts/coverage
+import lua_inventory
+lua_inventory.embedded_lua_dispositions = lambda *a, **k: {}
+import coverage_report
+
+out_dir = sys.argv[6]
+sys.argv = ["coverage_report.py",
+            "--repo-root", sys.argv[3],
+            "--lua-raw-dir", sys.argv[4],
+            "--lines-tool", sys.argv[5],
+            "--output-dir", out_dir,
+            "--processes-manifest", sys.argv[7],
+            "--fixture-digests", sys.argv[8]]
+rc = coverage_report.main()
+summary = json.loads(
+    (pathlib.Path(out_dir) / "summary.json").read_text())
+print("LUA-LINES-FOUND", summary["lua"]["lines_found"])
+print("LUA-FILES", ";".join(f["path"] for f in summary["lua_files"]))
+print("REPORT-STATUS", summary["status"])
+sys.exit(rc)
+)PY"));
+
+    const auto run_driver = [&](const std::string& out_name) -> ReportRun {
+        ReportRun result;
+        const std::filesystem::path log = scratch_ / (out_name + ".log");
+        const std::string cmd =
+            "env -u OPENGLAD_LUA_COVERAGE python3 '" +
+            (scratch_ / "driver.py").string() + "' '" +
+            (repo_ / "scripts").string() + "' '" +
+            (repo_ / "scripts" / "coverage").string() + "' '" +
+            scratch_repo.string() + "' '" + (scratch_ / "raw").string() +
+            "' '" + lines_tool_.string() + "' '" +
+            (scratch_ / out_name).string() + "' '" +
+            (scratch_ / "manifest.txt").string() + "' '" +
+            (scratch_ / "fixtures.txt").string() + "' > '" + log.string() +
+            "' 2>&1";
+        const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+        result.exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+        result.exit_code = rc;
+#endif
+        result.output = read_text_file(log);
+        return result;
+    };
+    const auto lines_found = [](const ReportRun& run) -> int {
+        const std::string key = "LUA-LINES-FOUND ";
+        const std::size_t at = run.output.find(key);
+        return (at == std::string::npos)
+                   ? -1
+                   : std::atoi(run.output.c_str() + at + key.size());
+    };
+
+    // Control: the text-only scratch repository passes.
+    const ReportRun before = run_driver("out-before");
+    EXPECT_EQ(0, before.exit_code) << before.output;
+    EXPECT_NE(std::string::npos, before.output.find("REPORT-STATUS PASS"))
+        << before.output;
+    EXPECT_NE(std::string::npos, before.output.find(warden_rel))
+        << before.output;
+    ASSERT_GT(lines_found(before), 0) << before.output;
+
+    // The attack: the same logic, committed as stripped bytecode.
+    const std::string boss_rel = "packs/core/scripts/boss.lua";
+    write_text_file(scratch_repo / boss_rel,
+                    dump_stripped_bytecode(kBytecodeProbeSource));
+
+    const ReportRun after = run_driver("out-after");
+    EXPECT_EQ(1, after.exit_code) << after.output;
+    EXPECT_NE(std::string::npos, after.output.find("REPORT-STATUS FAIL"))
+        << after.output;
+    EXPECT_NE(std::string::npos,
+              after.output.find("precompiled Lua bytecode"))
+        << after.output;
+    EXPECT_NE(std::string::npos, after.output.find(boss_rel))
+        << after.output;
+    // Never the erased-denominator PASS: the denominator is unchanged by
+    // the plant (the problem, not a truncated entry, is what the report
+    // sees) and the bytecode path is not among the measured files.
+    EXPECT_EQ(lines_found(before), lines_found(after)) << after.output;
+    const std::size_t files_at = after.output.find("LUA-FILES");
+    ASSERT_NE(std::string::npos, files_at);
+    EXPECT_EQ(std::string::npos, after.output.find(boss_rel, files_at))
+        << "the bytecode plant must not become a measured file";
 }

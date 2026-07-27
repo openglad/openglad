@@ -477,8 +477,19 @@ bool ScriptHost::run_chunk(std::string_view chunk_name,
 {
     lua_State* L = impl_->L;
     const std::string name(chunk_name);
-    if (luaL_loadbuffer(L, source.data(), source.size(), name.c_str()) !=
-        LUA_OK) {
+    // Mode "t": TEXT chunks only, never precompiled bytecode. This is the
+    // canonical Lua security hardening — the reference manual is explicit
+    // that maliciously crafted binary chunks can crash the interpreter, so
+    // a pack shipping bytecode would be an arbitrary-code vector straight
+    // through the sandbox (lundump performs no consistency checking). It is
+    // also what keeps the coverage gate honest: a STRIPPED binary chunk
+    // compiles with its function spans intact but no line info, erasing the
+    // file's line denominator while the function bar stays satisfiable —
+    // gate FAIL flipping to PASS on identical logic (P8-A). A binary chunk
+    // is therefore a load ERROR exactly like a syntax error, recorded via
+    // errors() and loud through the same hook-failure channel.
+    if (luaL_loadbufferx(L, source.data(), source.size(), name.c_str(),
+                         "t") != LUA_OK) {
         impl_->record_error(name.c_str(), lua_tostring(L, -1));
         lua_pop(L, 1);
         return false;
@@ -505,7 +516,15 @@ bool eval_push(ScriptHost::Impl* impl, std::string_view expr)
     std::string src = "return (";
     src.append(expr);
     src.push_back(')');
-    if (luaL_loadbuffer(L, src.data(), src.size(), "=eval") != LUA_OK) {
+    // Mode "t" for the same reason as run_chunk: binary chunks are refused
+    // everywhere (security hardening — precompiled Lua is an arbitrary-code
+    // vector — and the P8-A denominator-erasure fix). Unreachable here in
+    // practice, since the buffer always begins with the literal "return ("
+    // and can never start with LUA_SIGNATURE, but both ScriptHost compile
+    // sites carry the explicit mode so no refactor can silently reopen the
+    // bytecode door at one of them.
+    if (luaL_loadbufferx(L, src.data(), src.size(), "=eval", "t") !=
+        LUA_OK) {
         impl->record_error("eval", lua_tostring(L, -1));
         lua_pop(L, 1);
         return false;

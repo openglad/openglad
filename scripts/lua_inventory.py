@@ -79,6 +79,25 @@ an archive member, is a collected PROBLEM: the engine can never load it, so
 admitting it (as a lowercasing enumeration once did) made an unfixable 0%
 denominator entry, and skipping it silently would hide the typo.
 
+PRECOMPILED BYTECODE IS A PROBLEM, NOT A SOURCE
+-----------------------------------------------
+A blob in ANY of the three places whose bytes begin with Lua's binary-chunk
+signature byte (LUA_SIGNATURE, "\\x1bLua" — matched on the FIRST byte, which
+is the classification the loader itself performs), with or without a UTF-8
+BOM pasted in front, is a collected problem and never a denominator entry:
+precompiled Lua is not shipped source; commit the .lua text. Two reasons,
+either sufficient. The engine refuses binary chunks outright — ScriptHost
+compiles text-only, because a crafted binary chunk is the canonical
+arbitrary-code vector through the sandbox (lundump does no consistency
+checking) — so the blob can never load and would sit as an unfixable red,
+like the case-variants above. And a STRIPPED chunk still carries its
+function spans while its line info is gone, so ADMITTING it as an entry
+would erase the file's line denominator while leaving its function bar
+coverable: the same logic scored against fewer lines, a gate FAIL flipping
+to PASS with nothing tested (P8-A). The oracle (og_lua_lines /
+source_facts) rejects the same prefix with the same named error, so even a
+blob that slipped this enumeration cannot mint a truncated grid.
+
 The same engine-exact rule covers every OTHER case-sensitive spelling on the
 way to a script, each a collected problem rather than a silent admit or a
 silent skip:
@@ -263,6 +282,15 @@ PACK_API_REFERENCE = re.compile(r"\bog\s*\.|\bregister_hooks\b")
 # at the comment and swallow the real literal — the one way to hide an
 # embedded literal from the sniffer. So ambiguity is itself a hard failure.
 RAW_OPENER = re.compile(r'R"[^()\\\s]{0,16}\(')
+
+# Lua's binary-chunk classification, byte-for-byte: the loader decides
+# text-vs-precompiled on the FIRST byte alone (LUA_SIGNATURE[0] == 0x1b;
+# lundump then verifies the full "\x1bLua" signature). The inventory matches
+# the classification, not the full signature, for the same engine-exact
+# reason the suffix rules match packs.cpp: whatever the engine would refuse
+# as "a binary chunk" is precompiled here, valid signature or corrupt.
+LUA_SIGNATURE_BYTE = b"\x1b"
+UTF8_BOM = b"\xef\xbb\xbf"
 
 # Which C++ files may contain Lua. One live disposition:
 #   shipped  the file's R"LUA( ... )LUA" literals ARE pack Lua: measured by
@@ -456,6 +484,37 @@ def could_be_lua(body: str) -> bool:
 def references_pack_api(body: str) -> bool:
     """Does this text touch the pack API (`og.` / `register_hooks`)?"""
     return bool(PACK_API_REFERENCE.search(body))
+
+
+def precompiled_lua_problem(label: str, data: bytes) -> Optional[str]:
+    """The problem text for a precompiled-Lua blob, or None for source text.
+
+    Applied to every collected blob — a .lua on disk, a .glad member, an
+    embedded literal — before it can become a denominator entry. A blob
+    whose bytes begin with the binary-chunk signature byte (with or without
+    a UTF-8 BOM pasted in front) is named and refused: the engine will not
+    load it (ScriptHost compiles text-only — a crafted binary chunk is the
+    canonical arbitrary-code vector through the sandbox), and admitting it
+    would let a STRIPPED chunk erase its line denominator while its function
+    spans stayed coverable — a gate FAIL flipping to PASS on identical
+    logic (P8-A). See the module docstring.
+    """
+    body = data
+    disguise = ""
+    if body.startswith(UTF8_BOM):
+        body = body[len(UTF8_BOM):]
+        disguise = " behind a UTF-8 BOM"
+    if not body.startswith(LUA_SIGNATURE_BYTE):
+        return None
+    return (
+        f"{label}: precompiled Lua bytecode (begins with the binary-chunk "
+        f"signature byte LUA_SIGNATURE[0]{disguise}). Precompiled Lua is "
+        "not shipped source; commit the .lua text. The engine refuses "
+        "binary chunks outright (ScriptHost compiles text-only: crafted "
+        "bytecode is an arbitrary-code vector through the sandbox), and a "
+        "stripped chunk's empty line grid would otherwise erase this "
+        "file's line denominator while its functions stayed coverable"
+    )
 
 
 @dataclass(frozen=True)
@@ -916,6 +975,16 @@ def scan(
         repo_root, repository_files(repo_root, include_untracked),
         include_untracked, problems
     ):
+        # One choke point for all three kinds. A precompiled blob is a
+        # problem and NOT an entry — unlike the case-variant problems above
+        # (real text a case-insensitive filesystem could still load), a
+        # binary chunk is never admissible source, and an entry for it would
+        # carry the exact truncated grid this check exists to keep out of
+        # the denominator. The problem already stops the gate and the lint.
+        precompiled = precompiled_lua_problem(label, data)
+        if precompiled is not None:
+            problems.append(precompiled)
+            continue
         by_digest.setdefault(hashlib.sha256(data).hexdigest(), []).append(
             (kind, label, data))
 
