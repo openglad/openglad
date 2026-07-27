@@ -27,7 +27,9 @@ local function do_special(self)
     self:s_add_command(C.COMMAND_RESET_WEAPON, 1, 0, 0)
   elseif sp == 2 then
     -- flurry of arrows
-    if self:busy() ~= 0 then return false end
+    if self:busy() ~= 0 then
+      return false
+    end
     self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
                                    og.fmul(3.0, self:s_weapon_cost())))
     self:fire()
@@ -36,12 +38,16 @@ local function do_special(self)
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
   else
     -- exploding arrows (cases 3, 4, and default)
-    if self:busy() ~= 0 then return false end
+    if self:busy() ~= 0 then
+      return false
+    end
     local old_weapon = self:current_weapon()
     self:set_current_weapon(WEAPON_FIRE_ARROW)
     local newob = self:fire()
     self:set_current_weapon(old_weapon)
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     newob:set_skip_exit(5000)
     newob:s_set_hitpoints(500)
     newob:set_damage(og.fmul(newob:damage(), 2.0))

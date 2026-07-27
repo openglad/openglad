@@ -26,11 +26,15 @@ local function do_special(self)
     self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
                                    og.fmul(2.0, self:s_weapon_cost())))
     local fireob = self:fire()
-    if not fireob then return false end
+    if not fireob then
+      return false
+    end
     fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))
     fireob:set_lasty(og.fmul(fireob:lasty(), next_spread_multiplier()))
     fireob = self:fire()
-    if not fireob then return false end
+    if not fireob then
+      return false
+    end
     fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))
     fireob:set_lasty(og.fmul(fireob:lasty(), next_spread_multiplier()))
   elseif sp == 2 then
@@ -39,7 +43,9 @@ local function do_special(self)
                                    og.fmul(3.0, self:s_weapon_cost())))
     for i = 1, 2 do
       local fireob = self:fire()
-      if not fireob then return false end
+      if not fireob then
+        return false
+      end
       fireob:set_lineofsight(og.div(fireob:lineofsight() * 3, 2))
       fireob:set_do_bounce(1)
       fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))
@@ -50,7 +56,9 @@ local function do_special(self)
                                    og.fmul(4.0, self:s_weapon_cost())))
     for i = 1, 3 do
       local fireob = self:fire()
-      if not fireob then return false end
+      if not fireob then
+        return false
+      end
       fireob:set_lineofsight(fireob:lineofsight() * 2)
       fireob:set_do_bounce(1)
       fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))
@@ -62,7 +70,9 @@ local function do_special(self)
                                    og.fmul(5.0, self:s_weapon_cost())))
     for i = 1, 4 do
       local fireob = self:fire()
-      if not fireob then return false end
+      if not fireob then
+        return false
+      end
       fireob:set_lineofsight(og.div(fireob:lineofsight() * 5, 2))
       fireob:set_do_bounce(1)
       fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))

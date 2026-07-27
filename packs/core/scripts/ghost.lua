@@ -10,7 +10,9 @@ end
 
 local function do_special(self)
   local newob = og.summon(self, "fx", FX_GHOST_SCARE)
-  if not newob then return false end
+  if not newob then
+    return false
+  end
   newob:set_ani_type(1)  -- ANI_SCARE
   -- xpos/ypos/sizex/sizey are shorts: /2 is C integer division.
   newob:setxy(self:xpos() + og.div(self:sizex(), 2) - og.div(newob:sizex(), 2),

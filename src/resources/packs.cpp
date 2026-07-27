@@ -19,6 +19,7 @@
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/physfs_api.h>
@@ -61,10 +62,26 @@ int register_mounted_pack_scripts()
                 LogWarn("class pack script unreadable: {}\n", vpath);
                 continue;
             }
+            std::string source(reinterpret_cast<const char*>(bytes.data()),
+                               bytes.size());
+            // THE coverage inventory. This loop — not a scan of the host
+            // filesystem — is the definition of "a pack script the engine can
+            // load": the file may live in packs/ on disk, inside a campaign
+            // .glad, or in a generated archive that only ever existed as a
+            // C++ string literal, and PhysFS makes all three look the same
+            // here. Recording the source at the one place they converge is
+            // what stops such a script from being invisible to the gate.
+            // The real dir is what tells a shipped pack from a synthetic one
+            // a test mounted out of a temp directory. Guarded rather than
+            // relying on declare_pack_source's own early-out, so that with
+            // the recorder off this whole thing costs one bool load and
+            // never asks PhysFS anything.
+            if (og::script::coverage::enabled()) {
+                og::script::coverage::declare_pack_source(
+                    vpath, source, og::io::physfs_real_dir(vpath));
+            }
             og::script::register_pack_script(
-                {pack_id, vpath,
-                 std::string(reinterpret_cast<const char*>(bytes.data()),
-                             bytes.size())});
+                {pack_id, vpath, std::move(source)});
             registered++;
         }
     }

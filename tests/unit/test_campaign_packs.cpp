@@ -7,14 +7,18 @@
  */
 #include <gtest/gtest.h>
 
+#include "../test_game_world_fixture.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
@@ -26,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 
 std::string get_asset_path();
@@ -290,4 +295,67 @@ TEST(ExampleClassPack, a_pix_sidecar_cannot_shadow_a_pack_sprite)
 
     (void)og::resources::unmount(shadow.string().c_str());
     fs::remove_all(shadow, ec);
+}
+
+// The example pack's two hooks, driven through the doors the sim uses.
+//
+// Registering a hook is not running it: the coverage gate counts a Lua
+// function as covered only when a line of its own body executes, and until
+// this existed both of the example pack's hooks were shipped, documented,
+// registered on every mount — and never once entered by the suite. A modding
+// example whose behaviour nothing exercises is a promise nobody checked.
+TEST(ExampleClassPack, its_hooks_run_when_the_engine_dispatches_them)
+{
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+
+    const int family = og::families::resolve_family_string_id(
+        Order::Living, "example:emberwisp");
+    ASSERT_GE(family, NUM_FAMILIES);
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(nullptr, fd);
+
+    TestGameWorld fixture;
+    GameWorld& world = fixture.world();
+    walker* wisp = world.add_ob(Order::Living, family);
+    ASSERT_NE(nullptr, wisp) << "a pack family must spawn into a world";
+    wisp->stats()->set_max_magicpoints(100.0f);
+    wisp->stats()->set_magicpoints(100.0f);
+    wisp->set_ani_type(static_cast<char>(ANI_ATTACK));
+
+    // on_create: "each wisp starts with a random slice of its pool spent"
+    // (guy.cpp dispatches this the moment a walker is built).
+    ASSERT_TRUE(og::script::hooks::on_create(fd, wisp))
+        << "the pack's on_create must be the one that answers";
+    EXPECT_LT(wisp->stats()->magicpoints(), 100.0f)
+        << "some ember is always spent";
+    EXPECT_GE(wisp->stats()->magicpoints(), 100.0f - 16.0f)
+        << "og.rand(16) bounds how much";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(wisp->ani_type())) << "on_create settles it to walking";
+
+    // on_fire_weapon, refusing: below the flare cost the shot is blocked.
+    wisp->stats()->set_magicpoints(2.0f);
+    wisp->set_ani_type(static_cast<char>(ANI_WALK));
+    std::optional<bool> blocked =
+        og::script::hooks::on_fire_weapon(fd, wisp, nullptr);
+    ASSERT_TRUE(blocked.has_value()) << "the hook must answer";
+    EXPECT_FALSE(*blocked) << "a wisp nearly out of ember cannot fire";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(wisp->ani_type()))
+        << "a blocked shot must not flare the attack animation";
+
+    // ...and allowing: the wisp flares into its own attack rows.
+    wisp->stats()->set_magicpoints(60.0f);
+    wisp->set_cycle(static_cast<signed char>(4));
+    std::optional<bool> allowed =
+        og::script::hooks::on_fire_weapon(fd, wisp, nullptr);
+    ASSERT_TRUE(allowed.has_value());
+    EXPECT_TRUE(*allowed) << "with ember to spare the shot goes through";
+    EXPECT_EQ(ANI_ATTACK, static_cast<int>(wisp->ani_type()))
+        << "ani_type 1 is the attack half of the pack's own table";
+    EXPECT_EQ(0, static_cast<int>(wisp->cycle())) << "the flare restarts the animation";
+
+    for (const og::script::ScriptError& e :
+         world.scripts().host().errors())
+        ADD_FAILURE() << "pack script error in " << e.where << ": "
+                      << e.message;
 }

@@ -21,13 +21,21 @@ local FX_CHAIN = og.family_id("fx", "core:chain")
 -- (unreachable in practice, but exact) wrap.
 local function hits(x, y, xsize, ysize, x2, y2, xsize2, ysize2)
   local x2right = og.i16(x2 + xsize2)
-  if x > x2right then return false end
+  if x > x2right then
+    return false
+  end
   local xright = og.i16(x + xsize)
-  if xright < x2 then return false end
+  if xright < x2 then
+    return false
+  end
   local y2down = og.i16(y2 + ysize2)
-  if y > y2down then return false end
+  if y > y2down then
+    return false
+  end
   local ydown = og.i16(y + ysize)
-  if ydown < y2 then return false end
+  if ydown < y2 then
+    return false
+  end
   return true
 end
 
@@ -35,7 +43,9 @@ end
 -- forks into up to rand(owner level)+1 new bolts aimed at nearby foes.
 local function on_act(self)
   local leader = self:leader()
-  if not leader or self:lineofsight() < 1 or not self:owner() then
+  if not leader
+      or self:lineofsight() < 1
+      or not self:owner() then
     self:set_dead(1)
     self:death()
     return true
@@ -71,18 +81,24 @@ local function on_act(self)
     if temp ~= 0 and generic > 20 then
       local owner_level = self:owner():s_level()
       local roll = 0
-      if owner_level > 0 then roll = og.rand(owner_level) end
+      if owner_level > 0 then
+        roll = og.rand(owner_level)
+      end
       local numfoes = roll + 1
       for i = 1, #foelist do
         local w = foelist[i]
-        if numfoes <= 0 then break end
+        if numfoes <= 0 then
+          break
+        end
         -- Chain lightning must not arc through solid floors: skip foes on
         -- other floors (A8; all-floor-0 on legacy levels so single-floor
         -- behavior is byte-identical).
         if w:floor() == self:floor() then
           if w ~= self:leader() and w:skip_exit() < 1 then
             newob = og.add_ob("fx", FX_CHAIN)
-            if not newob then return true end
+            if not newob then
+              return true
+            end
             newob:set_owner(self:owner())
             newob:set_leader(w)
             newob:s_set_level(self:s_level())

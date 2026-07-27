@@ -6,11 +6,17 @@
 local WEAP_BOULDER = og.family_id("weapon", "core:boulder")
 
 local function do_special(self)
-  if self:busy() > 0 then return false end
+  if self:busy() > 0 then
+    return false
+  end
   local newob = self:fire()
-  if not newob then return false end
+  if not newob then
+    return false
+  end
   local alive = og.add_ob("weapon", WEAP_BOULDER)
-  if not alive then return false end
+  if not alive then
+    return false
+  end
   alive:set_floor(newob:floor())  -- boulder rolls on the thrower's floor (A8)
   alive:center_on(newob)
   alive:set_owner(self)

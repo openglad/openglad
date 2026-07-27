@@ -12,26 +12,38 @@ local function do_special(self)
   local sp = self:current_special()
   if sp == 1 then
     -- plant tree
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
                                    self:s_weapon_cost()))
     local newob = self:fire()
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
     local alive = og.summon(self, "weapon", WEAP_TREE)
-    if not alive then return false end
+    if not alive then
+      return false
+    end
     alive:setxy(newob:xpos(), newob:ypos())
     alive:set_ani_type(C.ANI_GROW)
     newob:set_dead(1)
   elseif sp == 2 then
     -- summon faerie
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
                                    self:s_weapon_cost()))
     local newob = self:fire()
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     local alive = og.add_ob("living", LIVING_FAERIE)
-    if not alive then return false end
+    if not alive then
+      return false
+    end
     alive:set_owner(self)
     alive:set_team_num(self:team_num())
     alive:set_floor(newob:floor())  -- faerie on the caster's floor (A8)
@@ -48,12 +60,16 @@ local function do_special(self)
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 3.0)))
   elseif sp == 3 then
     -- reveal items
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     self:set_view_all(self:view_all() + self:s_level() * 10)
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 4.0)))
   else
     -- circle of protection (special 4 and the default case)
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     local newlist, howmany = og.find_friends_in_range("ob", 60, self)
     local didheal = 0
     if howmany > 1 then
@@ -76,11 +92,15 @@ local function do_special(self)
           local alive
           if not tempwalk then
             alive = og.summon(newob, "weapon", WEAP_CIRCLE_PROTECTION)
-            if not alive then return false end
+            if not alive then
+              return false
+            end
             didheal = didheal + 1
           else
             alive = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
-            if not alive then return false end
+            if not alive then
+              return false
+            end
             tempwalk:s_set_hitpoints(og.fadd(tempwalk:s_hitpoints(),
                                              alive:s_hitpoints()))
             alive:set_dead(1)

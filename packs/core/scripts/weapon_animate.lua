@@ -81,7 +81,9 @@ end
 
 local function circle_protection_on_animate(self)
   local owner = self:owner()
-  if not owner or owner:dead() ~= 0 or self:s_hitpoints() <= 0 then
+  if not owner
+      or owner:dead() ~= 0
+      or self:s_hitpoints() <= 0 then
     self:set_dead(1)
     return false  -- let the caller's default death handling proceed
   end

@@ -32,7 +32,9 @@ end
 -- earned, and otherwise says why nothing happened.
 local function exit_on_eat(self, eater)
   -- Pure prefix (no sim writes): identical accept/reject as the C++.
-  if eater:in_act() then return true end
+  if eater:in_act() then
+    return true
+  end
   if eater:act_type() ~= C.ACT_CONTROL or eater:skip_exit() > 1 then
     return true
   end

@@ -11,9 +11,15 @@ local FX_EXPLOSION = og.family_id("fx", "core:explosion")
 -- effect.cpp: compute_explosion_range(int32 level, short skip_exit)
 local function compute_explosion_range(level, skip_exit)
   local range = og.i32(level * 4)
-  if skip_exit > 0 then range = 0 end
-  if range > 96 then range = 96 end
-  if range < 16 then range = 16 end
+  if skip_exit > 0 then
+    range = 0
+  end
+  if range > 96 then
+    range = 96
+  end
+  if range < 16 then
+    range = 16
+  end
   return range
 end
 
@@ -25,7 +31,9 @@ local function bomb_on_death(self)
   end
   og.emit_sound(C.SOUND_EXPLODE)
   local newob = og.add_ob("fx", FX_EXPLOSION)
-  if not newob then return true end
+  if not newob then
+    return true
+  end
   newob:set_owner(self:owner())
   newob:s_set_hitpoints(0)
   newob:s_set_level(self:owner():s_level())
@@ -64,7 +72,8 @@ local function explosion_on_death(self)
         and w:floor() == self:floor()
         and w:order() ~= C.ORDER_TREASURE
         and w:order() ~= C.ORDER_FX
-        and (self:skip_exit() == 0 or w ~= self:owner()) then
+        and (self:skip_exit() == 0
+             or w ~= self:owner()) then
       local xdelta = w:xpos() - self:xpos()
       if xdelta ~= 0 then
         xdelta = og.div(xdelta, math.abs(xdelta))
@@ -74,7 +83,9 @@ local function explosion_on_death(self)
         ydelta = og.div(ydelta, math.abs(ydelta))
       end
       generic = 2 + og.div(self:owner():s_level(), 15)
-      if generic > 8 then generic = 8 end
+      if generic > 8 then
+        generic = 8
+      end
       w:s_force_command(C.COMMAND_WALK, generic, xdelta, ydelta)
       if w == self:owner() then
         local damage = self:damage()

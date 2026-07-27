@@ -77,7 +77,9 @@ local function do_special(self)
     end
     if self:shifter_down() ~= 0 then
       -- leave/remove a marker
-      if self:busy() > 0 then return false end
+      if self:busy() > 0 then
+        return false
+      end
       if self:has_guy() and self:g_intelligence() < 75 then
         if self:user() ~= -1 then
           og.emit_notification("Need 75 Int for Marker!")
@@ -106,7 +108,9 @@ local function do_special(self)
       -- The C++ resets generic = 0 after the removal loop ("force new
       -- placement, for now"), so a marker is always placed here.
       local newob = og.add_ob("fx", FX_MARKER)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       newob:set_owner(self)
       newob:set_floor(self:floor())  -- marker on the caster's floor (A8)
       newob:center_on(self)
@@ -187,7 +191,9 @@ local function do_special(self)
       og.emit_event(C.EVENT_SET_PALETTE, 1)
     else
       local generic = 5 + 2 * self:s_level()
-      if generic > 50 then generic = 50 end
+      if generic > 50 then
+        generic = 50
+      end
       og.emit_notification(
         string.format("TIME IS FROZEN! (%d rounds)", generic), 2)
       og.emit_event(C.EVENT_REQUEST_REDRAW)
@@ -202,9 +208,13 @@ local function do_special(self)
   elseif sp == 4 then
     -- energy wave
     local newob = self:fire()
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     local alive = og.add_ob("weapon", WEAPON_WAVE)
-    if not alive then return false end
+    if not alive then
+      return false
+    end
     alive:set_floor(newob:floor())  -- wave rides the caster's floor (A8)
     alive:center_on(newob)
     alive:set_owner(self)
@@ -216,7 +226,9 @@ local function do_special(self)
     -- heartburst (case 5 and the default case)
     local newlist, howmany = og.find_foes_in_range(
       "ob", 80 + 2 * self:s_level(), self)
-    if howmany == 0 then return false end
+    if howmany == 0 then
+      return false
+    end
     local generic = og.trunc(og.fsub(self:s_magicpoints(),
                                      self:s_special_cost(5)))
     -- §2.12: heartburst pool binds only above ~1300 MP.
@@ -235,7 +247,9 @@ local function do_special(self)
     for i = 1, #newlist do
       local ob = newlist[i]
       local newob = og.summon(self, "fx", FX_EXPLOSION)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       newob:set_damage(generic)
       -- Heartburst bursts materialize ON each acquired foe, so they take
       -- that target's floor (A8); the blast itself only damages same-floor

@@ -6,6 +6,7 @@
 #include <openglad/resources/io_common.h>
 
 #include <filesystem>
+#include <fstream>
 
 namespace {
 
@@ -75,5 +76,34 @@ TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
     fs::remove(base / "unit_ctor_physfs.bin", ec);
     fs::remove(abs_stdio, ec);
     fs::remove_all(base, ec);
+    restore_unit_filesystem();
+}
+
+// The mount source a virtual path resolves to. The coverage report leans on
+// this to tell a shipped pack from one a test generated, and a pack script
+// only ever reaches it through a mount, so the wrapper is pinned here rather
+// than left to whichever run happens to arm the recorder.
+TEST(PhysfsWrappers, real_dir_names_the_mount_a_path_came_from)
+{
+    namespace fs = std::filesystem;
+    const fs::path root = fs::path(get_user_path()) / "physfs_realdir_probe";
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(root / "marker.txt", std::ios::binary);
+        out << "x";
+        ASSERT_TRUE(out.good());
+    }
+
+    ASSERT_TRUE(og::resources::mount(root.string().c_str(), "realdirprobe/", 1));
+    EXPECT_EQ(root.string(),
+              og::io::physfs_real_dir("realdirprobe/marker.txt"))
+        << "the answer is the mount source, not the virtual path";
+    EXPECT_TRUE(og::io::physfs_real_dir("realdirprobe/absent.txt").empty())
+        << "an unmounted path has no real dir";
+
+    EXPECT_TRUE(og::resources::unmount(root.string().c_str()));
+    fs::remove_all(root, ec);
     restore_unit_filesystem();
 }

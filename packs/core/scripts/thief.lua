@@ -46,7 +46,9 @@ local function do_special(self)
   if sp == 1 then
     -- drop bomb
     local newob = og.add_ob("fx", FX_BOMB)
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     newob:set_ani_type(ANI_BOMB)
     if self:has_guy() then
       self:g_set_total_shots(self:g_total_shots() + 1)
@@ -81,7 +83,9 @@ local function do_special(self)
   elseif sp == 3 then
     if self:shifter_down() == 0 then
       -- normal taunt
-      if self:busy() > 0 then return false end
+      if self:busy() > 0 then
+        return false
+      end
       local foes = og.foes_in_range(self, 80 + 4 * self:s_level())
       for i = 1, #foes do
         local ob = foes[i]
@@ -102,14 +106,20 @@ local function do_special(self)
       self:set_busy(og.fadd(self:busy(), 2.0))
     else
       -- charm opponent
-      if self:busy() > 0 then return false end
+      if self:busy() > 0 then
+        return false
+      end
       local newlist, howmany =
         og.find_foes_in_range("ob", 16 + 4 * self:s_level(), self)
-      if howmany < 1 then return false end
+      if howmany < 1 then
+        return false
+      end
       local didheal = 0
       local generic2 = 0
       for i = 1, #newlist do
-        if didheal ~= 0 then break end
+        if didheal ~= 0 then
+          break
+        end
         local ob = newlist[i]
         if ob:real_team_num() == 255 and ob:order() == C.ORDER_LIVING then
           local generic = self:s_level() - ob:s_level()
@@ -133,7 +143,9 @@ local function do_special(self)
           didheal = didheal + 1
         end
       end
-      if didheal == 0 then return false end
+      if didheal == 0 then
+        return false
+      end
       local tempstr
       if generic2 ~= 0 then
         tempstr = og.entity_display_name(self, "Thief")
@@ -147,9 +159,13 @@ local function do_special(self)
     end
   else
     -- poison cloud (case 4 and default)
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     local newob = og.summon(self, "fx", FX_CLOUD)
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     self:set_busy(og.fadd(self:busy(), 5.0))
     newob:set_ignore(1)
     newob:set_lifetime(40 + 3 * self:s_level())

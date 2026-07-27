@@ -21,7 +21,9 @@ local function do_special(self)
   elseif sp == 2 then
     -- boomerang
     local newob = og.summon(self, "fx", FX_BOOMERANG)
-    if not newob then return false end
+    if not newob then
+      return false
+    end
     newob:set_ani_type(1)
     newob:set_lifetime(30 + self:s_level() * 12)
     newob:s_set_hitpoints(og.fadd(newob:s_hitpoints(),
@@ -30,7 +32,9 @@ local function do_special(self)
     newob:set_damage(og.fadd(newob:damage(), og.fmul(self:s_level(), 4.0)))
   elseif sp == 3 then
     -- whirlwind attack
-    if self:busy() ~= 0 then return false end
+    if self:busy() ~= 0 then
+      return false
+    end
     self:set_busy(og.fadd(self:busy(), 8.0))
     self:set_curdir(-1)
     self:set_lastx(0)
@@ -60,8 +64,12 @@ local function do_special(self)
     end
   elseif sp == 4 then
     -- disarm opponent
-    if self:busy() ~= 0 then return false end
-    if not self:s_forward_blocked() then return false end
+    if self:busy() ~= 0 then
+      return false
+    end
+    if not self:s_forward_blocked() then
+      return false
+    end
 
     local generic = 0
     local foes = og.foes_in_range(self, 28)
@@ -95,13 +103,17 @@ local function check_special_ai(self)
   end
   self:set_foe(og.find_near_foe(self))
   foe = self:foe()
-  if not foe then return false end
+  if not foe then
+    return false
+  end
   local distance = self:distance_to_ob(foe)
   return distance < 75 and distance > 20
 end
 
 local function on_fire_weapon(self, weapon)
-  if self:order() ~= C.ORDER_LIVING then return true end
+  if self:order() ~= C.ORDER_LIVING then
+    return true
+  end
   if self:weapons_left() <= 0 then
     self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
                                    self:s_weapon_cost()))

@@ -162,6 +162,7 @@ endif()
 # SDL game, the component libraries, and the headless clients.
 set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/script_host.cpp
+    ${SRC_DIR}/gameplay/script/script_coverage.cpp
     ${SRC_DIR}/gameplay/script/pack_scripts.cpp
     ${SRC_DIR}/gameplay/script/world_scripts.cpp
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
@@ -701,6 +702,42 @@ add_custom_target(check_mutation_pins
     VERBATIM
 )
 
+# Pack Lua: one measurable decision per line. Line coverage counts LINES, so
+# anything sharing a line with something already covered shares its coverage
+# point and new untested logic can be folded on at zero cost — a second
+# statement (`if low then flee() end`), a second `function` (two prototypes on
+# one line), or a second `and`/`or` (a whole extra condition). See the script
+# header; the list it lints is scripts/lua_inventory.py, the same one the
+# coverage denominator is built from.
+#
+# Two targets, one list, split by duty:
+#   check_lua_statement_lines       --tracked-only. The per-build dependency
+#       of og_gameplay: fast, stable, and junk-immune — a scratch or
+#       half-written untracked .lua on a developer machine must not break
+#       every ninja invocation.
+#   check_lua_statement_lines_full  the whole inventory — untracked files
+#       included, .glad archive members, embedded C++ literals. Gates
+#       coverage_report, where an untracked shipped-Lua candidate MUST fail
+#       loudly by its repository path: that is how un-`git add`-ed game logic
+#       is caught before it is committed. (CI checkouts have no untracked
+#       files, so the tracked-only build lint already covers everything
+#       there.)
+add_custom_target(check_lua_statement_lines
+    COMMAND ${CMAKE_COMMAND} -E env python3
+            ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
+            --tracked-only
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking pack Lua holds one statement per line (tracked files)"
+    VERBATIM
+)
+add_custom_target(check_lua_statement_lines_full
+    COMMAND ${CMAKE_COMMAND} -E env python3
+            ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking pack Lua holds one statement per line (full inventory)"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
@@ -1188,6 +1225,11 @@ if(NOT EMSCRIPTEN)
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
     target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib PRIVATE og_lua)
+    # og_gameplay is what runs pack Lua, and every build builds it, so this is
+    # where the one-statement-per-line rule gets enforced: a branch folded
+    # onto an already-covered line is invisible to the coverage gate, so it
+    # has to be caught at build time instead.
+    add_dependencies(og_gameplay check_lua_statement_lines)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
@@ -2666,6 +2708,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
@@ -2716,6 +2759,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_lua_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
@@ -2726,6 +2770,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_script FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
         )
@@ -2744,6 +2789,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_data FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_yaml.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_errors.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
@@ -3256,6 +3302,83 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             SKIP_RETURN_CODE 77
         )
     endif()
+endif()
+
+# --------------------------------------------------------------------------
+# Combined C++ + Lua coverage gate
+# --------------------------------------------------------------------------
+# Family behaviour is Lua now (packs/**/scripts/*.lua), so a gate that
+# measures src/ alone measures the shrinking half of the codebase and would
+# report green while thousands of lines of game logic went untested. These
+# targets produce ONE report across both languages:
+#
+#   cmake --build <build> --target coverage_run     # collect (re-runs ctest)
+#   cmake --build <build> --target coverage_report  # merge + gate
+#
+# coverage_run arms the in-process pack-Lua recorder through
+# OPENGLAD_LUA_COVERAGE and re-runs the suite. coverage_report takes the
+# DENOMINATOR from scripts/lua_inventory.py — a static enumeration of the
+# repository's Lua, so it does not depend on which tests ran and a source no
+# test loads counts as 0% rather than vanishing — measures it with
+# og_lua_lines, attributes the dumps' hits back to it by content hash, and in
+# an ENABLE_COVERAGE build folds in gcovr's src/ tracefile. It writes lcov
+# tracefiles (lua.info / cpp.info / combined.info) and fails below threshold.
+if(BUILD_TESTING)
+    # Executable-line oracle: asks Lua which lines of a source can hold a
+    # breakpoint. Deliberately linked against Lua ALONE rather than
+    # og_gameplay — linking the instrumented game would make this tool's own
+    # execution write .gcda files and inflate the very C++ numbers it is
+    # being used to report.
+    add_executable(og_lua_lines
+        ${CMAKE_SOURCE_DIR}/scripts/coverage/lua_lines_main.cpp
+        ${SRC_DIR}/gameplay/script/script_coverage.cpp
+    )
+    target_include_directories(og_lua_lines PRIVATE
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+    )
+    target_compile_features(og_lua_lines PRIVATE cxx_std_20)
+    target_link_libraries(og_lua_lines PRIVATE og_lua)
+
+    set(OG_COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
+    set(OG_LUA_RAW_DIR ${OG_COVERAGE_DIR}/lua-raw)
+
+    add_custom_target(coverage_run
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${OG_LUA_RAW_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${OG_LUA_RAW_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env OPENGLAD_LUA_COVERAGE=${OG_LUA_RAW_DIR}
+                ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
+                --output-on-failure --no-tests=error
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running the suite with the pack-Lua coverage recorder armed"
+        USES_TERMINAL
+        VERBATIM
+    )
+
+    set(OG_COVERAGE_CPP_ARGS "")
+    if(ENABLE_COVERAGE)
+        set(OG_COVERAGE_CPP_ARGS --cpp-build-dir ${CMAKE_BINARY_DIR})
+    endif()
+
+    add_custom_target(coverage_report
+        COMMAND ${CMAKE_COMMAND} -E env python3
+                ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage_report.py
+                --repo-root ${CMAKE_SOURCE_DIR}
+                --lua-raw-dir ${OG_LUA_RAW_DIR}
+                --lines-tool $<TARGET_FILE:og_lua_lines>
+                --output-dir ${OG_COVERAGE_DIR}
+                ${OG_COVERAGE_CPP_ARGS}
+        DEPENDS og_lua_lines
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
+        USES_TERMINAL
+        VERBATIM
+    )
+    # The gate path lints the FULL inventory — untracked files, .glad archive
+    # members, embedded literals — which the per-build lint deliberately does
+    # not (see the check_lua_statement_lines comment near the target). A junk
+    # or undeclared shipped-Lua candidate must fail THIS target loudly,
+    # naming the repository-side path, instead of breaking every ninja build.
+    add_dependencies(coverage_report check_lua_statement_lines_full)
 endif()
 
 # --------------------------------------------------------------------------

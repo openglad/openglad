@@ -61,6 +61,12 @@ per-family `script:` key — the whole `scripts/` directory is loaded.
   to `BEAST`, which three core families already answer to. Genuine core name
   collisions use `"core:#<id>"`. `og.family_id(order, id_str)` resolves or
   returns nil; call it once at chunk load into a `local`.
+- **One statement per line.** `if low then flee() end` on one line makes the
+  branch body share a coverage point with its guard, so an untested branch
+  reads as covered; `scripts/check_lua_statement_lines.py` rejects it on every
+  build (also after `;`, after `do`/`else`/`repeat`, and on a function header
+  line). Empty blocks are fine. Applies to `packs/`, the example packs under
+  `docs/modding/`, and pack Lua inside a C++ `R"LUA(` literal.
 - **No mutable sim state in globals or upvalues.** There is no per-entity
   script storage (`state_slots:` is a forward-compat key nothing reads).
   Re-derive from the world every dispatch: census via `og.oblist()`, cadence

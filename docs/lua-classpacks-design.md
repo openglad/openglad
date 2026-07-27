@@ -598,6 +598,32 @@ scripts registered, then rebuild the identical world with
 `clear_pack_scripts()` and run again, asserting identical state — or new
 parity scenarios, *before* the corresponding C++ callback is deleted.
 
+**Pack Lua is now inside the coverage gate.** `scripts/coverage/` measures
+every pack script the engine can load, line-by-line and function-by-function,
+and merges the result with gcovr's `src/` numbers;
+`.github/workflows/coverage.yml` enforces one bar — 95 % line, 100 % function
+— across the union. See `scripts/coverage/README.md` for how each number is
+produced and why arming the recorder is a runtime switch rather than a compile
+flag. Gaps the gate surfaced are covered by
+`tests/unit/test_pack_lua_paths.cpp` (the cloud's overlap test, the cleric's
+whole kit, the archmage's response chain, the slime split), which is the place
+to add the next one.
+
+Three rules the gate depends on, because each one was a way to score coverage
+without having any:
+
+* **Every prototype is a function.** The denominator is the compiled prototype
+  tree, not the set of registered hooks, so an uncalled local helper or
+  anonymous callback costs exactly what a hook costs — and a script no test
+  loads is a file of misses rather than an absence.
+* **A function is covered when a line of its body ran**, never at the point
+  the engine decided to dispatch it. An empty hook and one that dies on its
+  first statement both read as misses, which is what they are.
+* **One statement per line** (`scripts/check_lua_statement_lines.py`, a build
+  dependency of `og_gameplay`). Line coverage counts lines, so `if low then
+  flee() end` on one line is a branch the metric cannot see. Writing it out
+  costs nothing and makes the branch measurable.
+
 ## 10. Rollout
 
 | # | Stage | State |

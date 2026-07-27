@@ -77,8 +77,9 @@ local function live_pillars()
   local count = 0
   for i = 1, #obs do
     local ob = obs[i]
-    if ob:order() == C.ORDER_GENERATOR and ob:team_num() ~= 0 and
-        ob:dead() == 0 then
+    if ob:order() == C.ORDER_GENERATOR
+        and ob:team_num() ~= 0
+        and ob:dead() == 0 then
       count = count + 1
     end
   end
@@ -91,8 +92,10 @@ local function find_boss()
   local boss = nil
   for i = 1, #obs do
     local ob = obs[i]
-    if ob:order() == C.ORDER_LIVING and ob:family() == FAM_ARCHMAGE and
-        ob:team_num() ~= 0 and ob:dead() == 0 then
+    if ob:order() == C.ORDER_LIVING
+        and ob:family() == FAM_ARCHMAGE
+        and ob:team_num() ~= 0
+        and ob:dead() == 0 then
       if boss == nil or ob:s_level() > boss:s_level() then
         boss = ob
       end

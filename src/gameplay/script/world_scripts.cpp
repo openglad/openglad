@@ -7,6 +7,7 @@
  */
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
@@ -225,6 +226,40 @@ void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
 
 namespace {
 
+// ---------------------------------------------------------------------------
+// Function-coverage LABELS
+// ---------------------------------------------------------------------------
+//
+// Coverage itself is not measured here. The denominator is every function
+// prototype in the file (og_lua_lines walks them statically) and the
+// numerator is "a line of that prototype's body executed" (the line hook in
+// script_host.cpp). Registration is neither: a registered hook that is never
+// entered must read as a MISS, and a helper nobody registers still has to
+// count.
+//
+// What registration contributes is a NAME. Identity is the Lua function's own
+// (source chunk, linedefined, lastlinedefined) — the same span the static
+// walk emits and the same one the lcov FN record is named after — so the
+// report can print "living/core:soldier/do_special" instead of
+// "soldier.lua:87". A no-op unless the recorder is armed, and it does not
+// disturb the stack: the function stays exactly where it was.
+
+bool coverage_fn_info(lua_State* L, lua_Debug* ar)
+{
+    lua_pushvalue(L, -1);            // getinfo(">S") consumes this copy
+    return lua_getinfo(L, ">S", ar) != 0;
+}
+
+// The hook function on top of the stack was REGISTERED by a pack.
+void coverage_declare_hook(lua_State* L, const std::string& label)
+{
+    if (!coverage::enabled()) return;  // callers guard too; belt and braces
+    lua_Debug ar;
+    if (coverage_fn_info(L, &ar))
+        coverage::declare_function(std::string_view(ar.source, ar.srclen),
+                                   ar.linedefined, ar.lastlinedefined, label);
+}
+
 int walker_eq(lua_State* L)
 {
     auto* a = static_cast<WalkerHandle*>(luaL_checkudata(L, 1, kWalkerMeta));
@@ -353,6 +388,10 @@ int og_register_hooks(lua_State* L)
         if (occupied)
             report_duplicate_hook(L, st, order_str, family_str,
                                   oi->hooks[i].name);
+        if (coverage::enabled())
+            coverage_declare_hook(L, std::string(order_str) + "/" +
+                                         family_str + "/" +
+                                         oi->hooks[i].name);
         lua_rawseti(L, -2, static_cast<lua_Integer>(oi->hooks[i].hook));
         st->owner->note_hook(oi->order, family_id, oi->hooks[i].hook);
         registered++;
@@ -444,6 +483,9 @@ int og_register_level_hooks(lua_State* L)
         if (!lua_isfunction(L, -1))
             return luaL_error(L, "og.register_level_hooks: '%s' must be a "
                                  "function", h.name);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "level/" + std::to_string(level_id) +
+                                         "/" + h.name);
         lua_rawseti(L, -2, level_hook_key(h.kind, level_id));
         st->level_hook_kinds |= 1u << static_cast<unsigned>(h.kind);
         registered++;
@@ -475,6 +517,8 @@ int og_set_entity_hooks(lua_State* L)
     if (!lua_isnil(L, -1) && !lua_isfunction(L, -1))
         return luaL_error(L, "og.set_entity_hooks: 'on_death' must be a "
                              "function");
+    if (coverage::enabled() && lua_isfunction(L, -1))
+        coverage_declare_hook(L, "entity/on_death");
     lua_rawseti(L, -2, static_cast<lua_Integer>(LevelHook::EntityDeath));
     lua_rawseti(L, -2, static_cast<lua_Integer>(h->entity_id));
     lua_pop(L, 1);

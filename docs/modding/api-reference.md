@@ -644,6 +644,30 @@ og.register_hooks("living", "example:emberwisp", {
 | Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |
 
+### One statement per line
+
+Pack Lua is measured by the same coverage gate as the C++, and line coverage
+counts lines. `if low then flee() end` on one line makes the branch body share
+a coverage point with the test that guards it, so a branch nothing ever takes
+reads as covered. Write it out:
+
+```lua
+-- rejected by scripts/check_lua_statement_lines.py
+if self:busy() > 0 then return false end
+
+-- what to write instead
+if self:busy() > 0 then
+  return false
+end
+```
+
+The rule is mechanical: no statement after `then` / `do` / `else` / `repeat`,
+after a `;`, or on a function's header line, and no two statements run
+together. An empty block (`function() end`, `if x then end`) is fine — it
+hides nothing. The check runs on every build, over `packs/`, over the example
+packs under `docs/modding/`, and over pack Lua that lives in a C++ `R"LUA(`
+literal.
+
 ### Two limits worth knowing before you design
 
 - **A living family with no `sprite:` has no graphics and cannot be drawn.**

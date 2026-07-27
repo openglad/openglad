@@ -138,7 +138,9 @@ local function do_special(self)
     end
     if self:shifter_down() ~= 0 then
       -- leave/remove a marker
-      if self:busy() > 0 then return false end
+      if self:busy() > 0 then
+        return false
+      end
       if self:has_guy() and self:g_intelligence() < 75 then
         og.emit_notification("Need 75 Int for Marker!")
         return false
@@ -164,7 +166,9 @@ local function do_special(self)
         end
       end
       local newob = og.add_ob("fx", FX_MARKER)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       newob:set_owner(self)
       newob:set_floor(self:floor())  -- marker on the caster's floor (A8)
       newob:center_on(self)
@@ -191,7 +195,9 @@ local function do_special(self)
     end
   elseif sp == 2 then
     -- heartburst / chain lightning
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     local generic
     if self:shifter_down() ~= 0 then
       if self:has_guy() then
@@ -204,7 +210,9 @@ local function do_special(self)
     end
     local newlist, howmany = og.find_foes_in_range(
       "ob", generic + 2 * self:s_level(), self)
-    if howmany == 0 then return false end
+    if howmany == 0 then
+      return false
+    end
     if self:shifter_down() == 0 then
       -- normal heartburst
       generic = og.trunc(og.fsub(self:s_magicpoints(),
@@ -225,7 +233,9 @@ local function do_special(self)
       for i = 1, #newlist do
         local ob = newlist[i]
         local newob = og.summon(self, "fx", FX_EXPLOSION)
-        if not newob then return false end
+        if not newob then
+          return false
+        end
         newob:s_set_bit_flags(C.BIT_MAGICAL, 1)
         newob:set_damage(generic)
         -- Burst materializes ON the acquired foe: take its floor (A8);
@@ -246,7 +256,9 @@ local function do_special(self)
         self:g_set_scen_shots(self:g_scen_shots() + 1)
       end
       local newob = og.summon(self, "fx", FX_CHAIN)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       generic = og.trunc(og.fsub(self:s_magicpoints(),
                                  self:s_special_cost(2)))
       -- §2.12: initial bolt (and its MP charge) bind only above ~1280 MP.
@@ -275,7 +287,9 @@ local function do_special(self)
     end
   elseif sp == 3 then
     -- summon image / elemental
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     if self:shifter_down() ~= 0 then
       -- true summoning
       if self:has_guy() and self:g_intelligence() < 150 then
@@ -289,7 +303,9 @@ local function do_special(self)
       generic = og.div(generic, 2)
       self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
       local newob = og.add_ob("living", LIVING_ELEMENTAL)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       -- Summon appears beside the caster, on the caster's floor (A8); must
       -- precede the query_passable probes and setxy so both use the right
       -- floor.
@@ -301,7 +317,8 @@ local function do_special(self)
       local placed = false
       for i = -1, 1 do
         for j = -1, 1 do
-          if not ((i == 0 and j == 0) or placed) then
+          if not ((i == 0 and j == 0)
+                  or placed) then
             local testx = self:xpos() + (newob:sizex() + 1) * i
             local testy = self:ypos() + (newob:sizey() + 1) * j
             if og.query_passable(testx, testy, newob) then
@@ -331,43 +348,77 @@ local function do_special(self)
         person = LIVING_ELF
       elseif generic < 250 then
         local r = og.rand(3)
-        if r == 0 then person = LIVING_ELF
-        elseif r == 1 then person = LIVING_SOLDIER
-        elseif r == 2 then person = LIVING_ARCHER
-        else person = LIVING_SOLDIER end  -- C++ default (unreachable)
+        if r == 0 then
+          person = LIVING_ELF
+        elseif r == 1 then
+          person = LIVING_SOLDIER
+        elseif r == 2 then
+          person = LIVING_ARCHER
+        else  -- C++ default (unreachable)
+          person = LIVING_SOLDIER
+        end
       elseif generic < 500 then
         local r = og.rand(5)
-        if r == 0 then person = LIVING_ELF
-        elseif r == 1 then person = LIVING_SOLDIER
-        elseif r == 2 then person = LIVING_ARCHER
-        elseif r == 3 then person = LIVING_ORC
-        elseif r == 4 then person = LIVING_SKELETON
-        else person = LIVING_ARCHER end  -- C++ default (unreachable)
+        if r == 0 then
+          person = LIVING_ELF
+        elseif r == 1 then
+          person = LIVING_SOLDIER
+        elseif r == 2 then
+          person = LIVING_ARCHER
+        elseif r == 3 then
+          person = LIVING_ORC
+        elseif r == 4 then
+          person = LIVING_SKELETON
+        else  -- C++ default (unreachable)
+          person = LIVING_ARCHER
+        end
       elseif generic < 1000 then
         local r = og.rand(7)
-        if r == 0 then person = LIVING_ELF
-        elseif r == 1 then person = LIVING_SOLDIER
-        elseif r == 2 then person = LIVING_ARCHER
-        elseif r == 3 then person = LIVING_ORC
-        elseif r == 4 then person = LIVING_SKELETON
-        elseif r == 5 then person = LIVING_DRUID
-        elseif r == 6 then person = LIVING_CLERIC
-        else person = LIVING_ARCHER end  -- C++ default (unreachable)
+        if r == 0 then
+          person = LIVING_ELF
+        elseif r == 1 then
+          person = LIVING_SOLDIER
+        elseif r == 2 then
+          person = LIVING_ARCHER
+        elseif r == 3 then
+          person = LIVING_ORC
+        elseif r == 4 then
+          person = LIVING_SKELETON
+        elseif r == 5 then
+          person = LIVING_DRUID
+        elseif r == 6 then
+          person = LIVING_CLERIC
+        else  -- C++ default (unreachable)
+          person = LIVING_ARCHER
+        end
       else
         local r = og.rand(9)
-        if r == 0 then person = LIVING_ELF
-        elseif r == 1 then person = LIVING_SOLDIER
-        elseif r == 2 then person = LIVING_ARCHER
-        elseif r == 3 then person = LIVING_ORC
-        elseif r == 4 then person = LIVING_SKELETON
-        elseif r == 5 then person = LIVING_DRUID
-        elseif r == 6 then person = LIVING_CLERIC
-        elseif r == 7 then person = LIVING_ELEMENTAL
-        elseif r == 8 then person = LIVING_ORC_CAPTAIN
-        else person = LIVING_ARCHER end  -- C++ default (unreachable)
+        if r == 0 then
+          person = LIVING_ELF
+        elseif r == 1 then
+          person = LIVING_SOLDIER
+        elseif r == 2 then
+          person = LIVING_ARCHER
+        elseif r == 3 then
+          person = LIVING_ORC
+        elseif r == 4 then
+          person = LIVING_SKELETON
+        elseif r == 5 then
+          person = LIVING_DRUID
+        elseif r == 6 then
+          person = LIVING_CLERIC
+        elseif r == 7 then
+          person = LIVING_ELEMENTAL
+        elseif r == 8 then
+          person = LIVING_ORC_CAPTAIN
+        else  -- C++ default (unreachable)
+          person = LIVING_ARCHER
+        end
       end
       local newob = og.add_ob("living", person)
-      if not newob then return false end
+      if not newob then
+        return false
+      end
       -- Illusion appears beside the caster, on the caster's floor (A8).
       newob:set_floor(self:floor())
       -- Named "Phantom" below, but conjured ammunition must never fail a
@@ -376,7 +427,8 @@ local function do_special(self)
       local placed = false
       for i = -1, 1 do
         for j = -1, 1 do
-          if not ((i == 0 and j == 0) or placed) then
+          if not ((i == 0 and j == 0)
+                  or placed) then
             local testx = self:xpos() + (newob:sizex() + 1) * i
             local testy = self:ypos() + (newob:sizey() + 1) * j
             if og.query_passable(testx, testy, newob) then
@@ -405,18 +457,24 @@ local function do_special(self)
     end
   elseif sp == 4 then
     -- mind control
-    if self:busy() > 0 then return false end
+    if self:busy() > 0 then
+      return false
+    end
     local special_cost = self:s_special_cost(self:current_special())
     local mp_after_base_cost = og.trunc(og.fsub(self:s_magicpoints(),
                                                 special_cost))
     local newlist, howmany = og.find_foes_in_range(
       "ob", 80 + 4 * self:s_level(), self)
-    if howmany < 1 then return false end
+    if howmany < 1 then
+      return false
+    end
     local didheal = 0
     local controlled_targets = 0
     local generic2 = mp_after_base_cost + 10
     for i = 1, #newlist do
-      if generic2 < 10 then break end
+      if generic2 < 10 then
+        break
+      end
       local ob = newlist[i]
       if ob:real_team_num() == 255
           and ob:order() == C.ORDER_LIVING
@@ -446,7 +504,9 @@ local function do_special(self)
         controlled_targets = controlled_targets + 1
       end
     end
-    if didheal == 0 then return false end
+    if didheal == 0 then
+      return false
+    end
     og.emit_notification(string.format(
       "%s has controlled %d men",
       og.entity_display_name(self, "ArchMage"), didheal))

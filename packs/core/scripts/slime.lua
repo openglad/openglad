@@ -49,7 +49,9 @@ end
 local function split_on_death(self, offspring_family)
   self:set_dead(1)
   local newob = og.add_ob("living", offspring_family)
-  if not newob then return true end
+  if not newob then
+    return true
+  end
   newob:set_floor(self:floor())  -- split child stays on our floor (A8)
   newob:set_team_num(self:team_num())
   newob:s_set_level(self:s_level())
@@ -90,13 +92,17 @@ local function slime_on_ani_complete(self)
 
   -- Create a new small slime
   local newob = og.add_ob("living", LIVING_SMALL_SLIME)
-  if not newob then return true end
+  if not newob then
+    return true
+  end
   newob:set_floor(self:floor())  -- split child stays on our floor (A8)
   newob:setxy(self:xpos() + 12, self:ypos() - 12)
   -- Transfer stats/etc. across to new guy
   self:transfer_stats(newob)
   local thr = 1000 * self:s_level()           -- uint32 cast as above
-  if thr < 0 then thr = thr + 4294967296 end
+  if thr < 0 then
+    thr = thr + 4294967296
+  end
   if newob:has_guy() and newob:g_exp() < thr then
     newob:clear_myguy()
     newob:s_set_name("SLIME")

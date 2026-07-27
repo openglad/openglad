@@ -22,7 +22,9 @@ local function on_death(self)
   end
 
   local newob = og.add_ob("fx", FX_KNIFE_BACK)
-  if not newob then return true end
+  if not newob then
+    return true
+  end
   newob:set_owner(self:owner())
   -- return flight starts on the knife's floor (A8)
   newob:set_floor(self:floor())

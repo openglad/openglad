@@ -24,6 +24,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/core/util.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
@@ -313,6 +314,10 @@ int main(int argc, char** argv)
 #ifdef ENABLE_COVERAGE
     __gcov_dump();
 #endif
+    // Same reason as __gcov_dump above: _exit() skips static destructors, so
+    // the pack-Lua recorder's exit-time dump would never happen. No-op unless
+    // OPENGLAD_LUA_COVERAGE armed it.
+    og::script::coverage::flush_to_output_dir();
     std::fflush(nullptr);
     _exit(result);
 }

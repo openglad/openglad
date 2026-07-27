@@ -76,7 +76,9 @@ end
 -- ((drawcycle+4)/48 of the base circle) and the blade dies at drawcycle 254.
 local function boomerang_on_act(self)
   local owner = self:owner()
-  if not owner or owner:dead() ~= 0 or self:drawcycle() > 253 then
+  if not owner
+      or owner:dead() ~= 0
+      or self:drawcycle() > 253 then
     self:set_dead(1)
     self:death()
     return true

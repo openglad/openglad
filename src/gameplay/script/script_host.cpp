@@ -8,6 +8,7 @@
 #include "script_host_impl.h"
 
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/script/script_coverage.h>
 
 #include <cmath>
 #include <cstdlib>
@@ -62,6 +63,35 @@ void budget_hook(lua_State* L, lua_Debug* /*ar*/)
     impl->instructions_remaining -= kBudgetCheckInterval;
     if (impl->instructions_remaining <= 0)
         luaL_error(L, "instruction budget exceeded");
+}
+
+// Coverage variant: the SAME budget hook with LUA_MASKLINE folded in, so
+// line recording reuses the mechanism instead of adding a second one. Only
+// installed when og::script::coverage::enabled(); a coverage-less run gets
+// budget_hook/LUA_MASKCOUNT verbatim (see protected_call below), which is
+// what keeps the parity gate byte-exact.
+void budget_and_coverage_hook(lua_State* L, lua_Debug* ar)
+{
+    if (ar->event == LUA_HOOKLINE) {
+        // "S" fills source/srclen AND the linedefined/lastlinedefined span;
+        // it neither allocates nor touches sim state. One getinfo feeds both
+        // metrics, which is what puts them on one grid: the FUNCTION is
+        // recorded as having run because a line of its own body just ran, so
+        // a hook the engine DISPATCHED but never entered cannot read as
+        // covered the way it would if the hit were stamped at the call site.
+        // (A dispatched empty body does count — see script_coverage.h.)
+        //
+        // The span, not linedefined alone: two prototypes can start on one
+        // line, and reporting only the start line let a hit on either of
+        // them cover both.
+        lua_getinfo(L, "S", ar);
+        const std::string_view chunk(ar->source, ar->srclen);
+        coverage::record_line(chunk, ar->currentline);
+        coverage::record_function_line(chunk, ar->linedefined,
+                                       ar->lastlinedefined);
+        return;
+    }
+    budget_hook(L, ar);
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +425,14 @@ bool ScriptHost::Impl::protected_call(const char* where, int nargs,
     const bool outermost = (entry_depth == 0);
     if (outermost) {
         instructions_remaining = limits.instructions_per_call;
-        lua_sethook(L, budget_hook, LUA_MASKCOUNT, kBudgetCheckInterval);
+        // Disabled path is bit-identical to the pre-coverage code: same hook
+        // function, same mask, same count. The recorder costs one load of a
+        // global bool per host entry — not per instruction, not per line.
+        if (coverage::enabled())
+            lua_sethook(L, budget_and_coverage_hook,
+                        LUA_MASKCOUNT | LUA_MASKLINE, kBudgetCheckInterval);
+        else
+            lua_sethook(L, budget_hook, LUA_MASKCOUNT, kBudgetCheckInterval);
     }
     entry_depth++;
     const int rc = lua_pcall(L, nargs, nresults, handler_pos);

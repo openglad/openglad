@@ -490,3 +490,78 @@ TEST_F(ConceptCampaignTest, court_script_runs_the_ninefold_fight)
         ADD_FAILURE() << "script error at " << err.where << ": "
                       << err.message;
 }
+
+// The court's fourth scripted rule, and the one the fight test above never
+// reaches because it breaks the pillars before they can work: every third
+// generator spawn is promoted to an Adjutant through the generator
+// `customize_spawn` hook. "Every third" is derived from the spawn's sim
+// entity id (cookbook R6 forbids a mutable counter in a family hook), so the
+// promotion is deterministic and identical on every peer.
+//
+// This drives it the way the game does — real ticks, real generator fire —
+// rather than calling the hook by hand, because what is worth pinning is that
+// the pillars' spawns arrive already promoted.
+TEST_F(ConceptCampaignTest, court_pillars_promote_every_third_spawn)
+{
+    LoadedConceptLevel fx(605);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        // Production never ticks with live start markers.
+        if (ob != nullptr && ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM)
+            ob->set_dead(1);
+    }
+
+    // Let the pillars work. Generators fire on their own cadence, so this
+    // runs until the first promotion lands rather than guessing a tick count.
+    walker* adjutant = nullptr;
+    int spawns = 0;
+    for (unsigned t = 0; t < 900u && adjutant == nullptr; ++t)
+    {
+        world.tick();
+        spawns = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->dead() != 0 ||
+                ob->query_order() != Order::Living || ob->team_num() == 0)
+                continue;
+            if (ob->family() == FAMILY_ARCHMAGE)
+                continue;  // the Magistrate is authored, not spawned
+            ++spawns;
+            if (ob->stats()->name == std::string("Adjutant"))
+                adjutant = ob;
+        }
+    }
+    ASSERT_GT(spawns, 0) << "the pillars must actually raise something";
+    ASSERT_NE(nullptr, adjutant)
+        << "no spawn was promoted in 900 ticks: customize_spawn never fired, "
+           "or the derived every-third rule stopped selecting anything";
+
+    // The writ of office: extra rank, a speed bonus, a hardier body healed to
+    // its new maximum, and a heavier blow.
+    EXPECT_GE(adjutant->stats()->level(), 4)
+        << "promotion adds three levels to the generator's own roll (>=1)";
+    EXPECT_GT(adjutant->stepsize(), 0.0f);
+    EXPECT_FLOAT_EQ(adjutant->stats()->max_hitpoints(),
+                    adjutant->stats()->hitpoints())
+        << "the promotion heals to the new maximum, so it is visible";
+
+    // Striking one from the rolls is announced — the other half of the level
+    // death hook, which only an Adjutant can reach.
+    (void)fx.events.drain();
+    adjutant->set_dead(1);
+    adjutant->death();
+    const std::vector<std::string> lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "An Adjutant is struck from the rolls."))
+        << "the level death hook recognises its own promotions by name";
+
+    for (const og::script::ScriptError& err :
+         world.scripts().host().errors())
+        ADD_FAILURE() << "script error at " << err.where << ": "
+                      << err.message;
+}
