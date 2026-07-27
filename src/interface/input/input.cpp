@@ -1013,10 +1013,30 @@ void clear_keyboard()
     og::runtime::current_session->raw_text_input_.clear();
     
     og::runtime::current_session->input_continue_ = false;
-    
+
     #ifdef USE_TOUCH_INPUT
     hw().tapping = false;
     #endif
+}
+
+//
+// Focus/visibility loss: every "physically held" input we believe in may be
+// stale — the release can go to another window or app and never reach us,
+// and iPad Safari swallows keyups outright around system gestures. Drop all
+// transient held state; genuine holds re-assert on the next delivered
+// events. (This is what un-latches a key whose keyup was missed.)
+//
+void clear_transient_input_state()
+{
+    og::input_native::reset_keyboard_state();
+    for (int p = 0; p < 4; ++p)
+    {
+        hw().direction_grace[p] = {};
+        hw().direction_conflict[p] = {};
+        for (int k = 0; k < NUM_KEYS; ++k)
+            hw().touch_keystate[p][k] = false;
+    }
+    TRACE("input", "transient input cleared (focus/visibility loss)");
 }
 
 void wait_for_key(int somekey)

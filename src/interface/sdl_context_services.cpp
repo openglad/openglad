@@ -55,18 +55,26 @@ void input_state_from_sdl(InputState& out)
                 input_hw.touch_keystate[p][KEY_UP_LEFT];
         }
 
-        // Diagonal release retention: a sloppy two-key diagonal release
-        // (one key clearing 1-3 samples before the other) keeps reporting
-        // the diagonal for a short grace window so the control walker's
-        // facing does not snap to the surviving cardinal. Client-side
-        // shaping only — the InputState wire format and the sim are
-        // untouched. See input_direction_grace.h.
+        // Two client-side direction shapers; the InputState wire format and
+        // the sim are untouched. See input_direction_grace.h for both
+        // contracts.
+        //
+        // 1. Opposite-direction re-assert: a fresh press must beat a STALE
+        //    opposite hold. A browser-swallowed keyup (iPad Safari around
+        //    system gestures) otherwise latches the old direction forever
+        //    and every real opposite press nets the axis to zero.
+        // 2. Diagonal release retention: a sloppy two-key diagonal release
+        //    (one key clearing 1-3 samples before the other) keeps
+        //    reporting the diagonal for a short grace window so the control
+        //    walker's facing does not snap to the surviving cardinal.
         std::uint8_t raw_mask = 0;
         for (int d = KEY_UP; d <= KEY_UP_LEFT; d++)
             if (out.players[p].held[d])
                 raw_mask = static_cast<std::uint8_t>(raw_mask | (1u << d));
+        const std::uint8_t resolved = resolve_opposing_directions(
+            raw_mask, input_hardware_state().direction_conflict[p]);
         const std::uint8_t shaped = coalesce_direction_release(
-            raw_mask, input_hardware_state().direction_grace[p]);
+            resolved, input_hardware_state().direction_grace[p]);
         if (shaped != raw_mask)
             for (int d = KEY_UP; d <= KEY_UP_LEFT; d++)
                 out.players[p].held[d] = (shaped & (1u << d)) != 0;

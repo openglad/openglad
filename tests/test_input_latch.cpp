@@ -594,6 +594,105 @@ TEST(InputLatch, sim_stuck_walking_up_recovers_on_down_press)
 }
 
 // ---------------------------------------------------------------------------
+// Pure resolver timelines (resolve_opposing_directions), including the
+// group semantics the end-to-end samples cannot isolate: diagonal keys are
+// suppressed with their whole side, and any key of a side re-asserts it.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+constexpr std::uint8_t bit_of(int key_slot)
+{
+    return static_cast<std::uint8_t>(1u << key_slot);
+}
+constexpr std::uint8_t kUpBit = bit_of(KEY_UP);
+constexpr std::uint8_t kDownBit = bit_of(KEY_DOWN);
+constexpr std::uint8_t kLeftBit = bit_of(KEY_LEFT);
+constexpr std::uint8_t kUpLeftBit = bit_of(KEY_UP_LEFT);
+constexpr std::uint8_t kUpRightBit = bit_of(KEY_UP_RIGHT);
+constexpr std::uint8_t kDownRightBit = bit_of(KEY_DOWN_RIGHT);
+} // namespace
+
+TEST(InputLatch, resolver_fresh_press_wins_and_release_restores)
+{
+    DirectionConflictState state;
+
+    // UP latches; a lone side passes through untouched.
+    for (int t = 0; t < 3; ++t)
+        ASSERT_EQ(kUpBit, resolve_opposing_directions(kUpBit, state));
+
+    // Fresh DOWN suppresses the stale UP for as long as it is held.
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpBit | kDownBit), state));
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpBit | kDownBit), state));
+
+    // DOWN released: conflict over, the (still latched) UP passes again.
+    ASSERT_EQ(kUpBit, resolve_opposing_directions(kUpBit, state));
+
+    // Full release resets everything.
+    ASSERT_EQ(0, resolve_opposing_directions(0, state));
+    ASSERT_EQ(0, static_cast<int>(state.y_winner));
+}
+
+TEST(InputLatch, resolver_same_sample_tie_keeps_cancellation)
+{
+    DirectionConflictState state;
+    const std::uint8_t both = static_cast<std::uint8_t>(kUpBit | kDownBit);
+    // Both rise in one sample: legacy cancellation (mask passes through and
+    // move_y() nets it to zero), and it stays canceled while held.
+    ASSERT_EQ(both, resolve_opposing_directions(both, state));
+    ASSERT_EQ(both, resolve_opposing_directions(both, state));
+    // Releasing one side leaves the other in effect.
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(kDownBit, state));
+}
+
+TEST(InputLatch, resolver_suppresses_stale_diagonal_with_its_whole_side)
+{
+    DirectionConflictState state;
+
+    // A latched UP_LEFT is presumed phantom once DOWN arrives fresh: it
+    // must stop contributing to BOTH axes (no leftover LEFT drift).
+    resolve_opposing_directions(kUpLeftBit, state);
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpLeftBit | kDownBit), state));
+
+    // Double conflict: latched UP_LEFT vs a fresh DOWN_RIGHT press — the
+    // fresh key wins both axes.
+    state = DirectionConflictState{};
+    resolve_opposing_directions(kUpLeftBit, state);
+    ASSERT_EQ(kDownRightBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpLeftBit | kDownRightBit), state));
+}
+
+TEST(InputLatch, resolver_any_key_of_a_side_reasserts_it)
+{
+    DirectionConflictState state;
+
+    // UP latched, DOWN fresh: down side wins.
+    resolve_opposing_directions(kUpBit, state);
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpBit | kDownBit), state));
+
+    // UP_RIGHT pressed (a different key of the up side): the up side is
+    // fresh again and takes the axis back; its RIGHT contribution stays.
+    const std::uint8_t all = static_cast<std::uint8_t>(kUpBit | kDownBit | kUpRightBit);
+    ASSERT_EQ(static_cast<std::uint8_t>(kUpBit | kUpRightBit),
+              resolve_opposing_directions(all, state));
+}
+
+TEST(InputLatch, resolver_x_axis_is_symmetric)
+{
+    DirectionConflictState state;
+    resolve_opposing_directions(kLeftBit, state); // LEFT latches
+    const std::uint8_t both = static_cast<std::uint8_t>(kLeftBit | bit_of(KEY_RIGHT));
+    ASSERT_EQ(bit_of(KEY_RIGHT), resolve_opposing_directions(both, state))
+        << "fresh RIGHT must suppress the stale LEFT";
+    ASSERT_EQ(kLeftBit, resolve_opposing_directions(kLeftBit, state))
+        << "releasing RIGHT restores the surviving LEFT";
+}
+
+// ---------------------------------------------------------------------------
 // Factory default keymaps: no cross-player key collisions. On a shared
 // keyboard every player's bindings are live at once (modes are per-player,
 // so any 4-dir/8-dir combination can be active). A shared keycode makes one

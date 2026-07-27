@@ -162,8 +162,13 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_BACKSLASH, KEYCODE_RSHIFT, KEYCODE_2, KEYCODE_F6,
         KEYCODE_RCTRL,                             // Look up (hold)
     },
-    {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K
-        KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,
+    {   // P3: clockwise I/O/L/?/,/M/J/U, Yell=K. DOWN-RIGHT starts unbound:
+        // its classic '.' is P2's FIRE in BOTH of P2's mode maps, so with
+        // three players on one keyboard P2 firing walked P3's character
+        // down-right (and vice versa). The diagonal still works as the
+        // L+',' (right+down) chord, and a dedicated key can be bound on the
+        // CONTROLS remap screen — the same policy as P4's unbound look-up.
+        KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_UNKNOWN,
         KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
         KEYCODE_SPACE, KEYCODE_SEMICOLON,
         KEYCODE_MINUS, KEYCODE_9,
@@ -303,6 +308,7 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
          player < active_player_count; ++player)
     {
         hw().direction_grace[player] = {};
+        hw().direction_conflict[player] = {};
         for (int k = 0; k < NUM_KEYS; ++k)
             hw().touch_keystate[player][k] = false;
     }
@@ -575,4 +581,71 @@ std::uint8_t coalesce_direction_release(std::uint8_t raw_mask,
         return prev;
     }
     return raw_mask;
+}
+
+// ---------------------------------------------------------------------------
+// Opposite-direction re-assert (see input_direction_grace.h for the
+// contract and the missed-keyup story behind it).
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// The direction-key groups contributing to each half of each axis — the
+// same decode rules as PlayerInput::move_x()/move_y() above.
+constexpr std::uint8_t kUpSideMask =
+    static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Up)) |
+                              (1u << static_cast<int>(InputKey::UpLeft)) |
+                              (1u << static_cast<int>(InputKey::UpRight)));
+constexpr std::uint8_t kDownSideMask =
+    static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Down)) |
+                              (1u << static_cast<int>(InputKey::DownLeft)) |
+                              (1u << static_cast<int>(InputKey::DownRight)));
+constexpr std::uint8_t kLeftSideMask =
+    static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Left)) |
+                              (1u << static_cast<int>(InputKey::UpLeft)) |
+                              (1u << static_cast<int>(InputKey::DownLeft)));
+constexpr std::uint8_t kRightSideMask =
+    static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Right)) |
+                              (1u << static_cast<int>(InputKey::UpRight)) |
+                              (1u << static_cast<int>(InputKey::DownRight)));
+
+// One axis: while both sides are held, the side with the most recent rising
+// edge wins; a same-sample tie keeps the legacy cancellation (0); no
+// conflict means no priority. `previous` carries the winner across samples
+// where neither side has a fresh edge.
+std::int8_t axis_conflict_winner(std::uint8_t raw_mask, std::uint8_t rose,
+                                 std::uint8_t neg_side, std::uint8_t pos_side,
+                                 std::int8_t previous)
+{
+    if ((raw_mask & neg_side) == 0 || (raw_mask & pos_side) == 0)
+        return 0;
+    const bool neg_rose = (rose & neg_side) != 0;
+    const bool pos_rose = (rose & pos_side) != 0;
+    if (neg_rose == pos_rose)
+        return neg_rose ? std::int8_t{0} : previous;
+    return neg_rose ? std::int8_t{-1} : std::int8_t{1};
+}
+} // namespace
+
+std::uint8_t resolve_opposing_directions(std::uint8_t raw_mask,
+                                         DirectionConflictState& state)
+{
+    const std::uint8_t rose =
+        static_cast<std::uint8_t>(raw_mask & static_cast<std::uint8_t>(~state.prev_raw));
+    state.y_winner = axis_conflict_winner(
+        raw_mask, rose, kUpSideMask, kDownSideMask, state.y_winner);
+    state.x_winner = axis_conflict_winner(
+        raw_mask, rose, kLeftSideMask, kRightSideMask, state.x_winner);
+    state.prev_raw = raw_mask;
+
+    std::uint8_t out = raw_mask;
+    if (state.y_winner < 0)
+        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kDownSideMask));
+    else if (state.y_winner > 0)
+        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kUpSideMask));
+    if (state.x_winner < 0)
+        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kRightSideMask));
+    else if (state.x_winner > 0)
+        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kLeftSideMask));
+    return out;
 }

@@ -147,6 +147,17 @@ void handle_window_event(const void* native_event)
                 reapply_world_zoom_after_window_change(*s);
             }
             break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+        case SDL_EVENT_WINDOW_HIDDEN:
+            // A key released while focus is elsewhere (or while the page is
+            // hidden — on the web, visibilitychange delivers only HIDDEN
+            // and SDL's own blur-time keyboard reset never runs) would
+            // never reach us: the key would stay latched and, if it is a
+            // direction, walk that player's character forever. Drop all
+            // transient held input; genuine holds re-assert on the next
+            // delivered key events.
+            clear_transient_input_state();
+            break;
     }
 }
 

@@ -586,6 +586,11 @@ void assignKeyFromWaitEvent(int player_num, int key_enum);
 const char* query_key_name(int keycode);
 
 void clear_keyboard();
+// Drops ALL transient held input: SDL keyboard state (via a keyboard
+// reset), the touch held-key seam, and the per-player direction shaping
+// state. Called on window focus/visibility loss, where any release can
+// happen without us ever seeing the event (missed-keyup latch protection).
+void clear_transient_input_state();
 void wait_for_key(int somekey);
 inline short query_key_press_event() { return input_key_press_event_ref(); }
 inline void clear_key_press_event() { input_key_press_event_ref() = 0; }

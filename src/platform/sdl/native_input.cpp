@@ -444,6 +444,16 @@ int scancode_from_key(int keycode)
     return static_cast<int>(SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(keycode), nullptr));
 }
 
+void reset_keyboard_state()
+{
+    SDL_ResetKeyboard();
+#ifdef __EMSCRIPTEN__
+    // The mirror follows SDL's array through key events; a reset must be
+    // visible to keystate consumers before the next pump as well.
+    refresh_web_keyboard_state();
+#endif
+}
+
 const char* key_name(int keycode)
 {
     return SDL_GetKeyName(static_cast<SDL_Keycode>(keycode));
