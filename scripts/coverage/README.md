@@ -115,7 +115,8 @@ each is a way for a half to look measured while measuring nothing:
 * a hit that lands off its generation's static grid (a line the declared
   source has no code on, or a function hit at a span no prototype occupies);
 * an enumeration problem from `scripts/lua_inventory.py` (undeclared embedded
-  Lua, a stale declaration) — those make the denominator itself suspect.
+  Lua, a stale declaration, a case-variant `.lua` under a shipped root that
+  the engine could never load) — those make the denominator itself suspect.
 
 ### Which processes must report
 
@@ -134,6 +135,19 @@ grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
 
 Set equality, not counts, deliberately: rerunning a flaky binary adds dumps
 but no names.
+
+Be clear about what kind of protection this is: the manifest is
+REVIEW-anchored, not self-verifying. Regenerating `recorder_processes.txt`
+from a deliberately shrunken suite passes the numeric checks byte-identically
+— measured directly: deleting 25 of 50 recorder processes and regenerating
+the manifest produced a PASS (the numeric backstops start to bite somewhere
+between 25 and 15 processes, where the Lua half finally drops below its own
+bar, and a shrunken suite also drags the C++ half down through its ordinary
+`.gcda` loss). The manifest's real protection is that shrinking it is a
+DIFF in a committed file that a reviewer reads next to the commit that
+deleted the tests. Edits to it therefore belong only in commits that
+intentionally change the test suite; a manifest edit riding along in an
+unrelated change is exactly the shape review exists to catch.
 
 ### The C++ denominator's completeness
 
@@ -190,6 +204,13 @@ events inside a body, which is evidence that the body ran; putting that number
 in a field every lcov reader labels "call count" would be a lie with a decimal
 point.
 
+**The report trusts its collectors.** Code running inside an armed test
+process can write any dump it likes — the identical property gcov's `.gcda`
+files have on the C++ side. The sidecar and digest machinery makes forging a
+passing dump require the real script bytes; it does not make forgery
+impossible, and nothing here defends the numbers against the test suite
+itself acting in bad faith.
+
 **Line coverage is blind to logic folded into a line that already runs — in
 BOTH languages.** See the worked example under "One measurable decision per
 line" below: a short-circuit arm added to a covered `if` line left the report
@@ -241,11 +262,11 @@ an audit walked straight through:
 * *Numerator from a line event inside the body, not from the dispatch site.*
   The hit used to be stamped where the engine was about to call the hook, so a
   hook the engine merely *decided* to call reported as covered whether or not
-  control reached its body. The line hook already knows which prototype is
-  executing (`lua_getinfo(L, "S", ar)` fills the `linedefined` /
-  `lastlinedefined` span alongside `source`), so the function hit falls out of
-  the same event that feeds line coverage. One `getinfo`, two metrics, no way
-  for them to disagree about whether code ran.
+  control reached its body. The line hook resolves the prototype that is
+  executing (through the compile-time registry described under "The
+  denominator" below, which also knows its span), so the function hit falls
+  out of the same event that feeds line coverage — one event, two metrics, no
+  way for them to disagree about whether code ran.
 
 Identity is the **span** `(source chunk, linedefined, lastlinedefined)`, not
 the start line. Two prototypes can begin on one line —
@@ -344,20 +365,27 @@ the run stops.
 
 One chunk name can also legitimately carry TWO sources within one process —
 `tests/unit/test_pack_transfer_errors.cpp` regenerates a cached pack and
-mounts both generations under `packs/org.test.regen/scripts/a.lua` — and the
-recorder binds every hit to the generation that was ACTIVE when it executed:
-its in-process grids are keyed by `(chunk, digest)` at record time (a
-declaration makes its digest the chunk's active generation; declaration
-always precedes execution for a mounted script), and every `L`/`F` record
-carries that digest. A hit therefore belongs to exactly one `(chunk,
-digest)`, and the report scores it against that generation's grid alone. An
-earlier revision recorded hits digest-less and had the report *guess* —
-credit every declared generation whose grid contained the line, with a
-warning. That guess was a demonstrated dishonest pass: declaring a
-never-loaded byte-variant of core `druid.lua` under the same chunk name let
-the real file's execution mark the variant 86/101 covered, flipping the
-gate's honest FAIL to a PASS. The guessing path is deleted, not narrowed; a
-hit that names a generation its own dump never declared fails the run.
+mounts both generations under `packs/org.test.regen/scripts/a.lua`, and a
+campaign `.glad` that overrides a core script re-declares the chunk while a
+`GameWorld` compiled from the old bytes is still alive. The recorder binds
+every hit to the generation whose COMPILED CODE is executing: at compile
+time — the one moment the bytes and their digest are certain — it walks the
+freshly compiled closure's prototype tree and registers every prototype
+against `(chunk, sha256 of those bytes)`; the line hook then resolves the
+executing function's prototype through that registry, so a stale closure
+that keeps running after a re-declaration still credits its own generation.
+Every `L`/`F` record carries that digest; a hit belongs to exactly one
+`(chunk, digest)` and the report scores it against that generation's grid
+alone. Two earlier designs each failed measurably. Digest-less hits made the
+report *guess* — credit every declared generation whose grid contained the
+line — which let a never-loaded byte-variant of core `druid.lua` score
+86/101 off the real file's execution, flipping an honest FAIL to a PASS.
+Binding to the most recently *declared* digest was wrong in both directions
+at once: a stale closure's hits covered the new generation's overlapping
+lines (dishonest pass), and where the grids diverged the same hits landed
+off-grid and killed the run (false failure). Both paths are deleted, not
+narrowed; a hit that names a generation its own dump never declared still
+fails the run.
 
 **Hits with nowhere to go fail the gate.** A recorded `packs/...` script whose
 bytes are not repository content stops the run: that is what a missed
@@ -480,13 +508,14 @@ never overwrite each other. `<origin>` is the real directory or archive
 PhysFS resolved the script from — diagnostic only, never a filter. `P` names
 the writing process for the population check above.
 
-`<generation>` on `L`/`F` is the sha256 of the source that was ACTIVE when
-the hit executed — it must match an `S` record of the same dump — or `-`
-when nothing was declared (test Lua compiled from a string literal; on a
-`packs/...` chunk the `-` marker is an error, because a mounted script is
-always declared before it can run). This is what makes a hit belong to
-exactly one `(chunk, digest)`; see "The denominator" above for the
-cross-credit hole the digest column closes. `<label>` is the registration
+`<generation>` on `L`/`F` is the sha256 of the source whose compiled
+prototype recorded the hit — it must match an `S` record of the same dump —
+or `-` when the executing code was compiled from bytes no declaration covers
+(test Lua compiled from a string literal; on a `packs/...` chunk the `-`
+marker is an error, because a mounted script is always declared before the
+engine can compile it). This is what makes a hit belong to exactly one
+`(chunk, digest)`; see "The denominator" above for the cross-credit and
+off-grid holes the prototype-resolved digest column closes. `<label>` is the registration
 that named the function, e.g. `living/core:soldier/do_special`,
 `level/-1/on_tick`, `entity/on_death`; it is empty for a function nothing
 registered, which is most of them.
@@ -552,6 +581,13 @@ Three kinds of entry, and nothing else:
 * every `*.lua` member of every `*.glad` campaign archive, wherever the
   archive sits — the engine mounts campaign packs straight out of the
   archive, and one whole boss script ships only that way;
+* in both of those, `.lua` is matched **case-sensitively**, because that is
+  the engine's own membership test (`src/resources/packs.cpp` compares the
+  literal bytes `.lua`). A case-variant — `PROBE.LUA` on disk or as an
+  archive member — is a collected enumeration problem, by name: the engine
+  can never load it, so admitting it (as a lowercasing enumeration once did)
+  created a denominator entry no test could ever cover — an unfixable red —
+  while skipping it silently would hide the typo;
 * `R"LUA( ... )LUA"` literals in product C++ (`src/`, `tools/`, `include/`)
   declared `shipped` in `embedded_lua.txt` (next subsection).
 
@@ -688,3 +724,17 @@ exists instead of a guess). Anything that slips it and actually *runs* under
 a test is still caught at runtime by content-hash attribution; embedded Lua
 that neither matches the scan nor ever runs is the residual, and shrinking
 it further means writing a C++ lexer, not another regex.
+
+Two known asymmetries in the fail-closed story, on the record rather than
+implied away. The per-FILE read failures above fail closed, but a
+**directory-level** `chmod` does not: a shipped directory git can list but
+the scan cannot descend leaves its files out of `git ls-files`' readable
+set... and out of the denominator, silently. And **deleting** a tracked
+`.lua` (without committing the deletion) shrinks the enumeration the same
+way — `git ls-files` still names it, but the `is_file()` filter drops it
+before the read-failure path can object. Neither is reachable in CI, where
+every checkout is fresh with uniform permissions; on a developer machine
+both are poison-pilled the moment any test loads an affected script (an
+engine-loaded chunk whose bytes are not in the enumerated inventory is a
+hard gate error), and a script NO test loads that is also chmod-hidden or
+locally deleted stays invisible until the tree is checked out clean.

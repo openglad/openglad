@@ -13,18 +13,21 @@
 // drag in — or gcov-instrument — the rest of the game.
 //
 // src/gameplay/script/ is the one directory allowed to include Lua headers
-// (scripts/check_vendor_leaks.sh). executable_lines() additionally needs
-// Lua's INTERNAL headers: the public debug API can hand back the executable
-// lines of one function (debug.getinfo(f, "L")) but gives no way to reach the
-// prototypes nested inside it, and a pack file is almost entirely nested
-// closures. Walking Proto::p is how Lua itself would answer the question, and
-// the vendored copy is pinned (v5.4.8, always fetched, never a system Lua),
-// so there is no version skew to guard against.
+// (scripts/check_vendor_leaks.sh). This TU additionally needs Lua's INTERNAL
+// headers, for two jobs the public API cannot do: the static side walks
+// Proto::p because debug.getinfo(f, "L") answers for one function only and a
+// pack file is almost entirely nested closures; and the runtime side keys
+// the generation binding on the EXECUTING function's Proto* (reached through
+// lua_Debug::i_ci), because the prototype — not the chunk name — is the one
+// identity that survives a chunk being re-declared with different bytes. The
+// vendored copy is pinned (v5.4.8, always fetched, never a system Lua), so
+// there is no version skew to guard against.
 #include <lua.h>
 #include <lauxlib.h>
 
 #include <lobject.h>
 #include <ldebug.h>
+#include <lstate.h>
 
 #include <algorithm>
 #include <array>
@@ -47,6 +50,7 @@ namespace og::script::coverage {
 
 namespace detail {
 bool g_enabled = false;
+void (*g_between_dump_write_and_publish)() = nullptr;
 }  // namespace detail
 
 namespace {
@@ -169,7 +173,7 @@ struct SourceEntry {
 };
 
 // Hits recorded against ONE generation of one chunk. Keyed by the digest of
-// the source that was active when they executed, never pooled per chunk:
+// the source whose compiled prototype executed, never pooled per chunk:
 // pooling is what forced the report to guess which declared generation a hit
 // belonged to, and its guess — every generation whose grid contained the
 // line — let execution of one file's bytes credit a different file's.
@@ -179,24 +183,35 @@ struct GenerationHits {
 };
 
 struct ChunkState {
-    // Digest of the most recently declared source for this chunk; empty
-    // until the first declaration. Declaration precedes execution for every
-    // mounted pack script, so this is the generation the VM is running.
-    std::string active_digest;
-    // digest ("" = no declaration was active) → hits under that generation.
+    // digest ("" = the executing code was compiled from bytes no declaration
+    // covers) → hits under that generation.
     std::map<std::string, GenerationHits> generations;
 };
 
 struct Recorder {
     std::mutex mu;
-    // chunk → per-generation hit grids plus the active generation.
+    // chunk → per-generation hit grids.
     std::map<std::string, ChunkState> chunks;
     // (chunk, sha256(source)) → (source, real directory/archive), for every
     // script the engine loaded.
     std::map<SourceKey, SourceEntry> sources;
+    // THE GENERATION BINDING (see the header): compiled prototype → the
+    // (chunk, digest) it was compiled from, written by bind_compiled_chunk
+    // at compile time and read by record_hook_line at execution time. One
+    // shared key object per compile, since a chunk's whole tree binds to one
+    // generation. Entries are overwritten or erased on address reuse — never
+    // proactively unregistered — which is sound because a Proto alive enough
+    // to execute is alive enough to still own its entry (the full argument
+    // sits on bind_compiled_chunk's declaration).
+    //
+    // Deliberately NOT part of ScopedRecording's swapped state and NOT
+    // touched by reset(): it is a fact about live VM objects ("this
+    // prototype was compiled from these bytes"), not recorded measurement,
+    // and a closure compiled before a scope keeps executing inside it.
+    std::map<const void*, std::shared_ptr<const SourceKey>> protos;
     // Chosen on the first flush and reused after, so flushing twice (an
-    // explicit pre-_exit flush plus the exit-time one) rewrites one file
-    // instead of double-counting the same hits across two.
+    // explicit pre-_exit flush plus the exit-time one) atomically republishes
+    // one file instead of double-counting the same hits across two.
     std::string dump_path;
 
     ~Recorder();
@@ -335,9 +350,15 @@ void flush_to_output_dir()
     const std::string& dir = output_dir_storage();
     if (dir.empty()) return;
     Recorder& r = recorder();
-    if (r.dump_path.empty())
-        r.dump_path = unique_dump_path(dir);
-    write_raw_report(r.dump_path);
+    std::string path;
+    {
+        const std::lock_guard<std::mutex> lock(r.mu);
+        if (r.dump_path.empty())
+            r.dump_path = unique_dump_path(dir);
+        path = r.dump_path;
+    }
+    // Outside the lock: write_raw_report snapshots under it itself.
+    write_raw_report(path);
 }
 
 void reset()
@@ -348,46 +369,165 @@ void reset()
     r.sources.clear();
 }
 
-void record_line(std::string_view chunk, int line)
-{
-    if (!detail::g_enabled || line <= 0 || chunk.empty())
-        return;
-    Recorder& r = recorder();
-    const std::lock_guard<std::mutex> lock(r.mu);
-    ChunkState& cs = r.chunks[std::string(chunk)];
-    // Bound to the generation that is executing, never pooled per chunk;
-    // see the header's GENERATION BINDING note.
-    cs.generations[cs.active_digest].lines[line]++;
-}
+namespace {
 
-void declare_function(std::string_view chunk, int line_defined,
-                      int last_line_defined, std::string_view label)
+// Update a prototype record's diagnostic label: smallest registered label
+// wins, so one closure registered under two hook names cannot get a
+// run-order-dependent name and every process and every merge agrees.
+void note_label(FnEntry& entry, std::string_view label)
 {
-    if (!detail::g_enabled || chunk.empty()) return;
-    Recorder& r = recorder();
-    const std::lock_guard<std::mutex> lock(r.mu);
-    ChunkState& cs = r.chunks[std::string(chunk)];
-    FnEntry& e = cs.generations[cs.active_digest]
-                     .functions[SpanKey{line_defined, last_line_defined}];
     std::string incoming(label);
-    // One Lua function registered under two names (the same closure used for
-    // two hooks) would otherwise get a run-order-dependent label. Smallest
-    // wins so every process and every merge agrees.
-    if (e.label.empty() || incoming < e.label)
-        e.label = std::move(incoming);
+    if (entry.label.empty() || incoming < entry.label)
+        entry.label = std::move(incoming);
 }
 
-void record_function_line(std::string_view chunk, int line_defined,
-                          int last_line_defined)
+// Walk one compiled prototype tree. With a binding: register every
+// prototype against it. Without: scrub — erase whatever stale entry each
+// address may have inherited from a collected generation, so undeclared
+// test Lua can never execute under a dead binding.
+void bind_protos(const Proto* p,
+                 const std::shared_ptr<const SourceKey>& binding,
+                 std::map<const void*, std::shared_ptr<const SourceKey>>& map)
 {
-    if (!detail::g_enabled || chunk.empty() || line_defined < 0)
+    if (p == nullptr)
+        return;
+    if (binding != nullptr)
+        map[p] = binding;
+    else
+        map.erase(p);
+    for (int i = 0; i < p->sizep; i++)
+        bind_protos(p->p[i], binding, map);
+}
+
+// The prototype of the Lua function `ar`'s event fired in, or null for a C
+// frame / a hand-built lua_Debug. Line events only fire while the VM is
+// interpreting a Lua closure, so for a genuine LUA_HOOKLINE this never
+// returns null.
+const Proto* executing_proto(const lua_Debug* ar)
+{
+    if (ar == nullptr || ar->i_ci == nullptr)
+        return nullptr;
+    const TValue* fn = s2v(ar->i_ci->func.p);
+    if (!ttisLclosure(fn))
+        return nullptr;
+    return clLvalue(fn)->p;
+}
+
+}  // namespace
+
+void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
+                         std::string_view source)
+{
+    if (!detail::g_enabled || chunk.empty())
+        return;
+    // The slot must hold the Lua closure luaL_loadbuffer just produced; a C
+    // function (or anything else) has no prototype tree to bind.
+    if (lua_type(L, index) != LUA_TFUNCTION || lua_iscfunction(L, index))
+        return;
+    const auto* cl = static_cast<const LClosure*>(lua_topointer(L, index));
+    if (cl == nullptr)
+        return;
+    SourceKey key{std::string(chunk), sha256_hex(source)};
+    Recorder& r = recorder();
+    const std::lock_guard<std::mutex> lock(r.mu);
+    // Declared bytes bind; undeclared bytes scrub. The scrub is load-bearing
+    // — see the header's address-reuse argument: it is what stops a reused
+    // Proto address from resurrecting a dead generation's binding underneath
+    // live test Lua.
+    std::shared_ptr<const SourceKey> binding;
+    if (r.sources.find(key) != r.sources.end())
+        binding = std::make_shared<const SourceKey>(std::move(key));
+    bind_protos(cl->p, binding, r.protos);
+}
+
+void record_hook_line(lua_State* L, lua_Debug* ar)
+{
+    if (!detail::g_enabled)
+        return;
+    const Proto* proto = executing_proto(ar);
+    if (proto != nullptr) {
+        Recorder& r = recorder();
+        const std::lock_guard<std::mutex> lock(r.mu);
+        const auto it = r.protos.find(proto);
+        if (it != r.protos.end()) {
+            // Proto-true binding: the hit belongs to the generation whose
+            // compiled code is executing — never to whichever digest was
+            // declared most recently for the chunk. A stale closure running
+            // after a re-declaration credits ITS OWN generation, which is
+            // both the honest numerator and the fix for the off-grid false
+            // failure (see the header).
+            const SourceKey& key = *it->second;
+            GenerationHits& gen =
+                r.chunks[key.first].generations[key.second];
+            if (ar->currentline > 0)
+                gen.lines[ar->currentline]++;
+            gen.functions[SpanKey{proto->linedefined, proto->lastlinedefined}]
+                .body_hits++;
+            return;
+        }
+    }
+    // Unregistered prototype: code compiled from bytes no declaration
+    // covers (test Lua built from a string literal). Recorded under the
+    // chunk name Lua reports, with the no-generation marker; on a packs/
+    // chunk that marker stays the report's hard error.
+    lua_getinfo(L, "S", ar);
+    const std::string_view chunk(ar->source, ar->srclen);
+    if (chunk.empty())
         return;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    ChunkState& cs = r.chunks[std::string(chunk)];
-    cs.generations[cs.active_digest]
-        .functions[SpanKey{line_defined, last_line_defined}]
-        .body_hits++;
+    GenerationHits& gen =
+        r.chunks[std::string(chunk)].generations[std::string()];
+    if (ar->currentline > 0)
+        gen.lines[ar->currentline]++;
+    if (ar->linedefined >= 0)
+        gen.functions[SpanKey{ar->linedefined, ar->lastlinedefined}]
+            .body_hits++;
+}
+
+void declare_function_closure(lua_State* L, int index, std::string_view label)
+{
+    if (!detail::g_enabled)
+        return;
+    index = lua_absindex(L, index);
+    if (lua_type(L, index) == LUA_TFUNCTION && !lua_iscfunction(L, index)) {
+        const auto* cl = static_cast<const LClosure*>(lua_topointer(L, index));
+        if (cl != nullptr && cl->p != nullptr) {
+            const Proto* proto = cl->p;
+            Recorder& r = recorder();
+            const std::lock_guard<std::mutex> lock(r.mu);
+            const auto it = r.protos.find(proto);
+            if (it != r.protos.end()) {
+                // The label lands on the generation that DEFINED the
+                // function — creating its zero-hit record when the body has
+                // not run — so a registered-but-never-entered hook is a miss
+                // on the right generation's grid.
+                const SourceKey& key = *it->second;
+                note_label(
+                    r.chunks[key.first]
+                        .generations[key.second]
+                        .functions[SpanKey{proto->linedefined,
+                                           proto->lastlinedefined}],
+                    label);
+                return;
+            }
+        }
+    }
+    // Unregistered (test Lua) or not a Lua closure: fall back to the debug
+    // info, under the no-generation marker — mirroring record_hook_line.
+    lua_Debug ar;
+    lua_pushvalue(L, index);
+    if (lua_getinfo(L, ">S", &ar) == 0)
+        return;
+    const std::string_view chunk(ar.source, ar.srclen);
+    if (chunk.empty())
+        return;
+    Recorder& r = recorder();
+    const std::lock_guard<std::mutex> lock(r.mu);
+    note_label(r.chunks[std::string(chunk)]
+                   .generations[std::string()]
+                   .functions[SpanKey{ar.linedefined, ar.lastlinedefined}],
+               label);
 }
 
 void declare_pack_source(std::string_view chunk, std::string_view source,
@@ -398,14 +538,12 @@ void declare_pack_source(std::string_view chunk, std::string_view source,
     // Keyed by (chunk, digest), so re-declaring a name with DIFFERENT bytes
     // adds a record instead of erasing the previous one. Re-declaring the
     // same bytes — every level load re-registers the same pack scripts —
-    // still collapses onto one entry.
-    std::string digest = sha256_hex(source);
-    SourceKey key{std::string(chunk), digest};
+    // still collapses onto one entry. Declaring never rebinds existing
+    // prototypes: it only makes a LATER compile of these bytes bindable
+    // (bind_compiled_chunk consults this set at compile time).
+    SourceKey key{std::string(chunk), sha256_hex(source)};
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    // This generation is now the chunk's ACTIVE one: hits recorded from here
-    // on bind to it, until a re-declaration with different bytes moves it.
-    r.chunks[key.first].active_digest = std::move(digest);
     r.sources[std::move(key)] = {std::string(source), std::string(origin)};
 }
 
@@ -458,9 +596,9 @@ ScopedRecording::ScopedRecording()
     {
         Recorder& r = recorder();
         const std::lock_guard<std::mutex> lock(r.mu);
-        // The active-generation map travels with the hits: a test's own
-        // declarations must not survive the scope as some other chunk's
-        // "current" generation.
+        // Hits and declarations travel together; the Proto registry stays
+        // put on purpose — it is a fact about live VM objects, not recorded
+        // measurement (see the Recorder declaration).
         saved_->chunks = std::move(r.chunks);
         saved_->sources = std::move(r.sources);
     }
@@ -509,6 +647,25 @@ std::string source_file_name(const std::string& chunk, const std::string& digest
     return stem + "-" + digest + ".lua";
 }
 
+// A temp sibling of `final_path`, unique enough for concurrent writers in
+// one directory: an ASLR'd address xor the monotonic clock, the same
+// no-probe-loop reasoning as unique_dump_path.
+std::filesystem::path temp_sibling(const std::filesystem::path& final_path,
+                                   const void* salt)
+{
+    std::filesystem::path tmp = final_path;
+    char token[32];
+    std::snprintf(token, sizeof(token), ".tmp-%llx",
+                  static_cast<unsigned long long>(
+                      reinterpret_cast<std::uintptr_t>(salt) ^
+                      static_cast<std::uintptr_t>(
+                          std::chrono::steady_clock::now()
+                              .time_since_epoch()
+                              .count())));
+    tmp += token;
+    return tmp;
+}
+
 // Publish one declared source next to the dump. Written through a temp file
 // and renamed so a reader never sees a half-written script and so two test
 // processes flushing at once cannot interleave: they write identical bytes,
@@ -517,16 +674,7 @@ bool write_source_file(const std::filesystem::path& dir,
                        const std::string& name, const std::string& body)
 {
     const std::filesystem::path final_path = dir / name;
-    std::filesystem::path tmp_path = final_path;
-    char token[32];
-    std::snprintf(token, sizeof(token), ".tmp-%llx",
-                  static_cast<unsigned long long>(
-                      reinterpret_cast<std::uintptr_t>(&body) ^
-                      static_cast<std::uintptr_t>(
-                          std::chrono::steady_clock::now()
-                              .time_since_epoch()
-                              .count())));
-    tmp_path += token;
+    const std::filesystem::path tmp_path = temp_sibling(final_path, &body);
     {
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
         if (!out)
@@ -573,42 +721,73 @@ bool write_raw_report(const std::string& path)
         }
     }
 
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
+    // The dump gets the same temp+rename publication as its sidecars — and
+    // needs it for one reason more than they do: flush_to_output_dir can run
+    // TWICE in one process (an explicit pre-_exit flush plus the exit-time
+    // destructor), and an in-place rewrite meant the second flush first
+    // TRUNCATED an already-complete dump. A SIGKILL inside either write
+    // window left a torn file the report rejects as a malformed record —
+    // indistinguishable from tampering. With rename() publishing, a reader
+    // (or a kill) at any instant sees the previous complete dump or the new
+    // complete dump, never a prefix.
+    const std::filesystem::path tmp_path = temp_sibling(dump_path, &hits);
+    {
+        std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+        if (!out)
+            return false;
+        // Version 5: L and F records carry the digest of the generation
+        // whose compiled prototype recorded the hit ("-" when the executing
+        // code was compiled from undeclared bytes), so a hit belongs to
+        // exactly one (chunk, digest) and the report never has to guess
+        // which of a chunk's declared generations ran. Version 4 pooled a
+        // chunk's hits digest-less, and the report's guess — credit every
+        // declared generation whose grid holds the line — was a demonstrated
+        // cross-credit hole.
+        out << "# openglad-lua-coverage 5\n";
+        // Which process wrote this. The report checks the POPULATION of
+        // recorder processes against a committed manifest, because a suite
+        // that quietly lost most of its processes looks exactly like
+        // slightly lower coverage.
+        out << "P\t" << program_name() << '\n';
+        // The sidecar field is a bare file name, never a path: the reader
+        // joins it under <dump dir>/sources/ itself. It used to be a path
+        // joined onto the dump directory unvalidated, and pathlib's "/"
+        // DISCARDS the base when the right-hand side is absolute — so a dump
+        // could name any file on the machine as the source its hits should
+        // be scored against.
+        for (std::size_t i = 0; i < declared.size(); i++)
+            out << "S\t" << declared[i]->chunk << '\t' << declared_files[i]
+                << '\t' << declared[i]->digest << '\t' << declared[i]->origin
+                << '\n';
+        for (const LineHit& h : hits) {
+            out << "L\t" << h.chunk << '\t'
+                << (h.digest.empty() ? "-" : h.digest.c_str()) << '\t'
+                << h.line << '\t' << h.count << '\n';
+        }
+        for (const FunctionRecord& f : fns) {
+            out << "F\t" << f.chunk << '\t'
+                << (f.digest.empty() ? "-" : f.digest.c_str()) << '\t'
+                << f.line_defined << '\t' << f.last_line_defined << '\t'
+                << f.body_hits << '\t' << f.label << '\n';
+        }
+        out.flush();
+        if (!out) {
+            std::error_code ec;
+            std::filesystem::remove(tmp_path, ec);
+            return false;
+        }
+    }
+    // See the header: the atomicity test SIGKILLs a forked child here, at
+    // the exact instant a torn dump used to be possible.
+    if (detail::g_between_dump_write_and_publish != nullptr)
+        detail::g_between_dump_write_and_publish();
+    std::error_code ec;
+    std::filesystem::rename(tmp_path, dump_path, ec);
+    if (ec) {
+        std::filesystem::remove(tmp_path, ec);
         return false;
-    // Version 5: L and F records carry the digest of the generation that was
-    // active when the hit executed ("-" when nothing was declared), so a hit
-    // belongs to exactly one (chunk, digest) and the report never has to
-    // guess which of a chunk's declared generations ran. Version 4 pooled a
-    // chunk's hits digest-less, and the report's guess — credit every
-    // declared generation whose grid holds the line — was a demonstrated
-    // cross-credit hole.
-    out << "# openglad-lua-coverage 5\n";
-    // Which process wrote this. The report checks the POPULATION of recorder
-    // processes against a committed manifest, because a suite that quietly
-    // lost most of its processes looks exactly like slightly lower coverage.
-    out << "P\t" << program_name() << '\n';
-    // The sidecar field is a bare file name, never a path: the reader joins
-    // it under <dump dir>/sources/ itself. It used to be a path joined onto
-    // the dump directory unvalidated, and pathlib's "/" DISCARDS the base
-    // when the right-hand side is absolute — so a dump could name any file
-    // on the machine as the source its hits should be scored against.
-    for (std::size_t i = 0; i < declared.size(); i++)
-        out << "S\t" << declared[i]->chunk << '\t' << declared_files[i] << '\t'
-            << declared[i]->digest << '\t' << declared[i]->origin << '\n';
-    for (const LineHit& h : hits) {
-        out << "L\t" << h.chunk << '\t'
-            << (h.digest.empty() ? "-" : h.digest.c_str()) << '\t' << h.line
-            << '\t' << h.count << '\n';
     }
-    for (const FunctionRecord& f : fns) {
-        out << "F\t" << f.chunk << '\t'
-            << (f.digest.empty() ? "-" : f.digest.c_str()) << '\t'
-            << f.line_defined << '\t' << f.last_line_defined << '\t'
-            << f.body_hits << '\t' << f.label << '\n';
-    }
-    out.flush();
-    return static_cast<bool>(out);
+    return true;
 }
 
 // ---------------------------------------------------------------------------

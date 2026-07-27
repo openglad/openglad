@@ -70,6 +70,13 @@ Three places, because "a .lua file in the tree" is not the whole story:
      showcase pack is written into a generated `.glad` from one of these and
      never exists as a file at all.
 
+In the first two, `.lua` is matched exactly and CASE-SENSITIVELY — the
+engine's own membership test (src/resources/packs.cpp compares the literal
+bytes ".lua") — and a case-variant (`PROBE.LUA`) under a shipped root, or as
+an archive member, is a collected PROBLEM: the engine can never load it, so
+admitting it (as a lowercasing enumeration once did) made an unfixable 0%
+denominator entry, and skipping it silently would hide the typo.
+
 THE FIRST ONE HAS A DELIBERATE BOUNDARY
 ---------------------------------------
 `tests/**`, `scripts/**` and every location outside the shipped roots never
@@ -686,8 +693,17 @@ def _collect(
     counts: Dict[str, Tuple[int, int]] = {}
     for path in files:
         rel = _rel(repo_root, path)
-        suffix = path.suffix.lower()
+        suffix = path.suffix
         top, _, _ = rel.partition("/")
+        # ".lua" is matched CASE-SENSITIVELY, because that is the engine's
+        # own test (src/resources/packs.cpp compares the last four bytes
+        # against ".lua", exactly): a PROBE.LUA under a shipped root can
+        # never be loaded by anything. Lowercasing here once put such a file
+        # into the denominator — a 0% entry no test could ever cover, an
+        # unfixable red. Matching the engine and SAYING NOTHING would be the
+        # opposite failure: a typo'd suffix silently ships nothing. So the
+        # membership test is the engine's, and the case-variant is a
+        # collected problem.
         if suffix == ".lua":
             if top not in SHIPPED_LUA_ROOTS:
                 # tests/, scripts/, and everywhere else: not shipped, never
@@ -702,14 +718,38 @@ def _collect(
                     "file under a shipped root would otherwise silently "
                     "shrink the coverage denominator"
                 )
-        elif suffix == ".glad":
+        elif suffix.lower() == ".lua":
+            if top in SHIPPED_LUA_ROOTS:
+                problems.append(
+                    f"{rel}: will never load — pack scripts require a "
+                    "lowercase '.lua' suffix (the engine's test in "
+                    "src/resources/packs.cpp is case-sensitive). A "
+                    "case-variant under a shipped root is a typo, not a "
+                    "denominator entry and not a silent skip: rename it to "
+                    "'.lua' or delete it"
+                )
+            # Outside the shipped roots the file does not ship under ANY
+            # spelling; it stays unread, exactly like its lowercase twin.
+        elif suffix.lower() == ".glad":
             try:
                 with zipfile.ZipFile(path) as archive:
                     for entry in sorted(archive.namelist()):
+                        # Same engine-exact suffix rule as on disk: the
+                        # archive is mounted and its members walk through
+                        # the identical case-sensitive test.
                         if entry.endswith(".lua"):
                             found.append(
                                 (KIND_ARCHIVE, f"{rel}!{entry}",
                                  archive.read(entry)))
+                        elif entry.lower().endswith(".lua"):
+                            problems.append(
+                                f"{rel}!{entry}: will never load — pack "
+                                "scripts require a lowercase '.lua' suffix "
+                                "(the engine's test is case-sensitive). A "
+                                "case-variant member is a typo the gate "
+                                "refuses to hide: rebuild the archive with "
+                                "the member renamed"
+                            )
             except (OSError, zipfile.BadZipFile, KeyError, zlib.error) as exc:
                 problems.append(
                     f"{rel}: cannot enumerate campaign archive "
@@ -717,7 +757,7 @@ def _collect(
                     "an unopenable or corrupt archive would otherwise "
                     "silently shrink the coverage denominator"
                 )
-        elif suffix in CXX_SUFFIXES:
+        elif suffix.lower() in CXX_SUFFIXES:
             if top not in PRODUCT_DIRS:
                 continue  # tests/ etc.: exempt by construction, see docstring
             disposition = dispositions.get(rel)

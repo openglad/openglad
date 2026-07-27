@@ -73,22 +73,18 @@ void budget_hook(lua_State* L, lua_Debug* /*ar*/)
 void budget_and_coverage_hook(lua_State* L, lua_Debug* ar)
 {
     if (ar->event == LUA_HOOKLINE) {
-        // "S" fills source/srclen AND the linedefined/lastlinedefined span;
-        // it neither allocates nor touches sim state. One getinfo feeds both
-        // metrics, which is what puts them on one grid: the FUNCTION is
-        // recorded as having run because a line of its own body just ran, so
-        // a hook the engine DISPATCHED but never entered cannot read as
-        // covered the way it would if the hit were stamped at the call site.
-        // (A dispatched empty body does count — see script_coverage.h.)
-        //
-        // The span, not linedefined alone: two prototypes can start on one
-        // line, and reporting only the start line let a hit on either of
-        // them cover both.
-        lua_getinfo(L, "S", ar);
-        const std::string_view chunk(ar->source, ar->srclen);
-        coverage::record_line(chunk, ar->currentline);
-        coverage::record_function_line(chunk, ar->linedefined,
-                                       ar->lastlinedefined);
+        // One call records BOTH metrics for the currently executing
+        // function off this one event, which is what puts them on one grid:
+        // the FUNCTION is recorded as having run because a line of its own
+        // body just ran, so a hook the engine DISPATCHED but never entered
+        // cannot read as covered the way it would if the hit were stamped
+        // at the call site. (A dispatched empty body does count — see
+        // script_coverage.h.) The hit is credited to the generation whose
+        // compiled prototype is executing — resolved through the registry
+        // bind_compiled_chunk maintains, never a chunk-level "most recently
+        // declared" digest, which mis-credited stale closures after a
+        // re-declaration.
+        coverage::record_hook_line(L, ar);
         return;
     }
     budget_hook(L, ar);
@@ -487,6 +483,12 @@ bool ScriptHost::run_chunk(std::string_view chunk_name,
         lua_pop(L, 1);
         return false;
     }
+    // The freshly compiled closure is on the stack: bind its prototype tree
+    // to THIS generation of the chunk, so every future hit inside it credits
+    // the bytes that are actually executing (see script_coverage.h). One
+    // bool load when the recorder is off.
+    if (coverage::enabled())
+        coverage::bind_compiled_chunk(L, -1, chunk_name, source);
     impl_->push_environment(env_key);
     lua_setupvalue(L, -2, 1);  // set the chunk's _ENV
     return impl_->protected_call(name.c_str(), 0, 0);
@@ -506,6 +508,13 @@ bool eval_push(ScriptHost::Impl* impl, std::string_view expr)
         lua_pop(L, 1);
         return false;
     }
+    // Eval chunks are never declared, so this binds nothing — but it SCRUBS
+    // stale registry entries whose Proto addresses this compile may have
+    // reused, which the generation binding's soundness argument relies on
+    // (see bind_compiled_chunk in script_coverage.h). Both ScriptHost
+    // compile sites must pass through it.
+    if (coverage::enabled())
+        coverage::bind_compiled_chunk(L, -1, "=eval", src);
     impl->push_new_environment();
     lua_setupvalue(L, -2, 1);
     return impl->protected_call("eval", 0, 1);

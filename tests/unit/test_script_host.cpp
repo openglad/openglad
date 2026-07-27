@@ -21,6 +21,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -846,8 +847,8 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
     ASSERT_TRUE(host.run_chunk("testfixture/dump.lua", kProbeChunk));
     // The inventory half: a script the engine loaded, with its bytes, so the
     // report can measure one that has no file in the tree. Declared BEFORE it
-    // runs — exactly the engine's order — so the hits recorded below carry
-    // this generation's digest.
+    // is compiled — exactly the engine's order — so the compile binds its
+    // prototypes to this generation and the hits below carry its digest.
     cov::declare_pack_source("packs/inventoried/scripts/x.lua", kProbeChunk,
                              "/somewhere/x.glad");
     ASSERT_TRUE(host.run_chunk("packs/inventoried/scripts/x.lua",
@@ -897,8 +898,9 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
               text.find("L\ttestfixture/dump.lua\t-\t14\t1"))
         << text;
     // A chunk that ran under a declared source carries that generation's
-    // digest on every hit: the binding happens at record time, in the
-    // recorder, so the report never has to guess which generation executed.
+    // digest on every hit: the recorder resolves the executing prototype to
+    // the generation it was compiled from, so the report never has to guess
+    // which generation executed.
     const std::string probe_digest = cov::sha256_hex(kProbeChunk);
     EXPECT_NE(std::string::npos,
               text.find("L\tpacks/inventoried/scripts/x.lua\t" +
@@ -1300,13 +1302,14 @@ TEST(ScriptCoverage, one_chunk_name_carrying_two_sources_keeps_both)
 }
 
 // THE GENERATION BINDING. When one chunk name carries two sources in one
-// process, every hit is stored under the generation that was ACTIVE when it
-// executed — keyed at record time, in the recorder, where the answer is
-// known. The report used to receive digest-less hits and guess: it credited
-// a hit to EVERY declared generation whose grid contained the line, which
-// let execution of one generation's bytes mark the other generation's lines
+// process, every hit is stored under the generation whose COMPILED CODE
+// executed — each compile binds its prototype tree to the (chunk, digest)
+// it was compiled from, and the hook resolves the executing prototype. The
+// report used to receive digest-less hits and guess: it credited a hit to
+// EVERY declared generation whose grid contained the line, which let
+// execution of one generation's bytes mark the other generation's lines
 // covered. A hit belongs to exactly one (chunk, digest).
-TEST(ScriptCoverage, hits_bind_to_the_generation_active_when_they_ran)
+TEST(ScriptCoverage, hits_bind_to_the_generation_that_executed)
 {
     cov::ScopedRecording recording;
     const std::string saved_dir = cov::output_dir();
@@ -1323,8 +1326,8 @@ TEST(ScriptCoverage, hits_bind_to_the_generation_active_when_they_ran)
 
     cov::declare_pack_source(chunk, gen1, "cache-v1");
     ASSERT_TRUE(host.run_chunk(chunk, gen1));
-    // Re-declaration with new bytes moves the active generation; hits from
-    // here on accumulate under gen2's digest.
+    // gen2 is declared, then compiled: ITS prototypes bind to its digest,
+    // and hits inside them accumulate there.
     cov::declare_pack_source(chunk, gen2, "cache-v2");
     ASSERT_TRUE(host.run_chunk(chunk, gen2));
     ASSERT_TRUE(host.run_chunk(chunk, gen2));
@@ -2080,4 +2083,271 @@ TEST_F(CoverageReportGate, a_stale_cpp_exclusion_is_an_error)
     EXPECT_NE(std::string::npos,
               bare.output.find("exclusion without a reason"))
         << bare.output;
+}
+
+// ---------------------------------------------------------------------------
+// Proto-true generation binding (P6-A/P6-B) and the atomic dump (P6-D)
+// ---------------------------------------------------------------------------
+
+// P6-A: THE PROBE, pinned. Hits bind to the generation whose compiled code
+// is EXECUTING — never to the most recently declared digest. The engine
+// sequence this models: the boot mount declares gen1; a GameWorld compiles
+// it and keeps closures; a campaign mount re-declares the same chunk as
+// gen2; the still-live gen1 closure runs again. Before the Proto-true
+// binding, those late hits were stored under gen2 — silently covering lines
+// of a source that never ran where the grids overlapped (a dishonest pass),
+// and hard-failing the report with an off-grid error where they did not
+// (P6-B's false failure). Same defect, both directions.
+TEST(ScriptCoverage, stale_closures_credit_their_own_generation_not_the_newest)
+{
+    cov::ScopedRecording recording;
+    ScriptHost host;
+
+    const char* chunk = "packs/org.test.stale/scripts/a.lua";
+    // gen1 stores a closure in the shared pack environment; its body (lines
+    // 2-3) is what the stale call below must credit to gen1.
+    const std::string gen1 =
+        "stale = function()\n"        // 1
+        "  local x = 1\n"             // 2
+        "  og.log('gen1', x)\n"       // 3
+        "end\n";                      // 4
+    const std::string gen2 = "og.log('gen2 loaded')\n";  // 1
+    const std::string d1 = cov::sha256_hex(gen1);
+    const std::string d2 = cov::sha256_hex(gen2);
+
+    // Engine order: declare, then compile. Loading gen1 defines `stale` but
+    // does not enter its body.
+    cov::declare_pack_source(chunk, gen1, "probe/disk");
+    ASSERT_TRUE(host.run_chunk(chunk, gen1, "org.test.stale"));
+    // The campaign override: the SAME chunk name re-declared and re-compiled
+    // with different bytes, while gen1's closure stays alive in the shared
+    // environment.
+    cov::declare_pack_source(chunk, gen2, "probe/campaign.glad");
+    ASSERT_TRUE(host.run_chunk(chunk, gen2, "org.test.stale"));
+
+    // The surviving gen1 closure executes AFTER gen2 became the newest
+    // declaration. The trigger chunk is undeclared test Lua.
+    ASSERT_TRUE(host.run_chunk("trigger.lua", "stale()\n", "org.test.stale"));
+
+    std::map<std::pair<std::string, int>, std::uint64_t> by_gen_line;
+    for (const cov::LineHit& h : cov::line_hits()) {
+        if (h.chunk == chunk)
+            by_gen_line[{h.digest, h.line}] += h.count;
+    }
+    EXPECT_EQ(1u, by_gen_line[std::make_pair(d1, 2)])
+        << "the stale body's hits belong to gen1, exactly once (the load "
+           "defined the function without entering it)";
+    EXPECT_EQ(1u, by_gen_line[std::make_pair(d1, 3)]);
+    EXPECT_EQ(0u, by_gen_line[std::make_pair(d2, 2)])
+        << "gen2 has no code on lines 2-3: a hit here is the off-grid false "
+           "failure — and, where grids overlap, the dishonest pass";
+    EXPECT_EQ(0u, by_gen_line[std::make_pair(d2, 3)]);
+
+    // The function metric binds the same way: gen1's 1..4 prototype ran,
+    // and no phantom 1..4 record appears under gen2.
+    bool gen1_body_ran = false;
+    bool gen2_phantom_span = false;
+    for (const cov::FunctionRecord& r : cov::function_records()) {
+        if (r.chunk != chunk)
+            continue;
+        if (r.digest == d1 && r.line_defined == 1 && r.last_line_defined == 4)
+            gen1_body_ran = (r.body_hits > 0);
+        if (r.digest == d2 && r.line_defined == 1 && r.last_line_defined == 4)
+            gen2_phantom_span = true;
+    }
+    EXPECT_TRUE(gen1_body_ran);
+    EXPECT_FALSE(gen2_phantom_span)
+        << "gen2 defines no prototype spanning 1..4";
+
+    // The undeclared trigger chunk stays under the no-generation marker —
+    // the fallback path for test Lua is unchanged.
+    std::uint64_t trigger_hits = 0;
+    bool trigger_no_generation = true;
+    for (const cov::LineHit& h : cov::line_hits()) {
+        if (h.chunk == "trigger.lua") {
+            trigger_hits += h.count;
+            trigger_no_generation = trigger_no_generation && h.digest.empty();
+        }
+    }
+    EXPECT_GT(trigger_hits, 0u);
+    EXPECT_TRUE(trigger_no_generation);
+}
+
+// P6-D: the dump used to be opened with trunc and streamed IN PLACE while
+// its own sidecars were already temp+rename — so a SIGKILL mid-flush left a
+// torn dump the report rejects as a malformed record, indistinguishable
+// from tampering; and the SECOND flush some harnesses perform (explicit
+// pre-_exit plus exit-time destructor) re-opened an already-complete dump
+// with trunc, recreating the window. The dump now publishes by rename().
+// This forks (gtest fast-style death test), kills the child between writing
+// the temp file and renaming it, and requires the published path to still
+// hold the PREVIOUS complete dump byte-for-byte.
+TEST(ScriptCoverage, a_kill_during_publish_leaves_the_previous_complete_dump)
+{
+    cov::ScopedRecording recording;
+    const std::string saved_dir = cov::output_dir();
+    ScriptHost host;
+    ASSERT_TRUE(host.run_chunk("testfixture/torn_a.lua", kProbeChunk));
+
+    const std::filesystem::path dir = make_unique_temp_dir("og_lua_cov_torn_");
+    ASSERT_FALSE(dir.empty());
+    cov::set_output_dir_for_testing(dir.string());
+    cov::flush_to_output_dir();  // complete dump #1
+
+    std::filesystem::path dump;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() == ".luacov")
+            dump = entry.path();
+    }
+    ASSERT_FALSE(dump.empty());
+    const std::string complete = read_text_file(dump);
+    ASSERT_NE(std::string::npos, complete.find("# openglad-lua-coverage 5\n"));
+    ASSERT_NE(std::string::npos, complete.find("torn_a.lua"));
+
+    // More recorded data, so the interrupted second flush is writing a
+    // LONGER file: the torn outcome would have been a prefix of #2, not a
+    // stale-but-complete #1.
+    ASSERT_TRUE(host.run_chunk("testfixture/torn_b.lua", kProbeChunk));
+
+    EXPECT_EXIT(
+        {
+            cov::detail::g_between_dump_write_and_publish = [] {
+                raise(SIGKILL);
+            };
+            cov::flush_to_output_dir();
+            _exit(0);  // unreachable: the seam killed us mid-publish
+        },
+        ::testing::KilledBySignal(SIGKILL), "");
+
+    // The kill landed after the temp write and before the rename. The
+    // published dump is still #1, byte for byte: old and complete — never
+    // torn, never truncated.
+    EXPECT_EQ(complete, read_text_file(dump));
+
+    // And a clean re-flush atomically replaces it with an equally-complete
+    // successor carrying the new data — the double-flush shape harnesses
+    // actually hit.
+    cov::flush_to_output_dir();
+    const std::string replaced = read_text_file(dump);
+    EXPECT_NE(std::string::npos, replaced.find("# openglad-lua-coverage 5\n"));
+    EXPECT_NE(std::string::npos, replaced.find("torn_a.lua"));
+    EXPECT_NE(std::string::npos, replaced.find("torn_b.lua"));
+
+    cov::set_output_dir_for_testing(saved_dir);
+    std::filesystem::remove_all(dir);
+}
+
+// P6-B, at the report level: one dump carries a chunk's TWO generations —
+// the campaign-override shape, where a mount re-declares a core chunk while
+// a world compiled from the old bytes is alive — with hits under BOTH. Each
+// generation's hits land on its OWN grid, so the run has no structural
+// error. This exact dump shape used to die with "hit(s) on lines the
+// declared source has no code on" the first time the recorder credited a
+// stale closure's hits to the newest declaration.
+TEST_F(CoverageReportGate, two_live_generations_score_cleanly_on_their_own_grids)
+{
+    const RealSource old_gen = load_real("packs/core/scripts/soldier.lua");
+    const RealSource new_gen = load_real("packs/core/scripts/orc.lua");
+    // One chunk name; the override generation is real repository content
+    // (exactly as a campaign-embedded script is), so neither declaration is
+    // itself an error.
+    forge_dump("lua-live-override.luacov", "og_unit_script",
+               forge_s_record(old_gen.chunk, old_gen.bytes) +
+                   forge_s_record(old_gen.chunk, new_gen.bytes) +
+                   forge_full_hits(old_gen.chunk, old_gen) +
+                   forge_full_hits(old_gen.chunk, new_gen));
+
+    // Thresholds at zero: two files of the whole inventory are covered, and
+    // the property under test is the absence of structural errors, not the
+    // percentage.
+    const ReportRun run = run_report(
+        manifest_args({"og_unit_script"}) + fixtures_args() +
+        " --line-threshold 0 --function-threshold 0");
+    EXPECT_EQ(0, run.exit_code) << run.output;
+    EXPECT_EQ(std::string::npos, run.output.find("no code on"))
+        << "stale-generation hits belong on their own grid, not off the "
+           "newest one: "
+        << run.output;
+    EXPECT_EQ(std::string::npos, run.output.find("ERROR")) << run.output;
+    EXPECT_EQ(static_cast<int>(old_gen.facts.lines.size()),
+              summary_lines_hit(run.summary_json, old_gen.chunk));
+    EXPECT_EQ(static_cast<int>(new_gen.facts.lines.size()),
+              summary_lines_hit(run.summary_json, new_gen.chunk))
+        << "the override generation's hits attribute to its content entry";
+}
+
+// P6-F: the engine loads only lowercase ".lua" (src/resources/packs.cpp
+// compares the literal bytes), but the inventory used to lowercase suffixes
+// — so packs/.../PROBE.LUA entered the denominator as a file nothing could
+// ever load: an unfixable red. Inside .glad archives the same typo was
+// silently ignored instead. Both paths now match the engine byte-for-byte
+// AND surface the case-variant as a named enumeration problem. Runs the
+// real scripts/lua_inventory.py over a scratch git repository.
+TEST(LuaInventory, a_case_variant_lua_suffix_is_a_problem_not_an_entry)
+{
+    const std::filesystem::path repo = find_repo_root();
+    ASSERT_FALSE(repo.empty());
+    const std::filesystem::path scratch =
+        make_unique_temp_dir("og_lua_case_");
+    ASSERT_FALSE(scratch.empty());
+    std::filesystem::create_directories(scratch / "repo");
+
+    write_text_file(scratch / "driver.py", std::string(R"PY(
+import pathlib
+import subprocess
+import sys
+import zipfile
+
+sys.path.insert(0, sys.argv[1])  # <repo>/scripts
+import lua_inventory
+
+# The scratch repository must not inherit the REAL repository's embedded-Lua
+# declarations (they name C++ files that do not exist here, which is its own
+# problem class); the raw-string sniffer is not under test.
+lua_inventory.embedded_lua_dispositions = lambda *a, **k: {}
+
+root = pathlib.Path(sys.argv[2])
+scripts = root / "packs" / "core" / "scripts"
+scripts.mkdir(parents=True)
+(scripts / "good.lua").write_text("return 1\n")
+(scripts / "PROBE.LUA").write_text("return 2\n")
+outside = root / "tests"
+outside.mkdir()
+(outside / "IGNORED.LUA").write_text("return 3\n")
+with zipfile.ZipFile(root / "camp.glad", "w") as z:
+    z.writestr("packs/z/scripts/member.lua", "return 4\n")
+    z.writestr("packs/z/scripts/SHOUT.LUA", "return 5\n")
+subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+scan = lua_inventory.scan(root)
+paths = sorted(s.path for s in scan.sources)
+assert "packs/core/scripts/good.lua" in paths, paths
+assert "camp.glad!packs/z/scripts/member.lua" in paths, paths
+assert not any("PROBE" in p for p in paths), paths       # engine-exact match
+assert not any("SHOUT" in p for p in paths), paths
+assert not any("IGNORED" in p for p in paths), paths
+text = "\n".join(scan.problems)
+assert "packs/core/scripts/PROBE.LUA" in text, text      # named, on disk
+assert "camp.glad!packs/z/scripts/SHOUT.LUA" in text, text  # named, member
+assert "will never load" in text, text
+assert "IGNORED" not in text, text  # outside shipped roots: still silent
+assert len(scan.problems) == 2, text
+print("SUFFIX-CASE-OK")
+)PY"));
+
+    const std::filesystem::path log = scratch / "driver.log";
+    const std::string cmd =
+        "python3 '" + (scratch / "driver.py").string() + "' '" +
+        (repo / "scripts").string() + "' '" + (scratch / "repo").string() +
+        "' > '" + log.string() + "' 2>&1";
+    const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+    const int exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+    const int exit_code = rc;
+#endif
+    const std::string output = read_text_file(log);
+    EXPECT_EQ(0, exit_code) << output;
+    EXPECT_NE(std::string::npos, output.find("SUFFIX-CASE-OK")) << output;
+    std::filesystem::remove_all(scratch);
 }

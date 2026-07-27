@@ -244,20 +244,14 @@ namespace {
 // "soldier.lua:87". A no-op unless the recorder is armed, and it does not
 // disturb the stack: the function stays exactly where it was.
 
-bool coverage_fn_info(lua_State* L, lua_Debug* ar)
-{
-    lua_pushvalue(L, -1);            // getinfo(">S") consumes this copy
-    return lua_getinfo(L, ">S", ar) != 0;
-}
-
-// The hook function on top of the stack was REGISTERED by a pack.
+// The hook function on top of the stack was REGISTERED by a pack. The
+// recorder resolves the closure's prototype to the generation that DEFINED
+// it, so the label lands on the right grid even when the chunk has since
+// been re-declared with different bytes. Does not disturb the stack.
 void coverage_declare_hook(lua_State* L, const std::string& label)
 {
     if (!coverage::enabled()) return;  // callers guard too; belt and braces
-    lua_Debug ar;
-    if (coverage_fn_info(L, &ar))
-        coverage::declare_function(std::string_view(ar.source, ar.srclen),
-                                   ar.linedefined, ar.lastlinedefined, label);
+    coverage::declare_function_closure(L, -1, label);
 }
 
 int walker_eq(lua_State* L)

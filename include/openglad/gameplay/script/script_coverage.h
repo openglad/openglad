@@ -71,11 +71,26 @@
 #include <string_view>
 #include <vector>
 
+// Forward declarations only: this header must stay includable without the
+// Lua headers (lua.h typedefs these exact struct names, so the declarations
+// are compatible whichever is seen first).
+struct lua_State;
+struct lua_Debug;
+
 namespace og::script::coverage {
 
 namespace detail {
 // Hot-path flag; see the determinism contract above. Never read by the sim.
 extern bool g_enabled;
+// Test seam (unconditional, like set_enabled_for_testing below — the game
+// libraries are not recompiled for the unit binaries): invoked after a
+// dump's temp file has been written in full and flushed, immediately before
+// the rename() that publishes it — the one instant where a kill used to be
+// able to leave a torn dump. The atomicity test points it at raise(SIGKILL)
+// inside a forked child and then checks that the published path still holds
+// the previous complete dump. Null in production and read only on the
+// per-flush path, never per hit.
+extern void (*g_between_dump_write_and_publish)();
 }  // namespace detail
 
 // True when pack-Lua coverage recording is armed for this process.
@@ -117,41 +132,78 @@ private:
 };
 
 // --- recording sites (all no-ops unless enabled()) -------------------------
-
-// A line of `chunk` executed. `chunk` is the name the source was loaded
-// under, e.g. "packs/core/scripts/soldier.lua".
 //
-// GENERATION BINDING. Every hit recorded here (and by record_function_line
-// below) is stored under (chunk, digest of the generation that was ACTIVE
-// when it executed) — the digest of the most recent declare_pack_source for
-// this chunk, or the empty marker when nothing was declared yet. It is not
-// enough to keep every declared generation and let the report guess: one
-// chunk name really does carry two different sources in one process (a
-// regenerated pack cache mounts both under one path), and a report that
-// credited a hit to EVERY declared generation whose grid contained the line
-// let a never-loaded byte-variant of a shipped script score 86/101 lines off
-// another file's execution. Declaration precedes execution in the engine
-// (og::resources::register_mounted_pack_scripts declares before any VM can
-// replay the script), so the active generation at record time IS the
-// generation the VM compiled.
-void record_line(std::string_view chunk, int line);
+// GENERATION BINDING IS PROTO-TRUE. A hit is credited to the generation
+// whose COMPILED CODE is executing, never to a chunk-level "most recently
+// declared" digest. The two genuinely diverge: one chunk name carries two
+// different sources in one process (a regenerated pack cache mounts both
+// under one path; a campaign .glad overrides a core script while a GameWorld
+// compiled from the old bytes is still alive), and a still-live closure of
+// the OLD generation keeps executing after the NEW one is declared. An
+// earlier revision bound hits to the most recent declaration and claimed
+// declaration order made that safe; it did not. A stale closure's hits went
+// to the newest digest — silently covering lines of a source that never ran
+// where the two grids overlapped (a dishonest pass), and hard-failing the
+// report with an off-grid error where they did not (a false failure). Both
+// from the one defect, both reproduced before the rewrite.
+//
+// So the binding happens where the truth is known: at COMPILE time.
+// bind_compiled_chunk() walks the freshly compiled closure's prototype tree
+// — the bytes and their digest are in hand at that moment — and registers
+// every Proto* against (chunk, sha256 of those bytes); the line hook then
+// resolves the EXECUTING function's Proto* through that registry and credits
+// the hit to its own generation, whatever has been declared since.
 
-// A pack registered a hook function whose prototype spans
-// (chunk, line_defined .. last_line_defined).
-// `label` identifies the registration, e.g. "living/core:soldier/do_special".
-// PURELY DIAGNOSTIC: it names the function in the report. Registration is
-// not coverage — the denominator comes from the static prototype walk and
-// the numerator from record_function_line below.
-void declare_function(std::string_view chunk, int line_defined,
-                      int last_line_defined, std::string_view label);
+// Register the closure luaL_loadbuffer just produced at stack slot `index`
+// from `source` under the chunk name `chunk`. Every prototype in its tree is
+// bound to (chunk, sha256(source)) — PROVIDED that exact pair has been
+// declared via declare_pack_source(), which is the engine's invariant
+// (og::resources::register_mounted_pack_scripts declares at mount time,
+// before any VM can compile the script). Compiling UNDECLARED bytes (test
+// Lua built from a string literal) instead scrubs any stale registry entry
+// its prototypes' addresses may have inherited, so their hits fall through
+// to the no-generation marker below.
+//
+// Why raw Proto addresses are sound keys, spelled out because the registry
+// never unregisters:
+//   * Lua's GC does not move objects, and a Proto stays reachable for as
+//     long as any closure over it does — so any prototype alive enough to
+//     EXECUTE still owns its address, and the entry written here for it is
+//     the entry the hook will find.
+//   * A collected Proto's address can be reused only after every closure
+//     over it became unreachable, i.e. after that generation could no longer
+//     execute. Its recorded hits already sit in the store keyed by (chunk,
+//     digest) — nothing reads the registry backwards — so overwriting the
+//     dead entry with the new occupant's binding is correct, not a race.
+//   * The remaining hazard would be reuse by a prototype that never gets a
+//     binding (undeclared test Lua). Both ScriptHost compile sites funnel
+//     through this function, and an undeclared compile ERASES its
+//     prototypes' addresses rather than skipping them, so a stale entry
+//     cannot shadow live unregistered code.
+void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
+                         std::string_view source);
 
-// A line belonging to the function spanning
-// (chunk, line_defined .. last_line_defined) just executed — i.e. that
-// function's body really ran. Called from the same line hook that feeds
-// record_line, off the same lua_getinfo, which is why the two metrics cannot
-// disagree about whether code ran.
-void record_function_line(std::string_view chunk, int line_defined,
-                          int last_line_defined);
+// The LUA_MASKLINE hook body: a line of the currently executing function
+// just ran. One call feeds BOTH metrics — the line hit, and the executing
+// prototype's body-ran evidence — off the same event, which is why the two
+// cannot disagree about whether code ran. The executing function's Proto is
+// resolved through the registry bind_compiled_chunk maintains and the hit is
+// credited to ITS generation. When the prototype is unregistered (test Lua
+// compiled with no matching declaration), the hit is recorded under the
+// chunk name Lua reports with the no-generation marker; the report measures
+// such a chunk only when it is not under packs/ — a packs/ chunk executing
+// with no registered prototype stays the report's hard error.
+void record_hook_line(lua_State* L, lua_Debug* ar);
+
+// A pack registered the closure at stack slot `index` as a hook under
+// `label`, e.g. "living/core:soldier/do_special". PURELY DIAGNOSTIC: it
+// names the function in the report. Registration is not coverage — the
+// denominator comes from the static prototype walk and the numerator from
+// record_hook_line above. The closure's prototype resolves through the same
+// registry, so the label (and the zero-hit record this creates for a
+// registered-but-never-entered hook) lands on the generation that DEFINED
+// the function, not on whichever generation was declared last.
+void declare_function_closure(lua_State* L, int index, std::string_view label);
 
 // A script the ENGINE loaded, recorded with its source text and the real
 // directory or archive it came from. This is the evidence half of the
@@ -171,10 +223,13 @@ void record_function_line(std::string_view chunk, int line_defined,
 // against a different source's grid. Both declarations are now kept and both
 // appear in the dump.
 //
-// Declaring also makes this digest the chunk's ACTIVE generation: every hit
-// recorded from here on is stored — and dumped — under it, until the chunk
-// is re-declared with different bytes (see record_line above). Re-declaring
-// the same bytes (every level load does) changes nothing.
+// Declaring is also what makes a later compile of these bytes BINDABLE:
+// bind_compiled_chunk() consults the declared set and registers a compiled
+// closure's prototypes only against a (chunk, digest) pair declared here. A
+// declaration never rebinds anything retroactively — prototypes compiled
+// from OTHER bytes keep crediting their own generation (see the recording
+// sites above). Re-declaring the same bytes (every level load does) changes
+// nothing.
 //
 // `origin` is diagnostic only — it names the real directory or archive
 // PhysFS resolved the script from, which is what a "these bytes are not
@@ -191,11 +246,12 @@ void declare_pack_source(std::string_view chunk, std::string_view source,
 
 struct LineHit {
     std::string chunk;
-    // sha256 of the generation that was active when the hit executed; empty
-    // when the chunk had no declared source at that moment (test Lua compiled
-    // from a string literal — a mounted pack script is always declared before
-    // it can run). A hit belongs to exactly ONE (chunk, digest); the report
-    // never has to guess which declared generation executed.
+    // sha256 of the generation whose compiled prototype recorded the hit;
+    // empty when the executing code was compiled from bytes no declaration
+    // covers (test Lua compiled from a string literal — a mounted pack
+    // script is always declared before the engine can compile it). A hit
+    // belongs to exactly ONE (chunk, digest); the report never has to guess
+    // which generation executed.
     std::string digest;
     int line = 0;
     std::uint64_t count = 0;
@@ -239,16 +295,21 @@ std::vector<FunctionRecord> function_records();
 std::vector<PackSourceRecord> pack_sources();
 
 // Write the raw dump (see scripts/coverage/README.md for the format) to
-// `path`. Returns false if the file could not be written.
+// `path`. Returns false if the file could not be written. ATOMIC: the dump
+// is streamed to a temp sibling and rename()d over `path`, exactly like its
+// own sidecars, so a reader — or a SIGKILL — at any instant sees either the
+// previous complete dump or the new complete dump, never a torn prefix that
+// the report would read as tampering.
 bool write_raw_report(const std::string& path);
 
 // Write one uniquely-named dump into output_dir(). No-op when the recorder
 // is off or no output directory was configured. Called automatically at
 // process exit — but a harness that ends with _exit() (tests/integration_main
 // .cpp does, which is why it also calls __gcov_dump by hand) skips static
-// destructors and must call this itself. Repeated calls rewrite the SAME
-// file, so an explicit flush followed by the exit-time one cannot
-// double-count.
+// destructors and must call this itself. Repeated calls target the SAME
+// file, and each call publishes atomically (see write_raw_report), so an
+// explicit flush followed by the exit-time one can neither double-count nor
+// re-truncate a complete dump into a torn one.
 void flush_to_output_dir();
 
 // --- static analysis -------------------------------------------------------

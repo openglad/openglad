@@ -48,16 +48,22 @@ hits on the real file's uncovered lines took archmage from 362/382 to 382/382
 without a line of it running. Now those hits bind to the stub's digest, the
 stub's bytes are not repository content, and the run stops.
 
-AND TO THE GENERATION THAT WAS EXECUTING. One chunk name can carry two
-different sources within one process (a regenerated pack cache mounts both
-generations under one path), and the recorder binds every hit to the
-generation that was active when it executed — each L/F record carries that
-generation's digest. A hit therefore belongs to exactly ONE (chunk, digest).
-The alternative this replaced — credit a hit to every declared generation
-whose grid contains the line, with a warning — was a demonstrated dishonest
-pass: declaring a never-loaded byte-variant of core druid.lua alongside the
-real file let the real file's execution mark the variant 86/101 covered, and
-the gate's honest FAIL became a PASS.
+AND TO THE GENERATION THAT WAS EXECUTING — resolved from the code itself,
+not from declaration order. One chunk name can carry two different sources
+within one process (a regenerated pack cache mounts both generations under
+one path; a campaign .glad overrides a core script while a world compiled
+from the old bytes is still alive). The recorder maps every compiled
+prototype to the (chunk, digest) it was compiled from, at compile time, and
+credits each hit to the EXECUTING prototype's generation — so a stale
+closure that keeps running after a re-declaration still credits its own
+bytes, and each L/F record carries that generation's digest. A hit therefore
+belongs to exactly ONE (chunk, digest). Two alternatives died on the way
+here. Crediting every declared generation whose grid contains the line was a
+demonstrated dishonest pass: a never-loaded byte-variant of core druid.lua
+scored 86/101 off the real file's execution. Crediting the most recently
+DECLARED digest was both a dishonest pass (a stale closure's hits marked the
+new generation's overlapping lines covered) and a false failure (where the
+grids diverged, the same hits landed off-grid and stopped the run).
 
 Outputs (into --output-dir)
 ---------------------------
@@ -98,10 +104,10 @@ RAW_SUFFIX = ".luacov"
 # recorder pooled them per chunk name) and are refused, not reinterpreted.
 DUMP_HEADER = "# openglad-lua-coverage 5"
 
-# L/F digest field meaning "no declared source was active when this hit was
-# recorded" — test Lua compiled from a string literal. A mounted pack script
-# is always declared before it can run, so this marker on a packs/ chunk is
-# a hard error.
+# L/F digest field meaning "the executing code was compiled from bytes no
+# declaration covers" — test Lua compiled from a string literal. A mounted
+# pack script is always declared before the engine can compile it, so this
+# marker on a packs/ chunk is a hard error.
 NO_GENERATION = "-"
 
 # Chunk names the engine loads pack scripts under always start here (see
@@ -558,8 +564,9 @@ class Dump:
     question the gate asks is "did the process that recorded these hits
     declare this chunk, and with which bytes" — a chunk name is not an
     identity, (chunk, sha256 of the source) is. Every L/F record carries the
-    digest of the generation that was ACTIVE when it executed (the recorder
-    binds hits at record time), so a hit belongs to exactly one generation
+    digest of the generation whose COMPILED PROTOTYPE executed (the recorder
+    binds each prototype to its source at compile time and resolves the
+    executing one at record time), so a hit belongs to exactly one generation
     and this report never guesses.
     """
 
@@ -824,15 +831,19 @@ def attribute_dumps(
     .glad is staged into a temp directory before mounting, so shipped and
     synthetic packs look identical from that angle. The bytes do not.
 
-    A hit belongs to exactly ONE (chunk, digest): the recorder binds each hit
-    to the generation that was active when it executed, and the L/F records
-    carry that digest. One chunk name can still carry several sources in one
-    process (a regenerated pack cache mounts two generations under one path)
-    — each generation's hits arrive under its own digest and are scored only
-    against its own grid. There is no "credit every declared generation whose
-    grid contains the line" fallback any more: that guess let execution of
-    one file's bytes mark a never-loaded byte-variant of another file as 85%
-    covered, turning a gate FAIL into a PASS with only a warning.
+    A hit belongs to exactly ONE (chunk, digest): the recorder binds every
+    compiled prototype to the source it was compiled from and credits each
+    hit to the EXECUTING prototype's generation, and the L/F records carry
+    that digest. One chunk name can still carry several sources in one
+    process (a regenerated pack cache mounts two generations under one path;
+    a campaign override re-declares a chunk while closures of the old bytes
+    are still alive) — each generation's hits arrive under its own digest
+    and are scored only against its own grid, including hits a stale closure
+    records AFTER the re-declaration. There is no "credit every declared
+    generation whose grid contains the line" fallback any more: that guess
+    let execution of one file's bytes mark a never-loaded byte-variant of
+    another file as 85% covered, turning a gate FAIL into a PASS with only a
+    warning.
 
     A declared source whose bytes are nowhere in the repository is a HARD
     FAILURE unless it is a listed runtime-only fixture. So is a hit under a
@@ -873,8 +884,8 @@ def attribute_dumps(
             unmeasured case is either fine (test Lua) or already a recorded
             error — nothing falls between:
               * digest "" on a non-pack chunk: test Lua, unmeasured;
-              * digest "" on a packs/ chunk: the engine ran a pack script
-                with no declared source active — error;
+              * digest "" on a packs/ chunk: the engine ran pack code whose
+                compiled bytes no declaration covers — error;
               * a digest this dump never declared for this chunk: hits bound
                 to a source their own process never declared — error;
               * a declared fixture digest: acknowledged hole, observed via
@@ -958,9 +969,11 @@ def attribute_dumps(
             f"their own process never declared: {listed}. "
             "og::resources::register_mounted_pack_scripts must call "
             "declare_pack_source for every script it registers, BEFORE the "
-            "script can run — a declaration from some OTHER process does "
-            "not say what THIS process compiled, and a generation the dump "
-            "never declared has no bytes to score against"
+            "engine can compile it (the recorder binds prototypes to their "
+            "generation at compile time) — a declaration from some OTHER "
+            "process does not say what THIS process compiled, and a "
+            "generation the dump never declared has no bytes to score "
+            "against"
         )
     if off_grid:
         errors.append(
