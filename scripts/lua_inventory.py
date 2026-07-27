@@ -63,8 +63,10 @@ Three places, because "a .lua file in the tree" is not the whole story:
      and enumerating a subset just moves the hole somewhere a glob does not
      look.
   2. `*.lua` entries inside `*.glad` campaign archives, wherever the archive
-     sits. The engine mounts campaign packs straight out of the archive, and
-     one whole boss script ships only that way.
+     sits — `.glad` itself matched exactly and case-sensitively, like every
+     other spelling the engine tests. The engine mounts campaign packs
+     straight out of the archive, and one whole boss script ships only that
+     way.
   3. Lua inside C++ raw string literals delimited `R"LUA( ... )LUA"`, in a
      file that `scripts/coverage/embedded_lua.txt` declares `shipped`. The
      showcase pack is written into a generated `.glad` from one of these and
@@ -76,6 +78,26 @@ bytes ".lua") — and a case-variant (`PROBE.LUA`) under a shipped root, or as
 an archive member, is a collected PROBLEM: the engine can never load it, so
 admitting it (as a lowercasing enumeration once did) made an unfixable 0%
 denominator entry, and skipping it silently would hide the typo.
+
+The same engine-exact rule covers every OTHER case-sensitive spelling on the
+way to a script, each a collected problem rather than a silent admit or a
+silent skip:
+
+  * the `.glad` suffix itself (`PROBE.GLAD`): the engine's campaign filter
+    and builtin restore (src/resources/io/platform_io_common.cpp) match
+    ".glad" byte-for-byte and every mount path is built as `<id>.glad`, so
+    a case-variant archive's members used to enter the denominator as
+    entries nothing could ever load — an unfixable red;
+  * a top-level directory that case-folds to a shipped root without
+    equaling it (`Packs/`): correctly OUT of the denominator — PhysFS on
+    the gate platform is case-sensitive, the engine cannot mount it — but a
+    case-insensitive dev filesystem (macOS/Windows) WOULD load it while
+    this gate never measures it, so the spelling cannot stay silent;
+  * a case-variant `scripts/` segment inside a pack (`packs/x/Scripts/`):
+    still a denominator entry (any `.lua` under a shipped root is — see
+    below), but the engine mounts only the literal lowercase
+    `packs/<pack>/scripts/`, so on the gate platform that entry is an
+    uncoverable red a case-insensitive dev filesystem hides.
 
 THE FIRST ONE HAS A DELIBERATE BOUNDARY
 ---------------------------------------
@@ -672,6 +694,59 @@ def _declaration_problems(
                 )
 
 
+def _case_variant_shipped_root(top: str) -> Optional[str]:
+    """The shipped root `top` is a case-variant of, or None.
+
+    Exact membership stays the caller's test (byte equality against
+    SHIPPED_LUA_ROOTS — PhysFS on the gate platform is case-sensitive and so
+    is the git enumeration). This answers the follow-up question for a
+    top-level directory that is NOT a shipped root: would it have been one
+    under case folding? Such a directory is correctly absent from the
+    denominator — the engine cannot mount it on the gate platform — but a
+    case-insensitive dev filesystem (macOS/Windows) WOULD load it while this
+    gate never measures it, so the spelling is a collected problem, never a
+    silent exclusion.
+    """
+    if top in SHIPPED_LUA_ROOTS:
+        return None
+    fold = top.casefold()
+    for root in SHIPPED_LUA_ROOTS:
+        if fold == root.casefold():
+            return root
+    return None
+
+
+def _shipped_root_case_problem(rel: str, top: str, root: str) -> str:
+    return (
+        f"{rel}: will not ship on the gate platform — shipped roots are "
+        f"matched case-sensitively and '{root}/' is the real one (PhysFS "
+        "and the git enumeration both distinguish case), so the engine "
+        f"never mounts '{top}/' there. A case-insensitive dev filesystem "
+        "(macOS/Windows) WOULD load it, hiding the typo while this gate "
+        "never measures the file: rename the directory"
+    )
+
+
+def _case_variant_scripts_segment(rel: str) -> Optional[str]:
+    """The case-variant `scripts` path segment in `rel`, or None.
+
+    The engine mounts pack scripts from the literal lowercase
+    `packs/<pack>/scripts/` only (src/resources/packs.cpp builds that path
+    byte-for-byte). Any `.lua` under a shipped root still enters the
+    denominator — the deliberate no-narrower-pattern policy in the module
+    docstring — so a `packs/x/Scripts/` file would sit there as an entry no
+    test on the gate platform could ever cover, while a case-insensitive dev
+    filesystem loads it happily. That spelling is a collected problem; the
+    entry itself stays, because problems already stop the gate.
+    """
+    parts = rel.split("/")
+    if len(parts) >= 4 and parts[0] == "packs":
+        seg = parts[2]
+        if seg != "scripts" and seg.casefold() == "scripts":
+            return seg
+    return None
+
+
 def _collect(
     repo_root: pathlib.Path,
     files: Sequence[pathlib.Path],
@@ -706,10 +781,25 @@ def _collect(
         # collected problem.
         if suffix == ".lua":
             if top not in SHIPPED_LUA_ROOTS:
+                variant_root = _case_variant_shipped_root(top)
+                if variant_root is not None:
+                    problems.append(
+                        _shipped_root_case_problem(rel, top, variant_root))
                 # tests/, scripts/, and everywhere else: not shipped, never
                 # read. A runtime mount of such a file is owned by the
                 # report's content-hash poison pills. See the docstring.
                 continue
+            seg = _case_variant_scripts_segment(rel)
+            if seg is not None:
+                problems.append(
+                    f"{rel}: the engine mounts pack scripts only from the "
+                    "literal lowercase 'packs/<pack>/scripts/' "
+                    f"(src/resources/packs.cpp), so '{seg}/' never loads on "
+                    "the gate platform and this denominator entry can never "
+                    "be covered there — while a case-insensitive dev "
+                    "filesystem WOULD load it, hiding the typo: rename the "
+                    "directory to 'scripts'"
+                )
             try:
                 found.append((KIND_FILE, rel, path.read_bytes()))
             except OSError as exc:
@@ -728,9 +818,16 @@ def _collect(
                     "denominator entry and not a silent skip: rename it to "
                     "'.lua' or delete it"
                 )
+            else:
+                variant_root = _case_variant_shipped_root(top)
+                if variant_root is not None:
+                    problems.append(
+                        _shipped_root_case_problem(rel, top, variant_root))
             # Outside the shipped roots the file does not ship under ANY
-            # spelling; it stays unread, exactly like its lowercase twin.
-        elif suffix.lower() == ".glad":
+            # spelling; it stays unread, exactly like its lowercase twin —
+            # except that a case-variant ROOT is itself named above, since a
+            # case-insensitive dev filesystem would ship it.
+        elif suffix == ".glad":
             try:
                 with zipfile.ZipFile(path) as archive:
                     for entry in sorted(archive.namelist()):
@@ -757,6 +854,24 @@ def _collect(
                     "an unopenable or corrupt archive would otherwise "
                     "silently shrink the coverage denominator"
                 )
+        elif suffix.lower() == ".glad":
+            # The exact asymmetry the .lua rule above closed, closed for the
+            # archive suffix too: membership is the ENGINE'S — ".glad"
+            # byte-for-byte (the campaign filter and builtin restore in
+            # src/resources/io/platform_io_common.cpp are case-sensitive,
+            # and every mount path is built as "<id>.glad") — so a
+            # case-variant archive's members are NOT denominator entries
+            # (a lowercasing match once admitted them: unloadable, therefore
+            # uncoverable, an unfixable red), and the archive itself is a
+            # named problem rather than a silent skip.
+            problems.append(
+                f"{rel}: will never load — campaign archives require a "
+                "lowercase '.glad' suffix (the engine's campaign filter and "
+                "builtin restore in src/resources/io/platform_io_common.cpp "
+                "are case-sensitive). A case-variant archive is a typo, not "
+                "a source of denominator entries and not a silent skip: "
+                "rename it to '.glad' or delete it"
+            )
         elif suffix.lower() in CXX_SUFFIXES:
             if top not in PRODUCT_DIRS:
                 continue  # tests/ etc.: exempt by construction, see docstring

@@ -485,10 +485,12 @@ bool ScriptHost::run_chunk(std::string_view chunk_name,
     }
     // The freshly compiled closure is on the stack: bind its prototype tree
     // to THIS generation of the chunk, so every future hit inside it credits
-    // the bytes that are actually executing (see script_coverage.h). One
-    // bool load when the recorder is off.
-    if (coverage::enabled())
-        coverage::bind_compiled_chunk(L, -1, chunk_name, source);
+    // the bytes that are actually executing. Called UNCONDITIONALLY — with
+    // the recorder off it only scrubs stale registry entries for Proto
+    // addresses this compile may have reused, which the binding's soundness
+    // argument requires of every compile, enabled or not (see
+    // script_coverage.h).
+    coverage::bind_compiled_chunk(L, -1, chunk_name, source);
     impl_->push_environment(env_key);
     lua_setupvalue(L, -2, 1);  // set the chunk's _ENV
     return impl_->protected_call(name.c_str(), 0, 0);
@@ -512,9 +514,8 @@ bool eval_push(ScriptHost::Impl* impl, std::string_view expr)
     // stale registry entries whose Proto addresses this compile may have
     // reused, which the generation binding's soundness argument relies on
     // (see bind_compiled_chunk in script_coverage.h). Both ScriptHost
-    // compile sites must pass through it.
-    if (coverage::enabled())
-        coverage::bind_compiled_chunk(L, -1, "=eval", src);
+    // compile sites must pass through it, recorder on or off.
+    coverage::bind_compiled_chunk(L, -1, "=eval", src);
     impl->push_new_environment();
     lua_setupvalue(L, -2, 1);
     return impl->protected_call("eval", 0, 1);

@@ -61,6 +61,13 @@
 //     LUA_MASKCOUNT mask, same count — so the VM takes the same code path;
 //   * every recording site is behind a single load of the `g_enabled`
 //     global plus a perfectly-predicted branch, none of it per-instruction;
+//   * the ONE deliberate exception is per-COMPILE, not per-instruction:
+//     bind_compiled_chunk() maintains the Proto registry even when off,
+//     because a compile the registry never saw can reuse a freed Proto
+//     address, and a later enable would then credit fresh code to a dead
+//     generation. Disabled, that maintenance is pure map erasure — on a map
+//     that stays empty in a process that never enabled recording — with no
+//     digesting and no recording (see bind_compiled_chunk below);
 //   * nothing is allocated, opened or written.
 // Even with the recorder ON nothing here is visible to script code or to
 // sim state, so a coverage run stays deterministic too — it is only slower.
@@ -131,7 +138,11 @@ private:
     bool previously_enabled_ = false;
 };
 
-// --- recording sites (all no-ops unless enabled()) -------------------------
+// --- recording sites -------------------------------------------------------
+//
+// All no-ops unless enabled(), with ONE carve-out: bind_compiled_chunk's
+// registry maintenance runs unconditionally (its declaration below states
+// the design and the cost bound).
 //
 // GENERATION BINDING IS PROTO-TRUE. A hit is credited to the generation
 // whose COMPILED CODE is executing, never to a chunk-level "most recently
@@ -180,6 +191,21 @@ private:
 //     through this function, and an undeclared compile ERASES its
 //     prototypes' addresses rather than skipping them, so a stale entry
 //     cannot shadow live unregistered code.
+//
+// UNCONDITIONAL, unlike every other recording site: the registry
+// maintenance above runs whether or not the recorder is enabled. That is
+// the chosen design for the disable/re-enable hazard — with the maintenance
+// gated on enabled(), a chunk compiled while recording was off was neither
+// registered nor scrubbed, so a Proto address freed under a dead binding
+// and reused by that compile RESURRECTED the dead generation the moment
+// recording came back on: fresh, undeclared code executed and its hits were
+// credited to a digest whose code no longer existed. (In production, arming
+// is process-lifetime — only the test seam can toggle — but the invariant
+// must not depend on that.) The off-path cost is bounded to make
+// zero-cost-when-off stay honest: per compile, a mutex acquire plus one map
+// erasure per prototype in the chunk — erasures against a map that STAYS
+// EMPTY in a process that never enabled recording — never a digest, never
+// an insertion, no allocation growth.
 void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
                          std::string_view source);
 

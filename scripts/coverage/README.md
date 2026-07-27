@@ -234,9 +234,16 @@ never a compile flag. That is deliberate: the sim is parity-gated to
 byte-exactness and shares this very hook with the budget, so the binary the
 parity gate exercises has to be the binary that ships. With the variable
 unset, `lua_sethook` is called with the identical function pointer, mask and
-count it used before any of this existed; the whole feature costs one load of
-a global `bool` per host entry. `og_test_parity` passes 188/188 both with the
-recorder compiled in and disabled and with it armed.
+count it used before any of this existed; the hook selection costs one load
+of a global `bool` per host entry, and nothing runs per instruction or per
+line. The one disarmed cost besides that load is per **compile**:
+`bind_compiled_chunk` maintains its Proto registry unconditionally — off, a
+mutex acquire plus erasures against a map that stays empty in a process that
+never armed — because a compile the registry never saw could otherwise reuse
+a freed Proto address and resurrect a dead generation's binding across an
+enable transition (see `script_coverage.h`). None of it is visible to script
+code or to sim state. `og_test_parity` passes 188/188 both with the recorder
+compiled in and disabled and with it armed.
 
 Each process writes one `*.luacov` dump into the directory at exit. Harnesses
 that end in `_exit()` skip static destructors, so `tests/integration_main.cpp`
@@ -588,6 +595,17 @@ Three kinds of entry, and nothing else:
   can never load it, so admitting it (as a lowercasing enumeration once did)
   created a denominator entry no test could ever cover — an unfixable red —
   while skipping it silently would hide the typo;
+* every other spelling the engine tests is matched the same way, each
+  case-variant a named problem: the `.glad` suffix itself (`PROBE.GLAD` —
+  the campaign filter and builtin restore in
+  `src/resources/io/platform_io_common.cpp` are case-sensitive, so a
+  case-variant archive contributes no entries), a top-level directory that
+  case-folds to a shipped root without equaling it (`Packs/` — excluded,
+  engine-true, but flagged because a case-insensitive dev filesystem would
+  load it while this gate never measures it), and a case-variant
+  `scripts/` segment inside a pack (`packs/x/Scripts/` — still an entry,
+  per the no-narrower-pattern rule above, but one the gate platform's
+  engine can never cover);
 * `R"LUA( ... )LUA"` literals in product C++ (`src/`, `tools/`, `include/`)
   declared `shipped` in `embedded_lua.txt` (next subsection).
 

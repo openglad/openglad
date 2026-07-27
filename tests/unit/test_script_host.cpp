@@ -2351,3 +2351,285 @@ print("SUFFIX-CASE-OK")
     EXPECT_NE(std::string::npos, output.find("SUFFIX-CASE-OK")) << output;
     std::filesystem::remove_all(scratch);
 }
+
+// P7-A: a compile while the recorder was DISABLED used to skip
+// bind_compiled_chunk entirely — neither registering nor scrubbing — so a
+// Proto address that died under a declared generation's binding and was
+// reused by that compile RESURRECTED the dead generation once recording was
+// re-enabled: fresh, undeclared test Lua executed and its hits were credited
+// to a digest whose code no longer existed anywhere (the attack measured 181
+// such hits with this exact toggle sequence). Production arming is
+// process-lifetime, so only the test seam can toggle — but the invariant
+// must not depend on that. The registry maintenance is unconditional on the
+// compile path now; this repeats the attacker's sequence and requires every
+// resulting hit to carry the no-generation marker.
+TEST(ScriptCoverage, a_compile_while_disabled_scrubs_stale_proto_bindings)
+{
+    // Identical sources and equal-length chunk names keep the phase-B
+    // compile's allocations the same sizes as the freed phase-A blocks, so
+    // the allocator hands the dead addresses straight back (LIFO reuse).
+    const std::string body =
+        "local function helper_a(x)\n"
+        "  local t = 0\n"
+        "  for i = 1, x do\n"
+        "    t = t + i\n"
+        "  end\n"
+        "  return t\n"
+        "end\n"
+        "local function helper_b(x)\n"
+        "  local t = 1\n"
+        "  for i = 1, x do\n"
+        "    t = t * 2\n"
+        "  end\n"
+        "  return t\n"
+        "end\n"
+        "function probe_run()\n"
+        "  local a = helper_a(9)\n"
+        "  local b = helper_b(9)\n"
+        "  return a + b\n"
+        "end\n"
+        "return 0\n";
+    const std::string chunk_a = "probe/gen_a.lua";
+    const std::string chunk_b = "probe/gen_b.lua";  // same length as chunk_a
+
+    // host2 exists BEFORE host1's prototypes are freed, so host2's own
+    // construction cannot consume the freed blocks first.
+    auto host1 = std::make_unique<ScriptHost>();
+    ScriptHost host2;
+
+    const std::string dead_digest = cov::sha256_hex(body);
+    {
+        cov::ScopedRecording recording;
+        cov::declare_pack_source(chunk_a, body, "p7a-toggle-probe");
+        ASSERT_TRUE(host1->run_chunk(chunk_a, body, "env-a"));
+        // Prove the declared generation really bound: its own execution
+        // recorded hits under (chunk_a, digest).
+        bool declared_hit = false;
+        for (const auto& hit : cov::line_hits()) {
+            declared_hit |=
+                (hit.chunk == chunk_a && hit.digest == dead_digest);
+        }
+        ASSERT_TRUE(declared_hit);
+    }  // scoped store discarded; the Proto registry deliberately persists
+
+    // Free every prototype the phase-A binding registered.
+    host1.reset();
+
+    // Recorder OFF — the state P7-A exploits: compile the same bytes,
+    // undeclared now, over the freed addresses. The old code skipped the
+    // registry entirely here.
+    const bool was_enabled = cov::enabled();
+    cov::set_enabled_for_testing(false);
+    ASSERT_TRUE(host2.run_chunk(chunk_b, body, "env-b"));
+    cov::set_enabled_for_testing(was_enabled);
+
+    // Recorder back ON: execute the phase-B functions. Every hit must carry
+    // the no-generation marker — none may resurrect the dead (chunk_a,
+    // digest) generation.
+    {
+        cov::ScopedRecording recording;
+        ASSERT_TRUE(
+            host2.run_chunk("probe/runner.lua", "return probe_run()",
+                            "env-b"));
+        const std::vector<cov::LineHit> hits = cov::line_hits();
+        ASSERT_FALSE(hits.empty());
+        for (const auto& hit : hits) {
+            EXPECT_EQ(std::string(), hit.digest)
+                << "hit on " << hit.chunk << ":" << hit.line
+                << " was credited to a generation instead of the "
+                   "no-generation marker";
+            EXPECT_NE(chunk_a, hit.chunk)
+                << "a dead generation's chunk resurfaced";
+        }
+        for (const auto& fn : cov::function_records()) {
+            EXPECT_EQ(std::string(), fn.digest)
+                << "function record on " << fn.chunk << " spanning ["
+                << fn.line_defined << "," << fn.last_line_defined
+                << "] was credited to a generation";
+        }
+    }
+}
+
+// P7-B: the engine loads only lowercase ".glad" (the campaign filter and
+// builtin restore in src/resources/io/platform_io_common.cpp compare
+// case-sensitively, and every mount path is built as "<id>.glad"), but the
+// inventory matched the ARCHIVE suffix case-insensitively — the exact
+// asymmetry the .lua rule above closed — so a case-variant archive's .lua
+// members entered the denominator as entries nothing could ever load: an
+// unfixable red, with problem_count still 0. Archive membership is now the
+// engine's, byte-for-byte, and the case-variant archive is a named
+// enumeration problem wherever it sits. Runs the real
+// scripts/lua_inventory.py over a scratch git repository.
+TEST(LuaInventory, a_case_variant_glad_suffix_is_a_problem_not_a_denominator)
+{
+    const std::filesystem::path repo = find_repo_root();
+    ASSERT_FALSE(repo.empty());
+    const std::filesystem::path scratch =
+        make_unique_temp_dir("og_glad_case_");
+    ASSERT_FALSE(scratch.empty());
+    std::filesystem::create_directories(scratch / "repo");
+
+    write_text_file(scratch / "driver.py", std::string(R"PY(
+import pathlib
+import subprocess
+import sys
+import zipfile
+
+sys.path.insert(0, sys.argv[1])  # <repo>/scripts
+import lua_inventory
+
+# The scratch repository must not inherit the REAL repository's embedded-Lua
+# declarations; the raw-string sniffer is not under test.
+lua_inventory.embedded_lua_dispositions = lambda *a, **k: {}
+
+root = pathlib.Path(sys.argv[2])
+scripts = root / "packs" / "core" / "scripts"
+scripts.mkdir(parents=True)
+(scripts / "good.lua").write_text("return 1\n")
+with zipfile.ZipFile(root / "camp.glad", "w") as z:
+    z.writestr("packs/z/scripts/member.lua", "return 4\n")
+builtin = root / "builtin"
+builtin.mkdir()
+with zipfile.ZipFile(builtin / "PROBE.GLAD", "w") as z:
+    z.writestr("packs/p/scripts/hidden.lua", "return 9\n")
+with zipfile.ZipFile(root / "probe2.Glad", "w") as z:
+    z.writestr("packs/q/scripts/hidden2.lua", "return 8\n")
+subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+scan = lua_inventory.scan(root)
+paths = sorted(s.path for s in scan.sources)
+assert "packs/core/scripts/good.lua" in paths, paths
+assert "camp.glad!packs/z/scripts/member.lua" in paths, paths  # exact: kept
+assert not any("hidden" in p for p in paths), paths  # members: never read
+assert not any("PROBE" in p or "probe2" in p for p in paths), paths
+text = "\n".join(scan.problems)
+assert "builtin/PROBE.GLAD" in text, text          # named, nested location
+assert "probe2.Glad" in text, text                 # named, repo root
+assert "will never load" in text, text
+assert "'.glad'" in text, text
+assert len(scan.problems) == 2, text
+print("GLAD-CASE-OK")
+)PY"));
+
+    const std::filesystem::path log = scratch / "driver.log";
+    const std::string cmd =
+        "python3 '" + (scratch / "driver.py").string() + "' '" +
+        (repo / "scripts").string() + "' '" + (scratch / "repo").string() +
+        "' > '" + log.string() + "' 2>&1";
+    const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+    const int exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+    const int exit_code = rc;
+#endif
+    const std::string output = read_text_file(log);
+    EXPECT_EQ(0, exit_code) << output;
+    EXPECT_NE(std::string::npos, output.find("GLAD-CASE-OK")) << output;
+    std::filesystem::remove_all(scratch);
+}
+
+// P7-C: a top-level directory that case-folds to a shipped root without
+// equaling it (Packs/) was silently excluded — correct membership for the
+// gate platform, where PhysFS is case-sensitive and the engine cannot load
+// it either, but a case-insensitive dev filesystem (macOS/Windows) WOULD
+// load it while the Linux gate never measures it. Membership stays
+// case-sensitive (engine-true); the spelling is now a named enumeration
+// problem. Same treatment for a case-variant scripts/ segment inside a pack
+// (packs/x/Scripts/), which — per the no-narrower-pattern policy — stays a
+// denominator entry, one that could never be covered on the gate platform.
+// Runs the real scripts/lua_inventory.py over a scratch git repository.
+TEST(LuaInventory, a_case_variant_shipped_root_is_a_problem_not_a_silence)
+{
+    const std::filesystem::path repo = find_repo_root();
+    ASSERT_FALSE(repo.empty());
+    const std::filesystem::path scratch =
+        make_unique_temp_dir("og_root_case_");
+    ASSERT_FALSE(scratch.empty());
+    std::filesystem::create_directories(scratch / "repo");
+
+    write_text_file(scratch / "driver.py", std::string(R"PY(
+import pathlib
+import subprocess
+import sys
+
+sys.path.insert(0, sys.argv[1])  # <repo>/scripts
+import lua_inventory
+
+lua_inventory.embedded_lua_dispositions = lambda *a, **k: {}
+
+root = pathlib.Path(sys.argv[2])
+
+# Case-sensitivity probe: the full matrix needs variant spellings to coexist
+# with the real ones, which only a case-sensitive filesystem (the gate
+# platform) can hold. On a case-insensitive dev filesystem exercise the
+# reduced shape: the variant root alone, with no lowercase twin.
+(root / "CaseProbe").mkdir()
+case_sensitive = not (root / "caseprobe").exists()
+(root / "CaseProbe").rmdir()
+
+if case_sensitive:
+    scripts = root / "packs" / "core" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "good.lua").write_text("return 1\n")
+    shadow = root / "Packs" / "core" / "scripts"
+    shadow.mkdir(parents=True)
+    (shadow / "shadow.lua").write_text("return 2\n")
+    docs = root / "Docs" / "modding"
+    docs.mkdir(parents=True)
+    (docs / "example.lua").write_text("return 3\n")
+    seg = root / "packs" / "core" / "Scripts"
+    seg.mkdir()
+    (seg / "misplaced.lua").write_text("return 4\n")
+    other = root / "unrelated"
+    other.mkdir()
+    (other / "junk.lua").write_text("return 5\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+    scan = lua_inventory.scan(root)
+    paths = sorted(s.path for s in scan.sources)
+    assert "packs/core/scripts/good.lua" in paths, paths
+    # Engine-true membership: the case-variant roots' files stay OUT...
+    assert not any(p.startswith(("Packs/", "Docs/")) for p in paths), paths
+    # ...while the case-variant scripts/ segment stays IN (any .lua under a
+    # shipped root is an entry — the no-narrower-pattern policy).
+    assert "packs/core/Scripts/misplaced.lua" in paths, paths
+    assert not any("junk" in p for p in paths), paths
+    text = "\n".join(scan.problems)
+    assert "Packs/core/scripts/shadow.lua" in text, text
+    assert "Docs/modding/example.lua" in text, text
+    assert "will not ship" in text, text
+    assert "packs/core/Scripts/misplaced.lua" in text, text
+    assert "rename the directory" in text, text
+    assert "unrelated" not in text, text  # plain non-shipped top: silent
+    assert len(scan.problems) == 3, text
+else:
+    shadow = root / "Packs" / "core" / "scripts"
+    shadow.mkdir(parents=True)
+    (shadow / "shadow.lua").write_text("return 2\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+    scan = lua_inventory.scan(root)
+    assert not scan.sources, [s.path for s in scan.sources]
+    text = "\n".join(scan.problems)
+    assert "Packs/core/scripts/shadow.lua" in text, text
+    assert "will not ship" in text, text
+    assert len(scan.problems) == 1, text
+print("ROOT-CASE-OK")
+)PY"));
+
+    const std::filesystem::path log = scratch / "driver.log";
+    const std::string cmd =
+        "python3 '" + (scratch / "driver.py").string() + "' '" +
+        (repo / "scripts").string() + "' '" + (scratch / "repo").string() +
+        "' > '" + log.string() + "' 2>&1";
+    const int rc = std::system(cmd.c_str());
+#if defined(WIFEXITED)
+    const int exit_code = WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#else
+    const int exit_code = rc;
+#endif
+    const std::string output = read_text_file(log);
+    EXPECT_EQ(0, exit_code) << output;
+    EXPECT_NE(std::string::npos, output.find("ROOT-CASE-OK")) << output;
+    std::filesystem::remove_all(scratch);
+}

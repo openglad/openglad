@@ -202,7 +202,9 @@ struct Recorder {
     // generation. Entries are overwritten or erased on address reuse — never
     // proactively unregistered — which is sound because a Proto alive enough
     // to execute is alive enough to still own its entry (the full argument
-    // sits on bind_compiled_chunk's declaration).
+    // sits on bind_compiled_chunk's declaration). Maintained on EVERY
+    // compile, recorder on or off — the off path only erases — so the map
+    // cannot go stale across an enable-state transition.
     //
     // Deliberately NOT part of ScopedRecording's swapped state and NOT
     // touched by reset(): it is a fact about live VM objects ("this
@@ -418,8 +420,14 @@ const Proto* executing_proto(const lua_Debug* ar)
 void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
                          std::string_view source)
 {
-    if (!detail::g_enabled || chunk.empty())
-        return;
+    // No enabled() gate: this is the ONE recording site that runs with the
+    // recorder off (see the header). A compile the registry never saw can
+    // reuse a freed Proto address, and skipping the scrub here let a
+    // disable/re-enable cycle resurrect the dead generation underneath the
+    // fresh code. Disabled, everything below the declared-bytes branch is
+    // map maintenance only: erasures on a map that stays empty in a process
+    // that never enabled recording — no digesting, no allocation.
+    //
     // The slot must hold the Lua closure luaL_loadbuffer just produced; a C
     // function (or anything else) has no prototype tree to bind.
     if (lua_type(L, index) != LUA_TFUNCTION || lua_iscfunction(L, index))
@@ -427,7 +435,6 @@ void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
     const auto* cl = static_cast<const LClosure*>(lua_topointer(L, index));
     if (cl == nullptr)
         return;
-    SourceKey key{std::string(chunk), sha256_hex(source)};
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
     // Declared bytes bind; undeclared bytes scrub. The scrub is load-bearing
@@ -435,8 +442,11 @@ void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
     // Proto address from resurrecting a dead generation's binding underneath
     // live test Lua.
     std::shared_ptr<const SourceKey> binding;
-    if (r.sources.find(key) != r.sources.end())
-        binding = std::make_shared<const SourceKey>(std::move(key));
+    if (detail::g_enabled && !chunk.empty()) {
+        SourceKey key{std::string(chunk), sha256_hex(source)};
+        if (r.sources.find(key) != r.sources.end())
+            binding = std::make_shared<const SourceKey>(std::move(key));
+    }
     bind_protos(cl->p, binding, r.protos);
 }
 
