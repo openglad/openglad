@@ -1,4 +1,4 @@
-# Which PRODUCT C++ files may contain Lua, and in what capacity.
+# Which PRODUCT C++ files carry shipped embedded Lua.
 #
 # Not all Lua in this repository is a .lua file. The showcase pack — a whole
 # scripted boss arena — exists only as a C++ raw string literal that gets
@@ -28,10 +28,14 @@
 #                    go into the coverage denominator and are linted by
 #                    scripts/check_lua_statement_lines.py.
 #
-#   fixture <path>   the file holds Lua-looking raw strings that only exist
-#                    while a test runs. Not measured, not linted — and
-#                    R"LUA( stays forbidden there, because that delimiter
-#                    means "shipped".
+# `shipped` is the ONLY disposition. There used to be a second one —
+# `fixture <path>`, "this product file's Lua-looking strings are test-only,
+# skip them" — and it is now FORBIDDEN: one such line was the only lever
+# that could hide live product Lua from the denominator, a single reviewable
+# word doing the exact job this file exists to prevent. The line is still
+# parsed so it can be rejected loudly (naming this rule) rather than
+# silently ignored. Product literals are `shipped`, full stop; a test-only
+# literal belongs in tests/, which is exempt by construction.
 #
 # The boundary: only src/, tools/ and include/ can be declared at all.
 # tests/ (and scripts/, docs/, ...) raw strings are exempt from declaration
@@ -40,7 +44,7 @@
 # the report's content-hash poison pills own it instead (recorded pack bytes
 # that are not repository content hard-fail the gate). A line naming a
 # non-product path, a file that no longer exists, or a file whose literals
-# are gone is itself a failure, so a stale exemption cannot sit here
-# silencing a path somebody later re-creates.
+# are gone is itself a failure, so a stale entry cannot sit here silencing a
+# path somebody later re-creates.
 
 shipped tools/concept_mapgen/showcase_pack.cpp

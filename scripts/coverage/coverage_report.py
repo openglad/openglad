@@ -48,6 +48,17 @@ hits on the real file's uncovered lines took archmage from 362/382 to 382/382
 without a line of it running. Now those hits bind to the stub's digest, the
 stub's bytes are not repository content, and the run stops.
 
+AND TO THE GENERATION THAT WAS EXECUTING. One chunk name can carry two
+different sources within one process (a regenerated pack cache mounts both
+generations under one path), and the recorder binds every hit to the
+generation that was active when it executed — each L/F record carries that
+generation's digest. A hit therefore belongs to exactly ONE (chunk, digest).
+The alternative this replaced — credit a hit to every declared generation
+whose grid contains the line, with a warning — was a demonstrated dishonest
+pass: declaring a never-loaded byte-variant of core druid.lua alongside the
+real file let the real file's execution mark the variant 86/101 covered, and
+the gate's honest FAIL became a PASS.
+
 Outputs (into --output-dir)
 ---------------------------
     lua.info        lcov tracefile for every Lua source the repository ships
@@ -82,8 +93,16 @@ RAW_SUFFIX = ".luacov"
 # The raw dump format this reader understands, pinned exactly. Version skew
 # is a HARD error, never a silent skip: an earlier reader ignored the records
 # of a newer writer and the Lua numerator quietly collapsed to zero while the
-# report still printed a table.
-DUMP_HEADER = "# openglad-lua-coverage 4"
+# report still printed a table. Version 5 added the generation digest to L
+# and F records — a version-4 dump's hits are ambiguous by construction (the
+# recorder pooled them per chunk name) and are refused, not reinterpreted.
+DUMP_HEADER = "# openglad-lua-coverage 5"
+
+# L/F digest field meaning "no declared source was active when this hit was
+# recorded" — test Lua compiled from a string literal. A mounted pack script
+# is always declared before it can run, so this marker on a packs/ chunk is
+# a hard error.
+NO_GENERATION = "-"
 
 # Chunk names the engine loads pack scripts under always start here (see
 # og::resources::register_mounted_pack_scripts). A recorded chunk under this
@@ -97,6 +116,13 @@ PACK_CHUNK_PREFIX = "packs/"
 # out one by one in a committed file instead of inferred from where the bytes
 # were loaded from.
 FIXTURE_DIGESTS_FILE = Path(__file__).resolve().parent / "runtime_only_lua.txt"
+
+# Tracked src/**/*.cpp translation units the coverage build legitimately
+# cannot measure (compiled only under Emscripten, fuzz-only drivers, TUs
+# with no coverable lines). The C++ denominator is whatever the build
+# emitted .gcno for, so an absent TU is otherwise invisible; this committed
+# ledger is what turns "invisible" into "on the record, with a reason".
+CPP_EXCLUDED_FILE = Path(__file__).resolve().parent / "cpp_excluded.txt"
 
 # The processes a full suite run is expected to have collected dumps from.
 # A suite that quietly loses processes does not look broken, it looks like
@@ -201,28 +227,192 @@ def write_tracefile(files: List[FileCoverage], path: Path, test_name: str) -> No
     path.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
 
 
+def repo_relative(path_text: str, repo_root: Path) -> str:
+    """A tracefile SF: path as a repo-relative string (gcovr emits absolute
+    paths, a hand-fed tracefile may not). Paths outside the repository come
+    back unchanged; nothing here treats them as repository content."""
+    p = Path(path_text)
+    if p.is_absolute():
+        try:
+            return p.resolve().relative_to(repo_root.resolve()).as_posix()
+        except ValueError:
+            return path_text
+    return p.as_posix()
+
+
+def git_tracked_src(repo_root: Path, errors: List[str]) -> Optional[Set[str]]:
+    """Git-tracked paths under src/, repo-relative. None (plus an error) when
+    git cannot answer — the same no-fallback stance as the Lua inventory: a
+    denominator check that silently ran against a guess is worse than one
+    that refused."""
+    proc = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "--", "src"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        errors.append(
+            "git ls-files failed under "
+            f"{repo_root} ({proc.returncode}): {proc.stderr.strip()} — the "
+            "C++ completeness checks cannot run, and running without them "
+            "is not an option"
+        )
+        return None
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
 def drop_deleted_sources(
-    files: List[FileCoverage], repo_root: Path
-) -> Tuple[List[FileCoverage], int, int]:
-    """Discard records for source files that no longer exist.
+    files: List[FileCoverage],
+    repo_root: Path,
+    tracked_src: Optional[Set[str]],
+    strict: bool,
+    errors: List[str],
+    warnings: List[str],
+) -> List[FileCoverage]:
+    """Discard records for source files that no longer exist — loudly.
 
     An incremental gcov build dir keeps .gcno for sources the tree has since
     deleted — on this branch, the 30-odd C++ family implementations the class
     packs replaced. Nothing ever runs them, so they land in the report as
     thousands of lines at 0% and drag the number well below what a clean CI
-    checkout measures. They are build litter, not untested code.
+    checkout measures. They are build litter, not untested code — but a
+    silent drop is also how deleting a BADLY covered src/ file without a
+    clean rebuild inflates the number, so every drop is accounted for:
+
+      * a dropped path that git still TRACKS is an error in every mode — a
+        tracked source missing from disk is a broken checkout, and scoring
+        around it would be fiction;
+      * under --strict-cpp (the CI mode, where the build directory is always
+        freshly configured) ANY drop is an error: there is nothing stale a
+        fresh build could have left behind, so a vanished record means the
+        tree and the build disagree;
+      * otherwise (a developer's incremental build) untracked-and-nonexistent
+        records are dropped with a warning that says how many lines left the
+        denominator and recommends a clean build.
     """
-    kept, dropped_lines, dropped = [], 0, 0
+    kept: List[FileCoverage] = []
+    stale: List[str] = []
+    stale_lines = 0
+    tracked_missing: List[str] = []
     for f in files:
         p = Path(f.path)
         if not p.is_absolute():
             p = repo_root / p
         if p.exists():
             kept.append(f)
+            continue
+        rel = repo_relative(f.path, repo_root)
+        if tracked_src is not None and rel in tracked_src:
+            tracked_missing.append(rel)
         else:
-            dropped += 1
-            dropped_lines += f.lines_found
-    return kept, dropped, dropped_lines
+            stale.append(rel)
+            stale_lines += f.lines_found
+    if tracked_missing:
+        errors.append(
+            f"{len(tracked_missing)} C++ record(s) are for git-TRACKED "
+            "sources that do not exist on disk "
+            f"(e.g. {tracked_missing[0]}): the checkout and the index "
+            "disagree; restore the file(s) or commit their deletion before "
+            "trusting any number measured here"
+        )
+    if stale:
+        if strict:
+            errors.append(
+                f"{len(stale)} C++ record(s) ({stale_lines} lines) are for "
+                f"files that no longer exist (e.g. {stale[0]}): under "
+                "--strict-cpp every record must correspond to a source on "
+                "disk — a fresh CI build directory has no stale .gcno, so a "
+                "drop means the build and the tree disagree"
+            )
+        else:
+            warnings.append(
+                f"dropped {len(stale)} C++ record(s) ({stale_lines} lines) "
+                "for source files that no longer exist — stale .gcno in an "
+                "incremental build dir, not untested code. A clean build "
+                "directory removes them for good "
+                "(cmake --preset ci-coverage after wiping build/ci-coverage)"
+            )
+    return kept
+
+
+def check_cpp_completeness(
+    files: List[FileCoverage],
+    repo_root: Path,
+    tracked_src: Optional[Set[str]],
+    excluded_file: Path,
+    errors: List[str],
+) -> None:
+    """Every git-tracked src/**/*.cpp is measured, or excluded ON THE RECORD.
+
+    The C++ denominator is whatever the build emitted .gcno for. A TU that is
+    only compiled in some other configuration (an Emscripten-only bridge, a
+    fuzz driver) — or that a build regression silently stopped compiling —
+    simply is not there, and "not there" looks exactly like nothing. So the
+    tracefile's population is checked against the repository: a tracked
+    src/**/*.cpp that is absent from the gcov data must be listed in the
+    committed exclusion file with a stated reason, and the exclusion list
+    itself must not rot (a listed file that IS measured, or that git no
+    longer tracks, is an error too — the mirror of the stale-fixture rule
+    on the Lua side).
+    """
+    if tracked_src is None:
+        return  # git already failed with its own error
+    tracked_cpp = {p for p in tracked_src if p.endswith(".cpp")}
+    measured = {repo_relative(f.path, repo_root) for f in files}
+
+    excluded: Dict[str, str] = {}
+    if not excluded_file.exists():
+        errors.append(
+            f"C++ exclusion list not found: {excluded_file}. The "
+            "completeness check needs the committed ledger of TUs the "
+            "coverage build cannot see (see scripts/coverage/README.md)"
+        )
+    else:
+        for lineno, raw in enumerate(
+            excluded_file.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            path_text, _, reason = line.partition(" ")
+            if not reason.strip():
+                errors.append(
+                    f"{excluded_file.name}:{lineno}: exclusion without a "
+                    f"reason: {path_text!r}. Every entry states why the "
+                    "coverage build cannot measure the TU"
+                )
+                continue
+            excluded[path_text] = reason.strip()
+
+    unaccounted = sorted(tracked_cpp - measured - set(excluded))
+    if unaccounted:
+        shown = ", ".join(unaccounted[:5])
+        more = "" if len(unaccounted) <= 5 else f" (+{len(unaccounted) - 5} more)"
+        errors.append(
+            f"{len(unaccounted)} tracked src/ translation unit(s) are "
+            f"absent from the gcov data and not listed in "
+            f"{excluded_file.name}: {shown}{more}. Either the coverage "
+            "build stopped compiling them — fix the build — or they "
+            "genuinely cannot be measured here, in which case list each "
+            "with its reason so the hole is on the record"
+        )
+    stale_present = sorted(set(excluded) & measured)
+    if stale_present:
+        errors.append(
+            f"{len(stale_present)} entr(y/ies) in {excluded_file.name} are "
+            f"for TUs the gcov data DOES measure: {', '.join(stale_present)}. "
+            "Delete the stale exclusion(s); an exclusion list that overstates "
+            "its holes hides the day one of them becomes real"
+        )
+    stale_untracked = sorted(set(excluded) - tracked_cpp)
+    if stale_untracked:
+        errors.append(
+            f"{len(stale_untracked)} entr(y/ies) in {excluded_file.name} "
+            "are not git-tracked src/ .cpp files: "
+            f"{', '.join(stale_untracked)}. An exclusion cannot outlive the "
+            "file it excused"
+        )
 
 
 def parse_tracefile(path: Path) -> List[FileCoverage]:
@@ -299,6 +489,7 @@ def source_facts(
     cwd: Path,
     paths: List[str],
     display: Optional[Dict[str, str]] = None,
+    errors: Optional[List[str]] = None,
 ) -> Dict[str, SourceFacts]:
     """Run the oracle over `paths`, keyed by the path as passed in.
 
@@ -307,6 +498,15 @@ def source_facts(
     sees it, and an error naming `/tmp/og-luacov-XXXX/source-0037.lua` sends
     the reader to a directory that no longer exists; the repository-side
     entry path is the actionable name.
+
+    `errors`, when given, COLLECTS a source Lua will not compile as a gate
+    error (the source simply yields no facts) instead of aborting on the
+    first one. Aborting was a false-failure amplifier: one broken file
+    inside a shipped root killed the whole report mid-flight — no table, no
+    summary.json, and every OTHER problem in the tree suppressed behind it.
+    The run still fails; it fails with the complete list. A crashed oracle
+    (exit outside 0/1) still aborts either way — that is the tool breaking,
+    not a source.
     """
     if not paths:
         return {}
@@ -330,9 +530,11 @@ def source_facts(
             parts = row.split("\t")
             if len(parts) >= 3 and parts[1] == "-1":
                 shown = names.get(parts[0], parts[0])
-                raise SystemExit(
-                    f"{shown}: Lua will not compile: {parts[2]}"
-                )
+                message = f"{shown}: Lua will not compile: {parts[2]}"
+                if errors is None:
+                    raise SystemExit(message)
+                errors.append(message)
+                continue
             if len(parts) != 5:
                 continue
             path, _, line_payload, _, fn_payload = parts
@@ -355,7 +557,10 @@ class Dump:
     Hits are attributed per dump, never from a pool merged across dumps: the
     question the gate asks is "did the process that recorded these hits
     declare this chunk, and with which bytes" — a chunk name is not an
-    identity, (chunk, sha256 of the source) is.
+    identity, (chunk, sha256 of the source) is. Every L/F record carries the
+    digest of the generation that was ACTIVE when it executed (the recorder
+    binds hits at record time), so a hit belongs to exactly one generation
+    and this report never guesses.
     """
 
     path: Path
@@ -364,10 +569,12 @@ class Dump:
     declared: Dict[str, Dict[str, Tuple[Path, str]]] = field(
         default_factory=dict
     )
-    # (chunk, line) -> hit count
-    line_hits: Dict[Tuple[str, int], int] = field(default_factory=dict)
-    # (chunk, linedefined, lastlinedefined) -> [label, body-line events]
-    fn_hits: Dict[Tuple[str, int, int], List] = field(default_factory=dict)
+    # (chunk, generation digest or "" for none, line) -> hit count
+    line_hits: Dict[Tuple[str, str, int], int] = field(default_factory=dict)
+    # (chunk, digest, linedefined, lastlinedefined) -> [label, body events]
+    fn_hits: Dict[Tuple[str, str, int, int], List] = field(
+        default_factory=dict
+    )
 
 
 def _parse_s_record(
@@ -421,6 +628,27 @@ def _parse_s_record(
     dump.declared.setdefault(chunk, {})[digest] = (sidecar, origin)
 
 
+def _parse_generation(
+    field_text: str, where: str, errors: List[str]
+) -> Optional[str]:
+    """The L/F generation field: 64 hex digits, or the no-generation marker.
+
+    Returns "" for the marker, the digest otherwise, None (plus an error) for
+    anything else — an unparseable generation must not quietly become "no
+    generation", because "no generation" is itself load-bearing (it is what
+    makes a pack chunk that ran undeclared a hard failure).
+    """
+    if field_text == NO_GENERATION:
+        return ""
+    if SHA256_HEX.fullmatch(field_text):
+        return field_text
+    errors.append(
+        f"{where}: generation field is neither '{NO_GENERATION}' nor sha256 "
+        f"hex: {field_text!r}"
+    )
+    return None
+
+
 def read_raw_dumps(raw_dir: Path, errors: List[str]) -> List[Dump]:
     """Parse every per-process .luacov dump, strictly.
 
@@ -456,15 +684,21 @@ def read_raw_dumps(raw_dir: Path, errors: List[str]) -> List[Dump]:
                     programs.append(parts[1])
                 elif parts[0] == "S" and len(parts) == 5:
                     _parse_s_record(dump, parts, raw_dir, where, errors)
-                elif parts[0] == "L" and len(parts) == 4:
-                    key = (parts[1], int(parts[2]))
+                elif parts[0] == "L" and len(parts) == 5:
+                    digest = _parse_generation(parts[2], where, errors)
+                    if digest is None:
+                        continue
+                    key = (parts[1], digest, int(parts[3]))
                     dump.line_hits[key] = (
-                        dump.line_hits.get(key, 0) + int(parts[3])
+                        dump.line_hits.get(key, 0) + int(parts[4])
                     )
-                elif parts[0] == "F" and len(parts) == 6:
-                    key = (parts[1], int(parts[2]), int(parts[3]))
-                    calls = int(parts[4])
-                    label = parts[5]
+                elif parts[0] == "F" and len(parts) == 7:
+                    digest = _parse_generation(parts[2], where, errors)
+                    if digest is None:
+                        continue
+                    key = (parts[1], digest, int(parts[3]), int(parts[4]))
+                    calls = int(parts[5])
+                    label = parts[6]
                     entry = dump.fn_hits.get(key)
                     if entry is None:
                         dump.fn_hits[key] = [label, calls]
@@ -488,7 +722,7 @@ def read_raw_dumps(raw_dir: Path, errors: List[str]) -> List[Dump]:
     return out
 
 
-def read_fixture_digests() -> Dict[str, str]:
+def read_fixture_digests(path: Path) -> Dict[str, str]:
     """digest -> note, for Lua that only exists while a test runs.
 
     Every entry is an acknowledged hole: bytes the engine compiled that the
@@ -498,9 +732,9 @@ def read_fixture_digests() -> Dict[str, str]:
     unmeasured game logic hides. A reviewer sees an added digest in the diff.
     """
     out: Dict[str, str] = {}
-    if not FIXTURE_DIGESTS_FILE.exists():
+    if not path.exists():
         return out
-    for raw in FIXTURE_DIGESTS_FILE.read_text(encoding="utf-8").splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -572,8 +806,6 @@ class Attribution:
     fixtures: Set[str] = field(default_factory=set)
     # the digests behind those observations — what a stale-entry check needs
     fixture_digests: Set[str] = field(default_factory=set)
-    # chunk names that carried more than one distinct source in one process
-    multi_generation: Set[str] = field(default_factory=set)
 
 
 def attribute_dumps(
@@ -592,31 +824,34 @@ def attribute_dumps(
     .glad is staged into a temp directory before mounting, so shipped and
     synthetic packs look identical from that angle. The bytes do not.
 
-    A declared source whose bytes are nowhere in the repository is a HARD
-    FAILURE unless it is a listed runtime-only fixture. So is a pack chunk
-    whose hits arrive in a dump with no declaration for it, and a hit that
-    lands on no declared generation's grid. Hits with nowhere to go mean the
-    enumeration is wrong, and discarding them quietly is how the previous
-    version of this report lost 109 lines of live boss logic.
+    A hit belongs to exactly ONE (chunk, digest): the recorder binds each hit
+    to the generation that was active when it executed, and the L/F records
+    carry that digest. One chunk name can still carry several sources in one
+    process (a regenerated pack cache mounts two generations under one path)
+    — each generation's hits arrive under its own digest and are scored only
+    against its own grid. There is no "credit every declared generation whose
+    grid contains the line" fallback any more: that guess let execution of
+    one file's bytes mark a never-loaded byte-variant of another file as 85%
+    covered, turning a gate FAIL into a PASS with only a warning.
 
-    One chunk name CAN carry several sources in one process — a regenerated
-    pack cache mounts two generations under one path — and every generation
-    is kept and resolved separately. The recorder cannot say which generation
-    a given line event belonged to (the line hook sees the chunk name), so a
-    hit is credited to every declared generation whose grid contains it;
-    those chunks are named in the report so the ambiguity is visible.
+    A declared source whose bytes are nowhere in the repository is a HARD
+    FAILURE unless it is a listed runtime-only fixture. So is a hit under a
+    generation its own dump never declared, a pack chunk that executed while
+    no declaration was active, and a hit that lands off its generation's
+    grid. Hits with nowhere to go mean the enumeration is wrong, and
+    discarding them quietly is how the previous version of this report lost
+    109 lines of live boss logic.
     """
     out = Attribution()
     unknown: Dict[str, str] = {}
-    undeclared: Dict[str, str] = {}
+    # (chunk, claimed digest or "") -> printable description
+    undeclared: Dict[Tuple[str, str], str] = {}
     off_grid: List[str] = []
     off_grid_fns: List[str] = []
 
     for dump in dumps:
         for chunk in sorted(dump.declared):
             generations = dump.declared[chunk]
-            if len(generations) > 1:
-                out.multi_generation.add(chunk)
             for digest in sorted(generations):
                 _, origin = generations[digest]
                 if digest in known_digests:
@@ -631,62 +866,79 @@ def attribute_dumps(
                         f"[{dump.path.name}]",
                     )
 
-        def resolve(chunk: str) -> Optional[Tuple[List[str], bool]]:
-            """Inventory digests declared for `chunk` in THIS dump, plus
-            whether any declared generation is a runtime-only fixture.
-            None: not declared here (unmeasured test Lua, or an error)."""
-            generations = dump.declared.get(chunk)
-            if generations is None:
+        def bind(chunk: str, digest: str) -> Optional[str]:
+            """The inventory digest a hit is scored against, or None.
+
+            None is only ever "this hit is not measured", and every
+            unmeasured case is either fine (test Lua) or already a recorded
+            error — nothing falls between:
+              * digest "" on a non-pack chunk: test Lua, unmeasured;
+              * digest "" on a packs/ chunk: the engine ran a pack script
+                with no declared source active — error;
+              * a digest this dump never declared for this chunk: hits bound
+                to a source their own process never declared — error;
+              * a declared fixture digest: acknowledged hole, observed via
+                its S record, hits unmeasured;
+              * a declared digest outside the inventory: already an
+                "unknown content" error from the declaration pass above.
+            """
+            if not digest:
                 if chunk.startswith(PACK_CHUNK_PREFIX):
                     undeclared.setdefault(
-                        chunk, f"{chunk} [{dump.path.name}, {dump.program}]"
+                        (chunk, ""),
+                        f"{chunk} [{dump.path.name}, {dump.program}] "
+                        "(executed while no declared source was active)",
                     )
                 return None
-            inv = [d for d in sorted(generations) if d in known_digests]
-            fixture = any(d in fixtures for d in generations)
-            return inv, fixture
+            generations = dump.declared.get(chunk, {})
+            if digest not in generations:
+                undeclared.setdefault(
+                    (chunk, digest),
+                    f"{chunk} [{dump.path.name}, {dump.program}] "
+                    f"(hits bound to undeclared generation {digest[:12]}…)",
+                )
+                return None
+            if digest in fixtures or digest not in known_digests:
+                return None
+            return digest
 
-        for (chunk, line), count in sorted(dump.line_hits.items()):
-            resolved = resolve(chunk)
-            if resolved is None:
+        for (chunk, gen, line), count in sorted(dump.line_hits.items()):
+            digest = bind(chunk, gen)
+            if digest is None:
                 continue
-            inv, has_fixture = resolved
-            landed = [d for d in inv if line in line_grid.get(d, set())]
-            for digest in landed:
-                key = (digest, line)
-                out.line_hits[key] = out.line_hits.get(key, 0) + count
-            if not landed and not has_fixture:
-                # A line the declared source has no code on. Either the
+            if line not in line_grid.get(digest, set()):
+                # A line this generation's source has no code on. Either the
                 # loaded source and the measured source disagree, or the
                 # oracle and the debug hook disagree about the grid; both
                 # make the report fiction.
                 off_grid.append(f"{chunk}:{line}")
+                continue
+            key = (digest, line)
+            out.line_hits[key] = out.line_hits.get(key, 0) + count
 
-        for (chunk, start, end), (label, calls) in sorted(
+        for (chunk, gen, start, end), (label, calls) in sorted(
             dump.fn_hits.items()
         ):
-            resolved = resolve(chunk)
-            if resolved is None:
+            digest = bind(chunk, gen)
+            if digest is None:
                 continue
-            inv, has_fixture = resolved
             span = (start, end)
-            landed = [d for d in inv if span in fn_grid.get(d, set())]
-            for digest in landed:
-                key = (digest, span)
-                if calls > 0:
-                    out.fn_hits[key] = True
-                else:
-                    out.fn_hits.setdefault(key, False)
-                # One canonical label per (entry, prototype), smallest wins,
-                # so merges are order-free and two mounts that registered
-                # different names cannot split one prototype into two lcov
-                # records.
-                if label and (
-                    key not in out.labels or label < out.labels[key]
-                ):
-                    out.labels[key] = label
-            if not landed and not has_fixture:
+            if span not in fn_grid.get(digest, set()):
                 off_grid_fns.append(f"{chunk}:{start}-{end}")
+                continue
+            key = (digest, span)
+            if calls > 0:
+                out.fn_hits[key] = True
+            else:
+                out.fn_hits.setdefault(key, False)
+            # One canonical label per (entry, prototype), smallest wins,
+            # so merges are order-free and two mounts that registered
+            # different names cannot split one prototype into two lcov
+            # records.
+            if label and (
+                key not in out.labels or label < out.labels[key]
+            ):
+                out.labels[key] = label
 
     if unknown:
         errors.append(
@@ -702,12 +954,13 @@ def attribute_dumps(
     if undeclared:
         listed = ", ".join(sorted(undeclared.values())[:5])
         errors.append(
-            f"{len(undeclared)} pack chunk(s) recorded hits in a dump whose "
-            f"own process never declared their source: {listed}. "
+            f"{len(undeclared)} chunk(s) recorded hits bound to a source "
+            f"their own process never declared: {listed}. "
             "og::resources::register_mounted_pack_scripts must call "
-            "declare_pack_source for every script it registers — a "
-            "declaration from some OTHER process does not say what THIS "
-            "process compiled"
+            "declare_pack_source for every script it registers, BEFORE the "
+            "script can run — a declaration from some OTHER process does "
+            "not say what THIS process compiled, and a generation the dump "
+            "never declared has no bytes to score against"
         )
     if off_grid:
         errors.append(
@@ -728,6 +981,7 @@ def build_lua_coverage(
     raw_dir: Path,
     lines_tool: Path,
     process_manifest: Path,
+    fixture_digests_file: Path,
 ) -> Tuple[List[FileCoverage], List[str], List[str], Dict]:
     """Returns (per-file coverage, hard errors, warnings, info)."""
     errors: List[str] = []
@@ -798,7 +1052,7 @@ def build_lua_coverage(
             staged[str(staged_path)] = entry.digest
             display[str(staged_path)] = entry.path
         staged_facts = source_facts(
-            lines_tool, tmp_dir, sorted(staged), display
+            lines_tool, tmp_dir, sorted(staged), display, errors
         )
         for staged_path, digest in staged.items():
             if staged_path in staged_facts:
@@ -807,7 +1061,7 @@ def build_lua_coverage(
     line_grid = {d: set(f.lines) for d, f in facts.items()}
     fn_grid = {d: set(f.functions) for d, f in facts.items()}
 
-    fixtures = read_fixture_digests()
+    fixtures = read_fixture_digests(fixture_digests_file)
     resolution = attribute_dumps(
         dumps, set(by_digest), fixtures, line_grid, fn_grid, errors,
     )
@@ -861,14 +1115,6 @@ def build_lua_coverage(
                 f"{by_digest[d].path} ({len(c)}x)" for d, c in sorted(multi.items())
             )
         )
-    if resolution.multi_generation:
-        warnings.append(
-            f"{len(resolution.multi_generation)} chunk name(s) carried more "
-            "than one distinct source in a single process (a regenerated "
-            "pack cache does this); hits under such a name are credited to "
-            "every declared generation whose grid holds them: "
-            + ", ".join(sorted(resolution.multi_generation))
-        )
     if resolution.fixtures:
         warnings.append(
             f"{len(resolution.fixtures)} declared runtime-only fixture(s) not "
@@ -876,16 +1122,21 @@ def build_lua_coverage(
         )
     # A listed fixture digest nothing declared all run is the reviewed-holes
     # list going stale — either its test is gone (drop the line) or, worse,
-    # something stopped making one of the generations observable. That
+    # something stopped making one of the generations observable. Both have
     # happened: while sidecars were named by chunk and last-writer-wins, the
     # first org.test.regen generation's entry was unreachable — a dead line
-    # in a file that exists to be an honest ledger.
+    # in a file that exists to be an honest ledger. An ERROR, not a warning:
+    # every entry in that file is a reviewed hole in the metric, and a hole
+    # nothing exercises any more is either dead weight to delete or a broken
+    # test to fix. A ledger that tolerates rot stops being evidence.
     stale_fixtures = sorted(set(fixtures) - resolution.fixture_digests)
     if stale_fixtures:
-        warnings.append(
-            f"{len(stale_fixtures)} digest(s) in {FIXTURE_DIGESTS_FILE.name} "
+        errors.append(
+            f"{len(stale_fixtures)} digest(s) in {fixture_digests_file.name} "
             "were never observed in this run: "
             + ", ".join(f"{d[:12]} ({fixtures[d]})" for d in stale_fixtures)
+            + ". Delete the stale line(s), or fix whatever stopped the "
+            "test that generates those bytes from running"
         )
     empty = [e.path for e in sources if not facts.get(e.digest, SourceFacts()).lines]
     if empty:
@@ -895,7 +1146,6 @@ def build_lua_coverage(
         "sources": len(sources),
         "sources_never_loaded": never_loaded,
         "runtime_only_fixtures": sorted(resolution.fixtures),
-        "multi_generation_chunks": sorted(resolution.multi_generation),
         "recorder_processes": sorted(observed),
         "aliases": {
             by_digest[d].path: sorted(set(c) | set(by_digest[d].aliases))
@@ -997,6 +1247,17 @@ def main() -> int:
     ap.add_argument("--processes-manifest", type=Path,
                     default=PROCESS_MANIFEST_FILE,
                     help="expected recorder process names (population check)")
+    ap.add_argument("--fixture-digests", type=Path,
+                    default=FIXTURE_DIGESTS_FILE,
+                    help="committed ledger of runtime-only Lua digests")
+    ap.add_argument("--cpp-excluded", type=Path,
+                    default=CPP_EXCLUDED_FILE,
+                    help="committed ledger of tracked src/ TUs the coverage "
+                         "build cannot measure (completeness check)")
+    ap.add_argument("--strict-cpp", action="store_true",
+                    help="treat ANY dropped C++ record as an error — for "
+                         "fresh build directories (CI), where nothing stale "
+                         "can legitimately be dropped")
     ap.add_argument("--no-gate", action="store_true",
                     help="report only; always exit 0")
     args = ap.parse_args()
@@ -1013,7 +1274,7 @@ def main() -> int:
 
     lua_files, errors, warnings, lua_info = build_lua_coverage(
         repo_root, args.lua_raw_dir.resolve(), args.lines_tool.resolve(),
-        args.processes_manifest,
+        args.processes_manifest, args.fixture_digests,
     )
     write_tracefile(lua_files, out_dir / "lua.info", "lua")
     lua_totals = totals_of(lua_files)
@@ -1046,13 +1307,14 @@ def main() -> int:
         cpp_files = parse_tracefile(cpp_info)
         cpp_measured = True
     if cpp_measured:
-        cpp_files, gone, gone_lines = drop_deleted_sources(cpp_files, repo_root)
-        if gone:
-            warnings.append(
-                f"dropped {gone} C++ record(s) ({gone_lines} lines) for source "
-                "files that no longer exist — stale .gcno in an incremental "
-                "build dir, not untested code"
-            )
+        tracked_src = git_tracked_src(repo_root, errors)
+        cpp_files = drop_deleted_sources(
+            cpp_files, repo_root, tracked_src, args.strict_cpp, errors,
+            warnings,
+        )
+        check_cpp_completeness(
+            cpp_files, repo_root, tracked_src, args.cpp_excluded, errors,
+        )
     cpp_totals = totals_of(cpp_files)
 
     # The mirror of the empty-Lua guard above: a REQUESTED C++ half that

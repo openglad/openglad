@@ -135,15 +135,23 @@ jobs:
         # gates on C++ alone, Lua alone, and the union.
         #
         # The report also fails on conditions that are not a percentage: a
-        # recorded pack script whose bytes are not repository content, a pack
-        # chunk whose own dump never declared its source, a declared sidecar
-        # that does not hash to its declared digest, an absent or empty set
-        # of dumps, a REQUESTED C++ half that measured nothing, a recorder
-        # process population that differs from the committed manifest
-        # (scripts/coverage/recorder_processes.txt), and a numerator that
-        # lands off the static grid. Each of those is a way for a half to
-        # look measured while measuring nothing, so none of them is a
-        # warning.
+        # recorded pack script whose bytes are not repository content, a
+        # hit bound to a source its own dump never declared (every hit
+        # carries the digest of the generation that was executing), a
+        # declared sidecar that does not hash to its declared digest, an
+        # absent or empty set of dumps, a REQUESTED C++ half that measured
+        # nothing, a recorder process population that differs from the
+        # committed manifest (scripts/coverage/recorder_processes.txt), a
+        # runtime_only_lua.txt digest no run observes any more, a tracked
+        # src/ TU absent from the gcov data and not in
+        # scripts/coverage/cpp_excluded.txt, and a numerator that lands off
+        # the static grid. Each of those is a way for a half to look
+        # measured while measuring nothing, so none of them is a warning.
+        #
+        # --strict-cpp: this job configures the build directory from scratch,
+        # so there is no such thing as a legitimately stale gcov record here;
+        # ANY record the tree cannot account for is an error rather than the
+        # incremental-build warning developers get locally.
         run: |
           LINE_THRESHOLD=95
           FUNCTION_THRESHOLD=100
@@ -168,7 +176,8 @@ jobs:
             --cpp-build-dir build/ci-coverage \
             --output-dir build/ci-coverage/coverage \
             --line-threshold "${LINE_THRESHOLD}" \
-            --function-threshold "${FUNCTION_THRESHOLD}"
+            --function-threshold "${FUNCTION_THRESHOLD}" \
+            --strict-cpp
           gate_status=$?
           set -e
 

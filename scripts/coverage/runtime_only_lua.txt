@@ -19,6 +19,11 @@
 # test and cannot be committed as a file, then add the digest with a note.
 # If they are shipped game logic, fix scripts/lua_inventory.py instead.
 #
+# Rot is an ERROR: a digest listed here that no dump in a full run observes
+# fails the gate until the line is deleted (its test is gone) or the test is
+# fixed (something stopped making those bytes reachable). A reviewed-holes
+# ledger with dead entries stops being evidence of anything.
+#
 # Format: <sha256 of the exact bytes> <what makes them>
 
 0a4678f80fdd61ce4a19993cd8257d89bc338f5446e018ca2b586c7814a545f7  tests/unit/test_campaign_packs.cpp kEmbeddedScript — pack carried inside a generated campaign .glad

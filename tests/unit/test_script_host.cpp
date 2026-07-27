@@ -27,12 +27,14 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #if !defined(_WIN32)
 #include <sys/wait.h>
+#include <unistd.h>  // mkdtemp lives here on macOS (stdlib.h on glibc)
 #endif
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -604,6 +606,32 @@ namespace cov = og::script::coverage;
 
 namespace {
 
+// A fresh, uniquely named directory under the system temp dir. NEVER a fixed
+// name: these tests run concurrently with other checkouts and with second
+// instances of this very binary (a coverage collection pass and a plain
+// ctest can overlap on a shared machine), and two runs sharing
+// temp_directory_path()/"og_lua_cov_test_dump" corrupted each other — one
+// run's remove_all() deleted the dump the other was about to read.
+std::filesystem::path make_unique_temp_dir(const std::string& prefix)
+{
+#if !defined(_WIN32)
+    std::string templ =
+        (std::filesystem::temp_directory_path() / (prefix + "XXXXXX"))
+            .string();
+    char* made = ::mkdtemp(templ.data());
+    return (made != nullptr) ? std::filesystem::path(made)
+                             : std::filesystem::path();
+#else
+    std::random_device rd;
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() /
+        (prefix + std::to_string(rd()) + "-" + std::to_string(rd()));
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    return ec ? std::filesystem::path() : dir;
+#endif
+}
+
 // The probe chunk every line test below uses. Line numbers matter:
 //   1 comment  2 code  3 blank  4 'local function'  5 if  6 then-branch
 //   7 else     8 else-branch    9 end   10 return   11 end (holds the
@@ -817,19 +845,22 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
     ScriptHost host;
     ASSERT_TRUE(host.run_chunk("testfixture/dump.lua", kProbeChunk));
     // The inventory half: a script the engine loaded, with its bytes, so the
-    // report can measure one that has no file in the tree.
+    // report can measure one that has no file in the tree. Declared BEFORE it
+    // runs — exactly the engine's order — so the hits recorded below carry
+    // this generation's digest.
     cov::declare_pack_source("packs/inventoried/scripts/x.lua", kProbeChunk,
                              "/somewhere/x.glad");
+    ASSERT_TRUE(host.run_chunk("packs/inventoried/scripts/x.lua",
+                               kProbeChunk));
 
     const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() /
-        "og_lua_cov_test_dump";
-    std::filesystem::remove_all(dir);
+        make_unique_temp_dir("og_lua_cov_dump_");
+    ASSERT_FALSE(dir.empty());
 
     // No output directory configured: the exit flush is a no-op.
     cov::set_output_dir_for_testing("");
     cov::flush_to_output_dir();
-    EXPECT_FALSE(std::filesystem::exists(dir));
+    EXPECT_TRUE(std::filesystem::is_empty(dir));
 
     cov::set_output_dir_for_testing(dir.string());
     EXPECT_EQ(dir.string(), cov::output_dir());
@@ -848,7 +879,7 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
     body << in.rdbuf();
     const std::string text = body.str();
 
-    EXPECT_NE(std::string::npos, text.find("# openglad-lua-coverage 4\n"))
+    EXPECT_NE(std::string::npos, text.find("# openglad-lua-coverage 5\n"))
         << text;
     // Every dump names the process that wrote it. The report checks the
     // POPULATION of recorder processes against a committed manifest
@@ -859,8 +890,24 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
     EXPECT_NE(std::string::npos,
               text.find("P\t" + cov::program_name() + "\n"))
         << text;
+    // A chunk that ran with NO declared source carries the "-" marker in the
+    // generation column — the report measures it only if it is not a packs/
+    // chunk (this one is test Lua).
     EXPECT_NE(std::string::npos,
-              text.find("L\ttestfixture/dump.lua\t14\t1"))
+              text.find("L\ttestfixture/dump.lua\t-\t14\t1"))
+        << text;
+    // A chunk that ran under a declared source carries that generation's
+    // digest on every hit: the binding happens at record time, in the
+    // recorder, so the report never has to guess which generation executed.
+    const std::string probe_digest = cov::sha256_hex(kProbeChunk);
+    EXPECT_NE(std::string::npos,
+              text.find("L\tpacks/inventoried/scripts/x.lua\t" +
+                        probe_digest + "\t14\t1"))
+        << text;
+    EXPECT_EQ(std::string::npos,
+              text.find("L\tpacks/inventoried/scripts/x.lua\t-\t"))
+        << "a declared chunk's hits must never carry the no-generation "
+           "marker: "
         << text;
     // The declared source travels as a content-addressed sidecar: the S
     // record carries a BARE file name (the reader joins it under sources/
@@ -899,14 +946,16 @@ TEST(ScriptCoverage, raw_dump_round_trips_through_the_output_directory)
     // under a regular FILE, so neither the sidecar directory nor the dump can
     // be created — a merely missing directory is made, since the recorder is
     // handed an output directory that may not exist yet.
-    const std::filesystem::path blocker =
-        std::filesystem::temp_directory_path() / "og_lua_cov_blocker";
+    const std::filesystem::path blocker_dir =
+        make_unique_temp_dir("og_lua_cov_blocker_");
+    ASSERT_FALSE(blocker_dir.empty());
+    const std::filesystem::path blocker = blocker_dir / "blocker";
     {
         std::ofstream out(blocker, std::ios::trunc);
         ASSERT_TRUE(out.good());
     }
     EXPECT_FALSE(cov::write_raw_report((blocker / "x.luacov").string()));
-    std::filesystem::remove(blocker);
+    std::filesystem::remove_all(blocker_dir);
 }
 
 // Redirecting the output directory forgets the memoized dump path. Without
@@ -923,11 +972,11 @@ TEST(ScriptCoverage, redirecting_the_output_directory_starts_a_fresh_dump)
     ASSERT_TRUE(host.run_chunk("testfixture/redirect.lua", kProbeChunk));
 
     const std::filesystem::path first =
-        std::filesystem::temp_directory_path() / "og_lua_cov_redirect_a";
+        make_unique_temp_dir("og_lua_cov_redirect_a_");
     const std::filesystem::path second =
-        std::filesystem::temp_directory_path() / "og_lua_cov_redirect_b";
-    std::filesystem::remove_all(first);
-    std::filesystem::remove_all(second);
+        make_unique_temp_dir("og_lua_cov_redirect_b_");
+    ASSERT_FALSE(first.empty());
+    ASSERT_FALSE(second.empty());
 
     cov::set_output_dir_for_testing(first.string());
     cov::flush_to_output_dir();
@@ -1210,8 +1259,8 @@ TEST(ScriptCoverage, one_chunk_name_carrying_two_sources_keeps_both)
 
     // And the dump makes both observable: two S records, two sidecars.
     const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() / "og_lua_cov_regen_dump";
-    std::filesystem::remove_all(dir);
+        make_unique_temp_dir("og_lua_cov_regen_dump_");
+    ASSERT_FALSE(dir.empty());
     cov::set_output_dir_for_testing(dir.string());
     cov::flush_to_output_dir();
     cov::set_output_dir_for_testing(saved_dir);
@@ -1247,6 +1296,94 @@ TEST(ScriptCoverage, one_chunk_name_carrying_two_sources_keeps_both)
         sidecars++;
     }
     EXPECT_EQ(2, sidecars) << "one content-addressed sidecar per generation";
+    std::filesystem::remove_all(dir);
+}
+
+// THE GENERATION BINDING. When one chunk name carries two sources in one
+// process, every hit is stored under the generation that was ACTIVE when it
+// executed — keyed at record time, in the recorder, where the answer is
+// known. The report used to receive digest-less hits and guess: it credited
+// a hit to EVERY declared generation whose grid contained the line, which
+// let execution of one generation's bytes mark the other generation's lines
+// covered. A hit belongs to exactly one (chunk, digest).
+TEST(ScriptCoverage, hits_bind_to_the_generation_active_when_they_ran)
+{
+    cov::ScopedRecording recording;
+    const std::string saved_dir = cov::output_dir();
+    ScriptHost host;
+
+    // Both generations put code on lines 1-2, so digest-less pooling (or
+    // grid-based guessing) would cross-credit them; gen2 alone has line 3.
+    const std::string gen1 = "local a = 1\nog.log('gen1', a)\n";
+    const std::string gen2 =
+        "local b = 2\nlocal c = 3\nog.log('gen2', b + c)\n";
+    const char* chunk = "packs/org.test.gen/scripts/a.lua";
+    const std::string d1 = cov::sha256_hex(gen1);
+    const std::string d2 = cov::sha256_hex(gen2);
+
+    cov::declare_pack_source(chunk, gen1, "cache-v1");
+    ASSERT_TRUE(host.run_chunk(chunk, gen1));
+    // Re-declaration with new bytes moves the active generation; hits from
+    // here on accumulate under gen2's digest.
+    cov::declare_pack_source(chunk, gen2, "cache-v2");
+    ASSERT_TRUE(host.run_chunk(chunk, gen2));
+    ASSERT_TRUE(host.run_chunk(chunk, gen2));
+
+    std::map<std::pair<std::string, int>, std::uint64_t> by_gen_line;
+    for (const cov::LineHit& h : cov::line_hits()) {
+        if (h.chunk == chunk) {
+            EXPECT_FALSE(h.digest.empty())
+                << "declared chunks never record digest-less hits (line "
+                << h.line << ")";
+            by_gen_line[{h.digest, h.line}] += h.count;
+        }
+    }
+    EXPECT_EQ(1u, by_gen_line[std::make_pair(d1, 1)]);
+    EXPECT_EQ(1u, by_gen_line[std::make_pair(d1, 2)]);
+    EXPECT_EQ(0u, by_gen_line[std::make_pair(d1, 3)])
+        << "gen1 has no line 3; a hit here would be cross-credit";
+    EXPECT_EQ(2u, by_gen_line[std::make_pair(d2, 1)]) << "gen2 ran twice";
+    EXPECT_EQ(2u, by_gen_line[std::make_pair(d2, 2)]);
+    EXPECT_EQ(2u, by_gen_line[std::make_pair(d2, 3)]);
+
+    // The function metric binds identically: each generation's main chunk is
+    // its own (digest, span 0..0) record.
+    std::map<std::string, std::uint64_t> chunk_fn_hits;
+    for (const cov::FunctionRecord& r : cov::function_records()) {
+        if (r.chunk == chunk && r.line_defined == 0)
+            chunk_fn_hits[r.digest] += r.body_hits;
+    }
+    EXPECT_GT(chunk_fn_hits[d1], 0u);
+    EXPECT_GT(chunk_fn_hits[d2], 0u);
+    EXPECT_EQ(2u, chunk_fn_hits.size())
+        << "one main-chunk record per generation, none digest-less";
+
+    // And the dump carries the binding: every L record for this chunk names
+    // its generation, so the report never guesses.
+    const std::filesystem::path dir =
+        make_unique_temp_dir("og_lua_cov_gen_dump_");
+    ASSERT_FALSE(dir.empty());
+    cov::set_output_dir_for_testing(dir.string());
+    cov::flush_to_output_dir();
+    cov::set_output_dir_for_testing(saved_dir);
+    std::string text;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() == ".luacov") {
+            std::ifstream in(entry.path());
+            std::stringstream body;
+            body << in.rdbuf();
+            text = body.str();
+        }
+    }
+    EXPECT_NE(std::string::npos,
+              text.find("L\t" + std::string(chunk) + "\t" + d1 + "\t1\t1"))
+        << text;
+    EXPECT_NE(std::string::npos,
+              text.find("L\t" + std::string(chunk) + "\t" + d2 + "\t3\t2"))
+        << text;
+    EXPECT_EQ(std::string::npos,
+              text.find("L\t" + std::string(chunk) + "\t-\t"))
+        << "no digest-less hits for a declared chunk: " << text;
     std::filesystem::remove_all(dir);
 }
 
@@ -1363,12 +1500,14 @@ protected:
         ASSERT_TRUE(std::filesystem::exists(lines_tool_))
             << lines_tool_ << " must be built beside the test binaries "
                               "(target og_lua_lines)";
-        scratch_ = std::filesystem::temp_directory_path() /
-                   (std::string("og_cov_gate_") +
-                    ::testing::UnitTest::GetInstance()
-                        ->current_test_info()
-                        ->name());
-        std::filesystem::remove_all(scratch_);
+        // mkdtemp, never a name derived from the test: two concurrent runs
+        // of this binary with a shared temp dir each remove_all()'d the
+        // scratch the other was reading.
+        scratch_ = make_unique_temp_dir(
+            std::string("og_cov_gate_") +
+            ::testing::UnitTest::GetInstance()->current_test_info()->name() +
+            "_");
+        ASSERT_FALSE(scratch_.empty());
         std::filesystem::create_directories(scratch_ / "raw" / "sources");
     }
 
@@ -1406,16 +1545,25 @@ protected:
     }
 
     // L and F records covering every line and prototype of `src`, recorded
-    // under `chunk` (which need not be src.chunk — that is the attack).
+    // under `chunk` (which need not be src.chunk — that is the attack) and
+    // bound to `generation` — the digest the recorder stamps on every hit,
+    // or "-" for "no declared source was active". Defaults to the digest of
+    // the bytes the hits actually describe, which is what an honest recorder
+    // writes.
     static std::string forge_full_hits(const std::string& chunk,
-                                       const RealSource& src)
+                                       const RealSource& src,
+                                       const std::string& generation = "")
     {
+        const std::string gen =
+            generation.empty() ? src.digest : generation;
         std::string out;
         for (const int line : src.facts.lines)
-            out += "L\t" + chunk + "\t" + std::to_string(line) + "\t1\n";
+            out += "L\t" + chunk + "\t" + gen + "\t" + std::to_string(line) +
+                   "\t1\n";
         for (const cov::FunctionSpan& span : src.facts.functions) {
-            out += "F\t" + chunk + "\t" + std::to_string(span.line_defined) +
-                   "\t" + std::to_string(span.last_line_defined) + "\t1\t\n";
+            out += "F\t" + chunk + "\t" + gen + "\t" +
+                   std::to_string(span.line_defined) + "\t" +
+                   std::to_string(span.last_line_defined) + "\t1\t\n";
         }
         return out;
     }
@@ -1424,7 +1572,7 @@ protected:
                     const std::string& body)
     {
         write_text_file(scratch_ / "raw" / file_name,
-                        "# openglad-lua-coverage 4\nP\t" + program + "\n" +
+                        "# openglad-lua-coverage 5\nP\t" + program + "\n" +
                             body);
     }
 
@@ -1439,6 +1587,95 @@ protected:
         write_text_file(scratch_ / "manifest.txt", body);
         return " --processes-manifest '" + (scratch_ / "manifest.txt").string() +
                "'";
+    }
+
+    // A fixtures ledger the test controls. Forged runs observe none of the
+    // committed runtime_only_lua.txt digests, and an unobserved fixture is
+    // an ERROR by design — so every test supplies its own ledger (usually
+    // empty) and the one that tests the staleness rule supplies a stale one.
+    std::string fixtures_args(const std::string& body = "")
+    {
+        write_text_file(scratch_ / "fixtures.txt", body);
+        return " --fixture-digests '" + (scratch_ / "fixtures.txt").string() +
+               "'";
+    }
+
+    // Git-tracked src/**/*.cpp paths, repo-relative — what the C++
+    // completeness check runs against. Cached: the answer cannot change
+    // within one test process.
+    const std::vector<std::string>& tracked_src_cpp()
+    {
+        static std::vector<std::string> cached = [this] {
+            std::vector<std::string> out;
+            const std::filesystem::path list =
+                scratch_ / "tracked_src_cpp.txt";
+            const std::string cmd = "git -C '" + repo_.string() +
+                                    "' ls-files -- src > '" + list.string() +
+                                    "'";
+            if (std::system(cmd.c_str()) != 0)
+                return out;
+            std::ifstream in(list);
+            std::string line;
+            while (std::getline(in, line)) {
+                if (line.size() > 4 &&
+                    line.compare(line.size() - 4, 4, ".cpp") == 0)
+                    out.push_back(line);
+            }
+            return out;
+        }();
+        return cached;
+    }
+
+    // Paths named in the committed cpp_excluded.txt (the TUs the coverage
+    // build genuinely cannot measure).
+    std::vector<std::string> committed_cpp_exclusions()
+    {
+        std::vector<std::string> out;
+        std::ifstream in(repo_ / "scripts" / "coverage" / "cpp_excluded.txt");
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#')
+                continue;
+            out.push_back(line.substr(0, line.find(' ')));
+        }
+        return out;
+    }
+
+    // A tracefile that measures every tracked src/ TU except the committed
+    // exclusions — the fully-covered, fully-accounted C++ half a forged run
+    // needs so the completeness check judges only what a test perturbs.
+    // `omit` names TUs to leave out; `extra_paths` appends records for paths
+    // that are not tracked at all. `lines_per_file` scales the forged line
+    // count (all covered).
+    std::string forge_cpp_tracefile(
+        const std::vector<std::string>& omit = {},
+        const std::vector<std::string>& extra_paths = {},
+        int lines_per_file = 3)
+    {
+        const std::vector<std::string> excluded = committed_cpp_exclusions();
+        std::string trace;
+        int fn = 0;
+        auto add_record = [&](const std::string& path) {
+            trace += "TN:forged\nSF:" + path + "\n";
+            const std::string name = "f" + std::to_string(fn++);
+            trace += "FN:1," + name + "\nFNDA:1," + name + "\n";
+            for (int line = 1; line <= lines_per_file; line++)
+                trace += "DA:" + std::to_string(line) + ",1\n";
+            trace += "end_of_record\n";
+        };
+        for (const std::string& path : tracked_src_cpp()) {
+            if (std::find(omit.begin(), omit.end(), path) != omit.end())
+                continue;
+            if (std::find(excluded.begin(), excluded.end(), path) !=
+                excluded.end())
+                continue;
+            add_record(path);
+        }
+        for (const std::string& path : extra_paths)
+            add_record(path);
+        const std::filesystem::path file = scratch_ / "cpp.info.forged";
+        write_text_file(file, trace);
+        return " --cpp-tracefile '" + file.string() + "'";
     }
 
     ReportRun run_report(const std::string& extra_args)
@@ -1484,10 +1721,11 @@ TEST_F(CoverageReportGate, hits_bind_to_the_bytes_their_own_process_declared)
     const std::string stub = "local stub = 1\nreturn stub\n";
     forge_dump("lua-attack.luacov", "og_unit_script",
                forge_s_record(real.chunk, stub) +
-                   forge_full_hits(real.chunk, real));
+                   forge_full_hits(real.chunk, real,
+                                   cov::sha256_hex(stub)));
 
     const ReportRun run =
-        run_report(manifest_args({"og_unit_script"}));
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
               run.output.find("not repository content"))
@@ -1508,11 +1746,14 @@ TEST_F(CoverageReportGate, a_dump_cannot_borrow_another_dumps_declaration)
     // Process A declares the real bytes and hits ONE line.
     forge_dump("lua-a.luacov", "procA",
                forge_s_record(real.chunk, real.bytes) + "L\t" + real.chunk +
-                   "\t" + std::to_string(real.facts.lines.front()) + "\t1\n");
-    // Process B hits every line but declares nothing.
+                   "\t" + real.digest + "\t" +
+                   std::to_string(real.facts.lines.front()) + "\t1\n");
+    // Process B hits every line — under the right digest, even — but never
+    // declares the source itself.
     forge_dump("lua-b.luacov", "procB", forge_full_hits(real.chunk, real));
 
-    const ReportRun run = run_report(manifest_args({"procA", "procB"}));
+    const ReportRun run =
+        run_report(manifest_args({"procA", "procB"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
               run.output.find("own process never declared"))
@@ -1530,7 +1771,8 @@ TEST_F(CoverageReportGate, sidecar_paths_cannot_escape_the_dump_directory)
                    "S\tpacks/x/scripts/b.lua\t../../outside.lua\t" +
                    zeros + "\tforged\n");
 
-    const ReportRun run = run_report(manifest_args({"og_unit_script"}));
+    const ReportRun run =
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
               run.output.find("'/etc/hostname' is a path, not a bare file "
@@ -1555,7 +1797,8 @@ TEST_F(CoverageReportGate, sidecar_bytes_must_hash_to_the_declared_digest)
                "S\t" + real.chunk + "\t" + name + "\t" + real.digest +
                    "\tforged\n" + forge_full_hits(real.chunk, real));
 
-    const ReportRun run = run_report(manifest_args({"og_unit_script"}));
+    const ReportRun run =
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
               run.output.find("does not hash to the digest the dump "
@@ -1567,17 +1810,21 @@ TEST_F(CoverageReportGate, sidecar_bytes_must_hash_to_the_declared_digest)
 
 TEST_F(CoverageReportGate, an_unknown_dump_format_version_is_an_error)
 {
-    // A version-3 dump against this reader once meant every S record was
-    // silently skipped and the numerator collapsed to zero with no message.
+    // A version-3 dump against a version-4 reader once meant every S record
+    // was silently skipped and the numerator collapsed to zero with no
+    // message. Version 4 itself is now the refused past: its digest-less
+    // L/F records are ambiguous by construction and must not be
+    // reinterpreted as anything.
     write_text_file(scratch_ / "raw" / "lua-old.luacov",
-                    "# openglad-lua-coverage 3\n"
+                    "# openglad-lua-coverage 4\n"
                     "P\tog_unit_script\n"
                     "L\tpacks/core/scripts/soldier.lua\t1\t1\n");
 
-    const ReportRun run = run_report(manifest_args({"og_unit_script"}));
+    const ReportRun run =
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
-              run.output.find("not a '# openglad-lua-coverage 4' dump"))
+              run.output.find("not a '# openglad-lua-coverage 5' dump"))
         << run.output;
 }
 
@@ -1591,6 +1838,7 @@ TEST_F(CoverageReportGate, an_empty_cpp_half_is_an_error_not_a_smaller_union)
                    forge_full_hits(real.chunk, real));
 
     const ReportRun run = run_report(manifest_args({"og_unit_script"}) +
+                                     fixtures_args() +
                                      " --cpp-tracefile /dev/null");
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos,
@@ -1610,24 +1858,16 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
 
-    // C++: enormous and fully covered, so the UNION clears the line bar on
-    // C++ slack alone.
-    std::string trace = "TN:forged\nSF:src/gameplay/walker.cpp\n";
-    for (int fn = 0; fn < 50; fn++) {
-        trace += "FN:1,f" + std::to_string(fn) + "\n";
-        trace += "FNDA:1,f" + std::to_string(fn) + "\n";
-    }
-    std::string da;
-    da.reserve(16 * 120000);
-    for (int line = 1; line <= 120000; line++)
-        da += "DA:" + std::to_string(line) + ",1\n";
-    trace += da;
-    trace += "end_of_record\n";
-    write_text_file(scratch_ / "cpp.info.forged", trace);
+    // C++: every tracked TU present, enormous and fully covered, so the
+    // UNION clears the line bar on C++ slack alone (and the completeness
+    // check has nothing to say — this test is about the bars).
+    ASSERT_FALSE(tracked_src_cpp().empty());
+    const std::string cpp_args =
+        forge_cpp_tracefile({}, {}, /*lines_per_file=*/1000);
 
     const ReportRun run =
-        run_report(manifest_args({"og_unit_script"}) + " --cpp-tracefile '" +
-                   (scratch_ / "cpp.info.forged").string() + "'");
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args() +
+                   cpp_args);
     EXPECT_EQ("PASS", gate_line_verdict(run.summary_json, "combined"))
         << "the forged union really is above the line bar — that is the "
            "attack: "
@@ -1652,7 +1892,8 @@ TEST_F(CoverageReportGate, the_recorder_process_population_is_checked)
 
     // The manifest expects one process that never wrote a dump, and the
     // dump that exists came from a process the manifest never heard of.
-    const ReportRun run = run_report(manifest_args({"og_test_parity"}));
+    const ReportRun run =
+        run_report(manifest_args({"og_test_parity"}) + fixtures_args());
     EXPECT_EQ(1, run.exit_code) << run.output;
     EXPECT_NE(std::string::npos, run.output.find("wrote no dump"))
         << run.output;
@@ -1661,4 +1902,182 @@ TEST_F(CoverageReportGate, the_recorder_process_population_is_checked)
     EXPECT_NE(std::string::npos,
               run.output.find("rogue_process"))
         << "an unlisted process is named so it gets added: " << run.output;
+}
+
+// P5-A, the druid-override shape. One chunk name, TWO declared generations
+// (both real repository files, so neither declaration is itself an error),
+// and hits from only one of them. While the report credited a hit to every
+// declared generation whose grid contained the line, execution of one file's
+// bytes marked the other 85% covered — a never-loaded byte-variant of core
+// druid.lua went from an honest 0/101+0/4 gate FAIL to a PASS. Hits carry
+// their generation now, so the other generation gets exactly nothing.
+TEST_F(CoverageReportGate, hits_credit_only_the_generation_that_executed)
+{
+    const RealSource ran = load_real("packs/core/scripts/druid.lua");
+    const RealSource bystander = load_real("packs/core/scripts/soldier.lua");
+    // The two grids overlap heavily by line NUMBER (both files put code on
+    // most early lines) — that overlap is what the deleted guess credited.
+    forge_dump("lua-twogen.luacov", "og_unit_script",
+               forge_s_record(ran.chunk, ran.bytes) +
+                   forge_s_record(ran.chunk, bystander.bytes) +
+                   forge_full_hits(ran.chunk, ran));
+
+    const ReportRun run =
+        run_report(manifest_args({"og_unit_script"}) + fixtures_args());
+    EXPECT_EQ(1, run.exit_code)
+        << "most of the inventory is still uncovered: " << run.output;
+    EXPECT_EQ(static_cast<int>(ran.facts.lines.size()),
+              summary_lines_hit(run.summary_json, ran.chunk))
+        << "the generation that executed gets full credit";
+    EXPECT_EQ(0, summary_lines_hit(run.summary_json, bystander.chunk))
+        << "the declared-but-never-executed generation must gain NOTHING "
+           "from the other generation's hits";
+    EXPECT_EQ(std::string::npos,
+              run.output.find("credited to every declared generation"))
+        << "the multi-generation guess (and its warning) must be gone: "
+        << run.output;
+}
+
+// P5-G: runtime_only_lua.txt is a reviewed ledger of holes in the metric.
+// An entry no run observes any more is rot — its test is gone, or something
+// stopped making those bytes reachable — and rot in the ledger used to be a
+// warning nobody reads. It fails the run now.
+TEST_F(CoverageReportGate, a_stale_fixture_digest_is_an_error)
+{
+    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    forge_dump("lua-good.luacov", "og_unit_script",
+               forge_s_record(real.chunk, real.bytes) +
+                   forge_full_hits(real.chunk, real));
+
+    const std::string stale(64, 'a');
+    const ReportRun run = run_report(
+        manifest_args({"og_unit_script"}) +
+        fixtures_args(stale + "  some test that no longer exists\n"));
+    EXPECT_EQ(1, run.exit_code) << run.output;
+    EXPECT_NE(std::string::npos, run.output.find("never observed"))
+        << run.output;
+    EXPECT_NE(std::string::npos, run.output.find(stale.substr(0, 12)))
+        << "the stale digest is named: " << run.output;
+    EXPECT_NE(std::string::npos, run.output.find("ERROR"))
+        << "staleness is an error, not a warning: " << run.output;
+}
+
+// P5-J: a gcov record for a file that no longer exists is dropped — but
+// never in silence, and in CI never at all. In a fresh build directory
+// (--strict-cpp, what coverage.yml passes) there is no such thing as a
+// legitimately stale record, so any drop is an error; locally it is a
+// warning that recommends a clean build. Deleting a badly-covered src/ file
+// without a clean rebuild must not quietly inflate the number.
+TEST_F(CoverageReportGate, a_dropped_cpp_record_is_an_error_under_strict_cpp)
+{
+    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    forge_dump("lua-good.luacov", "og_unit_script",
+               forge_s_record(real.chunk, real.bytes) +
+                   forge_full_hits(real.chunk, real));
+    ASSERT_FALSE(tracked_src_cpp().empty());
+    const std::string cpp_args = forge_cpp_tracefile(
+        {}, {"src/gameplay/families/no_such_family.cpp"});
+
+    const ReportRun strict = run_report(manifest_args({"og_unit_script"}) +
+                                        fixtures_args() + cpp_args +
+                                        " --strict-cpp");
+    EXPECT_EQ(1, strict.exit_code) << strict.output;
+    EXPECT_NE(std::string::npos,
+              strict.output.find("ERROR: 1 C++ record(s)"))
+        << strict.output;
+    EXPECT_NE(std::string::npos, strict.output.find("no_such_family.cpp"))
+        << strict.output;
+
+    const ReportRun loose = run_report(manifest_args({"og_unit_script"}) +
+                                       fixtures_args() + cpp_args);
+    EXPECT_NE(std::string::npos,
+              loose.output.find("warning: dropped 1 C++ record(s)"))
+        << loose.output;
+    EXPECT_NE(std::string::npos, loose.output.find("clean build"))
+        << "the warning tells the reader how to get rid of the litter: "
+        << loose.output;
+    EXPECT_EQ(std::string::npos, loose.output.find("ERROR: 1 C++ record(s)"))
+        << "without --strict-cpp an untracked stale record is a warning: "
+        << loose.output;
+}
+
+// P5-F: the C++ denominator is whatever the build emitted .gcno for, so a
+// tracked TU that silently stops being compiled just vanishes. Every
+// git-tracked src/**/*.cpp must be measured or listed — with a reason — in
+// scripts/coverage/cpp_excluded.txt.
+TEST_F(CoverageReportGate, an_absent_tracked_tu_must_be_listed_or_measured)
+{
+    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    forge_dump("lua-good.luacov", "og_unit_script",
+               forge_s_record(real.chunk, real.bytes) +
+                   forge_full_hits(real.chunk, real));
+    ASSERT_FALSE(tracked_src_cpp().empty());
+    // Leave one stable, definitely-tracked TU out of the forged data.
+    const std::string missing = "src/gameplay/walker.cpp";
+    ASSERT_NE(tracked_src_cpp().end(),
+              std::find(tracked_src_cpp().begin(), tracked_src_cpp().end(),
+                        missing));
+    const std::string cpp_args = forge_cpp_tracefile({missing});
+
+    const ReportRun run = run_report(manifest_args({"og_unit_script"}) +
+                                     fixtures_args() + cpp_args);
+    EXPECT_EQ(1, run.exit_code) << run.output;
+    EXPECT_NE(std::string::npos,
+              run.output.find("absent from the gcov data and not listed"))
+        << run.output;
+    EXPECT_NE(std::string::npos, run.output.find(missing)) << run.output;
+    EXPECT_NE(std::string::npos, run.output.find("cpp_excluded.txt"))
+        << "the fix is named: " << run.output;
+
+    // The converse: with every TU measured or committed-excluded, the
+    // completeness check is silent.
+    const ReportRun clean = run_report(manifest_args({"og_unit_script"}) +
+                                       fixtures_args() +
+                                       forge_cpp_tracefile());
+    EXPECT_EQ(std::string::npos,
+              clean.output.find("absent from the gcov data"))
+        << clean.output;
+}
+
+// ...and the exclusion ledger itself must not rot: a listed TU the data DOES
+// measure, or one git no longer tracks, is an error until the line is
+// deleted — the same rule the Lua fixture ledger lives under.
+TEST_F(CoverageReportGate, a_stale_cpp_exclusion_is_an_error)
+{
+    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    forge_dump("lua-good.luacov", "og_unit_script",
+               forge_s_record(real.chunk, real.bytes) +
+                   forge_full_hits(real.chunk, real));
+    ASSERT_FALSE(tracked_src_cpp().empty());
+    const std::string cpp_args = forge_cpp_tracefile();
+
+    write_text_file(scratch_ / "excluded.txt",
+                    "src/gameplay/walker.cpp measured-yet-listed\n"
+                    "src/never/was/here.cpp not-even-tracked\n");
+    const ReportRun run = run_report(
+        manifest_args({"og_unit_script"}) + fixtures_args() + cpp_args +
+        " --cpp-excluded '" + (scratch_ / "excluded.txt").string() + "'");
+    EXPECT_EQ(1, run.exit_code) << run.output;
+    EXPECT_NE(std::string::npos,
+              run.output.find("TUs the gcov data DOES measure"))
+        << run.output;
+    EXPECT_NE(std::string::npos, run.output.find("src/gameplay/walker.cpp"))
+        << run.output;
+    EXPECT_NE(std::string::npos,
+              run.output.find("not git-tracked src/ .cpp files"))
+        << run.output;
+    EXPECT_NE(std::string::npos, run.output.find("src/never/was/here.cpp"))
+        << run.output;
+
+    // A reason is not optional either: the ledger documents WHY each TU is
+    // unmeasurable, and a bare path documents nothing.
+    write_text_file(scratch_ / "noreason.txt",
+                    "src/platform/emscripten/web_touch_bridge.cpp\n");
+    const ReportRun bare = run_report(
+        manifest_args({"og_unit_script"}) + fixtures_args() + cpp_args +
+        " --cpp-excluded '" + (scratch_ / "noreason.txt").string() + "'");
+    EXPECT_EQ(1, bare.exit_code) << bare.output;
+    EXPECT_NE(std::string::npos,
+              bare.output.find("exclusion without a reason"))
+        << bare.output;
 }

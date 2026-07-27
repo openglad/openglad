@@ -149,11 +149,11 @@ struct FnEntry {
     std::uint64_t body_hits = 0;  // line events inside this prototype
 };
 
-// A prototype's identity: the chunk it was compiled from and the SPAN of
+// A prototype's identity WITHIN one generation of one chunk: the SPAN of
 // source lines it occupies. The span, not `linedefined` alone — two
 // prototypes can start on the same line, and merging them let one cover the
 // other. See the header.
-using FnKey = std::tuple<std::string, int, int>;
+using SpanKey = std::pair<int, int>;  // (line_defined, last_line_defined)
 
 // A declared source's identity: the chunk it was loaded under AND the
 // sha256 of its bytes. The chunk name alone is NOT unique — one process can
@@ -168,12 +168,29 @@ struct SourceEntry {
     std::string origin;
 };
 
+// Hits recorded against ONE generation of one chunk. Keyed by the digest of
+// the source that was active when they executed, never pooled per chunk:
+// pooling is what forced the report to guess which declared generation a hit
+// belonged to, and its guess — every generation whose grid contained the
+// line — let execution of one file's bytes credit a different file's.
+struct GenerationHits {
+    std::map<int, std::uint64_t> lines;   // line → hit count
+    std::map<SpanKey, FnEntry> functions; // prototype span → record
+};
+
+struct ChunkState {
+    // Digest of the most recently declared source for this chunk; empty
+    // until the first declaration. Declaration precedes execution for every
+    // mounted pack script, so this is the generation the VM is running.
+    std::string active_digest;
+    // digest ("" = no declaration was active) → hits under that generation.
+    std::map<std::string, GenerationHits> generations;
+};
+
 struct Recorder {
     std::mutex mu;
-    // chunk → line → hit count.
-    std::map<std::string, std::map<int, std::uint64_t>> lines;
-    // (chunk, line_defined, last_line_defined) → per-function record.
-    std::map<FnKey, FnEntry> functions;
+    // chunk → per-generation hit grids plus the active generation.
+    std::map<std::string, ChunkState> chunks;
     // (chunk, sha256(source)) → (source, real directory/archive), for every
     // script the engine loaded.
     std::map<SourceKey, SourceEntry> sources;
@@ -327,8 +344,7 @@ void reset()
 {
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    r.lines.clear();
-    r.functions.clear();
+    r.chunks.clear();
     r.sources.clear();
 }
 
@@ -338,7 +354,10 @@ void record_line(std::string_view chunk, int line)
         return;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    r.lines[std::string(chunk)][line]++;
+    ChunkState& cs = r.chunks[std::string(chunk)];
+    // Bound to the generation that is executing, never pooled per chunk;
+    // see the header's GENERATION BINDING note.
+    cs.generations[cs.active_digest].lines[line]++;
 }
 
 void declare_function(std::string_view chunk, int line_defined,
@@ -347,9 +366,9 @@ void declare_function(std::string_view chunk, int line_defined,
     if (!detail::g_enabled || chunk.empty()) return;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    FnEntry& e =
-        r.functions[FnKey{std::string(chunk), line_defined,
-                          last_line_defined}];
+    ChunkState& cs = r.chunks[std::string(chunk)];
+    FnEntry& e = cs.generations[cs.active_digest]
+                     .functions[SpanKey{line_defined, last_line_defined}];
     std::string incoming(label);
     // One Lua function registered under two names (the same closure used for
     // two hooks) would otherwise get a run-order-dependent label. Smallest
@@ -365,7 +384,9 @@ void record_function_line(std::string_view chunk, int line_defined,
         return;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    r.functions[FnKey{std::string(chunk), line_defined, last_line_defined}]
+    ChunkState& cs = r.chunks[std::string(chunk)];
+    cs.generations[cs.active_digest]
+        .functions[SpanKey{line_defined, last_line_defined}]
         .body_hits++;
 }
 
@@ -378,9 +399,13 @@ void declare_pack_source(std::string_view chunk, std::string_view source,
     // adds a record instead of erasing the previous one. Re-declaring the
     // same bytes — every level load re-registers the same pack scripts —
     // still collapses onto one entry.
-    SourceKey key{std::string(chunk), sha256_hex(source)};
+    std::string digest = sha256_hex(source);
+    SourceKey key{std::string(chunk), digest};
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
+    // This generation is now the chunk's ACTIVE one: hits recorded from here
+    // on bind to it, until a re-declaration with different bytes moves it.
+    r.chunks[key.first].active_digest = std::move(digest);
     r.sources[std::move(key)] = {std::string(source), std::string(origin)};
 }
 
@@ -389,9 +414,10 @@ std::vector<LineHit> line_hits()
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
     std::vector<LineHit> out;
-    for (const auto& [chunk, per_line] : r.lines)
-        for (const auto& [line, count] : per_line)
-            out.push_back({chunk, line, count});
+    for (const auto& [chunk, state] : r.chunks)
+        for (const auto& [digest, hits] : state.generations)
+            for (const auto& [line, count] : hits.lines)
+                out.push_back({chunk, digest, line, count});
     return out;
 }
 
@@ -400,9 +426,13 @@ std::vector<FunctionRecord> function_records()
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
     std::vector<FunctionRecord> out;
-    for (const auto& [key, entry] : r.functions) {
-        out.push_back({std::get<0>(key), std::get<1>(key), std::get<2>(key),
-                       entry.label, entry.body_hits});
+    for (const auto& [chunk, state] : r.chunks) {
+        for (const auto& [digest, hits] : state.generations) {
+            for (const auto& [span, entry] : hits.functions) {
+                out.push_back({chunk, digest, span.first, span.second,
+                               entry.label, entry.body_hits});
+            }
+        }
     }
     return out;
 }
@@ -418,8 +448,7 @@ std::vector<PackSourceRecord> pack_sources()
 }
 
 struct ScopedRecording::State {
-    std::map<std::string, std::map<int, std::uint64_t>> lines;
-    std::map<FnKey, FnEntry> functions;
+    std::map<std::string, ChunkState> chunks;
     std::map<SourceKey, SourceEntry> sources;
 };
 
@@ -429,8 +458,10 @@ ScopedRecording::ScopedRecording()
     {
         Recorder& r = recorder();
         const std::lock_guard<std::mutex> lock(r.mu);
-        saved_->lines = std::move(r.lines);
-        saved_->functions = std::move(r.functions);
+        // The active-generation map travels with the hits: a test's own
+        // declarations must not survive the scope as some other chunk's
+        // "current" generation.
+        saved_->chunks = std::move(r.chunks);
         saved_->sources = std::move(r.sources);
     }
     reset();  // the moved-from maps are unspecified; make them empty
@@ -442,8 +473,7 @@ ScopedRecording::~ScopedRecording()
     detail::g_enabled = previously_enabled_;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
-    r.lines = std::move(saved_->lines);
-    r.functions = std::move(saved_->functions);
+    r.chunks = std::move(saved_->chunks);
     r.sources = std::move(saved_->sources);
 }
 
@@ -546,7 +576,14 @@ bool write_raw_report(const std::string& path)
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out)
         return false;
-    out << "# openglad-lua-coverage 4\n";
+    // Version 5: L and F records carry the digest of the generation that was
+    // active when the hit executed ("-" when nothing was declared), so a hit
+    // belongs to exactly one (chunk, digest) and the report never has to
+    // guess which of a chunk's declared generations ran. Version 4 pooled a
+    // chunk's hits digest-less, and the report's guess — credit every
+    // declared generation whose grid holds the line — was a demonstrated
+    // cross-credit hole.
+    out << "# openglad-lua-coverage 5\n";
     // Which process wrote this. The report checks the POPULATION of recorder
     // processes against a committed manifest, because a suite that quietly
     // lost most of its processes looks exactly like slightly lower coverage.
@@ -559,12 +596,17 @@ bool write_raw_report(const std::string& path)
     for (std::size_t i = 0; i < declared.size(); i++)
         out << "S\t" << declared[i]->chunk << '\t' << declared_files[i] << '\t'
             << declared[i]->digest << '\t' << declared[i]->origin << '\n';
-    for (const LineHit& h : hits)
-        out << "L\t" << h.chunk << '\t' << h.line << '\t' << h.count << '\n';
-    for (const FunctionRecord& f : fns)
-        out << "F\t" << f.chunk << '\t' << f.line_defined << '\t'
-            << f.last_line_defined << '\t' << f.body_hits << '\t' << f.label
-            << '\n';
+    for (const LineHit& h : hits) {
+        out << "L\t" << h.chunk << '\t'
+            << (h.digest.empty() ? "-" : h.digest.c_str()) << '\t' << h.line
+            << '\t' << h.count << '\n';
+    }
+    for (const FunctionRecord& f : fns) {
+        out << "F\t" << f.chunk << '\t'
+            << (f.digest.empty() ? "-" : f.digest.c_str()) << '\t'
+            << f.line_defined << '\t' << f.last_line_defined << '\t'
+            << f.body_hits << '\t' << f.label << '\n';
+    }
     out.flush();
     return static_cast<bool>(out);
 }

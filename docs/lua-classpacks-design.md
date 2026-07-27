@@ -602,9 +602,12 @@ parity scenarios, *before* the corresponding C++ callback is deleted.
 every pack script the engine can load, line-by-line and function-by-function,
 and merges the result with gcovr's `src/` numbers;
 `.github/workflows/coverage.yml` enforces one bar — 95 % line, 100 % function
-— across the union. See `scripts/coverage/README.md` for how each number is
-produced and why arming the recorder is a runtime switch rather than a compile
-flag. Gaps the gate surfaced are covered by
+— on the C++ half alone, on the Lua half alone, AND on their union. Per half,
+deliberately: a union-only bar let the slack in one language absorb a
+shortfall in the other (with C++ near 96 %, a Lua half at 94.50 % still
+cleared a combined 95). See `scripts/coverage/README.md` for how each number
+is produced and why arming the recorder is a runtime switch rather than a
+compile flag. Gaps the gate surfaced are covered by
 `tests/unit/test_pack_lua_paths.cpp` (the cloud's overlap test, the cleric's
 whole kit, the archmage's response chain, the slime split), which is the place
 to add the next one.
@@ -617,12 +620,28 @@ without having any:
   anonymous callback costs exactly what a hook costs — and a script no test
   loads is a file of misses rather than an absence.
 * **A function is covered when a line of its body ran**, never at the point
-  the engine decided to dispatch it. An empty hook and one that dies on its
-  first statement both read as misses, which is what they are.
+  the engine decided to dispatch it. A hook that is registered — even
+  dispatched — but never *entered* reads as a miss. What the metric does NOT
+  distinguish, and no line-derived metric can: once a hook's body is entered,
+  an empty body counts (its `end` carries `OP_RETURN` and fires a line event)
+  and so does one that raises on its first statement — a dispatched no-op
+  stub is indistinguishable from an implementation. See "What the numbers do
+  NOT claim" in `scripts/coverage/README.md`.
 * **One statement per line** (`scripts/check_lua_statement_lines.py`, a build
   dependency of `og_gameplay`). Line coverage counts lines, so `if low then
   flee() end` on one line is a branch the metric cannot see. Writing it out
   costs nothing and makes the branch measurable.
+
+One consequence of the denominator's identity rules is intended behavior,
+not a bug: identity is the content hash, so while byte-identical copies
+collapse into one entry, a **byte-variant** copy of a shipped script (a CRLF
+re-encode, a whitespace edit, an abandoned fork of a pack file) is a SECOND
+denominator entry at 0 %. Nothing loads it,
+so the report names it in its never-loaded list and its prototypes are all
+misses — under the 100 % function bar, committing an unloadable variant
+fails the build until a test actually loads it or the variant is deleted.
+That is the gate doing its job: bytes that ship are bytes that get measured,
+and "almost identical to a measured file" is not measured.
 
 ## 10. Rollout
 

@@ -52,9 +52,15 @@ WHAT IS SCANNED
 Whatever scripts/lua_inventory.py calls shipped Lua — the same list the
 coverage denominator is built from, so a file cannot be game logic to one tool
 and invisible to the other. (It used to be two lists, and they disagreed.)
+That list has a deliberate boundary: .lua files under the shipped roots
+(packs/, docs/) at any depth, .lua members of .glad campaign archives, and
+declared product-C++ literals. A .lua under tests/ or scripts/ is a fixture,
+not shipped logic — never in the denominator, never linted here (spot-check
+it by passing the path explicitly if you want the rules applied anyway).
 Enumeration problems from that module (an undeclared blob of embedded Lua, a
-stale declaration) fail this lint too: they are the list being wrong, which is
-strictly worse than an entry on the list being wrong.
+stale declaration, an UNREADABLE shipped file or corrupt archive) fail this
+lint too: they are the list being wrong, which is strictly worse than an
+entry on the list being wrong.
 
 TWO MODES, ONE LIST
 -------------------

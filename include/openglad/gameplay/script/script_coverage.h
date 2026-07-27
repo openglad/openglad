@@ -120,6 +120,20 @@ private:
 
 // A line of `chunk` executed. `chunk` is the name the source was loaded
 // under, e.g. "packs/core/scripts/soldier.lua".
+//
+// GENERATION BINDING. Every hit recorded here (and by record_function_line
+// below) is stored under (chunk, digest of the generation that was ACTIVE
+// when it executed) — the digest of the most recent declare_pack_source for
+// this chunk, or the empty marker when nothing was declared yet. It is not
+// enough to keep every declared generation and let the report guess: one
+// chunk name really does carry two different sources in one process (a
+// regenerated pack cache mounts both under one path), and a report that
+// credited a hit to EVERY declared generation whose grid contained the line
+// let a never-loaded byte-variant of a shipped script score 86/101 lines off
+// another file's execution. Declaration precedes execution in the engine
+// (og::resources::register_mounted_pack_scripts declares before any VM can
+// replay the script), so the active generation at record time IS the
+// generation the VM compiled.
 void record_line(std::string_view chunk, int line);
 
 // A pack registered a hook function whose prototype spans
@@ -157,6 +171,11 @@ void record_function_line(std::string_view chunk, int line_defined,
 // against a different source's grid. Both declarations are now kept and both
 // appear in the dump.
 //
+// Declaring also makes this digest the chunk's ACTIVE generation: every hit
+// recorded from here on is stored — and dumped — under it, until the chunk
+// is re-declared with different bytes (see record_line above). Re-declaring
+// the same bytes (every level load does) changes nothing.
+//
 // `origin` is diagnostic only — it names the real directory or archive
 // PhysFS resolved the script from, which is what a "these bytes are not
 // repository content" failure has to print to be actionable. It is NOT a
@@ -172,12 +191,19 @@ void declare_pack_source(std::string_view chunk, std::string_view source,
 
 struct LineHit {
     std::string chunk;
+    // sha256 of the generation that was active when the hit executed; empty
+    // when the chunk had no declared source at that moment (test Lua compiled
+    // from a string literal — a mounted pack script is always declared before
+    // it can run). A hit belongs to exactly ONE (chunk, digest); the report
+    // never has to guess which declared generation executed.
+    std::string digest;
     int line = 0;
     std::uint64_t count = 0;
 };
 
 struct FunctionRecord {
     std::string chunk;
+    std::string digest;  // generation binding, exactly as in LineHit
     int line_defined = 0;
     int last_line_defined = 0;  // with line_defined, the prototype's identity
     std::string label;  // lexicographically smallest registered label
@@ -206,7 +232,8 @@ std::string sha256_hex(std::string_view data);
 // scripts/coverage/recorder_processes.txt.
 std::string program_name();
 
-// All sorted by (chunk, line) / chunk so callers and dumps are reproducible.
+// All sorted — (chunk, digest, line), (chunk, digest, span), (chunk, digest)
+// respectively — so callers and dumps are reproducible.
 std::vector<LineHit> line_hits();
 std::vector<FunctionRecord> function_records();
 std::vector<PackSourceRecord> pack_sources();

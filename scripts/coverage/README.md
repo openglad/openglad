@@ -82,9 +82,11 @@ each is a way for a half to look measured while measuring nothing:
 
 * a recorded `packs/...` script whose bytes are not repository content and are
   not a declared runtime-only fixture;
-* a `packs/...` chunk that recorded hits in a dump whose OWN process never
-  declared its source — a declaration in some other process's dump says
-  nothing about what this one compiled;
+* a hit bound to a source its own dump never declared — every `L`/`F` record
+  carries the digest of the generation that was executing, and a digest the
+  dump has no `S` record for (or a `packs/...` chunk that executed while NO
+  declaration was active) has no bytes to score against. A declaration in
+  some other process's dump says nothing about what this one compiled;
 * an `S` record whose sidecar does not hash to the digest it declared, or
   whose sidecar field is anything but a bare file name (a dump must not be
   able to point the reader at arbitrary paths);
@@ -92,12 +94,26 @@ each is a way for a half to look measured while measuring nothing:
   because skipping records it half-understands is how a version-skewed
   numerator once collapsed to zero in silence;
 * no dumps, or dumps with not a single recorded line;
+* a `runtime_only_lua.txt` digest that no dump in the run observes — the
+  reviewed-holes ledger rotting in place. Either the test that generates
+  those bytes is gone (delete the line) or something stopped making them
+  observable (fix it); a ledger with dead entries stops being evidence;
 * a REQUESTED C++ half that measured nothing (`--cpp-tracefile /dev/null`
   used to read as "C++ 0/0 n/a" and collapse the union onto the Lua half);
+* a git-tracked `src/**/*.cpp` that is absent from the gcov data and not
+  listed, with a reason, in `cpp_excluded.txt` — and, mirror-wise, an
+  exclusion entry for a TU the data DOES measure or that git no longer
+  tracks (see "The C++ denominator's completeness" below);
+* a gcov record for a git-TRACKED source missing from disk (a broken
+  checkout), and — under `--strict-cpp`, which CI passes — ANY dropped
+  record at all: a freshly configured build directory has nothing stale to
+  drop, so a drop there means the build and the tree disagree. Locally,
+  untracked-and-nonexistent records (stale `.gcno` for deleted files) drop
+  with a warning that recommends a clean build;
 * a recorder-process population that differs from
   `recorder_processes.txt` (next section);
-* a hit that lands off the static grid (a line the declared source has no code
-  on, or a function hit at a span no prototype occupies);
+* a hit that lands off its generation's static grid (a line the declared
+  source has no code on, or a function hit at a span no prototype occupies);
 * an enumeration problem from `scripts/lua_inventory.py` (undeclared embedded
   Lua, a stale declaration) — those make the denominator itself suspect.
 
@@ -118,6 +134,34 @@ grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
 
 Set equality, not counts, deliberately: rerunning a flaky binary adds dumps
 but no names.
+
+### The C++ denominator's completeness
+
+The C++ denominator is whatever the coverage build emitted `.gcno` for. That
+makes absence invisible: a tracked TU that some build regression quietly
+stops compiling does not fail anything — the denominator just shrinks by the
+size of the file, which with slack above the bar looks like nothing. So the
+report checks the measured population against the repository, the exact move
+the recorder-process manifest makes for the Lua half:
+
+* every git-tracked `src/**/*.cpp` must appear in the gcov data **or** be
+  listed in the committed `cpp_excluded.txt`, one line per TU with a stated
+  reason. Today's legitimate entries: two Emscripten-only bridges (compiled
+  only for the wasm target, which has no gcov), the two fuzz drivers (built
+  by the ci-fuzz preset, never part of the suite), and
+  `src/core/frame_rate_config.cpp` (a lone `static_assert`; its `.gcno` has
+  no line records, so gcovr emits nothing for it);
+* the ledger must not rot: an entry the data DOES measure, or one git no
+  longer tracks, is an error until the line is deleted;
+* a record whose file is missing from disk is never dropped in silence.
+  Tracked-but-missing is an error in every mode (the checkout and the index
+  disagree). Under `--strict-cpp` — what `coverage.yml` passes, because CI
+  configures the build directory from scratch — ANY drop is an error.
+  Locally, stale records for deleted files (old `.gcno` in an incremental
+  build dir, e.g. the C++ family implementations the class packs replaced)
+  drop with a warning that counts the lines involved and recommends a clean
+  build: deleting a badly-covered `src/` file without a clean rebuild must
+  not quietly move the number up.
 
 ### What the numbers do NOT claim
 
@@ -247,9 +291,12 @@ no matter which tests run. It enumerates, from
 `git ls-files --cached --others --exclude-standard` (committed plus untracked
 but not ignored):
 
-* every `*.lua` file — all of them, not a `packs/*/scripts` glob. Lua is this
-  project's mod language and has no other use here, so a narrower pattern only
-  moves the hole somewhere a glob does not look;
+* every `*.lua` file under the shipped roots — `packs/**` and `docs/**`, any
+  depth, tracked or untracked; within a root there is deliberately no
+  narrower pattern (no `packs/*/scripts` glob). A `.lua` outside the shipped
+  roots (`tests/`, `scripts/`, ...) is a fixture, not shipped logic — see
+  "Static inventory & lint" below for the boundary and why it cannot hide
+  game logic;
 * every `*.lua` inside every committed `*.glad` campaign archive;
 * every `R"LUA( ... )LUA"` raw string literal in C++. The `LUA` delimiter is
   the declaration that those bytes are shipped pack Lua —
@@ -293,14 +340,24 @@ name: a dump declaring a two-line stub as `packs/core/scripts/archmage.lua`
 while recording hits on the real file's uncovered lines took archmage from
 362/382 to 382/382 without a line of it running. Hits now bind to the digest
 their own process declared; the stub's digest is not repository content, and
-the run stops. One chunk name can also legitimately carry TWO sources within
-one process — `tests/unit/test_pack_transfer_errors.cpp` regenerates a cached
-pack and mounts both generations under `packs/org.test.regen/scripts/a.lua` —
-and both generations are declared, both are observable in the dump, and hits
-under that name are credited to every declared generation whose grid holds
-them, with the ambiguity named in the report output. (The recorder cannot
-know which generation a given line event came from; the line hook sees the
-chunk name.)
+the run stops.
+
+One chunk name can also legitimately carry TWO sources within one process —
+`tests/unit/test_pack_transfer_errors.cpp` regenerates a cached pack and
+mounts both generations under `packs/org.test.regen/scripts/a.lua` — and the
+recorder binds every hit to the generation that was ACTIVE when it executed:
+its in-process grids are keyed by `(chunk, digest)` at record time (a
+declaration makes its digest the chunk's active generation; declaration
+always precedes execution for a mounted script), and every `L`/`F` record
+carries that digest. A hit therefore belongs to exactly one `(chunk,
+digest)`, and the report scores it against that generation's grid alone. An
+earlier revision recorded hits digest-less and had the report *guess* —
+credit every declared generation whose grid contained the line, with a
+warning. That guess was a demonstrated dishonest pass: declaring a
+never-loaded byte-variant of core `druid.lua` under the same chunk name let
+the real file's execution mark the variant 86/101 covered, flipping the
+gate's honest FAIL to a PASS. The guessing path is deleted, not narrowed; a
+hit that names a generation its own dump never declared fails the run.
 
 **Hits with nowhere to go fail the gate.** A recorded `packs/...` script whose
 bytes are not repository content stops the run: that is what a missed
@@ -393,19 +450,22 @@ metric as a whole, not a Lua concession.
 
 ## Raw dump format
 
-Tab-separated, one record per line, after an exact `# openglad-lua-coverage 4`
+Tab-separated, one record per line, after an exact `# openglad-lua-coverage 5`
 first line. The reader REFUSES any other version outright: skipping records
 it half-understands is how a version-skewed run once read as Lua 0 % with no
-explanation. Merging is addition (line and function hits) plus
-smallest-label-wins, so dumps from parallel test processes combine without
-ordering rules — but hit *attribution* never crosses a dump: hits bind to
-the `S` declarations of the dump they arrived in.
+explanation. (Version 4's digest-less `L`/`F` records are ambiguous by
+construction — the recorder pooled a chunk's hits across generations — so
+they are refused, never reinterpreted.) Merging is addition (line and
+function hits) plus smallest-label-wins, so dumps from parallel test
+processes combine without ordering rules — but hit *attribution* never
+crosses a dump: hits bind to the `S` declarations of the dump they arrived
+in.
 
 ```
 P	<basename of the executable that wrote this dump>
 S	<chunk>	<sidecar file name>	<sha256 of the source bytes>	<origin>
-L	<chunk>	<line>	<hit count>
-F	<chunk>	<line defined>	<last line defined>	<body-line events>	<label>
+L	<chunk>	<generation>	<line>	<hit count>
+F	<chunk>	<generation>	<line defined>	<last line defined>	<body-line events>	<label>
 ```
 
 `S` declares the bytes the engine actually compiled under `<chunk>`. The
@@ -418,8 +478,16 @@ shipping another's. The digest is the sidecar's file name (behind a readable
 stem), so two processes declaring different bytes under one chunk name can
 never overwrite each other. `<origin>` is the real directory or archive
 PhysFS resolved the script from — diagnostic only, never a filter. `P` names
-the writing process for the population check above. `<label>` is the
-registration that named the function, e.g. `living/core:soldier/do_special`,
+the writing process for the population check above.
+
+`<generation>` on `L`/`F` is the sha256 of the source that was ACTIVE when
+the hit executed — it must match an `S` record of the same dump — or `-`
+when nothing was declared (test Lua compiled from a string literal; on a
+`packs/...` chunk the `-` marker is an error, because a mounted script is
+always declared before it can run). This is what makes a hit belong to
+exactly one `(chunk, digest)`; see "The denominator" above for the
+cross-credit hole the digest column closes. `<label>` is the registration
+that named the function, e.g. `living/core:soldier/do_special`,
 `level/-1/on_tick`, `entity/on_death`; it is empty for a function nothing
 registered, which is most of them.
 
@@ -446,7 +514,12 @@ move the bar. A partial run (one binary, a filtered ctest) will fail the
 process-population check by design — for exploration use `--no-gate`, or point
 `--processes-manifest` at a file listing just the processes you ran. The
 committed manifest is the contract for full runs and is not the thing to
-edit down.
+edit down. The same pattern covers the other committed ledgers:
+`--fixture-digests` (runtime-only Lua) and `--cpp-excluded` (unmeasurable
+C++ TUs) exist so tests can supply their own; the committed files are the
+defaults and the contract. `--strict-cpp` turns every dropped C++ record
+into an error — CI passes it because its build directory is always fresh;
+on a local incremental build dir expect the stale-record warning instead.
 
 ## Static inventory & lint
 
@@ -467,6 +540,61 @@ deployment — an exported tarball has no tracked/untracked/ignored distinction
 left to enumerate. Symlink semantics are git's alone: a listed file symlink
 is read through; a directory symlink is the link object, never descended.
 
+### What ships, exactly: the shipped roots
+
+Three kinds of entry, and nothing else:
+
+* `*.lua` files under the **shipped roots** — `packs/**` and `docs/**` — at
+  any depth, tracked or untracked. Those are the trees the product ships:
+  the pack scripts the engine mounts, and the modding examples the docs
+  distribute. Within a root there is no narrower pattern (no
+  `packs/*/scripts` glob): any `.lua` there is game logic;
+* every `*.lua` member of every `*.glad` campaign archive, wherever the
+  archive sits — the engine mounts campaign packs straight out of the
+  archive, and one whole boss script ships only that way;
+* `R"LUA( ... )LUA"` literals in product C++ (`src/`, `tools/`, `include/`)
+  declared `shipped` in `embedded_lua.txt` (next subsection).
+
+A `.lua` file anywhere else — `tests/**`, `scripts/**`, a scratch file at
+the repository root — is **not shipped**: never in the denominator, never
+linted, never even read. The boundary exists because its absence was a
+false-failure generator, symmetric with the raw-string fixture story below:
+a four-line helper fixture dropped in `tests/data/` became "shipped game
+logic", entered the denominator at 0 %, failed the 100 % function bar, and —
+the lint being a build dependency of `og_gameplay` — broke every build on
+the machine.
+
+The exemption cannot hide game logic, and what keeps it safe is the
+report's content-digest poison pills, not trust: an engine-loaded pack
+chunk whose bytes are **not shipped content** and **not a listed
+runtime-only fixture** (`runtime_only_lua.txt`) is already a hard gate
+error. A test that mounts `tests/data/probe.lua` at runtime therefore does
+not create unmeasured game logic — it stops the run until the bytes either
+move under a shipped root or are acknowledged, by digest, in a committed
+line a reviewer reads. Static enumeration guards what ships; content-hash
+attribution guards what runs.
+
+The boundary does not soften the attack the denominator exists to stop:
+new Lua under a shipped root — tracked **or untracked**, any depth — enters
+the denominator at 0 % immediately, and holds the 100 % function bar down
+until tests actually execute it.
+
+### Enumeration failures fail closed
+
+Every read failure on a shipped path is a hard problem, never a skip: an
+unreadable `.lua` under a shipped root, an unopenable or corrupt `.glad`,
+an unreadable product C++ file. Each used to be silently `continue`d past —
+which SHRANK the denominator, making a `chmod 000` the cheapest possible
+way to take game logic out of the metric. `scan()` reports these problems,
+`inventory()` refuses on them, and the lint and the report both fail on
+them, naming the repository path.
+
+A shipped `.lua` that is readable but **will not compile** surfaces the
+same way, from the report's real-Lua pass: a collected gate error naming
+the repository path, listed alongside every other problem in the run — not
+a mid-flight abort that hides the rest. (Junk outside the shipped roots
+never reaches compilation at all; it is not read.)
+
 ### Embedded Lua is checked by construction, not convention
 
 Every raw string literal, under **any** delimiter, in the **product
@@ -478,10 +606,16 @@ rest) — is classified on every run, and there is no silent outcome:
   collected into the denominator. Anywhere else in product code it is a hard
   failure.
 * A literal under any *other* delimiter whose body **could compile as Lua**
-  and **references the pack API** (`og.` / `register_hooks`) must be
-  accounted for in `embedded_lua.txt` — `shipped` (after moving it to the
-  `LUA` delimiter) or `fixture` — or the inventory hard-fails naming the file
-  and line.
+  and **references the pack API** (`og.` / `register_hooks`) hard-fails the
+  inventory, naming the file and line. The remedies are exactly two: if it
+  is shipped pack Lua, move it to the `LUA` delimiter and declare the file
+  `shipped`; if it is test-only, move it under `tests/`.
+* The historical `fixture <path>` disposition — "this product file's
+  Lua-looking strings are test-only, skip them" — is **forbidden** and
+  rejected by name: one such line was the only lever that could hide live
+  product Lua from the denominator behind a single reviewable word. Product
+  literals are `shipped`, full stop; a test-only literal belongs in
+  `tests/`.
 * A raw-string opener *inside* a matched literal's body is a hard failure:
   quoting an opener in a comment above a real literal makes the regex match
   swallow the literal — the one way to hide bytes from this scan — so
@@ -498,8 +632,10 @@ build dependency *before* the vendored Lua exists as a binary. The check
 always passes it, so a rejection is proof the text is not Lua, and
 over-acceptance only widens must-declare — the fail-closed direction. The
 *real* compiler still gets the final word: every denominator entry is
-compiled by `og_lua_lines` inside the gate, which hard-fails on Lua that
-does not compile.
+compiled by `og_lua_lines` inside the gate, and an entry that will not
+compile is a collected gate error naming the repository-side path —
+reported alongside everything else wrong with the run, never an abort that
+hides the rest.
 
 **The tests/ boundary, crisply:** raw strings in `tests/` (and `scripts/`,
 `docs/` — anything outside the product directories) are exempt from
@@ -524,13 +660,17 @@ wrong is worse than an entry that is wrong). It runs in two modes:
 | `--tracked-only` | git-tracked files | build dependency of `og_gameplay` (every `ninja`) |
 | default (full) | tracked + untracked, `.glad` members, embedded literals | `check_lua_statement_lines_full`, which gates the `coverage_report` target |
 
-The split exists because the two duties want opposite failure behaviour. A
-junk or half-written **untracked** `.lua` must not break every build on the
-machine it sits on — so the per-build lint is tracked-only, fast, and
-junk-immune. The same file **must** fail the coverage gate loudly, by its
+The split exists because the two duties want opposite failure behaviour for
+a half-written **untracked** `.lua` under a shipped root. It is game logic
+in the making, so the full mode **must** fail on it loudly, by its
 repository path (`packs/...`, never a staged temp name) — that is exactly
 how un-`git add`-ed game logic is caught before commit, and the untracked
-file still sits in the coverage denominator at 0% regardless. In CI
+file sits in the coverage denominator at 0% regardless. But it must not
+break every `ninja` on the machine it happens to sit on, so the per-build
+lint is tracked-only. (Junk *outside* the shipped roots stopped being
+anyone's problem: it is not enumerated in either mode, so it can break
+neither the build nor the gate — and if a test mounts it at runtime, the
+poison pills above own it.) In CI
 checkouts nothing is untracked, so the tracked-only build lint already
 covers everything there; independent of CMake targets, `coverage_report.py`
 itself consumes `scan()` and fails on enumeration problems, and

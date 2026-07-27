@@ -55,17 +55,46 @@ WHERE LUA HIDES
 ---------------
 Three places, because "a .lua file in the tree" is not the whole story:
 
-  1. `*.lua` files.  EVERY one of them, not a `packs/*/scripts` glob. Lua is
-     this project's mod language and has no other use here, so any `.lua` the
-     repository ships is game logic; enumerating a narrower pattern just moves
-     the hole somewhere a glob does not look.
-  2. `*.lua` entries inside committed `*.glad` campaign archives. The engine
-     mounts campaign packs straight out of the archive, and one whole boss
-     script ships only that way.
+  1. `*.lua` files under the SHIPPED ROOTS — packs/ and docs/ — at any
+     depth, tracked or untracked. Those are the trees the product ships: the
+     pack scripts the engine mounts, and the modding examples the docs
+     distribute. Within a shipped root there is deliberately no narrower
+     pattern (no `packs/*/scripts` glob): any `.lua` there is game logic,
+     and enumerating a subset just moves the hole somewhere a glob does not
+     look.
+  2. `*.lua` entries inside `*.glad` campaign archives, wherever the archive
+     sits. The engine mounts campaign packs straight out of the archive, and
+     one whole boss script ships only that way.
   3. Lua inside C++ raw string literals delimited `R"LUA( ... )LUA"`, in a
      file that `scripts/coverage/embedded_lua.txt` declares `shipped`. The
      showcase pack is written into a generated `.glad` from one of these and
      never exists as a file at all.
+
+THE FIRST ONE HAS A DELIBERATE BOUNDARY
+---------------------------------------
+`tests/**`, `scripts/**` and every location outside the shipped roots never
+enter the denominator, and are never even read. The alternative was a
+false-failure generator: a four-line Lua helper fixture dropped in
+tests/data/ became "shipped game logic", entered the denominator at 0%,
+failed the 100% function bar, and — because this module also backs the
+og_gameplay build lint — broke every build on the machine. Symmetric with
+the raw-string policy below: what does not ship cannot carry shipped logic.
+
+The exemption cannot hide game logic, for the same reason the raw-string
+exemption cannot. A `.lua` outside the shipped roots that nothing loads
+ships nothing; the moment a test MOUNTS one at runtime, the report's
+content-digest poison pills own it — an engine-loaded pack chunk whose
+bytes are not shipped content and not a listed runtime-only fixture is a
+hard gate error (see scripts/coverage/coverage_report.py, attribute_dumps).
+
+ENUMERATION FAILURES ARE PROBLEMS, NOT SKIPS
+--------------------------------------------
+A read failure on a shipped path fails closed. An unreadable `.lua` under a
+shipped root, an unopenable or corrupt `.glad`, an unreadable product C++
+file — each used to be silently `continue`d past, which SHRANK the
+denominator: the one lever this module exists to keep out of runtime's
+hands was available to a chmod. Every such failure is now a problem entry,
+so the lint lists it and `inventory()` refuses on it.
 
 THE THIRD ONE FAILS CLOSED, IN BOTH DIRECTIONS
 ----------------------------------------------
@@ -93,12 +122,17 @@ might be handed. In a product file:
 
 `tests/` (and every other non-product location) is EXEMPT from must-declare,
 and its raw strings never enter the shipped denominator — silently or
-otherwise; a declaration naming a non-product path is itself an error. The
-boundary is safe by construction: a raw string that never ships cannot carry
-shipped logic, and the moment a test MOUNTS Lua at runtime the report's own
-poison pills take over — recorded pack bytes that are not repository content,
-or a pack chunk with no declared source, hard-fail the gate
-(see scripts/coverage/coverage_report.py, resolve_chunks).
+otherwise; a declaration naming a non-product path is itself an error, and
+so is any `fixture` declaration at all. `fixture` used to silence the
+sniffer for one product file per line — the only lever that could hide live
+product Lua behind a single reviewable line — so the disposition is
+forbidden: product literals are `shipped`, full stop, and a test-only
+literal belongs in tests/. The boundary is safe by construction: a raw
+string that never ships cannot carry shipped logic, and the moment a test
+MOUNTS Lua at runtime the report's own poison pills take over — recorded
+pack bytes that are not repository content, or a pack chunk with no
+declared source, hard-fail the gate
+(see scripts/coverage/coverage_report.py, attribute_dumps).
 
 `could_be_lua` is a deliberate one-sided approximation of `luac -p`, built on
 the same lexer the statement lint uses: real Lua always lexes and always
@@ -147,6 +181,7 @@ import pathlib
 import re
 import subprocess
 import zipfile
+import zlib
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -177,6 +212,17 @@ CXX_SUFFIXES = {
 # pills instead. See the module docstring.
 PRODUCT_DIRS = ("include", "src", "tools")
 
+# Where shipped .lua FILES live: the pack tree the engine mounts, and the
+# modding examples the docs distribute. A .lua anywhere else — tests/,
+# scripts/, a scratch file at the repo root — does not ship and never enters
+# the denominator; if a test mounts one at runtime, the report's content-hash
+# poison pills own it (bytes the engine loaded that are not shipped content
+# hard-fail the gate). Symmetric with PRODUCT_DIRS for raw strings, and for
+# the same reason: without the boundary, a four-line helper fixture in
+# tests/data/ was "shipped game logic" at 0% and broke every build through
+# the og_gameplay lint. See the module docstring.
+SHIPPED_LUA_ROOTS = ("docs", "packs")
+
 # "Looks like pack logic": the API root every pack script talks through, or
 # the registration entry point. A Lua blob that touches neither cannot
 # register a hook and cannot call the engine.
@@ -189,12 +235,12 @@ PACK_API_REFERENCE = re.compile(r"\bog\s*\.|\bregister_hooks\b")
 # embedded literal from the sniffer. So ambiguity is itself a hard failure.
 RAW_OPENER = re.compile(r'R"[^()\\\s]{0,16}\(')
 
-# Which C++ files may contain Lua, and in what capacity. Two dispositions:
+# Which C++ files may contain Lua. One live disposition:
 #   shipped  the file's R"LUA( ... )LUA" literals ARE pack Lua: measured by
 #            the coverage gate and linted by check_lua_statement_lines.py.
-#   fixture  the file contains Lua-looking raw strings that only exist while
-#            a test runs. Not measured, not linted — and `R"LUA(` stays
-#            forbidden there, because that delimiter means "shipped".
+# The historical `fixture` disposition is still parsed — so a line using it
+# can be REJECTED loudly rather than ignored — but it is forbidden: product
+# literals are `shipped`, full stop; a test-only literal belongs in tests/.
 EMBEDDED_LUA_FILE = (
     pathlib.Path(__file__).resolve().parent / "coverage" / "embedded_lua.txt"
 )
@@ -455,7 +501,14 @@ def repository_files(
 def embedded_lua_dispositions(
     path: pathlib.Path = EMBEDDED_LUA_FILE,
 ) -> Dict[str, str]:
-    """repo-relative C++ path -> "shipped" | "fixture"."""
+    """repo-relative C++ path -> "shipped" | "fixture".
+
+    "fixture" is parsed but FORBIDDEN: `_declaration_problems` turns every
+    such line into a hard problem. Parsing it anyway is what makes the ban
+    loud — an unparsed line would be silently ignored, and the file it names
+    would merely fall back to the undeclared-literal message instead of the
+    one that says why the disposition no longer exists.
+    """
     out: Dict[str, str] = {}
     if not path.exists():
         return out
@@ -524,15 +577,14 @@ def _scan_cxx(
                     f"{EMBEDDED_LUA_FILE.name} does not mark `shipped`. That "
                     "delimiter means the bytes are pack Lua and go into the "
                     "coverage denominator. If they are, add "
-                    f"`shipped {rel}`; if they are a test fixture, use a "
-                    f"different delimiter and add `fixture {rel}`."
+                    f"`shipped {rel}`; if they are test-only, the literal "
+                    "belongs under tests/ (exempt by construction), not in "
+                    "a product file."
                 )
             continue
         if not (could_be_lua(body) and references_pack_api(body)):
             continue
         sniffed += 1
-        if disposition == "fixture":
-            continue  # declared: test-only strings, deliberately unmeasured
         if disposition == "shipped":
             problems.append(
                 f'{rel}:{line}: raw string R"{delimiter}( ... ){delimiter}" '
@@ -545,11 +597,12 @@ def _scan_cxx(
             problems.append(
                 f'{rel}:{line}: raw string R"{delimiter}( ... ){delimiter}" '
                 "could compile as Lua and references the pack API "
-                f"(og./register_hooks), but {EMBEDDED_LUA_FILE.name} says "
-                "nothing about this file, so nothing measures it. If it is "
-                'shipped pack Lua, move it to R"LUA( ... )LUA" and add '
-                f"`shipped {rel}`; if it is a test fixture, add "
-                f"`fixture {rel}` (or move it under tests/, which is exempt)."
+                f"(og./register_hooks), but {EMBEDDED_LUA_FILE.name} does "
+                "not mark this file `shipped`, so nothing measures it. If "
+                'it is shipped pack Lua, move it to R"LUA( ... )LUA" and '
+                f"add `shipped {rel}`; if it is test-only, move it under "
+                "tests/, which is exempt by construction — `fixture` "
+                "declarations are forbidden in product directories."
             )
     return lua_literals, sniffed
 
@@ -561,12 +614,13 @@ def _declaration_problems(
     include_untracked: bool,
     problems: List[str],
 ) -> None:
-    """A declaration must point at a live literal, or it is itself a failure.
+    """A declaration must be a live, permitted claim, or it is a failure.
 
-    A stale `fixture` line silences the sniffer for a path somebody may
-    re-create; a stale `shipped` line claims a denominator that no longer
-    exists; a declaration outside the product directories claims shipped
-    status for something that does not ship.
+    A `fixture` line is forbidden outright — it silenced the sniffer for one
+    product file per line, the only lever that could hide live product Lua
+    behind a single reviewable diff line. A stale `shipped` line claims a
+    denominator that no longer exists; a declaration outside the product
+    directories claims shipped status for something that does not ship.
     """
     for rel in sorted(dispositions):
         disposition = dispositions[rel]
@@ -579,7 +633,19 @@ def _declaration_problems(
                 "C++ can carry shipped embedded Lua; tests/ and the rest are "
                 "exempt by construction. Drop the line."
             )
-        elif rel not in counts:
+            continue
+        if disposition == "fixture":
+            problems.append(
+                f"{EMBEDDED_LUA_FILE.name} declares `fixture {rel}`: "
+                "`fixture` is forbidden for literals in src/, tools/ and "
+                "include/ — product literals are `shipped`, full stop, and "
+                "a test-only literal belongs in tests/. One `fixture` line "
+                "was the only lever that could silence live product Lua, so "
+                "the disposition no longer exists. Mark the file `shipped` "
+                "or move the literal under tests/."
+            )
+            continue
+        if rel not in counts:
             # In tracked-only mode an untracked-but-present declared file is
             # simply not scanned here; the full (coverage-path) scan owns it.
             if include_untracked or not (repo_root / rel).is_file():
@@ -590,18 +656,12 @@ def _declaration_problems(
                     "scanned suffix); drop the line"
                 )
         else:
-            lua_literals, sniffed = counts[rel]
-            if disposition == "shipped" and lua_literals == 0:
+            lua_literals, _ = counts[rel]
+            if lua_literals == 0:
                 problems.append(
                     f'{rel}: declared `shipped` in {EMBEDDED_LUA_FILE.name} '
                     'but no R"LUA( ... )LUA" literal exists there any more; '
                     "drop the line"
-                )
-            if disposition == "fixture" and sniffed == 0 and lua_literals == 0:
-                problems.append(
-                    f"{rel}: declared `fixture` in {EMBEDDED_LUA_FILE.name} "
-                    "but no raw string there would trip the sniffer any "
-                    "more; drop the line so it cannot silence a future one"
                 )
 
 
@@ -611,18 +671,37 @@ def _collect(
     include_untracked: bool,
     problems: List[str],
 ) -> List[Tuple[int, str, bytes]]:
-    """(kind, label, bytes) for every blob of shipped Lua in `files`."""
+    """(kind, label, bytes) for every blob of shipped Lua in `files`.
+
+    Every read failure on a shipped path is a PROBLEM, never a skip: a
+    `continue` here shrinks the denominator, and an unreadable file is the
+    cheapest possible way to make game logic unmeasured (the demonstration
+    was a chmod-000 pack script — the inventory dropped it and the gate
+    said nothing). Junk outside the shipped roots is the opposite case: it
+    is not read at all, so it can be neither a denominator entry nor a
+    failure.
+    """
     found: List[Tuple[int, str, bytes]] = []
     dispositions = embedded_lua_dispositions()
     counts: Dict[str, Tuple[int, int]] = {}
     for path in files:
         rel = _rel(repo_root, path)
         suffix = path.suffix.lower()
+        top, _, _ = rel.partition("/")
         if suffix == ".lua":
+            if top not in SHIPPED_LUA_ROOTS:
+                # tests/, scripts/, and everywhere else: not shipped, never
+                # read. A runtime mount of such a file is owned by the
+                # report's content-hash poison pills. See the docstring.
+                continue
             try:
                 found.append((KIND_FILE, rel, path.read_bytes()))
-            except OSError:
-                continue
+            except OSError as exc:
+                problems.append(
+                    f"{rel}: cannot read shipped Lua ({exc}); an unreadable "
+                    "file under a shipped root would otherwise silently "
+                    "shrink the coverage denominator"
+                )
         elif suffix == ".glad":
             try:
                 with zipfile.ZipFile(path) as archive:
@@ -631,16 +710,25 @@ def _collect(
                             found.append(
                                 (KIND_ARCHIVE, f"{rel}!{entry}",
                                  archive.read(entry)))
-            except (OSError, zipfile.BadZipFile, KeyError):
-                continue
+            except (OSError, zipfile.BadZipFile, KeyError, zlib.error) as exc:
+                problems.append(
+                    f"{rel}: cannot enumerate campaign archive "
+                    f"({exc}); its .lua members are shipped game logic, and "
+                    "an unopenable or corrupt archive would otherwise "
+                    "silently shrink the coverage denominator"
+                )
         elif suffix in CXX_SUFFIXES:
-            top, _, _ = rel.partition("/")
             if top not in PRODUCT_DIRS:
                 continue  # tests/ etc.: exempt by construction, see docstring
             disposition = dispositions.get(rel)
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            except OSError as exc:
+                problems.append(
+                    f"{rel}: cannot read product C++ file while scanning "
+                    f"for embedded Lua ({exc}); a literal there would be "
+                    "invisible to the coverage denominator"
+                )
                 continue
             if 'R"' not in text and disposition is None:
                 continue
