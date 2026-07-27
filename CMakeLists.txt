@@ -191,9 +191,6 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/family_registry.cpp
     ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
@@ -373,9 +370,6 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/family_registry.cpp
     ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
