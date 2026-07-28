@@ -39,6 +39,3 @@ families:
       glyph_transparent: false
       radar_color: none
       radar_jitter: 0
-      tuning:
-        # Ranged self-teleport distance: per-level (px)
-        teleport_range_per_level: 18

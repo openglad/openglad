@@ -6,7 +6,13 @@ local lc = og.use("living_common")
 local function handle_teleport(self)
   self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
-  self:teleport_ranged(self.level * og.tuning(self).teleport_range_per_level)
+  -- 18 px/level. Cast-cadence-hot: with no foe in range TUNNEL recasts at
+  -- MP-regen cadence for a whole run, so in the generator scenarios a
+  -- per-cast og.tuning read here regressed the tent instruction budget to
+  -- +11.1% vs the Stage-3 baseline. R-KEEP-4 code constant, exactly like
+  -- the ai.lua gate ranges (Stage 4 measured the same class: +23.8% on
+  -- bones).
+  self:teleport_ranged(self.level * 18)
   return true
 end
 
