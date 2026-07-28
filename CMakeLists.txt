@@ -689,17 +689,74 @@ add_custom_target(check_render_no_sim_writes
     VERBATIM
 )
 
+# --------------------------------------------------------------------------
+# Python-driven repo checks: resolve the interpreter at configure time.
+#
+# These targets used to spell the interpreter as a bare `python3` resolved
+# from PATH at build time. MSYS2/mingw64 has no `python3` name, so on the
+# Windows CI runner the og_gameplay build dependency below died with "no such
+# file or directory" before compiling anything. find_package resolves a
+# concrete interpreter path once, at configure time (consulting the registry
+# on Windows), and every Python-running target below uses that path.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+# The pack-Lua lint's file list is DEFINED over `git ls-files` — see
+# scripts/lua_inventory.py, which refuses to fall back to a directory walk by
+# design — so the per-build lint dependency additionally needs a discoverable
+# git: a Python found via the Windows registry with no git on PATH (exactly
+# the MSYS2 CI shell) would only move the build break from "no python3" into
+# the middle of the script.
+find_package(Git QUIET)
+
+if(NOT Python3_Interpreter_FOUND)
+    message(STATUS
+        "No Python 3 interpreter found - skipping the per-build repo-check "
+        "dependencies (og_gameplay -> check_lua_statement_lines, "
+        "og_test_parity -> check_mutation_pins) in this build tree ONLY. "
+        "The authoritative full lint still gates coverage_report (which "
+        "hard-requires the interpreter and will fail loudly if invoked "
+        "here), and CI's Linux lanes run all of these checks.")
+elseif(NOT GIT_FOUND)
+    message(STATUS
+        "No git found - skipping the per-build pack-Lua lint dependency "
+        "(og_gameplay -> check_lua_statement_lines) in this build tree "
+        "ONLY: its file list is defined over `git ls-files`. The "
+        "authoritative full lint still gates coverage_report, and CI's "
+        "Linux lanes run it with git present.")
+endif()
+
+# Defines <name> to run ${Python3_EXECUTABLE} <args...> when an interpreter
+# exists. When none does, the target still EXISTS — a documented target name
+# must never silently vanish or turn into a no-op — but building it fails
+# loudly, saying what is missing, so "did not run" can never read as
+# "passed" on a machine without Python.
+function(og_add_python_check_target name comment)
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(${name}
+            COMMAND ${Python3_EXECUTABLE} ${ARGN}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    else()
+        add_custom_target(${name}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "${name}: this check needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+            COMMAND ${CMAKE_COMMAND} -E false
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    endif()
+endfunction()
+
 # Mutation-canary pins name a file, a LINE and the exact text to replace. Any
 # insertion earlier in a pinned file silently shifts them off their anchor, and
 # a pin that no longer matches mutates nothing — the canary then reports a
 # clean run for a scenario it is no longer guarding. Cheap to check, invisible
 # if you do not.
-add_custom_target(check_mutation_pins
-    COMMAND ${CMAKE_COMMAND} -E env python3
-            ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking mutation-canary pins still anchor"
-    VERBATIM
+og_add_python_check_target(check_mutation_pins
+    "Checking mutation-canary pins still anchor"
+    ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
 )
 
 # Pack Lua: one measurable decision per line. Line coverage counts LINES, so
@@ -722,20 +779,14 @@ add_custom_target(check_mutation_pins
 #       is caught before it is committed. (CI checkouts have no untracked
 #       files, so the tracked-only build lint already covers everything
 #       there.)
-add_custom_target(check_lua_statement_lines
-    COMMAND ${CMAKE_COMMAND} -E env python3
-            ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
-            --tracked-only
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking pack Lua holds one statement per line (tracked files)"
-    VERBATIM
+og_add_python_check_target(check_lua_statement_lines
+    "Checking pack Lua holds one statement per line (tracked files)"
+    ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
+    --tracked-only
 )
-add_custom_target(check_lua_statement_lines_full
-    COMMAND ${CMAKE_COMMAND} -E env python3
-            ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking pack Lua holds one statement per line (full inventory)"
-    VERBATIM
+og_add_python_check_target(check_lua_statement_lines_full
+    "Checking pack Lua holds one statement per line (full inventory)"
+    ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
 )
 
 # --------------------------------------------------------------------------
@@ -1228,8 +1279,16 @@ if(NOT EMSCRIPTEN)
     # og_gameplay is what runs pack Lua, and every build builds it, so this is
     # where the one-statement-per-line rule gets enforced: a branch folded
     # onto an already-covered line is invisible to the coverage gate, so it
-    # has to be caught at build time instead.
-    add_dependencies(og_gameplay check_lua_statement_lines)
+    # has to be caught at build time instead. The dependency needs both a
+    # Python 3 interpreter and git (the lint's file list is `git ls-files`);
+    # a machine lacking either — the MSYS2/mingw64 CI runner — still builds
+    # the game, and the authoritative full lint keeps running where the
+    # coverage gate runs (the coverage_report target locally, the Linux
+    # coverage lane in CI, plus this same tracked-only lint on every Linux
+    # CI build).
+    if(Python3_Interpreter_FOUND AND GIT_FOUND)
+        add_dependencies(og_gameplay check_lua_statement_lines)
+    endif()
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
@@ -2663,8 +2722,13 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         add_dependencies(og_test_parity scenario_facts_generated)
         # Building the parity harness also re-validates the canary pins, so
         # pin rot surfaces on the next build rather than as a quietly
-        # toothless canary run weeks later.
-        add_dependencies(og_test_parity check_mutation_pins)
+        # toothless canary run weeks later. (Interpreter-gated like the
+        # og_gameplay lint dependency: a machine without Python 3 still
+        # builds the harness, and every Linux dev/CI build keeps
+        # validating the pins.)
+        if(Python3_Interpreter_FOUND)
+            add_dependencies(og_test_parity check_mutation_pins)
+        endif()
 
         # Standalone smoke runner — Phase 02 verifier and the launcher
         # extended in Phase 07 to enumerate scenarios via --list.
@@ -3367,20 +3431,36 @@ if(BUILD_TESTING)
         set(OG_COVERAGE_CPP_ARGS --cpp-build-dir ${CMAKE_BINARY_DIR})
     endif()
 
-    add_custom_target(coverage_report
-        COMMAND ${CMAKE_COMMAND} -E env python3
-                ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage_report.py
-                --repo-root ${CMAKE_SOURCE_DIR}
-                --lua-raw-dir ${OG_LUA_RAW_DIR}
-                --lines-tool $<TARGET_FILE:og_lua_lines>
-                --output-dir ${OG_COVERAGE_DIR}
-                ${OG_COVERAGE_CPP_ARGS}
-        DEPENDS og_lua_lines
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
-        USES_TERMINAL
-        VERBATIM
-    )
+    # The coverage gate HARD-requires the interpreter: unlike the per-build
+    # lint dependency (skippable so a pythonless machine still builds the
+    # game), a coverage_report invocation with no Python 3 must fail loudly
+    # rather than let "did not run" read as "passed".
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(coverage_report
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage_report.py
+                    --repo-root ${CMAKE_SOURCE_DIR}
+                    --lua-raw-dir ${OG_LUA_RAW_DIR}
+                    --lines-tool $<TARGET_FILE:og_lua_lines>
+                    --output-dir ${OG_COVERAGE_DIR}
+                    ${OG_COVERAGE_CPP_ARGS}
+            DEPENDS og_lua_lines
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
+            USES_TERMINAL
+            VERBATIM
+        )
+    else()
+        add_custom_target(coverage_report
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "coverage_report: the coverage gate needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+            COMMAND ${CMAKE_COMMAND} -E false
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
+            USES_TERMINAL
+            VERBATIM
+        )
+    endif()
     # The gate path lints the FULL inventory — untracked files, .glad archive
     # members, embedded literals — which the per-build lint deliberately does
     # not (see the check_lua_statement_lines comment near the target). A junk

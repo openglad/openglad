@@ -70,6 +70,10 @@ jobs:
           fi
 
       - name: Run tests with coverage
+        # A failure of THIS step means tests failed. Collection sanity has its
+        # own step below, and the threshold gate its own further down, so the
+        # job summary always names the right culprit.
+        #
         # CTest continues to enforce the RUN_SERIAL, RESOURCE_LOCK, and
         # PROCESSORS properties registered in CMakeLists.txt. Those processor
         # reservations are calibrated for four-slot GitHub runners, so keep the
@@ -81,6 +85,26 @@ jobs:
         # recorder is a runtime switch, never a compile flag — the binary the
         # deterministic-sim tests exercise here has to be the binary that
         # ships (og_test_parity passes 188/188 armed and disarmed).
+        #
+        # --repeat until-pass:3 deliberately matches test.yml: both lanes must
+        # agree on what "the suite passes" means, or a flake that retries
+        # green there reds only here and masquerades as a coverage problem.
+        # Retrying inside the COLLECTION run is sound for coverage
+        # specifically because both denominators are static — Lua's comes
+        # from scripts/lua_inventory.py and C++'s from the .gcno set this
+        # fresh build emitted, neither from which tests ran — so a rerun can
+        # only ADD numerator evidence of executions that really happened:
+        # libgcov merges counters into .gcda across process exits, and every
+        # recorder process writes its own uniquely-named *.luacov dump that
+        # the report merges additively; its process-population check is
+        # set-equality on names precisely so "rerunning a flaky binary adds
+        # dumps but no names" (scripts/coverage/README.md). Corollary: a
+        # local single pass can read slightly LOWER than a CI run that
+        # retried a flake — judge local work by its before/after delta. A
+        # test that fails all three attempts still fails this step. Budget:
+        # the whole job measured ~24 min WITH one 420 s timeout burned; a
+        # hard-hanging test costs at most two further attempts (+14 min)
+        # under until-pass:3, far inside the 90 min job cap.
         run: |
           parallel_jobs="$(nproc)"
           if (( parallel_jobs > 4 )); then
@@ -89,15 +113,21 @@ jobs:
           rm -rf build/ci-coverage/coverage/lua-raw
           mkdir -p build/ci-coverage/coverage/lua-raw
           OPENGLAD_LUA_COVERAGE="$PWD/build/ci-coverage/coverage/lua-raw" \
-            ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --no-tests=error
+            ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --repeat until-pass:3 --no-tests=error
 
-          # The inverse of the pre-test reset above: prove the run really
-          # produced counters for BOTH halves. A gcov build that wrote no
-          # .gcda "measured" an empty C++ half, and an unarmed recorder an
-          # empty Lua half — the report hard-errors on both, but the step
-          # that owns collection should say so first and plainly. (The
-          # report additionally checks WHICH recorder processes contributed,
-          # against scripts/coverage/recorder_processes.txt.)
+      - name: Assert coverage counters were collected
+        # The inverse of the pre-test reset above, and deliberately a separate
+        # step: a red here reads as "collection produced nothing", never as a
+        # test failure (previous step) or a threshold failure (the gate
+        # below). It must sit AFTER the (possibly retried) test run and
+        # BEFORE the gate: prove the run really produced counters for BOTH
+        # halves. A gcov build that wrote no .gcda "measured" an empty C++
+        # half, and an unarmed recorder an empty Lua half — the report
+        # hard-errors on both, but the step that owns collection should say
+        # so first and plainly. (The report additionally checks WHICH
+        # recorder processes contributed, against
+        # scripts/coverage/recorder_processes.txt.)
+        run: |
           gcda_count=$(find build/ci-coverage -type f -name '*.gcda' | wc -l)
           lua_dump_count=$(find build/ci-coverage/coverage/lua-raw -type f -name '*.luacov' | wc -l)
           echo "collected ${gcda_count} .gcda file(s) and ${lua_dump_count} .luacov dump(s)"

@@ -52,6 +52,17 @@ comparison and the exit status. The percentages in the job summary and the
 PR comment are read back out of `summary.json`; they are formatting, and the
 gate is on integer counts, so 94.96 % cannot round its way into 95.
 
+That ctest pass retries failures exactly as `test.yml` does (`--repeat
+until-pass:3`), so the two lanes agree on what "the suite passes" means.
+Retrying inside the collection run is sound because both denominators are
+static — this file's whole design — so a rerun can only add numerator
+evidence of executions that really happened: `.gcda` counters merge across
+process exits, and each rerun writes one more uniquely-named dump ("adds
+dumps but no names", below). The corollary when comparing numbers: a CI run
+that retried a flake accumulates the failed attempt's hits too, so a local
+single pass can read slightly lower than CI — judge local work by its
+before/after delta, not by matching CI's absolute number.
+
 What "100 % function" quantifies over differs by language, and the
 difference is part of the claim:
 

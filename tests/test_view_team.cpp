@@ -31,6 +31,7 @@
 #include <list>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 constexpr int kViewMenuTransitionTimeoutMs = 15000;
@@ -337,36 +338,6 @@ static bool start_game_from_view_menu(
     }
 
     return g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
-}
-
-static bool click_intercepted_start_from_view_menu(
-    int timeout_ms,
-    const std::function<bool(const Interactable&)>& is_view_menu_go)
-{
-    int elapsed = 0;
-    int since_last_click = 250;
-    const int poll_interval = 50;
-    while (elapsed < timeout_ms) {
-        if (pks().selected_menu_item != nullptr
-            && pks().selected_menu_item->command ==
-                og::ui::PickerMenuCommand::StartGame) {
-            return true;
-        }
-
-        if (since_last_click >= 250
-            && has_interactable_match("go", is_view_menu_go)) {
-            interact_match("go", is_view_menu_go);
-            since_last_click = 0;
-        }
-
-        SDL_Delay(poll_interval);
-        elapsed += poll_interval;
-        since_last_click += poll_interval;
-    }
-
-    return pks().selected_menu_item != nullptr
-        && pks().selected_menu_item->command ==
-            og::ui::PickerMenuCommand::StartGame;
 }
 
 static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
@@ -866,6 +837,14 @@ struct DirectMenuVisibilityState {
     bool scenario_visible;
     int min_y;
     std::atomic<bool>* menu_done;
+    // Ids the entry gate pass must have hidden before the snapshot counts as
+    // settled. run_menu_screen publishes the live buttons with the static
+    // table's visibility FIRST (init_buttons) and only then runs the pre-loop
+    // apply_row_states/rewire pass that hides host-gated rows, so an injector
+    // sampling on first sight of 'back' can capture that pre-sync state (the
+    // ASan create_scenario_menu visibility failure). Empty = capture on
+    // sight, for screens whose settled state equals the static table.
+    std::vector<const char*> settle_hidden;
 };
 
 static int direct_menu_visibility_injector(void* data)
@@ -876,6 +855,12 @@ static int direct_menu_visibility_injector(void* data)
     const auto in_menu_band = [state](const Interactable& item) {
         return item.y >= state->min_y;
     };
+
+    // Bounded settle window: a genuine product regression (host-only rows
+    // never hidden) runs the deadline out, captures the bad snapshot, and
+    // still clicks BACK so the menu exits and the assertions report it —
+    // never a wedge, never a masked failure.
+    const Uint64 settle_deadline = SDL_GetTicks() + 5000;
 
     while (!state->menu_done->load(std::memory_order_acquire)) {
         const auto interactables = get_interactables();
@@ -889,6 +874,14 @@ static int direct_menu_visibility_injector(void* data)
         };
 
         if (visible("back")) {
+            const bool pre_sync = std::any_of(
+                state->settle_hidden.begin(),
+                state->settle_hidden.end(),
+                visible);
+            if (pre_sync && SDL_GetTicks() < settle_deadline) {
+                SDL_Delay(5);
+                continue;
+            }
             state->saw_menu = true;
             state->go_visible = visible("go");
             state->set_level_visible = visible("set_level");
@@ -987,6 +980,7 @@ TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
         .scenario_visible = false,
         .min_y = 100,
         .menu_done = &menu_done,
+        .settle_hidden = {"go", "set_level", "set_campaign"},
     };
     SDL_Thread* thread =
         SDL_CreateThread(direct_menu_visibility_injector, "direct_team_visibility", &state);
@@ -1037,6 +1031,7 @@ TEST(ViewTeam, create_scenario_menu_hides_host_only_controls_for_non_host_client
         .scenario_visible = false,
         .min_y = 0,
         .menu_done = &menu_done,
+        .settle_hidden = {"set_level", "set_campaign"},
     };
     SDL_Thread* thread = SDL_CreateThread(
         direct_menu_visibility_injector, "direct_scenario_visibility", &state);
@@ -1083,6 +1078,9 @@ TEST(ViewTeam, create_scenario_menu_shows_host_controls_for_host)
         .scenario_visible = false,
         .min_y = 0,
         .menu_done = &menu_done,
+        // Host keeps every row: the settled state equals the static table,
+        // so there is nothing to wait out — capture on sight.
+        .settle_hidden = {},
     };
     SDL_Thread* thread = SDL_CreateThread(
         direct_menu_visibility_injector, "direct_scenario_host", &state);

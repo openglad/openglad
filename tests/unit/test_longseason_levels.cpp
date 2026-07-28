@@ -1287,9 +1287,10 @@ TEST_F(LongseasonCampaignTest, battle_smokes_hold_the_line)
             // company inside 150 ticks on some seeds. A real crew that
             // kites and heals plays it; re-sweep with
             // scripts/longseason_playtest.sh before the next balance pass.
-            if (smoke.id != 18)
+            if (smoke.id != 18) {
                 EXPECT_GE(alive_livings_on_team(world, 0), 1)
                     << "the company is extinct before tick 150";
+            }
             EXPECT_GE(alive_livings_on_team(world, 2), 1)
                 << "the enemy host is extinct before tick 150";
 

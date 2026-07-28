@@ -64,7 +64,14 @@ struct WebSocketClientTransport::Impl
         return options;
     }
 
+    // Runs on the ix::WebSocket callback thread. `socket` is the socket that
+    // delivered `message`; it is alive for the whole call because the
+    // callback runs on that socket's own background thread, which is joined
+    // (websocket->stop()) before the socket is destroyed. This thread must
+    // never read the `websocket` member: that raced the game thread tearing
+    // the handle down in disconnect() and ~Impl().
     void handle_message(std::uint64_t generation,
+                        ix::WebSocket& socket,
                         const ix::WebSocketMessagePtr& message)
     {
         if (!message)
@@ -88,8 +95,7 @@ struct WebSocketClientTransport::Impl
             if (message->str.size() > kMaxInboundFrameBytes)
             {
                 enqueue_disconnect(generation);
-                if (websocket)
-                    websocket->close(1009, "message too large");
+                socket.close(1009, "message too large");
                 return;
             }
 
@@ -100,8 +106,7 @@ struct WebSocketClientTransport::Impl
             if (!enqueue(std::move(entry)))
             {
                 enqueue_disconnect(generation);
-                if (websocket)
-                    websocket->close(1008, "receive queue full");
+                socket.close(1008, "receive queue full");
             }
             break;
         }
@@ -221,9 +226,14 @@ struct WebSocketClientTransport::Impl
             return;
 
         started = false;
-        std::unique_ptr<ix::WebSocket> retiring_websocket = std::move(websocket);
-        if (retiring_websocket)
-            retiring_websocket->stop();
+        // Teardown protocol: quiesce the callback source before the socket
+        // handle dies. stop() joins the socket's background thread — the
+        // only thread that runs handle_message() — so once it returns no
+        // callback can race the reset below. (Moving the pointer out before
+        // stopping raced the callback thread's reads of `websocket`.)
+        if (websocket)
+            websocket->stop();
+        websocket.reset();
         clear_queue();
     }
 
@@ -250,13 +260,11 @@ struct WebSocketClientTransport::Impl
 
     ~Impl()
     {
-        if (started)
-        {
-            active_generation = 0;
-            std::unique_ptr<ix::WebSocket> retiring_websocket = std::move(websocket);
-            if (retiring_websocket)
-                retiring_websocket->stop();
-        }
+        active_generation = 0;
+        // Same teardown protocol as disconnect(): join the callback thread
+        // via stop() before the member teardown that follows this body.
+        if (websocket)
+            websocket->stop();
     }
 
 private:
@@ -291,9 +299,16 @@ private:
             options.min_reconnect_wait_ms);
         socket->setMaxWaitBetweenReconnectionRetries(
             options.max_reconnect_wait_ms);
+        // The callback receives the socket that owns the callback thread, so
+        // handle_message() never has to read the cross-thread `websocket`
+        // member. The raw pointer cannot dangle: the callback only runs on
+        // this socket's background thread, and teardown joins that thread
+        // (stop()) before destroying the socket.
+        ix::WebSocket* raw_socket = socket.get();
         socket->setOnMessageCallback(
-            [this, generation](const ix::WebSocketMessagePtr& message) {
-                handle_message(generation, message);
+            [this, generation, raw_socket](
+                const ix::WebSocketMessagePtr& message) {
+                handle_message(generation, *raw_socket, message);
             });
         return socket;
     }
