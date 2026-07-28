@@ -51,6 +51,25 @@ Symlink semantics are therefore git's, and only git's: a listed symlink to a
 file is read through (the repository offers Lua at that path); a symlink to a
 directory is the link object itself, never descended into.
 
+HOW GIT ITSELF IS FOUND
+-----------------------
+By explicit handoff when the caller has one, and only otherwise from PATH.
+"git is installed" and "this process can spawn the bare name `git`" are
+different facts on the Windows CI runner: the MSYS2 shell that configures
+the build sees git through POSIX-style PATH entries, while CMake's
+FindPython3 resolves a NATIVE (registry) interpreter — and when that
+interpreter spawns `git` at BUILD time, Windows process creation cannot use
+those entries, so a toolchain that had just finished a git-driven
+FetchContent clone died with WinError 2 in the middle of the build. The
+CMake check targets therefore pass the git that find_package(Git) resolved
+at configure time through the OG_GIT_EXECUTABLE environment variable
+(--git-exe on the CLIs writes the same variable), and `git_executable()`
+treats a broken explicit value as a hard error rather than falling back to
+PATH: a typo'd override must not make the enumeration quietly
+environment-dependent again. With no override and no git on PATH, the
+refusal is this module's own SystemExit naming both levers — never an
+ENOENT/WinError traceback from inside subprocess.
+
 WHERE LUA HIDES
 ---------------
 Three places, because "a .lua file in the tree" is not the whole story:
@@ -208,6 +227,22 @@ big_orc_elite.lua` adds no entry, so a second family registered against
 duplicated bytes ships with its own dispatch unexercised and the gate says
 nothing. That is the deliberate trade for making a copied pack worth zero.
 
+The bytes hashed are the bytes the LINUX gate platform checks out — LF,
+since the repository writes no eol-rewriting .gitattributes and the
+coverage gate runs on Linux CI. A Windows checkout under core.autocrlf=true
+materializes CRLF `.lua` files, so its digests — and its dedup grouping
+against `.glad` archive members, whose stored bytes are never rewritten —
+legitimately diverge from the gate's; nothing on Windows consumes them.
+The one duty this module performs there is the per-build statement lint,
+and lint verdicts are line-ending-independent: the lexer treats \r as
+whitespace, and C++ files are read in text mode, which normalizes newlines
+before an embedded literal is extracted. Digest parity across platforms is
+neither needed nor claimed, and the CRLF difference is deliberately NOT
+normalized away: the coverage report attributes runtime hits by hashing
+the exact bytes the engine mounted, so the inventory must hash exact bytes
+too — and the platform whose bytes could disagree is exactly the platform
+where no digest is ever used.
+
 TRACKED vs UNTRACKED
 --------------------
 `include_untracked=True` (the default, and what the coverage denominator uses)
@@ -225,8 +260,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import zipfile
 import zlib
@@ -531,6 +568,62 @@ class LuaSource:
         return self.data.decode("utf-8", errors="replace")
 
 
+# How a build system hands this module a git it has ALREADY resolved. The
+# CMake check targets set it to find_package(Git)'s configure-time result
+# (see og_add_python_check_target in CMakeLists.txt); --git-exe on the CLIs
+# writes the same variable, so one spelling reaches every consumer —
+# including scripts/coverage/coverage_report.py, which imports this module.
+GIT_ENV_VAR = "OG_GIT_EXECUTABLE"
+
+
+def git_executable() -> str:
+    """The git to spawn: explicit handoff first, PATH second, never a guess.
+
+    Resolution order (HOW GIT ITSELF IS FOUND in the module docstring):
+
+      1. $OG_GIT_EXECUTABLE — the CMake-plumbed (or --git-exe-supplied)
+         executable. Validated, and a value that does not name an executable
+         is a hard error rather than a fall-through to PATH: the override
+         exists to carry a known-good git, and a typo'd one that silently
+         degraded to PATH lookup would reintroduce the exact
+         environment-dependence it removes.
+      2. shutil.which("git") — plus which("git.exe") on Windows, in case
+         PATHEXT is stripped there (which() relies on it for the suffix).
+      3. SystemExit naming both levers — the same clear refusal style as a
+         failed enumeration, never an ENOENT/WinError traceback from inside
+         subprocess.
+
+    which() validates both branches: given a bare name it searches PATH;
+    given anything with a directory component it checks that file directly,
+    applying PATHEXT on Windows so a suffixless CMake-style `.../git`
+    spelling still resolves to `git.exe`.
+    """
+    explicit = os.environ.get(GIT_ENV_VAR)
+    if explicit:
+        resolved = shutil.which(explicit)
+        if resolved is None:
+            raise SystemExit(
+                f"scripts/lua_inventory.py: {GIT_ENV_VAR}={explicit!r} does "
+                "not name an executable git. The variable carries a git the "
+                "build system already resolved (CMake's find_package(Git) "
+                "result, or a --git-exe argument), so a broken value is an "
+                "error, never a silent fall-through to PATH. Fix or unset "
+                "it."
+            )
+        return resolved
+    for name in ("git", "git.exe") if os.name == "nt" else ("git",):
+        resolved = shutil.which(name)
+        if resolved is not None:
+            return resolved
+    raise SystemExit(
+        "scripts/lua_inventory.py: no git executable found. The shipped-Lua "
+        "inventory is defined over `git ls-files` and has no fallback "
+        "enumeration (see the module docstring). Install git and put it on "
+        f"PATH, or point {GIT_ENV_VAR} (or --git-exe on the CLIs) at the "
+        "executable."
+    )
+
+
 def _git_files(
     repo_root: pathlib.Path, include_untracked: bool = True
 ) -> List[pathlib.Path]:
@@ -541,7 +634,7 @@ def _git_files(
     question (see the module docstring — the old fallback disagreed with git
     about symlinks, which meant one tree, two denominators).
     """
-    argv = ["git", "ls-files", "--cached", "-z"]
+    argv = [git_executable(), "ls-files", "--cached", "-z"]
     if include_untracked:
         argv[2:2] = ["--others", "--exclude-standard"]
     try:
@@ -550,11 +643,11 @@ def _git_files(
         )
     except OSError as exc:
         raise SystemExit(
-            f"scripts/lua_inventory.py: cannot run git ({exc}). The shipped-"
-            "Lua inventory is defined over `git ls-files` and has no fallback "
-            "enumeration: a coverage gate outside a git checkout is not a "
-            "real deployment. Run it from inside the repository, with git "
-            "installed."
+            f"scripts/lua_inventory.py: cannot run {argv[0]} ({exc}). The "
+            "shipped-Lua inventory is defined over `git ls-files` and has no "
+            "fallback enumeration: a coverage gate outside a git checkout is "
+            "not a real deployment. Run it from inside the repository, with "
+            "a working git."
         )
     if proc.returncode != 0:
         stderr = proc.stderr.decode("utf-8", errors="replace").strip()
@@ -1043,7 +1136,16 @@ def main() -> int:
         "the default is the coverage denominator's view, which includes "
         "untracked-but-not-ignored files",
     )
+    parser.add_argument(
+        "--git-exe", metavar="PATH",
+        help=f"git executable for the enumeration; sets {GIT_ENV_VAR}, the "
+        "same override the CMake check targets pass through the environment "
+        "on hosts where the build-time PATH cannot resolve the bare name "
+        "(the Windows CI runner). Default: that variable if set, else PATH.",
+    )
     args = parser.parse_args()
+    if args.git_exe:
+        os.environ[GIT_ENV_VAR] = args.git_exe
     result = scan(include_untracked=not args.tracked_only)
     for entry in result.sources:
         extra = f"  (+{len(entry.aliases)} alias)" if entry.aliases else ""

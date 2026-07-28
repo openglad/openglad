@@ -80,6 +80,28 @@ if(ENABLE_COVERAGE AND NOT BUILD_TESTING)
     set(BUILD_TESTING ON CACHE BOOL "Build the test suite" FORCE)
 endif()
 
+# Coverage instrumentation measures whatever function/line set the compiler
+# emits, so the compile flags must pin the optimization level rather than
+# inherit it. Some toolchains inject an -O when the command line carries none
+# (nixpkgs' cc-wrapper appends -O2 as part of its fortify hardening, so this
+# repo's "Debug -g" coverage build silently became -O2 there), and at -O2 GCC
+# inlines small internal functions out of existence: no standalone body means
+# no gcov function record, and the local function denominator measured 4438
+# where CI's plain -O0 gcc measured 4993 — with the missing records exactly
+# the fully-inlined helpers and lambdas. An explicit -O0 outranks any
+# injected default on every driver, so every environment measures the same
+# code. Keep -O0 next to --coverage everywhere instrumentation is added; see
+# scripts/coverage/README.md ("Optimization level") for the full story.
+#
+# Known cosmetic residue under that same wrapper: it also injects
+# -D_FORTIFY_SOURCE=3 AFTER the user flags (unlike its -O2, which precedes
+# them), so no -U/-D here can override it, and once -O0 wins glibc's
+# features.h prints "#warning _FORTIFY_SOURCE requires compiling with
+# optimization" per TU. That warning is truthful noise: fortify is inert
+# without __OPTIMIZE__, so the measured code is unaffected. Environments
+# that inject neither flag (CI's stock gcc) build warning-free.
+set(OG_COVERAGE_COMPILE_OPTIONS --coverage -O0)
+
 if(ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
     if(CLANG_TIDY_EXE)
@@ -599,7 +621,7 @@ function(configure_openglad_library target)
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE --coverage)
+        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(${target} PRIVATE --coverage)
     endif()
 endfunction()
@@ -609,7 +631,7 @@ function(configure_component_library target include_root)
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE --coverage)
+        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(${target} PRIVATE --coverage)
     endif()
 endfunction()
@@ -701,11 +723,25 @@ add_custom_target(check_render_no_sim_writes
 find_package(Python3 COMPONENTS Interpreter QUIET)
 # The pack-Lua lint's file list is DEFINED over `git ls-files` — see
 # scripts/lua_inventory.py, which refuses to fall back to a directory walk by
-# design — so the per-build lint dependency additionally needs a discoverable
-# git: a Python found via the Windows registry with no git on PATH (exactly
-# the MSYS2 CI shell) would only move the build break from "no python3" into
-# the middle of the script.
+# design — so the per-build lint dependency additionally needs git.
 find_package(Git QUIET)
+
+# Hand every Python check target the git find_package just resolved. The
+# scripts must not trust PATH alone: on the Windows CI runner the MSYS2
+# shell running this configure sees git through POSIX-style PATH entries,
+# while FindPython3 above resolves a NATIVE (registry) interpreter — and a
+# native process spawned at BUILD time cannot turn the bare name "git" back
+# into anything (WinError 2 mid-build, right after this configure's
+# find_package(Git) and FetchContent clones succeeded in the same shell).
+# Passing the resolved path through the environment closes the gap for all
+# four Python-running targets at once; a script invoked by hand still falls
+# back to PATH, and a machine with no git anywhere still gets the scripts'
+# own clear refusal (lua_inventory.git_executable) instead of a traceback.
+set(OG_PY_GIT_ENV "")
+if(GIT_EXECUTABLE)
+    set(OG_PY_GIT_ENV
+        ${CMAKE_COMMAND} -E env "OG_GIT_EXECUTABLE=${GIT_EXECUTABLE}")
+endif()
 
 if(NOT Python3_Interpreter_FOUND)
     message(STATUS
@@ -732,7 +768,7 @@ endif()
 function(og_add_python_check_target name comment)
     if(Python3_Interpreter_FOUND)
         add_custom_target(${name}
-            COMMAND ${Python3_EXECUTABLE} ${ARGN}
+            COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE} ${ARGN}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "${comment}"
             VERBATIM
@@ -1280,12 +1316,14 @@ if(NOT EMSCRIPTEN)
     # where the one-statement-per-line rule gets enforced: a branch folded
     # onto an already-covered line is invisible to the coverage gate, so it
     # has to be caught at build time instead. The dependency needs both a
-    # Python 3 interpreter and git (the lint's file list is `git ls-files`);
-    # a machine lacking either — the MSYS2/mingw64 CI runner — still builds
-    # the game, and the authoritative full lint keeps running where the
-    # coverage gate runs (the coverage_report target locally, the Linux
-    # coverage lane in CI, plus this same tracked-only lint on every Linux
-    # CI build).
+    # Python 3 interpreter and git (the lint's file list is `git ls-files`;
+    # OG_PY_GIT_ENV hands the script the configure-time git, which is what
+    # lets this run on the MSYS2/mingw64 CI runner — registry-native Python
+    # there cannot resolve the bare name "git" from the msys2 PATH). A
+    # machine genuinely lacking either tool still builds the game, and the
+    # authoritative full lint keeps running where the coverage gate runs
+    # (the coverage_report target locally, the Linux coverage lane in CI,
+    # plus this same tracked-only lint on every Linux CI build).
     if(Python3_Interpreter_FOUND AND GIT_FOUND)
         add_dependencies(og_gameplay check_lua_statement_lines)
     endif()
@@ -1500,7 +1538,7 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(openglad_text PRIVATE --coverage)
+        target_compile_options(openglad_text PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(openglad_text PRIVATE --coverage)
     endif()
     add_runtime_assets_dependency(openglad_text)
@@ -2704,7 +2742,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # here because pulling in project_sanitizers transitively slows
         # og_test_view's tick budget enough to time out at 180s on CI.
         if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(scenario_facts_dump PRIVATE --coverage)
+            target_compile_options(scenario_facts_dump PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
             target_link_options(scenario_facts_dump PRIVATE --coverage)
         endif()
         add_custom_command(
@@ -3437,7 +3475,7 @@ if(BUILD_TESTING)
     # rather than let "did not run" read as "passed".
     if(Python3_Interpreter_FOUND)
         add_custom_target(coverage_report
-            COMMAND ${Python3_EXECUTABLE}
+            COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage_report.py
                     --repo-root ${CMAKE_SOURCE_DIR}
                     --lua-raw-dir ${OG_LUA_RAW_DIR}

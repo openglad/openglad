@@ -299,6 +299,34 @@ TEST(ClasspackYaml, unknown_keys_and_sections_skipped)
     ASSERT_EQ(data.living[0].hiring_cost.value_or(-1), 5);
 }
 
+TEST(ClasspackYaml, unknown_list_fields_on_treasure_and_generator_skipped)
+{
+    // The sequence-shaped branch of the forward-compatibility rule above:
+    // treasure and generator entries define no list-valued fields today, so
+    // an unknown list on one is accepted and dropped — the entry's known
+    // scalar fields still land — instead of failing the whole pack.
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  treasure:\n"
+        "    - id: p:chest\n"
+        "      wire_id: 2\n"
+        "      init_frame: 4\n"
+        "      future_list: [gild, 7]\n"
+        "  generator:\n"
+        "    - id: p:spawner\n"
+        "      wire_id: 3\n"
+        "      spawn_ani_type: 1\n"
+        "      future_spawns: [p:ghost, p:orc]\n",
+        data, "forward-lists"));
+    ASSERT_EQ(data.treasures.size(), 1u);
+    ASSERT_EQ(data.treasures[0].id, "p:chest");
+    ASSERT_EQ(data.treasures[0].init_frame.value_or(0), 4);
+    ASSERT_EQ(data.generators.size(), 1u);
+    ASSERT_EQ(data.generators[0].id, "p:spawner");
+    ASSERT_EQ(data.generators[0].spawn_ani_type.value_or(-1), 1);
+}
+
 // ---------------------------------------------------------------------------
 // Family string ids + vocabulary
 // ---------------------------------------------------------------------------

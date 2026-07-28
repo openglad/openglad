@@ -78,14 +78,19 @@ TWO MODES, ONE LIST
 In CI checkouts nothing is untracked, so the per-build mode already covers
 everything there; the split only changes what can break a developer build.
 
-Run: python3 scripts/check_lua_statement_lines.py [--tracked-only] [paths...]
+Run: python3 scripts/check_lua_statement_lines.py [--tracked-only]
+     [--git-exe PATH] [paths...]
 Exit 0 when clean, 1 with a listing otherwise. Explicit paths are for
 spot-checking files while editing them and skip the inventory entirely.
+--git-exe (or $OG_GIT_EXECUTABLE, which the CMake targets set) names the
+git the inventory enumerates with, for hosts where the build-time PATH
+cannot resolve the bare name — see lua_inventory.git_executable().
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 from collections import Counter
@@ -293,7 +298,16 @@ def main(argv: List[str]) -> int:
         "every build); the coverage-gate path runs without this flag and "
         "lints the full inventory, untracked files included",
     )
+    parser.add_argument(
+        "--git-exe", metavar="PATH",
+        help="git executable for the inventory's enumeration; sets "
+        f"{lua_inventory.GIT_ENV_VAR} (which the CMake check targets already "
+        "pass through the environment). Unused when spot-checking explicit "
+        "paths, which skip the inventory.",
+    )
     args = parser.parse_args(argv)
+    if args.git_exe:
+        os.environ[lua_inventory.GIT_ENV_VAR] = args.git_exe
     paths = [p.resolve() for p in args.paths] if args.paths else None
 
     sources, enumeration_problems = collect_sources(

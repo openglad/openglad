@@ -82,6 +82,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -250,13 +251,25 @@ def git_tracked_src(repo_root: Path, errors: List[str]) -> Optional[Set[str]]:
     """Git-tracked paths under src/, repo-relative. None (plus an error) when
     git cannot answer — the same no-fallback stance as the Lua inventory: a
     denominator check that silently ran against a guess is worse than one
-    that refused."""
-    proc = subprocess.run(
-        ["git", "-C", str(repo_root), "ls-files", "--", "src"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    that refused. The executable comes from the inventory's resolver
+    ($OG_GIT_EXECUTABLE / --git-exe, then PATH), so the CMake-plumbed git
+    reaches this spawn too; every failure to resolve or run it is COLLECTED
+    like any other completeness error, never a traceback."""
+    try:
+        git = lua_inventory.git_executable()
+        proc = subprocess.run(
+            [git, "-C", str(repo_root), "ls-files", "--", "src"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (SystemExit, OSError) as exc:
+        errors.append(
+            f"cannot run git ls-files under {repo_root} ({exc}) — the C++ "
+            "completeness checks cannot run, and running without them is "
+            "not an option"
+        )
+        return None
     if proc.returncode != 0:
         errors.append(
             "git ls-files failed under "
@@ -1273,7 +1286,15 @@ def main() -> int:
                          "can legitimately be dropped")
     ap.add_argument("--no-gate", action="store_true",
                     help="report only; always exit 0")
+    ap.add_argument("--git-exe", metavar="PATH",
+                    help="git executable for the inventory enumeration and "
+                         f"completeness checks; sets {lua_inventory.GIT_ENV_VAR} "
+                         "(which the CMake coverage_report target already "
+                         "passes through the environment). Default: that "
+                         "variable if set, else PATH.")
     args = ap.parse_args()
+    if args.git_exe:
+        os.environ[lua_inventory.GIT_ENV_VAR] = args.git_exe
 
     repo_root = args.repo_root.resolve()
     out_dir = args.output_dir.resolve()

@@ -188,6 +188,47 @@ the recorder-process manifest makes for the Lua half:
   build: deleting a badly-covered `src/` file without a clean rebuild must
   not quietly move the number up.
 
+### Optimization level: pinned -O0, because the toolchain's default lies
+
+The function denominator is "every function the compiler emitted a body
+for" — which makes it a function OF THE OPTIMIZATION LEVEL. Let the
+optimizer inline a small internal helper into every caller and no
+standalone body remains: no gcov function record, no denominator entry,
+and its source lines get counted inside the callers' blocks instead. The
+build therefore pins `-O0` explicitly next to `--coverage`
+(`OG_COVERAGE_COMPILE_OPTIONS` in CMakeLists.txt) rather than trusting
+the build type to imply it.
+
+This was demonstrated, not theorised: CMake's Debug configuration passes
+only `-g`, and nixpkgs' cc-wrapper appends `-O2` (part of its fortify
+hardening) whenever the command line carries no `-O` — so the "Debug"
+coverage build under the nix devshell silently measured `-O2` code.
+GCC 15.2 there emitted 4,440 function records for `src/`; CI's stock
+Ubuntu gcc 13.3 at true `-O0` emitted 4,993 (the exact counts move a
+few units with the tree; the ~550-record gap did not — and gcovr was
+8.6 on both sides, so the merge tool was identical and the effective
+`-O` was the only variable). The local set was a strict subset — every
+one of the 553 missing records was a fully-inlined internal helper or
+lambda
+(`og::pathfinding::(anonymous namespace)::OpenQueue::pop()` and friends
+— `gcov-dump` shows their lines absorbed into their callers' blocks),
+three of which were genuinely uncovered, so the 100% function bar
+FAILED on CI while the local run read a clean 100% of a smaller world.
+With `-O0` pinned, both compilers emit the same record set — including
+a standalone `operator()` record, execution count 0, for a lambda that
+is instantiated but never called. (One cosmetic residue in the nix
+shell: the wrapper appends its `-D_FORTIFY_SOURCE=3` after the user
+flags, where no `-U` can reach it, so glibc's features.h prints
+"#warning _FORTIFY_SOURCE requires compiling with optimization" per TU
+once `-O0` wins. Fortify is inert without `__OPTIMIZE__`; the measured
+code is identical, and environments that inject nothing — CI — build
+without the warning.) Residual cross-compiler drift in what
+counts as a function is possible in principle across major GCC
+versions; at `-O0` none has been observed between gcc 13 and gcc 15,
+and any future one must be resolved by making the sets agree (or a
+reason-ledgered exclusion naming the compiler versions), never by
+lowering the bar.
+
 ### What the numbers do NOT claim
 
 **A dispatched no-op stub is indistinguishable from an implementation.** The
