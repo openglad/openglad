@@ -39,7 +39,15 @@
 #                 OPENGLAD_LUA_INSTRUCTION_REPORT (per-instruction exact
 #                 totals) and fail if any scenario's Lua instruction total
 #                 regressed more than 10% against
-#                 scripts/refactor/baseline/instruction_baseline.json
+#                 scripts/refactor/baseline/instruction_baseline.json.
+#                 The baseline path is the COMMITTED copy: the checker
+#                 verifies it against git (committed at HEAD, captured on
+#                 a clean ancestor commit) and refuses dirty-capture /
+#                 self-captured / uncommitted baselines outright — so a
+#                 candidate that edits the baseline reds this gate by
+#                 design. Re-baselining is never part of a candidate: it
+#                 is `instruction_budget.py recapture` on a clean tree,
+#                 committed as its own commit.
 #
 # Outcome:
 #   all green  -> tree keeps the candidate applied (stash entry remains as a

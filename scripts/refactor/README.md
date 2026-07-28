@@ -105,20 +105,46 @@ baseline (the SHA of the tree it was captured on is inside).
 total grew more than 10% over the baseline (`--max-regression` to adjust) —
 the budget the refactor plan holds helper indirection to.
 
+**The comparison base is git-verified.** Before comparing anything,
+`instruction_budget.py check` refuses (exit 2, a named
+`BASELINE REFUSED (...)` error) any baseline that is not a committed file
+captured on a clean ancestor commit:
+
+* `dirty-capture` — the stored tree_sha is not a bare 40-hex commit SHA
+  (a `-dirty…` suffix means the capture tree was never a commit);
+* `uncommitted-baseline` — the file on disk is untracked or differs from
+  the copy committed at HEAD (a freshly re-captured baseline is exactly
+  this, which is why capture-then-check-on-the-same-tree can never pass);
+* `unknown-commit` / `not-ancestor` — the tree_sha names no commit here,
+  or one on some other line of history.
+
+This closes the self-baseline hole: a baseline re-captured on the tree
+being checked made `--budget-check` compare the tree to itself and pass
+vacuously (the `…-dirty-stage45` incident).
+
 ### Re-capturing the baseline
 
-Deliberate act, its own commit — never a drive-by:
+Deliberate act, its own commit — never a drive-by, and never part of a
+probe candidate:
 
 ```bash
 cmake --build --preset ci-test --target og_test_parity
 raw=$(mktemp)
 OPENGLAD_LUA_INSTRUCTION_REPORT="$raw" ./build/ci-test/og_test_parity
-python3 scripts/refactor/instruction_budget.py aggregate \
-    --raw "$raw" --tree-sha "$(git rev-parse HEAD)" \
-    --out scripts/refactor/baseline/instruction_baseline.json
+python3 scripts/refactor/instruction_budget.py recapture \
+    --raw "$raw" --out scripts/refactor/baseline/instruction_baseline.json
 ```
 
-The aggregator refuses a raw report in which two runs of one scenario
+`recapture` refuses a dirty tree (`RECAPTURE REFUSED (dirty-tree)`, exit
+2) and stamps the clean tree's HEAD SHA itself — there is no flag to
+supply a SHA the tree does not have. Commit the result **as its own
+commit**, with the mechanism and the per-scenario movement in the message
+(the adbd62da precedent): `check` refuses the new baseline until it is
+committed. The gate exists to catch runaway growth, not to freeze a
+justified one-time constant — but the justification lives in the
+re-baseline commit, where review can weigh it.
+
+`recapture` also refuses a raw report in which two runs of one scenario
 disagree — per-scenario totals are deterministic (repeat runs within a
 suite pass match exactly, and recorder off vs armed produce byte-identical
 report files), so a disagreement is a determinism bug, not noise.
