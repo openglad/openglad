@@ -21,10 +21,13 @@
 #   parity-armed  the same oracle with OPENGLAD_LUA_COVERAGE armed — proves
 #                 the recorder does not perturb the candidate's sim
 #   coverage      Lua-only by default and this is a real gate on the Lua
-#                 half: the full ci-test ctest suite runs with the recorder
-#                 armed and scripts/coverage/coverage_report.py applies the
-#                 95% line / 100% function bar to the Lua half (the C++ half
-#                 is reported unmeasured in this mode — measuring it needs a
+#                 half: the full ci-test ctest suite plus the openglad_demo
+#                 smoke (a ctest entry only under ENABLE_COVERAGE, but part
+#                 of the recorder-process population the report checks) run
+#                 with the recorder armed and
+#                 scripts/coverage/coverage_report.py applies the 95% line /
+#                 100% function bar to the Lua half (the C++ half is
+#                 reported unmeasured in this mode — measuring it needs a
 #                 gcov build). Pass --full-coverage for the full-cycle
 #                 ci-coverage preset run that builds instrumented, collects,
 #                 and gates BOTH halves plus the union — slower, and the
@@ -194,6 +197,18 @@ gate_coverage_lua_only() {
     local covdir="$ROOT/build/ci-test/probe-luacov"
     rm -rf "$covdir" && mkdir -p "$covdir" || return 1
     OPENGLAD_LUA_COVERAGE="$covdir" ctest --preset ci-test --output-on-failure || return 1
+    # The report's recorder-process population check is set-equality over
+    # scripts/coverage/recorder_processes.txt, and one name there —
+    # openglad_demo — runs as a ctest entry only in the ci-coverage suite
+    # (openglad_demo_smoke registers under ENABLE_COVERAGE). Run the same
+    # smoke here, from the same working directory ctest would use, so the
+    # population the report demands is the population that actually ran;
+    # without it this gate reds on EVERY tree with "openglad_demo wrote no
+    # dump" (found by the first end-to-end default-mode run).
+    (cd "$ROOT/build/ci-test" &&
+        OPENGLAD_LUA_COVERAGE="$covdir" \
+            bash "$ROOT/scripts/test_demo_smoke.sh" ./openglad_demo) \
+        || return 1
     python3 "$ROOT/scripts/coverage/coverage_report.py" \
         --lua-raw-dir "$covdir" \
         --lines-tool "$ROOT/build/ci-test/og_lua_lines" \
