@@ -1,8 +1,4 @@
--- core:cloud — effect behavior hooks transliterated from
--- effect_family_cloud.cpp. Cookbook (docs/lua-classpacks-design.md §3)
--- applies: og.rand preserves draw order/count, og.i16 reproduces the short
--- narrowing inside the hits() overlap test, and the drift deltas stay
--- integers (the C++ floats only ever hold -1/0/1, which cast exactly).
+-- core:cloud — drifting, fading poison cloud (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- The drift step is statistics::do_command() (src/gameplay/stats.cpp), reached
 -- from `self->stats()->do_command()` whenever the cloud already has a queued
@@ -16,6 +12,7 @@ local C = og.C
 -- box overlap test on shorts. Pure arithmetic, so it is transliterated rather
 -- than bound; og.i16 reproduces the `static_cast<short>` on each sum.
 local function hits(x, y, xsize, ysize, x2, y2, xsize2, ysize2)
+  -- shim kept (all four og.i16 sums): short edges, per the note above.
   local x2right = og.i16(x2 + xsize2)
   if x > x2right then
     return false
@@ -41,7 +38,7 @@ local function on_act(self)
   if self:lifetime() > 0 then
     self:set_lifetime(self:lifetime() - 1)
   else
-    self:set_dead(1)
+    self.dead = 1
     self:death()
     return true
   end
@@ -52,17 +49,17 @@ local function on_act(self)
     self:set_invisibility_left(self:invisibility_left() - 1)
   end
 
-  -- Hit any nearby foes (not friends, for now)
-  local foelist = og.find_foes_in_range("ob", self:sizex(), self)
-  for i = 1, #foelist do
-    local w = foelist[i]
+  -- Foes only: friendlies stand in the cloud unharmed (the C++ kept the
+  -- friendly branch "for now", and parity keeps it forever).
+  local foes = og.find_foes_in_range("ob", self:sizex(), self)
+  for i = 1, #foes do
+    local w = foes[i]
     if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),
             w:xpos(), w:ypos(), w:sizex(), w:sizey()) then
       self:attack(w)
     end
   end
 
-  -- Are we performing some action?
   if self:s_has_commands() then
     self:s_do_command()
   else

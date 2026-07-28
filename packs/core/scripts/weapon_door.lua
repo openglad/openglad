@@ -1,8 +1,4 @@
--- core:door — weapon behavior hooks transliterated from
--- src/gameplay/families/weapon_family_door.cpp. Cookbook
--- (docs/lua-classpacks-design.md §3) applies: xpos/ypos are shorts, so the
--- tile conversion is og.div (C truncation), and every field move is an
--- integer copy that the setters narrow exactly like the C++ member types.
+-- core:door — broken door hands its spot to the opening effect (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local FX_DOOR_OPEN = og.family_id("fx", "core:door_open")
@@ -10,24 +6,25 @@ local FX_DOOR_OPEN = og.family_id("fx", "core:door_open")
 -- door_on_death: a broken door hands its spot to the DOOR_OPEN effect that
 -- plays the opening animation.
 local function on_death(self)
-  local newob = og.add_weap_ob("fx", FX_DOOR_OPEN)
-  if not newob then
+  local opened = og.add_weap_ob("fx", FX_DOOR_OPEN)
+  if not opened then
     return false
   end
-  newob:set_ani_type(C.ANI_DOOR_OPEN)
-  newob:set_floor(self:floor())  -- opened door stays on its floor (A8)
-  newob:setxy(self:xpos(), self:ypos())
-  newob:s_set_level(self:s_level())
-  newob:set_team_num(self:team_num())
-  -- What way are we 'facing'?
+  opened:set_ani_type(C.ANI_DOOR_OPEN)
+  opened:set_floor(self:floor())  -- opened door stays on its floor (A8)
+  opened:setxy(self:xpos(), self:ypos())
+  opened.level = self.level
+  opened.team = self.team
+  -- What way are we 'facing'? A wall above us picks FACE_RIGHT.
   -- (og.query_genre reads the default-floor smoother, like the C++
-  -- `current_game->world->mysmoother` this replaces.)
+  -- `current_game->world->mysmoother` this replaces; the tile conversion
+  -- is og.div — C trunc.)
   if og.query_genre(og.div(self:xpos(), C.GRID_SIZE),
                     og.div(self:ypos(), C.GRID_SIZE) - 1) == C.TYPE_WALL then
-    -- a wall above us?
-    newob:set_curdir(C.FACE_RIGHT)
+    opened:set_curdir(C.FACE_RIGHT)
   else
-    -- Kept verbatim: the original writes SELF's facing here, not newob's.
+    -- Kept verbatim: the original writes SELF's facing here, not the new
+    -- effect's.
     self:set_curdir(C.FACE_UP)
   end
   return true

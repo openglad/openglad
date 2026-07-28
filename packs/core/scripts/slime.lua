@@ -1,10 +1,6 @@
--- core:#8 / core:#9 / core:#10 (SLIME / SMALL_SLIME / MEDIUM_SLIME) —
--- behavior hooks transliterated from family_slime.cpp. All three living
--- descriptors share the registry name "SLIME", so the numeric escapes are
--- mandatory (api-reference: colliding names use "core:#<id>").
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:#8/#9/#10 (slime trio) — split on death/ani-complete, grow specials (cookbook: docs/lua-classpacks-design.md §3).
+-- All three living descriptors share the registry name "SLIME", so the
+-- numeric escapes are mandatory (api-reference: "core:#<id>").
 
 local C = og.C
 
@@ -25,6 +21,7 @@ local function calculate_level(experience)
   local acc = 0  -- calculate_exp(1) == 0
   while acc <= experience do
     result = result + 1
+    -- og.mod by 2^32 = the C++ uint32 wrap (see above)
     acc = og.mod(acc + (8000 + 2000 * (result - 1) + 4000 * (result - 2)),
                  4294967296)
   end
@@ -48,26 +45,26 @@ end
 -- the dying blob is replaced by one next-size-down offspring.
 local function split_on_death(self, offspring_family)
   self:set_dead(1)
-  local newob = og.add_ob("living", offspring_family)
-  if not newob then
+  local child = og.add_ob("living", offspring_family)
+  if not child then
     return true
   end
-  newob:set_floor(self:floor())  -- split child stays on our floor (A8)
-  newob:set_team_num(self:team_num())
-  newob:s_set_level(self:s_level())
-  newob:set_difficulty(self:s_level())
-  newob:set_foe(self:foe())
-  newob:set_leader(self:leader())
+  child:set_floor(self:floor())  -- split child stays on our floor (A8)
+  child.team = self.team
+  child.level = self.level
+  child:set_difficulty(self.level)
+  child:set_foe(self:foe())
+  child:set_leader(self:leader())
   if #self:s_name() > 0 then
-    -- (sic, straight from the C++: the DYING slime takes the offspring's
-    -- fresh name — not the other way around)
-    self:s_set_name(newob:s_name())
+    -- (sic: the DYING slime takes the offspring's fresh name — not the
+    -- other way around)
+    self:s_set_name(child:s_name())
   end
   if self:has_guy() then
-    self:move_myguy_to(newob)
+    self:move_myguy_to(child)
   end
-  newob:center_on(self)
-  self:s_set_hitpoints(self:s_max_hitpoints())
+  child:center_on(self)
+  self.hp = self.max_hp
   return true
 end
 
@@ -86,44 +83,42 @@ local function slime_on_ani_complete(self)
 
   self:set_ani_type(C.ANI_WALK)
   self:set_cycle(0)
-  -- Shrink (and move) normal guy
   self:transform_to("living", LIVING_SMALL_SLIME)
   self:setxy(self:xpos() - 10, self:ypos() + 10)
 
-  -- Create a new small slime
-  local newob = og.add_ob("living", LIVING_SMALL_SLIME)
-  if not newob then
+  local child = og.add_ob("living", LIVING_SMALL_SLIME)
+  if not child then
     return true
   end
-  newob:set_floor(self:floor())  -- split child stays on our floor (A8)
-  newob:setxy(self:xpos() + 12, self:ypos() - 12)
-  -- Transfer stats/etc. across to new guy
-  self:transfer_stats(newob)
-  local thr = 1000 * self:s_level()           -- uint32 cast as above
-  if thr < 0 then
-    thr = thr + 4294967296
+  child:set_floor(self:floor())  -- split child stays on our floor (A8)
+  child:setxy(self:xpos() + 12, self:ypos() - 12)
+  self:transfer_stats(child)
+  local exp_needed = 1000 * self.level  -- uint32 cast as above
+  if exp_needed < 0 then
+    exp_needed = exp_needed + 4294967296
   end
-  if newob:has_guy() and newob:g_exp() < thr then
-    newob:clear_myguy()
-    newob:s_set_name("SLIME")
-    newob:s_set_level(calculate_level(og.div(self:g_exp(), 2)))
-  elseif newob:has_guy() then
+  if child:has_guy() and child:g_exp() < exp_needed then
+    child:clear_myguy()
+    child:s_set_name("SLIME")
+    child.level = calculate_level(self:g_exp() // 2)
+  elseif child:has_guy() then
     -- High-exp split: both halves level to calculate_level(exp/2).
     -- g_upgrade_to_level re-dispatches the guy's family level_up hook
     -- internally (nested VM entry; budget arms outermost-only).
-    local exp = og.div(self:g_exp(), 2)
-    local newlevel = og.i16(calculate_level(exp))
-    self:g_upgrade_to_level(newlevel)
+    local exp = self:g_exp() // 2
+    -- og.i16: the C++ level destination is a short
+    local new_level = og.i16(calculate_level(exp))
+    self:g_upgrade_to_level(new_level)
     self:g_update_derived_stats(self)
     self:g_set_exp(exp)
-    newob:g_upgrade_to_level(newlevel)
-    newob:g_update_derived_stats(newob)
-    newob:g_set_exp(exp)
+    child:g_upgrade_to_level(new_level)
+    child:g_update_derived_stats(child)
+    child:g_set_exp(exp)
   end
 
-  newob:set_team_num(self:team_num())
-  newob:set_foe(self:foe())
-  newob:set_leader(self:leader())
+  child.team = self.team
+  child:set_foe(self:foe())
+  child:set_leader(self:leader())
   return true
 end
 

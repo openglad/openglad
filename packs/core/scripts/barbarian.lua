@@ -1,7 +1,4 @@
--- core:barbarian — behavior hooks transliterated from family_barbarian.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:barbarian — boulder-toss special (cookbook: docs/lua-classpacks-design.md §3).
 
 local WEAP_BOULDER = og.family_id("weapon", "core:boulder")
 
@@ -9,54 +6,58 @@ local function do_special(self)
   if self:busy() > 0 then
     return false
   end
-  local newob = self:fire()
-  if not newob then
+  local shot = self:fire()
+  if not shot then
     return false
   end
-  local alive = og.add_ob("weapon", WEAP_BOULDER)
-  if not alive then
+  local boulder = og.add_ob("weapon", WEAP_BOULDER)
+  if not boulder then
     return false
   end
-  alive:set_floor(newob:floor())  -- boulder rolls on the thrower's floor (A8)
-  alive:center_on(newob)
-  alive:set_owner(self)
-  alive:s_set_level(self:s_level())
-  alive:set_lastx(newob:lastx())
-  alive:set_lasty(newob:lasty())
+  boulder:set_floor(shot:floor())  -- boulder rolls on the thrower's floor (A8)
+  boulder:center_on(shot)
+  boulder:set_owner(self)
+  boulder.level = self.level
+  boulder:set_lastx(shot:lastx())
+  boulder:set_lasty(shot:lasty())
   if self:has_guy() then
     -- guy strength is a short: strength / 7 is INTEGER division in the C++,
     -- then the int joins 1.0f in a single float add.
-    alive:set_stepsize(og.fadd(1.0, og.div(self:g_strength(), 7)))
-    alive:set_damage(og.fadd(alive:damage(),
-                             og.fdiv(self:g_strength(), 5.0)))
+    boulder:set_stepsize(1 + self:g_strength() // 7)
+    -- damage is a C++ float and strength/5 is FLOAT division: per-op
+    -- rounding.
+    boulder.damage = og.fadd(boulder:damage(),
+                             og.fdiv(self:g_strength(), 5.0))
   else
-    alive:set_stepsize(og.fmul(self:s_level(), 2.0))
-    alive:set_damage(og.fadd(alive:damage(), self:s_level()))
+    boulder:set_stepsize(self.level * 2)
+    -- damage is a C++ float: per-op rounding.
+    boulder.damage = og.fadd(boulder:damage(), self.level)
   end
-  if alive:stepsize() < 1 then
-    alive:set_stepsize(1)
+  if boulder:stepsize() < 1 then
+    boulder:set_stepsize(1)
   end
-  if alive:stepsize() > 15 then
-    alive:set_stepsize(15)
+  if boulder:stepsize() > 15 then
+    boulder:set_stepsize(15)
   end
-  if alive:lasty() > 0 then
-    alive:set_lasty(alive:stepsize())
-  elseif alive:lasty() < 0 then
-    alive:set_lasty(-alive:stepsize())
+  if boulder:lasty() > 0 then
+    boulder:set_lasty(boulder:stepsize())
+  elseif boulder:lasty() < 0 then
+    boulder:set_lasty(-boulder:stepsize())
   end
-  if alive:lastx() > 0 then
-    alive:set_lastx(alive:stepsize())
-  elseif alive:lastx() < 0 then
-    alive:set_lastx(-alive:stepsize())
+  if boulder:lastx() > 0 then
+    boulder:set_lastx(boulder:stepsize())
+  elseif boulder:lastx() < 0 then
+    boulder:set_lastx(-boulder:stepsize())
   end
   if self:current_special() == 2 then
-    alive:set_skip_exit(5000)
+    boulder:set_skip_exit(5000)
   else
-    alive:set_skip_exit(0)
+    boulder:set_skip_exit(0)
   end
-  newob:set_dead(1)
-  self:set_busy(og.fadd(og.fadd(self:busy(), 1.0),
-                        og.fmul(self:current_special(), 5.0)))
+  shot.dead = 1
+  -- busy is a C++ float: per-op rounding.
+  self.busy = og.fadd(og.fadd(self:busy(), 1.0),
+                      self:current_special() * 5)
   return true
 end
 

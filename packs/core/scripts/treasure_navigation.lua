@@ -1,6 +1,4 @@
--- core treasure navigation — on_eat hooks transliterated from
--- src/gameplay/families/treasure_family_navigation.cpp (exit pad and
--- teleporter pad). Cookbook (docs/lua-classpacks-design.md §3) applies.
+-- core:exit + core:teleporter — exit pad and warp pad on_eat (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- The exit pad reads and writes campaign progression state through its own
 -- bindings:
@@ -20,11 +18,11 @@
 local C = og.C
 local FX_FLASH = og.family_id("fx", "core:flash")
 
-local function format_exit_prompt(exitname, is_withdraw)
+local function format_exit_prompt(exit_name, is_withdraw)
   if is_withdraw then
-    return string.format("Withdraw to %s?", exitname)
+    return string.format("Withdraw to %s?", exit_name)
   end
-  return string.format("Exit to %s?", exitname)
+  return string.format("Exit to %s?", exit_name)
 end
 
 -- exit_on_eat: the level-exit pad. Offers the exit prompt when the level is
@@ -40,21 +38,19 @@ local function exit_on_eat(self, eater)
   end
 
   eater:set_skip_exit(10)
-  -- See if there are any enemies left ...
-  local guys_here
+  local foes_left
   if og.level_done() == 0 then
-    guys_here = 1
+    foes_left = 1
   else
-    guys_here = 0
+    foes_left = 0
   end
-  -- Get the name of our exit..
-  local exitname = og.scenario_title(string.format("scen%d", self:s_level()))
-  if exitname == "none" then
-    exitname = string.format("Level %d", self:s_level())
+  local exit_name = og.scenario_title(string.format("scen%d", self.level))
+  if exit_name == "none" then
+    exit_name = string.format("Level %d", self.level)
   end
 
-  local destination_level = og.i16(self:s_level())
-  local can_exit_now = guys_here == 0 or og.world_can_exit_whenever()
+  local destination_level = self.level
+  local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()
   local can_withdraw = og.level_completed(destination_level)
       and not og.level_completed(og.current_scenario())
 
@@ -62,7 +58,7 @@ local function exit_on_eat(self, eater)
   -- BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels show the
   -- normal "Exit to X?" dialog instead of "Withdraw to X?".
   if can_exit_now then
-    og.emit_exit_confirmation(format_exit_prompt(exitname, false),
+    og.emit_exit_confirmation(format_exit_prompt(exit_name, false),
                               destination_level, 0)
     return true
   end
@@ -72,7 +68,7 @@ local function exit_on_eat(self, eater)
   -- and revert to the autosave, then jump to the exit's destination level.
   if can_withdraw then
     og.set_withdraw_request(destination_level)
-    og.emit_exit_confirmation(format_exit_prompt(exitname, true),
+    og.emit_exit_confirmation(format_exit_prompt(exit_name, true),
                               destination_level, 1)
     og.emit_withdraw_to_level(destination_level)
   else
@@ -90,15 +86,14 @@ local function teleporter_on_eat(self, eater)
   if eater:skip_exit() > 1 then
     return true
   end
-  local distance = self:distance_to_ob_center(eater)  -- how far away?
-  if distance > 21 then
+  local dist = self:distance_to_ob_center(eater)
+  if dist > 21 then
     return true
   end
-  if distance < 4 and eater:skip_exit() ~= 0 then
+  if dist < 4 and eater:skip_exit() ~= 0 then
     eater:set_skip_exit(8)
     return true
   end
-  -- If we're close enough, teleport ..
   eater:set_skip_exit(eater:skip_exit() + 20)
   local target
   if not self:leader() then
@@ -115,10 +110,9 @@ local function teleporter_on_eat(self, eater)
     eater:center_on(self)
     return true
   end
-  -- Now do special effects
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
-    flash:set_ani_type(C.ANI_EXPAND_8)
+    flash.ani_type = C.ANI_EXPAND_8
     flash:set_floor(self:floor())  -- flash at the departure pad (A8)
     flash:center_on(self)
   end

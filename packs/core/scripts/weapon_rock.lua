@@ -1,8 +1,4 @@
--- core:rock — weapon behavior hooks transliterated from
--- weapon_family_rock.cpp. Cookbook (docs/lua-classpacks-design.md §3)
--- applies: xpos/ypos are shorts and lastx/lasty floats, so every C++
--- coordinate sum is one float op (og.fadd/og.fsub); setxy narrows its
--- float arguments to short exactly like the C++ call site.
+-- core:rock — bouncing rock reflects off whichever axis is open (cookbook: docs/lua-classpacks-design.md §3).
 
 -- rock_on_death: a bouncing rock (do_bounce set by the elf special) that
 -- died against a barrier un-deads itself and reflects off whichever axis
@@ -13,6 +9,9 @@ local function on_death(self)
     return false
   end
   self:set_dead(0)  -- first, un-dead us so we can collide ..
+  -- Every probe point below sums short xpos/ypos with float lastx/lasty in
+  -- C float (og.fadd/og.fsub), and each taken bounce narrows the same sums
+  -- back to short through setxy — exactly the C++ call shapes.
   -- Did we hit a barrier?
   if og.query_grid_passable(og.fadd(self:xpos(), self:lastx()),
                             og.fadd(self:ypos(), self:lasty()), self) then
@@ -39,6 +38,7 @@ local function on_death(self)
   end
   if og.query_grid_passable(og.fsub(self:xpos(), self:lastx()),
                             og.fsub(self:ypos(), self:lasty()), self) then
+    -- bounce off both axes
     self:setxy(og.fsub(self:xpos(), self:lastx()),
                og.fsub(self:ypos(), self:lasty()))
     self:set_lastx(-self:lastx())

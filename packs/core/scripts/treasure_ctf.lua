@@ -1,7 +1,4 @@
--- core CTF treasures — on_eat hooks transliterated from
--- src/gameplay/families/treasure_family_ctf.cpp (the carryable flag and the
--- control-point waypoint). Cookbook (docs/lua-classpacks-design.md §3)
--- applies.
+-- core:flag + core:waypoint — CTF touch hooks (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- core:waypoint is fully live: control points are occupancy-driven (CTF
 -- phase 5 owns them from ctf_run_tick), so a touch is genuinely a no-op

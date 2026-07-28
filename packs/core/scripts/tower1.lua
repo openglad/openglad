@@ -1,7 +1,7 @@
--- core tower1 (FAMILY_TOWER1) — transliterated from family_tower1.cpp.
+-- core tower1 — no hooks (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- The tower1 descriptor wires NO behavior callbacks (every hook slot is
--- nullptr; the family is a stationary shooter driven entirely by descriptor
+-- null; the family is a stationary shooter driven entirely by descriptor
 -- data and generic walker/living code), so there is nothing to register
 -- here. og.register_hooks with an empty hook table is a load error by
 -- design, so this file deliberately makes no registration call.

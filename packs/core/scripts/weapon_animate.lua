@@ -1,16 +1,9 @@
--- core:tree, core:blood, core:circle_protection, core:glow and
--- core:sprinkle — weapon behavior hooks transliterated from
--- src/gameplay/families/weapon_family_animate.cpp. Cookbook
--- (docs/lua-classpacks-design.md §3) applies: og.div/og.mod are not needed
--- here (the only arithmetic is exact integer addition and multiplication),
--- og.i8 reproduces the `static_cast<signed char>` on the cycle write, og.u8
--- the `static_cast<unsigned char>` on the facing read, and og.i16 the
--- `static_cast<short>` on the freeze roll.
+-- core:tree/blood/circle_protection/glow/sprinkle — on_animate; freeze hit (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- CALLER CONTRACT (weap::animate): a hook returning FALSE makes the caller
 -- run death(). tree/blood and glow always return true — glow calls death()
--- itself, exactly as the C++ did — while circle_protection returns false to
--- hand the death off, and must NOT call death() on its own.
+-- itself — while circle_protection returns false to hand the death off,
+-- and must NOT call death() on its own.
 
 local C = og.C
 
@@ -36,9 +29,7 @@ local function weapon_animate_step(self)
     dir_index = 0
   end
   local type_index = self:ani_type()
-  if type_index < 0 then
-    type_index = 0
-  end
+  type_index = og.max(type_index, 0)
   local ani_index = dir_index + type_index * NUM_FACINGS
 
   local seq = og.ani_row(self, ani_index)
@@ -60,6 +51,7 @@ local function weapon_animate_step(self)
   -- earlier (that is what seq_len means), so it is reached exactly when the
   -- advanced cycle equals the trimmed row length.
   local ended = (c == seq_len)
+  -- og.i8: the C++ cycle field is a signed char
   self:set_cycle(og.i8(c))
   return ended
 end
@@ -83,7 +75,7 @@ local function circle_protection_on_animate(self)
   local owner = self:owner()
   if not owner
       or owner:dead() ~= 0
-      or self:s_hitpoints() <= 0 then
+      or self.hp <= 0 then
     self:set_dead(1)
     return false  -- let the caller's default death handling proceed
   end
@@ -123,13 +115,14 @@ local function sprinkle_on_hit_target(self, target, owner)
     con = target:g_constitution()
   end
   -- Runaway-specials §2.6: the roll is ALWAYS drawn (RNG stream identical
-  -- to master at every level); only the SET below is gated.
-  local roll = og.i16(og.freeze_duration(owner:s_level(), con))
+  -- to master at every level); only the SET below is gated. og.i16: the
+  -- C++ stored the roll in a short.
+  local roll = og.i16(og.freeze_duration(owner.level, con))
   -- §2.6b refresh gate: a high-level faerie may not re-SET a freeze that is
   -- still running (mirrors the archmage charm_left<=10 gate). Level-gated
   -- >= 21 because the L20 weapon_sprinkle_emission golden's soldier thaw
   -- schedule must stay byte-identical.
-  local refresh_gated = owner:s_level() >= SPRINKLE_REFRESH_OWNER_LEVEL
+  local refresh_gated = owner.level >= SPRINKLE_REFRESH_OWNER_LEVEL
       and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR
   -- §3.3 thaw immunity: never re-freeze inside the negative immunity phase
   -- (only the player-side drain writes it).

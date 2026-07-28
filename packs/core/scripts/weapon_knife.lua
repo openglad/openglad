@@ -1,10 +1,7 @@
--- core:knife — weapon behavior hooks transliterated from
--- weapon_family_knife.cpp. Cookbook (docs/lua-classpacks-design.md §3)
--- applies.
+-- core:knife — returning-blade spawn on death (cookbook: docs/lua-classpacks-design.md §3).
 --
--- The C++ gate reads the knife OWNER's living-family descriptor —
--- get_family_descriptor(owner->family())->has_returning_weapon — which is
--- og.family_flag("living", family_byte, "has_returning_weapon") here. A nil
+-- The returning gate reads the knife OWNER's living-family descriptor:
+-- og.family_flag("living", owner:family(), "has_returning_weapon"). A nil
 -- owner is the C++ `owner_fd == nullptr` case: no special handling.
 
 local C = og.C
@@ -21,19 +18,19 @@ local function on_death(self)
     return false  -- no special handling
   end
 
-  local newob = og.add_ob("fx", FX_KNIFE_BACK)
-  if not newob then
+  local blade = og.add_ob("fx", FX_KNIFE_BACK)
+  if not blade then
     return true
   end
-  newob:set_owner(self:owner())
+  blade:set_owner(self:owner())
   -- return flight starts on the knife's floor (A8)
-  newob:set_floor(self:floor())
-  newob:center_on(self)
-  newob:set_lastx(self:lastx())
-  newob:set_lasty(self:lasty())
-  newob:set_stepsize(self:stepsize())
-  newob:set_ani_type(C.ANI_ATTACK)
-  newob:set_damage(self:damage())
+  blade:set_floor(self:floor())
+  blade:center_on(self)
+  blade:set_lastx(self:lastx())
+  blade:set_lasty(self:lasty())
+  blade:set_stepsize(self:stepsize())
+  blade.ani_type = C.ANI_ATTACK
+  blade.damage = self:damage()
   return true
 end
 

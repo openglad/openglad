@@ -1,7 +1,4 @@
--- core:archer — behavior hooks transliterated from family_archer.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:archer — arrow volleys, flurry, exploding shot; melee backpedal (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local WEAPON_FIRE_ARROW = og.family_id("weapon", "core:fire_arrow")
@@ -13,8 +10,8 @@ local function do_special(self)
     self:set_curdir(-1)
     self:set_lastx(0)
     self:set_lasty(0)
-    self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                   og.fmul(8.0, self:s_weapon_cost())))
+    -- magicpoints is a C++ float: per-op rounding
+    self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
     self:s_add_command(C.COMMAND_SET_WEAPON, 1, WEAPON_FIRE_ARROW, 0)
     self:s_add_command(C.COMMAND_QUICK_FIRE, 1, 0, -1)
     self:s_add_command(C.COMMAND_QUICK_FIRE, 1, 1, -1)
@@ -30,11 +27,12 @@ local function do_special(self)
     if self:busy() ~= 0 then
       return false
     end
-    self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                   og.fmul(3.0, self:s_weapon_cost())))
+    -- magicpoints is a C++ float: per-op rounding
+    self.magicpoints = og.fadd(self.magicpoints, 3 * self:s_weapon_cost())
     self:fire()
     self:fire()
     self:fire()
+    -- busy and fire_frequency are C++ floats: per-op rounding
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
   else
     -- exploding arrows (cases 3, 4, and default)
@@ -43,14 +41,15 @@ local function do_special(self)
     end
     local old_weapon = self:current_weapon()
     self:set_current_weapon(WEAPON_FIRE_ARROW)
-    local newob = self:fire()
+    local arrow = self:fire()
     self:set_current_weapon(old_weapon)
-    if not newob then
+    if not arrow then
       return false
     end
-    newob:set_skip_exit(5000)
-    newob:s_set_hitpoints(500)
-    newob:set_damage(og.fmul(newob:damage(), 2.0))
+    arrow:set_skip_exit(5000)
+    arrow.hp = 500
+    -- damage is a C++ float: per-op rounding
+    arrow:set_damage(og.fmul(arrow:damage(), 2.0))
   end
   return true
 end
@@ -69,15 +68,10 @@ local function hit_response(self, foe)
   end
   local distance = self:distance_to_ob(foe)
   if distance < 64 then
-    local deltax = og.i16(self:xpos() - foe:xpos())
-    if deltax ~= 0 then
-      deltax = og.i16(og.div(deltax, math.abs(deltax)))
-    end
-    local deltay = og.i16(self:ypos() - foe:ypos())
-    if deltay ~= 0 then
-      deltay = og.i16(og.div(deltay, math.abs(deltay)))
-    end
-    self:s_force_command(C.COMMAND_WALK, 8, deltax, deltay)
+    -- og.i16: the C++ stores each delta into a short before the sign divide
+    local dx = og.sign(og.i16(self:xpos() - foe:xpos()))
+    local dy = og.sign(og.i16(self:ypos() - foe:ypos()))
+    self:s_force_command(C.COMMAND_WALK, 8, dx, dy)
   end
 end
 

@@ -1,8 +1,4 @@
--- core:door_open — effect behavior hooks transliterated from
--- effect_family_door_open.cpp. Cookbook (docs/lua-classpacks-design.md §3)
--- applies; every value here is an integer field copy, so no float or
--- narrowing helpers are needed (the setters narrow exactly like the C++
--- member types).
+-- core:door_open — hands the opened-door sprite to a fresh effect (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local FX_DOOR_OPEN = og.family_id("fx", "core:door_open")
@@ -16,19 +12,19 @@ local function on_act(self)
     return false  -- let default animate() handle it
   end
 
-  local newob = og.add_fx_ob("fx", FX_DOOR_OPEN)
-  if not newob then
+  local opened = og.add_fx_ob("fx", FX_DOOR_OPEN)
+  if not opened then
     return true  -- handled (nothing to spawn)
   end
-  newob:set_ani_type(C.ANI_WALK)
-  newob:set_floor(self:floor())  -- opened door stays on its floor (A8)
-  newob:setworldxy(self:worldx(), self:worldy())
-  newob:s_set_level(self:s_level())
-  newob:set_team_num(self:team_num())
-  newob:set_ignore(1)
-  newob:set_curdir(self:curdir())
-  -- set correct frame
-  newob:animate()
+  opened:set_ani_type(C.ANI_WALK)
+  opened:set_floor(self:floor())  -- opened door stays on its floor (A8)
+  opened:setworldxy(self:worldx(), self:worldy())
+  opened.level = self.level
+  opened.team = self.team
+  opened:set_ignore(1)
+  opened:set_curdir(self:curdir())
+  -- animate() here only sets the correct frame
+  opened:animate()
   self:set_dead(1)
   self:death()
   return true

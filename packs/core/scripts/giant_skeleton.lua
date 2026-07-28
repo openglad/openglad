@@ -1,8 +1,5 @@
--- core:beast (giant skeleton) — transliterated from family_giant_skeleton.cpp.
--- Every behavior-callback slot in the C++ descriptor (do_special,
--- check_special_ai, hit_response, set_difficulty, level_up, on_death,
--- on_act_living, on_shoved, on_fire_weapon, handle_teleport, on_create,
--- customize_weapon, on_ani_complete, on_melee_hit) is nullptr, so this
+-- core:beast (giant skeleton) — no hooks (cookbook: docs/lua-classpacks-design.md §3).
+-- Every behavior-callback slot in the C++ descriptor was null, so this
 -- family has no scripted hooks: og.register_hooks with an empty hook table
 -- is a load error by design, and registering any hook here would ADD
--- behavior the C++ never had. Deliberately a no-op chunk.
+-- behavior the family never had. Deliberately a no-op chunk.

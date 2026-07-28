@@ -1,75 +1,38 @@
--- core:cleric — behavior hooks transliterated from family_cleric.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:cleric — heal/mace, raise skeleton/ghost, turn undead, resurrect (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local FX_MAGIC_SHIELD = og.family_id("fx", "core:magic_shield")
 local LIVING_SKELETON = og.family_id("living", "core:skeleton")
 local LIVING_GHOST = og.family_id("living", "core:ghost")
 
--- og::combat::glow_bonus (include/openglad/core/combat_math.h), trivially
--- inlined pure-integer helper (no og.* binding exists): legacy 110*L with a
--- FLAT cap at kGlowBonusCap = 2200 (not a soft knee — identity through L20
--- is forced by the L20 glow golden).
-local function glow_bonus(level)
-  local raw = 110 * level
-  if raw < 2200 then
-    return raw
-  end
-  return 2200
-end
-
--- og::combat::skeleton_lifetime / ghost_raise_lifetime: og.soften (the bound
--- C++ soft-knee) over the legacy linear formulas; knee/ceiling literals are
--- kSkeletonLife{Knee,Ceiling} / kGhostRaiseLife{Knee,Ceiling} from
--- combat_math.h.
-local function skeleton_lifetime(level)
-  return og.soften(125 + 40 * level, 645, 900)
-end
-
-local function ghost_raise_lifetime(level)
-  return og.soften(150 + 40 * level, 670, 925)
-end
-
 -- og::combat::kMaceLifeCap (mystic mace lifetime bound; binds above 738 MP).
 local MACE_LIFE_CAP = 468
 
--- rng_.next(level): og.rand errors on n <= 0 while the C++ rng returns 0
--- WITHOUT advancing state (irandom.h); level is never negative here so the
--- C++ uint32 cast is value-preserving.
-local function rand_level(self)
-  local n = self:s_level()
-  if n > 0 then
-    return og.rand(n)
-  end
-  return 0
-end
-
--- Shared turn-undead block: the case-2 and case-3 shifter_down bodies in
--- family_cleric.cpp are token-identical. Returns false where the C++
--- returned false out of do_special; true = fall through to `return true`.
+-- Shared turn-undead block: the case-2 and case-3 shifter_down bodies
+-- were token-identical. Returns false where the legacy code returned
+-- false out of do_special; true = fall through to `return true`.
 local function do_turn_undead(self)
   if self:busy() > 0 then
     return false
   end
   if self:has_guy() and self:g_intelligence() < 60 then
-    if self:team_num() == 0 or self:has_guy() then
+    if self.team == 0 or self:has_guy() then
       og.emit_notification("You need 60 Int to Turn Undead")
     end
+    -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false
   end
-  local generic = self:turn_undead(4 * self:s_level(), self:s_level())
-  if generic == -1 then
+  local turned = self:turn_undead(4 * self.level, self.level)
+  if turned == -1 then
     return false
   end
-  if self:has_guy() and generic ~= 0 then
+  if self:has_guy() and turned ~= 0 then
     self:g_set_exp(self:g_exp() +
-                   og.exp_from_action(self, nil, "turn_undead", generic))
-    if self:team_num() == 0 or self:has_guy() then
+                   og.exp_from_action(self, nil, "turn_undead", turned))
+    if self.team == 0 or self:has_guy() then
       og.emit_notification(
-        string.format("%s turned %d undead.", self:g_name(), generic))
+        string.format("%s turned %d undead.", self:g_name(), turned))
     end
   end
   og.emit_sound(C.SOUND_HEAL)
@@ -81,45 +44,46 @@ local function do_special(self)
   if sp == 1 then
     if self:shifter_down() == 0 then
       -- normal heal
-      local newlist, howmany = og.find_friends_in_range("ob", 60, self)
-      local didheal = 0
-      if howmany > 1 then
-        for i = 1, #newlist do
-          local newob = newlist[i]
-          if newob:s_hitpoints() < newob:s_max_hitpoints() and
-              newob ~= self then
-            -- og.heal_amount draws the same rng compute_heal_amount drew.
-            local generic, cost =
-              og.heal_amount(og.trunc(self:s_magicpoints()), self:s_level())
-            if self:s_magicpoints() < cost then
-              -- two identical (int32) casts of the unchanged mp in the C++
-              local mp_i = og.trunc(self:s_magicpoints())
-              generic = generic - mp_i
+      local friends, friend_count = og.find_friends_in_range("ob", 60, self)
+      local healed = 0
+      if friend_count > 1 then
+        for i = 1, #friends do
+          local ally = friends[i]
+          if ally.hp < ally.max_hp and ally ~= self then
+            -- og.heal_amount draws the same rng compute_heal_amount drew;
+            -- its mp argument is the C++ (int) cast of the float pool.
+            local amount, cost =
+              og.heal_amount(og.trunc(self.magicpoints), self.level)
+            if self.magicpoints < cost then
+              -- the C++ (int32)-casts the unchanged mp twice; one value serves
+              local mp_i = og.trunc(self.magicpoints)
+              amount = amount - mp_i
               cost = cost - mp_i
             end
-            if generic <= 0 or cost <= 0 then
+            if amount <= 0 or cost <= 0 then
               break
             end
-            newob:s_set_hitpoints(og.fadd(newob:s_hitpoints(), generic))
-            self:s_set_magicpoints(og.fsub(self:s_magicpoints(), cost))
+            -- hp and magicpoints are C++ floats: per-op rounding
+            ally.hp = og.fadd(ally.hp, amount)
+            self.magicpoints = og.fsub(self.magicpoints, cost)
             if self:has_guy() then
               self:g_set_exp(self:g_exp() +
-                             og.exp_from_action(self, newob, "heal", generic))
+                             og.exp_from_action(self, ally, "heal", amount))
             end
-            didheal = didheal + 1
-            self:do_heal_effects(self, newob, generic)
+            healed = healed + 1
+            self:do_heal_effects(self, ally, amount)
           end
         end
-        if didheal == 0 then
+        if healed == 0 then
           return false
         else
           local message
-          if didheal == 1 then
+          if healed == 1 then
             message = "Cleric healed 1 man!"
           else
-            message = string.format("Cleric healed %d men!", didheal)
+            message = string.format("Cleric healed %d men!", healed)
           end
-          if self:team_num() == 0 or self:has_guy() then
+          if self.team == 0 or self:has_guy() then
             og.emit_notification(message)
           end
           og.emit_sound(C.SOUND_HEAL)
@@ -142,22 +106,24 @@ local function do_special(self)
         self:g_set_total_shots(self:g_total_shots() + 1)
         self:g_set_scen_shots(self:g_scen_shots() + 1)
       end
-      local newob = og.summon(self, "fx", FX_MAGIC_SHIELD)
-      if not newob then
+      local mace = og.summon(self, "fx", FX_MAGIC_SHIELD)
+      if not mace then
         return false
       end
-      newob:set_ani_type(1)
-      local generic = og.trunc(og.fsub(
-        self:s_magicpoints(), self:s_special_cost(self:current_special())))
-      generic = og.div(generic, 2)
-      local life = 100 + generic
-      if life >= MACE_LIFE_CAP then
-        life = MACE_LIFE_CAP
-      end
-      newob:set_lifetime(life)
-      newob:s_set_hitpoints(og.fadd(newob:s_hitpoints(), og.div(generic, 2)))
-      newob:set_damage(og.fadd(newob:damage(), og.fdiv(generic, 4.0)))
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+      mace:set_ani_type(1)
+      -- spare MP funds the mace: one C float subtract, then C float->int trunc
+      local spare_mp = og.trunc(og.fsub(
+        self.magicpoints, self:s_special_cost(self:current_special())))
+      -- the spare can be negative: og.div is C trunc, not Lua floor
+      spare_mp = og.div(spare_mp, 2)
+      local life = og.min(100 + spare_mp, MACE_LIFE_CAP)
+      mace:set_lifetime(life)
+      -- hp is a C++ float: per-op rounding; og.div halves as C trunc again
+      mace.hp = og.fadd(mace.hp, og.div(spare_mp, 2))
+      -- damage is a C++ float: the quarter is a genuine float division
+      mace:set_damage(og.fadd(mace:damage(), og.fdiv(spare_mp, 4.0)))
+      -- magicpoints and busy are C++ floats: per-op rounding
+      self.magicpoints = og.fsub(self.magicpoints, spare_mp)
       self:set_busy(og.fadd(self:busy(), 5.0))
     end
   elseif sp == 2 then
@@ -168,24 +134,24 @@ local function do_special(self)
       end
     else
       -- raise skeleton at the nearest bloodstain
-      local newob = og.find_nearest_blood(self)
-      if newob then
-        local targetx = newob:xpos()
-        local targety = newob:ypos()
-        local distance = self:distance_to_ob(newob)
-        if og.query_passable(targetx, targety, newob) and distance < 60 then
-          local alive =
-            self:do_summon(LIVING_SKELETON, skeleton_lifetime(self:s_level()))
+      local blood = og.find_nearest_blood(self)
+      if blood then
+        local targetx = blood:xpos()
+        local targety = blood:ypos()
+        local distance = self:distance_to_ob(blood)
+        if og.query_passable(targetx, targety, blood) and distance < 60 then
+          local life = og.combat.skeleton_lifetime(self.level)
+          local alive = self:do_summon(LIVING_SKELETON, life)
           if not alive then
             return false
           end
-          alive:set_team_num(self:team_num())
-          alive:s_set_level(rand_level(self) + 1)
-          alive:set_difficulty(alive:s_level())
-          alive:set_floor(newob:floor())  -- rise at the bloodstain's floor (A8)
-          alive:setxy(newob:xpos(), newob:ypos())
+          alive.team = self.team
+          alive.level = og.rand0(self.level) + 1
+          alive:set_difficulty(alive.level)
+          alive:set_floor(blood:floor())  -- rise at the bloodstain's floor (A8)
+          alive:setxy(blood:xpos(), blood:ypos())
           alive:set_owner(self)
-          newob:set_dead(1)
+          blood:set_dead(1)
           if self:has_guy() then
             self:g_set_exp(self:g_exp() +
                            og.exp_from_action(self, alive, "raise_skeleton", 0))
@@ -205,24 +171,24 @@ local function do_special(self)
       end
     else
       -- raise ghost at the nearest bloodstain
-      local newob = og.find_nearest_blood(self)
-      if newob then
-        local targetx = newob:xpos()
-        local targety = newob:ypos()
-        local distance = self:distance_to_ob(newob)
-        if og.query_passable(targetx, targety, newob) and distance < 30 then
-          local alive =
-            self:do_summon(LIVING_GHOST, ghost_raise_lifetime(self:s_level()))
+      local blood = og.find_nearest_blood(self)
+      if blood then
+        local targetx = blood:xpos()
+        local targety = blood:ypos()
+        local distance = self:distance_to_ob(blood)
+        if og.query_passable(targetx, targety, blood) and distance < 30 then
+          local life = og.combat.ghost_raise_lifetime(self.level)
+          local alive = self:do_summon(LIVING_GHOST, life)
           if not alive then
             return false
           end
-          alive:s_set_level(rand_level(self) + 1)
-          alive:set_difficulty(alive:s_level())
-          alive:set_team_num(self:team_num())
-          alive:set_floor(newob:floor())  -- rise at the bloodstain's floor (A8)
-          alive:setxy(newob:xpos(), newob:ypos())
+          alive.level = og.rand0(self.level) + 1
+          alive:set_difficulty(alive.level)
+          alive.team = self.team
+          alive:set_floor(blood:floor())  -- rise at the bloodstain's floor (A8)
+          alive:setxy(blood:xpos(), blood:ypos())
           alive:set_owner(self)
-          newob:set_dead(1)
+          blood:set_dead(1)
           if self:has_guy() then
             self:g_set_exp(self:g_exp() +
                            og.exp_from_action(self, alive, "raise_ghost", 0))
@@ -236,30 +202,31 @@ local function do_special(self)
     end
   else
     -- resurrect (case 4 and the default case)
-    local newob = og.find_nearest_blood(self)
-    if newob then
-      local targetx = newob:xpos()
-      local targety = newob:ypos()
-      local distance = self:distance_to_ob(newob)
-      if og.query_passable(targetx, targety, newob) and distance < 30 then
+    local blood = og.find_nearest_blood(self)
+    if blood then
+      local targetx = blood:xpos()
+      local targety = blood:ypos()
+      local distance = self:distance_to_ob(blood)
+      if og.query_passable(targetx, targety, blood) and distance < 30 then
         local alive
-        if self:is_friendly(newob) then
+        if self:is_friendly(blood) then
           -- Friendly resurrect: restore the corpse's pre-bloodstain family
           -- at half health.
-          alive = og.add_ob("living", newob:s_old_family())
+          alive = og.add_ob("living", blood:s_old_family())
           if not alive then
             return false
           end
-          newob:transfer_stats(alive)
-          alive:s_set_hitpoints(og.fdiv(alive:s_max_hitpoints(), 2.0))
-          self:do_heal_effects(self, alive,
-                               og.i16(og.trunc(og.fdiv(
-                                 alive:s_max_hitpoints(), 2.0))))
-          alive:set_team_num(newob:team_num())
+          blood:transfer_stats(alive)
+          -- max_hp is a C++ float: fdiv is a genuine float half
+          alive.hp = og.fdiv(alive.max_hp, 2.0)
+          -- the heal marker carries the same half, int16-narrowed (C++ short)
+          local half = og.i16(og.trunc(og.fdiv(alive.max_hp, 2.0)))
+          self:do_heal_effects(self, alive, half)
+          alive.team = blood.team
           if self:has_guy() then
             -- C++ stores the short return into an unsigned short (modular).
             local exp_loss =
-              og.exp_from_action(self, newob, "resurrect_penalty", 0)
+              og.exp_from_action(self, blood, "resurrect_penalty", 0)
             if exp_loss < 0 then
               exp_loss = exp_loss + 65536
             end
@@ -274,14 +241,14 @@ local function do_special(self)
           if not alive then
             return false
           end
-          alive:set_team_num(self:team_num())
-          alive:s_set_level(rand_level(self) + 1)
-          alive:set_difficulty(alive:s_level())
+          alive.team = self.team
+          alive.level = og.rand0(self.level) + 1
+          alive:set_difficulty(alive.level)
           alive:set_owner(self)
         end
-        alive:set_floor(newob:floor())  -- return at the bloodstain's floor (A8)
-        alive:setxy(newob:xpos(), newob:ypos())
-        newob:set_dead(1)
+        alive:set_floor(blood:floor())  -- return at the bloodstain's floor (A8)
+        alive:setxy(blood:xpos(), blood:ypos())
+        blood:set_dead(1)
         if self:has_guy() then
           self:g_set_exp(self:g_exp() +
                          og.exp_from_action(self, alive, "resurrect", 0))
@@ -298,11 +265,12 @@ end
 
 local function check_special_ai(self)
   if self:current_special() == 1 then -- healing
-    local _, howmany = og.find_friends_in_range("ob", 60, self)
-    if howmany > 1 then
+    local _, friend_count = og.find_friends_in_range("ob", 60, self)
+    if friend_count > 1 then
       self:set_shifter_down(0) -- we're HEALING
       return true
-    elseif self:s_magicpoints() >= og.fdiv(self:s_max_magicpoints(), 2) then
+    -- max_magicpoints is a C++ float: fdiv is a genuine float half
+    elseif self.magicpoints >= og.fdiv(self.max_magicpoints, 2) then
       self:set_shifter_down(1) -- do mace
       return true
     end
@@ -322,7 +290,7 @@ end
 
 local function customize_weapon(self, weapon)
   weapon:set_ani_type(C.ANI_GLOWGROW)
-  weapon:set_lifetime(weapon:lifetime() + glow_bonus(self:s_level()))
+  weapon:set_lifetime(weapon:lifetime() + og.combat.glow_bonus(self.level))
 end
 
 og.register_hooks("living", "core:cleric", {

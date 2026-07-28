@@ -1,7 +1,4 @@
--- core:druid — behavior hooks transliterated from family_druid.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:druid — plant tree, summon faerie, reveal items, protection circle (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local WEAP_TREE = og.family_id("weapon", "core:tree")
@@ -15,113 +12,114 @@ local function do_special(self)
     if self:busy() > 0 then
       return false
     end
-    self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                   self:s_weapon_cost()))
-    local newob = self:fire()
-    if not newob then
+    -- shim kept: magicpoints is a C++ float: per-op float rounding.
+    self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
+    local bolt = self:fire()
+    if not bolt then
       return false
     end
+    -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
-    local alive = og.summon(self, "weapon", WEAP_TREE)
-    if not alive then
+    local tree = og.summon(self, "weapon", WEAP_TREE)
+    if not tree then
       return false
     end
-    alive:setxy(newob:xpos(), newob:ypos())
-    alive:set_ani_type(C.ANI_GROW)
-    newob:set_dead(1)
+    tree:setxy(bolt:xpos(), bolt:ypos())
+    tree.ani_type = C.ANI_GROW
+    bolt.dead = 1
   elseif sp == 2 then
     -- summon faerie
     if self:busy() > 0 then
       return false
     end
-    self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                   self:s_weapon_cost()))
-    local newob = self:fire()
-    if not newob then
+    -- shim kept: magicpoints is a C++ float: per-op float rounding.
+    self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
+    local bolt = self:fire()
+    if not bolt then
       return false
     end
-    local alive = og.add_ob("living", LIVING_FAERIE)
-    if not alive then
+    local faerie = og.add_ob("living", LIVING_FAERIE)
+    if not faerie then
       return false
     end
-    alive:set_owner(self)
-    alive:set_team_num(self:team_num())
-    alive:set_floor(newob:floor())  -- faerie on the caster's floor (A8)
-    alive:setxy(newob:xpos(), newob:ypos())
-    -- og::combat::druid_faerie_lifetime (include/openglad/core/combat_math.h):
-    -- soften(50 + 40*L, kFaerieLifeKnee=570, kFaerieLifeCeiling=800). No
-    -- direct og.* binding exists; composed from the bound og.soften.
-    alive:set_lifetime(og.soften(50 + 40 * self:s_level(), 570, 800))
-    newob:set_dead(1)
-    if not og.query_passable(alive:xpos(), alive:ypos(), alive) then
-      alive:set_dead(1)
+    faerie:set_owner(self)
+    faerie.team = self.team
+    faerie:set_floor(bolt:floor())  -- faerie on the caster's floor (A8)
+    faerie:setxy(bolt:xpos(), bolt:ypos())
+    faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)
+    bolt.dead = 1
+    if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then
+      faerie.dead = 1
       return false
     end
+    -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 3.0)))
   elseif sp == 3 then
     -- reveal items
     if self:busy() > 0 then
       return false
     end
-    self:set_view_all(self:view_all() + self:s_level() * 10)
+    self:set_view_all(self:view_all() + self.level * 10)
+    -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
     self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 4.0)))
   else
     -- circle of protection (special 4 and the default case)
     if self:busy() > 0 then
       return false
     end
-    local newlist, howmany = og.find_friends_in_range("ob", 60, self)
-    local didheal = 0
-    if howmany > 1 then
-      for i = 1, #newlist do
-        local newob = newlist[i]
-        if newob ~= self then
+    local friends, friend_count = og.find_friends_in_range("ob", 60, self)
+    local protected_count = 0
+    if friend_count > 1 then
+      for i = 1, #friends do
+        local friend = friends[i]
+        if friend ~= self then
           -- Scan the world oblist for an existing circle owned by this
           -- friend (same list and order the C++ walked).
-          local tempwalk = nil
+          local existing = nil
           local obs = og.oblist()
           for j = 1, #obs do
             local ob = obs[j]
-            if ob:owner() == newob
+            if ob:owner() == friend
                 and ob:order() == C.ORDER_WEAPON
                 and ob:family() == WEAP_CIRCLE_PROTECTION then
-              tempwalk = ob
+              existing = ob
               break
             end
           end
-          local alive
-          if not tempwalk then
-            alive = og.summon(newob, "weapon", WEAP_CIRCLE_PROTECTION)
-            if not alive then
+          if not existing then
+            local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
+            if not circle then
               return false
             end
-            didheal = didheal + 1
+            protected_count = protected_count + 1
           else
-            alive = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
-            if not alive then
+            -- A fresh circle is minted only to read a full charge off it;
+            -- its hitpoints top up the existing circle and it dies unused.
+            local fresh = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
+            if not fresh then
               return false
             end
-            tempwalk:s_set_hitpoints(og.fadd(tempwalk:s_hitpoints(),
-                                             alive:s_hitpoints()))
-            alive:set_dead(1)
-            didheal = didheal + 1
+            -- shim kept: hitpoints is a C++ float: per-op float rounding.
+            existing.hp = og.fadd(existing.hp, fresh.hp)
+            fresh.dead = 1
+            protected_count = protected_count + 1
           end
           if self:has_guy() then
             self:g_set_exp(self:g_exp() +
-                           og.exp_from_action(self, newob, "protection", 0))
+                           og.exp_from_action(self, friend, "protection", 0))
           end
         end
       end
-      if didheal == 0 then
+      if protected_count == 0 then
         return false
       else
         local message
-        if didheal == 1 then
+        if protected_count == 1 then
           message = "Druid protected 1 man!"
         else
-          message = "Druid protected " .. didheal .. " men!"
+          message = "Druid protected " .. protected_count .. " men!"
         end
-        if self:team_num() == 0 or self:has_guy() then
+        if self.team == 0 or self:has_guy() then
           og.emit_notification(message)
         end
         og.emit_sound(C.SOUND_HEAL)

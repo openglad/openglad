@@ -1,7 +1,5 @@
--- core:mage — behavior hooks transliterated from family_mage.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order (mage draws none directly).
+-- core:mage — teleport/marker, starburst, freeze time, wave, heartburst (cookbook: docs/lua-classpacks-design.md §3).
+-- rng: the mage's own hooks draw nothing directly.
 
 local C = og.C
 local FX_MARKER = og.family_id("fx", "core:marker")
@@ -13,7 +11,7 @@ local WEAPON_WAVE = og.family_id("weapon", "core:wave")
 local STARBURST_ADD_CAP = 40
 
 local function handle_teleport(self)
-  self:set_ani_type(C.ANI_TELE_IN)
+  self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
   self:teleport()
   return true
@@ -22,8 +20,8 @@ end
 local function check_special_ai(self)
   -- count_foes_in_range(self, 110) == the howmany out-param of the same
   -- world->find_foes_in_range(oblist, ...) call the binding performs.
-  local _, howmany = og.find_foes_in_range("ob", 110, self)
-  return howmany < 1 or howmany > 3
+  local _, foe_count = og.find_foes_in_range("ob", 110, self)
+  return foe_count < 1 or foe_count > 3
 end
 
 -- The trampoline passes stats->controller() (the stats' owner walker) as
@@ -31,23 +29,25 @@ end
 local function hit_response(self, foe)
   local threshold
   if self:has_guy() then
-    threshold = og.fdiv(og.fmul(3.0, self:s_max_hitpoints()), 5.0)
+    -- shim kept: max_hp is a C++ float: per-op float rounding.
+    threshold = og.fdiv(og.fmul(3.0, self.max_hp), 5.0)
   else
-    threshold = og.fdiv(og.fmul(3.0, self:s_max_hitpoints()), 8.0)
+    -- shim kept: max_hp is a C++ float: per-op float rounding.
+    threshold = og.fdiv(og.fmul(3.0, self.max_hp), 8.0)
   end
 
   local possible = {}
-  for i = 0, og.div(self:s_level() + 2, 3) do
+  for i = 0, (self.level + 2) // 3 do
     if i < C.NUM_SPECIALS
-        and self:s_magicpoints() >= self:s_special_cost(i) then
+        and self.magicpoints >= self:s_special_cost(i) then
       possible[i] = 1
     end
   end
 
-  if self:s_hitpoints() < threshold and possible[1] then
-    self:set_current_special(1)
+  if self.hp < threshold and possible[1] then
+    self.current_special = 1
     self:set_shifter_down(0)
-    self:set_busy(0)
+    self.busy = 0
     self:special()
   else
     if self:foe() ~= foe then
@@ -95,172 +95,176 @@ local function do_special(self)
             and ob:family() == FX_MARKER
             and ob:owner() == self
             and ob:dead() == 0 then
-          ob:set_dead(1)
+          ob.dead = 1
           ob:death()
-          if (self:team_num() == 0 or self:has_guy())
+          if (self.team == 0 or self:has_guy())
               and self:user() ~= -1 then
             og.emit_notification("(Old Marker Removed)")
           end
+          -- shim kept: busy is a C++ float: per-op float rounding.
           self:set_busy(og.fadd(self:busy(), 8.0))
           break
         end
       end
-      -- The C++ resets generic = 0 after the removal loop ("force new
+      -- The C++ resets its generic to 0 after the removal loop ("force new
       -- placement, for now"), so a marker is always placed here.
-      local newob = og.add_ob("fx", FX_MARKER)
-      if not newob then
+      local marker = og.add_ob("fx", FX_MARKER)
+      if not marker then
         return false
       end
-      newob:set_owner(self)
-      newob:set_floor(self:floor())  -- marker on the caster's floor (A8)
-      newob:center_on(self)
+      marker:set_owner(self)
+      marker:set_floor(self:floor())  -- marker on the caster's floor (A8)
+      marker:center_on(self)
       if self:has_guy() then
-        newob:set_lifetime(og.div(self:g_intelligence(), 33))
+        marker.lifetime = self:g_intelligence() // 33
       else
-        newob:set_lifetime(og.div(self:s_level(), 4) + 1)
+        marker.lifetime = self.level // 4 + 1
       end
-      newob:set_ani_type(C.ANI_SPIN)
-      if (self:team_num() == 0 or self:has_guy())
+      marker.ani_type = C.ANI_SPIN
+      if (self.team == 0 or self:has_guy())
           and self:user() ~= -1 then
         og.emit_notification("Teleport Marker Placed")
-        og.emit_notification(string.format("(%d Uses)", newob:lifetime()))
+        og.emit_notification(string.format("(%d Uses)", marker:lifetime()))
       end
+      -- shim kept: busy is a C++ float: per-op float rounding.
       self:set_busy(og.fadd(self:busy(), 8.0))
-      local generic = og.trunc(og.fsub(
-        self:s_magicpoints(),
+      -- Marker surcharge: half the MP left after the cast's own cost.
+      -- shim kept: magicpoints is a C++ float the C++ banks into an int (trunc).
+      local surcharge = og.trunc(og.fsub(
+        self.magicpoints,
         self:s_special_cost(self:current_special())))
-      generic = og.div(generic, 2)
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+      -- shim kept: the leftover can be negative: C trunc, not Lua floor.
+      surcharge = og.div(surcharge, 2)
+      -- shim kept: magicpoints is a C++ float: per-op float rounding.
+      self.magicpoints = og.fsub(self.magicpoints, surcharge)
     else
       og.emit_positional_sound(self, C.SOUND_TELEPORT)
-      self:set_ani_type(C.ANI_TELE_OUT)
+      self.ani_type = C.ANI_TELE_OUT
       self:set_cycle(0)
     end
   elseif sp == 2 then
     -- starburst
-    local tempx = og.trunc(self:lastx())
-    local tempy = og.trunc(self:lasty())
-    local generic = og.trunc(og.fsub(
-      self:s_magicpoints(),
+    -- shim kept (both): the C++ parks the float aim in int temps: C truncation.
+    local saved_aim_x = og.trunc(self:lastx())
+    local saved_aim_y = og.trunc(self:lasty())
+    -- shim kept: magicpoints is a C++ float the C++ banks into an int (trunc).
+    local dmg_bonus = og.trunc(og.fsub(
+      self.magicpoints,
       self:s_special_cost(self:current_special())))
-    if generic > 0 then
+    if dmg_bonus > 0 then
       -- §2.12: per-fireball add binds only above 660 MP; lineofsight
       -- add/3 inherits the bound.
-      local g15 = og.div(generic, 15)
-      if g15 < STARBURST_ADD_CAP then
-        generic = g15
-      else
-        generic = STARBURST_ADD_CAP
-      end
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+      -- shim kept: positive here, but the audit's proof is site-local: C trunc.
+      dmg_bonus = og.min(og.div(dmg_bonus, 15), STARBURST_ADD_CAP)
+      -- shim kept: magicpoints is a C++ float: per-op float rounding.
+      self.magicpoints = og.fsub(self.magicpoints, dmg_bonus)
     else
-      generic = 0
+      dmg_bonus = 0
     end
-    self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                   og.fmul(8.0, self:s_weapon_cost())))
+    -- shim kept: magicpoints is a C++ float: per-op float rounding.
+    self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
     for i = -1, 1 do
       for j = -1, 1 do
         if i ~= 0 or j ~= 0 then
           self:set_lastx(i)
           self:set_lasty(j)
-          local newob = self:fire()
-          if newob then
-            newob:set_damage(og.fadd(newob:damage(), generic))
-            newob:set_lineofsight(newob:lineofsight() + og.div(generic, 3))
-            if newob:lastx() ~= 0.0 then
-              newob:set_lastx(og.fdiv(newob:lastx(),
-                                      math.abs(newob:lastx())))
+          local bolt = self:fire()
+          if bolt then
+            -- shim kept: damage is a C++ float: per-op float rounding.
+            bolt:set_damage(og.fadd(bolt:damage(), dmg_bonus))
+            -- shim kept: bonus/3 stays C trunc (site-local audit proof gap).
+            bolt:set_lineofsight(bolt:lineofsight() + og.div(dmg_bonus, 3))
+            if bolt:lastx() ~= 0.0 then
+              -- shim kept: lastx is a C++ float: per-op float rounding.
+              bolt:set_lastx(og.fdiv(bolt:lastx(), math.abs(bolt:lastx())))
             end
-            if newob:lasty() ~= 0.0 then
-              newob:set_lasty(og.fdiv(newob:lasty(),
-                                      math.abs(newob:lasty())))
+            if bolt:lasty() ~= 0.0 then
+              -- shim kept: lasty is a C++ float: per-op float rounding.
+              bolt:set_lasty(og.fdiv(bolt:lasty(), math.abs(bolt:lasty())))
             end
           end
         end
       end
     end
-    self:set_lastx(tempx)
-    self:set_lasty(tempy)
+    self:set_lastx(saved_aim_x)
+    self:set_lasty(saved_aim_y)
   elseif sp == 3 then
     -- freeze time. enemy_freeze is relative to world.my_team: a Mage on
     -- the player's team banks a global time-stop; anyone else grants
     -- bonus_rounds to its own side instead.
-    if self:team_num() == og.u8(og.my_team()) then
-      og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self:s_level())
+    if self.team == og.u8(og.my_team()) then
+      og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self.level)
       og.set_palette(1)
       og.emit_event(C.EVENT_SET_PALETTE, 1)
     else
-      local generic = 5 + 2 * self:s_level()
-      if generic > 50 then
-        generic = 50
-      end
+      local rounds = og.min(5 + 2 * self.level, 50)
       og.emit_notification(
-        string.format("TIME IS FROZEN! (%d rounds)", generic), 2)
+        string.format("TIME IS FROZEN! (%d rounds)", rounds), 2)
       og.emit_event(C.EVENT_REQUEST_REDRAW)
-      local newlist = og.find_friends_in_range("ob", 30000, self)
-      for i = 1, #newlist do
-        local w = newlist[i]
+      local friends = og.find_friends_in_range("ob", 30000, self)
+      for i = 1, #friends do
+        local w = friends[i]
         if w then
-          w:set_bonus_rounds(w:bonus_rounds() + generic)
+          w:set_bonus_rounds(w:bonus_rounds() + rounds)
         end
       end
     end
   elseif sp == 4 then
     -- energy wave
-    local newob = self:fire()
-    if not newob then
+    local bolt = self:fire()
+    if not bolt then
       return false
     end
-    local alive = og.add_ob("weapon", WEAPON_WAVE)
-    if not alive then
+    local wave = og.add_ob("weapon", WEAPON_WAVE)
+    if not wave then
       return false
     end
-    alive:set_floor(newob:floor())  -- wave rides the caster's floor (A8)
-    alive:center_on(newob)
-    alive:set_owner(self)
-    alive:s_set_level(self:s_level())
-    alive:set_lastx(newob:lastx())
-    alive:set_lasty(newob:lasty())
-    newob:set_dead(1)
+    wave:set_floor(bolt:floor())  -- wave rides the caster's floor (A8)
+    wave:center_on(bolt)
+    wave:set_owner(self)
+    wave.level = self.level
+    wave:set_lastx(bolt:lastx())
+    wave:set_lasty(bolt:lasty())
+    bolt.dead = 1
   else
     -- heartburst (case 5 and the default case)
-    local newlist, howmany = og.find_foes_in_range(
-      "ob", 80 + 2 * self:s_level(), self)
-    if howmany == 0 then
+    local foes, foe_count = og.find_foes_in_range(
+      "ob", 80 + 2 * self.level, self)
+    if foe_count == 0 then
       return false
     end
-    local generic = og.trunc(og.fsub(self:s_magicpoints(),
-                                     self:s_special_cost(5)))
+    -- shim kept: magicpoints is a C++ float the C++ banks into an int (trunc).
+    local pool = og.trunc(og.fsub(self.magicpoints,
+                                  self:s_special_cost(5)))
     -- §2.12: heartburst pool binds only above ~1300 MP.
-    local g2 = og.div(generic, 2)
-    if g2 < C.MP_POOL_DAMAGE_CAP then
-      generic = g2
-    else
-      generic = C.MP_POOL_DAMAGE_CAP
-    end
-    generic = og.div(generic, howmany)
+    -- shim kept: the pool can be negative: C trunc, not Lua floor.
+    local share = og.min(og.div(pool, 2), C.MP_POOL_DAMAGE_CAP)
+    -- shim kept: share can be negative: C trunc, not Lua floor.
+    local damage = og.div(share, foe_count)
     if self:has_guy() then
-      self:g_set_total_shots(self:g_total_shots() + howmany)
-      self:g_set_scen_shots(self:g_scen_shots() + howmany)
+      self:g_set_total_shots(self:g_total_shots() + foe_count)
+      self:g_set_scen_shots(self:g_scen_shots() + foe_count)
     end
+    -- shim kept: busy is a C++ float: per-op float rounding.
     self:set_busy(og.fadd(self:busy(), 5.0))
-    for i = 1, #newlist do
-      local ob = newlist[i]
-      local newob = og.summon(self, "fx", FX_EXPLOSION)
-      if not newob then
+    for i = 1, #foes do
+      local foe = foes[i]
+      local burst = og.summon(self, "fx", FX_EXPLOSION)
+      if not burst then
         return false
       end
-      newob:set_damage(generic)
+      burst.damage = damage
       -- Heartburst bursts materialize ON each acquired foe, so they take
       -- that target's floor (A8); the blast itself only damages same-floor
       -- walkers (explosion_on_death floor filter).
-      newob:set_floor(ob:floor())
-      newob:center_on(ob)
+      burst:set_floor(foe:floor())
+      burst:center_on(foe)
       og.emit_sound(C.SOUND_EXPLODE)
-      newob:set_ani_type(C.ANI_EXPLODE)
-      newob:s_set_bit_flags(C.BIT_MAGICAL, 1)
-      newob:set_skip_exit(100)
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+      burst.ani_type = C.ANI_EXPLODE
+      burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
+      burst:set_skip_exit(100)
+      -- shim kept: magicpoints is a C++ float: per-op float rounding.
+      self.magicpoints = og.fsub(self.magicpoints, damage)
     end
   end
   return true

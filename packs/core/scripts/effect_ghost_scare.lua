@@ -1,7 +1,4 @@
--- core:ghost_scare — effect behavior hooks transliterated from
--- effect_family_ghost_scare.cpp. Cookbook (docs/lua-classpacks-design.md §3)
--- applies: og.div for integer division, setters narrow like the C++ field
--- types, og.rand preserves draw order and count.
+-- core:ghost_scare — expiring scare cloud frights nearby foes (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- on_death applies the fright through walker:s_force_fright(iterations,
 -- dx, dy) — statistics::force_fright, the scare-MERGE variant of
@@ -34,41 +31,28 @@ local function on_death(self)
   -- Runaway-specials §2.3: radius capped at 250 px (legacy 50 + 10*L goes
   -- off-screen at L27); binds only at L21+, draw-free. og.scare_radius is the
   -- binding for og::combat::scare_radius (core/combat_math.h).
-  local foelist, howmany =
-    og.find_foes_in_range("ob", og.scare_radius(owner:s_level()), owner)
-  if howmany < 1 then
+  local foes, foe_count =
+    og.find_foes_in_range("ob", og.scare_radius(owner.level), owner)
+  if foe_count < 1 then
     return false
   end
 
-  for i = 1, #foelist do
-    local w = foelist[i]
-    if w and w:order() == C.ORDER_LIVING then
-      -- xpos/ypos are shorts: the sign collapse is C integer division.
-      local tempx = w:xpos() - self:xpos()
-      if tempx ~= 0 then
-        tempx = og.div(tempx, math.abs(tempx))
-      end
-      local tempy = w:ypos() - self:ypos()
-      if tempy ~= 0 then
-        tempy = og.div(tempy, math.abs(tempy))
-      end
+  for i = 1, #foes do
+    local foe = foes[i]
+    if foe and foe:order() == C.ORDER_LIVING then
+      local flee_dx = og.sign(foe:xpos() - self:xpos())
+      local flee_dy = og.sign(foe:ypos() - self:ypos())
       -- Runaway-specials §2.2: duration soft-capped (legacy 25*L, knee 325 =
       -- L13, ceiling 375) BEFORE the legacy myguy-only constitution resist
       -- draw — draw order/count identical, and both scare goldens (L1 = 25,
       -- L5 = 125) sit below the knee.
-      local generic = og.scare_duration(owner:s_level())
-      if w:has_guy() then
-        -- rng_.next(0) returns 0 without advancing the stream; og.rand(0)
-        -- raises, so the zero bound is guarded.
-        local con = w:g_constitution()
-        local roll = 0
-        if con > 0 then
-          roll = og.rand(con)
-        end
-        generic = generic - roll
+      local fright = og.scare_duration(owner.level)
+      if foe:has_guy() then
+        local con_roll = og.rand0(foe:g_constitution())
+        fright = fright - con_roll
       end
-      if generic > 0 then
-        w:s_force_fright(generic, tempx, tempy)
+      if fright > 0 then
+        foe:s_force_fright(fright, flee_dx, flee_dy)
       end
     end
   end

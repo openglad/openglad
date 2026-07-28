@@ -1,14 +1,8 @@
--- core:thief — behavior hooks transliterated from family_thief.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:thief — bomb, cloak, taunt/charm, poison cloud (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local FX_BOMB = og.family_id("fx", "core:bomb")
 local FX_CLOUD = og.family_id("fx", "core:cloud")
--- Not present in og.C; values from core/constants.h (both equal ANI_ATTACK).
-local ANI_BOMB = 1
-local ANI_SPIN = 1
 
 local function check_special_ai(self)
   if self:current_special() == 1 then
@@ -20,19 +14,19 @@ local function check_special_ai(self)
         return false
       end
     else
-      local _, howmany = og.find_foes_in_range("ob", 110, self)
-      return howmany >= 3
+      local _, foe_count = og.find_foes_in_range("ob", 110, self)
+      return foe_count >= 3
     end
     return true -- fallthrough for foe case when distance is acceptable
   elseif self:current_special() == 3 then
-    local myrange
+    local range
     if self:shifter_down() == 0 then
-      myrange = 80 + 4 * self:s_level()
+      range = 80 + 4 * self.level
     else
-      myrange = 16 + 4 * self:s_level()
+      range = 16 + 4 * self.level
     end
-    local _, howmany = og.find_foes_in_range("ob", myrange, self)
-    return howmany >= 1
+    local _, foe_count = og.find_foes_in_range("ob", range, self)
+    return foe_count >= 1
   end
   return true -- default: go for it
 end
@@ -45,116 +39,116 @@ local function do_special(self)
   local sp = self:current_special()
   if sp == 1 then
     -- drop bomb
-    local newob = og.add_ob("fx", FX_BOMB)
-    if not newob then
+    local bomb = og.add_ob("fx", FX_BOMB)
+    if not bomb then
       return false
     end
-    newob:set_ani_type(ANI_BOMB)
+    bomb.ani_type = C.ANI_BOMB
     if self:has_guy() then
       self:g_set_total_shots(self:g_total_shots() + 1)
       self:g_set_scen_shots(self:g_scen_shots() + 1)
     end
-    -- og::combat::bomb_damage(L): §2.7 legacy 15*(L+1) below knee 210
-    -- (= L13); ceiling 300
-    newob:set_damage(og.soften(15 * (self:s_level() + 1), 210, 300))
-    newob:set_floor(self:floor()) -- bomb armed on the thief's floor (A8)
-    newob:setxy(self:xpos() + og.div(self:sizex(), 2)
-                  - og.div(newob:sizex(), 2),
-                self:ypos() + og.div(self:sizey(), 2)
-                  - og.div(newob:sizey(), 2))
-    newob:set_owner(self)
-    -- Run away if we're AI
+    bomb.damage = og.combat.bomb_damage(self.level)
+    bomb:set_floor(self:floor()) -- bomb armed on the thief's floor (A8)
+    bomb:setxy(self:xpos() + self:sizex() // 2
+                 - bomb:sizex() // 2,
+               self:ypos() + self:sizey() // 2
+                 - bomb:sizey() // 2)
+    bomb:set_owner(self)
+    -- An AI thief flees its own armed bomb.
     if self:user() == -1 then
-      local tempx = og.rand(3) - 1
-      local tempy = og.rand(3) - 1
-      if tempx == 0 and tempy == 0 then
-        tempx = 1
+      local flee_dx = og.rand(3) - 1
+      local flee_dy = og.rand(3) - 1
+      if flee_dx == 0 and flee_dy == 0 then
+        flee_dx = 1
       end
-      self:s_force_command(C.COMMAND_WALK, 20, tempx, tempy)
+      self:s_force_command(C.COMMAND_WALK, 20, flee_dx, flee_dy)
     end
   elseif sp == 2 then
-    -- cloak: og::combat::cloak_total(cur, gain) inlined —
-    -- new = max(cur, min(cur + gain, kInvisibilityCloakCap=350))
+    -- cloak
     local cur = self:invisibility_left()
-    local gain = 20 + og.rand(20) * self:s_level()
-    local summed = cur + gain
-    local capped = math.min(summed, 350)
-    self:set_invisibility_left(math.max(capped, cur))
+    local gain = 20 + og.rand(20) * self.level
+    self:set_invisibility_left(og.combat.cloak_total(cur, gain))
   elseif sp == 3 then
     if self:shifter_down() == 0 then
       -- normal taunt
       if self:busy() > 0 then
         return false
       end
-      local foes = og.foes_in_range(self, 80 + 4 * self:s_level())
+      local foes = og.foes_in_range(self, 80 + 4 * self.level)
       for i = 1, #foes do
-        local ob = foes[i]
+        local foe = foes[i]
         -- Two RNG draws in one C++ expression; drawn left (self) first.
-        local myroll = og.rand(self:s_level())
-        local obroll = og.rand(ob:s_level())
-        if myroll >= obroll then
-          ob:set_foe(self)
-          ob:set_leader(self)
-          if ob:act_type() ~= C.ACT_CONTROL then
-            ob:s_force_command(C.COMMAND_FOLLOW,
-                               10 + og.rand(self:s_level()), 0, 0)
+        -- (Bounds lean on the engine invariant level >= 1; the bare og.rand
+        -- is the loud tripwire if that ever breaks.)
+        local my_roll = og.rand(self.level)
+        local foe_roll = og.rand(foe.level)
+        if my_roll >= foe_roll then
+          foe:set_foe(self)
+          foe:set_leader(self)
+          if foe:act_type() ~= C.ACT_CONTROL then
+            foe:s_force_command(C.COMMAND_FOLLOW,
+                                10 + og.rand(self.level), 0, 0)
           end
         end
       end
       og.emit_notification(og.entity_display_name(self, "THIEF")
                              .. ": 'Nyah Nyah!'")
+      -- shim kept: busy is a C++ float: per-op float rounding.
       self:set_busy(og.fadd(self:busy(), 2.0))
     else
       -- charm opponent
       if self:busy() > 0 then
         return false
       end
-      local newlist, howmany =
-        og.find_foes_in_range("ob", 16 + 4 * self:s_level(), self)
-      if howmany < 1 then
+      local foes, foe_count =
+        og.find_foes_in_range("ob", 16 + 4 * self.level, self)
+      if foe_count < 1 then
         return false
       end
-      local didheal = 0
-      local generic2 = 0
-      for i = 1, #newlist do
-        if didheal ~= 0 then
+      local handled = 0
+      local resisted = 0
+      for i = 1, #foes do
+        if handled ~= 0 then
           break
         end
-        local ob = newlist[i]
-        if ob:real_team_num() == 255 and ob:order() == C.ORDER_LIVING then
-          local generic = self:s_level() - ob:s_level()
-          if generic < 0 or og.rand(20) == 0 then
-            ob:set_foe(self)
-            ob:attack(self)
-            generic2 = 1
+        local target = foes[i]
+        if target:real_team_num() == 255
+            and target:order() == C.ORDER_LIVING then
+          local level_diff = self.level - target.level
+          if level_diff < 0 or og.rand(20) == 0 then
+            target:set_foe(self)
+            target:attack(self)
+            resisted = 1
           else
-            ob:set_real_team_num(ob:team_num())
-            ob:set_team_num(self:team_num())
-            if self:foe() == ob then
-              ob:set_foe(nil)
+            target:set_real_team_num(target.team)
+            target.team = self.team
+            if self:foe() == target then
+              target:set_foe(nil)
             else
-              ob:set_foe(self:foe())
+              target:set_foe(self:foe())
             end
             -- og::combat::soften(75 + 25*diff, kThiefCharmKnee=375,
             -- kThiefCharmCeiling=490); §2.9: identity through diff 12
-            ob:set_charm_left(og.soften(75 + generic * 25, 375, 490))
-            generic2 = 0
+            target:set_charm_left(og.soften(75 + level_diff * 25, 375, 490))
+            resisted = 0
           end
-          didheal = didheal + 1
+          handled = handled + 1
         end
       end
-      if didheal == 0 then
+      if handled == 0 then
         return false
       end
-      local tempstr
-      if generic2 ~= 0 then
-        tempstr = og.entity_display_name(self, "Thief")
+      local message
+      if resisted ~= 0 then
+        message = og.entity_display_name(self, "Thief")
                     .. " failed to charm!"
       else
-        tempstr = og.entity_display_name(self, "Thief")
+        message = og.entity_display_name(self, "Thief")
                     .. " charmed an opponent!"
       end
-      og.emit_notification(tempstr)
+      og.emit_notification(message)
+      -- shim kept: busy is a C++ float: per-op float rounding.
       self:set_busy(og.fadd(self:busy(), 10.0))
     end
   else
@@ -162,16 +156,17 @@ local function do_special(self)
     if self:busy() > 0 then
       return false
     end
-    local newob = og.summon(self, "fx", FX_CLOUD)
-    if not newob then
+    local cloud = og.summon(self, "fx", FX_CLOUD)
+    if not cloud then
       return false
     end
+    -- shim kept: busy is a C++ float: per-op float rounding.
     self:set_busy(og.fadd(self:busy(), 5.0))
-    newob:set_ignore(1)
-    newob:set_lifetime(40 + 3 * self:s_level())
-    newob:set_invisibility_left(10)
-    newob:set_ani_type(ANI_SPIN)
-    newob:set_damage(self:s_level())
+    cloud:set_ignore(1)
+    cloud.lifetime = 40 + 3 * self.level
+    cloud:set_invisibility_left(10)
+    cloud.ani_type = C.ANI_SPIN
+    cloud.damage = self.level
   end
   return true
 end

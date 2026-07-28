@@ -1,6 +1,4 @@
--- core treasure valuables — on_eat hooks transliterated from
--- src/gameplay/families/treasure_family_valuables.cpp (gold bar, silver bar,
--- life gem, key). Cookbook (docs/lua-classpacks-design.md §3) applies.
+-- core gold/silver bar, life gem, key — on_eat hooks (cookbook: docs/lua-classpacks-design.md §3).
 --
 -- The three scoring families bank through og.award_score(team, points) — the
 -- binding for the file-local award_score() helper, which adds to
@@ -14,9 +12,9 @@ local FX_FLASH = og.family_id("fx", "core:flash")
 -- gold_bar_on_eat: banks 200*level for the eater's team. Only team 0 or a
 -- roster character (myguy) can cash a bar in.
 local function gold_bar_on_eat(self, eater)
-  if eater:team_num() == 0 or eater:has_guy() then
-    og.award_score(eater:team_num(), 200 * self:s_level())
-    self:set_dead(1)
+  if eater.team == 0 or eater:has_guy() then
+    og.award_score(eater.team, 200 * self.level)
+    self.dead = 1
     og.emit_sound(C.SOUND_MONEY)
   end
   return true
@@ -24,9 +22,9 @@ end
 
 -- silver_bar_on_eat: same shape, 50*level.
 local function silver_bar_on_eat(self, eater)
-  if eater:team_num() == 0 or eater:has_guy() then
-    og.award_score(eater:team_num(), 50 * self:s_level())
-    self:set_dead(1)
+  if eater.team == 0 or eater:has_guy() then
+    og.award_score(eater.team, 50 * self.level)
+    self.dead = 1
     og.emit_sound(C.SOUND_MONEY)
   end
   return true
@@ -35,21 +33,19 @@ end
 -- life_gem_on_eat: a dead character's banked hitpoints, claimable only by
 -- the gem's own team. The flash pops where the gem sat (its floor, A8).
 local function life_gem_on_eat(self, eater)
-  if eater:team_num() ~= self:team_num() then
+  if eater.team ~= self.team then
     return true  -- only our team can get these
   end
-  local hp = self:s_hitpoints()  -- C++ std::max(0.0f, hitpoints())
-  if hp < 0.0 then
-    hp = 0.0
-  end
-  og.award_score(eater:team_num(), og.trunc(hp))
+  local hp = og.max(self.hp, 0.0)
+  -- shim kept: hp is a C++ float; the score credit is its int truncation.
+  og.award_score(eater.team, og.trunc(hp))
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
-    flash:set_ani_type(C.ANI_EXPAND_8)
+    flash.ani_type = C.ANI_EXPAND_8
     flash:set_floor(self:floor())  -- flash where the gem sat (A8)
     flash:center_on(self)
   end
-  self:set_dead(1)
+  self.dead = 1
   self:death()
   return true
 end
@@ -57,14 +53,9 @@ end
 -- key_on_eat: sets one bit of the eater's key mask. Re-touching a key the
 -- eater already holds is silent.
 local function key_on_eat(self, eater)
-  local level = self:s_level()
+  local level = self.level
   -- key_level_mask(): 1u << clamp(level, 0, 30) (key_mask.h).
-  local shift = level
-  if shift < 0 then
-    shift = 0
-  elseif shift > 30 then
-    shift = 30
-  end
+  local shift = og.clamp(level, 0, 30)
   local key_mask = 1 << shift
   if (eater:keys() & key_mask) == 0 then  -- just got it?
     eater:set_keys(eater:keys() | key_mask)  -- ie, 2, 4, 8, 16...
@@ -75,7 +66,7 @@ local function key_on_eat(self, eater)
       who = eater:s_name()
     end
     local message = string.format("%s picks up key %d", who, level)
-    if eater:team_num() == 0 then  -- only show players picking up keys
+    if eater.team == 0 then  -- only show players picking up keys
       og.emit_notification(message)
       og.emit_sound(C.SOUND_MONEY)
     end

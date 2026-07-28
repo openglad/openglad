@@ -1,11 +1,5 @@
--- core:magic_shield and core:boomerang — orbiting-guard effects
--- transliterated from src/gameplay/families/effect_family_shield.cpp.
---
--- Cookbook (docs/lua-classpacks-design.md §3): worldx/worldy/damage/
--- hitpoints/stepsize are C++ floats, so every coordinate and hitpoint sum is
--- one og.f* call; the orbit table below is the constant `orbit_table` from
--- effect.cpp's orbit_offset() (constants in scripts are allowed by R6 — it
--- carries no sim state).
+-- core:magic_shield + core:boomerang — orbiting guard effects (cookbook: docs/lua-classpacks-design.md §3).
+-- The ORBIT_X/ORBIT_Y tables are pure constants (R6-clean: no sim state).
 
 local C = og.C
 
@@ -18,6 +12,7 @@ local ORBIT_Y = { -24, -22, -17, -9, 0, 9, 17, 22,
 
 -- Lua arrays are 1-based; the C++ index is drawcycle % 16.
 local function orbit_offset(drawcycle)
+  -- og.mod kept: operand subtype not provable to the audit.
   local idx = og.mod(drawcycle, 16) + 1
   return ORBIT_X[idx], ORBIT_Y[idx]
 end
@@ -30,28 +25,31 @@ end
 local function guard_tail(self, weapon_range)
   local weapons = og.find_foe_weapons_in_range("ob", weapon_range, self)
   for i = 1, #weapons do
-    local w = weapons[i]
-    self:s_set_hitpoints(og.fsub(self:s_hitpoints(), w:damage()))
-    w:set_dead(1)
-    w:death()
+    local weapon = weapons[i]
+    -- hp is a C++ float: per-op rounding.
+    self.hp = og.fsub(self.hp, weapon:damage())
+    weapon.dead = 1
+    weapon:death()
   end
 
   local foes = og.find_foes_in_range("ob", self:sizex(), self)
   for i = 1, #foes do
-    local w = foes[i]
-    self:s_set_hitpoints(og.fsub(self:s_hitpoints(), w:damage()))
-    self:attack(w)
-    self:set_dead(0)
+    local foe = foes[i]
+    -- hp is a C++ float: per-op rounding.
+    self.hp = og.fsub(self.hp, foe:damage())
+    -- attack() looks pure but draws from the gameplay stream.
+    self:attack(foe)
+    self.dead = 0
   end
 
   local expired = false
-  if self:s_hitpoints() > 0 then
+  if self.hp > 0 then
     local lifetime = self:lifetime()
-    self:set_lifetime(lifetime - 1)
+    self.lifetime = lifetime - 1
     expired = lifetime < 0
   end
-  if self:s_hitpoints() <= 0 or expired then
-    self:set_dead(1)
+  if self.hp <= 0 or expired then
+    self.dead = 1
     self:death()
   end
 end
@@ -60,12 +58,13 @@ end
 local function magic_shield_on_act(self)
   local owner = self:owner()
   if not owner or owner:dead() ~= 0 then
-    self:set_dead(1)
+    self.dead = 1
     self:death()
     return true
   end
   local xd, yd = orbit_offset(self:drawcycle())
   self:center_on(owner)
+  -- worldx/worldy are C++ floats: per-op rounding.
   self:setworldxy(og.fadd(self:worldx(), xd), og.fadd(self:worldy(), yd))
 
   guard_tail(self, self:sizex())
@@ -79,17 +78,19 @@ local function boomerang_on_act(self)
   if not owner
       or owner:dead() ~= 0
       or self:drawcycle() > 253 then
-    self:set_dead(1)
+    self.dead = 1
     self:death()
     return true
   end
   local xd, yd = orbit_offset(self:drawcycle())
   local orbit_scale = self:drawcycle() + 4
+  -- The (drawcycle+4)/48 scale is a C++ float chain: per-op rounding.
   xd = og.fmul(xd, orbit_scale)
   xd = og.fdiv(xd, 48)
   yd = og.fmul(yd, orbit_scale)
   yd = og.fdiv(yd, 48)
   self:center_on(owner)
+  -- worldx/worldy are C++ floats: per-op rounding.
   self:setworldxy(og.fadd(self:worldx(), xd), og.fadd(self:worldy(), yd))
 
   guard_tail(self, self:sizex() * 2)

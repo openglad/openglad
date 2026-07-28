@@ -1,10 +1,8 @@
--- core:archmage — behavior hooks transliterated from family_archmage.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order (hit_response rand(3)/rand(2), illusion
--- tier rand(3/5/7/9), mind-control rand(20)/rand(8) + charm_duration draw).
--- Unlike the Mage twin, the marker notifications here are NOT gated on
--- user() ~= -1 — the C++ bodies differ; each is transliterated exactly.
+-- core:archmage — teleport/marker, heartburst/chain, summons, mind control (cookbook: docs/lua-classpacks-design.md §3).
+-- rng order: hit_response rand(3)/rand(2); illusion tier rand(3/5/7/9);
+-- mind-control rand(20)/rand(8) + charm_duration draw.
+-- Unlike the Mage twin, marker notifications here are NOT gated on
+-- user() ~= -1 — an intentional divergence between the twins.
 
 local C = og.C
 local FX_MARKER = og.family_id("fx", "core:marker")
@@ -21,7 +19,7 @@ local LIVING_ELEMENTAL = og.family_id("living", "core:elemental")
 local LIVING_ORC_CAPTAIN = og.family_id("living", "core:orc_captain")
 
 local function handle_teleport(self)
-  self:set_ani_type(C.ANI_TELE_IN)
+  self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
   self:teleport()
   return true
@@ -31,25 +29,25 @@ local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
   -- std::min(mp / 20.0f, (float)kShotDrainCap) — §2.12: binds only above
   -- 1000 MP. The /20 is a single float division.
-  local extra = og.fdiv(self:s_magicpoints(), 20)
-  if C.SHOT_DRAIN_CAP < extra then
-    extra = C.SHOT_DRAIN_CAP
-  end
-  self:s_set_magicpoints(og.fsub(self:s_magicpoints(), extra))
-  weapon:set_damage(og.fadd(weapon:damage(), extra))
+  local extra = og.fdiv(self.magicpoints, 20)
+  extra = og.min(extra, C.SHOT_DRAIN_CAP)
+  -- magicpoints is a C++ float: per-op rounding.
+  self.magicpoints = og.fsub(self.magicpoints, extra)
+  -- damage is a C++ float: per-op rounding.
+  weapon.damage = og.fadd(weapon:damage(), extra)
   return true
 end
 
 -- Fires every tick per archmage: bonus viewing periodically based on level.
 local function on_act_living(self)
-  local lvl = self:s_level()
-  local temp
-  if lvl >= 40 then
-    temp = 1
+  local period
+  if self.level >= 40 then
+    period = 1
   else
-    temp = 40 - lvl
+    period = 40 - self.level
   end
-  if og.mod(self:drawcycle(), temp) == 0 then
+  -- og.mod kept: operand subtype not provable to the audit.
+  if og.mod(self:drawcycle(), period) == 0 then
     self:set_view_all(self:view_all() + 1)
   end
 end
@@ -57,42 +55,44 @@ end
 -- The trampoline passes stats->controller() (the stats' owner walker) as
 -- self, so the C++ body's `controller` IS self and `stats->` maps to s_*.
 local function hit_response(self, foe)
-  self:set_busy(0) -- yes, this is a cheat
+  self.busy = 0 -- yes, this is a cheat
 
   local possible = {}
-  for i = 0, og.div(self:s_level() + 2, 3) do
+  for i = 0, (self.level + 2) // 3 do
     if i < C.NUM_SPECIALS
-        and self:s_magicpoints() >= self:s_special_cost(i) then
+        and self.magicpoints >= self:s_special_cost(i) then
       possible[i] = 1
     end
   end
 
   local threshold
   if self:has_guy() then
-    threshold = og.fdiv(og.fmul(3.0, self:s_max_hitpoints()), 5.0)
+    -- max_hp is a C++ float: per-op rounding.
+    threshold = og.fdiv(og.fmul(3.0, self.max_hp), 5.0)
   else
-    threshold = og.fdiv(og.fmul(3.0, self:s_max_hitpoints()), 8.0)
+    -- max_hp is a C++ float: per-op rounding.
+    threshold = og.fdiv(og.fmul(3.0, self.max_hp), 8.0)
   end
 
   -- C++ &&-chain short-circuit preserved: rand(3) is drawn only when the
   -- hitpoint and possible[1] conditions already hold.
-  if self:s_hitpoints() < threshold and possible[1]
+  if self.hp < threshold and possible[1]
       and og.rand(3) ~= 0 then
-    self:set_current_special(1)
+    self.current_special = 1
     self:set_shifter_down(0)
-    self:set_busy(0)
+    self.busy = 0
     self:special()
   else
     if self:foe() ~= foe then
-      self:set_foe(foe)
-      foe:set_foe(self)
+      self.foe = foe
+      foe.foe = self
       self:s_set_current_distance(15000)
       self:s_set_last_distance(15000)
     end
-    local _, howmany = og.find_foes_in_range("ob", 200, self)
-    if howmany ~= 0 then
+    local _, foe_count = og.find_foes_in_range("ob", 200, self)
+    if foe_count ~= 0 then
       if possible[3] then
-        self:set_current_special(3)
+        self.current_special = 3
         if self:special() then
           return
         end
@@ -100,21 +100,21 @@ local function hit_response(self, foe)
       if possible[2] then
         if og.rand(2) ~= 0 then
           self:set_shifter_down(1)
-          self:set_current_special(2)
+          self.current_special = 2
           if self:special() then
             self:set_shifter_down(0)
-            if self:s_magicpoints() >= self:s_special_cost(1) then
-              self:set_busy(0)
+            if self.magicpoints >= self:s_special_cost(1) then
+              self.busy = 0
               self:special()
             end
             return
           end
         end
         self:set_shifter_down(0)
-        self:set_current_special(2)
+        self.current_special = 2
         if self:special() then
-          if self:s_magicpoints() >= self:s_special_cost(1) then
-            self:set_busy(0)
+          if self.magicpoints >= self:s_special_cost(1) then
+            self.busy = 0
             self:special()
           end
           return
@@ -156,41 +156,47 @@ local function do_special(self)
             and ob:family() == FX_MARKER
             and ob:owner() == self
             and ob:dead() == 0 then
-          ob:set_dead(1)
+          ob.dead = 1
           ob:death()
-          if self:team_num() == 0 or self:has_guy() then
+          if self.team == 0 or self:has_guy() then
             og.emit_notification("(Old Marker Removed)")
           end
-          self:set_busy(og.fadd(self:busy(), 8.0))
+          -- busy is a C++ float: per-op rounding.
+          self.busy = og.fadd(self:busy(), 8.0)
           break
         end
       end
-      local newob = og.add_ob("fx", FX_MARKER)
-      if not newob then
+      local marker = og.add_ob("fx", FX_MARKER)
+      if not marker then
         return false
       end
-      newob:set_owner(self)
-      newob:set_floor(self:floor())  -- marker on the caster's floor (A8)
-      newob:center_on(self)
+      marker:set_owner(self)
+      marker:set_floor(self:floor())  -- marker on the caster's floor (A8)
+      marker:center_on(self)
       if self:has_guy() then
-        newob:set_lifetime(og.div(self:g_intelligence(), 33))
+        marker.lifetime = self:g_intelligence() // 33
       else
-        newob:set_lifetime(og.div(self:s_level(), 4) + 1)
+        marker.lifetime = self.level // 4 + 1
       end
-      newob:set_ani_type(2)  -- raw 2 in the C++ (not ANI_SPIN, which is 1)
-      if self:team_num() == 0 or self:has_guy() then
+      marker.ani_type = 2  -- raw 2 in the C++ (not ANI_SPIN, which is 1)
+      if self.team == 0 or self:has_guy() then
         og.emit_notification("Teleport Marker Placed")
-        og.emit_notification(string.format("(%d Uses)", newob:lifetime()))
+        og.emit_notification(string.format("(%d Uses)", marker:lifetime()))
       end
-      self:set_busy(og.fadd(self:busy(), 8.0))
-      local generic = og.trunc(og.fsub(
-        self:s_magicpoints(),
+      -- busy is a C++ float: per-op rounding.
+      self.busy = og.fadd(self:busy(), 8.0)
+      -- magicpoints is a C++ float: per-op rounding, then C float->int
+      -- truncation.
+      local surcharge = og.trunc(og.fsub(
+        self.magicpoints,
         self:s_special_cost(self:current_special())))
-      generic = og.div(generic, 2)
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+      -- og.div kept: operand sign not provable to the audit.
+      surcharge = og.div(surcharge, 2)
+      -- magicpoints is a C++ float: per-op rounding.
+      self.magicpoints = og.fsub(self.magicpoints, surcharge)
     else
       og.emit_positional_sound(self, C.SOUND_TELEPORT)
-      self:set_ani_type(C.ANI_TELE_OUT)
+      self.ani_type = C.ANI_TELE_OUT
       self:set_cycle(0)
     end
   elseif sp == 2 then
@@ -198,89 +204,90 @@ local function do_special(self)
     if self:busy() > 0 then
       return false
     end
-    local generic
+    local radius
     if self:shifter_down() ~= 0 then
       if self:has_guy() then
-        generic = 200 + og.div(self:g_intelligence(), 2)
+        radius = 200 + self:g_intelligence() // 2
       else
-        generic = 200 + self:s_level() * 5
+        radius = 200 + self.level * 5
       end
     else
-      generic = 80
+      radius = 80
     end
-    local newlist, howmany = og.find_foes_in_range(
-      "ob", generic + 2 * self:s_level(), self)
-    if howmany == 0 then
+    local foes, foe_count = og.find_foes_in_range(
+      "ob", radius + 2 * self.level, self)
+    if foe_count == 0 then
       return false
     end
     if self:shifter_down() == 0 then
       -- normal heartburst
-      generic = og.trunc(og.fsub(self:s_magicpoints(),
-                                 self:s_special_cost(2)))
+      -- magicpoints is a C++ float: per-op rounding, then C float->int
+      -- truncation.
+      local pool = og.trunc(og.fsub(self.magicpoints,
+                                    self:s_special_cost(2)))
       -- §2.12: heartburst pool binds only above ~1280 MP.
-      local g2 = og.div(generic, 2)
-      if g2 < C.MP_POOL_DAMAGE_CAP then
-        generic = g2
-      else
-        generic = C.MP_POOL_DAMAGE_CAP
-      end
-      generic = og.div(generic, howmany)
+      local half_pool = og.div(pool, 2)
+      pool = og.min(half_pool, C.MP_POOL_DAMAGE_CAP)
+      -- og.div kept: operand sign not provable to the audit.
+      pool = og.div(pool, foe_count)
       if self:has_guy() then
-        self:g_set_total_shots(self:g_total_shots() + howmany)
-        self:g_set_scen_shots(self:g_scen_shots() + howmany)
+        self:g_set_total_shots(self:g_total_shots() + foe_count)
+        self:g_set_scen_shots(self:g_scen_shots() + foe_count)
       end
-      self:set_busy(og.fadd(self:busy(), 5.0))
-      for i = 1, #newlist do
-        local ob = newlist[i]
-        local newob = og.summon(self, "fx", FX_EXPLOSION)
-        if not newob then
+      -- busy is a C++ float: per-op rounding.
+      self.busy = og.fadd(self:busy(), 5.0)
+      for i = 1, #foes do
+        local foe = foes[i]
+        local burst = og.summon(self, "fx", FX_EXPLOSION)
+        if not burst then
           return false
         end
-        newob:s_set_bit_flags(C.BIT_MAGICAL, 1)
-        newob:set_damage(generic)
+        burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
+        burst.damage = pool
         -- Burst materializes ON the acquired foe: take its floor (A8);
         -- blast damage stays same-floor.
-        newob:set_floor(ob:floor())
-        newob:center_on(ob)
+        burst:set_floor(foe:floor())
+        burst:center_on(foe)
         og.emit_sound(C.SOUND_EXPLODE)
-        newob:set_ani_type(C.ANI_EXPLODE)
-        newob:s_set_bit_flags(C.BIT_MAGICAL, 1)  -- (set twice in the C++)
-        newob:set_skip_exit(100)
-        self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
+        burst.ani_type = C.ANI_EXPLODE
+        burst:s_set_bit_flags(C.BIT_MAGICAL, 1)  -- (set twice in the C++)
+        burst:set_skip_exit(100)
+        -- magicpoints is a C++ float: per-op rounding.
+        self.magicpoints = og.fsub(self.magicpoints, pool)
       end
     else
       -- chain lightning
-      self:set_busy(og.fadd(self:busy(), 5.0))
+      -- busy is a C++ float: per-op rounding.
+      self.busy = og.fadd(self:busy(), 5.0)
       if self:has_guy() then
         self:g_set_total_shots(self:g_total_shots() + 1)
         self:g_set_scen_shots(self:g_scen_shots() + 1)
       end
-      local newob = og.summon(self, "fx", FX_CHAIN)
-      if not newob then
+      local bolt = og.summon(self, "fx", FX_CHAIN)
+      if not bolt then
         return false
       end
-      generic = og.trunc(og.fsub(self:s_magicpoints(),
-                                 self:s_special_cost(2)))
+      -- magicpoints is a C++ float: per-op rounding, then C float->int
+      -- truncation.
+      local pool = og.trunc(og.fsub(self.magicpoints,
+                                    self:s_special_cost(2)))
       -- §2.12: initial bolt (and its MP charge) bind only above ~1280 MP.
-      local g2 = og.div(generic, 2)
-      if g2 < C.MP_POOL_DAMAGE_CAP then
-        generic = g2
-      else
-        generic = C.MP_POOL_DAMAGE_CAP
-      end
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
-      newob:set_damage(generic)
-      generic = 30000
-      for i = 1, #newlist do
-        local w = newlist[i]
+      local half_pool = og.div(pool, 2)
+      pool = og.min(half_pool, C.MP_POOL_DAMAGE_CAP)
+      -- magicpoints is a C++ float: per-op rounding.
+      self.magicpoints = og.fsub(self.magicpoints, pool)
+      bolt.damage = pool
+      local best_dist = 30000
+      for i = 1, #foes do
+        local foe = foes[i]
         -- Chain lightning cannot arc through solid floors: only same-floor
         -- foes are valid first strikes (A8; byte-identical on single-floor
         -- levels).
-        if w:floor() == self:floor() then
-          local dist = self:distance_to_ob_center(w)
-          if generic > dist then
-            generic = dist
-            newob:set_leader(w)
+        if foe:floor() == self:floor() then
+          local dist = self:distance_to_ob_center(foe)
+          if best_dist > dist then
+            best_dist = dist
+            bolt:set_leader(foe)
           end
         end
       end
@@ -298,19 +305,23 @@ local function do_special(self)
         end
         return false
       end
-      local generic = og.trunc(og.fsub(self:s_magicpoints(),
-                                       self:s_special_cost(3)))
-      generic = og.div(generic, 2)
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), generic))
-      local newob = og.add_ob("living", LIVING_ELEMENTAL)
-      if not newob then
+      -- magicpoints is a C++ float: per-op rounding, then C float->int
+      -- truncation.
+      local surcharge = og.trunc(og.fsub(self.magicpoints,
+                                         self:s_special_cost(3)))
+      -- og.div kept: operand sign not provable to the audit.
+      surcharge = og.div(surcharge, 2)
+      -- magicpoints is a C++ float: per-op rounding.
+      self.magicpoints = og.fsub(self.magicpoints, surcharge)
+      local elemental = og.add_ob("living", LIVING_ELEMENTAL)
+      if not elemental then
         return false
       end
       -- Summon appears beside the caster, on the caster's floor (A8); must
       -- precede the query_passable probes and setxy so both use the right
       -- floor.
-      newob:set_floor(self:floor())
-      newob:set_summoned(true)  -- ammunition: never a SAVE_ALL loss
+      elemental:set_floor(self:floor())
+      elemental:set_summoned(true)  -- ammunition: never a SAVE_ALL loss
       -- Placement scan: i outer, j inner, skip (0,0), and skip the rest of
       -- the grid once placed (the C++ `generic` latch) — query_passable is
       -- never probed again after a success.
@@ -319,141 +330,143 @@ local function do_special(self)
         for j = -1, 1 do
           if not ((i == 0 and j == 0)
                   or placed) then
-            local testx = self:xpos() + (newob:sizex() + 1) * i
-            local testy = self:ypos() + (newob:sizey() + 1) * j
-            if og.query_passable(testx, testy, newob) then
+            local testx = self:xpos() + (elemental:sizex() + 1) * i
+            local testy = self:ypos() + (elemental:sizey() + 1) * j
+            if og.query_passable(testx, testy, elemental) then
               placed = true
-              newob:setxy(testx, testy)
-              newob:s_set_level(og.div(self:s_level() + 1, 2))
-              newob:set_difficulty(newob:s_level())
-              newob:set_team_num(self:team_num())
-              newob:set_owner(self)
-              newob:set_lifetime(og.elemental_lifetime(self:s_level()))
+              elemental:setxy(testx, testy)
+              elemental.level = (self.level + 1) // 2
+              elemental:set_difficulty(elemental.level)
+              elemental.team = self.team
+              elemental:set_owner(self)
+              elemental.lifetime = og.elemental_lifetime(self.level)
             end
           end
         end
       end
       if not placed then
-        newob:set_dead(1)
+        elemental.dead = 1
         return false
       end
-      self:set_busy(og.fadd(self:busy(), 15.0))
+      -- busy is a C++ float: per-op rounding.
+      self.busy = og.fadd(self:busy(), 15.0)
     else
       -- illusion summoning: tier by post-cost MP; draw counts per tier are
       -- exact (0/1/1/1/1 draws for the 5 tiers).
-      local generic = og.trunc(og.fsub(self:s_magicpoints(),
+      local mp_pool = og.trunc(og.fsub(self.magicpoints,
                                        self:s_special_cost(3)))
       local person
-      if generic < 100 then
+      if mp_pool < 100 then
         person = LIVING_ELF
-      elseif generic < 250 then
-        local r = og.rand(3)
-        if r == 0 then
+      elseif mp_pool < 250 then
+        local tier_roll = og.rand(3)
+        if tier_roll == 0 then
           person = LIVING_ELF
-        elseif r == 1 then
+        elseif tier_roll == 1 then
           person = LIVING_SOLDIER
-        elseif r == 2 then
+        elseif tier_roll == 2 then
           person = LIVING_ARCHER
         else  -- C++ default (unreachable)
           person = LIVING_SOLDIER
         end
-      elseif generic < 500 then
-        local r = og.rand(5)
-        if r == 0 then
+      elseif mp_pool < 500 then
+        local tier_roll = og.rand(5)
+        if tier_roll == 0 then
           person = LIVING_ELF
-        elseif r == 1 then
+        elseif tier_roll == 1 then
           person = LIVING_SOLDIER
-        elseif r == 2 then
+        elseif tier_roll == 2 then
           person = LIVING_ARCHER
-        elseif r == 3 then
+        elseif tier_roll == 3 then
           person = LIVING_ORC
-        elseif r == 4 then
+        elseif tier_roll == 4 then
           person = LIVING_SKELETON
         else  -- C++ default (unreachable)
           person = LIVING_ARCHER
         end
-      elseif generic < 1000 then
-        local r = og.rand(7)
-        if r == 0 then
+      elseif mp_pool < 1000 then
+        local tier_roll = og.rand(7)
+        if tier_roll == 0 then
           person = LIVING_ELF
-        elseif r == 1 then
+        elseif tier_roll == 1 then
           person = LIVING_SOLDIER
-        elseif r == 2 then
+        elseif tier_roll == 2 then
           person = LIVING_ARCHER
-        elseif r == 3 then
+        elseif tier_roll == 3 then
           person = LIVING_ORC
-        elseif r == 4 then
+        elseif tier_roll == 4 then
           person = LIVING_SKELETON
-        elseif r == 5 then
+        elseif tier_roll == 5 then
           person = LIVING_DRUID
-        elseif r == 6 then
+        elseif tier_roll == 6 then
           person = LIVING_CLERIC
         else  -- C++ default (unreachable)
           person = LIVING_ARCHER
         end
       else
-        local r = og.rand(9)
-        if r == 0 then
+        local tier_roll = og.rand(9)
+        if tier_roll == 0 then
           person = LIVING_ELF
-        elseif r == 1 then
+        elseif tier_roll == 1 then
           person = LIVING_SOLDIER
-        elseif r == 2 then
+        elseif tier_roll == 2 then
           person = LIVING_ARCHER
-        elseif r == 3 then
+        elseif tier_roll == 3 then
           person = LIVING_ORC
-        elseif r == 4 then
+        elseif tier_roll == 4 then
           person = LIVING_SKELETON
-        elseif r == 5 then
+        elseif tier_roll == 5 then
           person = LIVING_DRUID
-        elseif r == 6 then
+        elseif tier_roll == 6 then
           person = LIVING_CLERIC
-        elseif r == 7 then
+        elseif tier_roll == 7 then
           person = LIVING_ELEMENTAL
-        elseif r == 8 then
+        elseif tier_roll == 8 then
           person = LIVING_ORC_CAPTAIN
         else  -- C++ default (unreachable)
           person = LIVING_ARCHER
         end
       end
-      local newob = og.add_ob("living", person)
-      if not newob then
+      local phantom = og.add_ob("living", person)
+      if not phantom then
         return false
       end
       -- Illusion appears beside the caster, on the caster's floor (A8).
-      newob:set_floor(self:floor())
+      phantom:set_floor(self:floor())
       -- Named "Phantom" below, but conjured ammunition must never fail a
       -- SAVE_ALL mission when it expires (Wave F2).
-      newob:set_summoned(true)
+      phantom:set_summoned(true)
       local placed = false
       for i = -1, 1 do
         for j = -1, 1 do
           if not ((i == 0 and j == 0)
                   or placed) then
-            local testx = self:xpos() + (newob:sizex() + 1) * i
-            local testy = self:ypos() + (newob:sizey() + 1) * j
-            if og.query_passable(testx, testy, newob) then
+            local testx = self:xpos() + (phantom:sizex() + 1) * i
+            local testy = self:ypos() + (phantom:sizey() + 1) * j
+            if og.query_passable(testx, testy, phantom) then
               placed = true
-              newob:setxy(testx, testy)
-              newob:s_set_level(og.div(self:s_level() + 2, 3))
-              newob:set_difficulty(newob:s_level())
-              newob:set_team_num(self:team_num())
-              newob:set_owner(self)
-              newob:set_lifetime(og.image_lifetime(self:s_level()))
-              newob:s_set_max_hitpoints(1)
-              newob:s_set_hitpoints(0)
-              newob:s_set_armor(0)
-              newob:set_foe(self:foe())
-              newob:s_set_bit_flags(C.BIT_MAGICAL, 1)
-              newob:s_set_name("Phantom")
+              phantom:setxy(testx, testy)
+              phantom.level = (self.level + 2) // 3
+              phantom:set_difficulty(phantom.level)
+              phantom.team = self.team
+              phantom:set_owner(self)
+              phantom.lifetime = og.image_lifetime(self.level)
+              phantom.max_hp = 1
+              phantom.hp = 0
+              phantom:s_set_armor(0)
+              phantom.foe = self:foe()
+              phantom:s_set_bit_flags(C.BIT_MAGICAL, 1)
+              phantom:s_set_name("Phantom")
             end
           end
         end
       end
       if not placed then
-        newob:set_dead(1)
+        phantom.dead = 1
         return false
       end
-      self:set_busy(og.fadd(self:busy(), 15.0))
+      -- busy is a C++ float: per-op rounding.
+      self.busy = og.fadd(self:busy(), 15.0)
     end
   elseif sp == 4 then
     -- mind control
@@ -461,65 +474,66 @@ local function do_special(self)
       return false
     end
     local special_cost = self:s_special_cost(self:current_special())
-    local mp_after_base_cost = og.trunc(og.fsub(self:s_magicpoints(),
+    -- magicpoints is a C++ float: per-op rounding, then C float->int
+    -- truncation.
+    local mp_after_base_cost = og.trunc(og.fsub(self.magicpoints,
                                                 special_cost))
-    local newlist, howmany = og.find_foes_in_range(
-      "ob", 80 + 4 * self:s_level(), self)
-    if howmany < 1 then
+    local foes, foe_count = og.find_foes_in_range(
+      "ob", 80 + 4 * self.level, self)
+    if foe_count < 1 then
       return false
     end
-    local didheal = 0
-    local controlled_targets = 0
-    local generic2 = mp_after_base_cost + 10
-    for i = 1, #newlist do
-      if generic2 < 10 then
+    local controlled = 0
+    local budget = mp_after_base_cost + 10
+    for i = 1, #foes do
+      if budget < 10 then
         break
       end
-      local ob = newlist[i]
-      if ob:real_team_num() == 255
-          and ob:order() == C.ORDER_LIVING
-          and ob:charm_left() <= 10 then
-        generic2 = generic2 - 10
-        local generic = self:s_level() - ob:s_level()
-        -- C++ `generic < 0 || !rng.next(20)` — short-circuit preserved:
-        -- rand(20) is drawn only when generic >= 0.
+      local foe = foes[i]
+      if foe:real_team_num() == 255
+          and foe:order() == C.ORDER_LIVING
+          and foe:charm_left() <= 10 then
+        budget = budget - 10
+        local level_edge = self.level - foe.level
+        -- C++ `generic < 0 || !rng.next(20)` (generic = the level edge) —
+        -- short-circuit preserved: rand(20) is drawn only when the edge
+        -- is >= 0.
         local confused
-        if generic < 0 then
+        if level_edge < 0 then
           confused = true
         else
           confused = (og.rand(20) == 0)
         end
         if confused then
           -- Resisted proper control: berserk onto a random team.
-          ob:set_real_team_num(ob:team_num())
-          ob:set_team_num(og.rand(8))
-          ob:set_charm_left(og.charm_duration(generic))
+          foe:set_real_team_num(foe.team)
+          foe.team = og.rand(8)
+          foe:set_charm_left(og.charm_duration(level_edge))
         else
-          ob:set_real_team_num(ob:team_num())
-          ob:set_team_num(self:team_num())
-          ob:set_foe(nil)
-          ob:set_charm_left(og.charm_duration(generic))
+          foe:set_real_team_num(foe.team)
+          foe.team = self.team
+          foe.foe = nil
+          foe:set_charm_left(og.charm_duration(level_edge))
         end
-        didheal = didheal + 1
-        controlled_targets = controlled_targets + 1
+        controlled = controlled + 1
       end
     end
-    if didheal == 0 then
+    if controlled == 0 then
       return false
     end
     og.emit_notification(string.format(
       "%s has controlled %d men",
-      og.entity_display_name(self, "ArchMage"), didheal))
+      og.entity_display_name(self, "ArchMage"), controlled))
     -- Target budget starts at mp_after_base_cost + 10, so the first
     -- control is covered by base special cost and extras cost 10 MP each.
-    if mp_after_base_cost > 0 and controlled_targets > 1 then
-      local spend = (controlled_targets - 1) * 10
-      if mp_after_base_cost < spend then
-        spend = mp_after_base_cost
-      end
-      self:s_set_magicpoints(og.fsub(self:s_magicpoints(), spend))
+    if mp_after_base_cost > 0 and controlled > 1 then
+      local spend = (controlled - 1) * 10
+      spend = og.min(spend, mp_after_base_cost)
+      -- magicpoints is a C++ float: per-op rounding.
+      self.magicpoints = og.fsub(self.magicpoints, spend)
     end
-    self:set_busy(og.fadd(self:busy(), 10.0))
+    -- busy is a C++ float: per-op rounding.
+    self.busy = og.fadd(self:busy(), 10.0)
   end
   -- default: no-op (the C++ switch default just breaks; do_special still
   -- returns true)

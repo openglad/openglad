@@ -1,16 +1,13 @@
--- core:elemental (fire elemental) — behavior hooks transliterated from
--- family_fire_elemental.cpp. The descriptor name is "ELEMENTAL" (unique in
--- the living registry, so no core:#6 escape needed).
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:elemental — starburst, parting shot on death, owner drain (cookbook: docs/lua-classpacks-design.md §3).
+-- (Descriptor name "ELEMENTAL" is unique in the living registry.)
 
 local function do_special(self)
   -- starburst: fire the default weapon in all eight directions
-  local tempx = og.trunc(self:lastx())
-  local tempy = og.trunc(self:lasty())
-  self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                 og.fmul(8.0, self:s_weapon_cost())))
+  -- shim kept (both): the C++ parks the float aim in int temps: C truncation.
+  local saved_aim_x = og.trunc(self:lastx())
+  local saved_aim_y = og.trunc(self:lasty())
+  -- shim kept: magicpoints is a C++ float: per-op float rounding.
+  self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
   for i = -1, 1 do
     for j = -1, 1 do
       if i ~= 0 or j ~= 0 then
@@ -20,8 +17,8 @@ local function do_special(self)
       end
     end
   end
-  self:set_lastx(tempx)
-  self:set_lasty(tempy)
+  self:set_lastx(saved_aim_x)
+  self:set_lasty(saved_aim_y)
   return true
 end
 
@@ -31,11 +28,11 @@ end
 
 local function on_death(self)
   -- Free parting starburst: un-kill, refund the special cost, fire, re-kill.
-  self:set_dead(0)
-  self:s_set_magicpoints(og.fadd(self:s_magicpoints(),
-                                 self:s_special_cost(1)))
+  self.dead = 0
+  -- shim kept: magicpoints is a C++ float: per-op float rounding.
+  self.magicpoints = og.fadd(self.magicpoints, self:s_special_cost(1))
   self:special()
-  self:set_dead(1)
+  self.dead = 1
   return true
 end
 
@@ -44,22 +41,28 @@ local function level_up(guy, level_diff)
 end
 
 local function on_act_living(self)
-  -- Summoned fire elemental drains owner HP/MP to heal itself
+  -- A summoned elemental (finite lifetime) sustains itself out of its
+  -- owner: 1 HP + 3 MP buys 1 HP of healing; if the owner cannot pay
+  -- both, the elemental burns lifetime instead.
   if self:lifetime() ~= 0 then
     local owner = self:owner()
     if owner and owner:dead() == 0 then
-      if self:s_hitpoints() < self:s_max_hitpoints() then
-        local temp = 0
-        if owner:s_hitpoints() >= og.fdiv(owner:s_max_hitpoints(), 3.0) then
-          temp = 1
-          owner:s_set_hitpoints(og.fsub(owner:s_hitpoints(), 1.0))
+      if self.hp < self.max_hp then
+        local paid = 0
+        -- shim kept: max_hp is a C++ float: per-op float rounding.
+        if owner.hp >= og.fdiv(owner.max_hp, 3.0) then
+          paid = 1
+          -- shim kept: hp is a C++ float: per-op float rounding.
+          owner.hp = og.fsub(owner.hp, 1.0)
         end
-        if temp ~= 0 and owner:s_magicpoints() >= 3 then
-          temp = temp + 1
-          owner:s_set_magicpoints(og.fsub(owner:s_magicpoints(), 3.0))
+        if paid ~= 0 and owner.magicpoints >= 3 then
+          paid = paid + 1
+          -- shim kept: magicpoints is a C++ float: per-op float rounding.
+          owner.magicpoints = og.fsub(owner.magicpoints, 3.0)
         end
-        if temp == 2 then
-          self:s_set_hitpoints(og.fadd(self:s_hitpoints(), 1.0))
+        if paid == 2 then
+          -- shim kept: hp is a C++ float: per-op float rounding.
+          self.hp = og.fadd(self.hp, 1.0)
         else
           self:set_lifetime(self:lifetime() - 1)
         end

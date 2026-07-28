@@ -1,48 +1,6 @@
--- core:orc — behavior hooks transliterated from family_orc.cpp.
--- Cookbook (docs/lua-classpacks-design.md §3) applies: og.div/og.mod for
--- integer /%, og.f* for float ops, setters narrow like the C++ field types,
--- og.rand preserves RNG call order.
+-- core:orc — yell stun, corpse eating (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-
--- og::combat::yell_radius (include/openglad/core/combat_math.h), trivially
--- inlined pure-integer helper (no og.* binding exists): legacy 160 + 20*L
--- with a flat cap at kYellRadiusCap = 420.
-local function yell_radius(level)
-  local raw = 160 + 20 * level
-  if raw < 420 then
-    return raw
-  end
-  return 420
-end
-
--- og::combat::stun_total (include/openglad/core/combat_math.h), trivially
--- inlined pure-integer helper (no og.* binding exists): cur_raw < 0 is the
--- thaw-immunity phase (the add is DISCARDED and the raw value returned
--- unchanged); otherwise negative adds count as 0 and the sum caps
--- monotonically at kFrozenStunStackCap = 150.
-local function stun_total(cur_raw, add)
-  if cur_raw < 0 then
-    return cur_raw
-  end
-  -- Spelled out rather than as `(add > 0) and add or 0`: a ternary is one
-  -- statement on one line, so neither arm is separately measurable and an
-  -- untested one costs nothing. Identical semantics — every value here is a
-  -- number, and numbers are never falsy in Lua.
-  local gain = 0
-  if add > 0 then
-    gain = add
-  end
-  local summed = cur_raw + gain
-  local capped = 150
-  if summed < 150 then
-    capped = summed
-  end
-  if capped > cur_raw then
-    return capped
-  end
-  return cur_raw
-end
 
 local function do_special(self)
   local sp = self:current_special()
@@ -51,80 +9,67 @@ local function do_special(self)
     if self:busy() > 0 then
       return false
     end
-    self:set_busy(og.fadd(self:busy(), 2.0))
+    -- busy is a C++ float: per-op rounding.
+    self.busy = og.fadd(self:busy(), 2.0)
 
-    local newlist = og.find_foes_in_range(
-      "ob", yell_radius(self:s_level()), self)
-    for i = 1, #newlist do
-      local ob = newlist[i]
-      if ob then
-        local tempx
-        if ob:has_guy() then
-          tempx = ob:g_constitution()
+    local foes = og.find_foes_in_range(
+      "ob", og.combat.yell_radius(self.level), self)
+    for i = 1, #foes do
+      local foe = foes[i]
+      if foe then
+        local con
+        if foe:has_guy() then
+          con = foe:g_constitution()
         else
           -- (int32)(hitpoints / 30.0f): one float division, then trunc.
-          tempx = og.trunc(og.fdiv(ob:s_hitpoints(), 30.0))
+          con = og.trunc(og.fdiv(foe.hp, 30.0))
         end
-        local tempx_clamped = 0
-        if tempx > 0 then
-          tempx_clamped = tempx
-        end
-        -- FLAGGED (two rng calls in one C++ expression, operand order
-        -- unspecified): tempy = 10 + rng(level*10) - rng(con*10) is
-        -- written LEFT-FIRST here. rng_.next(0) returns 0 WITHOUT
-        -- advancing the rng state (irandom.h) while og.rand errors on
-        -- n <= 0, hence the guards; level/tempx_clamped are never
-        -- negative here so the C++ uint32 casts are value-preserving.
-        local r1n = self:s_level() * 10
-        local r1 = 0
-        if r1n > 0 then
-          r1 = og.rand(r1n)
-        end
-        local r2n = tempx_clamped * 10
-        local r2 = 0
-        if r2n > 0 then
-          r2 = og.rand(r2n)
-        end
-        local tempy = 10 + r1 - r2
-        if tempy < 0 then
-          tempy = 0
-        end
+        con = og.max(con, 0)
+        -- rng order (FLAGGED adjudication): 10 + rng(level*10) - rng(con*10)
+        -- is two draws in one C++ expression, operand order unspecified;
+        -- parity chose LEFT-FIRST — level roll, then constitution roll.
+        -- level/con are never negative, so the C++ uint32 casts are
+        -- value-preserving.
+        local level_roll = og.rand0(self.level * 10)
+        local con_roll = og.rand0(con * 10)
+        local stun = og.max(0, 10 + level_roll - con_roll)
         -- (the C++ also TRACEs "orc yell stun add discarded: thaw
         -- immunity" when raw < 0 — TESTING-only diagnostics, no sim effect)
-        local raw = ob:s_frozen_delay_raw()
-        ob:s_set_frozen_delay(stun_total(raw, tempy))
+        foe:add_frozen_stun(stun)
       end
     end
 
     og.emit_sound(C.SOUND_ROAR)
   else
     -- eat corpse for health (specials 2/3/4 and the default case)
-    if self:s_hitpoints() >= self:s_max_hitpoints() then
+    if self.hp >= self.max_hp then
       return false
     end
-    local newob = og.find_nearest_blood(self)
-    if not newob then
+    local corpse = og.find_nearest_blood(self)
+    if not corpse then
       return false
     end
-    local distance = og.trunc(self:distance_to_ob_center(newob))
-    if distance > 24 then
+    local dist = self:distance_to_ob_center(corpse)
+    if dist > 24 then
       return false
     end
-    self:s_set_hitpoints(og.fadd(self:s_hitpoints(),
-                                 og.fmul(newob:s_level(), 5.0)))
-    self:do_heal_effects(nil, self, og.i16(newob:s_level() * 5))
+    -- hp is a C++ float: per-op rounding.
+    self.hp = og.fadd(self.hp, corpse.level * 5)
+    -- narrows to int16 (short) like the C++ destination.
+    self:do_heal_effects(nil, self, og.i16(corpse.level * 5))
     if self:has_guy() then
       self:g_set_exp(self:g_exp() +
-                     og.exp_from_action(self, newob, "eat_corpse", 0))
+                     og.exp_from_action(self, corpse, "eat_corpse", 0))
     end
-    -- Print the eating notice
     og.emit_notification(
       og.entity_display_name(self, "Orc") .. " ate a corpse.")
-    if self:s_hitpoints() > self:s_max_hitpoints() then
-      self:s_set_hitpoints(self:s_max_hitpoints())
+    -- Overheal clamps only AFTER the exp grant and the notice (C++ order),
+    -- which is why this heal is not a self:heal_clamped call.
+    if self.hp > self.max_hp then
+      self.hp = self.max_hp
     end
-    newob:set_dead(1)
-    newob:death()
+    corpse.dead = 1
+    corpse:death()
   end
   return true
 end
