@@ -1,0 +1,519 @@
+---@meta
+-- docs/modding/og-api.d.lua — GENERATED FILE, do not edit by hand.
+--
+-- EmmyLua (LuaCATS) type stubs for the OpenGlad pack-scripting API, for
+-- lua-language-server and any editor speaking LSP. Parsed from the C++
+-- registration tables (the single source of truth) by
+-- scripts/modding/gen_api_stubs.py:
+--
+--   src/gameplay/script/bindings_entity.cpp
+--   src/gameplay/script/script_host.cpp
+--   src/gameplay/script/world_scripts.cpp
+--
+-- Regenerate after any binding change:
+--
+--   python3 scripts/modding/gen_api_stubs.py
+--
+-- Drift is caught by scripts/modding/check_api_stubs.py (cmake target
+-- api_stub_check; advisory until quality-plan stage 5).
+--
+-- This file is annotation-only apart from the final `og = {}` line. That
+-- is load-bearing, not style: it lives under a shipped-Lua root, so it is
+-- in the coverage denominator (scripts/lua_inventory.py), and comment-only
+-- stubs keep its coverage grid at exactly one function (the main chunk),
+-- which the loader test in tests/unit/test_script_host.cpp executes and
+-- pins. Never add `function ... end` stubs here — every one would be a
+-- permanently uncovered function record.
+--
+-- Semantics the type system cannot carry (see docs/modding/api-reference.md
+-- and docs/lua-classpacks-design.md §3): handles are dispatch-scoped
+-- (stashing one across dispatches is a script error on next use); og.rand
+-- errors on n <= 0; every integer division goes through og.div/og.mod; one
+-- og.f* call per float operation; no pairs in the sandbox.
+
+---@alias og.OrderName "effect"|"fx"|"generator"|"living"|"treasure"|"weapon"
+---@alias og.ListSelector "fx"|"ob"|"weap"
+
+-- Entity (walker) handle. Stats accessors are flattened on
+-- with the s_ prefix; the guy record uses g_ (and requires
+-- the walker to have one). Handles compare by entity id and
+-- are only valid within the dispatch that minted them.
+---@class og.Walker
+---@field act_type fun(self: og.Walker): integer
+---@field add_frozen_stun fun(self: og.Walker, add: integer) # ob:add_frozen_stun(n) — the universal application pattern for stun_total, fused into one verb: ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))...
+---@field ani_type fun(self: og.Walker): integer
+---@field animate fun(self: og.Walker): boolean
+---@field attack fun(self: og.Walker, target: og.Walker): boolean
+---@field bonus_rounds fun(self: og.Walker): integer
+---@field busy fun(self: og.Walker): number
+---@field center_on fun(self: og.Walker, other: og.Walker)
+---@field charm_left fun(self: og.Walker): integer
+---@field clear_myguy fun(self: og.Walker)
+---@field collide fun(self: og.Walker, other: og.Walker): boolean
+---@field collide_ob fun(self: og.Walker): og.Walker?
+---@field curdir fun(self: og.Walker): integer
+---@field current_special fun(self: og.Walker): integer
+---@field current_weapon fun(self: og.Walker): integer
+---@field cycle fun(self: og.Walker): integer
+---@field damage fun(self: og.Walker): number
+---@field dead fun(self: og.Walker): integer
+---@field death fun(self: og.Walker): boolean
+---@field death_called fun(self: og.Walker): integer
+---@field default_weapon fun(self: og.Walker): integer
+---@field distance_to_ob fun(self: og.Walker, other: og.Walker): integer
+---@field distance_to_ob_center fun(self: og.Walker, other: og.Walker): integer
+---@field do_bounce fun(self: og.Walker): integer # do_bounce lives on weap.
+---@field do_heal_effects fun(self: og.Walker, healer: og.Walker?, target: og.Walker, amount: integer)
+---@field do_summon fun(self: og.Walker, fam: integer, life: integer): og.Walker?
+---@field drawcycle fun(self: og.Walker): integer
+---@field facing fun(self: og.Walker, x: integer, y: integer): integer
+---@field family fun(self: og.Walker): integer
+---@field find_teleport_target fun(self: og.Walker): og.Walker?
+---@field fire fun(self: og.Walker): og.Walker?
+---@field fire_frequency fun(self: og.Walker): number
+---@field flight_left fun(self: og.Walker): integer
+---@field floor fun(self: og.Walker): integer
+---@field foe fun(self: og.Walker): og.Walker?
+---@field g_armor fun(self: og.Walker): integer
+---@field g_constitution fun(self: og.Walker): integer
+---@field g_dexterity fun(self: og.Walker): integer
+---@field g_exp fun(self: og.Walker): integer
+---@field g_intelligence fun(self: og.Walker): integer
+---@field g_level fun(self: og.Walker): integer
+---@field g_name fun(self: og.Walker): string
+---@field g_scen_hits fun(self: og.Walker): integer
+---@field g_scen_shots fun(self: og.Walker): integer
+---@field g_set_armor fun(self: og.Walker, value: integer)
+---@field g_set_constitution fun(self: og.Walker, value: integer)
+---@field g_set_dexterity fun(self: og.Walker, value: integer)
+---@field g_set_exp fun(self: og.Walker, value: integer)
+---@field g_set_intelligence fun(self: og.Walker, value: integer)
+---@field g_set_scen_hits fun(self: og.Walker, value: integer)
+---@field g_set_scen_shots fun(self: og.Walker, value: integer)
+---@field g_set_strength fun(self: og.Walker, value: integer)
+---@field g_set_total_hits fun(self: og.Walker, value: integer)
+---@field g_set_total_shots fun(self: og.Walker, value: integer)
+---@field g_strength fun(self: og.Walker): integer
+---@field g_total_hits fun(self: og.Walker): integer
+---@field g_total_shots fun(self: og.Walker): integer
+---@field g_update_derived_stats fun(self: og.Walker, entity: og.Walker)
+---@field g_upgrade_to_level fun(self: og.Walker, new_level: integer, arg3: any?)
+---@field has_guy fun(self: og.Walker): boolean
+---@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — the self-heal cluster, fused (quality plan Stage 1).
+---@field in_act fun(self: og.Walker): boolean
+---@field invisibility_left fun(self: og.Walker): integer
+---@field invulnerable_left fun(self: og.Walker): integer
+---@field is_friendly fun(self: og.Walker, other: og.Walker): boolean
+---@field keys fun(self: og.Walker): integer
+---@field lastx fun(self: og.Walker): number
+---@field lasty fun(self: og.Walker): number
+---@field leader fun(self: og.Walker): og.Walker?
+---@field lifetime fun(self: og.Walker): integer
+---@field lineofsight fun(self: og.Walker): integer
+---@field move_myguy_to fun(self: og.Walker, target: og.Walker)
+---@field order fun(self: og.Walker): integer
+---@field owner fun(self: og.Walker): og.Walker?
+---@field real_team_num fun(self: og.Walker): integer
+---@field s_add_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
+---@field s_armor fun(self: og.Walker): number
+---@field s_clear_command fun(self: og.Walker)
+---@field s_controller fun(self: og.Walker): og.Walker?
+---@field s_current_distance fun(self: og.Walker): integer
+---@field s_current_heal_delay fun(self: og.Walker): integer
+---@field s_current_magic_delay fun(self: og.Walker): integer
+---@field s_do_command fun(self: og.Walker): integer # walker:s_do_command() → short — runs the queued command one step (statistics::do_command).
+---@field s_force_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
+---@field s_force_fright fun(self: og.Walker, iterations: integer, info1: integer, info2: integer) # walker:s_force_fright(iterations, info1, info2) — statistics::force_fright, the ghost-scare fright injection (stats.cpp).
+---@field s_forward_blocked fun(self: og.Walker): boolean
+---@field s_frozen_delay fun(self: og.Walker): integer
+---@field s_frozen_delay_raw fun(self: og.Walker): integer # Raw (unmasked) frozen_delay: negatives are the thaw-immunity phase, which the masked s_frozen_delay getter hides (orc howl needs the raw value).
+---@field s_has_commands fun(self: og.Walker): boolean
+---@field s_heal_per_round fun(self: og.Walker): number
+---@field s_hitpoints fun(self: og.Walker): number
+---@field s_last_distance fun(self: og.Walker): integer
+---@field s_level fun(self: og.Walker): integer
+---@field s_magic_per_round fun(self: og.Walker): number
+---@field s_magicpoints fun(self: og.Walker): number
+---@field s_max_heal_delay fun(self: og.Walker): integer
+---@field s_max_hitpoints fun(self: og.Walker): number
+---@field s_max_magic_delay fun(self: og.Walker): integer
+---@field s_max_magicpoints fun(self: og.Walker): number
+---@field s_name fun(self: og.Walker): string
+---@field s_old_family fun(self: og.Walker): integer # Pre-transform family (cleric resurrect restores the corpse's old family).
+---@field s_query_bit_flags fun(self: og.Walker, arg2: integer): boolean
+---@field s_set_armor fun(self: og.Walker, value: number)
+---@field s_set_bit_flags fun(self: og.Walker, arg2: integer, arg3: integer)
+---@field s_set_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
+---@field s_set_current_distance fun(self: og.Walker, value: integer)
+---@field s_set_current_heal_delay fun(self: og.Walker, value: integer)
+---@field s_set_current_magic_delay fun(self: og.Walker, value: integer)
+---@field s_set_frozen_delay fun(self: og.Walker, value: integer)
+---@field s_set_heal_per_round fun(self: og.Walker, value: number)
+---@field s_set_hitpoints fun(self: og.Walker, value: number)
+---@field s_set_last_distance fun(self: og.Walker, value: integer)
+---@field s_set_level fun(self: og.Walker, value: integer)
+---@field s_set_magic_per_round fun(self: og.Walker, value: number)
+---@field s_set_magicpoints fun(self: og.Walker, value: number)
+---@field s_set_max_heal_delay fun(self: og.Walker, value: integer)
+---@field s_set_max_hitpoints fun(self: og.Walker, value: number)
+---@field s_set_max_magic_delay fun(self: og.Walker, value: integer)
+---@field s_set_max_magicpoints fun(self: og.Walker, value: number)
+---@field s_set_name fun(self: og.Walker, s: string)
+---@field s_set_special_cost fun(self: og.Walker, idx: integer, arg3: integer)
+---@field s_set_weapon_cost fun(self: og.Walker, value: integer)
+---@field s_special_cost fun(self: og.Walker, idx: integer): integer
+---@field s_weapon_cost fun(self: og.Walker): integer
+---@field save_all_protected fun(self: og.Walker): boolean
+---@field set_ani_type fun(self: og.Walker, value: integer)
+---@field set_bonus_rounds fun(self: og.Walker, value: integer)
+---@field set_busy fun(self: og.Walker, value: number)
+---@field set_charm_left fun(self: og.Walker, value: integer)
+---@field set_curdir fun(self: og.Walker, value: integer)
+---@field set_current_special fun(self: og.Walker, value: integer)
+---@field set_current_weapon fun(self: og.Walker, value: integer)
+---@field set_cycle fun(self: og.Walker, value: integer)
+---@field set_damage fun(self: og.Walker, value: number)
+---@field set_dead fun(self: og.Walker, value: integer)
+---@field set_death_called fun(self: og.Walker, value: integer)
+---@field set_default_weapon fun(self: og.Walker, value: integer)
+---@field set_difficulty fun(self: og.Walker, value: integer)
+---@field set_do_bounce fun(self: og.Walker, value: integer)
+---@field set_fire_frequency fun(self: og.Walker, value: number)
+---@field set_flight_left fun(self: og.Walker, value: integer)
+---@field set_floor fun(self: og.Walker, value: integer)
+---@field set_foe fun(self: og.Walker, value: og.Walker?)
+---@field set_frame fun(self: og.Walker, value: integer): integer
+---@field set_ignore fun(self: og.Walker, value: integer)
+---@field set_invisibility_left fun(self: og.Walker, value: integer)
+---@field set_invulnerable_left fun(self: og.Walker, value: integer)
+---@field set_keys fun(self: og.Walker, value: integer)
+---@field set_lastx fun(self: og.Walker, value: number)
+---@field set_lasty fun(self: og.Walker, value: number)
+---@field set_leader fun(self: og.Walker, value: og.Walker?)
+---@field set_lifetime fun(self: og.Walker, value: integer)
+---@field set_lineofsight fun(self: og.Walker, value: integer)
+---@field set_owner fun(self: og.Walker, value: og.Walker?)
+---@field set_real_team_num fun(self: og.Walker, value: integer)
+---@field set_save_all_protected fun(self: og.Walker, value: any)
+---@field set_shifter_down fun(self: og.Walker, value: integer)
+---@field set_skip_exit fun(self: og.Walker, value: integer)
+---@field set_speed_bonus fun(self: og.Walker, value: number)
+---@field set_speed_bonus_left fun(self: og.Walker, value: integer)
+---@field set_stepsize fun(self: og.Walker, value: number)
+---@field set_summoned fun(self: og.Walker, value: any)
+---@field set_team_num fun(self: og.Walker, value: integer)
+---@field set_view_all fun(self: og.Walker, value: integer)
+---@field set_weapons_left fun(self: og.Walker, value: integer)
+---@field setworldxy fun(self: og.Walker, arg2: number, arg3: number)
+---@field setxy fun(self: og.Walker, x: number, y: number): boolean
+---@field shifter_down fun(self: og.Walker): integer
+---@field sizex fun(self: og.Walker): integer
+---@field sizey fun(self: og.Walker): integer
+---@field sizez fun(self: og.Walker): integer
+---@field skip_exit fun(self: og.Walker): integer
+---@field spaces_clear fun(self: og.Walker): integer
+---@field special fun(self: og.Walker): boolean
+---@field speed_bonus fun(self: og.Walker): number
+---@field speed_bonus_left fun(self: og.Walker): integer
+---@field stepsize fun(self: og.Walker): number
+---@field summoned fun(self: og.Walker): boolean
+---@field team_num fun(self: og.Walker): integer
+---@field teleport fun(self: og.Walker): boolean
+---@field teleport_ranged fun(self: og.Walker, arg2: integer): boolean
+---@field transfer_stats fun(self: og.Walker, target: og.Walker)
+---@field transform_to fun(self: og.Walker, order: og.OrderName, fam: integer)
+---@field turn_undead fun(self: og.Walker, range: integer, power: integer): integer
+---@field user fun(self: og.Walker): integer
+---@field view_all fun(self: og.Walker): integer
+---@field weapons_left fun(self: og.Walker): integer
+---@field worldx fun(self: og.Walker): number
+---@field worldy fun(self: og.Walker): number
+---@field worldz fun(self: og.Walker): number
+---@field xpos fun(self: og.Walker): integer
+---@field ypos fun(self: og.Walker): integer
+
+-- Guy-record handle (level_up's first argument; picker-side,
+-- dispatch-scoped, no world).
+---@class og.Guy
+---@field g_armor fun(self: og.Guy): integer
+---@field g_constitution fun(self: og.Guy): integer
+---@field g_dexterity fun(self: og.Guy): integer
+---@field g_exp fun(self: og.Guy): integer
+---@field g_intelligence fun(self: og.Guy): integer
+---@field g_level fun(self: og.Guy): integer
+---@field g_name fun(self: og.Guy): string
+---@field g_set_armor fun(self: og.Guy, value: integer)
+---@field g_set_constitution fun(self: og.Guy, value: integer)
+---@field g_set_dexterity fun(self: og.Guy, value: integer)
+---@field g_set_intelligence fun(self: og.Guy, value: integer)
+---@field g_set_strength fun(self: og.Guy, value: integer)
+---@field g_strength fun(self: og.Guy): integer
+
+-- Hook table for og.register_hooks(order = "living").
+---@class og.LivingHooks
+---@field check_special_ai? fun(self: og.Walker): boolean
+---@field customize_weapon? fun(self: og.Walker, weapon: og.Walker)
+---@field do_special? fun(self: og.Walker): boolean
+---@field handle_teleport? fun(self: og.Walker): boolean
+---@field hit_response? fun(self: og.Walker, who: og.Walker)
+---@field level_up? fun(self: og.Guy, level_diff: integer)
+---@field on_act_living? fun(self: og.Walker)
+---@field on_ani_complete? fun(self: og.Walker): boolean
+---@field on_create? fun(self: og.Walker)
+---@field on_death? fun(self: og.Walker): boolean
+---@field on_fire_weapon? fun(self: og.Walker, weapon: og.Walker): boolean
+---@field on_melee_hit? fun(self: og.Walker, target: og.Walker)
+---@field on_shoved? fun(target: og.Walker)
+---@field set_difficulty? fun(self: og.Walker, level: integer)
+
+-- Hook table for og.register_hooks(order = "weapon").
+---@class og.WeaponHooks
+---@field on_animate? fun(self: og.Walker): boolean
+---@field on_death? fun(self: og.Walker): boolean
+---@field on_hit_target? fun(weapon: og.Walker, target: og.Walker, owner: og.Walker)
+
+-- Hook table for og.register_hooks(order = "treasure").
+---@class og.TreasureHooks
+---@field on_eat? fun(self: og.Walker, eater: og.Walker): boolean
+
+-- Hook table for og.register_hooks(order = "generator").
+---@class og.GeneratorHooks
+---@field customize_spawn? fun(generator: og.Walker, spawn: og.Walker)
+
+-- Hook table for og.register_hooks(order = "effect" / "fx").
+---@class og.FxHooks
+---@field on_act? fun(self: og.Walker): boolean
+---@field on_death? fun(self: og.Walker): boolean
+
+-- Hook table for og.register_level_hooks.
+---@class og.LevelHooks
+---@field on_entity_death? fun(entity: og.Walker)
+---@field on_entity_spawn? fun(entity: og.Walker)
+---@field on_load? fun(level: integer)
+---@field on_tick? fun(level: integer, tick: integer)
+
+-- Per-entity hook table for og.set_entity_hooks (one-shot:
+-- consumed when it fires).
+---@class og.EntityHooks
+---@field on_death? fun(entity: og.Walker)
+
+-- Engine constants (og.C.*), names from the kConstants
+-- table in bindings_entity.cpp; every value is an integer.
+---@class og.Constants
+---@field ACT_CONTROL integer
+---@field ACT_DIE integer
+---@field ACT_FIRE integer
+---@field ACT_GENERATE integer
+---@field ACT_GUARD integer
+---@field ACT_RANDOM integer
+---@field ACT_SIT integer
+---@field ANI_ATTACK integer
+---@field ANI_BOMB integer
+---@field ANI_DOOR_OPEN integer
+---@field ANI_EXPAND_8 integer
+---@field ANI_EXPLODE integer
+---@field ANI_GLOWGROW integer
+---@field ANI_GLOWPULSE integer
+---@field ANI_GROW integer
+---@field ANI_SCARE integer
+---@field ANI_SKEL_GROW integer
+---@field ANI_SLIME_SPLIT integer
+---@field ANI_SPIN integer
+---@field ANI_TELE_IN integer
+---@field ANI_TELE_OUT integer
+---@field ANI_WALK integer
+---@field BIT_ANIMATE integer
+---@field BIT_ETHEREAL integer
+---@field BIT_FIRE integer
+---@field BIT_FLYING integer
+---@field BIT_FORESTWALK integer
+---@field BIT_IMMORTAL integer
+---@field BIT_INVINCIBLE integer
+---@field BIT_MAGICAL integer
+---@field BIT_NAMED integer
+---@field BIT_NO_COLLIDE integer
+---@field BIT_NO_RANGED integer
+---@field BIT_PHANTOM integer
+---@field BIT_SWIMMING integer
+---@field COMMAND_ATTACK integer
+---@field COMMAND_DIE integer
+---@field COMMAND_FIRE integer
+---@field COMMAND_FOLLOW integer
+---@field COMMAND_MULTIDO integer
+---@field COMMAND_QUICK_FIRE integer
+---@field COMMAND_RANDOM_WALK integer
+---@field COMMAND_RESET_WEAPON integer
+---@field COMMAND_RIGHT_WALK integer
+---@field COMMAND_RUSH integer
+---@field COMMAND_SEARCH integer
+---@field COMMAND_SET_WEAPON integer
+---@field COMMAND_UNCHARM integer
+---@field COMMAND_WALK integer
+---@field ENEMY_FREEZE_BANK_CAP integer
+---@field EVENT_DAMAGE_TILE integer
+---@field EVENT_NOTIFICATION integer
+---@field EVENT_PLAY_SOUND integer
+---@field EVENT_REQUEST_REDRAW integer
+---@field EVENT_SET_PALETTE integer
+---@field FACE_DOWN integer
+---@field FACE_DOWN_LEFT integer
+---@field FACE_DOWN_RIGHT integer
+---@field FACE_LEFT integer
+---@field FACE_RIGHT integer
+---@field FACE_UP integer
+---@field FACE_UP_LEFT integer
+---@field FACE_UP_RIGHT integer
+---@field GRID_SIZE integer
+---@field MACE_LIFE_CAP integer
+---@field MAXOBS integer
+---@field MP_POOL_DAMAGE_CAP integer
+---@field NUM_FACINGS integer
+---@field NUM_SPECIALS integer
+---@field ORDER_FX integer
+---@field ORDER_GENERATOR integer
+---@field ORDER_LIVING integer
+---@field ORDER_TREASURE integer
+---@field ORDER_WEAPON integer
+---@field SHOT_DRAIN_CAP integer
+---@field SOUND_BLAST integer
+---@field SOUND_BOLT integer
+---@field SOUND_BOW integer
+---@field SOUND_CHARGE integer
+---@field SOUND_CLANG integer
+---@field SOUND_DIE1 integer
+---@field SOUND_DIE2 integer
+---@field SOUND_EAT integer
+---@field SOUND_EXPLODE integer
+---@field SOUND_FWIP integer
+---@field SOUND_HEAL integer
+---@field SOUND_MONEY integer
+---@field SOUND_ROAR integer
+---@field SOUND_SPARKLE integer
+---@field SOUND_TELEPORT integer
+---@field SOUND_YO integer
+---@field SPRINKLE_REFRESH_FLOOR integer
+---@field SPRINKLE_REFRESH_OWNER_LEVEL integer
+---@field STARBURST_ADD_CAP integer
+---@field TYPE_AIR integer
+---@field TYPE_ASH integer
+---@field TYPE_CARPET integer
+---@field TYPE_COBBLE integer
+---@field TYPE_DIRT integer
+---@field TYPE_DIRT_DARK integer
+---@field TYPE_DROP_BLOCK integer
+---@field TYPE_GLASS integer
+---@field TYPE_GRASS integer
+---@field TYPE_GRASS_DARK integer
+---@field TYPE_GRASS_LIGHT integer
+---@field TYPE_LAVA integer
+---@field TYPE_MARSH integer
+---@field TYPE_SNOW integer
+---@field TYPE_TREES integer
+---@field TYPE_UNKNOWN integer
+---@field TYPE_WALL integer
+---@field TYPE_WATER integer
+---@field TYPE_ZSTAIRS integer
+
+-- Draw-free bindings over the og::combat constexpr helpers
+-- (core/combat_math.h); entries from kOgCombatFuncs in
+-- bindings_entity.cpp.
+---@class og.Combat
+---@field bomb_damage fun(arg1: integer): integer # og.combat.bomb_damage(level) — combat_math.h bomb_damage: legacy 15*(L+1) softened over kBombDamageKnee/kBombDamageCeiling (210/300).
+---@field cloak_total fun(arg1: integer, arg2: integer): integer # og.combat.cloak_total(cur, gain) — combat_math.h cloak_total, the thief cloak accumulator over invisibility_left: max(cur, min(cur + gain, kInvisibilityCloak...
+---@field druid_faerie_lifetime fun(arg1: integer): integer # og.combat.druid_faerie_lifetime(level) — combat_math.h druid_faerie_lifetime: soften(50 + 40*L, 570, 800).
+---@field ghost_raise_lifetime fun(arg1: integer): integer # og.combat.ghost_raise_lifetime(level) — combat_math.h ghost_raise_lifetime: soften(150 + 40*L, 670, 925).
+---@field glow_bonus fun(arg1: integer): integer # og.combat.glow_bonus(level) — combat_math.h glow_bonus: legacy 110*L with a FLAT cap at kGlowBonusCap (2200 — deliberately not a knee-13 soften; the header r...
+---@field skeleton_lifetime fun(arg1: integer): integer # og.combat.skeleton_lifetime(level) — combat_math.h skeleton_lifetime: soften(125 + 40*L, 645, 900).
+---@field stun_total fun(arg1: integer, arg2: integer): integer # og.combat.stun_total(cur_raw, add) — combat_math.h stun_total, the orc yell stun accumulator over RAW frozen_delay: cur_raw < 0 (thaw-immunity phase) discard...
+---@field yell_radius fun(arg1: integer): integer # og.combat.yell_radius(level) — combat_math.h yell_radius: legacy 160 + 20*L px with a flat cap at kYellRadiusCap (420 = f(13)).
+
+-- The og namespace: deterministic arithmetic, world queries,
+-- sim events, and the registration entry points.
+---@class og
+---@field C og.Constants
+---@field combat og.Combat
+---@field add_fx_ob fun(order: og.OrderName, fam: integer): og.Walker?
+---@field add_ob fun(order: og.OrderName, fam: integer, atstart: any): og.Walker?
+---@field add_weap_ob fun(order: og.OrderName, fam: integer): og.Walker?
+---@field ani_frame fun(entity: og.Walker, row: integer, index: integer): integer? # og.ani_frame(entity, row, index) → frame | nil.
+---@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for the row-walking form (weapon_family_animate.cpp's...
+---@field apply_difficulty_scaling fun(lv: og.Walker, level: integer, arg3: number, arg4: number, arg5: number, arg6: number)
+---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
+---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit (the file-local award_score in treasure_family_valuables.cpp): bump GameWorld::m_score and...
+---@field charm_duration fun(arg1: integer): integer
+---@field check_special_ai_distance fun(lv: og.Walker, threshold: integer): boolean
+---@field clamp fun(v: number, lo: number, hi: number): number # og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v, else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is 'integer').
+---@field cosmetic_rand fun(n: integer): integer # og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand override when installed (so captured dumps match master's dual-RNG-stream behavior wit...
+---@field ctf_flag_touch fun(flag: og.Walker, eater: og.Walker): boolean # og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped as one call exa...
+---@field ctf_on_flag_touch fun(flag: og.Walker, eater: og.Walker): boolean # og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped as one call exa...
+---@field current_scenario fun(): integer
+---@field div fun(a: integer, b: integer): integer
+---@field elemental_lifetime fun(arg1: integer): integer
+---@field emit_event fun(kind: integer, a: integer?, b: integer?) # og.emit_event(kind, a, b) — raw sim event (kinds in og.C.EVENT_*).
+---@field emit_exit_confirmation fun(prompt: string, dest: integer, is_withdraw: integer?) # og.emit_exit_confirmation(prompt, dest_level, is_withdraw) — EventKind::RequestExitConfirmation with the exit pad's payload (a = dest_level, b = 1 for the wi...
+---@field emit_notification fun(s: string, duration: integer?)
+---@field emit_positional_sound fun(entity: og.Walker, arg2: integer)
+---@field emit_sound fun(arg1: integer)
+---@field emit_withdraw_to_level fun(level: integer) # og.emit_withdraw_to_level(level) — EventKind::WithdrawToLevel (a = level).
+---@field enemy_freeze fun(): integer
+---@field entity_display_name fun(entity: og.Walker, fallback: string?): string
+---@field entity_id fun(entity: og.Walker): integer # og.entity_id(handle) → stable sim entity id (0 for untracked).
+---@field exp_from_action fun(entity: og.Walker, target: og.Walker?, action_name: "attack"|"eat_corpse"|"heal"|"kill"|"protection"|"raise_ghost"|"raise_skeleton"|"resurrect"|"resurrect_penalty"|"turn_undead", value: integer): integer # og.exp_from_action(self, target_or_nil, action_name, value) — the walker-level exp_from_action wrapper the family code calls.
+---@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision so that transliterated float expressions keep the C++ per-op rounding.
+---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
+---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
+---@field fdiv fun(a: number, b: number): number
+---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
+---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
+---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
+---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
+---@field find_near_foe fun(entity: og.Walker): og.Walker?
+---@field find_nearest_blood fun(entity: og.Walker): og.Walker?
+---@field fmul fun(a: number, b: number): number
+---@field foes_in_range fun(entity: og.Walker, range: integer): og.Walker[] # og.foes_in_range(self, range) → array (for_each_foe_in_range order)
+---@field freeze_duration fun(arg1: integer, arg2: integer): integer
+---@field fsub fun(a: number, b: number): number
+---@field game_ended fun(): boolean
+---@field heal_amount fun(arg1: integer, arg2: integer): integer, integer
+---@field i16 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field i32 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field i8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field image_lifetime fun(arg1: integer): integer
+---@field is_alive fun(entity: og.Walker): boolean # og.is_alive(handle) → entity still resolvable (and not flagged dead).
+---@field level_completed fun(level: integer): boolean
+---@field level_done fun(): integer
+---@field level_id fun(): integer
+---@field level_tick fun(): integer
+---@field living_count fun(): integer
+---@field log fun(...: any)
+---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
+---@field min fun(arg1: number, arg2: number): number
+---@field mod fun(a: integer, b: integer): integer
+---@field my_team fun(): integer
+---@field oblist fun(): og.Walker[]
+---@field query_genre fun(tx: integer, ty: integer, floor: integer?): integer # og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain genre for a TILE coordinate (the passable queries above all take pixels; this one doe...
+---@field query_grid_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
+---@field query_object_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
+---@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
+---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
+---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
+---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
+---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
+---@field remaining_foes fun(entity: og.Walker): integer
+---@field scare_duration fun(arg1: integer): integer
+---@field scare_radius fun(arg1: integer): integer
+---@field scenario_title fun(name: string): string # og.scenario_title(name) → title string ("none" when unreadable).
+---@field set_enemy_freeze fun(enemy_freeze: integer)
+---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).
+---@field set_palette fun(current_palette_id: integer)
+---@field set_withdraw_request fun(withdraw_level: integer) # og.set_withdraw_request(level) — the exit pad's withdraw latch (treasure_family_navigation.cpp sets both fields together).
+---@field sign fun(x: number): integer # og.sign(x) — the sign-extraction idiom the movement code spells `v /= abs(v)` behind a v != 0 guard, as a total function: -1, 0 or 1 as an INTEGER for any nu...
+---@field soften fun(arg1: integer, arg2: integer, arg3: integer): integer
+---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
+---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — the summon-then-setters cluster, fu...
+---@field trunc fun(x: number): integer
+---@field tuning fun(entity: og.Walker): any[]|boolean|integer|number|string # TODO(stubgen): signature not fully inferred — og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
+---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
+---@field world_can_exit_whenever fun(): boolean
+og = {}

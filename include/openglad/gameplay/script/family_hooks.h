@@ -100,7 +100,8 @@ public:
     // Called by the og.register_hooks binding during replay.
     void note_hook(Order order, int family_id, FamilyHook hook);
 
-    // The pack_scripts_generation() this instance was built against.
+    // The pack_scripts_build_generation() (scripts + og.use lib modules)
+    // this instance was built against.
     unsigned built_generation() const { return built_generation_; }
 
 private:

@@ -52,6 +52,27 @@ struct ClasspackPresentation {
     std::optional<std::int32_t> radar_jitter;
 };
 
+// One scalar value of a family entry's `tuning:` map. The kind preserves
+// the author's YAML spelling — plain `5` is Integer, `5.0` Number, `true`
+// Boolean; anything QUOTED is String even when it looks numeric, and an
+// unparseable plain scalar is a plain-style string. Scripts read the map
+// through `og.tuning(self)` as a frozen table, so the Integer/Number split
+// decides nothing here beyond which Lua number subtype the value carries.
+struct ClasspackTuningValue {
+    enum class Kind : std::uint8_t { Integer, Number, Boolean, String };
+    Kind kind = Kind::Integer;
+    std::int64_t integer = 0;  // Kind::Integer
+    double number = 0.0;       // Kind::Number
+    bool boolean = false;      // Kind::Boolean
+    std::string string;        // Kind::String
+};
+
+// One key/value pair of a `tuning:` map, in YAML order.
+struct ClasspackTuningPair {
+    std::string key;
+    ClasspackTuningValue value;
+};
+
 // One row of an `anims:` frame set. `is_null` is the YAML `~` row, which
 // becomes a nullptr entry in the built table (the legacy anislime table has
 // eight of them).
@@ -104,6 +125,7 @@ struct ClasspackLivingEntry {
     std::optional<bool> playable;
     std::optional<std::int32_t> playable_order;
     ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
 };
 
 // One entry under families.weapon (WeaponFamilyDescriptor data fields).
@@ -124,6 +146,7 @@ struct ClasspackWeaponEntry {
     NullableString sprite;
     std::optional<std::string> animation;  // anims: set name
     ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
 };
 
 // One entry under families.effect (EffectFamilyDescriptor data fields).
@@ -137,6 +160,7 @@ struct ClasspackEffectEntry {
     NullableString sprite;
     std::optional<std::string> animation;  // anims: set name
     ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
 };
 
 // One entry under families.treasure (TreasureFamilyDescriptor data fields).
@@ -149,6 +173,7 @@ struct ClasspackTreasureEntry {
     NullableString sprite;
     std::optional<std::string> animation;  // anims: set name
     ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
 };
 
 // One entry under families.generator (GeneratorFamilyDescriptor data
@@ -165,6 +190,7 @@ struct ClasspackGeneratorEntry {
     std::optional<std::string> animation;  // anims: set name
     std::optional<std::string> editor_label;  // level-editor palette caption
     ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
 };
 
 struct ClasspackData {

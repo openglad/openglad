@@ -3010,3 +3010,433 @@ sys.exit(rc)
     EXPECT_EQ(std::string::npos, after.output.find(boss_rel, files_at))
         << "the bytecode plant must not become a measured file";
 }
+
+// ---------------------------------------------------------------------------
+// Generated API stubs (docs/modding/og-api.d.lua)
+// ---------------------------------------------------------------------------
+// The stub file is the lua-language-server surface of the og.* API,
+// generated from the binding registration tables by
+// scripts/modding/gen_api_stubs.py. It lives under a shipped-Lua root, so
+// scripts/lua_inventory.py puts it in the coverage denominator like any
+// other shipped .lua — and the file is designed for that: annotation-only
+// stubs (`---@field`, never `function ... end`), so its whole grid is ONE
+// function record (the main chunk) and ONE executable line (`og = {}`),
+// both covered by executing the chunk right here.
+//
+// The shape assertions are the contract, not a snapshot: if a regeneration
+// ever emitted real function statements, every one would be a permanently
+// uncovered function record and the coverage gate would go red far from
+// the cause. Fail HERE instead, naming the rule. (Freshness is deliberately
+// NOT asserted — the api_stub_check cmake target owns drift, and it stays
+// advisory until Lua-quality stage 5.)
+
+TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
+{
+    // Unit-test WORKING_DIRECTORY is the repo root (og_add_unit_group).
+    const char* stub_path = "docs/modding/og-api.d.lua";
+    std::ifstream in(stub_path, std::ios::binary);
+    ASSERT_TRUE(in.is_open())
+        << stub_path
+        << " missing; regenerate: python3 scripts/modding/gen_api_stubs.py";
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    const std::string source = buf.str();
+    ASSERT_EQ(0u, source.rfind("---@meta", 0))
+        << "stub file must start with the ---@meta marker";
+
+    const og::script::coverage::SourceFacts facts =
+        og::script::coverage::source_facts(source, stub_path);
+    ASSERT_TRUE(facts.ok) << facts.error;
+    EXPECT_EQ(std::size_t{1}, facts.functions.size())
+        << "annotation-only contract: the main chunk must be the only "
+           "function span — a `function ... end` stub would enter the "
+           "coverage denominator as a permanently uncovered record";
+    EXPECT_EQ(std::size_t{1}, facts.lines.size())
+        << "annotation-only contract: `og = {}` must be the only "
+           "executable line";
+
+    // Loads and runs cleanly under the sandbox: same text-only mode, same
+    // environment fence a pack chunk gets. Running it is also what covers
+    // the file's main chunk when the coverage recorder is armed — PROVIDED
+    // the (chunk, digest) pair is declared first, exactly as the resources
+    // layer declares every mounted pack script before a VM can compile it.
+    // Without the declaration the recorder files the hits under the
+    // no-generation marker and the shipped file scores 0%, failing the Lua
+    // function bar by exactly one record (found the hard way: 163/164).
+    og::script::coverage::declare_pack_source(stub_path, source,
+                                              "docs/modding");
+    ScriptHost host;
+    EXPECT_TRUE(host.run_chunk(stub_path, source, "og-api-stubs"))
+        << "stub file failed to load";
+    EXPECT_TRUE(host.errors().empty());
+}
+
+// ---------------------------------------------------------------------------
+// og.use — the pack lib module system (quality plan Stage 1)
+// ---------------------------------------------------------------------------
+// A pack ships shared helpers as packs/<id>/lib/<name>.lua; the resources
+// layer registers them here and every new VM loads each once — eagerly, in
+// registration order, before any pack script — memoizing a FROZEN export.
+// og.use is pack-relative and load-time-only. These tests drive the whole
+// contract through the shared UI WorldScripts instance (no world in
+// context), whose rebuild-on-generation behavior is itself part of the
+// contract under test.
+//
+// Fixture chunk names deliberately avoid the "packs/" prefix: the coverage
+// recorder treats packs/-named chunks as shipped pack code that must match
+// the repository inventory or the runtime-only ledger, and these
+// throwaway strings are neither (the real-path fixture in
+// test_pack_lua_paths.cpp owns that spelling).
+
+namespace {
+
+class PackLibTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        init_all_registries();
+        og::script::clear_pack_scripts();
+        og::script::clear_pack_lib_modules();
+        // active_world_scripts() must serve the shared UI instance, not
+        // some world a previous test left in the gameplay context.
+        previous_game_ = current_game;
+        current_game = nullptr;
+    }
+    void TearDown() override
+    {
+        og::script::clear_pack_scripts();
+        og::script::clear_pack_lib_modules();
+        current_game = previous_game_;
+    }
+
+    static og::script::WorldScripts& ws()
+    {
+        return og::script::active_world_scripts();
+    }
+
+    static std::string last_error()
+    {
+        return ws().host().errors().empty()
+                   ? std::string("(no script error recorded)")
+                   : ws().host().errors().back().message;
+    }
+
+    static bool any_error_contains(const std::string& fragment)
+    {
+        for (const ScriptError& e : ws().host().errors()) {
+            if (e.message.find(fragment) != std::string::npos)
+                return true;
+        }
+        return false;
+    }
+
+    static void register_module(const char* pack, const char* name,
+                                const std::string& source)
+    {
+        og::script::register_pack_lib_module(
+            {pack, name, std::string("libfix_") + pack + "_" + name + ".lua",
+             source});
+    }
+
+private:
+    GameplayContext* previous_game_ = nullptr;
+};
+
+}  // namespace
+
+// The registry itself: append order is load order; a duplicate
+// (pack_id, name) replaces in place; unregister takes exactly one pack's
+// modules; every mutation bumps the generation — except a no-op
+// unregister, which must NOT invalidate long-lived hosts.
+TEST_F(PackLibTest, registry_roundtrip_order_and_generation)
+{
+    const unsigned gen0 = og::script::pack_lib_generation();
+    register_module("a.pack", "m1", "return { tag = 'a1' }");
+    register_module("b.pack", "m1", "return { tag = 'b1' }");
+    register_module("a.pack", "m2", "return { tag = 'a2' }");
+    EXPECT_EQ(gen0 + 3, og::script::pack_lib_generation());
+
+    ASSERT_EQ(3u, og::script::pack_lib_modules().size());
+    EXPECT_EQ("m1", og::script::pack_lib_modules()[0].name);
+    EXPECT_EQ("b.pack", og::script::pack_lib_modules()[1].pack_id);
+    EXPECT_EQ("m2", og::script::pack_lib_modules()[2].name);
+
+    // Replacement keeps the slot, swaps the source.
+    register_module("a.pack", "m1", "return { tag = 'a1-v2' }");
+    ASSERT_EQ(3u, og::script::pack_lib_modules().size());
+    EXPECT_EQ("return { tag = 'a1-v2' }",
+              og::script::pack_lib_modules()[0].source);
+    EXPECT_EQ(gen0 + 4, og::script::pack_lib_generation());
+
+    // A pack nobody registered: no change, no generation bump.
+    og::script::unregister_pack_lib_modules("ghost.pack");
+    EXPECT_EQ(gen0 + 4, og::script::pack_lib_generation());
+    EXPECT_EQ(3u, og::script::pack_lib_modules().size());
+
+    og::script::unregister_pack_lib_modules("a.pack");
+    ASSERT_EQ(1u, og::script::pack_lib_modules().size());
+    EXPECT_EQ("b.pack", og::script::pack_lib_modules()[0].pack_id);
+    EXPECT_EQ(gen0 + 5, og::script::pack_lib_generation());
+
+    og::script::clear_pack_lib_modules();
+    EXPECT_TRUE(og::script::pack_lib_modules().empty());
+    EXPECT_EQ(gen0 + 6, og::script::pack_lib_generation());
+}
+
+// Eager loading runs each module ONCE, in registration order, before any
+// pack script — and a script binding the export at load time reads it.
+TEST_F(PackLibTest, modules_load_eagerly_in_order_before_scripts)
+{
+    register_module("t.pack", "alpha", "og.log('alpha loaded')\n"
+                                       "return { n = 1 }");
+    register_module("t.pack", "beta", "og.log('beta loaded')\n"
+                                      "return { n = 2 }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua",
+         "local alpha = og.use('alpha')\n"
+         "local beta = og.use('beta')\n"
+         "og.log('script sees', alpha.n + beta.n)"});
+
+    const std::vector<std::string>& log = ws().host().log();
+    ASSERT_EQ(3u, log.size()) << "each module loads exactly once";
+    EXPECT_EQ("alpha loaded", log[0]);
+    EXPECT_EQ("beta loaded", log[1]);
+    EXPECT_EQ("script sees\t3", log[2]);
+    EXPECT_TRUE(ws().host().errors().empty()) << last_error();
+}
+
+// A module may og.use a LATER module: it loads on demand inside the
+// earlier load, and the eager pass then skips the settled entry instead of
+// running it twice.
+TEST_F(PackLibTest, on_demand_load_inside_the_eager_pass_settles_once)
+{
+    register_module("t.pack", "early",
+                    "local late = og.use('late')\n"
+                    "og.log('early sees', late.v)\n"
+                    "return { v = late.v + 1 }");
+    register_module("t.pack", "late", "og.log('late loaded')\n"
+                                      "return { v = 10 }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.log('sum', og.use('early').v)"});
+
+    const std::vector<std::string>& log = ws().host().log();
+    ASSERT_EQ(3u, log.size()) << "'late' must not run a second time";
+    EXPECT_EQ("late loaded", log[0]);
+    EXPECT_EQ("early sees\t10", log[1]);
+    EXPECT_EQ("sum\t11", log[2]);
+}
+
+// Exports are frozen: writes to fresh AND existing keys raise, # forwards
+// through to an array-shaped export, and the metatable is fenced. The
+// freeze is shallow BY DESIGN (a nested mutable table is an R6 violation
+// the Stage-5 lib lint owns) — pinned so a future "deep freeze" cannot
+// land silently and change what modules may do.
+TEST_F(PackLibTest, exports_are_frozen_shallow_views)
+{
+    register_module("t.pack", "consts",
+                    "return { 10, 20, 30, cap = 7, inner = { x = 1 } }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua",
+         "local c = og.use('consts')\n"
+         "if #c ~= 3 then\n"
+         "  error('__len must forward: got ' .. #c)\n"
+         "end\n"
+         "if c[2] ~= 20 or c.cap ~= 7 then\n"
+         "  error('reads must reach the data')\n"
+         "end\n"
+         "if getmetatable(c) ~= false then\n"
+         "  error('metatable must be fenced')\n"
+         "end\n"
+         "local ok1 = pcall(function() c.fresh = 1 end)\n"
+         "local ok2 = pcall(function() c.cap = 8 end)\n"
+         "if ok1 or ok2 then\n"
+         "  error('writes must raise on fresh and existing keys')\n"
+         "end\n"
+         "c.inner.x = 5\n"
+         "if c.inner.x ~= 5 then\n"
+         "  error('the freeze is shallow by design')\n"
+         "end\n"
+         "og.log('frozen ok')"});
+
+    ASSERT_FALSE(ws().host().log().empty()) << last_error();
+    EXPECT_EQ("frozen ok", ws().host().log().back());
+    EXPECT_TRUE(ws().host().errors().empty()) << last_error();
+}
+
+// A non-table export (a bare constant) passes through unwrapped — it is
+// immutable in Lua already.
+TEST_F(PackLibTest, non_table_exports_pass_through)
+{
+    register_module("t.pack", "answer", "return 42");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.log(og.use('answer'))"});
+    ASSERT_FALSE(ws().host().log().empty()) << last_error();
+    EXPECT_EQ("42", ws().host().log().back());
+}
+
+// og.use resolves against the pack whose chunk is loading: two packs each
+// see their own 'util', and a name only one pack ships is invisible to the
+// other (with the expected-path spelling in the error).
+TEST_F(PackLibTest, resolution_is_pack_relative)
+{
+    register_module("a.pack", "util", "return { tag = 'from a' }");
+    register_module("b.pack", "util", "return { tag = 'from b' }");
+    og::script::register_pack_script(
+        {"a.pack", "sa.lua", "og.log('a reads', og.use('util').tag)"});
+    og::script::register_pack_script(
+        {"b.pack", "sb.lua", "og.log('b reads', og.use('util').tag)"});
+    og::script::register_pack_script(
+        {"b.pack", "sc.lua", "og.use('only_in_a')"});
+
+    const std::vector<std::string>& log = ws().host().log();
+    ASSERT_GE(log.size(), 2u);
+    EXPECT_EQ("a reads\tfrom a", log[0]);
+    EXPECT_EQ("b reads\tfrom b", log[1]);
+    EXPECT_TRUE(any_error_contains(
+        "no module 'only_in_a' in pack 'b.pack' (expected "
+        "packs/b.pack/lib/only_in_a.lua)"))
+        << last_error();
+}
+
+// Load-time-only: a hook that calls og.use at DISPATCH time errors with
+// the bind-at-load-time instruction. (Outside pack load there is no pack
+// to resolve against, and a dispatch-time og.use would be hidden coupling
+// the reader cannot see.)
+TEST_F(PackLibTest, og_use_is_load_time_only)
+{
+    register_module("t.pack", "util", "return { n = 1 }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self)\n"
+         "    og.use('util')\n"
+         "    return true\n"
+         "  end,\n"
+         "})"});
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    const std::optional<bool> handled =
+        og::script::hooks::do_special(fd, nullptr);
+    EXPECT_FALSE(handled.has_value());
+    EXPECT_TRUE(any_error_contains(
+        "og.use: only callable while a pack chunk loads"))
+        << last_error();
+}
+
+// A dependency cycle is an error naming the module, not a hang or a stack
+// blowout — and both participants latch as failed.
+TEST_F(PackLibTest, dependency_cycles_are_detected)
+{
+    register_module("t.pack", "m1", "local m2 = og.use('m2')\n"
+                                    "return { via = m2 }");
+    register_module("t.pack", "m2", "local m1 = og.use('m1')\n"
+                                    "return { via = m1 }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.use('m1')"});
+
+    EXPECT_TRUE(any_error_contains("circular dependency on module 'm1'"))
+        << last_error();
+    EXPECT_TRUE(any_error_contains("og.use: module 'm1' failed to load"))
+        << "the script's og.use must see the latched failure: "
+        << last_error();
+}
+
+// A broken module runs ONCE: later og.use calls answer the latched
+// failure deterministically instead of re-running the chunk.
+TEST_F(PackLibTest, failures_latch_and_do_not_rerun)
+{
+    register_module("t.pack", "boom", "og.log('boom ran')\n"
+                                      "error('kaput')");
+    og::script::register_pack_script(
+        {"t.pack", "s1.lua", "og.use('boom')"});
+    og::script::register_pack_script(
+        {"t.pack", "s2.lua", "og.use('boom')"});
+
+    int boom_runs = 0;
+    for (const std::string& line : ws().host().log()) {
+        if (line == "boom ran")
+            boom_runs++;
+    }
+    EXPECT_EQ(1, boom_runs) << "a failed chunk must never re-run";
+    EXPECT_TRUE(any_error_contains("kaput")) << last_error();
+    EXPECT_TRUE(any_error_contains("og.use: module 'boom' failed to load"))
+        << last_error();
+}
+
+// A module must RETURN its exports; falling off the end is an error that
+// says so.
+TEST_F(PackLibTest, module_returning_nothing_is_an_error)
+{
+    register_module("t.pack", "silent", "local x = 1");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.use('silent')"});
+    EXPECT_TRUE(any_error_contains("module returned no exports"))
+        << last_error();
+    EXPECT_TRUE(any_error_contains("og.use: module 'silent' failed to load"))
+        << last_error();
+}
+
+// Modules get FRESH isolated environments: chunk-level globals do not leak
+// between modules, or from the pack script environment into a module.
+TEST_F(PackLibTest, module_environments_are_isolated)
+{
+    register_module("t.pack", "first", "leaky = 99\n"
+                                       "return { ok = true }");
+    register_module("t.pack", "second",
+                    "return { saw = tostring(leaky) }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua",
+         "og.log('second saw', og.use('second').saw)"});
+    ASSERT_FALSE(ws().host().log().empty()) << last_error();
+    EXPECT_EQ("second saw\tnil", ws().host().log().back());
+}
+
+// Module chunks run under the same instruction budget as every other
+// chunk; a runaway module fails its load and latches.
+TEST_F(PackLibTest, modules_are_budget_metered)
+{
+    register_module("t.pack", "spin", "while true do end");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.use('spin')"});
+    EXPECT_TRUE(any_error_contains("instruction budget")) << last_error();
+    EXPECT_TRUE(any_error_contains("og.use: module 'spin' failed to load"))
+        << last_error();
+}
+
+// Module chunks are text-only, like every compile in the process: a
+// planted binary chunk is refused, never run.
+TEST_F(PackLibTest, module_chunks_are_text_only)
+{
+    register_module("t.pack", "blob", "\x1bLua fake bytecode");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.use('blob')"});
+    EXPECT_TRUE(any_error_contains("og.use: module 'blob' failed to load"))
+        << last_error();
+    EXPECT_FALSE(any_error_contains("attempt to call"))
+        << "the blob must be refused at compile, not executed: "
+        << last_error();
+}
+
+// A module-only mutation rebuilds long-lived hosts exactly like a script
+// mutation: the combined build generation moves, and the rebuilt VM serves
+// the new module.
+TEST_F(PackLibTest, module_mutations_rebuild_the_shared_host)
+{
+    register_module("t.pack", "vals", "return { v = 1 }");
+    og::script::register_pack_script(
+        {"t.pack", "s.lua", "og.log('v', og.use('vals').v)"});
+    ASSERT_FALSE(ws().host().log().empty()) << last_error();
+    EXPECT_EQ("v\t1", ws().host().log().back());
+    const unsigned built = ws().built_generation();
+    EXPECT_EQ(built, og::script::pack_scripts_build_generation());
+
+    // No mutation: the SAME instance answers (no rebuild, log intact).
+    EXPECT_EQ(built, ws().built_generation());
+    EXPECT_EQ("v\t1", ws().host().log().back());
+
+    // Module-only mutation: generation moves, next access rebuilds, the
+    // replayed script reads the replacement export.
+    register_module("t.pack", "vals", "return { v = 2 }");
+    EXPECT_NE(built, og::script::pack_scripts_build_generation());
+    EXPECT_EQ("v\t2", ws().host().log().back());
+}

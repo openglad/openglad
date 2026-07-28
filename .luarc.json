@@ -1,0 +1,38 @@
+{
+    // lua-language-server workspace config for the pack-Lua corpus
+    // (packs/**/scripts, docs/modding/examples). The og.* API surface
+    // comes from docs/modding/og-api.d.lua, GENERATED from the C++
+    // binding registration tables — regenerate after binding changes:
+    //   python3 scripts/modding/gen_api_stubs.py
+    // Headless check (advisory; from the nix dev shell):
+    //   lua-language-server --check .
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+
+    // The engine embeds Lua 5.4 (og_lua) and the sandbox loads text-only
+    // chunks per docs/lua-classpacks-design.md §3.
+    "runtime.version": "Lua 5.4",
+
+    // The generated stubs carry the sandbox's og.* surface, the handle
+    // classes (og.Walker / og.Guy), hook-table types and og.C constants.
+    "workspace.library": ["docs/modding/og-api.d.lua"],
+
+    // build/ holds STAGED COPIES of packs/ (stage_runtime_assets) — checking
+    // them would double-report every diagnostic. The rest is non-Lua noise.
+    "workspace.ignoreDir": ["build", "dist", "relay", "web", "tools"],
+
+    // Sandbox modelling, library granularity only: these libraries do not
+    // exist in the pack sandbox (script_host.cpp build_sandbox_root), so
+    // using them should read as undefined. Finer-grained gaps the LSP
+    // cannot express per-function — no pairs/next/load/dofile/
+    // collectgarbage, math is an exact/integer-safe subset (no random/
+    // transcendentals), string.dump is stripped — are enforced by the
+    // sandbox itself and the pack lints, not by these diagnostics.
+    "runtime.builtin": {
+        "io": "disable",
+        "os": "disable",
+        "package": "disable",
+        "coroutine": "disable",
+        "debug": "disable",
+        "utf8": "disable"
+    }
+}

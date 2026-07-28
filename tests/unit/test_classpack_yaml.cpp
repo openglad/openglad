@@ -27,18 +27,32 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/effect_family_descriptor.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/family_tuning.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/resources/classpack_yaml.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/packs.h>
 
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <tuple>
 #include <utility>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <unistd.h>  // mkdtemp lives here on macOS (stdlib.h on glibc)
+#endif
 
 using og::data::ClasspackData;
 using og::data::parse_classpack_yaml;
@@ -1806,4 +1820,425 @@ TEST(FamilyPresentation, glyph_utf8_round_trips)
     }
     og::GlyphColor unknown{};
     EXPECT_FALSE(og::glyph_color_from_name("puce", unknown));
+}
+
+// ---------------------------------------------------------------------------
+// tuning: maps (quality plan Stage 1 — read by scripts via og.tuning)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using og::data::ClasspackTuningValue;
+
+// The tuning store is process-global (like the registries); every test
+// that touches it restores emptiness on both sides of itself.
+class TuningStoreGuard {
+public:
+    TuningStoreGuard() { og::script::clear_all_family_tuning(); }
+    ~TuningStoreGuard() { og::script::clear_all_family_tuning(); }
+};
+
+}  // namespace
+
+// Kind classification preserves the author's YAML spelling: plain integers
+// stay integers (int64-wide), plain decimals/exponents become doubles,
+// true/false become booleans, QUOTED text is a string even when it looks
+// numeric, and an unparseable plain scalar falls back to a plain string.
+// YAML mapping order is preserved.
+TEST(ClasspackYaml, tuning_map_kinds_follow_the_yaml_spelling)
+{
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  living:\n"
+        "    - id: p:orc\n"
+        "      tuning:\n"
+        "        yell_stun: 10\n"
+        "        heal_scale: 2.5\n"
+        "        eats_corpses: true\n"
+        "        timid: false\n"
+        "        label: \"5\"\n"
+        "        big: 9223372036854775807\n"
+        "        neg: -42\n"
+        "        expo: 1e3\n"
+        "        odd: 12abc\n",
+        data, "tuning-kinds"));
+    ASSERT_EQ(data.living.size(), 1u);
+    const auto& t = data.living[0].tuning;
+    ASSERT_EQ(t.size(), 9u);
+
+    EXPECT_EQ(t[0].key, "yell_stun");
+    ASSERT_EQ(t[0].value.kind, ClasspackTuningValue::Kind::Integer);
+    EXPECT_EQ(t[0].value.integer, 10);
+
+    EXPECT_EQ(t[1].key, "heal_scale");
+    ASSERT_EQ(t[1].value.kind, ClasspackTuningValue::Kind::Number);
+    EXPECT_EQ(t[1].value.number, 2.5);
+
+    EXPECT_EQ(t[2].key, "eats_corpses");
+    ASSERT_EQ(t[2].value.kind, ClasspackTuningValue::Kind::Boolean);
+    EXPECT_TRUE(t[2].value.boolean);
+
+    EXPECT_EQ(t[3].key, "timid");
+    ASSERT_EQ(t[3].value.kind, ClasspackTuningValue::Kind::Boolean);
+    EXPECT_FALSE(t[3].value.boolean);
+
+    EXPECT_EQ(t[4].key, "label");
+    ASSERT_EQ(t[4].value.kind, ClasspackTuningValue::Kind::String)
+        << "a QUOTED \"5\" must stay a string";
+    EXPECT_EQ(t[4].value.string, "5");
+
+    ASSERT_EQ(t[5].value.kind, ClasspackTuningValue::Kind::Integer)
+        << "tuning integers are int64-wide";
+    EXPECT_EQ(t[5].value.integer, 9223372036854775807LL);
+
+    ASSERT_EQ(t[6].value.kind, ClasspackTuningValue::Kind::Integer);
+    EXPECT_EQ(t[6].value.integer, -42);
+
+    ASSERT_EQ(t[7].value.kind, ClasspackTuningValue::Kind::Number)
+        << "exponent spelling is a double";
+    EXPECT_EQ(t[7].value.number, 1000.0);
+
+    ASSERT_EQ(t[8].value.kind, ClasspackTuningValue::Kind::String)
+        << "an unparseable plain scalar falls back to a plain string";
+    EXPECT_EQ(t[8].value.string, "12abc");
+}
+
+// Every order's entries may carry a tuning map — the shared entry walker
+// owns the key, so one spelling works everywhere.
+TEST(ClasspackYaml, tuning_parses_on_every_order)
+{
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n"
+        "  living:\n"
+        "    - id: p:l\n"
+        "      tuning: {a: 1}\n"
+        "  weapon:\n"
+        "    - id: p:w\n"
+        "      tuning: {b: 2}\n"
+        "  effect:\n"
+        "    - id: p:e\n"
+        "      tuning: {c: 3}\n"
+        "  treasure:\n"
+        "    - id: p:t\n"
+        "      tuning: {d: 4}\n"
+        "  generator:\n"
+        "    - id: p:g\n"
+        "      tuning: {e: 5}\n",
+        data, "tuning-orders"));
+    ASSERT_EQ(data.living.size(), 1u);
+    ASSERT_EQ(data.living[0].tuning.size(), 1u);
+    EXPECT_EQ(data.living[0].tuning[0].key, "a");
+    ASSERT_EQ(data.weapons.size(), 1u);
+    ASSERT_EQ(data.weapons[0].tuning.size(), 1u);
+    EXPECT_EQ(data.weapons[0].tuning[0].value.integer, 2);
+    ASSERT_EQ(data.effects.size(), 1u);
+    ASSERT_EQ(data.effects[0].tuning.size(), 1u);
+    ASSERT_EQ(data.treasures.size(), 1u);
+    ASSERT_EQ(data.treasures[0].tuning.size(), 1u);
+    ASSERT_EQ(data.generators.size(), 1u);
+    ASSERT_EQ(data.generators[0].tuning.size(), 1u);
+    EXPECT_EQ(data.generators[0].tuning[0].value.integer, 5);
+}
+
+// An entry with no tuning: parses to an empty map — absent means absent.
+TEST(ClasspackYaml, absent_tuning_is_an_empty_map)
+{
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:plain\n", data, "no-tuning"));
+    ASSERT_EQ(data.living.size(), 1u);
+    EXPECT_TRUE(data.living[0].tuning.empty());
+}
+
+// Malformed tuning fails the pack, strict like every other field: null
+// values, nested mappings, nested lists, non-scalar keys, empty keys.
+TEST(ClasspackYaml, malformed_tuning_fails_the_pack)
+{
+    ClasspackData a;
+    ASSERT_FALSE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:x\n      tuning:\n        k: ~\n",
+        a, "tuning-null"))
+        << "tuning keys carry values; null must fail";
+
+    ClasspackData b;
+    ASSERT_FALSE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:x\n"
+        "      tuning:\n        k: {nested: 1}\n",
+        b, "tuning-nested-map"));
+
+    ClasspackData c;
+    ASSERT_FALSE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:x\n"
+        "      tuning:\n        k: [1, 2]\n",
+        c, "tuning-nested-list"));
+
+    ClasspackData d;
+    ASSERT_FALSE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:x\n"
+        "      tuning:\n        ? [1, 2]\n        : 3\n",
+        d, "tuning-sequence-key"));
+
+    ClasspackData e;
+    ASSERT_FALSE(parse_classpack_yaml(
+        "families:\n  living:\n    - id: p:x\n"
+        "      tuning:\n        \"\": 3\n",
+        e, "tuning-empty-key"));
+}
+
+// ---------------------------------------------------------------------------
+// tuning install — YAML data lands in the gameplay-side store
+// ---------------------------------------------------------------------------
+
+// install_classpack_data carries each entry's tuning into
+// og::script::set_family_tuning under the entry's (order, wire id), with
+// every value kind converted; an entry that declares nothing installs
+// nothing.
+TEST(ClasspackInstall, tuning_reaches_the_gameplay_store)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+
+    ClasspackData data;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "pack: mod\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:tuned\n"
+        "      wire_id: auto\n"
+        "      name: \"TUNED\"\n"
+        "      tuning:\n"
+        "        stun: 7\n"
+        "        scale: 1.5\n"
+        "        brave: true\n"
+        "        tag: knife\n"
+        "    - id: mod:plain\n"
+        "      wire_id: auto\n"
+        "      name: \"PLAIN\"\n"
+        "  weapon:\n"
+        "    - id: mod:zap\n"
+        "      wire_id: auto\n"
+        "      name: \"ZAP\"\n"
+        "      tuning:\n"
+        "        speed: 9\n",
+        data, "tuning-install"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 3);
+
+    const int tuned_id =
+        og::families::resolve_family_string_id(Order::Living, "mod:tuned");
+    const int plain_id =
+        og::families::resolve_family_string_id(Order::Living, "mod:plain");
+    const int zap_id =
+        og::families::resolve_family_string_id(Order::Weapon, "mod:zap");
+    ASSERT_GE(tuned_id, 0);
+    ASSERT_GE(plain_id, 0);
+    ASSERT_GE(zap_id, 0);
+
+    const og::script::TuningMap* tuned =
+        og::script::family_tuning(Order::Living, tuned_id);
+    ASSERT_NE(tuned, nullptr);
+    ASSERT_EQ(tuned->size(), 4u);
+    EXPECT_EQ((*tuned)[0].key, "stun");
+    ASSERT_EQ((*tuned)[0].value.kind,
+              og::script::TuningValue::Kind::Integer);
+    EXPECT_EQ((*tuned)[0].value.integer, 7);
+    ASSERT_EQ((*tuned)[1].value.kind, og::script::TuningValue::Kind::Number);
+    EXPECT_EQ((*tuned)[1].value.number, 1.5);
+    ASSERT_EQ((*tuned)[2].value.kind,
+              og::script::TuningValue::Kind::Boolean);
+    EXPECT_TRUE((*tuned)[2].value.boolean);
+    ASSERT_EQ((*tuned)[3].value.kind, og::script::TuningValue::Kind::String);
+    EXPECT_EQ((*tuned)[3].value.string, "knife");
+
+    EXPECT_EQ(og::script::family_tuning(Order::Living, plain_id), nullptr)
+        << "an entry without tuning installs nothing";
+
+    const og::script::TuningMap* zap =
+        og::script::family_tuning(Order::Weapon, zap_id);
+    ASSERT_NE(zap, nullptr);
+    ASSERT_EQ(zap->size(), 1u);
+    EXPECT_EQ((*zap)[0].key, "speed");
+    EXPECT_EQ((*zap)[0].value.integer, 9);
+}
+
+// Tuning belongs to whoever occupies the slot NOW: a reinstall of the same
+// wire id without tuning erases the previous occupant's map (the
+// set_family_tuning empty-map contract the installer relies on between
+// full clear_all passes).
+TEST(ClasspackInstall, reinstalling_a_slot_without_tuning_clears_it)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+
+    ClasspackData first;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "pack: mod\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:v1\n"
+        "      wire_id: 255\n"
+        "      name: \"V1\"\n"
+        "      tuning: {cap: 420}\n",
+        first, "tuned-v1"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(first)), 1);
+    ASSERT_NE(og::script::family_tuning(Order::Living, 255), nullptr);
+
+    ClasspackData second;
+    ASSERT_TRUE(parse_classpack_yaml(
+        "pack: mod\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: mod:v2\n"
+        "      wire_id: 255\n"
+        "      name: \"V2\"\n",
+        second, "tuned-v2"));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(second)), 1);
+    EXPECT_EQ(og::script::family_tuning(Order::Living, 255), nullptr)
+        << "the replacing entry declared no tuning, so the slot is bare";
+}
+
+// ---------------------------------------------------------------------------
+// lib/ end to end — the REAL enumeration path (packs.cpp), mount to unmount
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The three Lua sources this fixture writes to disk. Their exact bytes are
+// declared in scripts/coverage/runtime_only_lua.txt (the engine compiles
+// them under packs/-prefixed chunk names, so an armed coverage run must
+// recognize the digests) — CHANGING A BYTE HERE MEANS UPDATING THAT LEDGER.
+constexpr const char* kLibAaa = "return { tag = 'aaa' }\n";
+constexpr const char* kLibHelper = "return { bonus = 5 }\n";
+constexpr const char* kLibProbeScript =
+    "local aaa = og.use('aaa')\n"
+    "local helper = og.use('helper')\n"
+    "og.log('libpack', aaa.tag, helper.bonus)\n";
+
+std::filesystem::path make_scratch_lib_pack()
+{
+    std::string templ =
+        (std::filesystem::temp_directory_path() / "og_libpack_XXXXXX")
+            .string();
+    char* made = ::mkdtemp(templ.data());
+    if (made == nullptr)
+        return {};
+    const std::filesystem::path root(made);
+    std::error_code ec;
+    std::filesystem::create_directories(root / "lib", ec);
+    std::filesystem::create_directories(root / "scripts", ec);
+    if (ec)
+        return {};
+    const auto put = [&](const std::filesystem::path& p,
+                         const std::string& bytes) {
+        std::ofstream out(p, std::ios::binary);
+        out << bytes;
+    };
+    put(root / "lib" / "aaa.lua", kLibAaa);
+    put(root / "lib" / "helper.lua", kLibHelper);
+    put(root / "lib" / "notes.txt", "not lua; must be ignored\n");
+    put(root / "lib" / "empty.lua", "");  // unreadable/empty: warn + skip
+    put(root / "scripts" / "probe.lua", kLibProbeScript);
+    put(root / "classpack.yaml",
+        "pack: org.test.libpack\n"
+        "families:\n"
+        "  living:\n"
+        "    - id: libpack:tuned\n"
+        "      wire_id: auto\n"
+        "      name: \"TUNED\"\n"
+        "      tuning: {cap: 11}\n");
+    return root;
+}
+
+}  // namespace
+
+// One mount drives the whole Stage-1 resources contract: lib/*.lua (and
+// only *.lua with content) registers under deterministic packs/<id>/lib/
+// chunk names, the pack's script og.use-binds the exports when the shared
+// VM rebuilds, classpack.yaml tuning reaches the gameplay store, the MP
+// transfer manifest carries the lib files (they are pack CONTENT — the
+// same walk that ships scripts ships lib), and unmount+refresh removes all
+// of it.
+TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+
+    const std::filesystem::path root = make_scratch_lib_pack();
+    ASSERT_FALSE(root.empty()) << "scratch pack creation failed";
+    ASSERT_TRUE(og::resources::mount(root.string().c_str(),
+                                     "packs/org.test.libpack", 1));
+    og::resources::refresh_pack_scripts();
+
+    // Registration: exactly the two real modules, filename-lexicographic,
+    // with the virtual-tree chunk names the loader will report.
+    std::vector<const og::script::PackLibModule*> mine;
+    for (const og::script::PackLibModule& m : og::script::pack_lib_modules())
+    {
+        if (m.pack_id == "org.test.libpack")
+            mine.push_back(&m);
+    }
+    ASSERT_EQ(mine.size(), 2u)
+        << "notes.txt and empty.lua must not have registered";
+    EXPECT_EQ(mine[0]->name, "aaa");
+    EXPECT_EQ(mine[0]->chunk_name, "packs/org.test.libpack/lib/aaa.lua");
+    EXPECT_EQ(mine[1]->name, "helper");
+    EXPECT_EQ(mine[1]->source, kLibHelper);
+
+    // Load: the rebuilt shared VM ran the modules and the pack script.
+    const std::vector<std::string>& log =
+        og::script::active_world_scripts().host().log();
+    bool saw_probe = false;
+    for (const std::string& line : log)
+        saw_probe = saw_probe || line == "libpack\taaa\t5";
+    EXPECT_TRUE(saw_probe)
+        << "probe.lua must have read both lib exports through og.use";
+
+    // Tuning: the classpack.yaml `tuning:` map reached the gameplay store
+    // through the same install pass.
+    const int tuned_id = og::families::resolve_family_string_id(
+        Order::Living, "libpack:tuned");
+    ASSERT_GE(tuned_id, 0);
+    const og::script::TuningMap* tuned =
+        og::script::family_tuning(Order::Living, tuned_id);
+    ASSERT_NE(tuned, nullptr);
+    ASSERT_EQ(tuned->size(), 1u);
+    EXPECT_EQ((*tuned)[0].key, "cap");
+    EXPECT_EQ((*tuned)[0].value.integer, 11);
+
+    // Transfer: the host-side manifest walk ships lib/ (and classpack.yaml)
+    // as ordinary pack content. Tuning rides INSIDE classpack.yaml — it is
+    // load-time pack data, never wire state.
+    bool found_pack = false;
+    for (const og::sim::HostedPack& hp :
+         og::resources::build_transferable_packs())
+    {
+        if (hp.manifest.pack_id != "org.test.libpack")
+            continue;
+        found_pack = true;
+        std::vector<std::string> paths;
+        for (const auto& f : hp.manifest.files)
+            paths.push_back(f.path);
+        EXPECT_NE(paths.end(),
+                  std::find(paths.begin(), paths.end(), "lib/aaa.lua"));
+        EXPECT_NE(paths.end(),
+                  std::find(paths.begin(), paths.end(), "lib/helper.lua"));
+        EXPECT_NE(paths.end(),
+                  std::find(paths.begin(), paths.end(), "scripts/probe.lua"));
+        EXPECT_NE(paths.end(),
+                  std::find(paths.begin(), paths.end(), "classpack.yaml"));
+    }
+    EXPECT_TRUE(found_pack)
+        << "the mounted scratch pack must be transferable";
+
+    // Unmount: modules, scripts and tuning all follow the mount out.
+    ASSERT_TRUE(og::resources::unmount(root.string().c_str()));
+    og::resources::refresh_pack_scripts();
+    for (const og::script::PackLibModule& m : og::script::pack_lib_modules())
+        EXPECT_NE(m.pack_id, "org.test.libpack");
+    EXPECT_EQ(og::script::family_tuning(Order::Living, tuned_id), nullptr)
+        << "an unmounted pack must leave no tuning behind";
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }

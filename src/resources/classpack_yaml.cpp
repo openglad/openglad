@@ -13,6 +13,7 @@
 
 #include <yaml.h>
 
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 
@@ -77,10 +78,12 @@ struct Cursor {
 
 // One scalar value; `null` marks an explicit YAML null (plain ~ / null /
 // empty), which nullable fields keep and every other field treats as
-// "not declared".
+// "not declared". `plain` records the style: tuning values use it to keep
+// a QUOTED "5" a string while a plain 5 becomes a number.
 struct Scalar {
     std::string text;
     bool null = false;
+    bool plain = false;
 };
 
 Scalar scalar_of(const yaml_event_t& ev)
@@ -90,7 +93,8 @@ Scalar scalar_of(const yaml_event_t& ev)
     const auto length = static_cast<std::size_t>(ev.data.scalar.length);
     if (value != nullptr)
         s.text.assign(value, length);
-    if (ev.data.scalar.style == YAML_PLAIN_SCALAR_STYLE &&
+    s.plain = ev.data.scalar.style == YAML_PLAIN_SCALAR_STYLE;
+    if (s.plain &&
         (s.text.empty() || s.text == "~" || s.text == "null" ||
          s.text == "Null" || s.text == "NULL"))
         s.null = true;
@@ -175,6 +179,34 @@ bool parse_float_strict(const std::string& text, float& out)
         return false;
     char* end = nullptr;
     const float value = std::strtof(text.c_str(), &end);
+    if (end == text.c_str() || *end != '\0')
+        return false;
+    out = value;
+    return true;
+}
+
+// Tuning-value parses. Tuning integers are int64 (they land in Lua
+// integers, which are int64) and tuning floats are double (Lua numbers),
+// so neither narrows on the way into og.tuning.
+bool parse_int64_strict(const std::string& text, std::int64_t& out)
+{
+    if (text.empty())
+        return false;
+    errno = 0;
+    char* end = nullptr;
+    const long long value = std::strtoll(text.c_str(), &end, 10);
+    if (end == text.c_str() || *end != '\0' || errno == ERANGE)
+        return false;
+    out = static_cast<std::int64_t>(value);
+    return true;
+}
+
+bool parse_double_strict(const std::string& text, double& out)
+{
+    if (text.empty())
+        return false;
+    char* end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
     if (end == text.c_str() || *end != '\0')
         return false;
     out = value;
@@ -323,13 +355,91 @@ bool set_string_list(Cursor& c, const std::string& key,
     return true;
 }
 
+// --- tuning: map (quality plan Stage 1; read via og.tuning) -------------
+
+// Classifies one tuning scalar. Quoted scalars stay strings whatever they
+// spell; plain scalars try int64, then boolean, then double, then fall
+// back to a plain string. A null is an error — tuning keys carry values.
+bool classify_tuning_value(Cursor& c, const std::string& key,
+                           const Scalar& v, ClasspackTuningValue& out)
+{
+    if (v.null) {
+        c.error("tuning '" + key + "' must not be null");
+        return false;
+    }
+    if (!v.plain) {
+        out.kind = ClasspackTuningValue::Kind::String;
+        out.string = v.text;
+        return true;
+    }
+    if (parse_int64_strict(v.text, out.integer)) {
+        out.kind = ClasspackTuningValue::Kind::Integer;
+        return true;
+    }
+    if (v.text == "true" || v.text == "false") {
+        out.kind = ClasspackTuningValue::Kind::Boolean;
+        out.boolean = v.text == "true";
+        return true;
+    }
+    if (parse_double_strict(v.text, out.number)) {
+        out.kind = ClasspackTuningValue::Kind::Number;
+        return true;
+    }
+    out.kind = ClasspackTuningValue::Kind::String;
+    out.string = v.text;
+    return true;
+}
+
+// The body of one `tuning:` mapping (MAPPING_START already consumed).
+// Scalar values only — a nested list or mapping fails the pack, strict
+// like every other malformed value.
+bool parse_tuning_map(Cursor& c, std::vector<ClasspackTuningPair>& out)
+{
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type != YAML_SCALAR_EVENT) {
+            yaml_event_delete(&ev);
+            c.error("tuning keys must be scalars");
+            return false;
+        }
+        ClasspackTuningPair pair;
+        pair.key = scalar_of(ev).text;
+        yaml_event_delete(&ev);
+        if (pair.key.empty()) {
+            c.error("tuning: a value without a key");
+            return false;
+        }
+
+        yaml_event_t vev;
+        if (!c.next(vev))
+            return false;
+        if (vev.type != YAML_SCALAR_EVENT) {
+            yaml_event_delete(&vev);
+            c.error("tuning '" + pair.key + "' must be a scalar");
+            return false;
+        }
+        const Scalar value = scalar_of(vev);
+        yaml_event_delete(&vev);
+        if (!classify_tuning_value(c, pair.key, value, pair.value))
+            return false;
+        out.push_back(std::move(pair));
+    }
+}
+
 // --- generic entry walker ----------------------------------------------
 
 // Walks the key/value pairs of one family entry (MAPPING_START already
 // consumed). on_scalar / on_list return false to abort (cursor error set).
+// `tuning` receives the entry's `tuning:` map (every order has one).
 template <typename SetScalarFn, typename SetListFn>
-bool parse_entry_fields(Cursor& c, SetScalarFn&& on_scalar,
-                        SetListFn&& on_list)
+bool parse_entry_fields(Cursor& c, std::vector<ClasspackTuningPair>& tuning,
+                        SetScalarFn&& on_scalar, SetListFn&& on_list)
 {
     while (true) {
         yaml_event_t ev;
@@ -368,8 +478,13 @@ bool parse_entry_fields(Cursor& c, SetScalarFn&& on_scalar,
                 break;
             }
             case YAML_MAPPING_START_EVENT:
-                // Unknown nested mapping: skip (forward compatibility).
                 yaml_event_delete(&vev);
+                if (key == "tuning") {
+                    if (!parse_tuning_map(c, tuning))
+                        return false;
+                    break;
+                }
+                // Unknown nested mapping: skip (forward compatibility).
                 if (!skip_node(c, YAML_MAPPING_START_EVENT))
                     return false;
                 break;
@@ -389,7 +504,7 @@ bool parse_entry_fields(Cursor& c, SetScalarFn&& on_scalar,
 bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
 {
     return parse_entry_fields(
-        c,
+        c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
                 if (!v.null)
@@ -470,7 +585,7 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
 bool parse_weapon_entry(Cursor& c, ClasspackWeaponEntry& e)
 {
     return parse_entry_fields(
-        c,
+        c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
                 if (!v.null)
@@ -517,7 +632,7 @@ bool parse_weapon_entry(Cursor& c, ClasspackWeaponEntry& e)
 bool parse_effect_entry(Cursor& c, ClasspackEffectEntry& e)
 {
     return parse_entry_fields(
-        c,
+        c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
                 if (!v.null)
@@ -550,7 +665,7 @@ bool parse_effect_entry(Cursor& c, ClasspackEffectEntry& e)
 bool parse_treasure_entry(Cursor& c, ClasspackTreasureEntry& e)
 {
     return parse_entry_fields(
-        c,
+        c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
                 if (!v.null)
@@ -579,7 +694,7 @@ bool parse_treasure_entry(Cursor& c, ClasspackTreasureEntry& e)
 bool parse_generator_entry(Cursor& c, ClasspackGeneratorEntry& e)
 {
     return parse_entry_fields(
-        c,
+        c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
                 if (!v.null)

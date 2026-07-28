@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -33,7 +34,9 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
+#include <utility>
 
 namespace og::script {
 
@@ -223,6 +226,326 @@ void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
     if (it != st->live_gens.end())
         st->live_gens.erase(it, st->live_gens.end());
 }
+
+// ---------------------------------------------------------------------------
+// Pack lib module registry (og.use) — process-global, mirrors pack_scripts
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<PackLibModule>& lib_module_storage()
+{
+    static std::vector<PackLibModule> modules;
+    return modules;
+}
+
+unsigned& lib_generation_storage()
+{
+    static unsigned generation = 0;
+    return generation;
+}
+
+}  // namespace
+
+void register_pack_lib_module(PackLibModule module)
+{
+    for (PackLibModule& existing : lib_module_storage()) {
+        if (existing.pack_id == module.pack_id &&
+            existing.name == module.name) {
+            existing = std::move(module);
+            lib_generation_storage()++;
+            return;
+        }
+    }
+    lib_module_storage().push_back(std::move(module));
+    lib_generation_storage()++;
+}
+
+void unregister_pack_lib_modules(const std::string& pack_id)
+{
+    auto& modules = lib_module_storage();
+    const auto removed = std::remove_if(
+        modules.begin(), modules.end(),
+        [&](const PackLibModule& m) { return m.pack_id == pack_id; });
+    if (removed == modules.end())
+        return;
+    modules.erase(removed, modules.end());
+    lib_generation_storage()++;
+}
+
+const std::vector<PackLibModule>& pack_lib_modules()
+{
+    return lib_module_storage();
+}
+
+void clear_pack_lib_modules()
+{
+    lib_module_storage().clear();
+    lib_generation_storage()++;
+}
+
+unsigned pack_lib_generation()
+{
+    return lib_generation_storage();
+}
+
+unsigned pack_scripts_build_generation()
+{
+    return pack_scripts_generation() + pack_lib_generation();
+}
+
+// ---------------------------------------------------------------------------
+// Family tuning store (og.tuning) — process-global, rebuilt per install pass
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int tuning_key(Order order, int family_id)
+{
+    return static_cast<int>(order) * 4096 + family_id;
+}
+
+std::map<int, TuningMap>& tuning_storage()
+{
+    static std::map<int, TuningMap> store;
+    return store;
+}
+
+std::uint64_t& tuning_generation_storage()
+{
+    static std::uint64_t generation = 0;
+    return generation;
+}
+
+}  // namespace
+
+void set_family_tuning(Order order, int family_id, TuningMap map)
+{
+    if (map.empty())
+        tuning_storage().erase(tuning_key(order, family_id));
+    else
+        tuning_storage()[tuning_key(order, family_id)] = std::move(map);
+    tuning_generation_storage()++;
+}
+
+const TuningMap* family_tuning(Order order, int family_id)
+{
+    const auto& store = tuning_storage();
+    const auto it = store.find(tuning_key(order, family_id));
+    return it == store.end() ? nullptr : &it->second;
+}
+
+void clear_all_family_tuning()
+{
+    tuning_storage().clear();
+    tuning_generation_storage()++;
+}
+
+std::uint64_t family_tuning_generation()
+{
+    return tuning_generation_storage();
+}
+
+// ---------------------------------------------------------------------------
+// Read-only proxy views (og.use exports, og.tuning tables)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int frozen_newindex(lua_State* L)
+{
+    return luaL_error(L, "attempt to modify a read-only table");
+}
+
+// __len forwarding, so an array-shaped module export keeps a working #.
+int frozen_len(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           lua_rawlen(L, lua_upvalueindex(1))));
+    return 1;
+}
+
+}  // namespace
+
+void push_frozen_view_of_top(lua_State* L)
+{
+    if (!lua_istable(L, -1))
+        return;  // immutable scalar/function exports pass through unwrapped
+    // Stack: data. The proxy is EMPTY, so every read misses into __index and
+    // every write misses into __newindex — the one metatable shape in which
+    // assigning an EXISTING key still errors (a metatable on the data table
+    // itself would only fence absent keys).
+    lua_newtable(L);            // data proxy
+    lua_createtable(L, 0, 4);   // data proxy mt
+    lua_pushvalue(L, -3);
+    lua_setfield(L, -2, "__index");
+    lua_pushcfunction(L, frozen_newindex);
+    lua_setfield(L, -2, "__newindex");
+    lua_pushvalue(L, -3);
+    lua_pushcclosure(L, frozen_len, 1);
+    lua_setfield(L, -2, "__len");
+    lua_pushboolean(L, 0);
+    lua_setfield(L, -2, "__metatable");  // fence, like every handle metatable
+    lua_setmetatable(L, -2);    // data proxy
+    lua_remove(L, -2);          // proxy
+}
+
+// ---------------------------------------------------------------------------
+// og.use — module loading
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const PackLibModule* find_lib_module(const std::string& pack_id,
+                                     const char* name)
+{
+    for (const PackLibModule& m : pack_lib_modules()) {
+        if (m.pack_id == pack_id && m.name == name)
+            return &m;
+    }
+    return nullptr;
+}
+
+// status_tbl[key] as a small enum. "loading" marks an in-flight load (a
+// cycle when seen again), "failed" a load that already errored.
+enum class LibStatus { None, Loading, Failed };
+
+LibStatus lib_status(lua_State* L, VmState* st, const std::string& key)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->lib_status_ref);
+    lua_pushlstring(L, key.data(), key.size());
+    lua_rawget(L, -2);
+    LibStatus status = LibStatus::None;
+    if (lua_isstring(L, -1))
+        status = (std::strcmp(lua_tostring(L, -1), "loading") == 0)
+                     ? LibStatus::Loading
+                     : LibStatus::Failed;
+    lua_pop(L, 2);
+    return status;
+}
+
+void set_lib_status(lua_State* L, VmState* st, const std::string& key,
+                    const char* status_or_null)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->lib_status_ref);
+    lua_pushlstring(L, key.data(), key.size());
+    if (status_or_null == nullptr)
+        lua_pushnil(L);
+    else
+        lua_pushstring(L, status_or_null);
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
+// Pushes the memoized export of key, or pushes nothing and returns false.
+bool push_lib_export(lua_State* L, VmState* st, const std::string& key)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->lib_exports_ref);
+    lua_pushlstring(L, key.data(), key.size());
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 2);
+        return false;
+    }
+    lua_remove(L, -2);
+    return true;
+}
+
+// Loads one module chunk and memoizes its frozen export. Returns true on
+// success. Failures (compile error, runtime error, no exports returned) are
+// recorded on the host and latch status "failed" so every later og.use of
+// the module errors deterministically instead of re-running a broken chunk.
+//
+// The compile is TEXT-ONLY and passes through coverage::bind_compiled_chunk
+// exactly like the two ScriptHost compile sites — both invariants (bytecode
+// refusal, generation binding/scrubbing) quantify over every compile in the
+// process, and this is the third site.
+bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
+                          const PackLibModule& m)
+{
+    lua_State* L = impl.L;
+    const std::string key = m.pack_id + "/" + m.name;
+    set_lib_status(L, st, key, "loading");
+    // Modules resolve their own og.use calls against their OWN pack.
+    const std::string caller_pack = st->current_pack;
+    st->current_pack = m.pack_id;
+
+    bool ok = false;
+    if (luaL_loadbufferx(L, m.source.data(), m.source.size(),
+                         m.chunk_name.c_str(), "t") != LUA_OK) {
+        impl.record_error(m.chunk_name.c_str(), lua_tostring(L, -1));
+        lua_pop(L, 1);
+    } else {
+        coverage::bind_compiled_chunk(L, -1, m.chunk_name, m.source);
+        // A fresh isolated environment per module: modules communicate
+        // through their RETURNED exports only, never through shared
+        // globals (unlike pack scripts, which share the pack environment).
+        impl.push_new_environment();
+        lua_setupvalue(L, -2, 1);
+        if (impl.protected_call(m.chunk_name.c_str(), 0, 1)) {
+            if (lua_isnil(L, -1)) {
+                lua_pop(L, 1);
+                impl.record_error(
+                    m.chunk_name.c_str(),
+                    "module returned no exports (a lib chunk must end with "
+                    "`return <table of pure functions/constants>`)");
+            } else {
+                push_frozen_view_of_top(L);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, st->lib_exports_ref);
+                lua_pushlstring(L, key.data(), key.size());
+                lua_pushvalue(L, -3);
+                lua_rawset(L, -3);
+                lua_pop(L, 2);  // exports table, frozen export
+                ok = true;
+            }
+        }
+    }
+    st->current_pack = caller_pack;
+    set_lib_status(L, st, key, ok ? nullptr : "failed");
+    return ok;
+}
+
+// og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
+// Pack-relative and load-time-only: outside pack load there is no pack to
+// resolve against (and a dispatch-time og.use would be hidden coupling the
+// reader cannot see — bind modules to locals at chunk load).
+int og_use(lua_State* L)
+{
+    const char* name = luaL_checkstring(L, 1);
+    VmState* st = get_vm_state(L);
+    if (st == nullptr || st->owner == nullptr)
+        return luaL_error(L, "og.use: no world scripts active");
+    if (st->current_pack.empty())
+        return luaL_error(L, "og.use: only callable while a pack chunk "
+                             "loads (bind modules to locals at load time)");
+    const std::string key = st->current_pack + "/" + name;
+    switch (lib_status(L, st, key)) {
+        case LibStatus::Loading:
+            return luaL_error(L, "og.use: circular dependency on module "
+                                 "'%s'", name);
+        case LibStatus::Failed:
+            return luaL_error(L, "og.use: module '%s' failed to load", name);
+        case LibStatus::None:
+            break;
+    }
+    if (push_lib_export(L, st, key))
+        return 1;
+    // Not loaded yet: a module (or script) may use a module the eager pass
+    // has not reached — load it on demand, in the same deterministic way.
+    const PackLibModule* m = find_lib_module(st->current_pack, name);
+    if (m == nullptr)
+        return luaL_error(L,
+                          "og.use: no module '%s' in pack '%s' (expected "
+                          "packs/%s/lib/%s.lua)",
+                          name, st->current_pack.c_str(),
+                          st->current_pack.c_str(), name);
+    if (!load_pack_lib_module(st->owner->host().impl(), st, *m))
+        return luaL_error(L, "og.use: module '%s' failed to load", name);
+    push_lib_export(L, st, key);
+    return 1;
+}
+
+}  // namespace
 
 namespace {
 
@@ -561,6 +884,13 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     detail_->state.level_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
     detail_->state.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
+    detail_->state.lib_exports_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
+    detail_->state.lib_status_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
+    detail_->state.tuning_cache_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    detail_->state.tuning_cache_gen = family_tuning_generation();
 
     ensure_handle_metatables(L, &detail_->state);
     install_entity_bindings(L, &detail_->state);
@@ -583,12 +913,37 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     lua_setfield(L, -2, "is_alive");
     lua_pushcfunction(L, og_entity_id);
     lua_setfield(L, -2, "entity_id");
+    lua_pushcfunction(L, og_use);
+    lua_setfield(L, -2, "use");
     lua_pop(L, 2);
 
+    // The registries' combined generation: a module-only mutation must
+    // rebuild long-lived hosts exactly like a script mutation.
+    built_generation_ = pack_scripts_build_generation();
+
+    // Load lib modules first (registration order — pack-id-lexicographic,
+    // then filename-lexicographic), so every pack chunk can og.use them at
+    // its top level. A module another module already pulled in on demand is
+    // settled and skipped; failures are recorded and latched, never fatal.
+    ScriptHost::Impl& host_impl = host_->impl();
+    for (const PackLibModule& m : pack_lib_modules()) {
+        const std::string key = m.pack_id + "/" + m.name;
+        if (lib_status(L, &detail_->state, key) != LibStatus::None)
+            continue;
+        bool settled = push_lib_export(L, &detail_->state, key);
+        if (settled)
+            lua_pop(L, 1);
+        else
+            (void)load_pack_lib_module(host_impl, &detail_->state, m);
+    }
+
     // Replay pack scripts (registration order; env shared per pack).
-    built_generation_ = pack_scripts_generation();
-    for (const PackScript& ps : pack_scripts())
+    // current_pack scopes og.use to the pack whose chunk is loading.
+    for (const PackScript& ps : pack_scripts()) {
+        detail_->state.current_pack = ps.pack_id;
         host_->run_chunk(ps.chunk_name, ps.source, ps.pack_id);
+    }
+    detail_->state.current_pack.clear();
 }
 
 WorldScripts::~WorldScripts() = default;
@@ -628,7 +983,8 @@ WorldScripts& active_world_scripts()
     // Picker-side hooks (level_up/promotions) run with no world; a shared
     // instance rebuilt on pack changes serves them.
     static std::unique_ptr<WorldScripts> ui;
-    if (ui == nullptr || ui->built_generation() != pack_scripts_generation())
+    if (ui == nullptr ||
+        ui->built_generation() != pack_scripts_build_generation())
         ui = std::make_unique<WorldScripts>();
     return *ui;
 }

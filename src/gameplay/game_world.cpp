@@ -127,9 +127,13 @@ og::script::WorldScripts& GameWorld::scripts()
     // Rebuild when the mounted pack set changed (campaign packs mount after
     // world creation; tests remount freely). Rebuild timing is the first
     // dispatch after the change — identical on every peer given identical
-    // mount sequencing, so this stays deterministic.
+    // mount sequencing, so this stays deterministic. The build generation
+    // covers scripts AND og.use lib modules (pack_scripts_build_generation);
+    // comparing against the script counter alone would mismatch forever
+    // once a lib mutation happened and rebuild the VM on every dispatch.
     if (scripts_ != nullptr &&
-        scripts_->built_generation() != og::script::pack_scripts_generation())
+        scripts_->built_generation() !=
+            og::script::pack_scripts_build_generation())
         scripts_.reset();
     if (scripts_ == nullptr)
         scripts_ = std::make_unique<og::script::WorldScripts>();

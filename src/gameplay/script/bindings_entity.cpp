@@ -28,6 +28,7 @@
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
@@ -40,6 +41,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/weap.h>
 
+#include <cmath>
 #include <cstring>
 #include <list>
 #include <string>
@@ -87,6 +89,10 @@ guy* guy_arg(lua_State* L, int idx)
         luaL_error(L, "walker has no guy record");
     return w->myguy;
 }
+
+// Defined with the statistics accessors below; the fused verbs above that
+// section use it too.
+statistics* stats_arg(lua_State* L);
 
 void push_walker_here(lua_State* L, walker* w)
 {
@@ -436,6 +442,36 @@ int m_do_heal_effects(lua_State* L)
     const auto amount = static_cast<short>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 4)));
     w->do_heal_effects(healer, target, amount);
+    return 0;
+}
+
+// walker:heal_clamped(amount[, source]) — the self-heal cluster, fused
+// (quality plan Stage 1). Reproduces orc.lua eat-corpse in EXACTLY this op
+// sequence, which is the parity contract for Stage-2 adoption:
+//   (1) s_set_hitpoints(og.fadd(s_hitpoints(), amount))   float add
+//   (2) do_heal_effects(source, self, og.i16(amount))     source may be nil
+//   (3) if s_hitpoints() > s_max_hitpoints():  clamp to max
+// `amount` is an integer (the transliterated sites pass level products):
+// the heal-marker amount narrows through int16 exactly as og.i16 plus the
+// short parameter did, while the add receives the full value widened
+// number→float, matching the og.fadd operand path bit for bit. The one
+// caller-visible reordering Stage-2 adoption makes — orc's exp credit and
+// notification move AFTER the fused clamp — is observation-free for that
+// site: exp_from_action reads levels and the RNG stream only, and the
+// notice reads the display name, so neither sees hitpoints.
+int m_heal_clamped(lua_State* L)
+{
+    walker* w = self_arg(L);
+    statistics* st = stats_arg(L);  // same guard text as every s_* accessor
+    const lua_Integer amount = luaL_checkinteger(L, 2);
+    walker* source = resolve_walker_or_nil(L, 3);
+    world_arg(L);  // do_heal_effects stamps the world tick; fail loudly first
+    st->set_hitpoints(st->hitpoints() +
+                      static_cast<float>(static_cast<lua_Number>(amount)));
+    w->do_heal_effects(source, w,
+                       static_cast<short>(static_cast<std::uint64_t>(amount)));
+    if (st->hitpoints() > st->max_hitpoints())
+        st->set_hitpoints(st->max_hitpoints());
     return 0;
 }
 
@@ -848,6 +884,122 @@ int og_summon(lua_State* L)
     const Order order = order_from_string(L, 2);
     const auto fam = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
     push_walker_here(L, summon_entity(summoner, order, fam));
+    return 1;
+}
+
+// og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=,
+// max_hp_from_hp=, damage_add=}) → handle | nil — the summon-then-setters
+// cluster, fused (quality plan Stage 1). Reproduces soldier.lua's boomerang
+// EXACTLY; the option applications run in THIS fixed order, which is the
+// parity contract for Stage-2 adoption (each mirrors the named binding's
+// cast chain):
+//   (1) ani_type    → set_ani_type(og.i8-style char narrowing)
+//   (2) lifetime    → set_lifetime(int32)
+//   (3) hp_add      → s_set_hitpoints(og.fadd(s_hitpoints(), hp_add))
+//   (4) max_hp_from_hp (truthy) → s_set_max_hitpoints(s_hitpoints())
+//   (5) damage_add  → set_damage(og.fadd(damage(), damage_add))
+// Absent keys apply nothing. Every option is read and type-checked BEFORE
+// summon_entity runs and an unknown key is an error (checked by comparing
+// the table's entry count with the recognized keys — order-independent, so
+// the message is identical on every peer): R9 wants the failure before the
+// first sim mutation, and a silently ignored typo'd key would be a tuning
+// bug nobody sees. A failed summon returns nil exactly like og.summon, with
+// no options applied.
+int og_summon_configured(lua_State* L)
+{
+    walker* summoner = resolve_walker(L, 1, /*required=*/true);
+    const Order order = order_from_string(L, 2);
+    const auto fam = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    luaL_checktype(L, 4, LUA_TTABLE);
+    world_arg(L);  // summon_entity dereferences the world; fail loudly first
+
+    bool has_ani_type = false;
+    bool has_lifetime = false;
+    bool has_hp_add = false;
+    bool has_max_hp_from_hp = false;
+    bool max_hp_from_hp = false;
+    bool has_damage_add = false;
+    lua_Integer ani_type = 0;
+    lua_Integer lifetime = 0;
+    lua_Number hp_add = 0.0;
+    lua_Number damage_add = 0.0;
+    int recognized = 0;
+    int isnum = 0;
+
+    if (lua_getfield(L, 4, "ani_type") != LUA_TNIL) {
+        ani_type = lua_tointegerx(L, -1, &isnum);
+        if (isnum == 0)
+            return luaL_error(
+                L, "og.summon_configured: 'ani_type' must be an integer");
+        has_ani_type = true;
+        recognized++;
+    }
+    lua_pop(L, 1);
+    if (lua_getfield(L, 4, "lifetime") != LUA_TNIL) {
+        lifetime = lua_tointegerx(L, -1, &isnum);
+        if (isnum == 0)
+            return luaL_error(
+                L, "og.summon_configured: 'lifetime' must be an integer");
+        has_lifetime = true;
+        recognized++;
+    }
+    lua_pop(L, 1);
+    if (lua_getfield(L, 4, "hp_add") != LUA_TNIL) {
+        hp_add = lua_tonumberx(L, -1, &isnum);
+        if (isnum == 0)
+            return luaL_error(
+                L, "og.summon_configured: 'hp_add' must be a number");
+        has_hp_add = true;
+        recognized++;
+    }
+    lua_pop(L, 1);
+    if (lua_getfield(L, 4, "max_hp_from_hp") != LUA_TNIL) {
+        max_hp_from_hp = lua_toboolean(L, -1) != 0;
+        has_max_hp_from_hp = true;
+        recognized++;
+    }
+    lua_pop(L, 1);
+    if (lua_getfield(L, 4, "damage_add") != LUA_TNIL) {
+        damage_add = lua_tonumberx(L, -1, &isnum);
+        if (isnum == 0)
+            return luaL_error(
+                L, "og.summon_configured: 'damage_add' must be a number");
+        has_damage_add = true;
+        recognized++;
+    }
+    lua_pop(L, 1);
+    (void)has_max_hp_from_hp;
+
+    int total = 0;
+    lua_pushnil(L);
+    while (lua_next(L, 4) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next lua_next
+        total++;
+    }
+    if (total != recognized)
+        return luaL_error(L,
+                          "og.summon_configured: unknown option key "
+                          "(allowed: ani_type, lifetime, hp_add, "
+                          "max_hp_from_hp, damage_add)");
+
+    walker* w = summon_entity(summoner, order, fam);
+    if (w == nullptr) {
+        lua_pushnil(L);
+        return 1;
+    }
+    if (has_ani_type)
+        w->set_ani_type(
+            static_cast<char>(static_cast<std::uint64_t>(ani_type)));
+    if (has_lifetime)
+        w->set_lifetime(static_cast<std::int32_t>(lifetime));
+    statistics* st = w->stats();  // never null: walker constructs its stats
+    if (has_hp_add)
+        st->set_hitpoints(st->hitpoints() + static_cast<float>(hp_add));
+    if (max_hp_from_hp)
+        st->set_max_hitpoints(st->hitpoints());
+    if (has_damage_add)
+        w->set_damage(w->damage() + static_cast<float>(damage_add));
+    push_walker_here(L, w);
     return 1;
 }
 
@@ -1347,6 +1499,75 @@ int og_scare_radius(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
+// og.tuning — per-family tuning constants (quality plan Stage 1)
+// ---------------------------------------------------------------------------
+
+// og.tuning(self) → the `tuning:` map self's family declared in
+// classpack.yaml, as a frozen read-only table — key access only; writes
+// raise; no iteration is provided (and none is needed, so the no-pairs rule
+// never comes up). A family that declared nothing gets an EMPTY frozen
+// table, so `og.tuning(self).some_key` is nil rather than an error and a
+// script can carry defaults. Tuning is load-time pack content exactly like
+// the rest of the descriptor: it rides multiplayer transfer inside
+// classpack.yaml and never appears in a snapshot. Views are cached per VM
+// per (order, family) and rebuilt when a pack reinstall bumps the store's
+// generation — a world VM built before a remount keeps serving the values
+// its scripts were loaded against, matching how the scripts themselves
+// behave.
+int og_tuning(lua_State* L)
+{
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    VmState* st = get_vm_state(L);
+    if (st == nullptr)
+        return luaL_error(L, "og.tuning: no world scripts active");
+    if (st->tuning_cache_gen != family_tuning_generation()) {
+        luaL_unref(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
+        lua_newtable(L);
+        st->tuning_cache_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        st->tuning_cache_gen = family_tuning_generation();
+    }
+    const lua_Integer key =
+        static_cast<lua_Integer>(w->query_order()) * 4096 +
+        static_cast<lua_Integer>(w->family());
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
+    lua_rawgeti(L, -1, key);
+    if (lua_istable(L, -1)) {
+        lua_remove(L, -2);
+        return 1;
+    }
+    lua_pop(L, 1);
+    lua_newtable(L);  // cache, data
+    if (const TuningMap* map =
+            family_tuning(w->query_order(), static_cast<int>(w->family()))) {
+        for (const TuningPair& p : *map) {
+            switch (p.value.kind) {
+                case TuningValue::Kind::Integer:
+                    lua_pushinteger(
+                        L, static_cast<lua_Integer>(p.value.integer));
+                    break;
+                case TuningValue::Kind::Number:
+                    lua_pushnumber(L,
+                                   static_cast<lua_Number>(p.value.number));
+                    break;
+                case TuningValue::Kind::Boolean:
+                    lua_pushboolean(L, p.value.boolean ? 1 : 0);
+                    break;
+                case TuningValue::Kind::String:
+                    lua_pushlstring(L, p.value.string.data(),
+                                    p.value.string.size());
+                    break;
+            }
+            lua_setfield(L, -2, p.key.c_str());
+        }
+    }
+    push_frozen_view_of_top(L);
+    lua_pushvalue(L, -1);
+    lua_rawseti(L, -3, key);  // cache[key] = view
+    lua_remove(L, -2);        // drop the cache table, leave the view
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
 // Animation tables (walker::ani)
 // ---------------------------------------------------------------------------
 
@@ -1545,6 +1766,358 @@ int og_ctf_on_flag_touch(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
+// Deterministic arithmetic / branch helpers (Stage-1 quality bindings)
+// ---------------------------------------------------------------------------
+//
+// Stage 2 of the corpus refactor (docs/lua-quality-plan.md) replaces the
+// transliteration's rand-guard trios and if/else clamp ladders with these
+// calls. Each documents the exact C++ semantic it reproduces, and the
+// branchy micro-logic lives here, where gcov measures every arm (a Lua
+// one-line guard is a single coverage point however many ways it can go).
+
+// Shared argument validator: a real Lua number that is not NaN. Stricter
+// than luaL_checknumber on purpose, twice over. No string coercion:
+// og.max/og.min/og.clamp answer with ONE OF THEIR ARGUMENTS, so what goes
+// in must already be the number that comes out. No NaN: every comparison
+// below would silently answer "not less" and hand NaN onward — the sim
+// never produces NaN, and this keeps that true on every build (a script
+// error, not a debug-only assert), so a script that conjures one
+// (math.huge - math.huge) fails loudly at the door instead of laundering
+// it into a walker field.
+void check_number_arg(lua_State* L, int idx)
+{
+    if (lua_type(L, idx) != LUA_TNUMBER)
+        luaL_typeerror(L, idx, "number");
+    if (!lua_isinteger(L, idx) && std::isnan(lua_tonumber(L, idx)))
+        luaL_argerror(L, idx, "NaN");
+}
+
+// og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0
+// contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing
+// the generator (SimRandom returns before the LCG step — core/irandom.h),
+// which is exactly what the hand-written
+//   local r = 0
+//   if n > 0 then r = og.rand(n) end
+// guard trios encode. Negative n behaves as 0 too, absorbing the C++
+// pre-clamp at sites shaped `random(x < 1 ? 0 : x)`. For n > 0 this is
+// og.rand verbatim — the identical int32 cast chain into the identical
+// world RNG — so replacing a guarded og.rand with og.rand0 cannot move the
+// stream. An active world is required on EVERY path (n <= 0 included): the
+// answer is a property of the world's generator, and calling without one
+// is a bug worth hearing about.
+int og_rand0(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer n = luaL_checkinteger(L, 1);
+    if (n <= 0) {
+        lua_pushinteger(L, 0);
+        return 1;
+    }
+    lua_pushinteger(L, static_cast<lua_Integer>(world->rng_.next(
+                           static_cast<std::int32_t>(n))));
+    return 1;
+}
+
+// og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers
+// b only when a < b, og.min answers b only when b < a, so every tie answers
+// a (observable: math.type(og.max(5, 5.0)) is 'integer' while
+// math.type(og.min(5.0, 5)) is 'float'). The comparison is Lua's own exact
+// number ordering — mixed integer/float compares mathematically, never
+// through a lossy int64→double round-trip — and the winning ARGUMENT is
+// returned unchanged, so integer subtype survives into arithmetic
+// downstream.
+int og_max(lua_State* L)
+{
+    check_number_arg(L, 1);
+    check_number_arg(L, 2);
+    lua_pushvalue(L, lua_compare(L, 1, 2, LUA_OPLT) ? 2 : 1);
+    return 1;
+}
+
+int og_min(lua_State* L)
+{
+    check_number_arg(L, 1);
+    check_number_arg(L, 2);
+    lua_pushvalue(L, lua_compare(L, 2, 1, LUA_OPLT) ? 2 : 1);
+    return 1;
+}
+
+// og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v,
+// else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is
+// 'integer'). std::clamp's precondition — hi < lo is UB — is hardened into
+// a script error rather than inherited. Ordering and subtype rules are
+// og.max's.
+int og_clamp(lua_State* L)
+{
+    check_number_arg(L, 1);
+    check_number_arg(L, 2);
+    check_number_arg(L, 3);
+    if (lua_compare(L, 3, 2, LUA_OPLT))
+        return luaL_error(L, "og.clamp: hi < lo (empty range)");
+    int answer = 1;
+    if (lua_compare(L, 1, 2, LUA_OPLT))
+        answer = 2;
+    else if (lua_compare(L, 3, 1, LUA_OPLT))
+        answer = 3;
+    lua_pushvalue(L, answer);
+    return 1;
+}
+
+// og.sign(x) — the sign-extraction idiom the movement code spells
+// `v /= abs(v)` behind a v != 0 guard, as a total function: -1, 0 or 1 as
+// an INTEGER for any number (og.sign(0), og.sign(0.0) and og.sign(-0.0)
+// are all 0). The comparisons run on the double image of x, which
+// preserves sign for every int64: magnitude may round, but the smallest
+// nonzero magnitude, 1, rounds to 1.0 — never to 0 and never across it.
+int og_sign(lua_State* L)
+{
+    check_number_arg(L, 1);
+    const lua_Number v = lua_tonumber(L, 1);
+    lua_Integer s = 0;
+    if (v > 0)
+        s = 1;
+    if (v < 0)
+        s = -1;
+    lua_pushinteger(L, s);
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// og.combat — bindings over the og::combat constexpr helpers
+// (include/openglad/core/combat_math.h)
+// ---------------------------------------------------------------------------
+//
+// One entry per helper the pack corpus re-implements by hand today (the
+// yell_radius/stun_total locals in orc.lua, cleric.lua's glow_bonus, and
+// the og.soften compositions in cleric/druid/thief). Stage 2 deletes those
+// copies; until then both spell the same constexpr. The four flat
+// spellings that predate the namespace (og.scare_duration, og.scare_radius,
+// og.elemental_lifetime, og.image_lifetime) stay where the corpus calls
+// them; new combat_math.h surface lands here.
+
+// og.combat.yell_radius(level) — combat_math.h yell_radius: legacy
+// 160 + 20*L px with a flat cap at kYellRadiusCap (420 = f(13)).
+int og_combat_yell_radius(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::yell_radius(
+                           static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// og.combat.stun_total(cur_raw, add) — combat_math.h stun_total, the orc
+// yell stun accumulator over RAW frozen_delay: cur_raw < 0 (thaw-immunity
+// phase) discards the add and answers cur_raw unchanged; otherwise a
+// negative add counts as 0 and the sum caps monotonically at
+// kFrozenStunStackCap (150) — an already-over-cap value is answered
+// unchanged, never reduced.
+int og_combat_stun_total(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::stun_total(
+                           static_cast<int>(luaL_checkinteger(L, 1)),
+                           static_cast<int>(luaL_checkinteger(L, 2)))));
+    return 1;
+}
+
+// og.combat.bomb_damage(level) — combat_math.h bomb_damage: legacy
+// 15*(L+1) softened over kBombDamageKnee/kBombDamageCeiling (210/300).
+int og_combat_bomb_damage(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::bomb_damage(
+                           static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// og.combat.cloak_total(cur, gain) — combat_math.h cloak_total, the thief
+// cloak accumulator over invisibility_left:
+// max(cur, min(cur + gain, kInvisibilityCloakCap)) — monotonic, so a
+// potion-granted value above the cap (450) is never reduced.
+int og_combat_cloak_total(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::cloak_total(
+                           static_cast<int>(luaL_checkinteger(L, 1)),
+                           static_cast<int>(luaL_checkinteger(L, 2)))));
+    return 1;
+}
+
+// og.combat.glow_bonus(level) — combat_math.h glow_bonus: legacy 110*L
+// with a FLAT cap at kGlowBonusCap (2200 — deliberately not a knee-13
+// soften; the header records why).
+int og_combat_glow_bonus(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::combat::glow_bonus(
+                           static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// og.combat.druid_faerie_lifetime(level) — combat_math.h
+// druid_faerie_lifetime: soften(50 + 40*L, 570, 800).
+int og_combat_druid_faerie_lifetime(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(og::combat::druid_faerie_lifetime(
+                        static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// og.combat.skeleton_lifetime(level) — combat_math.h skeleton_lifetime:
+// soften(125 + 40*L, 645, 900).
+int og_combat_skeleton_lifetime(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(og::combat::skeleton_lifetime(
+                        static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// og.combat.ghost_raise_lifetime(level) — combat_math.h
+// ghost_raise_lifetime: soften(150 + 40*L, 670, 925).
+int og_combat_ghost_raise_lifetime(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(og::combat::ghost_raise_lifetime(
+                        static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
+// ob:add_frozen_stun(n) — the universal application pattern for
+// stun_total, fused into one verb:
+//   ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))
+// in exactly that call order: RAW read (a negative thaw-immunity value is
+// seen by the policy, not masked to 0 first), stun_total's discard/cap,
+// then the short-narrowing setter — statistics::set_frozen_delay itself,
+// dirty-bit semantics included. n narrows to C++ int first (stun_total's
+// parameter type), and the write narrows to short through the same
+// uint64 chain every s_set_* integer setter uses.
+int m_add_frozen_stun(lua_State* L)
+{
+    statistics* st = stats_arg(L);
+    const auto add = static_cast<int>(luaL_checkinteger(L, 2));
+    st->set_frozen_delay(static_cast<short>(static_cast<std::uint64_t>(
+        og::combat::stun_total(st->frozen_delay_raw(), add))));
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Walker property layer (quality plan Stage 1)
+// ---------------------------------------------------------------------------
+//
+// `self.hp` / `self.busy = x` route through the SAME lua_CFunctions the
+// method table registers: kWalkerProperties below is the single source of
+// truth, pairing each property name with the registered getter/setter
+// pointers, so a property cannot drift from its method — narrowing included
+// (writing self.team runs m_set_team_num's unsigned-char narrowing; writing
+// self.ani_type runs m_set_ani_type's char narrowing) and handle validity
+// included (a stale handle raises the identical "stale or dead entity
+// handle" error, because it IS the same code). The accessor is invoked
+// DIRECTLY rather than through lua_call so luaL_error's level-1 position
+// names the accessing Lua line exactly as a method call would; an
+// interposed C frame would erase it.
+//
+// READ RESOLUTION IS METHOD-FIRST, and that is a load-bearing choice, not a
+// tidiness one. `self:busy()` is sugar for `self.busy(self)`: the lookup
+// cannot see whether a call follows, so a name that is both a method and a
+// property can serve only one of the two spellings — and the corpus (and
+// any third-party pack) already calls the method spelling everywhere, so
+// the method MUST keep winning or every `self:busy()` becomes "attempt to
+// call a number value" (found the hard way: cleric.lua:80 under a
+// property-first draft). Concretely:
+//   * names with no method of the same name (hp, max_hp, magicpoints,
+//     max_magicpoints, level, team) read as values: `self.hp`;
+//   * names shadowed by a method (busy, dead, weapons_left, lifetime,
+//     damage, ani_type, current_special, foe, xpos, ypos) keep reading as
+//     the method — `self.busy` is a function, exactly what `self:busy()`
+//     resolves today. Their property READ becomes reachable if Stage 5
+//     ever retires the method name; nothing here needs to change.
+// Reads of unknown names still answer nil, unchanged for every existing
+// script.
+//
+// WRITES have no such conflict — nothing resolved methods through
+// assignment before (any write to a handle raised) — so EVERY writable
+// property works as a write, shadowed-read names included:
+// `self.busy = 5` runs m_set_busy today. An unknown-field write, a write
+// to a read-only property, and a write to a method name each raise a
+// distinct script error where the pre-property userdata rejected every
+// assignment with an opaque "attempt to index" message.
+//
+// The s_*/method spellings stay as permanent functional aliases
+// (docs/lua-style.md S6); Stage 5 deprecates them in docs and stubs only.
+
+struct WalkerProperty {
+    const char* name;
+    lua_CFunction getter;  // reads self at stack index 1
+    lua_CFunction setter;  // self at 1, value at 2; nullptr = read-only
+};
+
+const WalkerProperty kWalkerProperties[] = {
+    {"hp", s_hitpoints, s_set_hitpoints},
+    {"max_hp", s_max_hitpoints, s_set_max_hitpoints},
+    {"magicpoints", s_magicpoints, s_set_magicpoints},
+    {"max_magicpoints", s_max_magicpoints, s_set_max_magicpoints},
+    {"level", s_level, s_set_level},
+    {"busy", m_busy, m_set_busy},
+    {"team", m_team_num, m_set_team_num},
+    {"dead", m_dead, m_set_dead},
+    {"weapons_left", m_weapons_left, m_set_weapons_left},
+    {"lifetime", m_lifetime, m_set_lifetime},
+    {"damage", m_damage, m_set_damage},
+    {"ani_type", m_ani_type, m_set_ani_type},
+    {"current_special", m_current_special, m_set_current_special},
+    {"foe", m_foe, m_set_foe},
+    {"xpos", m_xpos, nullptr},
+    {"ypos", m_ypos, nullptr},
+};
+
+// __index(handle, key): method table first (see the resolution contract
+// above), then the property getters.
+// Upvalues: 1 = method table, 2 = getter table.
+int walker_index(lua_State* L)
+{
+    lua_pushvalue(L, 2);
+    if (lua_rawget(L, lua_upvalueindex(1)) != LUA_TNIL)
+        return 1;  // the method function, exactly as the plain table served
+    lua_pop(L, 1);
+    lua_pushvalue(L, 2);
+    if (lua_rawget(L, lua_upvalueindex(2)) == LUA_TFUNCTION) {
+        const lua_CFunction getter = lua_tocfunction(L, -1);
+        lua_settop(L, 1);  // just the handle — the stack a method call sees
+        return getter(L);
+    }
+    lua_pop(L, 1);
+    lua_pushnil(L);  // unknown name: nil, like any table miss
+    return 1;
+}
+
+// __newindex(handle, key, value): property setters only.
+// Upvalues: 1 = setter table, 2 = getter table (read-only diagnosis),
+// 3 = method table (reassignment diagnosis).
+int walker_newindex(lua_State* L)
+{
+    lua_pushvalue(L, 2);
+    if (lua_rawget(L, lua_upvalueindex(1)) == LUA_TFUNCTION) {
+        const lua_CFunction setter = lua_tocfunction(L, -1);
+        lua_pop(L, 1);
+        lua_remove(L, 2);  // (handle, value) — the stack a set_* call sees
+        return setter(L);
+    }
+    lua_pop(L, 1);
+    const char* key = lua_type(L, 2) == LUA_TSTRING ? lua_tostring(L, 2)
+                                                    : luaL_typename(L, 2);
+    lua_pushvalue(L, 2);
+    const bool read_only =
+        lua_rawget(L, lua_upvalueindex(2)) == LUA_TFUNCTION;
+    lua_pop(L, 1);
+    if (read_only)
+        return luaL_error(L, "walker property '%s' is read-only", key);
+    lua_pushvalue(L, 2);
+    const bool is_method = lua_rawget(L, lua_upvalueindex(3)) != LUA_TNIL;
+    lua_pop(L, 1);
+    if (is_method)
+        return luaL_error(L, "'%s' is a walker method, not a writable "
+                             "property", key);
+    return luaL_error(L, "cannot assign unknown walker field '%s'", key);
+}
+
+// ---------------------------------------------------------------------------
 // Registration tables
 // ---------------------------------------------------------------------------
 
@@ -1621,6 +2194,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"turn_undead", m_turn_undead},
     {"do_summon", m_do_summon},
     {"do_heal_effects", m_do_heal_effects},
+    {"heal_clamped", m_heal_clamped},
     {"transform_to", m_transform_to},
     {"transfer_stats", m_transfer_stats},
     {"spaces_clear", m_spaces_clear},
@@ -1652,6 +2226,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_frozen_delay", s_frozen_delay},
     {"s_set_frozen_delay", s_set_frozen_delay},
     {"s_frozen_delay_raw", s_frozen_delay_raw},
+    {"add_frozen_stun", m_add_frozen_stun},
     {"s_old_family", s_old_family},
     {"s_current_distance", s_current_distance},
     {"s_set_current_distance", s_set_current_distance},
@@ -1720,6 +2295,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"add_fx_ob", og_add_fx_ob},
     {"add_weap_ob", og_add_weap_ob},
     {"summon", og_summon},
+    {"summon_configured", og_summon_configured},
     {"find_near_foe", og_find_near_foe},
     {"find_nearest_blood", og_find_nearest_blood},
     {"find_foes_in_range", og_find_foes_in_range},
@@ -1776,6 +2352,29 @@ const luaL_Reg kOgWorldFuncs[] = {
     // shape used elsewhere in this table.
     {"ctf_on_flag_touch", og_ctf_on_flag_touch},
     {"ctf_flag_touch", og_ctf_on_flag_touch},
+    // Deterministic arithmetic/branch helpers (Stage-1 quality bindings;
+    // definitions and exact-semantics contracts above).
+    {"rand0", og_rand0},
+    {"max", og_max},
+    {"min", og_min},
+    {"clamp", og_clamp},
+    {"sign", og_sign},
+    // Per-family tuning constants (Stage-1 quality bindings).
+    {"tuning", og_tuning},
+    {nullptr, nullptr},
+};
+
+// og.combat.* — installed as a subtable of og by
+// install_entity_bindings_into_og, one entry per bound og::combat helper.
+const luaL_Reg kOgCombatFuncs[] = {
+    {"yell_radius", og_combat_yell_radius},
+    {"stun_total", og_combat_stun_total},
+    {"bomb_damage", og_combat_bomb_damage},
+    {"cloak_total", og_combat_cloak_total},
+    {"glow_bonus", og_combat_glow_bonus},
+    {"druid_faerie_lifetime", og_combat_druid_faerie_lifetime},
+    {"skeleton_lifetime", og_combat_skeleton_lifetime},
+    {"ghost_raise_lifetime", og_combat_ghost_raise_lifetime},
     {nullptr, nullptr},
 };
 
@@ -1909,6 +2508,10 @@ const NamedConst kConstants[] = {
     {"SHOT_DRAIN_CAP", og::combat::kShotDrainCap},
     {"MP_POOL_DAMAGE_CAP", og::combat::kMpPoolDamageCap},
     {"ENEMY_FREEZE_BANK_CAP", og::combat::kEnemyFreezeBankCap},
+    {"STARBURST_ADD_CAP", og::combat::kStarburstAddCap},
+    {"MACE_LIFE_CAP", og::combat::kMaceLifeCap},
+    {"SPRINKLE_REFRESH_OWNER_LEVEL", og::combat::kSprinkleRefreshOwnerLevel},
+    {"SPRINKLE_REFRESH_FLOOR", og::combat::kSprinkleRefreshFloor},
     // Misc
     {"NUM_SPECIALS", NUM_SPECIALS},
     {"MAXOBS", MAXOBS},
@@ -1924,6 +2527,35 @@ void install_entity_bindings(lua_State* L, VmState* st)
     luaL_setfuncs(L, kWalkerMethods, 0);
     lua_pop(L, 1);
 
+    // Property layer: swap the metatable's plain-table __index for the
+    // property-aware closures built from kWalkerProperties (the shared
+    // registration table — see the property-layer comment above). The
+    // method table is the __index closure's FIRST upvalue and is consulted
+    // first, so every method keeps resolving exactly as the plain table
+    // served it — method-first is what keeps `self:busy()` working when a
+    // property shares the name.
+    luaL_getmetatable(L, kWalkerMeta);  // mt
+    lua_newtable(L);                    // mt getters
+    lua_newtable(L);                    // mt getters setters
+    for (const WalkerProperty& p : kWalkerProperties) {
+        lua_pushcfunction(L, p.getter);
+        lua_setfield(L, -3, p.name);
+        if (p.setter != nullptr) {
+            lua_pushcfunction(L, p.setter);
+            lua_setfield(L, -2, p.name);
+        }
+    }
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->walker_methods_ref);
+    lua_pushvalue(L, -3);  // getters
+    lua_pushcclosure(L, walker_index, 2);
+    lua_setfield(L, -4, "__index");
+    lua_pushvalue(L, -1);  // setters
+    lua_pushvalue(L, -3);  // getters
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->walker_methods_ref);
+    lua_pushcclosure(L, walker_newindex, 3);
+    lua_setfield(L, -4, "__newindex");
+    lua_pop(L, 3);  // setters, getters, mt
+
     // Guy handle methods.
     luaL_getmetatable(L, kGuyMeta);
     lua_newtable(L);
@@ -1936,6 +2568,9 @@ void install_entity_bindings_into_og(lua_State* L)
 {
     // Expects the og table at the top of the stack.
     luaL_setfuncs(L, kOgWorldFuncs, 0);
+    lua_newtable(L);
+    luaL_setfuncs(L, kOgCombatFuncs, 0);
+    lua_setfield(L, -2, "combat");
     lua_newtable(L);
     for (const NamedConst& c : kConstants) {
         lua_pushinteger(L, c.value);

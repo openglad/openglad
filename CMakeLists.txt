@@ -2873,6 +2873,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         og_add_unit_group(og_unit_script FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_math.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_props.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
         )
@@ -3505,6 +3507,42 @@ if(BUILD_TESTING)
     # or undeclared shipped-Lua candidate must fail THIS target loudly,
     # naming the repository-side path, instead of breaking every ninja build.
     add_dependencies(coverage_report check_lua_statement_lines_full)
+endif()
+
+# --------------------------------------------------------------------------
+# Modding API stubs drift check (advisory)
+# --------------------------------------------------------------------------
+# docs/modding/og-api.d.lua is GENERATED from the binding registration
+# tables by scripts/modding/gen_api_stubs.py; this target regenerates and
+# byte-compares, and its red output names the regeneration command.
+# Deliberately NOT a build dependency of og_gameplay — the check is
+# advisory until stage 5 of the Lua quality plan promotes it. Run it like
+# coverage_report:
+#
+#   cmake --build <build> --target api_stub_check
+#
+# Like coverage_report, an explicit invocation without Python 3 must fail
+# loudly rather than let "did not run" read as "passed".
+if(Python3_Interpreter_FOUND)
+    add_custom_target(api_stub_check
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/modding/check_api_stubs.py
+                --repo-root ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking docs/modding/og-api.d.lua against the binding registration tables"
+        USES_TERMINAL
+        VERBATIM
+    )
+else()
+    add_custom_target(api_stub_check
+        COMMAND ${CMAKE_COMMAND} -E echo
+                "api_stub_check: needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+        COMMAND ${CMAKE_COMMAND} -E false
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking docs/modding/og-api.d.lua against the binding registration tables"
+        USES_TERMINAL
+        VERBATIM
+    )
 endif()
 
 # --------------------------------------------------------------------------

@@ -214,6 +214,10 @@
             libsndfile
             lodepngHead
             lcov
+            # Pack-Lua editor/CI tooling: reads the generated og.* stubs
+            # (docs/modding/og-api.d.lua) through the repo-root .luarc.json;
+            # headless run: lua-language-server --check .
+            lua-language-server
             ninja
             ncurses
             physfs
@@ -249,6 +253,7 @@
             echo "  Launch: ./build/dev-debug/openglad"
             echo "  Tests:  cmake --preset ci-test && cmake --build --preset ci-test && ctest --preset ci-test"
             echo "  Web:    ./scripts/build_web.sh   (emcc $(emcc --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo '?'))"
+            echo "  LuaLS:  lua-language-server --check .   (og.* stubs: docs/modding/og-api.d.lua)"
           '';
         };
     in

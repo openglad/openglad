@@ -18,6 +18,7 @@
 #include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
+#include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/resources/classpack_yaml.h>
@@ -37,6 +38,7 @@ namespace og::resources {
 int refresh_pack_scripts()
 {
     og::script::clear_pack_scripts();
+    og::script::clear_pack_lib_modules();
     const int scripts = register_mounted_pack_scripts();
     // Mount changes can add/remove classpack.yaml data too (campaign-
     // embedded packs); reinstall keeps registries in step with scripts.
@@ -47,9 +49,38 @@ int refresh_pack_scripts()
 int register_mounted_pack_scripts()
 {
     int registered = 0;
+    int modules = 0;
     // Sorted enumeration keeps the replay order identical on every peer.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {
+        // lib/ modules first (og.use): same deterministic order contract as
+        // scripts — pack-id-lexicographic, then filename-lexicographic —
+        // and the same coverage-inventory declaration, because a module is
+        // engine-loaded pack Lua exactly like a script (every VM compiles
+        // and runs each one once, before any script).
+        const std::string lib_dir = "packs/" + pack_id + "/lib";
+        for (const std::string& file :
+             og::io::physfs_enumerate_files_sorted(lib_dir)) {
+            if (file.size() < 4 ||
+                file.compare(file.size() - 4, 4, ".lua") != 0)
+                continue;
+            const std::string vpath = lib_dir + "/" + file;
+            std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
+            if (bytes.empty()) {
+                LogWarn("class pack lib module unreadable: {}\n", vpath);
+                continue;
+            }
+            std::string source(reinterpret_cast<const char*>(bytes.data()),
+                               bytes.size());
+            if (og::script::coverage::enabled()) {
+                og::script::coverage::declare_pack_source(
+                    vpath, source, og::io::physfs_real_dir(vpath));
+            }
+            og::script::register_pack_lib_module(
+                {pack_id, file.substr(0, file.size() - 4), vpath,
+                 std::move(source)});
+            modules++;
+        }
         const std::string scripts_dir = "packs/" + pack_id + "/scripts";
         for (const std::string& file :
              og::io::physfs_enumerate_files_sorted(scripts_dir)) {
@@ -87,6 +118,8 @@ int register_mounted_pack_scripts()
     }
     if (registered > 0)
         Log("Registered {} class pack script(s)\n", registered);
+    if (modules > 0)
+        Log("Registered {} class pack lib module(s)\n", modules);
     return registered;
 }
 
@@ -235,6 +268,43 @@ bool fold_bit_flags(const std::vector<std::string>& names,
 const char* nullable_cstr(const og::data::NullableString& s)
 {
     return s.is_null ? nullptr : s.value.c_str();
+}
+
+// Converts a parsed `tuning:` map into the gameplay-side store's shape and
+// installs it for the slot. ALWAYS called for an installed entry: tuning
+// belongs to the family definition occupying the wire slot, so an entry
+// without tuning clears whatever a previously installed pack left there
+// (set_family_tuning erases on empty). Scripts read the result through
+// og.tuning(self) as a frozen table.
+void install_family_tuning(
+    Order order, int id,
+    const std::vector<og::data::ClasspackTuningPair>& tuning)
+{
+    og::script::TuningMap map;
+    map.reserve(tuning.size());
+    for (const og::data::ClasspackTuningPair& pair : tuning) {
+        og::script::TuningValue value;
+        switch (pair.value.kind) {
+            case og::data::ClasspackTuningValue::Kind::Integer:
+                value.kind = og::script::TuningValue::Kind::Integer;
+                value.integer = pair.value.integer;
+                break;
+            case og::data::ClasspackTuningValue::Kind::Number:
+                value.kind = og::script::TuningValue::Kind::Number;
+                value.number = pair.value.number;
+                break;
+            case og::data::ClasspackTuningValue::Kind::Boolean:
+                value.kind = og::script::TuningValue::Kind::Boolean;
+                value.boolean = pair.value.boolean;
+                break;
+            case og::data::ClasspackTuningValue::Kind::String:
+                value.kind = og::script::TuningValue::Kind::String;
+                value.string = pair.value.string;
+                break;
+        }
+        map.push_back({pair.key, std::move(value)});
+    }
+    og::script::set_family_tuning(order, id, std::move(map));
 }
 
 // Stamps the entry's fully-qualified `id:` onto the descriptor — the id
@@ -595,7 +665,10 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
         d.playable_order = *e.playable_order;
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    return set_family_descriptor(id, d);
+    if (!set_family_descriptor(id, d))
+        return false;
+    install_family_tuning(Order::Living, id, e.tuning);
+    return true;
 }
 
 bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
@@ -645,7 +718,10 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    return set_weapon_family_descriptor(id, d);
+    if (!set_weapon_family_descriptor(id, d))
+        return false;
+    install_family_tuning(Order::Weapon, id, e.tuning);
+    return true;
 }
 
 bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
@@ -681,7 +757,10 @@ bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    return set_effect_family_descriptor(id, d);
+    if (!set_effect_family_descriptor(id, d))
+        return false;
+    install_family_tuning(Order::FX, id, e.tuning);
+    return true;
 }
 
 bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
@@ -712,7 +791,10 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    return set_treasure_family_descriptor(id, d);
+    if (!set_treasure_family_descriptor(id, d))
+        return false;
+    install_family_tuning(Order::Treasure, id, e.tuning);
+    return true;
 }
 
 bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
@@ -754,7 +836,10 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
         d.editor_label = e.editor_label->c_str();
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    return set_generator_family_descriptor(id, d);
+    if (!set_generator_family_descriptor(id, d))
+        return false;
+    install_family_tuning(Order::Generator, id, e.tuning);
+    return true;
 }
 
 // Installs every entry of a STORED pack. Wire ids are claimed first, for the
@@ -817,7 +902,10 @@ int install_classpacks()
     // registries end up describing exactly the packs mounted right now (an
     // unmounted pack must not leave a family behind, and auto ids must
     // restart from the same place on every peer). Core pins are untouched.
+    // Tuning follows the same all-or-nothing rebuild: cleared here, then
+    // reinstalled from every mounted pack's classpack.yaml.
     reset_all_registry_mod_slots();
+    og::script::clear_all_family_tuning();
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {

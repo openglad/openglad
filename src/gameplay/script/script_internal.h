@@ -12,6 +12,7 @@
 #include "script_host_impl.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 class walker;
@@ -54,6 +55,21 @@ struct VmState {
     int entity_hooks_ref = -1;    // table: entity_id → { kind → fn }
     std::uint32_t level_hook_kinds = 0;  // bitmask of registered kinds
     bool has_entity_hooks = false;
+    // og.use module system (quality plan Stage 1). lib_exports holds the
+    // frozen export of every loaded module ("<pack>/<name>" keys);
+    // lib_status tracks in-flight/broken loads ("loading" detects cycles,
+    // "failed" makes later og.use calls error deterministically instead of
+    // re-running a broken chunk).
+    int lib_exports_ref = -1;     // table: "pack/name" → frozen export
+    int lib_status_ref = -1;      // table: "pack/name" → "loading"|"failed"
+    // The pack whose chunk (script or lib module) is CURRENTLY loading.
+    // Empty outside pack load — og.use is pack-relative and load-time-only,
+    // so this is both its resolution root and its availability gate.
+    std::string current_pack;
+    // og.tuning per-VM cache of frozen views, invalidated when the process
+    // store's generation moves (pack remount reinstalls tuning).
+    int tuning_cache_ref = -1;    // table: order*4096+family → frozen view
+    std::uint64_t tuning_cache_gen = 0;
 };
 
 // Level-script hook kinds (bit positions in level_hook_kinds and the kind
@@ -89,6 +105,18 @@ std::uint64_t current_dispatch_gen(lua_State* L);
 // so nested dispatches cannot invalidate an outer frame's handles.
 std::uint64_t push_dispatch_gen(lua_State* L);
 void pop_dispatch_gen(lua_State* L, std::uint64_t gen);
+
+// Replaces the TABLE at the top of the stack with a read-only proxy view:
+// an empty table whose metatable __index reaches the real data, whose
+// __newindex raises, whose __len forwards (so array-shaped exports keep #),
+// and whose metatable is fenced. Reads are live, writes error — the freeze
+// og.use exports and og.tuning views share. Shallow by design: nested
+// mutable state inside an export is an R6 violation the lib lint owns, not
+// something the proxy can absorb. Non-table values are left untouched
+// (they are immutable in Lua already). Known limit, documented rather than
+// defended: rawset(proxy, ...) can still shadow entries — the sandbox keeps
+// rawset — which only lets a pack sabotage its own view.
+void push_frozen_view_of_top(lua_State* L);
 
 // Installs entity/world/constants bindings into the VM (walker method table
 // + og.* API). Called once from the WorldScripts constructor.

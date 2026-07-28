@@ -42,7 +42,11 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 | `og.fadd/fsub/fmul/fdiv(a,b)` | One operation performed in C `float`, returned as the exact widened double. One call per C++ float operator; never chain in Lua. |
 | `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching the C++ cast. |
 | `og.trunc(x)` | `(int64)trunc(double)` — C cast-float-to-int semantics. Errors on NaN / out of range. |
-| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call). |
+| `og.max(a,b)` / `og.min(a,b)` | `std::max` / `std::min` exactly: `og.max` answers `b` only when `a < b`, `og.min` answers `b` only when `b < a`, every tie answers `a`. Exact mixed integer/float ordering (never a lossy int64→double round-trip); the winning argument comes back unchanged, so integer subtype survives. Arguments must be numbers (no string coercion); NaN is an error. |
+| `og.clamp(v,lo,hi)` | `std::clamp`: `lo` when `v < lo`, else `hi` when `hi < v`, else `v` itself. `hi < lo` (std's UB precondition) is a script error. Same ordering/subtype/NaN rules as `og.max`. |
+| `og.sign(x)` | `-1`, `0` or `1` as an integer, for any number (`og.sign(-0.0)` is 0; NaN is an error) — the guarded `v /= abs(v)` idiom as a total function. |
+| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`). |
+| `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim, so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
 | `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Also errors when `n <= 0`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
 
@@ -187,6 +191,44 @@ float-typed ones. Setters narrow through the exact C++ parameter type, so an
 out-of-range value wraps the same way the C++ store did — you do not need an
 extra `og.i16()` around a plain setter call.
 
+### Properties
+
+A walker handle also exposes a small set of dotted properties. Each one
+routes through the SAME registered accessor as its method spelling — same
+value, same narrowing, same `stale or dead entity handle` on a bad handle —
+so the two spellings cannot drift apart:
+
+| Property | Backing accessors | Notes |
+|---|---|---|
+| `self.hp` | `s_hitpoints` / `s_set_hitpoints` | float |
+| `self.max_hp` | `s_max_hitpoints` / `s_set_max_hitpoints` | float |
+| `self.magicpoints` | `s_magicpoints` / `s_set_magicpoints` | float |
+| `self.max_magicpoints` | `s_max_magicpoints` / `s_set_max_magicpoints` | float |
+| `self.level` | `s_level` / `s_set_level` | int32 |
+| `self.team` | `team_num` / `set_team_num` | narrows unsigned char |
+| `self.busy` | write-only property | reads stay `self:busy()` |
+| `self.dead` | write-only property | reads stay `self:dead()` |
+| `self.weapons_left` | write-only property | reads stay the method |
+| `self.lifetime`, `self.damage`, `self.ani_type`, `self.current_special`, `self.foe` | write-only properties | reads stay methods |
+| `self.xpos`, `self.ypos` | read-only slots | writing errors (they read as methods) |
+
+**Read resolution is method-first.** `self:busy()` is sugar for
+`self.busy(self)`, so a name that is both a method and a property can only
+serve one spelling — and every existing script calls the method. Reading a
+name in the table above that is also a method (`busy`, `dead`,
+`weapons_left`, `lifetime`, `damage`, `ani_type`, `current_special`, `foe`,
+`xpos`, `ypos`) therefore answers the method function, exactly as before;
+reading `hp`, `max_hp`, `magicpoints`, `max_magicpoints`, `level` or `team`
+answers the value. **Writes have no such conflict** — assignment never
+resolved methods — so every writable property above works as a write,
+including the shadowed-read names: `self.busy = 5` runs `set_busy`'s float
+path today.
+
+Bad writes are script errors with distinct messages: a read-only property
+(`walker property 'xpos' is read-only`), a method name (`'death' is a
+walker method, not a writable property`), anything else (`cannot assign
+unknown walker field '...'`). Unknown reads still answer `nil`.
+
 **Float-valued** (getter returns a double holding an exact `float`):
 `worldx worldy worldz lastx lasty stepsize damage fire_frequency busy
 speed_bonus`.
@@ -282,6 +324,13 @@ s_current_magic_delay` — each with `s_set_*`.
 | `s_controller()` | The walker that owns this stats record, or `nil`. |
 | `s_name()` / `s_set_name(str)` | Entity name string. |
 
+**Fused verbs**
+
+| Method | Meaning |
+|---|---|
+| `add_frozen_stun(n)` | `s_set_frozen_delay(og.combat.stun_total(s_frozen_delay_raw(), n))` fused into one call, in exactly that order: RAW read (thaw-immunity negatives are seen by the policy, not masked to 0 first), `stun_total`'s discard/cap, then the short-narrowing setter. The universal application pattern for orc-yell-style stun adds. |
+| `heal_clamped(amount [, source])` | The self-heal cluster (orc eat-corpse shape), fused in exactly this order: (1) `s_set_hitpoints(og.fadd(s_hitpoints(), amount))`, (2) `do_heal_effects(source, self, og.i16(amount))` — the marker carries the FULL amount, int16-narrowed, even when the clamp follows, (3) clamp to `s_max_hitpoints()`. `amount` is an integer; `source` may be omitted or `nil` (only the target's marker lands then). Requires an active world BEFORE any mutation. |
+
 **Specials and flags**
 
 `s_special_cost(i) → int` and `s_set_special_cost(i, v)` — `i` must be in
@@ -333,6 +382,7 @@ which accepts either a guy handle or a walker.
 | `og.add_fx_ob(order, family)` | Handle or `nil` — fx list. |
 | `og.add_weap_ob(order, family)` | Handle or `nil` — weapon list. |
 | `og.summon(self, order, family)` | Handle or `nil` — spawns at the summoner with `owner` set. |
+| `og.summon_configured(self, order, family, opts)` | `og.summon` plus the standard configuration cluster (soldier-boomerang shape), applied in this FIXED order: `ani_type` (char narrowing), `lifetime` (int32), `hp_add` (float add onto hitpoints), `max_hp_from_hp` (truthy: copy hp into max hp), `damage_add` (float add onto damage). Absent keys apply nothing; every present key is type-checked and an unknown key is an error BEFORE the summon happens (a typo'd option must not half-configure a live entity). A failed summon answers `nil` exactly like `og.summon`. |
 
 `order` is the same string vocabulary as `og.register_hooks`; `family` is a
 **byte**, so resolve it with `og.family_id` first.
@@ -379,6 +429,33 @@ family traits. Only `order == "living"` is supported (anything else errors).
 Recognised flags: `has_returning_weapon`, `is_undead`, `leaves_bloodspot`,
 `is_stationary`. An unknown flag name is an error; an unpopulated family byte
 returns `nil`.
+
+**`og.tuning(self) → frozen table`** — the `tuning:` map self's family
+declared in `classpack.yaml`, for lifting balance constants out of behavior
+code (quality plan Stage 4 fills the core maps in):
+
+```yaml
+families:
+  living:
+    - id: mymod:brute
+      tuning:
+        yell_stun: 10      # plain integer → Lua integer
+        heal_scale: 2.5    # decimal → Lua float
+        eats_corpses: true # boolean
+        label: "5"         # QUOTED stays a string
+```
+
+```lua
+local stun = og.tuning(self).yell_stun or 10
+```
+
+Key access only: reads are plain indexing, absent keys answer `nil` (so
+scripts can carry defaults), writes raise `attempt to modify a read-only
+table`, and no iteration is provided — the no-`pairs` rule never comes up.
+A family that declared nothing gets an empty frozen table. Tuning is
+LOAD-TIME pack content exactly like the rest of the descriptor: it rides
+multiplayer pack transfer inside `classpack.yaml` and never appears in a
+snapshot, and identical values mean byte-identical sim.
 
 ### Animation tables
 
@@ -450,6 +527,72 @@ not have to re-derive them (and cannot get their RNG draws wrong).
 | `og.apply_difficulty_scaling(self, level, hp, mp, dmg, armor)` | — Livings only. |
 | `og.check_special_ai_distance(self, threshold) → bool` | Livings only. |
 
+### `og.combat.*` — combat_math.h, bound directly
+
+Draw-free bindings over the `og::combat` constexpr helpers in
+`include/openglad/core/combat_math.h` — the formulas pack scripts used to
+re-implement by hand or compose from `og.soften` plus copied constants.
+Prefer these over spelling the formula out: the knee/cap policy then has
+exactly one definition. (The four flat spellings that predate the namespace
+— `og.scare_duration`, `og.scare_radius`, `og.elemental_lifetime`,
+`og.image_lifetime` — stay as they are; new combat_math surface lands here.)
+
+| Function | C++ helper (legacy formula) |
+|---|---|
+| `og.combat.yell_radius(level)` | `yell_radius` — orc yell radius, `160 + 20*L` px, flat cap 420. |
+| `og.combat.stun_total(cur_raw, add)` | `stun_total` — orc yell stun accumulator over RAW `frozen_delay`: `cur_raw < 0` (thaw immunity) discards the add; negative adds count as 0; monotonic cap at 150 (an over-cap value is answered unchanged). |
+| `og.combat.bomb_damage(level)` | `bomb_damage` — thief bomb, `soften(15*(L+1), 210, 300)`. |
+| `og.combat.cloak_total(cur, gain)` | `cloak_total` — thief cloak accumulator, `max(cur, min(cur + gain, 350))`; never reduces a potion-granted over-cap value. |
+| `og.combat.glow_bonus(level)` | `glow_bonus` — cleric glow lifetime bonus, `110*L`, FLAT cap 2200 (deliberately not a soften). |
+| `og.combat.druid_faerie_lifetime(level)` | `druid_faerie_lifetime` — `soften(50 + 40*L, 570, 800)`. |
+| `og.combat.skeleton_lifetime(level)` | `skeleton_lifetime` — `soften(125 + 40*L, 645, 900)`. |
+| `og.combat.ghost_raise_lifetime(level)` | `ghost_raise_lifetime` — `soften(150 + 40*L, 670, 925)`. |
+
+## Pack lib modules (`og.use`)
+
+The sandbox strips `require` on purpose, so shared helpers used to be
+impossible — every chunk was an island and duplication was forced. The
+engine-provided replacement: a pack may ship modules as
+`packs/<id>/lib/<name>.lua`, and a chunk of that pack binds them with
+
+```lua
+local common = og.use("living_common")
+```
+
+Rules, each of which is deterministic by construction:
+
+* **Load once, eagerly, in order.** Every new VM loads each registered
+  module exactly once — pack-id-lexicographic, then filename-lexicographic,
+  before any pack script runs — and memoizes the export `og.use` answers.
+  A module may `og.use` a later module of its own pack; it loads on demand
+  inside that load, once.
+* **`return` your exports.** A module must end with
+  `return <table of functions/constants>`; falling off the end is a load
+  error. A non-table export (a bare constant) is allowed and passes through
+  unwrapped.
+* **Exports are frozen.** The returned table is served as a read-only view:
+  writes raise (`attempt to modify a read-only table`), `#` works, the
+  metatable is fenced. The freeze is shallow — which is not an invitation:
+  lib modules must be PURE (tables of functions and constants, no
+  chunk-level mutable state). That is cookbook R6 at the module boundary;
+  a lint enforces it at quality-plan Stage 5.
+* **Pack-relative.** A chunk of pack P resolves P's modules only; the error
+  for a missing module names the expected path
+  (`packs/<id>/lib/<name>.lua`).
+* **Load-time only.** `og.use` works while a pack chunk (script or module)
+  is loading and errors at dispatch time — bind modules to locals at the
+  top of the chunk. A dispatch-time `og.use` would be hidden coupling the
+  reader cannot see.
+* **Same fences as every chunk.** Text-only compile, instruction/memory
+  budgets, fresh isolated environment per module (modules communicate
+  through exports, never globals). Cycles are detected
+  (`circular dependency on module '...'`) and a failed module latches: every
+  later `og.use` of it errors the same way instead of re-running it.
+* **They ride everything automatically.** Lib files are ordinary pack
+  content: the multiplayer transfer manifest ships them, the coverage
+  denominator counts them, and the statement-per-line lint scans them —
+  the same as `scripts/`.
+
 ## Level scripts
 
 ```lua
@@ -497,7 +640,7 @@ pack mounts and unmounts with the campaign.
 | Act types | `ACT_` + `RANDOM FIRE CONTROL GUARD GENERATE DIE SIT` |
 | Sounds | `SOUND_` + `BOW CLANG DIE1 BLAST SPARKLE TELEPORT YO BOLT HEAL CHARGE FWIP EXPLODE DIE2 ROAR MONEY EAT` |
 | Sim event kinds | `EVENT_` + `PLAY_SOUND NOTIFICATION SET_PALETTE REQUEST_REDRAW DAMAGE_TILE` |
-| Combat caps | `SHOT_DRAIN_CAP MP_POOL_DAMAGE_CAP ENEMY_FREEZE_BANK_CAP` |
+| Combat caps | `SHOT_DRAIN_CAP MP_POOL_DAMAGE_CAP ENEMY_FREEZE_BANK_CAP STARBURST_ADD_CAP MACE_LIFE_CAP SPRINKLE_REFRESH_OWNER_LEVEL SPRINKLE_REFRESH_FLOOR` |
 | Facings | `FACE_` + `UP UP_RIGHT RIGHT DOWN_RIGHT DOWN DOWN_LEFT LEFT UP_LEFT`, plus `NUM_FACINGS` |
 | Terrain genres | `TYPE_` + `GRASS WATER TREES DIRT COBBLE GRASS_DARK DIRT_DARK WALL CARPET GRASS_LIGHT AIR GLASS DROP_BLOCK ZSTAIRS SNOW LAVA MARSH ASH UNKNOWN` |
 | Misc | `GRID_SIZE NUM_SPECIALS MAXOBS` |
