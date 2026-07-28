@@ -1213,28 +1213,28 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/scripts/archmage.lua", 509,
+    "packs/core/scripts/archmage.lua", 516,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/scripts/cleric.lua", 284,
+    "packs/core/scripts/cleric.lua", 292,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/scripts/mage.lua", 260,
+    "packs/core/scripts/mage.lua", 270,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/scripts/thief.lua", 179,
+    "packs/core/scripts/thief.lua", 189,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
@@ -1277,84 +1277,84 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "packs/core/classpack.yaml", 25,
+    "packs/core/families/living-00-soldier.yaml", 10,
     "[120",
     "[12000",
     "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_elf_init = {
-    "packs/core/classpack.yaml", 63,
+    "packs/core/families/living-01-elf.yaml", 10,
     "[75",
     "[7500",
     "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/classpack.yaml", 101,
+    "packs/core/families/living-02-archer.yaml", 10,
     "[90",
     "[9000",
     "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "packs/core/classpack.yaml", 139,
+    "packs/core/families/living-03-mage.yaml", 10,
     "[90",
     "[9000",
     "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
-    "packs/core/classpack.yaml", 177,
+    "packs/core/families/living-04-skeleton.yaml", 10,
     "[60",
     "[6000",
     "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/classpack.yaml", 215,
+    "packs/core/families/living-05-cleric.yaml", 10,
     "[120",
     "[12000",
     "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "packs/core/classpack.yaml", 253,
+    "packs/core/families/living-06-elemental.yaml", 10,
     "[100",
     "[10000",
     "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
-    "packs/core/classpack.yaml", 291,
+    "packs/core/families/living-07-faerie.yaml", 10,
     "[75",
     "[7500",
     "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
-    "packs/core/classpack.yaml", 329,
+    "packs/core/families/living-08-slime.yaml", 10,
     "[150",
     "[150e-2",
     "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
-    "packs/core/classpack.yaml", 367,
+    "packs/core/families/living-09-slime.yaml", 10,
     "[80",
     "[8000",
     "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
-    "packs/core/classpack.yaml", 405,
+    "packs/core/families/living-10-slime.yaml", 10,
     "[110",
     "[11000",
     "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "packs/core/classpack.yaml", 443,
+    "packs/core/families/living-11-thief.yaml", 10,
     "[75",
     "[7500",
     "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -1368,56 +1368,56 @@ inline constexpr Mutation kMut_family_ghost_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "packs/core/classpack.yaml", 519,
+    "packs/core/families/living-13-druid.yaml", 10,
     "[110",
     "[11000",
     "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "packs/core/classpack.yaml", 557,
+    "packs/core/families/living-14-orc.yaml", 10,
     "[140",
     "[14000",
     "Cranks ORC HP; flips WalkerDiedByFinal(ORC). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
-    "packs/core/classpack.yaml", 595,
+    "packs/core/families/living-15-orc_captain.yaml", 10,
     "[180",
     "[180e-2",
     "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "packs/core/classpack.yaml", 633,
+    "packs/core/families/living-16-barbarian.yaml", 10,
     "[150",
     "[150e-2",
     "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "packs/core/classpack.yaml", 671,
+    "packs/core/families/living-17-archmage.yaml", 10,
     "[150",
     "[150e-2",
     "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
-    "packs/core/classpack.yaml", 709,
+    "packs/core/families/living-18-beast.yaml", 10,
     "[300",
     "[300e-2",
     "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "packs/core/classpack.yaml", 747,
+    "packs/core/families/living-19-beast.yaml", 10,
     "[300",
     "[300e-2",
     "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
 };
 
 inline constexpr Mutation kMut_family_tower1_init = {
-    "packs/core/classpack.yaml", 785,
+    "packs/core/families/living-20-beast.yaml", 10,
     "[130",
     "[13000",
     "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -1654,7 +1654,7 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
-    "packs/core/classpack.yaml", 291,
+    "packs/core/families/living-07-faerie.yaml", 10,
     "[75",
     "[75000",
     "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick). Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -1677,7 +1677,7 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_drumstick_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 77,
+    "packs/core/scripts/treasure_consumables.lua", 86,
     "  on_eat = drumstick_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and TreasureFamilyRemovedFromOblist flips along with the paired play_sound floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1710,7 +1710,7 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
-    "packs/core/scripts/treasure_valuables.lua", 78,
+    "packs/core/scripts/treasure_valuables.lua", 80,
     "  on_eat = gold_bar_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1733,7 +1733,7 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
-    "packs/core/scripts/treasure_valuables.lua", 82,
+    "packs/core/scripts/treasure_valuables.lua", 84,
     "  on_eat = silver_bar_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1753,7 +1753,7 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 81,
+    "packs/core/scripts/treasure_consumables.lua", 90,
     "  on_eat = magic_potion_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1773,7 +1773,7 @@ inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 93,
+    "packs/core/scripts/treasure_consumables.lua", 102,
     "  on_eat = invis_potion_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1793,7 +1793,7 @@ inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 89,
+    "packs/core/scripts/treasure_consumables.lua", 98,
     "  on_eat = invulnerable_potion_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1813,7 +1813,7 @@ inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 85,
+    "packs/core/scripts/treasure_consumables.lua", 94,
     "  on_eat = flight_potion_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1881,7 +1881,7 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
-    "packs/core/scripts/treasure_valuables.lua", 86,
+    "packs/core/scripts/treasure_valuables.lua", 88,
     "  on_eat = life_gem_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1901,7 +1901,7 @@ inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_key_pickup = {
-    "packs/core/scripts/treasure_valuables.lua", 90,
+    "packs/core/scripts/treasure_valuables.lua", 92,
     "  on_eat = key_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -1930,7 +1930,7 @@ inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
-    "packs/core/scripts/treasure_consumables.lua", 97,
+    "packs/core/scripts/treasure_consumables.lua", 106,
     "  on_eat = speed_potion_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the eater's speed bonus (living.cpp:227-230) is never applied, so under the long-runway input the boosted soldier no longer outruns x=270 — branch_only WalkerPositionMoved(SOLDIER,270,120) flips pass->fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -2429,7 +2429,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/scripts/mage.lua", 213,
+    "packs/core/scripts/mage.lua", 220,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 renames alive->wave, newob->bolt; same halved-heading substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -2898,7 +2898,7 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
-    "packs/core/scripts/treasure_valuables.lua", 86,
+    "packs/core/scripts/treasure_valuables.lua", 88,
     "  on_eat = life_gem_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_LIFE_GEM on_eat hook (life_gem_on_eat), which is the FAMILY_FLASH emitter: on pickup it add_ob(Order::FX, FAMILY_FLASH)s the telflash effect, then award_score emits one ScoreChange and set_dead(1) reaps the gem. With the hook nulled the FLASH is never emitted, no ScoreChange fires, and the gem stays alive in oblist -> EventKindAtLeast(score_change,1) flips 1->0. (Shares core:life_gem's hook-table line with kMut_treasure_life_gem_pickup, exactly as both pins shared the descriptor's .on_eat line before the retarget.) Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
@@ -3014,10 +3014,10 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_cloud_emission = {
-    "packs/core/scripts/effect_cloud.lua", 79,
+    "packs/core/scripts/effect_cloud.lua", 57,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
-    "Neuters core:cloud's on_act hook (false = \"not handled\", the no-registered-hook path), so the cloud stops drifting and damaging what it covers, flipping the cloud-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
+    "Neuters core:cloud's on_act hook (false = \"not handled\", the no-registered-hook path), so the cloud stops drifting and damaging what it covers, flipping the cloud-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from the core pack's classpack data. Re-pointed 79->57 2026-07-28: quality-plan stage 5 moved the duplicated hits() helper into packs/core/lib/effect_common.lua; teeth re-measured the same day via the staged-mutation canary (gtest verdict flipped PASS->FAIL)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_marker_emission_generator[] = {
@@ -3052,7 +3052,7 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_marker_emission = {
-    "packs/core/classpack.yaml", 1397,
+    "packs/core/families/effect-09-marker.yaml", 7,
     "      loops_animation: true",
     "      loops_animation: false",
     "Disables FAMILY_MARKER animation looping at its live source, core:marker's classpack.yaml entry; per effect.cpp:88-113 a non-looping FX falls to ANI_WALK then set_dead(1), so the teleport markers the generator-spawned mages place no longer persist — every marker is reaped from oblist within a couple ticks, dropping the team-1 alive count below its pin. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
@@ -3100,10 +3100,10 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
-    "packs/core/scripts/effect_chain.lua", 139,
+    "packs/core/scripts/effect_chain.lua", 120,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
-    "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
+    "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from the core pack's classpack data. Re-pointed 142->120 2026-07-28: quality-plan stage 5 moved the duplicated hits() helper into packs/core/lib/effect_common.lua; teeth re-measured the same day via the staged-mutation canary (gtest verdict flipped PASS->FAIL)."
 };
 
 inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
@@ -3174,7 +3174,7 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
-    "packs/core/classpack.yaml", 1669,
+    "packs/core/families/generator-00-tent.yaml", 7,
     "      default_weapon: core:skeleton",
     "      default_weapon: core:ghost",
     "Repoints the FAMILY_TENT generator's emitted living family from SKELETON to GHOST at its live source, core:tent's classpack.yaml entry; gloader.cpp:693 copies gfd->default_weapon into the generator and walker.cpp:1059 emits add_ob(Order::Living, default_weapon()), so every emitted walker changes family and WalkerFamilyCount(FAMILY_SKELETON,...) flips to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
@@ -3199,7 +3199,7 @@ inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_tower_emission = {
-    "packs/core/classpack.yaml", 1686,
+    "packs/core/families/generator-01-tower.yaml", 7,
     "      default_weapon: core:mage",
     "      default_weapon: core:skeleton",
     "Repoints the FAMILY_TOWER generator's emitted living family from MAGE to SKELETON at its live source, core:tower's classpack.yaml entry; the tower then spawns no MAGE walkers, so WalkerFamilyCount(FAMILY_MAGE,...) drops to 0 and flips. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
@@ -3217,7 +3217,7 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
-    "packs/core/classpack.yaml", 1703,
+    "packs/core/families/generator-02-bones.yaml", 7,
     "      default_weapon: core:ghost",
     "      default_weapon: core:elf",
     "Repoints the FAMILY_BONES generator's emitted living family from GHOST to ELF at its live source, core:bones's classpack.yaml entry; the BONES generator stops emitting GHOST walkers and the dump's FAMILY_GHOST count drops to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
@@ -3237,7 +3237,7 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {
-    "packs/core/classpack.yaml", 1720,
+    "packs/core/families/generator-03-treehouse.yaml", 7,
     "      default_weapon: core:elf",
     "      default_weapon: core:soldier",
     "Repoints the FAMILY_TREEHOUSE generator's emitted living family from ELF to SOLDIER at its live source, core:treehouse's classpack.yaml entry; create_weapon() does add_ob(Order::Living, default_weapon()) (walker.cpp:1059), so the spawned walkers serialize as FAMILY_SOLDIER and the FAMILY_ELF walker count drops to 0. Stage B retarget 2026-07-26: the C++ registry populate() this pin used to anchor was deleted (design doc §9a stage B) — the five registries now start EMPTY and every descriptor, core or mod, is installed from packs/core/classpack.yaml. The pin therefore names the live equivalent. NOTE: run_mutation_canary.sh refuses a dirty worktree, so this retarget was anchor-checked but not teeth-measured; re-run the canary for this scenario once the branch is committed."
@@ -3342,7 +3342,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "packs/core/classpack.yaml", 25,
+    "packs/core/families/living-00-soldier.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3361,7 +3361,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "packs/core/classpack.yaml", 25,
+    "packs/core/families/living-00-soldier.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3380,7 +3380,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "packs/core/classpack.yaml", 25,
+    "packs/core/families/living-00-soldier.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3399,7 +3399,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "packs/core/classpack.yaml", 25,
+    "packs/core/families/living-00-soldier.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3418,7 +3418,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "packs/core/classpack.yaml", 63,
+    "packs/core/families/living-01-elf.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3438,7 +3438,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "packs/core/classpack.yaml", 63,
+    "packs/core/families/living-01-elf.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3458,7 +3458,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "packs/core/classpack.yaml", 63,
+    "packs/core/families/living-01-elf.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3478,7 +3478,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "packs/core/classpack.yaml", 63,
+    "packs/core/families/living-01-elf.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3499,7 +3499,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "packs/core/classpack.yaml", 101,
+    "packs/core/families/living-02-archer.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3519,7 +3519,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "packs/core/classpack.yaml", 101,
+    "packs/core/families/living-02-archer.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3544,7 +3544,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/classpack.yaml", 101,
+    "packs/core/families/living-02-archer.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3570,7 +3570,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "packs/core/classpack.yaml", 139,
+    "packs/core/families/living-03-mage.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3590,7 +3590,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "packs/core/classpack.yaml", 139,
+    "packs/core/families/living-03-mage.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3610,7 +3610,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/classpack.yaml", 139,
+    "packs/core/families/living-03-mage.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3630,7 +3630,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/classpack.yaml", 139,
+    "packs/core/families/living-03-mage.yaml", 10,
     "[90",
     "[9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3657,7 +3657,7 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
-    "packs/core/classpack.yaml", 177,
+    "packs/core/families/living-04-skeleton.yaml", 10,
     "[60",
     "[6000",
     "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3676,7 +3676,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/classpack.yaml", 215,
+    "packs/core/families/living-05-cleric.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3695,7 +3695,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/classpack.yaml", 215,
+    "packs/core/families/living-05-cleric.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3714,7 +3714,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/classpack.yaml", 215,
+    "packs/core/families/living-05-cleric.yaml", 10,
     "[120",
     "[12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3734,7 +3734,7 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "packs/core/classpack.yaml", 253,
+    "packs/core/families/living-06-elemental.yaml", 10,
     "[100",
     "[10000",
     "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3758,7 +3758,7 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
-    "packs/core/classpack.yaml", 329,
+    "packs/core/families/living-08-slime.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3817,7 +3817,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "packs/core/classpack.yaml", 443,
+    "packs/core/families/living-11-thief.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3843,7 +3843,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "packs/core/classpack.yaml", 443,
+    "packs/core/families/living-11-thief.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3866,7 +3866,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "packs/core/classpack.yaml", 443,
+    "packs/core/families/living-11-thief.yaml", 10,
     "[75",
     "[7500",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3889,7 +3889,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "packs/core/classpack.yaml", 481,
+    "packs/core/families/living-12-ghost.yaml", 10,
     "[50",
     "[5000",
     "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3910,7 +3910,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "packs/core/classpack.yaml", 519,
+    "packs/core/families/living-13-druid.yaml", 10,
     "[110",
     "[11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3931,7 +3931,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "packs/core/classpack.yaml", 519,
+    "packs/core/families/living-13-druid.yaml", 10,
     "[110",
     "[11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3950,7 +3950,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "packs/core/classpack.yaml", 519,
+    "packs/core/families/living-13-druid.yaml", 10,
     "[110",
     "[11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3969,7 +3969,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "packs/core/classpack.yaml", 519,
+    "packs/core/families/living-13-druid.yaml", 10,
     "[110",
     "[11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -3992,7 +3992,7 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "packs/core/classpack.yaml", 557,
+    "packs/core/families/living-14-orc.yaml", 10,
     "[140",
     "[14000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4013,7 +4013,7 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
-    "packs/core/classpack.yaml", 557,
+    "packs/core/families/living-14-orc.yaml", 10,
     "[140",
     "[14000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4034,7 +4034,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "packs/core/classpack.yaml", 633,
+    "packs/core/families/living-16-barbarian.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4055,7 +4055,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "packs/core/classpack.yaml", 633,
+    "packs/core/families/living-16-barbarian.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4076,7 +4076,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "packs/core/classpack.yaml", 671,
+    "packs/core/families/living-17-archmage.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4095,7 +4095,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "packs/core/classpack.yaml", 671,
+    "packs/core/families/living-17-archmage.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4127,7 +4127,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "packs/core/classpack.yaml", 671,
+    "packs/core/families/living-17-archmage.yaml", 10,
     "[150",
     "[15000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state. Stage B retarget 2026-07-26: this is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing (canary: zero flips). The pin now names the YAML line, which carries the RESOLVED number; the new value keeps the anchor as a prefix so check_mutation_pins.py still passes on the mutated tree."
@@ -4168,10 +4168,10 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/scripts/mage.lua", 181,
-    "    og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self.level)",
-    "    og.set_enemy_freeze(og.enemy_freeze() + 0)",
-    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: s_level() -> self.level property (S6); the zeroing substitution is unchanged. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
+    "packs/core/families/living-03-mage.yaml", 47,
+    "freeze_per_level: 11",
+    "freeze_per_level: 0",
+    "Cuts the freeze grant from 20+11*level to a flat 20 ticks at its live source: Stage 4 lifted the coefficients into the mage's tuning: block, so the discriminating value now lives in YAML and the pin follows it (mage.lua reads og.tuning(self).freeze_per_level each cast). At mage level 5 the banked enemy_freeze drops 75 -> 20, enemies act normally for most of the 150-tick window, the level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor. History: Stage A retarget 2026-07-26 moved the pin from the deleted C++ callback to the .lua twin; Stage-2/Stage-3 re-anchors tracked the property layer and the specials-table rewrite; Stage-4 canary (staged-copy YAML mutation) re-proved the flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_invisibility_thief_scen99[] = {
@@ -4191,7 +4191,7 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "packs/core/scripts/thief.lua", 71,
+    "packs/core/scripts/thief.lua", 73,
     "  self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "  self:set_invisibility_left(0)",
     "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the hand-inlined sum/cap chain moved into the Stage-1 og.combat.cloak_total binding; zeroing the setter is unchanged. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -4212,10 +4212,10 @@ inline constexpr FactPredicate kFacts_speed_potion_movement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_speed_potion_movement_scen99 = {
-    "packs/core/scripts/treasure_consumables.lua", 70,
-    "  eater:set_speed_bonus_left(eater:speed_bonus_left() + 50 * self.level)",
-    "  eater:set_speed_bonus_left(0)",
-    "Clears speed_bonus_left so the eater never accumulates the level-5 potion's 250-tick walking-speed window. The soldier walks at base stepsize for the entire 20-tick K_RIGHT window; observed branch xpos drops from 368 (bonus active, stepsize=9 px/tick) to 288 (base stepsize 4), failing WalkerPositionMoved(FAMILY_SOLDIER, 350, 224). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: s_level() -> self.level property (S6); the zeroing substitution is unchanged."
+    "packs/core/families/treasure-12-speed_potion.yaml", 20,
+    "duration_per_level: 50",
+    "duration_per_level: 0",
+    "Zeroes the potion's per-level duration at its live source: Stage 4 lifted the coefficient into core:speed_potion's tuning: block, so the discriminating value lives in YAML and the pin follows it (speed_potion_on_eat adds og.tuning(self).duration_per_level * level). With a 0-tick grant the eater's speed_bonus_left stays 0 and the level-5 potion's 250-tick walking-speed window never opens; the soldier walks at base stepsize for the entire 20-tick K_RIGHT window (observed branch xpos 368 -> 288), failing WalkerPositionMoved(FAMILY_SOLDIER, 350, 224). History: Stage A retarget 2026-07-26 moved the pin from the deleted C++ callback to the .lua twin; Stage-2 re-anchor tracked the property layer; Stage-4 canary (staged-copy YAML mutation) re-proved the flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_invulnerable_potion_scen99[] = {
@@ -4233,10 +4233,10 @@ inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
-    "packs/core/scripts/treasure_consumables.lua", 57,
-    "    eater:set_invulnerable_left(eater:invulnerable_left() + 150 * self.level)",
-    "    eater:set_invulnerable_left(eater:invulnerable_left() + 0)",
-    "Clears invulnerable_left so the soldier loses its invincibility window; team-1 archer arrows now land while the soldier closes melee range, dropping the soldier's HP to ~99 (below the 11500-cent floor) and flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the wrapped continuation line collapsed into one statement under the property layer (S6); the mutation still grants +0."
+    "packs/core/families/treasure-06-invulnerable_potion.yaml", 20,
+    "duration_per_level: 150",
+    "duration_per_level: 0",
+    "Zeroes the potion's per-level duration at its live source: Stage 4 lifted the coefficient into core:invulnerable_potion's tuning: block, so the discriminating value lives in YAML and the pin follows it (invulnerable_potion_on_eat adds og.tuning(self).duration_per_level * level — a 0 grant leaves invulnerable_left at 0). The soldier loses its invincibility window; team-1 archer arrows land while the soldier closes melee range, dropping its HP below the 11500-cent floor and flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000). History: Stage A retarget 2026-07-26 moved the pin from the deleted C++ callback to the .lua twin; Stage-2 re-anchor collapsed the wrapped continuation; Stage-4 canary (staged-copy YAML mutation) re-proved the flip."
 };
 
 
@@ -4513,7 +4513,7 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "packs/core/scripts/archmage.lua", 221,
+    "packs/core/scripts/archmage.lua", 223,
     "      local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
     "      return false",
     "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->burst; same substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -4535,7 +4535,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/scripts/thief.lua", 164,
+    "packs/core/scripts/thief.lua", 173,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  return false",
     "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->cloud. Found ALREADY drifted at the Stage-2 baseline: the stored line 147 held this pin's to-text (a `return false` at deeper indentation contains the 4-space to-text as a substring) while the summon actually sat at line 165, so check_mutation_pins' either-side accept was a false positive and the canary would have refused to apply (exit 6). Teeth re-proven by the Stage-2 staged-copy canary. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -4614,7 +4614,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "packs/core/scripts/thief.lua", 40,
+    "packs/core/scripts/thief.lua", 41,
     "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "  return false",
     "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->bomb; same substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -4754,7 +4754,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/classpack.yaml", 105,
+    "packs/core/families/living-02-archer.yaml", 14,
     "core:arrow",
     "core:knife  # core:arrow",
     "Swaps the archer's default weapon so the post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:193 switch pin was runtime-dead — the parity driver cycles characters itself via cycle_next_character in scenario_runtime.cpp; zero-flip, pre-existing on master). No FAMILY_ARROW is ever emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW). Stage B retarget 2026-07-26: default_weapon is descriptor DATA, and og::resources::install_classpacks() overwrites the C++ field from packs/core/classpack.yaml at startup - so the old C++ pin mutated nothing. The pin now names the YAML line; the original token is kept after the swapped value as an end-of-line comment, so the anchor survives the mutation for check_mutation_pins.py while libyaml sees only core:knife."
@@ -4803,7 +4803,7 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "packs/core/scripts/mage.lua", 180,
+    "packs/core/scripts/mage.lua", 184,
     "  if self.team == og.u8(og.my_team()) then",
     "  if false and self.team == og.u8(og.my_team()) then",
     "Reroutes the player-team FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the foreign-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: team_num() -> self.team property (S6); same neutered condition. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
@@ -4973,7 +4973,7 @@ inline constexpr FactPredicate kFacts_consumable_inventory_state_scen99[] = {
     // rng_drift: arrow damage plus drumstick heal lands in a broad HP band while no-heal mutation remains below; commit 244d4bcf
 };
 inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
-    "packs/core/scripts/treasure_consumables.lua", 24,
+    "packs/core/scripts/treasure_consumables.lua", 25,
     "  eater.hp = og.fadd(eater.hp, amount)",
     "  eater.hp = og.fadd(eater.hp, 0)",
     "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: s_hitpoints get/set -> eater.hp property (S6); the zero-heal substitution is unchanged."

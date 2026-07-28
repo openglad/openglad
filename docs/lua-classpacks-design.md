@@ -97,9 +97,27 @@ returns the widened result. Chains keep per-op float rounding this way.
 Field setters additionally clamp/wrap to the underlying field type, matching
 the C++ member types.
 
+The walker property layer inherits this rule for free: `self.hp = v`,
+`self.team = v`, `self.busy = v`, … route through the SAME registered
+setters as the method spellings (`s_set_hitpoints`, `set_team_num`,
+`set_busy`), so a property write narrows exactly like the method call and
+the two spellings cannot drift. Reads resolve METHOD-FIRST: a name that is
+also a method (`busy`, `dead`, `lifetime`, `damage`, `ani_type`, `foe`, …)
+answers the function, so those reads stay `self:busy()`; only the
+non-colliding names (`hp`, `max_hp`, `magicpoints`, `max_magicpoints`,
+`level`, `team`) read as values.
+
 **R4 — RNG only via `og.rand(n)`** (routes to `current_game->world->rng_`).
 Preserve the ORDER and COUNT of rand calls exactly when transliterating.
 `math.random` does not exist in the sandbox.
+
+`og.rand0(n)` is shorthand for the guarded form, with `IRandom::next`'s real
+contract: `n <= 0` answers 0 **without advancing the stream** (C++ `next(0)`
+returns before the LCG step), and for `n > 0` it is `og.rand` verbatim — so
+replacing `if n > 0 then r = og.rand(n) end` with `r = og.rand0(n)` can never
+move the stream in either case. Keep plain `og.rand` where the bound is
+provably positive: its error on `n <= 0` is a loud tripwire
+([lua-style.md](lua-style.md) S5 governs the choice).
 
 **R5 — Arrays only; `pairs`/`next` do not exist.** Hash-part iteration order
 depends on a per-run seed (Lua 5.4 mixes heap addresses into it), so the
@@ -115,6 +133,13 @@ walker/stats/guy fields. Upvalues and globals holding mutable sim state are
 forbidden — they would escape snapshots and desync a peer that joins
 mid-level. Constants (resolved family bytes, geometry, lookup tables) are the
 one legitimate upvalue.
+
+R6 is enforced at two module boundaries: `og.use` exports are served as
+frozen read-only views (a lib module must be a pure table of functions and
+constants — chunk-level mutable state in a module is exactly the upvalue
+this rule bans), and a registered `specials` table is stored as a PRIVATE
+copy, so mutating the caller's table after registration cannot change
+dispatch any more than reassigning a registered function variable can.
 
 There is no per-entity script storage today: derive state from the world on
 every dispatch instead. The world is the only durable place, and everything
@@ -187,9 +212,26 @@ applies.
 ```
 packs/<pack_id>/                  # a directory, or a zip mounted at this path
 ├── classpack.yaml                # descriptor data + animation sets
+├── families/<name>.yaml          # optional split descriptor files (Stage 4)
+├── lib/<name>.lua                # optional og.use modules
 ├── sprites/<name>.png            # optional pack-shipped art (indexed PNG)
 └── scripts/<file>.lua            # behavior hooks
 ```
+
+**Split layout (quality plan Stage 4).** A pack may carry its descriptor
+data in one `classpack.yaml`, in per-family `families/*.yaml` files, or
+both. The loader parses `classpack.yaml` first (when present), then every
+`families/*.yaml` in sorted filename order, into ONE pack — exactly as if
+the texts were concatenated. Each families file is an ordinary classpack
+document (usually `families:` with a single entry; `anims:` and header
+scalars are legal anywhere, last value wins). A later entry pinning an
+already-declared wire slot overwrites just the data fields it declares
+(the usual sparse-entry semantics) and — like any install — replaces that
+slot's `tuning:` map whole. One unusable file rejects the whole pack. The
+shipped core pack uses the split layout: a header-only `classpack.yaml`
+plus `families/<order>-<NN>-<slug>.yaml` (NN = the pinned wire id, so the
+sorted order reads in id order), with the hand-maintained `tuning:` blocks
+at the end of each entry.
 
 Three places a pack can live, all mounted into the same virtual `packs/`
 tree and all read the same way:
@@ -258,6 +300,11 @@ families:
       names: ["Lothar", "Arthur"]    # random-name pool
       playable: true
       playable_order: 0
+      tuning:                        # optional scalar map, any order's entry;
+        charge_bonus: 12             #   read back via og.tuning(self) as a
+        whirlwind_range_base: 60     #   frozen table. Unquoted integers stay
+        #                            #   Lua integers, decimals become floats,
+        #                            #   QUOTED scalars stay strings.
       # + sprite, animation, and the presentation block (below)
   weapon:
     - id: core:knife
@@ -491,6 +538,22 @@ it is the supported way to override a core family (a mod pack registering
 `core:soldier` replaces the core soldier's behavior). The warning names the
 order, family, hook and source location, and is recorded as a script error,
 so an accidental in-pack collision is diagnosable rather than silent.
+
+**Specials dispatch (the table form of `do_special`).** A living family may
+register `specials = { [1] = fn, [2] = fn, …, default = fn }` instead of a
+`do_special` function (one or the other per call — both is a load error).
+The dispatcher reproduces the retired switch ladders exactly:
+`self:current_special()` selects the entry; a missing index falls to
+`default`; a table with neither consumes the dispatch as a **successful
+no-op** — result `true`, no Lua call, no budget armed, no stream touched.
+Keys are integers 1..255 or `default`, every value a function, an empty
+table is a load error, and the table occupies the `do_special` hook slot,
+so collision reporting and last-wins behave like any named hook. Around
+either form the engine contract is unchanged (`walker_specials.cpp`): the
+caller gates on `magicpoints() >= special_cost(current_special)` BEFORE
+dispatch and deducts that cost only after a `true` answer — so `false`
+means "did not fire, charge nothing", and the no-op fall-through, answering
+`true`, is charged like the ladders' unmatched case always was.
 
 ## 7. Level and entity scripting
 

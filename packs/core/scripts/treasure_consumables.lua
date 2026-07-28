@@ -11,13 +11,14 @@ local function notify_potion_consume(self, eater, name)
   self:set_dead(1)
 end
 
--- drumstick_on_eat: heals a wounded eater by 10*level + rand(10*level).
+-- drumstick_on_eat: heals a wounded eater by base + rand(base), where
+-- base = heal_per_level * level.
 local function drumstick_on_eat(self, eater)
   if eater.hp >= eater.max_hp then
     return true
   end
   -- one draw, og.rand0: the C++ rng returns 0 at level 0 without advancing
-  local base = 10 * self.level
+  local base = og.tuning(self).heal_per_level * self.level
   local roll = og.rand0(base)
   local amount = og.i16(base + roll)  -- C++ `const short amount`
   -- hp is a C++ float: per-op rounding
@@ -31,13 +32,14 @@ local function drumstick_on_eat(self, eater)
   return true
 end
 
--- magic_potion_on_eat: tops the pool off, then overfills it by 50*level.
+-- magic_potion_on_eat: tops the pool off, then overfills it per level.
 local function magic_potion_on_eat(self, eater)
   if eater.magicpoints < eater.max_magicpoints then
     eater.magicpoints = eater.max_magicpoints
   end
   -- magicpoints is a C++ float: per-op rounding
-  eater.magicpoints = og.fadd(eater.magicpoints, 50 * self.level)
+  eater.magicpoints = og.fadd(
+    eater.magicpoints, og.tuning(self).mana_overfill_per_level * self.level)
   notify_potion_consume(self, eater, "Mana")
   return true
 end
@@ -45,7 +47,8 @@ end
 -- flight_potion_on_eat: no effect (and no consumption) on a natural flier.
 local function flight_potion_on_eat(self, eater)
   if not eater:s_query_bit_flags(C.BIT_FLYING) then
-    eater:set_flight_left(eater:flight_left() + 150 * self.level)
+    eater:set_flight_left(eater:flight_left()
+                          + og.tuning(self).duration_per_level * self.level)
     notify_potion_consume(self, eater, "Flight")
   end
   return true
@@ -54,20 +57,26 @@ end
 -- invulnerable_potion_on_eat: likewise inert for the already-invincible.
 local function invulnerable_potion_on_eat(self, eater)
   if not eater:s_query_bit_flags(C.BIT_INVINCIBLE) then
-    eater:set_invulnerable_left(eater:invulnerable_left() + 150 * self.level)
+    eater:set_invulnerable_left(
+      eater:invulnerable_left()
+      + og.tuning(self).duration_per_level * self.level)
     notify_potion_consume(self, eater, "Invulnerability")
   end
   return true
 end
 
 local function invis_potion_on_eat(self, eater)
-  eater:set_invisibility_left(eater:invisibility_left() + 150 * self.level)
+  eater:set_invisibility_left(
+    eater:invisibility_left()
+    + og.tuning(self).duration_per_level * self.level)
   notify_potion_consume(self, eater, "Invisibility")
   return true
 end
 
 local function speed_potion_on_eat(self, eater)
-  eater:set_speed_bonus_left(eater:speed_bonus_left() + 50 * self.level)
+  eater:set_speed_bonus_left(
+    eater:speed_bonus_left()
+    + og.tuning(self).duration_per_level * self.level)
   eater:set_speed_bonus(self.level)
   notify_potion_consume(self, eater, "Speed")
   return true

@@ -1,6 +1,6 @@
 -- core:barbarian — boulder-toss special (cookbook: docs/lua-classpacks-design.md §3).
 
-local WEAP_BOULDER = og.family_id("weapon", "core:boulder")
+local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
 
 local function do_special(self)
   if self:busy() > 0 then

@@ -1,0 +1,18 @@
+# core:ghost_scare — split from classpack.yaml (families load in sorted filename order)
+families:
+  effect:
+    - id: core:ghost_scare
+      wire_id: 1
+      name: "GHOST_SCARE"
+      loops_animation: false
+      creates_hit_effect: false
+      init_bit_flags: []
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

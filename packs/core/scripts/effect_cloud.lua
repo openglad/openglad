@@ -8,29 +8,7 @@
 
 local C = og.C
 
--- The free function hits() from src/gameplay/effect.cpp:189 — an axis-aligned
--- box overlap test on shorts. Pure arithmetic, so it is transliterated rather
--- than bound; og.i16 reproduces the `static_cast<short>` on each sum.
-local function hits(x, y, xsize, ysize, x2, y2, xsize2, ysize2)
-  -- shim kept (all four og.i16 sums): short edges, per the note above.
-  local x2right = og.i16(x2 + xsize2)
-  if x > x2right then
-    return false
-  end
-  local xright = og.i16(x + xsize)
-  if xright < x2 then
-    return false
-  end
-  local y2down = og.i16(y2 + ysize2)
-  if y > y2down then
-    return false
-  end
-  local ydown = og.i16(y + ysize)
-  if ydown < y2 then
-    return false
-  end
-  return true
-end
+local hits = og.use("effect_common").hits
 
 -- cloud_on_act: a poison cloud ages out, fades as it expires, damages any foe
 -- it overlaps, and drifts one random step at a time.

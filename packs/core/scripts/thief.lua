@@ -2,12 +2,12 @@
 
 local C = og.C
 local lc = og.use("living_common")
-local FX_BOMB = og.family_id("fx", "core:bomb")
-local FX_CLOUD = og.family_id("fx", "core:cloud")
+local FX_BOMB = assert(og.family_id("fx", "core:bomb"))
+local FX_CLOUD = assert(og.family_id("fx", "core:cloud"))
 
 local function check_special_ai(self)
   if self:current_special() == 1 then
-    -- drop bomb
+    -- drop bomb (per-tick gate: gate-only ranges stay code, R-KEEP-4)
     local foe = self:foe()
     if foe then
       local distance = self:distance_to_ob(foe)
@@ -20,11 +20,12 @@ local function check_special_ai(self)
     end
     return true -- fallthrough for foe case when distance is acceptable
   elseif self:current_special() == 3 then
+    local t = og.tuning(self)
     local range
     if self:shifter_down() == 0 then
-      range = 80 + 4 * self.level
+      range = t.taunt_range_base + t.taunt_range_per_level * self.level
     else
-      range = 16 + 4 * self.level
+      range = t.charm_range_base + t.charm_range_per_level * self.level
     end
     local _, foe_count = og.find_foes_in_range("ob", range, self)
     return foe_count >= 1
@@ -66,19 +67,22 @@ local function drop_bomb(self)
 end
 
 local function cloak(self)
+  local t = og.tuning(self)
   local cur = self:invisibility_left()
-  local gain = 20 + og.rand(20) * self.level
+  local gain = t.cloak_base + og.rand(t.cloak_roll_span) * self.level
   self:set_invisibility_left(og.combat.cloak_total(cur, gain))
   return true
 end
 
 local function taunt_or_charm(self)
+  local t = og.tuning(self)
   if self:shifter_down() == 0 then
     -- normal taunt
     if lc.is_busy(self) then
       return false
     end
-    local foes = og.foes_in_range(self, 80 + 4 * self.level)
+    local foes = og.foes_in_range(
+      self, t.taunt_range_base + t.taunt_range_per_level * self.level)
     for i = 1, #foes do
       local foe = foes[i]
       -- Two RNG draws in one C++ expression; drawn left (self) first.
@@ -105,8 +109,8 @@ local function taunt_or_charm(self)
   if lc.is_busy(self) then
     return false
   end
-  local foes, foe_count =
-    og.find_foes_in_range("ob", 16 + 4 * self.level, self)
+  local foes, foe_count = og.find_foes_in_range(
+    "ob", t.charm_range_base + t.charm_range_per_level * self.level, self)
   if foe_count < 1 then
     return false
   end
@@ -132,9 +136,13 @@ local function taunt_or_charm(self)
         else
           target:set_foe(self:foe())
         end
-        -- og::combat::soften(75 + 25*diff, kThiefCharmKnee=375,
-        -- kThiefCharmCeiling=490); §2.9: identity through diff 12
-        target:set_charm_left(og.soften(75 + level_diff * 25, 375, 490))
+        -- og::combat::soften(base + per_diff*diff, kThiefCharmKnee=375,
+        -- kThiefCharmCeiling=490); §2.9: identity through diff 12. The
+        -- knee/ceiling stay code: they are engine constexprs
+        -- (combat_math.h), not pack data.
+        target:set_charm_left(og.soften(
+          t.charm_duration_base + level_diff * t.charm_duration_per_diff,
+          375, 490))
         resisted = 0
       end
       handled = handled + 1
@@ -161,6 +169,7 @@ local function poison_cloud(self)
   if lc.is_busy(self) then
     return false
   end
+  local t = og.tuning(self)
   local cloud = og.summon(self, "fx", FX_CLOUD)
   if not cloud then
     return false
@@ -168,8 +177,9 @@ local function poison_cloud(self)
   -- shim kept: busy is a C++ float: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), 5.0))
   cloud:set_ignore(1)
-  cloud.lifetime = 40 + 3 * self.level
-  cloud:set_invisibility_left(10)
+  cloud.lifetime =
+    t.cloud_lifetime_base + t.cloud_lifetime_per_level * self.level
+  cloud:set_invisibility_left(t.cloud_invisibility)
   cloud.ani_type = C.ANI_SPIN
   cloud.damage = self.level
   return true

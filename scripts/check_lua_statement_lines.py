@@ -47,6 +47,35 @@ its own coverage point. The `x and A or B` ternary is two operators and must
 become an if/else — deliberately, because an if/else is measurable and the
 ternary is not.
 
+STYLE-CONTRACT RULES (docs/lua-style.md, enforced since quality-plan stage 5)
+-----------------------------------------------------------------------------
+Rules 1-6 protect the coverage grid. Rules 7-9 protect the Stage-2/3 cleanup
+from growing back (the corpus was de-noised once; these keep it de-noised):
+
+  7. the raw rand guard trio — `if n > 0 then r = og.rand(n) end` in any
+     spelling (`0 < n`, `local r = ...`). `og.rand0(n)` IS that guard:
+     IRandom::next(0) semantics, `n <= 0` answers 0 without advancing the
+     stream (style contract S5).
+  8. bound-helper reimplementation and cross-file duplication (S4/S5):
+     a) a `local function NAME` whose NAME is a bound helper — a function
+        field of `og` or `og.combat` in the generated stubs
+        (docs/modding/og-api.d.lua — which this rule READS, so stub drift
+        starves it; the api_stub_check gate keeps it fed), or one of the
+        fused walker verbs. Never hand-inline an engine helper; call the
+        binding.
+     b) the same `local function NAME` body (token-identical, >= 4 lines)
+        in two or more shipped sources — a shared body belongs in
+        `packs/<id>/lib/` behind `og.use`. The 3-line hook-key identity
+        wrappers (`local function level_up(self) / return lc.level_up(self)
+        / end`) stay legal by design: S1 keeps registration tables reading
+        as identity pairs.
+  9. legacy headers (S2): a shipped pack file (under packs/ or the example
+     packs in docs/modding/) opens with the one-line S2 header ending in
+     the cookbook pointer; the retired four-line boilerplate and dead
+     `-- transliterated from <file>.cpp` provenance comments are findings
+     anywhere they appear. Embedded R"LUA" chunks and .glad archive members
+     have no file header and are exempt from the line-1 shape.
+
 WHAT IS SCANNED
 ---------------
 Whatever scripts/lua_inventory.py calls shipped Lua — the same list the
@@ -90,17 +119,56 @@ cannot resolve the bare name — see lua_inventory.git_executable().
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import pathlib
+import re
 import sys
-from collections import Counter
-from typing import Iterable, List, Optional, Tuple
+from collections import Counter, defaultdict
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import lua_inventory  # noqa: E402  (path set up immediately above)
 from lua_inventory import LuaLexError, Token, tokenize  # noqa: E402,F401
 
 REPO = lua_inventory.REPO
+
+# ---- rule 7-9 machinery (style contract, quality-plan stage 5) -----------
+
+# Rule 8b: identical bodies at or above this many lines are duplication that
+# belongs in packs/<id>/lib/. Chosen one above the 3-line hook-key identity
+# wrappers (header / `return lc.hook(self)` / `end`) that S1 keeps legal.
+DUP_MIN_SPAN = 4
+
+# Rule 8a: fused walker verbs are methods, not og.* fields, so the stub
+# parse cannot name them; the pair is small and changes with the bindings.
+FUSED_VERBS = {
+    "heal_clamped": "walker:heal_clamped",
+    "add_frozen_stun": "walker:add_frozen_stun",
+}
+
+# Rule 8a reads the GENERATED stubs — the same single source of truth the
+# editor tooling uses; api_stub_check keeps the file in sync with the C++
+# registration tables.
+STUB_REL = "docs/modding/og-api.d.lua"
+
+# Rule 9: label prefixes whose file-backed sources must carry the S2 header.
+# og-api.d.lua sits under docs/modding/ but not under examples/ — it is a
+# generated annotation file, not pack code, and starts with `---@meta`.
+S2_PREFIXES = ("packs/", "docs/modding/examples/")
+S2_HEADER_RE = re.compile(
+    r"^-- \S.*\(cookbook: docs/lua-classpacks-design\.md §3\)\.\s*$"
+)
+LEGACY_BOILERPLATE = "-- Cookbook (docs/lua-classpacks-design.md §3) applies"
+PROVENANCE_RE = re.compile(r"--.*\btransliterated from \S+\.(?:cpp|h)\b")
+
+
+class LocalFn(NamedTuple):
+    label: str
+    name: str
+    line: int
+    span: int
+    body_hash: str
 
 # Tokens after which a NAME/literal starts a new statement rather than
 # continuing the current expression.
@@ -152,6 +220,207 @@ def find_header_end(tokens: List[Token], index: int) -> Optional[int]:
                 return j
         j += 1
     return None
+
+
+def load_bound_helper_names() -> Tuple[Dict[str, str], List[str]]:
+    """{local name: qualified display name} rule 8a flags, or a problem.
+
+    Parsed from the generated stubs: every `---@field NAME fun...` under
+    `---@class og` or `---@class og.Combat`, plus the fused walker verbs.
+    A missing stub file is an enumeration-grade problem, not a silent
+    shrink of the rule to nothing.
+    """
+    stub = REPO / STUB_REL
+    if not stub.is_file():
+        return {}, [
+            f"{STUB_REL}: missing — rule 8a reads the generated stubs for "
+            "the bound-helper names (regenerate: "
+            "python3 scripts/modding/gen_api_stubs.py)"
+        ]
+    names: Dict[str, str] = dict(FUSED_VERBS)
+    current: Optional[str] = None
+    for line in stub.read_text(encoding="utf-8").splitlines():
+        cls = re.match(r"---@class (\S+)", line)
+        if cls:
+            current = cls.group(1)
+            continue
+        field = re.match(r"---@field (\w+) fun\b", line)
+        if field and current in ("og", "og.Combat"):
+            prefix = "og.combat." if current == "og.Combat" else "og."
+            names[field.group(1)] = prefix + field.group(1)
+    return names, []
+
+
+def block_end_index(tokens: List[Token], fn_index: int) -> Optional[int]:
+    """Index of the `end` closing the `function` keyword at fn_index.
+
+    Full block matching: for/while push expecting their own `do` (recorded
+    per stack slot, so a `do` inside a nested function cannot satisfy an
+    outer for-header), repeat pops at `until`, everything else at `end`.
+    """
+    stack: List[bool] = [False]  # per-open-block: still awaiting its `do`?
+    j = fn_index + 1
+    while j < len(tokens):
+        token = tokens[j]
+        if token.kind == "keyword":
+            text = token.text
+            if text in ("function", "if"):
+                stack.append(False)
+            elif text in ("for", "while"):
+                stack.append(True)
+            elif text == "do":
+                if stack and stack[-1]:
+                    stack[-1] = False  # the for/while header's own `do`
+                else:
+                    stack.append(False)  # standalone do-block
+            elif text == "repeat":
+                stack.append(False)
+            elif text in ("end", "until"):
+                stack.pop()
+                if not stack:
+                    return j
+        j += 1
+    return None
+
+
+def local_function_records(tokens: List[Token], label: str) -> List[LocalFn]:
+    """Every `local function NAME ... end` in one tokenized source."""
+    records: List[LocalFn] = []
+    for index, token in enumerate(tokens):
+        if not (token.kind == "keyword" and token.text == "function"):
+            continue
+        if index == 0 or tokens[index - 1].text != "local":
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].kind != "name":
+            continue
+        close = block_end_index(tokens, index)
+        if close is None:
+            continue  # unclosed function: the lexer/loader will complain
+        body = tokens[index + 2:close]
+        digest = hashlib.sha256(
+            "\x00".join(f"{t.kind}:{t.text}" for t in body).encode("utf-8")
+        ).hexdigest()[:16]
+        records.append(
+            LocalFn(
+                label=label,
+                name=tokens[index + 1].text,
+                line=token.line,
+                span=tokens[close].line - token.line + 1,
+                body_hash=digest,
+            )
+        )
+    return records
+
+
+def guard_trio_violations(tokens: List[Token], label: str) -> List[str]:
+    """Rule 7 — the raw rand guard trio in either comparison spelling."""
+    found: List[str] = []
+    for index, token in enumerate(tokens):
+        if not (token.kind == "keyword" and token.text == "if"):
+            continue
+        cond = tokens[index + 1:index + 5]
+        if len(cond) < 4 or cond[3].text != "then":
+            continue
+        if cond[0].kind == "name" and cond[1].text == ">" and cond[2].text == "0":
+            bound = cond[0].text
+        elif cond[0].text == "0" and cond[1].text == "<" and cond[2].kind == "name":
+            bound = cond[2].text
+        else:
+            continue
+        k = index + 5
+        if k < len(tokens) and tokens[k].kind == "keyword" and tokens[k].text == "local":
+            k += 1
+        tail = tokens[k:k + 8]
+        if len(tail) < 8:
+            continue
+        shape = (
+            tail[0].kind == "name"
+            and tail[1].text == "="
+            and tail[2].text == "og"
+            and tail[3].text == "."
+            and tail[4].text == "rand"
+            and tail[5].text == "("
+            and tail[6].kind == "name"
+            and tail[6].text == bound
+            and tail[7].text == ")"
+        )
+        if shape:
+            found.append(
+                f"{label}:{token.line}: raw rand guard trio around "
+                f"`og.rand({bound})` — og.rand0({bound}) IS this guard "
+                "(IRandom::next(0): n <= 0 answers 0 without advancing the "
+                "stream; style contract S5)"
+            )
+    return found
+
+
+def header_violations(source: str, label: str) -> List[str]:
+    """Rule 9 — S2 one-line header present, legacy header text absent."""
+    found: List[str] = []
+    is_chunk = ':R"LUA"@' in label or "!" in label
+    lines = source.splitlines()
+    if not is_chunk and label.startswith(S2_PREFIXES):
+        first = lines[0] if lines else ""
+        if not S2_HEADER_RE.match(first):
+            found.append(
+                f"{label}:1: missing the S2 one-line header — `-- <scope> — "
+                "<what the hooks do> (cookbook: "
+                "docs/lua-classpacks-design.md §3).` (style contract S2)"
+            )
+    for number, line in enumerate(lines, start=1):
+        if LEGACY_BOILERPLATE in line:
+            found.append(
+                f"{label}:{number}: retired four-line boilerplate header — "
+                "the S2 one-line header replaced it (style contract S2)"
+            )
+        if PROVENANCE_RE.search(line):
+            found.append(
+                f"{label}:{number}: dead provenance comment — the cited C++ "
+                "source was retired (design doc §9a); name the op sequence "
+                "the code reproduces instead (style contract S3)"
+            )
+    return found
+
+
+def bound_helper_violations(
+    records: List[LocalFn], bound: Dict[str, str]
+) -> List[str]:
+    """Rule 8a — a local function shadowing/reimplementing a bound helper."""
+    found: List[str] = []
+    for record in records:
+        if record.name in bound:
+            found.append(
+                f"{record.label}:{record.line}: `local function "
+                f"{record.name}` reimplements or shadows the bound helper "
+                f"`{bound[record.name]}` — call the binding (style "
+                "contract S5: never hand-inline an engine helper)"
+            )
+    return found
+
+
+def duplicate_body_violations(records: List[LocalFn]) -> List[str]:
+    """Rule 8b — token-identical same-name bodies >= DUP_MIN_SPAN lines in
+    two or more sources."""
+    found: List[str] = []
+    grouped: Dict[Tuple[str, str], List[LocalFn]] = defaultdict(list)
+    for record in records:
+        grouped[(record.name, record.body_hash)].append(record)
+    for (name, _digest), group in sorted(grouped.items()):
+        labels = {record.label for record in group}
+        span = max(record.span for record in group)
+        if len(labels) < 2 or span < DUP_MIN_SPAN:
+            continue
+        sites = ", ".join(
+            f"{record.label}:{record.line}"
+            for record in sorted(group, key=lambda r: (r.label, r.line))
+        )
+        found.append(
+            f"{group[0].label}:{group[0].line}: `local function {name}` "
+            f"({span} lines) is token-identical in {len(labels)} files "
+            f"({sites}) — move the body to packs/<id>/lib/ behind og.use "
+            "(style contract S4)"
+        )
+    return found
 
 
 def violations(source: str, label: str) -> List[str]:
@@ -314,11 +583,24 @@ def main(argv: List[str]) -> int:
         paths, include_untracked=not args.tracked_only
     )
 
+    bound_names, stub_problems = load_bound_helper_names()
+    enumeration_problems.extend(stub_problems)
+
     problems: List[str] = []
+    records: List[LocalFn] = []
     scanned = 0
     for label, source in sources:
         scanned += 1
         problems.extend(violations(source, label))
+        try:
+            tokens = tokenize(source)
+        except LuaLexError:
+            continue  # already reported by violations() above
+        problems.extend(guard_trio_violations(tokens, label))
+        problems.extend(header_violations(source, label))
+        records.extend(local_function_records(tokens, label))
+    problems.extend(bound_helper_violations(records, bound_names))
+    problems.extend(duplicate_body_violations(records))
 
     if enumeration_problems:
         print(
@@ -328,19 +610,26 @@ def main(argv: List[str]) -> int:
         for problem in enumeration_problems:
             print(f"  {problem}")
     if problems:
-        print(f"{len(problems)} pack-Lua line(s) hide more than one decision:")
+        print(
+            f"{len(problems)} pack-Lua lint finding(s) "
+            "(one-decision-per-line rules 1-6, style-contract rules 7-9):"
+        )
         for problem in problems:
             print(f"  {problem}")
         print(
-            "\nOne measurable decision per line: anything sharing a line with "
-            "something already covered shares its coverage point, so untested "
-            "logic reads as covered. Split them "
+            "\nOne measurable decision per line, and the style contract "
+            "(docs/lua-style.md) on top: anything sharing a line with "
+            "something already covered shares its coverage point, and "
+            "de-noised patterns must not grow back. Split or fix them "
             "(see scripts/check_lua_statement_lines.py)."
         )
     if enumeration_problems or problems:
         return 1
     mode = ", tracked files only" if args.tracked_only else ""
-    print(f"pack Lua: one decision per line ({scanned} source(s) scanned{mode})")
+    print(
+        f"pack Lua: one decision per line + style contract "
+        f"({scanned} source(s) scanned{mode})"
+    )
     return 0
 
 

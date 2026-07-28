@@ -4,8 +4,13 @@
     // comes from docs/modding/og-api.d.lua, GENERATED from the C++
     // binding registration tables — regenerate after binding changes:
     //   python3 scripts/modding/gen_api_stubs.py
-    // Headless check (advisory; from the nix dev shell):
-    //   lua-language-server --check .
+    // Headless check (ENFORCED since quality-plan stage 5 — zero
+    // diagnostics under packs/ and docs/modding/; cmake target
+    // check_luals gates coverage_report):
+    //   python3 scripts/check_luals.py
+    // Fix findings in code or generated types; a genuinely dynamic spot
+    // gets a targeted cast/disable-next-line WITH a why-comment. Never
+    // blanket-disable a diagnostic class here.
     "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
 
     // The engine embeds Lua 5.4 (og_lua) and the sandbox loads text-only

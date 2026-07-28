@@ -1,0 +1,20 @@
+# core:silver_bar — split from classpack.yaml (families load in sorted filename order)
+families:
+  treasure:
+    - id: core:silver_bar
+      wire_id: 3
+      name: "SILVER_BAR"
+      init_ignore: false
+      init_frame: 1
+      sprite: ~
+      animation: ~
+      glyph: "$"
+      glyph_ascii: "$"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: 23
+      radar_jitter: 5
+      tuning:
+        # on_eat: score banked per bar level
+        score_per_level: 50

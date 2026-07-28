@@ -6,18 +6,18 @@
 
 local C = og.C
 local lc = og.use("living_common")
-local FX_MARKER = og.family_id("fx", "core:marker")
-local FX_EXPLOSION = og.family_id("fx", "core:explosion")
-local FX_CHAIN = og.family_id("fx", "core:chain")
-local LIVING_ELF = og.family_id("living", "core:elf")
-local LIVING_SOLDIER = og.family_id("living", "core:soldier")
-local LIVING_ARCHER = og.family_id("living", "core:archer")
-local LIVING_ORC = og.family_id("living", "core:orc")
-local LIVING_SKELETON = og.family_id("living", "core:skeleton")
-local LIVING_DRUID = og.family_id("living", "core:druid")
-local LIVING_CLERIC = og.family_id("living", "core:cleric")
-local LIVING_ELEMENTAL = og.family_id("living", "core:elemental")
-local LIVING_ORC_CAPTAIN = og.family_id("living", "core:orc_captain")
+local FX_MARKER = assert(og.family_id("fx", "core:marker"))
+local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
+local FX_CHAIN = assert(og.family_id("fx", "core:chain"))
+local LIVING_ELF = assert(og.family_id("living", "core:elf"))
+local LIVING_SOLDIER = assert(og.family_id("living", "core:soldier"))
+local LIVING_ARCHER = assert(og.family_id("living", "core:archer"))
+local LIVING_ORC = assert(og.family_id("living", "core:orc"))
+local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
+local LIVING_DRUID = assert(og.family_id("living", "core:druid"))
+local LIVING_CLERIC = assert(og.family_id("living", "core:cleric"))
+local LIVING_ELEMENTAL = assert(og.family_id("living", "core:elemental"))
+local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
 
 local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
@@ -190,18 +190,20 @@ local function burst_or_chain(self)
   if lc.is_busy(self) then
     return false
   end
+  local t = og.tuning(self)
   local radius
   if self:shifter_down() ~= 0 then
     if self:has_guy() then
-      radius = 200 + self:g_intelligence() // 2
+      -- Int/2 stays a formula: a guy-stat conversion, not a tuning knob.
+      radius = t.chain_radius_base + self:g_intelligence() // 2
     else
-      radius = 200 + self.level * 5
+      radius = t.chain_radius_base + self.level * t.chain_radius_per_level
     end
   else
-    radius = 80
+    radius = t.burst_radius_base
   end
   local foes, foe_count = og.find_foes_in_range(
-    "ob", radius + 2 * self.level, self)
+    "ob", radius + t.radius_bonus_per_level * self.level, self)
   if foe_count == 0 then
     return false
   end
@@ -277,9 +279,11 @@ local function summon_image(self)
   end
   if self:shifter_down() ~= 0 then
     -- true summoning
-    if self:has_guy() and self:g_intelligence() < 150 then
+    local t = og.tuning(self)
+    if self:has_guy() and self:g_intelligence() < t.summon_int_req then
       if self:user() ~= -1 then
-        og.emit_notification("150 Int required to Summon!")
+        og.emit_notification(string.format(
+          "%d Int required to Summon!", t.summon_int_req))
       end
       return false
     end
@@ -445,9 +449,12 @@ local function mind_control(self)
   if lc.is_busy(self) then
     return false
   end
+  local t = og.tuning(self)
   local mp_after_base_cost = lc.spare_mp(self, self:current_special())
   local foes, foe_count = og.find_foes_in_range(
-    "ob", 80 + 4 * self.level, self)
+    "ob",
+    t.mind_control_range_base + t.mind_control_range_per_level * self.level,
+    self)
   if foe_count < 1 then
     return false
   end

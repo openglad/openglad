@@ -7,23 +7,25 @@
 -- is_valid_score_team() guard, so callers pass the raw team number.
 
 local C = og.C
-local FX_FLASH = og.family_id("fx", "core:flash")
+local FX_FLASH = assert(og.family_id("fx", "core:flash"))
 
--- gold_bar_on_eat: banks 200*level for the eater's team. Only team 0 or a
--- roster character (myguy) can cash a bar in.
+-- gold_bar_on_eat: banks score_per_level*level for the eater's team. Only
+-- team 0 or a roster character (myguy) can cash a bar in.
 local function gold_bar_on_eat(self, eater)
   if eater.team == 0 or eater:has_guy() then
-    og.award_score(eater.team, 200 * self.level)
+    og.award_score(eater.team,
+                   og.tuning(self).score_per_level * self.level)
     self.dead = 1
     og.emit_sound(C.SOUND_MONEY)
   end
   return true
 end
 
--- silver_bar_on_eat: same shape, 50*level.
+-- silver_bar_on_eat: same shape, its own (smaller) score_per_level.
 local function silver_bar_on_eat(self, eater)
   if eater.team == 0 or eater:has_guy() then
-    og.award_score(eater.team, 50 * self.level)
+    og.award_score(eater.team,
+                   og.tuning(self).score_per_level * self.level)
     self.dead = 1
     og.emit_sound(C.SOUND_MONEY)
   end

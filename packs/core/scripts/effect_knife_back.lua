@@ -1,7 +1,7 @@
 -- core:knife_back — thrown blade walks back to its owner, probing hits (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-local WEAP_KNIFE = og.family_id("weapon", "core:knife")
+local WEAP_KNIFE = assert(og.family_id("weapon", "core:knife"))
 
 -- knife_back_on_act: walk the blade back toward its thrower one stepsize at a
 -- time, probing each step with a throwaway knife so the return trip still
@@ -43,7 +43,7 @@ local function on_act(self)
     -- query_object_passable draws (obmap miss roll), and attack draws too.
     if not og.query_object_passable(og.fadd(self:xpos(), xd),
                                     og.fadd(self:ypos(), yd), probe) then
-      probe:attack(probe:collide_ob())
+      probe:attack(probe:collide_ob() --[[@as og.Walker]]) -- a false object-passable query recorded this collider
       -- damage is a C++ float: fdiv is a genuine float quarter
       self:set_damage(og.fdiv(self:damage(), 4.0))
     end

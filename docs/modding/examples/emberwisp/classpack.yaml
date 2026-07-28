@@ -65,13 +65,16 @@ families:
       # damage, stepsize and fire frequency straight out of this list.
       derived_bonuses: [70, 40, 11, 0, 0, 0, 5, 9]
       stat_costs: [30, 8, 30, 8, 60, 200]
-      special_costs: [5000, 5000, 5000, 5000, 5000, 5000]
+      # MP cost per special slot (slot 0 is "no special"). The engine
+      # gates do_special on magicpoints >= cost and deducts the cost only
+      # after the hook answers true; 5000 marks a slot as unavailable.
+      special_costs: [5000, 5, 5000, 5000, 5000, 5000]
       weapon_cost: 2
       default_weapon: core:fireball
       init_bit_flags: [FLYING, FORESTWALK]
       init_ani_type: 0
       init_max_magicpoints: 40
-      special_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
       alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: false
       magic_damage_modifier: 0.5
@@ -105,3 +108,17 @@ families:
       glyph_transparent: false
       radar_color: 228
       radar_jitter: 3
+      # Balance constants the behavior script reads back with
+      # og.tuning(self) — a frozen, read-only table. Unquoted integers
+      # arrive as Lua integers, decimals as floats, quoted values as
+      # strings. Rebalancing the wisp is a YAML edit, not a code edit.
+      tuning:
+        # on_fire_weapon: shots below this ember reserve are blocked.
+        flare_cost: 6.0
+        # FLARE BURST (special 1): vents ember above burn_floor, stunning
+        # foes within burst_range px for stun_base + rand0(level *
+        # stun_per_level) each.
+        burn_floor: 10
+        burst_range: 80
+        stun_base: 4
+        stun_per_level: 8

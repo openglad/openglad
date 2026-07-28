@@ -38,25 +38,32 @@
 -- with the s_ prefix; the guy record uses g_ (and requires
 -- the walker to have one). Handles compare by entity id and
 -- are only valid within the dispatch that minted them.
+--
+-- Property layer (kWalkerProperties, quality plan Stage 1):
+-- names no method shadows read AND write as plain values
+-- (self.hp); method-shadowed names keep reading as the
+-- method (method-first __index) and are typed as the union
+-- of value and method, because `self.busy = v` is a legal
+-- write-through to the same setter the method uses.
 ---@class og.Walker
 ---@field act_type fun(self: og.Walker): integer
 ---@field add_frozen_stun fun(self: og.Walker, add: integer) # ob:add_frozen_stun(n) — the universal application pattern for stun_total, fused into one verb: ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))...
----@field ani_type fun(self: og.Walker): integer
+---@field ani_type integer|fun(self: og.Walker): integer # write-through property: `self.ani_type = v` runs m_set_ani_type; reads answer the method (method-first)
 ---@field animate fun(self: og.Walker): boolean
 ---@field attack fun(self: og.Walker, target: og.Walker): boolean
 ---@field bonus_rounds fun(self: og.Walker): integer
----@field busy fun(self: og.Walker): number
+---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field center_on fun(self: og.Walker, other: og.Walker)
 ---@field charm_left fun(self: og.Walker): integer
 ---@field clear_myguy fun(self: og.Walker)
 ---@field collide fun(self: og.Walker, other: og.Walker): boolean
 ---@field collide_ob fun(self: og.Walker): og.Walker?
 ---@field curdir fun(self: og.Walker): integer
----@field current_special fun(self: og.Walker): integer
+---@field current_special integer|fun(self: og.Walker): integer # write-through property: `self.current_special = v` runs m_set_current_special; reads answer the method (method-first)
 ---@field current_weapon fun(self: og.Walker): integer
 ---@field cycle fun(self: og.Walker): integer
----@field damage fun(self: og.Walker): number
----@field dead fun(self: og.Walker): integer
+---@field damage number|fun(self: og.Walker): number # write-through property: `self.damage = v` runs m_set_damage; reads answer the method (method-first)
+---@field dead integer|fun(self: og.Walker): integer # write-through property: `self.dead = v` runs m_set_dead; reads answer the method (method-first)
 ---@field death fun(self: og.Walker): boolean
 ---@field death_called fun(self: og.Walker): integer
 ---@field default_weapon fun(self: og.Walker): integer
@@ -73,7 +80,7 @@
 ---@field fire_frequency fun(self: og.Walker): number
 ---@field flight_left fun(self: og.Walker): integer
 ---@field floor fun(self: og.Walker): integer
----@field foe fun(self: og.Walker): og.Walker?
+---@field foe og.Walker?|fun(self: og.Walker): og.Walker? # write-through property: `self.foe = v` runs m_set_foe; reads answer the method (method-first)
 ---@field g_armor fun(self: og.Walker): integer
 ---@field g_constitution fun(self: og.Walker): integer
 ---@field g_dexterity fun(self: og.Walker): integer
@@ -100,6 +107,7 @@
 ---@field g_upgrade_to_level fun(self: og.Walker, new_level: integer, arg3: any?)
 ---@field has_guy fun(self: og.Walker): boolean
 ---@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — the self-heal cluster, fused (quality plan Stage 1).
+---@field hp number # read/write property over s_hitpoints/s_set_hitpoints (write-through, same narrowing)
 ---@field in_act fun(self: og.Walker): boolean
 ---@field invisibility_left fun(self: og.Walker): integer
 ---@field invulnerable_left fun(self: og.Walker): integer
@@ -108,8 +116,12 @@
 ---@field lastx fun(self: og.Walker): number
 ---@field lasty fun(self: og.Walker): number
 ---@field leader fun(self: og.Walker): og.Walker?
----@field lifetime fun(self: og.Walker): integer
+---@field level integer # read/write property over s_level/s_set_level (write-through, same narrowing)
+---@field lifetime integer|fun(self: og.Walker): integer # write-through property: `self.lifetime = v` runs m_set_lifetime; reads answer the method (method-first)
 ---@field lineofsight fun(self: og.Walker): integer
+---@field magicpoints number # read/write property over s_magicpoints/s_set_magicpoints (write-through, same narrowing)
+---@field max_hp number # read/write property over s_max_hitpoints/s_set_max_hitpoints (write-through, same narrowing)
+---@field max_magicpoints number # read/write property over s_max_magicpoints/s_set_max_magicpoints (write-through, same narrowing)
 ---@field move_myguy_to fun(self: og.Walker, target: og.Walker)
 ---@field order fun(self: og.Walker): integer
 ---@field owner fun(self: og.Walker): og.Walker?
@@ -217,6 +229,7 @@
 ---@field speed_bonus_left fun(self: og.Walker): integer
 ---@field stepsize fun(self: og.Walker): number
 ---@field summoned fun(self: og.Walker): boolean
+---@field team integer # read/write property over m_team_num/m_set_team_num (write-through, same narrowing)
 ---@field team_num fun(self: og.Walker): integer
 ---@field teleport fun(self: og.Walker): boolean
 ---@field teleport_ranged fun(self: og.Walker, arg2: integer): boolean
@@ -225,7 +238,7 @@
 ---@field turn_undead fun(self: og.Walker, range: integer, power: integer): integer
 ---@field user fun(self: og.Walker): integer
 ---@field view_all fun(self: og.Walker): integer
----@field weapons_left fun(self: og.Walker): integer
+---@field weapons_left integer|fun(self: og.Walker): integer # write-through property: `self.weapons_left = v` runs m_set_weapons_left; reads answer the method (method-first)
 ---@field worldx fun(self: og.Walker): number
 ---@field worldy fun(self: og.Walker): number
 ---@field worldz fun(self: og.Walker): number
@@ -521,7 +534,7 @@
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — the summon-then-setters cluster, fu...
 ---@field trunc fun(x: number): integer
----@field tuning fun(entity: og.Walker): any[]|boolean|integer|number|string # TODO(stubgen): signature not fully inferred — og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
+---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
 ---@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
 ---@field world_can_exit_whenever fun(): boolean

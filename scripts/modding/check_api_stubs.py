@@ -4,9 +4,12 @@
 CI-runnable drift check for the generated EmmyLua stubs: regenerates the
 stub text in memory (scripts/modding/gen_api_stubs.py, the same module —
 one generator, no second implementation) and byte-compares it with the
-committed file. Wired as the `api_stub_check` cmake custom target;
-advisory (not an og_gameplay build dependency) until stage 5 of the Lua
-quality plan promotes it.
+committed file. Wired as the `api_stub_check` cmake custom target and,
+since quality-plan stage 5, ENFORCED as a dependency of coverage_report
+(the same gating point as the full statement lint and check_luals) —
+still deliberately not an og_gameplay build dependency, so per-build cost
+stays flat. Stale stubs also starve check_luals and rule 8 of
+check_lua_statement_lines.py, both of which read the committed file.
 
 Exit codes: 0 fresh, 1 stale or missing, 2 generator failure.
 """

@@ -1,0 +1,20 @@
+# core:flight_potion — split from classpack.yaml (families load in sorted filename order)
+families:
+  treasure:
+    - id: core:flight_potion
+      wire_id: 7
+      name: "FLIGHT_POTION"
+      init_ignore: false
+      init_frame: 11
+      sprite: ~
+      animation: ~
+      glyph: "!"
+      glyph_ascii: "!"
+      glyph_color: magenta
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 72
+      radar_jitter: 5
+      tuning:
+        # on_eat: flight ticks granted per level
+        duration_per_level: 150

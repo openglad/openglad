@@ -10,6 +10,13 @@
  * The output is deterministic (pure static data, ids ascending), so a
  * regenerated file diffs clean when the C++ descriptors are unchanged.
  *
+ * NOTE (quality plan Stage 4): the shipped core pack now uses the SPLIT
+ * layout — a header-only classpack.yaml plus one families/<order>-<NN>-
+ * <slug>.yaml per entry (scripts/refactor/split_classpack.py partitions a
+ * monolith), and the families/ files carry hand-maintained `tuning:`
+ * blocks this exporter knows nothing about. Point the tool at a scratch
+ * path for bootstrap/debug export; do NOT overwrite the shipped layout.
+ *
  * Usage: pack_export [output.yaml]   (default: packs/core/classpack.yaml)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh

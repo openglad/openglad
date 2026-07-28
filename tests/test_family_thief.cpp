@@ -69,6 +69,11 @@ TEST(FamilyThief, do_special_busy_and_cloak_paths)
 {
     const FamilyDescriptor& desc = describe_family(FAMILY_THIEF);
     living self;
+    // og.tuning resolves through the walker's own family byte (in the sim,
+    // do_special's fd is derived from that same byte, so they always agree);
+    // a default-constructed living is family 0 and would read SOLDIER's
+    // tuning map, which has no cloak keys.
+    self.set_order_family(Order::Living, FAMILY_THIEF);
     FixedRandom rng(7);
     self.stats()->set_level(3);
 

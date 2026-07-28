@@ -1,7 +1,7 @@
 -- core:door_open — hands the opened-door sprite to a fresh effect (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-local FX_DOOR_OPEN = og.family_id("fx", "core:door_open")
+local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
 
 -- door_open_on_act: once the open animation has run out (ani_type back to
 -- ANI_WALK), hand the opened-door sprite off to a fresh effect at the same

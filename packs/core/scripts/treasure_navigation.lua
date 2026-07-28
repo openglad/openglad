@@ -16,7 +16,7 @@
 -- is pure (no sim writes, no draws).
 
 local C = og.C
-local FX_FLASH = og.family_id("fx", "core:flash")
+local FX_FLASH = assert(og.family_id("fx", "core:flash"))
 
 local function format_exit_prompt(exit_name, is_withdraw)
   if is_withdraw then

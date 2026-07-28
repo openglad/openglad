@@ -2,7 +2,7 @@
 
 local C = og.C
 local ai = og.use("ai")
-local WEAPON_FIRE_ARROW = og.family_id("weapon", "core:fire_arrow")
+local WEAPON_FIRE_ARROW = assert(og.family_id("weapon", "core:fire_arrow"))
 
 local function fire_arrows(self)
   self:set_curdir(-1)
@@ -41,6 +41,7 @@ local function exploding_shot(self)
   if self:busy() ~= 0 then
     return false
   end
+  local t = og.tuning(self)
   local old_weapon = self:current_weapon()
   self:set_current_weapon(WEAPON_FIRE_ARROW)
   local arrow = self:fire()
@@ -49,9 +50,10 @@ local function exploding_shot(self)
     return false
   end
   arrow:set_skip_exit(5000)
-  arrow.hp = 500
-  -- damage is a C++ float: per-op rounding
-  arrow:set_damage(og.fmul(arrow:damage(), 2.0))
+  arrow.hp = t.exploding_shot_hp
+  -- damage is a C++ float: per-op rounding (the multiplier is a YAML
+  -- float, 2.0)
+  arrow:set_damage(og.fmul(arrow:damage(), t.exploding_shot_damage_mult))
   return true
 end
 
@@ -64,7 +66,7 @@ local function hit_response(self, foe)
     self:s_set_last_distance(15000)
   end
   local distance = self:distance_to_ob(foe)
-  if distance < 64 then
+  if distance < og.tuning(self).melee_backpedal_range then
     -- og.i16: the C++ stores each delta into a short before the sign divide
     local dx = og.sign(og.i16(self:xpos() - foe:xpos()))
     local dy = og.sign(og.i16(self:ypos() - foe:ypos()))
@@ -86,7 +88,7 @@ og.register_hooks("living", "core:archer", {
     [2] = flurry,
     default = exploding_shot,  -- cases 3, 4, and every unmapped slot
   },
-  check_special_ai = ai.foe_within(130),
+  check_special_ai = ai.foe_within(130),  -- per-tick gate: R-KEEP-4
   hit_response = hit_response,
   set_difficulty = set_difficulty,
   level_up = level_up,

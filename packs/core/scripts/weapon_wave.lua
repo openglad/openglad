@@ -5,8 +5,8 @@
 -- weap::death()'s caller sees a live walker, and refills hitpoints so the
 -- new stage starts at full strength.
 
-local WEAPON_WAVE2 = og.family_id("weapon", "core:wave2")
-local WEAPON_WAVE3 = og.family_id("weapon", "core:wave3")
+local WEAPON_WAVE2 = assert(og.family_id("weapon", "core:wave2"))
+local WEAPON_WAVE3 = assert(og.family_id("weapon", "core:wave3"))
 
 -- wave_on_death: promote to the second wave stage instead of dying.
 local function wave_on_death(self)

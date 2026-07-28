@@ -1,7 +1,7 @@
 -- core:bomb + core:explosion — the thief's bomb and its blast (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-local FX_EXPLOSION = og.family_id("fx", "core:explosion")
+local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
 -- effect.cpp: compute_explosion_range(int32 level, short skip_exit)
 local function compute_explosion_range(level, skip_exit)

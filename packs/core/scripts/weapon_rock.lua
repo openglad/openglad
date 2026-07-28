@@ -18,6 +18,8 @@ local function on_death(self)
     self:set_dead(1)
     return false  -- if not, die like normal
   end
+  -- shim kept (all three bounce probes): xpos/ypos +- lastx/lasty are C++
+  -- float sums: per-op float rounding.
   if og.query_grid_passable(og.fsub(self:xpos(), self:lastx()),
                             og.fadd(self:ypos(), self:lasty()), self) then
     -- bounce 'down-left'

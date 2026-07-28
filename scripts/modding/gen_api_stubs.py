@@ -8,6 +8,10 @@ The pack-Lua API surface is registered in exactly three C++ files:
   src/gameplay/script/bindings_entity.cpp   kWalkerMethods / kGuyMethods /
                                             kOgWorldFuncs (luaL_Reg tables)
                                             + kConstants (og.C.*)
+                                            + kWalkerProperties (the
+                                            property layer: plain fields,
+                                            and value|method unions where
+                                            a method shadows the name)
   src/gameplay/script/script_host.cpp       kOgFuncs (sandbox og.* arithmetic)
   src/gameplay/script/world_scripts.cpp     og.register_hooks and friends
                                             (lua_pushcfunction/lua_setfield
@@ -44,6 +48,8 @@ The parser reads what already exists; keep new entries in the same shapes
 and regeneration keeps working:
 
   * new walker/stats/guy accessors: the W_/S_/G_ GET/SET macro invocations;
+  * new walker properties: a `{"name", getter, setter}` row in
+    kWalkerProperties (setter nullptr = read-only);
   * new hand-written bindings: `int og_name(lua_State* L) { ... }` with
     `luaL_check*` / `resolve_walker` / `lua_push*` argument plumbing, and a
     `{"name", og_name},` line in the matching luaL_Reg table;
@@ -182,6 +188,31 @@ def parse_constants(src: str) -> List[str]:
     if not names:
         raise SystemExit("gen_api_stubs: kConstants parsed empty")
     return names
+
+
+def parse_walker_properties(src: str) -> List[Tuple[str, str, Optional[str]]]:
+    """(name, getter_cname, setter_cname|None) rows from kWalkerProperties.
+
+    The property layer routes `self.hp` / `self.busy = v` through the same
+    lua_CFunctions the method table registers (bindings_entity.cpp keeps
+    kWalkerProperties as the single source of truth), so the stub types are
+    derived from those functions' already-inferred signatures rather than
+    re-inferred here.
+    """
+    m = re.search(r"kWalkerProperties\[\]\s*=\s*\{(.*?)\n\};", src, re.S)
+    if m is None:
+        raise SystemExit(
+            "gen_api_stubs: kWalkerProperties[] not found in "
+            f"{BINDINGS} (property layer moved; update the stub generator)")
+    rows: List[Tuple[str, str, Optional[str]]] = []
+    for name, getter, setter in re.findall(
+            r'\{\s*"(\w+)"\s*,\s*(\w+)\s*,\s*(\w+)\s*\}', m.group(1)):
+        rows.append((name, getter, None if setter == "nullptr" else setter))
+    if not rows:
+        raise SystemExit(
+            "gen_api_stubs: kWalkerProperties[] parsed empty "
+            "(initializer shape changed; update the stub generator)")
+    return rows
 
 
 def parse_macro_accessors(src: str) -> Dict[str, "Signature"]:
@@ -761,8 +792,10 @@ def field_line(name: str, type_text: str, desc: str, todo: bool,
 def method_fields(entries: List[Tuple[str, str]],
                   functions: Dict[str, CppFunction],
                   macro_sigs: Dict[str, Signature],
-                  self_type: str) -> List[str]:
+                  self_type: str,
+                  writable_props: Optional[Dict[str, str]] = None) -> List[str]:
     lines = []
+    writable_props = writable_props or {}
     for lua_name, c_name in sorted(set(entries)):
         c_base = re.sub(r"<.*>$", "", c_name)
         if c_base in macro_sigs:
@@ -781,15 +814,60 @@ def method_fields(entries: List[Tuple[str, str]],
         # The receiver type comes from the TABLE the name is registered in
         # (guy_arg accepts either handle, but on og.Guy the receiver is a
         # guy record).
-        lines.append(field_line(lua_name, fun_type(sig, self_type), desc,
-                                sig.todo))
-    return lines
+        type_text = fun_type(sig, self_type)
+        if lua_name in writable_props and len(sig.returns) == 1:
+            # A method name shadowing a WRITABLE walker property
+            # (kWalkerProperties): reads stay the method (method-first
+            # __index contract), but `self.name = v` is a legal
+            # write-through, so the declared type is the union of the two.
+            type_text = f"{sig.returns[0]}|{type_text}"
+            note = (f"write-through property: `self.{lua_name} = v` runs "
+                    f"{writable_props[lua_name]}; reads answer the method "
+                    "(method-first)")
+            desc = f"{note} — {desc}" if desc else note
+        lines.append(field_line(lua_name, type_text, desc, sig.todo))
+    return sorted(lines)
+
+
+def property_fields(props: List[Tuple[str, str, Optional[str]]],
+                    method_names: set,
+                    functions: Dict[str, CppFunction],
+                    macro_sigs: Dict[str, Signature]) -> List[str]:
+    """Plain value fields for walker properties NO method name shadows.
+
+    These are the names that read as values (`self.hp`); the shadowed ones
+    are typed as unions on their method field by method_fields. The value
+    type comes from the paired getter's signature — the same C function the
+    method table registers, so the types cannot drift apart.
+    """
+    lines = []
+    for name, getter, setter in props:
+        if name in method_names:
+            continue
+        c_base = re.sub(r"<.*>$", "", getter)
+        if c_base in macro_sigs:
+            sig = macro_sigs[c_base]
+        elif c_base in functions:
+            sig = infer_signature(functions[c_base])
+        else:
+            sig = Signature(todo=True)
+        vtype = sig.returns[0] if len(sig.returns) == 1 else TODO_ANY
+        mode = "read/write" if setter else "read-only"
+        lines.append(field_line(
+            name, vtype,
+            f"{mode} property over {getter}"
+            + (f"/{setter} (write-through, same narrowing)" if setter else ""),
+            sig.todo or vtype == TODO_ANY))
+    return sorted(lines)
 
 
 def og_function_fields(entries: List[Tuple[str, str]],
                        functions: Dict[str, CppFunction],
-                       overrides: Dict[str, str]) -> List[str]:
+                       overrides: Dict[str, str],
+                       return_overrides: Optional[Dict[str, str]] = None
+                       ) -> List[str]:
     lines = []
+    return_overrides = return_overrides or {}
     for lua_name, c_name in sorted(set(entries)):
         c_base = re.sub(r"<.*>$", "", c_name)
         if c_base in functions:
@@ -804,6 +882,13 @@ def og_function_fields(entries: List[Tuple[str, str]],
             sig.params.insert(0, ("self", sig.self_type))
             sig.self_type = None
         apply_comment_names(sig, comment, lua_name, skip_first=False)
+        if lua_name in return_overrides:
+            # A return shape the body-walking inference cannot see (the
+            # og.tuning table is built from YAML-typed TuningValue pushes,
+            # which read as a scalar union): declared here, kept in ONE
+            # place so a real signature change still regenerates cleanly.
+            sig.returns = [return_overrides[lua_name]]
+            sig.todo = False
         if lua_name in overrides:
             # Hook-table parameters carry class types the C++ body cannot
             # express; patch the luaL_checktype(TABLE) param.
@@ -888,9 +973,25 @@ def generate(repo_root: Path) -> str:
     out.append("-- with the s_ prefix; the guy record uses g_ (and requires")
     out.append("-- the walker to have one). Handles compare by entity id and")
     out.append("-- are only valid within the dispatch that minted them.")
+    out.append("--")
+    out.append("-- Property layer (kWalkerProperties, quality plan Stage 1):")
+    out.append("-- names no method shadows read AND write as plain values")
+    out.append("-- (self.hp); method-shadowed names keep reading as the")
+    out.append("-- method (method-first __index) and are typed as the union")
+    out.append("-- of value and method, because `self.busy = v` is a legal")
+    out.append("-- write-through to the same setter the method uses.")
+    walker_props = parse_walker_properties(bindings_src)
+    walker_method_names = {n for n, _c in walker_methods}
+    writable_shadowed = {
+        name: setter for name, _getter, setter in walker_props
+        if name in walker_method_names and setter is not None
+    }
     out.append("---@class og.Walker")
-    out.extend(method_fields(walker_methods, functions, macro_sigs,
-                             "og.Walker"))
+    walker_rows = method_fields(walker_methods, functions, macro_sigs,
+                                "og.Walker", writable_props=writable_shadowed)
+    walker_rows += property_fields(walker_props, walker_method_names,
+                                   functions, macro_sigs)
+    out.extend(sorted(walker_rows))
     out.append("")
 
     out.append("-- Guy-record handle (level_up's first argument; picker-side,")
@@ -999,7 +1100,9 @@ def generate(repo_root: Path) -> str:
     out.append("---@field C og.Constants")
     out.append("---@field combat og.Combat")
     og_entries = list(og_world) + list(og_host) + list(world_entry)
-    out.extend(og_function_fields(og_entries, functions, overrides))
+    out.extend(og_function_fields(
+        og_entries, functions, overrides,
+        return_overrides={"tuning": "table<string, any>"}))
     # No blank line: the @class block must attach to the statement below.
     out.append("og = {}")
     return "\n".join(out) + "\n"

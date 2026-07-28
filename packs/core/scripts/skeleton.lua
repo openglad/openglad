@@ -6,12 +6,13 @@ local lc = og.use("living_common")
 local function handle_teleport(self)
   self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
-  self:teleport_ranged(self.level * 18)
+  self:teleport_ranged(self.level * og.tuning(self).teleport_range_per_level)
   return true
 end
 
 local function check_special_ai(self)
-  local _, foe_count = og.find_foes_in_range("ob", 5 * 16, self) -- 5 * GRID_SIZE
+  -- per-tick gate: the range stays code (R-KEEP-4); 5 * GRID_SIZE
+  local _, foe_count = og.find_foes_in_range("ob", 5 * 16, self)
   return foe_count < 1
 end
 

@@ -1,0 +1,17 @@
+# core:exit — split from classpack.yaml (families load in sorted filename order)
+families:
+  treasure:
+    - id: core:exit
+      wire_id: 8
+      name: "EXIT"
+      init_ignore: false
+      init_frame: -1
+      sprite: ~
+      animation: ~
+      glyph: ">"
+      glyph_ascii: ">"
+      glyph_color: cyan
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 120
+      radar_jitter: 7

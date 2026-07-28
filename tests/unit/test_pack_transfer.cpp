@@ -4,7 +4,10 @@
 // through LobbyServer + the resources install path.
 
 #include <openglad/core/fnv1a.h>
+#include <openglad/core/order.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/pack_transfer.h>
@@ -716,6 +719,17 @@ namespace fs = std::filesystem;
 constexpr const char* kE2ePackId = "org.test.e2epack";
 constexpr const char* kE2eScript = "og.log('transferred pack loaded')\n";
 constexpr const char* kE2eYaml = "pack: org.test.e2epack\nversion: 1\n";
+// Split-layout descriptor file (quality plan Stage 4): families/*.yaml is
+// ordinary pack content, so it must ride the manifest and install — with
+// its tuning — on the receiving side exactly like a monolithic
+// classpack.yaml.
+constexpr const char* kE2eFamilyYaml =
+    "families:\n"
+    "  living:\n"
+    "    - id: e2epack:warrior\n"
+    "      wire_id: auto\n"
+    "      name: \"E2E WARRIOR\"\n"
+    "      tuning: {transferred_key: 42}\n";
 
 bool pack_script_registered(const char* pack_id)
 {
@@ -736,7 +750,10 @@ protected:
         std::error_code ec;
         fs::create_directories(staging_ / "scripts", ec);
         ASSERT_FALSE(ec) << ec.message();
+        fs::create_directories(staging_ / "families", ec);
+        ASSERT_FALSE(ec) << ec.message();
         write_text(staging_ / "classpack.yaml", kE2eYaml);
+        write_text(staging_ / "families" / "warrior.yaml", kE2eFamilyYaml);
         write_text(staging_ / "scripts" / "hello.lua", kE2eScript);
         // Binary-ish third file exercises non-text content.
         std::ofstream png(staging_ / "sprite.bin", std::ios::binary);
@@ -781,7 +798,8 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
             return pack.manifest.pack_id == kE2ePackId;
         });
     ASSERT_NE(offer.end(), offered) << "mounted pack must be offered";
-    ASSERT_EQ(3u, offered->manifest.files.size());
+    ASSERT_EQ(4u, offered->manifest.files.size())
+        << "families/warrior.yaml must ride the manifest walk";
     const og::sim::PackManifestMessage host_manifest = offered->manifest;
 
     // The joining machine does NOT have the pack: drop the host-side mount
@@ -857,6 +875,19 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
         ("packs/" + std::string(kE2ePackId) + "/scripts/hello.lua").c_str());
     EXPECT_EQ(std::string(kE2eScript),
               std::string(via_vfs.begin(), via_vfs.end()));
+
+    // The transferred families/ descriptor installed on the receiving
+    // side, tuning included (split layout, quality plan Stage 4).
+    const int warrior_id = og::families::resolve_family_string_id(
+        Order::Living, "e2epack:warrior");
+    ASSERT_GE(warrior_id, 0)
+        << "families/warrior.yaml must install from the mounted cache";
+    const og::script::TuningMap* warrior_tuning =
+        og::script::family_tuning(Order::Living, warrior_id);
+    ASSERT_NE(warrior_tuning, nullptr);
+    ASSERT_EQ(warrior_tuning->size(), 1u);
+    EXPECT_EQ((*warrior_tuning)[0].key, "transferred_key");
+    EXPECT_EQ((*warrior_tuning)[0].value.integer, 42);
 
     // Progress surfaced through the status sink.
     EXPECT_FALSE(status_log.empty());

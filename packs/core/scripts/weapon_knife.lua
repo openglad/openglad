@@ -5,7 +5,7 @@
 -- owner is the C++ `owner_fd == nullptr` case: no special handling.
 
 local C = og.C
-local FX_KNIFE_BACK = og.family_id("fx", "core:knife_back")
+local FX_KNIFE_BACK = assert(og.family_id("fx", "core:knife_back"))
 
 -- knife_on_death: a knife thrown by a returning-weapon family (soldier)
 -- spawns the FX knife_back that flies back to its owner.

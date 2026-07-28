@@ -1,7 +1,7 @@
 -- core:fire_arrow + core:boulder — explode on death when armed (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-local FX_EXPLOSION = og.family_id("fx", "core:explosion")
+local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
 local function explode_on_death(self)
   if self:skip_exit() == 0 then

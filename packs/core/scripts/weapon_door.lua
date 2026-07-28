@@ -1,7 +1,7 @@
 -- core:door — broken door hands its spot to the opening effect (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
-local FX_DOOR_OPEN = og.family_id("fx", "core:door_open")
+local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
 
 -- door_on_death: a broken door hands its spot to the DOOR_OPEN effect that
 -- plays the opening animation.

@@ -1,0 +1,25 @@
+# core:sprinkle — split from classpack.yaml (families load in sorted filename order)
+families:
+  weapon:
+    - id: core:sprinkle
+      wire_id: 6
+      name: "SPRINKLE"
+      fire_sound: 4
+      skip_sit_notify: false
+      is_auto_attackable: false
+      init_bit_flags: [FLYING]
+      init_lifetime: 0
+      init_ani_type: 0
+      vz: 0
+      gravity: 0
+      sizez: 0
+      can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "·"
+      glyph_ascii: "+"
+      glyph_color: magenta
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

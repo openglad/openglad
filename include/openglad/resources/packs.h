@@ -31,15 +31,23 @@ int register_mounted_pack_scripts();
 // dispatch via the generation counter.
 int refresh_pack_scripts();
 
-// Scan packs/ for packs/<pack_id>/classpack.yaml (same deterministic
-// order as the scripts) and install their family descriptor DATA into
-// the five gameplay registries: for each entry, the current descriptor
-// is copied, only the fields the YAML declares are overwritten, and all
-// C++ behavior callback pointers are preserved unchanged (behavior lives
-// in pack Lua). wire_id pins the slot (core = legacy bytes); wire_id
+// Scan packs/ for each pack's classpack data (same deterministic order
+// as the scripts) and install the family descriptor DATA into the five
+// gameplay registries. Per pack, packs/<pack_id>/classpack.yaml is
+// parsed first when present, then every packs/<pack_id>/families/*.yaml
+// in sorted filename order into the same parsed pack — the split layout
+// loads exactly like the concatenated monolith, and a pack may ship
+// either layout or both (families/ entries append after classpack.yaml;
+// a later entry pinning an already-declared WIRE slot overwrites just
+// the data fields it declares, and — like any install — replaces that
+// slot's tuning map whole). For each entry, the current descriptor is
+// copied, only
+// the fields the YAML declares are overwritten, and all C++ behavior
+// callback pointers are preserved unchanged (behavior lives in pack
+// Lua). wire_id pins the slot (core = legacy bytes); wire_id
 // auto/absent assigns the first free id >= 21 in pack-id-lexicographic
 // order — entries beyond a registry's capacity are skipped with a
-// warning. A classpack.yaml that fails to parse rejects that pack only.
+// warning. Any file that fails to parse rejects that pack only.
 // Returns the number of family entries installed.
 //
 // Lifetime: descriptor const char* fields installed from YAML point into

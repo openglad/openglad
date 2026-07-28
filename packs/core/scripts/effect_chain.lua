@@ -6,32 +6,10 @@
 -- set_frame is simply skipped then.
 
 local C = og.C
-local FX_EXPLOSION = og.family_id("fx", "core:explosion")
-local FX_CHAIN = og.family_id("fx", "core:chain")
+local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
+local FX_CHAIN = assert(og.family_id("fx", "core:chain"))
 
--- effect.cpp: hits() — axis-aligned box overlap on short coordinates. The
--- right/bottom edges are computed as shorts in C++, so og.i16 reproduces the
--- (unreachable in practice, but exact) wrap.
-local function hits(x, y, xsize, ysize, x2, y2, xsize2, ysize2)
-  -- shim kept (all four og.i16 sums): short edges, per the note above.
-  local x2right = og.i16(x2 + xsize2)
-  if x > x2right then
-    return false
-  end
-  local xright = og.i16(x + xsize)
-  if xright < x2 then
-    return false
-  end
-  local y2down = og.i16(y2 + ysize2)
-  if y > y2down then
-    return false
-  end
-  local ydown = og.i16(y + ysize)
-  if ydown < y2 then
-    return false
-  end
-  return true
-end
+local hits = og.use("effect_common").hits
 
 -- chain_on_act: the bolt homes on its leader; on contact it detonates and
 -- forks into up to rand(owner level)+1 new bolts aimed at nearby foes.
@@ -61,17 +39,20 @@ local function on_act(self)
     blast:center_on(self)
     leader:set_skip_exit(leader:skip_exit() + 3)
     og.emit_sound(C.SOUND_EXPLODE)
-    -- shim kept: damage is a C++ float: the fork's half cut rounds through float.
-    local fork_damage = og.fmul(self:damage(), 0.5)
+    local t = og.tuning(self)
+    -- shim kept: damage is a C++ float: the fork's damage cut (a YAML
+    -- float, 0.5) rounds through float.
+    local fork_damage = og.fmul(self:damage(), t.fork_damage_mult)
     local foes, foe_count
     if self:owner():has_guy() then
+      -- Int/2 stays a formula: a guy-stat conversion, not a tuning knob.
       foes, foe_count = og.find_foes_in_range(
-        "ob", 240 + self:owner():g_intelligence() // 2, self)
+        "ob", t.fork_range_base + self:owner():g_intelligence() // 2, self)
     else
       foes, foe_count = og.find_foes_in_range(
-        "ob", 240 + self.level * 5, self)
+        "ob", t.fork_range_base + self.level * t.fork_range_per_level, self)
     end
-    if foe_count ~= 0 and fork_damage > 20 then
+    if foe_count ~= 0 and fork_damage > t.fork_min_damage then
       -- One draw: the fork budget rolls off the owner's level.
       local forks_left = og.rand0(self:owner().level) + 1
       for i = 1, #foes do

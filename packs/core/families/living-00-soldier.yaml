@@ -1,0 +1,52 @@
+# core:soldier — split from classpack.yaml (families load in sorted filename order)
+families:
+  living:
+    - id: core:soldier
+      wire_id: 0
+      name: "SOLDIER"
+      short_name: ~
+      base_stats: [12, 6, 12, 8, 9, 1]
+      hiring_cost: 250
+      derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]
+      stat_costs: [6, 10, 6, 25, 50, 200]
+      special_costs: [5000, 25, 100, 120, 150, 5000]
+      weapon_cost: 2
+      default_weapon: core:knife
+      init_bit_flags: []
+      init_ani_type: 0
+      init_max_magicpoints: 0
+      special_names: ["NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM", "NONE"]
+      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      leaves_bloodspot: true
+      magic_damage_modifier: 1
+      is_stationary: false
+      has_returning_weapon: true
+      is_undead: false
+      promotes_to: ~
+      promotion_level_req: 0
+      death_message: "SOLDIER SLAIN"
+      sprite: "footman.png"
+      animation: standard
+      ai_line_of_sight: 7
+      description: "Your basic grunt, can     \nabsorb and deal damage and\nmove moderately fast. A   \ngood all-around fighter. A\nsoldier's normal weapon is\na magical returning blade.\n\nSpecial: Charge"
+      names: ["Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"]
+      playable: true
+      playable_order: 0
+      glyph: "S"
+      glyph_ascii: "S"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0
+      tuning:
+        # Returning-blade summon: lifetime/hp/damage formulas over level
+        boomerang_lifetime_base: 30
+        boomerang_lifetime_per_level: 12
+        boomerang_hp_per_level: 12
+        boomerang_damage_per_level: 4
+        # Whirlwind strike ring: base + per-level radius (px)
+        whirlwind_range_base: 32
+        whirlwind_range_per_level: 2
+        # Disarm reach (px)
+        disarm_range: 28

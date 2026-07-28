@@ -359,3 +359,73 @@ TEST(ExampleClassPack, its_hooks_run_when_the_engine_dispatches_them)
         ADD_FAILURE() << "pack script error in " << e.where << ": "
                       << e.message;
 }
+
+// The example pack's FLARE BURST, driven through the specials-table
+// dispatcher: [1] selects the burst, an unmapped slot with no `default`
+// entry is the ladder fall-through (a successful no-op that runs no Lua),
+// and the hook's own refusal branch answers false.
+TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
+{
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+
+    const int family = og::families::resolve_family_string_id(
+        Order::Living, "example:emberwisp");
+    ASSERT_GE(family, NUM_FAMILIES);
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(nullptr, fd);
+
+    TestGameWorld fixture;
+    GameWorld& world = fixture.world();
+    walker* wisp = world.add_ob(Order::Living, family);
+    ASSERT_NE(nullptr, wisp);
+    wisp->set_team_num(0);
+    walker* foe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(1);
+    // Both entities sit at the spawn origin, so the foe is inside any
+    // positive burst_range.
+
+    // Slot 3 has no entry and the table declares no `default`: the
+    // dispatch is consumed as a successful no-op — no Lua ran, nothing
+    // changed. (This is the retired switch ladders' unmatched case.)
+    wisp->stats()->set_max_magicpoints(100.0f);
+    wisp->stats()->set_magicpoints(60.0f);
+    wisp->set_current_special(static_cast<char>(3));
+    std::optional<bool> fallthrough = og::script::hooks::do_special(fd, wisp);
+    ASSERT_TRUE(fallthrough.has_value())
+        << "a registered specials table must consume the dispatch";
+    EXPECT_TRUE(*fallthrough) << "the unmatched case is a successful no-op";
+    EXPECT_EQ(60.0f, wisp->stats()->magicpoints()) << "no-op vents nothing";
+
+    // The burst's own refusal: at or below the burn floor there is no
+    // ember to vent, and false means the engine charges no special cost.
+    wisp->set_current_special(static_cast<char>(1));
+    wisp->stats()->set_magicpoints(8.0f);
+    std::optional<bool> refused = og::script::hooks::do_special(fd, wisp);
+    ASSERT_TRUE(refused.has_value());
+    EXPECT_FALSE(*refused) << "trunc(8) - burn_floor(10) <= 0 cannot vent";
+    EXPECT_EQ(8.0f, wisp->stats()->magicpoints());
+    EXPECT_EQ(0, foe->stats()->frozen_delay()) << "a refused burst stuns nobody";
+
+    // The burst itself: vents every point above the burn floor (60 - 10),
+    // stuns the adjacent foe by stun_base + rand0(level * stun_per_level)
+    // = 4 + rand0(8), and turns the vent into busy time.
+    wisp->stats()->set_magicpoints(60.0f);
+    wisp->set_busy(0.0f);
+    std::optional<bool> burst = og::script::hooks::do_special(fd, wisp);
+    ASSERT_TRUE(burst.has_value());
+    EXPECT_TRUE(*burst) << "with ember above the floor the burst fires";
+    EXPECT_EQ(10.0f, wisp->stats()->magicpoints())
+        << "the vent leaves exactly the burn floor";
+    EXPECT_EQ(4.0f, wisp->busy()) << "the burst takes time";
+    EXPECT_GE(foe->stats()->frozen_delay(), 4)
+        << "tuning stun_base bounds the stun from below";
+    EXPECT_LT(foe->stats()->frozen_delay(), 12)
+        << "stun_base 4 + rand0(level 1 * stun_per_level 8) < 12";
+
+    for (const og::script::ScriptError& e :
+         world.scripts().host().errors())
+        ADD_FAILURE() << "pack script error in " << e.where << ": "
+                      << e.message;
+}

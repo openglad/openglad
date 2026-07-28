@@ -8,6 +8,7 @@ local function yell(self)
   if lc.is_busy(self) then
     return false
   end
+  local t = og.tuning(self)
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 2.0)
 
@@ -29,9 +30,9 @@ local function yell(self)
       -- parity chose LEFT-FIRST — level roll, then constitution roll.
       -- level/con are never negative, so the C++ uint32 casts are
       -- value-preserving.
-      local level_roll = og.rand0(self.level * 10)
-      local con_roll = og.rand0(con * 10)
-      local stun = og.max(0, 10 + level_roll - con_roll)
+      local level_roll = og.rand0(self.level * t.yell_level_roll_mult)
+      local con_roll = og.rand0(con * t.yell_con_roll_mult)
+      local stun = og.max(0, t.yell_stun_base + level_roll - con_roll)
       -- (the C++ also TRACEs "orc yell stun add discarded: thaw
       -- immunity" when raw < 0 — TESTING-only diagnostics, no sim effect)
       foe:add_frozen_stun(stun)
@@ -47,18 +48,20 @@ local function eat_corpse(self)
   if self.hp >= self.max_hp then
     return false
   end
+  local t = og.tuning(self)
   local corpse = og.find_nearest_blood(self)
   if not corpse then
     return false
   end
   local dist = self:distance_to_ob_center(corpse)
-  if dist > 24 then
+  if dist > t.corpse_eat_range then
     return false
   end
   -- hp is a C++ float: per-op rounding.
-  self.hp = og.fadd(self.hp, corpse.level * 5)
+  self.hp = og.fadd(self.hp, corpse.level * t.corpse_heal_per_level)
   -- narrows to int16 (short) like the C++ destination.
-  self:do_heal_effects(nil, self, og.i16(corpse.level * 5))
+  self:do_heal_effects(
+    nil, self, og.i16(corpse.level * t.corpse_heal_per_level))
   if self:has_guy() then
     self:g_set_exp(self:g_exp() +
                    og.exp_from_action(self, corpse, "eat_corpse", 0))
@@ -91,7 +94,7 @@ og.register_hooks("living", "core:orc", {
     [1] = yell,
     default = eat_corpse,
   },
-  check_special_ai = ai.foe_within(130),
+  check_special_ai = ai.foe_within(130),  -- per-tick gate: R-KEEP-4
   set_difficulty = set_difficulty,
   level_up = level_up,
 })

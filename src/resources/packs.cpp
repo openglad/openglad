@@ -903,25 +903,69 @@ int install_classpacks()
     // unmounted pack must not leave a family behind, and auto ids must
     // restart from the same place on every peer). Core pins are untouched.
     // Tuning follows the same all-or-nothing rebuild: cleared here, then
-    // reinstalled from every mounted pack's classpack.yaml.
+    // reinstalled from every mounted pack's classpack data.
     reset_all_registry_mod_slots();
     og::script::clear_all_family_tuning();
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {
         const std::string vpath = "packs/" + pack_id + "/classpack.yaml";
-        std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
-        if (bytes.empty())
-            continue; // pack without classpack.yaml (scripts-only) is fine
         auto parsed = std::make_unique<og::data::ClasspackData>();
-        if (!og::data::parse_classpack_yaml(
-                std::string_view(reinterpret_cast<const char*>(bytes.data()),
-                                 bytes.size()),
-                *parsed, vpath.c_str())) {
-            LogWarn("class pack '{}' rejected: classpack.yaml unusable\n",
-                    pack_id);
-            continue;
+        bool have_data = false;
+        bool rejected = false;
+        std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
+        if (!bytes.empty()) {
+            if (og::data::parse_classpack_yaml(
+                    std::string_view(
+                        reinterpret_cast<const char*>(bytes.data()),
+                        bytes.size()),
+                    *parsed, vpath.c_str())) {
+                have_data = true;
+            } else {
+                LogWarn("class pack '{}' rejected: classpack.yaml "
+                        "unusable\n", pack_id);
+                rejected = true;
+            }
         }
+        // Split layout: packs/<id>/families/*.yaml, each an ordinary
+        // classpack document (usually one family entry), parsed into the
+        // SAME ClasspackData AFTER classpack.yaml in sorted filename
+        // order. parse_classpack_yaml appends per-order entries and
+        // last-wins the header scalars, so the split set loads exactly
+        // like the same text concatenated — and a pack may ship either
+        // layout or both (classpack.yaml first, then families/; a later
+        // entry pinning an already-declared WIRE slot overwrites just
+        // the data fields it declares — ordinary sparse-entry semantics
+        // — and replaces that slot's tuning map whole, since every
+        // installed entry installs its tuning). Any unusable family
+        // file rejects the whole pack, matching the classpack.yaml
+        // contract above.
+        const std::string families_dir = "packs/" + pack_id + "/families";
+        if (!rejected) {
+            for (const std::string& name :
+                 og::io::physfs_enumerate_files_sorted(families_dir)) {
+                const std::string fpath = families_dir + "/" + name;
+                if (!name.ends_with(".yaml") ||
+                    og::io::physfs_is_directory(fpath))
+                    continue; // non-YAML notes and subdirs are fine
+                bytes = read_file(fpath.c_str());
+                if (!bytes.empty() &&
+                    og::data::parse_classpack_yaml(
+                        std::string_view(
+                            reinterpret_cast<const char*>(bytes.data()),
+                            bytes.size()),
+                        *parsed, fpath.c_str())) {
+                    have_data = true;
+                    continue;
+                }
+                LogWarn("class pack '{}' rejected: family file '{}' "
+                        "unusable\n", pack_id, name);
+                rejected = true;
+                break;
+            }
+        }
+        if (rejected || !have_data)
+            continue; // no classpack data at all (scripts-only) is fine
         // Move into the process-lifetime store BEFORE installing:
         // descriptors borrow the stored strings.
         og::data::ClasspackData& stored = *parsed;

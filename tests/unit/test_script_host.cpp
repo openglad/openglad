@@ -3027,8 +3027,8 @@ sys.exit(rc)
 // ever emitted real function statements, every one would be a permanently
 // uncovered function record and the coverage gate would go red far from
 // the cause. Fail HERE instead, naming the rule. (Freshness is deliberately
-// NOT asserted — the api_stub_check cmake target owns drift, and it stays
-// advisory until Lua-quality stage 5.)
+// NOT asserted — the api_stub_check cmake target owns drift; quality-plan
+// stage 5 promoted it to a coverage_report dependency.)
 
 TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
 {

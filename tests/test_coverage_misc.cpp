@@ -1435,6 +1435,11 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     living self;
 
+    // Quality-plan stage 4 moved family constants into og.tuning, which the
+    // hook resolves by the WALKER's own order/family — so the walker must BE
+    // a cleric, exactly as the sim guarantees when this hook dispatches.
+    self.set_order_family(Order::Living, FAMILY_CLERIC);
+
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     self.set_user(0);
 
@@ -1732,13 +1737,23 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     caster->set_foe(nullptr);
     ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
 
-    caster->set_current_special(3);
-    caster->set_shifter_down(1);
-    ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
+    // Quality-plan stage 4: the charm/taunt (thief) and heal-range (cleric)
+    // gates read og.tuning, which resolves by the CASTER's own family — a
+    // family hook only ever runs on a walker of that family in the sim, so
+    // these checks need family-matching casters (the special-1 thief gate
+    // above is a code-constant path and stays family-agnostic on purpose).
+    living* thief_caster = add_living(fx2, FAMILY_THIEF, 0, 70, 64);
+    ASSERT_TRUE(thief_caster != nullptr);
+    thief_caster->set_current_special(3);
+    thief_caster->set_shifter_down(1);
+    ASSERT_TRUE(og::test::check_special_ai(*thief, thief_caster));
 
-    caster->set_current_special(1);
-    caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
-    ASSERT_TRUE(og::test::check_special_ai(*cleric, caster));
+    living* cleric_caster = add_living(fx2, FAMILY_CLERIC, 0, 64, 70);
+    ASSERT_TRUE(cleric_caster != nullptr);
+    cleric_caster->set_current_special(1);
+    cleric_caster->stats()->set_magicpoints(
+        cleric_caster->stats()->max_magicpoints());
+    ASSERT_TRUE(og::test::check_special_ai(*cleric, cleric_caster));
 }
 
 TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)

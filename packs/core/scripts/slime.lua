@@ -4,9 +4,9 @@
 
 local C = og.C
 
-local LIVING_SLIME        = og.family_id("living", "core:#8")
-local LIVING_SMALL_SLIME  = og.family_id("living", "core:#9")
-local LIVING_MEDIUM_SLIME = og.family_id("living", "core:#10")
+local LIVING_SLIME        = assert(og.family_id("living", "core:#8"))
+local LIVING_SMALL_SLIME  = assert(og.family_id("living", "core:#9"))
+local LIVING_MEDIUM_SLIME = assert(og.family_id("living", "core:#10"))
 
 -- guy.cpp calculate_level()/calculate_exp() inlined (pure integer helpers;
 -- no og.* binding exists). The C++ recomputes calculate_exp(result) from

@@ -89,8 +89,8 @@ character, on both sides. Consequences:
   sits at the lowest byte.
 - When registry names genuinely collide (golem / giant_skeleton / tower1 are
   all `BEAST`; the slime trio is all `SLIME`), form 1 addresses the exact
-  byte — e.g. `core:#19` for giant_skeleton, which is why
-  `packs/core/classpack.yaml` carries ids like `core:#19`.
+  byte — e.g. `core:#19` for giant_skeleton, which is why the core pack's
+  `families/*.yaml` files carry ids like `core:#19`.
 
 An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is
@@ -101,6 +101,11 @@ dispatch — identically on every peer — and the error is recorded (see
 `og.family_id(order, "core:name")` performs the same resolution and returns
 the wire byte, or `nil`. Resolve family bytes once at chunk load and keep them
 in a `local` — they are constants, which is the one kind of upvalue R6 allows.
+When the named family is one your own pack declares, wrap the lookup:
+`local FX_X = assert(og.family_id("fx", "mypack:x"))`. `assert` narrows the
+`integer?` away for the type checker, and a typo'd id fails loudly at pack
+load instead of surfacing as a nil three hooks later. Keep the bare, nilable
+form only when probing for a family another pack may or may not ship.
 
 ### Hook signatures
 
@@ -111,7 +116,7 @@ without a return value may still return anything; it is ignored.
 
 | Hook | Signature | Notes |
 |---|---|---|
-| `do_special` | `(self) → bool` | `false` = the special did not fire. |
+| `do_special` | `(self) → bool` | `false` = the special did not fire. Usually registered as a [`specials` table](#the-specials-table) instead. |
 | `check_special_ai` | `(self) → bool` | AI's "should I special now?" |
 | `hit_response` | `(self, foe)` | `self` is the stats OWNER (`statistics::controller()`), not a stats handle. |
 | `set_difficulty` | `(self, level)` | |
@@ -137,6 +142,47 @@ without a return value may still return anything; it is ignored.
 **generator**: `customize_spawn(generator, spawn)` — runs after the
 descriptor-driven spawn setup (level roll, lifetime, ani). Generators carry no
 C++ callbacks at all, so this hook is the only generator behavior there is.
+
+### The `specials` table
+
+A living family with more than a trivial special registers the table form of
+`do_special` (register one or the other per call — both is a load error):
+
+```lua
+og.register_hooks("living", "core:orc", {
+  specials = {
+    [1] = yell,             -- current_special() == 1
+    default = eat_corpse,   -- every other value
+  },
+  ...
+})
+```
+
+Dispatch reproduces the retired transliterated switch ladders exactly:
+`self:current_special()` selects the entry, a missing index falls to
+`default`, and a table with neither consumes the dispatch as a **successful
+no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
+touched). Each entry has the plain `do_special` signature: `(self) → bool`,
+`false` = the special did not fire.
+
+Rules:
+
+- Living orders only; keys are integers `1..255` (`current_special` is a
+  char-wide slot index) or the string `"default"`; every value must be a
+  function; an empty table is a load error.
+- The engine stores a **private copy** at registration — mutating the
+  caller's table afterwards cannot change dispatch (R6 at the registration
+  boundary).
+- The table occupies the `do_special` hook slot, so duplicate-registration
+  reporting and last-wins override behave like any named hook, including
+  across packs.
+
+**The cost contract around either form** (`walker_specials.cpp`): the engine
+gates the dispatch on `magicpoints >= special_cost(current_special)` (the
+descriptor's `special_costs` entry) *before* calling the hook, and deducts
+that cost only after the hook answers `true`. So `false` means "did not
+fire, charge nothing", and specials that price themselves (a pool vent, a
+scaling drain) do their own extra deduction inside the entry.
 
 ### Duplicate registration: last one wins
 
@@ -193,7 +239,8 @@ extra `og.i16()` around a plain setter call.
 
 ### Properties
 
-A walker handle also exposes a small set of dotted properties. Each one
+A walker handle also exposes a small set of dotted properties — **the
+preferred spelling wherever one exists** (style contract S6). Each one
 routes through the SAME registered accessor as its method spelling — same
 value, same narrowing, same `stale or dead entity handle` on a bad handle —
 so the two spellings cannot drift apart:
@@ -306,6 +353,16 @@ with a matching `set_*`.
 ## Statistics (`s_` prefix, called on the walker)
 
 The `statistics` record is flattened onto the walker handle.
+
+> **Deprecation (style contract S6).** The `s_*` getter/setter spellings
+> leak the 1995 struct layout and are **legacy aliases**: they keep working
+> indefinitely (removing them would break out-of-tree packs), but new and
+> refactored code uses the [property spellings](#properties) where one
+> exists (`self.hp`, not `self:s_hitpoints()`) and the fused verbs
+> (`add_frozen_stun`, `heal_clamped`) instead of get→combine→set chains.
+> The methods below that have no property or fused-verb replacement
+> (command queue, bit flags, special costs, the raw/read-only extras) are
+> not deprecated — they are the API for what they do.
 
 **Float-valued**: `s_hitpoints s_max_hitpoints s_magicpoints
 s_max_magicpoints s_armor s_magic_per_round s_heal_per_round` — each with
@@ -674,12 +731,20 @@ and its own behavior script.
 
 ```
 docs/modding/examples/emberwisp/
-├── classpack.yaml            one living family, wire_id: auto
-├── scripts/emberwisp.lua     behavior hooks
+├── classpack.yaml            one living family, wire_id: auto, tuning block
+├── scripts/emberwisp.lua     hooks + a specials-table special
 └── sprites/
     ├── emberwisp.png         16x16, 8 frames, indexed to the engine palette
     └── emberwisp.json        Aseprite "Hash" sidecar describing the frames
 ```
+
+The script is written in the current idiom
+([lua-style.md](../lua-style.md)): walker properties, `og.tuning`, a
+`specials` table, `og.rand` where the bound is a positive literal and
+`og.rand0` where tuning can drive it to zero, and the `add_frozen_stun`
+fused verb. It deliberately does *not* use `og.use` — that is for helpers
+shared by two or more files (S4), and a one-script pack keeps helpers
+local. `packs/core/lib/` has the real modules.
 
 It deliberately sits outside `packs/`, because everything under `packs/` is
 mounted at startup and a new living family would change the hire menu, the
@@ -709,6 +774,8 @@ families:
       #                 HP  MP ATK RATK RNG DEF SPD ATKSPD
       init_bit_flags: [FLYING, FORESTWALK]
       default_weapon: core:fireball       # via the weapon registry
+      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
+      special_costs: [5000, 5, 5000, 5000, 5000, 5000]   # MP; engine-gated
       leaves_bloodspot: false
       magic_damage_modifier: 0.5
       death_message: "EMBERWISP GUTTERS OUT"
@@ -722,11 +789,19 @@ families:
       glyph_bold: true
       radar_color: 228
       radar_jitter: 3                     # adds rand(3) — a real RNG call
+      tuning:                             # balance data, read by the script
+        flare_cost: 6.0                   # decimal → Lua float
+        burn_floor: 10                    # integer → Lua integer
+        burst_range: 80
+        stun_base: 4
+        stun_per_level: 8
 ```
 
 Every key except `id` is optional, and an undeclared key changes nothing:
 the installer copies the registry slot's current descriptor and patches only
-what the YAML names.
+what the YAML names. The `tuning:` block is the family's own dial panel —
+`og.tuning(self)` serves it back to the script as a frozen table, so
+rebalancing the wisp is a YAML edit, not a code edit.
 
 ### Its animation table
 
@@ -753,39 +828,86 @@ exactly what you want.
 ```lua
 local C = og.C
 
--- A wisp with less ember than this in reserve cannot spit fire.
-local FLARE_COST = 6.0
+-- Each wisp starts with a random slice of its ember already spent.
+-- Exactly one draw, unconditional, so the RNG stream advances identically
+-- on every peer (R4). The bound is a positive literal, so plain og.rand
+-- is right — its error on n <= 0 is a tripwire worth keeping.
+local function on_create(self)
+  local spent = og.rand(16)
+  -- magicpoints is a C++ float: per-op rounding.
+  self.magicpoints = og.fsub(self.max_magicpoints, spent)
+  self.ani_type = C.ANI_WALK
+end
+
+-- Returning false blocks the shot: a wisp below the flare cost cannot
+-- fire. One that can flares into ani_type 1 — rows 8..15 of this pack's
+-- own animation table.
+local function on_fire_weapon(self)
+  if self.magicpoints < og.tuning(self).flare_cost then
+    return false
+  end
+  self.ani_type = C.ANI_ATTACK
+  self:set_cycle(0)
+  return true
+end
+
+-- Special 1, FLARE BURST: vent every point of ember above the burn floor
+-- as a stunning flash. Answering false means "did not fire" — the engine
+-- then skips the special's descriptor MP cost.
+local function flare_burst(self)
+  local t = og.tuning(self)
+  local ember = og.trunc(self.magicpoints) - t.burn_floor
+  if ember <= 0 then
+    return false
+  end
+  -- Tuning is modder data: clamp it into a sane sim window before use.
+  local range = og.clamp(t.burst_range, C.GRID_SIZE, 320)
+  local foes = og.foes_in_range(self, range)
+  for i = 1, #foes do
+    -- One stun roll per foe, in list order (R4). The bound is tuning-
+    -- driven and may be zero: og.rand0 answers 0 then WITHOUT advancing
+    -- the stream (IRandom::next(0) semantics).
+    local roll = og.rand0(self.level * t.stun_per_level)
+    -- add_frozen_stun is combat_math.stun_total fused with the setter;
+    -- the thaw-immunity discard and the 150 cap are its policy, not ours.
+    foes[i]:add_frozen_stun(t.stun_base + roll)
+  end
+  -- magicpoints and busy are C++ floats: per-op rounding.
+  self.magicpoints = og.fsub(self.magicpoints, ember)
+  self.busy = og.fadd(self:busy(), 4.0)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
+  return true
+end
 
 og.register_hooks("living", "example:emberwisp", {
-  -- Exactly one og.rand call, unconditional, so the RNG stream advances
-  -- identically on every peer (R4).
-  on_create = function(self)
-    local spent = og.rand(16)
-    self:s_set_magicpoints(og.fsub(self:s_max_magicpoints(), spent))
-    self:set_ani_type(C.ANI_WALK)
-  end,
-
-  -- Returning false blocks the shot. A wisp that can fire flares into
-  -- ani_type 1 — rows 8..15 of this pack's own animation table.
-  on_fire_weapon = function(self)
-    if self:s_magicpoints() < FLARE_COST then
-      return false
-    end
-    self:set_ani_type(C.ANI_ATTACK)
-    self:set_cycle(0)
-    return true
-  end,
+  on_create = on_create,
+  on_fire_weapon = on_fire_weapon,
+  -- The specials table replaces a hand-written current_special() ladder:
+  -- [n] runs for special n, `default` (absent here) catches the rest, and
+  -- a table with neither entry makes that cast a successful no-op.
+  specials = {
+    [1] = flare_burst,
+  },
 })
 ```
+
+Details worth noticing: `self.magicpoints` reads the property, but the
+`busy` *read* stays `self:busy()` (reads resolve method-first — `busy` is
+also a method name — while the `self.busy =` write works for every writable
+property); the plain `-` and `*` on `ember` and the roll bound are exact
+integer arithmetic, so no `og.f*` shim; and both `og.rand` and `og.rand0`
+appear, each where its contract is the right one.
 
 ### Where to go for more
 
 | Pattern | Read |
 |---|---|
-| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside its `core:soldier` entry in `packs/core/classpack.yaml` (the C++ `family_soldier.cpp` it was transliterated from is gone — see design doc §9a) |
-| Rand-guarding, raw frozen-delay, guy exp | `packs/core/scripts/orc.lua` |
+| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside `packs/core/families/living-00-soldier.yaml` (the core pack uses the split per-family layout; the C++ `family_soldier.cpp` it was transliterated from is gone — see design doc §9a) |
+| Specials table, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/scripts/orc.lua` beside `packs/core/families/living-14-orc.yaml` |
+| `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
 | Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |
+| Naming, headers, comments, shim policy | [lua-style.md](../lua-style.md) (S1–S6) |
 
 ### One statement per line
 
@@ -828,23 +950,32 @@ literal.
 
 ## Transliteration checklist
 
+For porting C++-shaped behavior into pack Lua (new mods should just write
+the idiom the worked example shows; this list is for byte-exact ports).
+
 1. Map every C++ float operator to exactly one `og.f*` call; never chain in
-   Lua. Comparing floats directly is fine.
+   Lua. Comparing floats directly is fine. Plain `+`/`-`/`*` is fine where
+   both operands are provably integer-valued and < 2^24 (exact in doubles);
+   division never is.
 2. Every integer `/` and `%` → `og.div` / `og.mod`.
 3. `(int32)someFloat` → `og.trunc`. Explicit narrowing casts → `og.i8`/
    `og.i16`/`og.u8` **only** where the C++ did more than a plain setter store
-   (setters already narrow).
-4. Preserve `og.rand` call order and count exactly. Watch for C++ expressions
-   with two `rng.next()` calls: C++ operand order is unspecified, so make the
-   order explicit and let parity adjudicate PER SITE. Adjudicated so far:
-   comparison operands (`rng(a) >= rng(b)`) ran LEFT-first (thief, orc);
-   function-call arguments (`f(..., rng(3), rng(3))`) ran RIGHT-first (slime
-   grow). Do not assume either — flip on parity failure.
+   (setters — and the properties routed through them — already narrow).
+4. Preserve `og.rand` call order and count exactly. A guarded C++ draw
+   (`if (n > 0) r = rng(n)`) is one `og.rand0(n)` — identical stream both
+   ways. Watch for C++ expressions with two `rng.next()` calls: C++ operand
+   order is unspecified, so make the order explicit and let parity
+   adjudicate PER SITE. Adjudicated so far: comparison operands
+   (`rng(a) >= rng(b)`) ran LEFT-first (thief, orc); function-call arguments
+   (`f(..., rng(3), rng(3))`) ran RIGHT-first (slime grow). Do not assume
+   either — flip on parity failure.
 5. Remember the calls that draw from the RNG without looking like it:
    `attack()`, `query_object_passable()`, `og.charm_duration`,
    `og.freeze_duration`, `og.heal_amount`.
 6. `for_each_foe_in_range` → `og.foes_in_range`; `world->find_*_in_range` →
    the matching `og.find_*` with the correct list selector.
 7. `dynamic_cast<living*>` guards → `self:order() ~= og.C.ORDER_LIVING`.
-8. Keep every emitted string byte-identical.
-9. Run `og_test_parity` after each family; goldens must not change.
+8. A `switch (current_special())` ladder → a `specials` table; the
+   dispatcher's select/default/fall-through semantics are the ladder's.
+9. Keep every emitted string byte-identical.
+10. Run `og_test_parity` after each family; goldens must not change.

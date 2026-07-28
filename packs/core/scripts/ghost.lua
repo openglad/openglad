@@ -1,7 +1,7 @@
 -- core:ghost — scare-cloud special (cookbook: docs/lua-classpacks-design.md §3).
 
 local ai = og.use("ai")
-local FX_GHOST_SCARE = og.family_id("fx", "core:ghost_scare")
+local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
 local function do_special(self)
   local scare = og.summon(self, "fx", FX_GHOST_SCARE)
@@ -17,5 +17,5 @@ end
 
 og.register_hooks("living", "core:ghost", {
   do_special = do_special,
-  check_special_ai = ai.foe_within(130),
+  check_special_ai = ai.foe_within(130),  -- per-tick gate: R-KEEP-4
 })

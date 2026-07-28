@@ -3,9 +3,9 @@
 
 local C = og.C
 local lc = og.use("living_common")
-local FX_MARKER = og.family_id("fx", "core:marker")
-local FX_EXPLOSION = og.family_id("fx", "core:explosion")
-local WEAPON_WAVE = og.family_id("weapon", "core:wave")
+local FX_MARKER = assert(og.family_id("fx", "core:marker"))
+local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
+local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
 
 -- og::combat::kStarburstAddCap (include/openglad/core/combat_math.h),
 -- pure constant with no og.C binding: per-fireball damage add cap.
@@ -75,9 +75,11 @@ local function teleport(self)
   if lc.is_busy(self) then
     return false
   end
-  if self:has_guy() and self:g_intelligence() < 75 then
+  local t = og.tuning(self)
+  if self:has_guy() and self:g_intelligence() < t.marker_int_req then
     if self:user() ~= -1 then
-      og.emit_notification("Need 75 Int for Marker!")
+      og.emit_notification(
+        string.format("Need %d Int for Marker!", t.marker_int_req))
     end
     return false
   end
@@ -177,12 +179,17 @@ local function freeze_time(self)
   -- enemy_freeze is relative to world.my_team: a Mage on the player's team
   -- banks a global time-stop; anyone else grants bonus_rounds to its own
   -- side instead.
+  local t = og.tuning(self)
+  -- shim kept: the C++ compares (uint8)my_team() against the u8 team field.
   if self.team == og.u8(og.my_team()) then
-    og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self.level)
+    og.set_enemy_freeze(og.enemy_freeze()
+                        + t.freeze_base + t.freeze_per_level * self.level)
     og.set_palette(1)
     og.emit_event(C.EVENT_SET_PALETTE, 1)
   else
-    local rounds = og.min(5 + 2 * self.level, 50)
+    local rounds = og.min(
+      t.bonus_rounds_base + t.bonus_rounds_per_level * self.level,
+      t.bonus_rounds_cap)
     og.emit_notification(
       string.format("TIME IS FROZEN! (%d rounds)", rounds), 2)
     og.emit_event(C.EVENT_REQUEST_REDRAW)
@@ -217,8 +224,11 @@ local function energy_wave(self)
 end
 
 local function heartburst(self)
+  local t = og.tuning(self)
   local foes, foe_count = og.find_foes_in_range(
-    "ob", 80 + 2 * self.level, self)
+    "ob",
+    t.heartburst_range_base + t.heartburst_range_per_level * self.level,
+    self)
   if foe_count == 0 then
     return false
   end

@@ -2,9 +2,9 @@
 
 local C = og.C
 local lc = og.use("living_common")
-local FX_MAGIC_SHIELD = og.family_id("fx", "core:magic_shield")
-local LIVING_SKELETON = og.family_id("living", "core:skeleton")
-local LIVING_GHOST = og.family_id("living", "core:ghost")
+local FX_MAGIC_SHIELD = assert(og.family_id("fx", "core:magic_shield"))
+local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
+local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
 
 -- og::combat::kMaceLifeCap (mystic mace lifetime bound; binds above 738 MP).
 local MACE_LIFE_CAP = 468
@@ -16,15 +16,18 @@ local function do_turn_undead(self)
   if lc.is_busy(self) then
     return false
   end
-  if self:has_guy() and self:g_intelligence() < 60 then
+  local t = og.tuning(self)
+  if self:has_guy() and self:g_intelligence() < t.turn_undead_int_req then
     if self.team == 0 or self:has_guy() then
-      og.emit_notification("You need 60 Int to Turn Undead")
+      og.emit_notification(string.format(
+        "You need %d Int to Turn Undead", t.turn_undead_int_req))
     end
     -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false
   end
-  local turned = self:turn_undead(4 * self.level, self.level)
+  local turned = self:turn_undead(
+    t.turn_undead_range_per_level * self.level, self.level)
   if turned == -1 then
     return false
   end
@@ -57,9 +60,11 @@ local function nearby_corpse(self, range)
 end
 
 local function heal_or_mace(self)
+  local t = og.tuning(self)
   if self:shifter_down() == 0 then
     -- normal heal
-    local friends, friend_count = og.find_friends_in_range("ob", 60, self)
+    local friends, friend_count =
+      og.find_friends_in_range("ob", t.heal_range, self)
     if friend_count <= 1 then
       return false
     end
@@ -110,9 +115,10 @@ local function heal_or_mace(self)
   if lc.is_busy(self) then
     return false
   end
-  if self:has_guy() and self:g_intelligence() < 50 then
+  if self:has_guy() and self:g_intelligence() < t.mace_int_req then
     if self:user() ~= -1 then
-      og.emit_notification("50 Int required for Mystic Mace!")
+      og.emit_notification(string.format(
+        "%d Int required for Mystic Mace!", t.mace_int_req))
     end
     return false
   end
@@ -128,7 +134,7 @@ local function heal_or_mace(self)
   -- spare MP funds the mace; the spare can be negative: og.div is C
   -- trunc, not Lua floor
   local spare_mp = og.div(lc.spare_mp(self, self:current_special()), 2)
-  local life = og.min(100 + spare_mp, MACE_LIFE_CAP)
+  local life = og.min(t.mace_life_base + spare_mp, MACE_LIFE_CAP)
   mace:set_lifetime(life)
   -- hp is a C++ float: per-op rounding; og.div halves as C trunc again
   mace.hp = og.fadd(mace.hp, og.div(spare_mp, 2))
@@ -145,7 +151,7 @@ local function raise_skeleton(self)
     return do_turn_undead(self)
   end
   -- raise skeleton at the nearest bloodstain
-  local blood = nearby_corpse(self, 60)
+  local blood = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
   if not blood then
     return false
   end
@@ -174,7 +180,7 @@ local function raise_ghost(self)
     return do_turn_undead(self)
   end
   -- raise ghost at the nearest bloodstain
-  local blood = nearby_corpse(self, 30)
+  local blood = nearby_corpse(self, og.tuning(self).raise_ghost_range)
   if not blood then
     return false
   end
@@ -198,7 +204,8 @@ local function raise_ghost(self)
 end
 
 local function resurrect(self)
-  local blood = nearby_corpse(self, 30)
+  local t = og.tuning(self)
+  local blood = nearby_corpse(self, t.resurrect_range)
   if not blood then
     return false
   end
@@ -231,7 +238,7 @@ local function resurrect(self)
       end
     end
   else
-    alive = self:do_summon(LIVING_GHOST, 200)
+    alive = self:do_summon(LIVING_GHOST, t.resurrect_ghost_lifetime)
     if not alive then
       return false
     end
@@ -252,7 +259,8 @@ end
 
 local function check_special_ai(self)
   if self:current_special() == 1 then -- healing
-    local _, friend_count = og.find_friends_in_range("ob", 60, self)
+    local _, friend_count = og.find_friends_in_range(
+      "ob", og.tuning(self).heal_range, self)
     if friend_count > 1 then
       self:set_shifter_down(0) -- we're HEALING
       return true

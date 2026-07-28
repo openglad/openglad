@@ -216,3 +216,32 @@ batched, each batch an afternoon-sized parity-gated unit — the corpus is only
 0+1 together, 2 alone, 3+4 together, 5 half-sized. Everything rides the
 existing oracles: the same parity/canary/coverage machinery the gate work
 hardened is what makes this refactor cheap to prove.
+
+## 7. Status (measured 2026-07-28, `feature/lua-quality`)
+
+| Stage | State | Landed as |
+|---|---|---|
+| 0 — tooling + style contract | **DONE** | `3547e368` (plan + contract), `09b31462` (prober + instruction report), `88a530fe` (baseline), `ca61ae00`/`ccb36454` (prober fixes) |
+| 1 — API enrichment | **DONE** | `3a3fb71d` — rand0/max/min/clamp/sign, `og.combat.*`, property layer, fused verbs, `og.summon_configured`, `og.use`, `og.tuning`; stubs + drift check |
+| 2 — mechanical de-noising | **DONE** | `cf15b9ec` (audit tool + rewriters), `864b2ad0` (36 files, three lanes) |
+| 3 — ladders + skeletons | **DONE** | `421b013d` (specials dispatcher, `packs/core/lib/`, 8 families), `adbd62da` (baseline re-capture) |
+| 4 — data lift | **DONE** | tuning blocks + `families/*.yaml` split (73 families), pin follow + YAML canary staging; final gates in the Stage-4 integration run |
+| 5 — docs/examples/enforcement | **DONE** — docs half (emberwisp in the new idiom + specials-table test, api-reference, modding skill, cookbook notes, stub regen); enforcement half (statement-lint rules 7-9: guard-trio / bound-helper reimpl + cross-file dup / legacy-header, each plant-proven RED and cost-flat for the per-build mode; `check_luals` and `api_stub_check` promoted to coverage_report gates, corpus LuaLS-clean via `assert(og.family_id(...))` own-pack constants + one contract-cast); the one rule-8b finding — `hits()` duplicated across effect_chain/effect_cloud — now lives in `packs/core/lib/effect_common.lua`; adversarial close = the stages-2..5 final verification (full gate battery, per-pin canary sweep, metrics re-measure, 5-family style audit) |
+
+Dashboard, baseline (§1, 2026-07-27) → now:
+
+| Metric | Was | Now |
+|---|---|---|
+| corpus | 36 files, 3,825 lines | 36 script files, 3,547 lines, **−7.3%** (+ `lib/` 3 modules, 121 lines; the corpus also *absorbed* Stage-3 specials tables and the S5 why-comments) |
+| arithmetic shims | 307 | **163** in scripts (172 with lib): fadd 64, fdiv 22, fmul 21, fsub 20, trunc 13, div 9, i16 7, mod 3, u8 2, i32 1, i8 1 (+ lib: i16 4, fsub 2, div 2, trunc 1) — every kept site audited (`scripts/refactor/shim_audit.py`) and covered by an S5 why (per site or per adjacent cluster); the <60 hypothesis was wrong because most float sites genuinely reproduce C++ `float` rounding |
+| guard trios | 6 (+2 flagged splits) | **0** — 8 `og.rand0` sites |
+| archaeology locals | 486 | **0** (grep's five residual `generic` hits are comment prose in RNG-order records quoting the C++) |
+| dead provenance headers | 17 of 36 | **0**; 36/36 one-line S2 headers |
+| switch ladders | 8 families | **0** — specials tables; hand-inlined `combat_math` copies 0 (7 `og.combat.*` call sites) |
+| duplicated helpers | `do_special`×13, `check_special_ai`×9, … | shared *bodies* live in `lib/living_common.lua` + `lib/ai.lua` + `lib/effect_common.lua` (14 `og.use` call sites); token-identical cross-file bodies ≥4 lines: **0** (lint rule 8b); same-name hook-key *wrappers* remain by design — S1 identity pairs (`level_up`×12, `set_difficulty`×7, `on_death`×5, `on_act`×5, `do_special`×4, `check_special_ai`×4) |
+| tuning | pervasive inline literals | 73 families in `packs/core/families/*.yaml`; 33 `og.tuning` read sites |
+| comment↔code | (not measured) | 544 comment lines / 3,547 (15.3%), dominated by RNG-order records and S5 whys |
+| binding surface | 214 registrations | 447 stub fields; `check_api_stubs.py` green |
+| parity | oracle | **188/188 OFF and ARMED** on this tree (2026-07-28), pins re-pointed + canary-flipped per batch |
+| instruction budgets | <10%/scenario | baseline re-captured post-Stage-3 (`adbd62da`); per-batch probe gates held; the one measured blow-up (+23.8% on `bones`, per-tick `og.tuning` in an AI gate) was redesigned to R-KEEP-4 constants — see `lib/ai.lua` |
+| coverage | 95 line / 100 function ×6 | enforced by `probe.sh --full-coverage` per stage; `lib/` and the example pack are in the denominator and exercised |

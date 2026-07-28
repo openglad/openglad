@@ -438,16 +438,51 @@ TEST(FamilyStringIds, vocabulary_round_trips)
 // Exporter ↔ reader round trip over the committed core pack
 // ---------------------------------------------------------------------------
 
+namespace {
+
+// Parses the committed core pack in its shipped SPLIT layout (Stage 4): the
+// header-only classpack.yaml first, then every families/*.yaml in sorted
+// filename order, into ONE ClasspackData — the same concatenation contract
+// install_classpacks() applies. Every committed-core test goes through
+// this, so the tests read the pack the way the loader does.
+void load_committed_core_pack(ClasspackData& data)
+{
+    const auto read_all = [](const std::filesystem::path& p) {
+        std::ifstream in(p, std::ios::binary);
+        std::stringstream buffer;
+        buffer << in.rdbuf();
+        return buffer.str();
+    };
+    ASSERT_TRUE(std::filesystem::exists("packs/core/classpack.yaml"))
+        << "packs/core/classpack.yaml missing (run from the repo root)";
+    ASSERT_TRUE(parse_classpack_yaml(read_all("packs/core/classpack.yaml"),
+                                     data, "packs/core"));
+    ASSERT_TRUE(data.living.empty())
+        << "core classpack.yaml is the header only; families live in "
+           "families/*.yaml";
+    std::vector<std::filesystem::path> family_files;
+    for (const auto& entry :
+         std::filesystem::directory_iterator("packs/core/families"))
+    {
+        if (entry.path().extension() == ".yaml")
+            family_files.push_back(entry.path());
+    }
+    std::sort(family_files.begin(), family_files.end());
+    ASSERT_EQ(family_files.size(), 73u);
+    for (const std::filesystem::path& p : family_files)
+        ASSERT_TRUE(parse_classpack_yaml(read_all(p), data,
+                                         p.string().c_str()))
+            << p;
+}
+
+}  // namespace
+
 TEST(ClasspackYaml, committed_core_pack_matches_registries)
 {
-    std::ifstream in("packs/core/classpack.yaml", std::ios::binary);
-    ASSERT_TRUE(in.good())
-        << "packs/core/classpack.yaml missing (run from the repo root)";
-    std::stringstream buffer;
-    buffer << in.rdbuf();
-
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(buffer.str(), data, "packs/core"));
+    load_committed_core_pack(data);
+    if (::testing::Test::HasFatalFailure())
+        return;
     ASSERT_EQ(data.pack, "core");
     ASSERT_EQ(data.living.size(), static_cast<std::size_t>(NUM_FAMILIES));
     ASSERT_EQ(data.weapons.size(), 20u);
@@ -1068,13 +1103,10 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     ModSlotGuard mods;
     RegistrySnapshotGuard pins;
 
-    std::ifstream in("packs/core/classpack.yaml", std::ios::binary);
-    ASSERT_TRUE(in.good())
-        << "packs/core/classpack.yaml missing (run from the repo root)";
-    std::stringstream buffer;
-    buffer << in.rdbuf();
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(buffer.str(), data, "packs/core"));
+    load_committed_core_pack(data);
+    if (::testing::Test::HasFatalFailure())
+        return;
 
     // (order, declared id, pinned wire id) for every entry, kept before the
     // install moves the parsed data into the process-lifetime store.
@@ -1253,13 +1285,10 @@ TEST(ClasspackYaml, parse_presentation_block)
 // switch tables, so the sweep that deletes them changes no pixel.
 TEST(ClasspackYaml, committed_core_pack_carries_ui_presentation)
 {
-    std::ifstream in("packs/core/classpack.yaml", std::ios::binary);
-    ASSERT_TRUE(in.good())
-        << "packs/core/classpack.yaml missing (run from the repo root)";
-    std::stringstream buffer;
-    buffer << in.rdbuf();
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(buffer.str(), data, "packs/core"));
+    load_committed_core_pack(data);
+    if (::testing::Test::HasFatalFailure())
+        return;
 
     // Every core family of every order declares the whole block: the sweep
     // agent may read the descriptor unconditionally.
@@ -2241,4 +2270,178 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
 
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
+}
+
+// ---------------------------------------------------------------------------
+// Split layout: packs/<id>/families/*.yaml (quality plan Stage 4)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A scratch pack in the SPLIT layout: header-only classpack.yaml (plus one
+// header-declared family when `header_family` is set), two families/ files
+// in sorted order, a non-YAML note and a subdirectory that must both be
+// ignored. bb.yaml re-declares aa.yaml's slot with one field, proving the
+// documented precedence: later files overwrite exactly the fields they
+// declare.
+std::filesystem::path make_scratch_split_pack(bool header_family,
+                                              bool broken_family_file)
+{
+    std::string templ =
+        (std::filesystem::temp_directory_path() / "og_split_XXXXXX")
+            .string();
+    char* made = ::mkdtemp(templ.data());
+    if (made == nullptr)
+        return {};
+    const std::filesystem::path root(made);
+    std::error_code ec;
+    std::filesystem::create_directories(root / "families" / "ignored.yaml",
+                                        ec);
+    if (ec)
+        return {};
+    const auto put = [&](const std::filesystem::path& p,
+                         const std::string& bytes) {
+        std::ofstream out(p, std::ios::binary);
+        out << bytes;
+    };
+    if (header_family)
+        put(root / "classpack.yaml",
+            "pack: org.test.splitpack\n"
+            "families:\n"
+            "  living:\n"
+            "    - id: splitpack:from_header\n"
+            "      wire_id: auto\n"
+            "      name: \"FROM HEADER\"\n");
+    put(root / "families" / "aa.yaml",
+        "families:\n"
+        "  living:\n"
+        "    - id: splitpack:alpha\n"
+        "      wire_id: 30\n"
+        "      name: \"ALPHA\"\n"
+        "      hiring_cost: 111\n"
+        "      tuning: {split_key: 7}\n");
+    put(root / "families" / "bb.yaml",
+        broken_family_file
+            ? "families: [unclosed\n"
+            : "families:\n"
+              "  living:\n"
+              "    - id: splitpack:alpha\n"
+              "      wire_id: 30\n"
+              "      hiring_cost: 222\n"
+              "      tuning: {split_key: 9}\n");
+    put(root / "families" / "notes.txt", "not yaml; must be ignored\n");
+    return root;
+}
+
+class SplitPackMount {
+public:
+    explicit SplitPackMount(const std::filesystem::path& root) : root_(root)
+    {
+        mounted_ = og::resources::mount(root.string().c_str(),
+                                        "packs/org.test.splitpack", 1);
+        if (mounted_)
+            og::resources::refresh_pack_scripts();
+    }
+    ~SplitPackMount()
+    {
+        if (mounted_) {
+            (void)og::resources::unmount(root_.string().c_str());
+            og::resources::refresh_pack_scripts();
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(root_, ec);
+    }
+    [[nodiscard]] bool ok() const { return mounted_; }
+
+private:
+    std::filesystem::path root_;
+    bool mounted_ = false;
+};
+
+}  // namespace
+
+// Both layouts in one pack: the classpack.yaml header entry AND the
+// families/ entries install; the two families/ files parse in sorted
+// filename order into one pack, so bb.yaml's sparse re-declaration of
+// aa.yaml's WIRE slot overwrites exactly the data field it declares
+// (hiring_cost) while undeclared fields (name) keep aa.yaml's values —
+// and the tuning map follows the install-always-replaces rule (bb.yaml's
+// map wins whole). notes.txt and the directory named *.yaml are skipped.
+TEST(ClasspackSplitLayout, families_dir_installs_like_a_monolith)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_split_pack(
+        /*header_family=*/true, /*broken_family_file=*/false);
+    ASSERT_FALSE(root.empty());
+    SplitPackMount mount(root);
+    ASSERT_TRUE(mount.ok());
+
+    const int header_id = og::families::resolve_family_string_id(
+        Order::Living, "splitpack:from_header");
+    ASSERT_GE(header_id, 0) << "classpack.yaml families must still install";
+    const int alpha_id = og::families::resolve_family_string_id(
+        Order::Living, "splitpack:alpha");
+    ASSERT_GE(alpha_id, 0) << "families/*.yaml entries must install";
+
+    EXPECT_EQ(alpha_id, 30) << "wire_id pins the slot across both files";
+    const FamilyDescriptor* alpha = get_family_descriptor(alpha_id);
+    ASSERT_NE(alpha, nullptr);
+    EXPECT_STREQ(alpha->name, "ALPHA") << "aa.yaml's undeclared-in-bb "
+                                          "fields must survive";
+    EXPECT_EQ(alpha->hiring_cost, 222)
+        << "bb.yaml loads after aa.yaml (sorted) and overwrites the one "
+           "field it declares";
+
+    const og::script::TuningMap* tuned =
+        og::script::family_tuning(Order::Living, alpha_id);
+    ASSERT_NE(tuned, nullptr) << "tuning from a families/ file must reach "
+                                 "the gameplay store";
+    ASSERT_EQ(tuned->size(), 1u);
+    EXPECT_EQ((*tuned)[0].key, "split_key");
+    EXPECT_EQ((*tuned)[0].value.integer, 9)
+        << "an installed entry always installs its tuning map, so the "
+           "later file's map replaces the earlier one whole";
+}
+
+// families/ alone is a complete pack: no classpack.yaml at all.
+TEST(ClasspackSplitLayout, families_only_pack_installs)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_split_pack(
+        /*header_family=*/false, /*broken_family_file=*/false);
+    ASSERT_FALSE(root.empty());
+    SplitPackMount mount(root);
+    ASSERT_TRUE(mount.ok());
+
+    EXPECT_GE(og::families::resolve_family_string_id(Order::Living,
+                                                     "splitpack:alpha"),
+              0);
+    EXPECT_LT(og::families::resolve_family_string_id(
+                  Order::Living, "splitpack:from_header"),
+              0);
+}
+
+// One unusable families/ file rejects the WHOLE pack — including entries a
+// perfectly good classpack.yaml in the same pack declared — matching the
+// all-or-nothing contract a broken classpack.yaml always had.
+TEST(ClasspackSplitLayout, bad_family_file_rejects_the_whole_pack)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_split_pack(
+        /*header_family=*/true, /*broken_family_file=*/true);
+    ASSERT_FALSE(root.empty());
+    SplitPackMount mount(root);
+    ASSERT_TRUE(mount.ok());
+
+    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
+                                                     "splitpack:alpha"),
+              0);
+    EXPECT_LT(og::families::resolve_family_string_id(
+                  Order::Living, "splitpack:from_header"),
+              0);
+    EXPECT_EQ(og::script::family_tuning(Order::Living, 21), nullptr)
+        << "no tuning may leak from a rejected pack";
 }

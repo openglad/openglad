@@ -825,6 +825,42 @@ og_add_python_check_target(check_lua_statement_lines_full
     ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
 )
 
+# lua-language-server --check over the workspace with the generated og.*
+# stubs (scripts/check_luals.py): zero diagnostics under packs/ and
+# docs/modding/. Promoted from advisory by quality-plan stage 5; gates
+# coverage_report (below, with api_stub_check), deliberately NOT an
+# og_gameplay build dependency — per-build cost stays flat, and the binary
+# comes from the dev shell (flake.nix). Like every check target here, a
+# machine without the tool gets a loud failure when the target is BUILT,
+# never a silent pass.
+find_program(OG_LUALS_EXECUTABLE lua-language-server)
+if(Python3_Interpreter_FOUND AND OG_LUALS_EXECUTABLE)
+    add_custom_target(check_luals
+        COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/check_luals.py
+                --luals-exe ${OG_LUALS_EXECUTABLE}
+                --log-dir ${CMAKE_BINARY_DIR}/luals-check
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking pack Lua types with lua-language-server (og.* stubs)"
+        USES_TERMINAL
+        VERBATIM
+    )
+else()
+    if(NOT OG_LUALS_EXECUTABLE)
+        set(OG_LUALS_MISSING "lua-language-server (the dev shell in flake.nix provides it)")
+    else()
+        set(OG_LUALS_MISSING "a Python 3 interpreter")
+    endif()
+    add_custom_target(check_luals
+        COMMAND ${CMAKE_COMMAND} -E echo
+                "check_luals: this check needs ${OG_LUALS_MISSING} and none was found at configure time. Install it and reconfigure."
+        COMMAND ${CMAKE_COMMAND} -E false
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking pack Lua types with lua-language-server (og.* stubs)"
+        VERBATIM
+    )
+endif()
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
@@ -3510,14 +3546,16 @@ if(BUILD_TESTING)
 endif()
 
 # --------------------------------------------------------------------------
-# Modding API stubs drift check (advisory)
+# Modding API stubs drift check (enforced at the coverage gate)
 # --------------------------------------------------------------------------
 # docs/modding/og-api.d.lua is GENERATED from the binding registration
 # tables by scripts/modding/gen_api_stubs.py; this target regenerates and
 # byte-compares, and its red output names the regeneration command.
-# Deliberately NOT a build dependency of og_gameplay — the check is
-# advisory until stage 5 of the Lua quality plan promotes it. Run it like
-# coverage_report:
+# Promoted by quality-plan stage 5 from advisory to a coverage_report
+# dependency (below, beside check_luals and the full statement lint) —
+# still deliberately NOT a build dependency of og_gameplay, so per-build
+# cost stays flat. Stale stubs would also mislead check_luals and rule 8
+# of the statement lint, which both read the committed file. Run alone:
 #
 #   cmake --build <build> --target api_stub_check
 #

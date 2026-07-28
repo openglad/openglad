@@ -215,8 +215,10 @@
             lodepngHead
             lcov
             # Pack-Lua editor/CI tooling: reads the generated og.* stubs
-            # (docs/modding/og-api.d.lua) through the repo-root .luarc.json;
-            # headless run: lua-language-server --check .
+            # (docs/modding/og-api.d.lua) through the repo-root .luarc.json.
+            # ENFORCED (quality-plan stage 5): scripts/check_luals.py, the
+            # cmake target check_luals, gates coverage_report — zero
+            # diagnostics under packs/ and docs/modding/.
             lua-language-server
             ninja
             ncurses
@@ -253,7 +255,7 @@
             echo "  Launch: ./build/dev-debug/openglad"
             echo "  Tests:  cmake --preset ci-test && cmake --build --preset ci-test && ctest --preset ci-test"
             echo "  Web:    ./scripts/build_web.sh   (emcc $(emcc --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo '?'))"
-            echo "  LuaLS:  lua-language-server --check .   (og.* stubs: docs/modding/og-api.d.lua)"
+            echo "  LuaLS:  python3 scripts/check_luals.py   (enforced: gates coverage_report)"
           '';
         };
     in

@@ -1,0 +1,41 @@
+# core:elf — split from classpack.yaml (families load in sorted filename order)
+families:
+  living:
+    - id: core:elf
+      wire_id: 1
+      name: "ELF"
+      short_name: ~
+      base_stats: [5, 14, 5, 12, 8, 1]
+      hiring_cost: 150
+      derived_bonuses: [75, 0, 12, 0, 0, 0, 4, 5]
+      stat_costs: [25, 6, 12, 8, 50, 200]
+      special_costs: [5000, 10, 20, 30, 40, 5000]
+      weapon_cost: 1
+      default_weapon: core:rock
+      init_bit_flags: [FORESTWALK]
+      init_ani_type: 0
+      init_max_magicpoints: 0
+      special_names: ["NONE", "ROCKS", "BOUNCING ROCKS", "LOTS OF ROCKS", "MEGA ROCKS", "NONE"]
+      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      leaves_bloodspot: true
+      magic_damage_modifier: 1
+      is_stationary: false
+      has_returning_weapon: false
+      is_undead: false
+      promotes_to: ~
+      promotion_level_req: 0
+      death_message: "ELF KILLED"
+      sprite: "elf.png"
+      animation: standard
+      ai_line_of_sight: 8
+      description: "Elves are small and weak, \nbut are harder to hit than\nmost classes. Alone of all\nthe classes, elves possess\nthe 'ForestWalk' ability. \n\nSpecial: Rocks"
+      names: ["Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot", "Treewee"]
+      playable: true
+      playable_order: 2
+      glyph: "e"
+      glyph_ascii: "e"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

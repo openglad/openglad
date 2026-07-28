@@ -71,7 +71,7 @@ end
 
 og.register_hooks("living", "core:elemental", {
   do_special = do_special,
-  check_special_ai = ai.foe_within(130),
+  check_special_ai = ai.foe_within(130),  -- per-tick gate: R-KEEP-4
   level_up = level_up,
   on_death = on_death,
   on_act_living = on_act_living,

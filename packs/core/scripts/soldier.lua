@@ -2,7 +2,7 @@
 
 local C = og.C
 local ai = og.use("ai")
-local FX_BOOMERANG = og.family_id("fx", "core:boomerang")
+local FX_BOOMERANG = assert(og.family_id("fx", "core:boomerang"))
 
 local function charge(self)
   if self:s_forward_blocked() then
@@ -17,14 +17,16 @@ local function charge(self)
 end
 
 local function throw_boomerang(self)
+  local t = og.tuning(self)
   -- og.summon_configured applies these keys in exactly the legacy order:
   -- ani_type, lifetime, hp_add, max_hp_from_hp, damage_add
   local boomerang = og.summon_configured(self, "fx", FX_BOOMERANG, {
     ani_type = 1,
-    lifetime = 30 + self.level * 12,
-    hp_add = self.level * 12,
+    lifetime = t.boomerang_lifetime_base
+      + self.level * t.boomerang_lifetime_per_level,
+    hp_add = self.level * t.boomerang_hp_per_level,
     max_hp_from_hp = true,
-    damage_add = self.level * 4,
+    damage_add = self.level * t.boomerang_damage_per_level,
   })
   if not boomerang then
     return false
@@ -50,7 +52,9 @@ local function whirlwind(self)
   self:s_add_command(C.COMMAND_WALK, 1, -1, 0)
   self:s_add_command(C.COMMAND_WALK, 1, -1, -1)
 
-  local foes = og.foes_in_range(self, 32 + self.level * 2)
+  local t = og.tuning(self)
+  local foes = og.foes_in_range(
+    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)
   for i = 1, #foes do
     local foe = foes[i]
     local dx = og.sign(foe:xpos() - self:xpos())
@@ -71,7 +75,7 @@ local function disarm(self)
   end
 
   local found = 0
-  local foes = og.foes_in_range(self, 28)
+  local foes = og.foes_in_range(self, og.tuning(self).disarm_range)
   for i = 1, #foes do
     local foe = foes[i]
     -- two draws in one comparison: parity adjudicated LEFT-first here
@@ -129,7 +133,7 @@ og.register_hooks("living", "core:soldier", {
     [3] = whirlwind,
     [4] = disarm,
   },
-  check_special_ai = ai.foe_in_window(20, 75),
+  check_special_ai = ai.foe_in_window(20, 75),  -- per-tick gate: R-KEEP-4
   on_fire_weapon = on_fire_weapon,
   on_create = on_create,
   set_difficulty = set_difficulty,

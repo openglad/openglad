@@ -2,9 +2,9 @@
 
 local C = og.C
 local lc = og.use("living_common")
-local WEAP_TREE = og.family_id("weapon", "core:tree")
-local LIVING_FAERIE = og.family_id("living", "core:faerie")
-local WEAP_CIRCLE_PROTECTION = og.family_id("weapon", "core:circle_protection")
+local WEAP_TREE = assert(og.family_id("weapon", "core:tree"))
+local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
+local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
 
 local function plant_tree(self)
   if lc.is_busy(self) then

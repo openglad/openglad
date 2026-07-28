@@ -29,6 +29,39 @@ loader.reload_graphics();                // picks up the pack's sprites
 The mount point decides the pack id — `emberwisp`, the directory name under
 `packs/` — and it is what makes the `sprite:` path resolve.
 
+## What the script demonstrates
+
+`scripts/emberwisp.lua` is written in the current pack idiom
+([docs/lua-style.md](../../../lua-style.md)) and exercises most of the
+modern surface in ~60 lines:
+
+- **Walker properties** — `self.magicpoints`, `self.max_magicpoints`,
+  `self.level` read as values; `self.ani_type = C.ANI_WALK` and
+  `self.busy = ...` assign through the same narrowing setters as the
+  method spellings. (`busy` is also a method name, so its *read* stays
+  `self:busy()` — reads resolve method-first.)
+- **A `tuning:` block** — every balance constant (`flare_cost`,
+  `burn_floor`, `burst_range`, `stun_base`, `stun_per_level`) lives in
+  `classpack.yaml` and is read back with `og.tuning(self)`, a frozen
+  read-only table. Rebalancing the wisp is a YAML edit.
+- **A `specials` table** — `specials = { [1] = flare_burst }` replaces a
+  hand-written `current_special()` ladder. A slot with no entry and no
+  `default` is a successful no-op; answering `false` from the entry means
+  "did not fire" and skips the descriptor's special MP cost.
+- **`og.rand` vs `og.rand0`** — the create-time roll has a positive
+  literal bound, so it uses plain `og.rand` (its `n <= 0` error is a
+  tripwire); the per-foe stun roll's bound is tuning-driven and may be
+  zero, so it uses `og.rand0`, which answers 0 *without advancing the
+  stream*.
+- **Fused verbs and bound helpers** — `foe:add_frozen_stun(n)` applies
+  `combat_math::stun_total` (thaw-immunity discard, cap 150) in one call;
+  `og.clamp` sanity-bounds the modder-supplied `burst_range`.
+
+It deliberately does NOT use `og.use`: that mechanism is for helpers
+shared by two or more files, and a one-script pack keeps helpers as
+`local function`s (style rule S4). See `packs/core/lib/` for real
+modules.
+
 ## The three things worth copying
 
 **Sprite paths are virtual-filesystem paths.** `sprite: packs/emberwisp/
