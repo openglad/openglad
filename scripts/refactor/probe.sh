@@ -233,8 +233,11 @@ run_gate "parity-off" parity-off env -u OPENGLAD_LUA_COVERAGE -u OPENGLAD_LUA_IN
     GATE_DETAILS[-1]+="$(parity_pass_count "$LOGDIR/parity-off.log")"
 
 ARMED_DIR=$(mktemp -d)
-run_gate "parity-armed" parity-armed env OPENGLAD_LUA_COVERAGE="$ARMED_DIR" \
-    -u OPENGLAD_LUA_INSTRUCTION_REPORT "$ROOT/build/ci-test/og_test_parity"
+# env option parsing stops at the first NAME=VALUE operand, so -u MUST come
+# before the assignment (found the hard way: the reversed order executes
+# "-u" as the program and the gate dies with exit 127 on every run).
+run_gate "parity-armed" parity-armed env -u OPENGLAD_LUA_INSTRUCTION_REPORT \
+    OPENGLAD_LUA_COVERAGE="$ARMED_DIR" "$ROOT/build/ci-test/og_test_parity"
 [[ "${GATE_RESULTS[-1]}" == "PASS" ]] &&
     GATE_DETAILS[-1]+="$(parity_pass_count "$LOGDIR/parity-armed.log")"
 rm -rf "$ARMED_DIR"
