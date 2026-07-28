@@ -3543,6 +3543,11 @@ if(BUILD_TESTING)
     # or undeclared shipped-Lua candidate must fail THIS target loudly,
     # naming the repository-side path, instead of breaking every ninja build.
     add_dependencies(coverage_report check_lua_statement_lines_full)
+    # Quality-plan stage 5 promotion: lua-language-server --check over the
+    # workspace gates the same target (the check_luals comment near its
+    # definition explains why it is NOT an og_gameplay build dep — per-build
+    # cost stays flat). api_stub_check joins below, after its definition.
+    add_dependencies(coverage_report check_luals)
 endif()
 
 # --------------------------------------------------------------------------
@@ -3581,6 +3586,14 @@ else()
         USES_TERMINAL
         VERBATIM
     )
+endif()
+
+# Quality-plan stage 5 promotion: stub drift gates coverage_report (the
+# target exists only under BUILD_TESTING; check_luals is wired beside the
+# full statement lint at the coverage_report definition above). Kept out of
+# og_gameplay's dependencies on purpose — per-build cost stays flat.
+if(BUILD_TESTING)
+    add_dependencies(coverage_report api_stub_check)
 endif()
 
 # --------------------------------------------------------------------------
