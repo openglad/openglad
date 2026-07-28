@@ -225,10 +225,9 @@
             # separately installed emsdk.
             emscripten
             # Headless capture + media: xvfb-run gives an X server for the SDL
-            # client when the dummy driver is not enough, ffmpeg turns captured
-            # frames into video. scripts/media/ deliberately keeps working
-            # without them (pure-Python BMP/GIF/PNG), but having them here means
-            # a contributor is never blocked on the encoder path.
+            # client when the dummy driver is not enough, and ffmpeg is the
+            # encoder scripts/media/capture_showcase.sh uses to turn captured
+            # frames into the shipped GIFs and PNGs.
             xvfb-run
             ffmpeg
             # Browser for the Playwright wasm e2e suite. Playwright refuses to

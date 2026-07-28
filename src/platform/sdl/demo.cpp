@@ -258,7 +258,7 @@ static CaptureSettings capture_settings_from_env()
 }
 
 // Writes captured frames as 8-bit indexed BMPs, which is what
-// scripts/media/bmp2gif.py and bmp2png.py consume. The game renders into a
+// scripts/media/capture_showcase.sh feeds to ffmpeg. The game renders into a
 // 32bpp canvas, but every pixel it plots comes from the 256-entry session
 // palette, so the frame can be turned back into the indexed image it really
 // is. Colours that are not palette-exact (blends, filtered scaling) fall back

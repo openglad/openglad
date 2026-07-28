@@ -1,3 +1,0 @@
-# The media tools import each other (test_bmp2gif -> bmp2gif, verify_media ->
-# both test modules), so running them leaves bytecode behind.
-__pycache__/

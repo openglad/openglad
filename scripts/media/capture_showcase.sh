@@ -7,9 +7,10 @@
 #      campaign-embedded Lua level script, camera pinned to the arena;
 #   2. a 2x2 grid of stock campaign levels, dumped as one composited image.
 #
-# Nothing here needs ffmpeg, PIL or a display: the demo runs on SDL's dummy
-# video driver and writes indexed BMPs, which bmp2gif.py/bmp2png.py turn into
-# the GIFs and PNGs with nothing but the Python standard library.
+# The demo runs on SDL's dummy video driver (no display needed) and writes
+# 8-bit indexed BMPs. ffmpeg — provided by the dev shell (`nix develop`, see
+# flake.nix) — turns those into the shipped media: GIFs via the two-pass
+# palettegen/paletteuse chain, stills as indexed PNGs.
 #
 # Usage: scripts/media/capture_showcase.sh [output-dir]
 #        OPENGLAD_DEMO=/path/to/openglad_demo scripts/media/capture_showcase.sh
@@ -26,6 +27,12 @@ if [ ! -x "$DEMO_BIN" ]; then
     printf 'build it with: cmake --build --preset ci-test --target openglad_demo\n' >&2
     exit 1
 fi
+for tool in ffmpeg ffprobe; do
+    if ! command -v "$tool" > /dev/null; then
+        printf '%s not found; enter the dev shell first: nix develop\n' "$tool" >&2
+        exit 1
+    fi
+done
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
@@ -62,57 +69,84 @@ env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
     OPENGLAD_CONFIG_DIR="$WORK_DIR/config-grid" \
     "$DEMO_BIN" > "$WORK_DIR/grid.log" 2>&1
 
-frames() { # frames <dir> <first> <last> <step>
-    local dir=$1 first=$2 last=$3 step=$4 i
+FFMPEG=(ffmpeg -hide_banner -loglevel error -y)
+
+# The GIFs are cut from the BMP dumps with the concat demuxer: one list line
+# per animation frame, each with an explicit on-screen duration. A moment that
+# should linger is not a repeated frame, just a longer duration on one line —
+# GIF stores per-frame delays natively.
+emit() { # emit <list> <dir> <duration-secs> <first> <last> <step>
+    local list=$1 dir=$2 dur=$3 first=$4 last=$5 step=$6 i
     for ((i = first; i <= last; i += step)); do
-        printf '%s/frame%05d.bmp ' "$dir" "$i"
+        printf "file '%s/frame%05d.bmp'\nduration %s\n" "$dir" "$i" "$dur" >> "$list"
     done
 }
 
-hold() { # hold <dir> <frame> <repeats>
-    local dir=$1 frame=$2 repeats=$3 i
-    for ((i = 0; i < repeats; i++)); do
-        printf '%s/frame%05d.bmp ' "$dir" "$frame"
-    done
+hold() { # hold <list> <dir> <frame> <duration-secs>
+    printf "file '%s/frame%05d.bmp'\nduration %s\n" "$2" "$3" "$4" >> "$1"
 }
 
 # The judgment explosions are only on screen for three simulation frames
-# (299-301), a quarter of a second. Repeating those frames holds the ring long
-# enough to read; a repeated frame costs a few bytes under --diff, because its
-# dirty rectangle is empty.
-pulse() { # pulse <dir>
-    local dir=$1
-    hold "$dir" 299 2
-    hold "$dir" 300 3
-    hold "$dir" 301 5
+# (299-301), a quarter of a second. Holding those frames keeps the ring on
+# screen long enough to read.
+pulse() { # pulse <list> <dir> <dur-x2> <dur-x3> <dur-x5>
+    hold "$1" "$2" 299 "$3"
+    hold "$1" "$2" 300 "$4"
+    hold "$1" "$2" 301 "$5"
+}
+
+# Two passes: palettegen collects the exact colours the frames use (indexed
+# game frames have at most 256, so nothing is quantized), paletteuse maps every
+# frame through that palette with no dithering. The 2x nearest-neighbour
+# upscale is what makes the 4x6 font legible. ffmpeg's GIF encoder then stores
+# only each frame's changed region (offsetting + transparency), which is what
+# keeps a 640x400 animation inside a few hundred KB.
+encode_gif() { # encode_gif <list> <out.gif> <final-delay-cs>
+    local list=$1 out=$2 final=$3 palette="$WORK_DIR/palette.png"
+    "${FFMPEG[@]}" -f concat -safe 0 -i "$list" \
+        -vf 'scale=iw*2:ih*2:flags=neighbor,palettegen' "$palette"
+    "${FFMPEG[@]}" -f concat -safe 0 -i "$list" -i "$palette" \
+        -lavfi '[0:v]scale=iw*2:ih*2:flags=neighbor[x];[x][1:v]paletteuse=dither=none' \
+        -final_delay "$final" "$out"
+    rm -f -- "$palette"
+}
+
+# Stills stay indexed too: palettegen/paletteuse on the single frame hands the
+# PNG encoder a pal8 picture instead of 32-bit RGB.
+still2x() { # still2x <in.bmp> <out.png>
+    "${FFMPEG[@]}" -i "$1" \
+        -vf 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=reserve_transparent=0[p];[b][p]paletteuse=dither=none' \
+        -frames:v 1 -update 1 -compression_level 9 "$2"
 }
 
 # --- Animations -------------------------------------------------------------
-# --diff stores only the changed rectangle of each frame, which is what keeps
-# these 640x400 animations inside a few hundred KB each.
-#
 # The fight from the opening bell to the first judgment, at roughly 4x speed
-# (every 6th tick held for 12 centiseconds against a 12.25 tick/s simulation).
-python3 "$MEDIA/bmp2gif.py" "$OUT_DIR/ninefold-court.gif" \
-    --delay 12 --scale 2 --diff \
-    $(frames "$court" 0 288 6) $(frames "$court" 292 298 3) \
-    $(pulse "$court") $(frames "$court" 304 328 6)
+# (every 6th tick for 12 centiseconds against a 12.25 tick/s simulation).
+list="$WORK_DIR/court.ffconcat"
+: > "$list"
+emit "$list" "$court" 0.12 0 288 6
+emit "$list" "$court" 0.12 292 298 3
+pulse "$list" "$court" 0.24 0.36 0.60
+emit "$list" "$court" 0.12 304 328 6
+encode_gif "$list" "$OUT_DIR/ninefold-court.gif" 12
 
 # The judgment pulse itself, tick for tick.
-python3 "$MEDIA/bmp2gif.py" "$OUT_DIR/ninefold-court-judgment.gif" \
-    --delay 8 --scale 2 --diff \
-    $(frames "$court" 288 298 1) $(pulse "$court") \
-    $(frames "$court" 302 330 1)
+list="$WORK_DIR/judgment.ffconcat"
+: > "$list"
+emit "$list" "$court" 0.08 288 298 1
+pulse "$list" "$court" 0.16 0.24 0.40
+emit "$list" "$court" 0.08 302 330 1
+encode_gif "$list" "$OUT_DIR/ninefold-court-judgment.gif" 8
 
 # --- Stills -----------------------------------------------------------------
-python3 "$MEDIA/bmp2png.py" --scale 2 \
-    "$court/frame00024.bmp" "$OUT_DIR/ninefold-court-pillars.png"
-python3 "$MEDIA/bmp2png.py" --scale 2 \
-    "$court/frame00121.bmp" "$OUT_DIR/ninefold-court-wards-fail.png"
-python3 "$MEDIA/bmp2png.py" --scale 2 \
-    "$court/frame00301.bmp" "$OUT_DIR/ninefold-court-judgment.png"
-python3 "$MEDIA/bmp2png.py" \
-    "$grid/frame00008.bmp" "$OUT_DIR/demo-grid.png"
+still2x "$court/frame00024.bmp" "$OUT_DIR/ninefold-court-pillars.png"
+still2x "$court/frame00121.bmp" "$OUT_DIR/ninefold-court-wards-fail.png"
+still2x "$court/frame00301.bmp" "$OUT_DIR/ninefold-court-judgment.png"
+
+# The grid composite is dumped at its final size, and the BMP is already
+# indexed, so it converts to PNG directly.
+"${FFMPEG[@]}" -i "$grid/frame00008.bmp" \
+    -frames:v 1 -update 1 -compression_level 9 "$OUT_DIR/demo-grid.png"
 
 # One raw frame ships as-is so the BMP the game actually writes is in the
 # record next to everything derived from it.

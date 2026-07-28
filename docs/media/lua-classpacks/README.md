@@ -2,11 +2,12 @@
 
 Captures of the Lua class-pack work, taken from real AI-driven gameplay. Every
 file here is produced headlessly — SDL's dummy video driver, software renderer,
-no display and no ffmpeg — by `scripts/media/capture_showcase.sh`:
+no display — by `scripts/media/capture_showcase.sh`, which encodes the captured
+frames with ffmpeg from the dev shell:
 
 ```bash
 cmake --build --preset ci-test --target openglad_demo
-scripts/media/capture_showcase.sh
+nix develop --command scripts/media/capture_showcase.sh
 ```
 
 The two capture runs are seeded (`OPENGLAD_DEMO_SEED=7` and `=5`), so re-running
@@ -24,17 +25,17 @@ of the arena; the six heroes and everything they fight are AI-driven.
 
 | File | What it shows |
 | --- | --- |
-| `ninefold-court.gif` | The whole fight at ~4x speed: four corner pillars warding the Magistrate, the pillars falling one by one, and the first judgment pulse once the wards break. 67 frames, 640x400. |
-| `ninefold-court-judgment.gif` | One judgment pulse tick for tick — nine explosions laid out on a ring around the arena centre, thrown by `judgment_pulse()`. 50 frames, 640x400. |
+| `ninefold-court.gif` | The whole fight at ~4x speed: four corner pillars warding the Magistrate, the pillars falling one by one, and the first judgment pulse once the wards break. 60 frames over 8.04s, 640x400. |
+| `ninefold-court-judgment.gif` | One judgment pulse tick for tick — nine explosions laid out on a ring around the arena centre, thrown by `judgment_pulse()`. 43 frames over 4.0s, 640x400. |
 | `ninefold-court-pillars.png` | The four colleges standing in the corners (tent, tower, bones, treehouse) as the first ward drops: *"A pillar falls: 3 wards remain."* |
 | `ninefold-court-wards-fail.png` | Three script messages at once: *"The last pillar falls. The wards fail!"*, *"An Adjutant is struck from the rolls."*, and the stock `SKELETON YELLS FOR HELP!` from the Lua skeleton family. |
 | `ninefold-court-judgment.png` | The ninefold ring at full bloom under *"The Court passes judgment!"* |
 | `ninefold-court-judgment.bmp` | The same frame exactly as the game wrote it: an 8-bit indexed BMP at the native 320x200. Everything else here is the 2x nearest-neighbour upscale that makes the 4x6 font legible. |
 
 The explosions are only on screen for three simulation frames, a quarter of a
-second, so both animations repeat those three frames to hold the ring long
-enough to read. Nothing else is retimed, and a repeated frame is almost free
-under `--diff` because its dirty rectangle is empty.
+second, so both animations hold those three frames longer — a longer per-frame
+delay on the same picture, since GIF stores every frame's delay natively.
+Nothing else is retimed.
 
 Each moment in those images comes from a different hook: `on_load` stamps the
 ward, `on_entity_death` counts the pillars down and drops it, `on_tick` fires
@@ -100,16 +101,19 @@ it behaves exactly as before (`scripts/test_demo_smoke.sh` pins that).
 
 Frames land as 8-bit indexed BMPs: the game renders into a 32bpp canvas, but
 every pixel it plots comes from the 256-entry session palette, so the capture
-maps them back to the indices they came from. From there,
-`scripts/media/bmp2gif.py` builds the animations (`--diff` stores only each
-frame's changed rectangle, which is what keeps a 50-frame 640x400 GIF at 333 KB
-instead of 2.5 MB) and `scripts/media/bmp2png.py` writes the stills.
-Both are standard-library-only.
+maps them back to the indices they came from. From there ffmpeg (provided by
+`nix develop`, see `flake.nix`) does all the encoding. Each animation is cut
+with the concat demuxer — one list line per frame with an explicit duration —
+and encoded through the two-pass `palettegen`/`paletteuse` chain with no
+dithering: the frames use at most 256 colours, so the palette is exact and
+every pixel maps 1:1. ffmpeg's GIF encoder stores only each frame's changed
+region, which is what keeps a 640x400 animation at a few hundred KB instead of
+2.5 MB. The stills go through the same palette pass so the PNGs stay indexed
+(`pal8`) rather than ballooning to 32-bit RGB.
 
 To check the results are intact:
 
 ```bash
-python3 scripts/media/verify_media.py       # decodes and plays back every file
-python3 scripts/media/test_bmp2gif.py       # round-trips the GIF encoder
-python3 scripts/media/test_bmp2png.py       # round-trips the PNG writer
+python3 scripts/media/verify_media.py   # ffprobe-decodes every file: codec,
+                                        # size, frame count, duration, pal8
 ```
