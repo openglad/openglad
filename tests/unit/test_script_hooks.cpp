@@ -181,6 +181,338 @@ TEST_F(ScriptHooksTest, order_alias_fx_and_effect_both_resolve)
 }
 
 // ---------------------------------------------------------------------------
+// specials = { [1]=fn, ..., default=fn } — the do_special table form.
+// Contract (mirrors the retired switch ladders): current_special() selects,
+// a missing index falls to `default`, a table with neither is a successful
+// no-op, and the selected function's result converts exactly like a plain
+// do_special return.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class SpecialsDispatchTest : public ::testing::Test {
+protected:
+    SpecialsDispatchTest() : world(11)
+    {
+        init_all_registries();
+        world.id = 92;
+        world.entity_factory =
+            [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+            auto entity = std::make_unique<walker>();
+            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_sizex(16);
+            entity->set_sizey(16);
+            entity->ani = nullptr;
+            entity->ani_count = 0;
+            return entity;
+        };
+        context.world = &world;
+        context.sim_events = &events;
+        previous_ = current_game;
+        current_game = &context;
+        clear_pack_scripts();
+    }
+
+    ~SpecialsDispatchTest() override
+    {
+        clear_pack_scripts();
+        current_game = previous_;
+    }
+
+    void SetUp() override
+    {
+        self = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, self);
+    }
+
+    static void register_chunk(const std::string& source)
+    {
+        register_pack_script({"test.pack", "specials.lua", source});
+    }
+
+    // Sets the walker's special slot and dispatches through the same funnel
+    // walker::special() uses.
+    std::optional<bool> dispatch(int sp)
+    {
+        self->set_current_special(static_cast<char>(sp));
+        const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+        EXPECT_NE(nullptr, fd);
+        if (fd == nullptr)
+            return std::nullopt;
+        return hooks::do_special(fd, self);
+    }
+
+    const std::vector<std::string>& vm_log()
+    {
+        return world.scripts().host().log();
+    }
+
+    const std::vector<ScriptError>& vm_errors()
+    {
+        return world.scripts().host().errors();
+    }
+
+    GameWorld world;
+    GameplayContext context{};
+    og::sim::SimEventLog events;
+    GameplayContext* previous_ = nullptr;
+    walker* self = nullptr;
+};
+
+}  // namespace
+
+TEST_F(SpecialsDispatchTest, table_selects_by_current_special)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('charge') return true end,\n"
+        "    [2] = function(self) og.log('boomerang') return false end,\n"
+        "  },\n"
+        "})\n");
+    auto r1 = dispatch(1);
+    ASSERT_TRUE(r1.has_value()) << "slot 1 must dispatch";
+    EXPECT_TRUE(*r1);
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("charge", vm_log().back());
+
+    // Result plumbing is the branch's own return, boolean-coerced exactly
+    // like a plain do_special return (false stays false).
+    auto r2 = dispatch(2);
+    ASSERT_TRUE(r2.has_value()) << "slot 2 must dispatch";
+    EXPECT_FALSE(*r2);
+    EXPECT_EQ("boomerang", vm_log().back());
+    ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(SpecialsDispatchTest, missing_index_falls_to_default)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('one') return true end,\n"
+        "    default = function(self) og.log('default') return false end,\n"
+        "  },\n"
+        "})\n");
+    auto r = dispatch(5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(*r) << "default's own return value must come through";
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("default", vm_log().back());
+}
+
+TEST_F(SpecialsDispatchTest, unmatched_index_without_default_is_a_noop_true)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('one') return false end,\n"
+        "  },\n"
+        "})\n");
+    hooks::reset_hook_failures();
+    auto r = dispatch(4);
+    ASSERT_TRUE(r.has_value())
+        << "the ladders fell through their if-chain and returned true; the "
+           "dispatcher must consume the dispatch the same way";
+    EXPECT_TRUE(*r);
+    EXPECT_TRUE(vm_log().empty()) << "nothing may run: " << vm_log().back();
+    EXPECT_TRUE(vm_errors().empty());
+    EXPECT_EQ(0u, hooks::hook_failures().count);
+}
+
+TEST_F(SpecialsDispatchTest, selection_reads_the_slot_at_each_dispatch)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('first') return true end,\n"
+        "    [3] = function(self) og.log('third') return true end,\n"
+        "  },\n"
+        "})\n");
+    ASSERT_TRUE(dispatch(3).has_value());
+    EXPECT_EQ("third", vm_log().back());
+    ASSERT_TRUE(dispatch(1).has_value());
+    EXPECT_EQ("first", vm_log().back());
+}
+
+TEST_F(SpecialsDispatchTest, plain_do_special_function_form_still_works)
+{
+    // The table form is sugar, not a replacement: a sibling family keeps
+    // registering the classic function under the same dispatch funnel.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('table form') return true end,\n"
+        "  },\n"
+        "})\n"
+        "og.register_hooks('living', 'core:elf', {\n"
+        "  do_special = function(self) og.log('function form') return false "
+        "end,\n"
+        "})\n");
+    ASSERT_TRUE(dispatch(1).has_value());
+    EXPECT_EQ("table form", vm_log().back());
+
+    const FamilyDescriptor* elf = get_family_descriptor(FAMILY_ELF);
+    ASSERT_NE(nullptr, elf);
+    auto r = hooks::do_special(elf, nullptr);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(*r);
+    EXPECT_EQ("function form", vm_log().back());
+}
+
+TEST_F(SpecialsDispatchTest, null_self_selects_the_default_entry)
+{
+    // Test-style dispatches (no walker) select slot 0, which no table maps:
+    // a default runs, a default-less table no-ops.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('one') return true end,\n"
+        "    default = function(self) og.log('default ran') return true "
+        "end,\n"
+        "  },\n"
+        "})\n");
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    auto r = hooks::do_special(fd, nullptr);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(*r);
+    EXPECT_EQ("default ran", vm_log().back());
+}
+
+TEST_F(SpecialsDispatchTest, registered_table_is_immune_to_later_mutation)
+{
+    // The registered contract is a private copy (R6 at the registration
+    // boundary): post-registration edits of the caller's table must not
+    // change dispatch.
+    register_chunk(
+        "local t = {\n"
+        "  [1] = function(self) og.log('original') return true end,\n"
+        "}\n"
+        "og.register_hooks('living', 'core:soldier', { specials = t })\n"
+        "t[1] = function(self) og.log('mutated') return true end\n"
+        "t.default = function(self) og.log('sneaked default') return true "
+        "end\n");
+    ASSERT_TRUE(dispatch(1).has_value());
+    EXPECT_EQ("original", vm_log().back());
+    auto r = dispatch(9);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(*r);
+    EXPECT_EQ("original", vm_log().back())
+        << "the sneaked default must not dispatch";
+}
+
+TEST_F(SpecialsDispatchTest, branch_falling_off_the_end_reads_as_false)
+{
+    // Documented sharp edge: the branch's return converts exactly like a
+    // plain do_special return, so falling off the end (nil) is false. The
+    // ladder rewrites append the ladder's shared `return true` explicitly.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('no return') end,\n"
+        "  },\n"
+        "})\n");
+    auto r = dispatch(1);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(*r);
+    EXPECT_EQ("no return", vm_log().back());
+}
+
+TEST_F(SpecialsDispatchTest, erroring_branch_latches_like_any_hook_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) error('branch boom') end,\n"
+        "  },\n"
+        "})\n");
+    hooks::reset_hook_failures();
+    auto r = dispatch(1);
+    EXPECT_FALSE(r.has_value()) << "erroring branch = nothing ran";
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ("hook:do_special", hooks::hook_failures().where);
+    EXPECT_NE(std::string::npos,
+              hooks::hook_failures().message.find("branch boom"));
+}
+
+TEST_F(SpecialsDispatchTest, cross_chunk_collision_reports_and_last_wins)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) og.log('table form') return true end,\n"
+        "  },\n"
+        "})\n"
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  do_special = function(self) og.log('function form') return true "
+        "end,\n"
+        "})\n");
+    ASSERT_TRUE(dispatch(1).has_value());
+    EXPECT_EQ("function form", vm_log().back())
+        << "last registration must win the shared do_special slot";
+    ASSERT_FALSE(vm_errors().empty())
+        << "the collision must be reported, not silent";
+    EXPECT_NE(std::string::npos,
+              vm_errors().back().message.find("duplicate hook registration"));
+}
+
+TEST_F(SpecialsDispatchTest, both_forms_in_one_call_is_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  do_special = function(self) return true end,\n"
+        "  specials = { [1] = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    EXPECT_NE(std::string::npos,
+              vm_errors().front().message.find("not both in one call"));
+}
+
+TEST_F(SpecialsDispatchTest, empty_specials_table_is_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', { specials = {} })\n");
+    ASSERT_FALSE(vm_errors().empty());
+    EXPECT_NE(std::string::npos,
+              vm_errors().front().message.find("'specials' table is empty"));
+}
+
+TEST_F(SpecialsDispatchTest, bad_specials_key_is_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { [0] = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    EXPECT_NE(std::string::npos,
+              vm_errors().front().message.find(
+                  "keys must be integers 1..255 or 'default'"));
+}
+
+TEST_F(SpecialsDispatchTest, non_function_specials_entry_is_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { [1] = 5 },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    EXPECT_NE(std::string::npos,
+              vm_errors().front().message.find("entries must be functions"));
+}
+
+TEST_F(SpecialsDispatchTest, specials_on_a_non_living_order_is_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('weapon', 'core:knife', {\n"
+        "  specials = { [1] = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    EXPECT_NE(std::string::npos,
+              vm_errors().front().message.find("living-order key"));
+}
+
+// ---------------------------------------------------------------------------
 // og.* binding rows (wave-4 surface: animation tables, statistics commands,
 // score/progression/exit flow, CTF flag touch)
 // ---------------------------------------------------------------------------

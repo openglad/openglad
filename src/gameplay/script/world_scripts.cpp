@@ -713,6 +713,112 @@ int og_register_hooks(lua_State* L)
         st->owner->note_hook(oi->order, family_id, oi->hooks[i].hook);
         registered++;
     }
+    // -----------------------------------------------------------------
+    // specials = { [1]=fn, [2]=fn, ..., default=fn } — table form of the
+    // do_special hook (living orders only). Dispatch mirrors the
+    // transliterated switch ladders exactly: self:current_special()
+    // selects the entry, a missing index falls to `default`, and a table
+    // with neither is the ladder's fall-through — a successful no-op
+    // (result true) with no Lua call at all. The table shares the
+    // do_special slot, so cross-chunk collisions are reported and last
+    // registration wins, exactly like every named hook.
+    // -----------------------------------------------------------------
+    lua_getfield(L, 3, "specials");
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+    } else {
+        const int spec_idx = lua_gettop(L);
+        const int family_idx = spec_idx - 1;  // family table pushed above
+        if (oi->order != Order::Living)
+            return luaL_error(
+                L, "og.register_hooks: 'specials' is a living-order key "
+                   "(order '%s' has no do_special hook)", order_str);
+        if (!lua_istable(L, spec_idx))
+            return luaL_error(
+                L, "og.register_hooks: 'specials' must be a table "
+                   "({ [1]=fn, ..., default=fn })");
+        lua_getfield(L, 3, "do_special");
+        const bool has_plain_do_special = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+        if (has_plain_do_special)
+            return luaL_error(
+                L, "og.register_hooks: register 'do_special' or 'specials' "
+                   "for a family, not both in one call");
+        // Validate every entry before storing anything. Keys are integers
+        // 1..255 (current_special is a char-wide slot index) or the string
+        // "default"; every value is a function. lua_next order cannot
+        // matter here: any invalid entry raises the same load error.
+        lua_Integer max_index = 0;
+        int entry_count = 0;
+        bool has_default = false;
+        lua_pushnil(L);
+        while (lua_next(L, spec_idx) != 0) {
+            bool key_ok = false;
+            if (lua_isinteger(L, -2)) {
+                const lua_Integer k = lua_tointeger(L, -2);
+                if (k >= 1 && k <= 255) {
+                    key_ok = true;
+                    if (k > max_index)
+                        max_index = k;
+                }
+            } else if (lua_type(L, -2) == LUA_TSTRING) {
+                // Safe during traversal: the key already IS a string.
+                key_ok = (std::strcmp(lua_tostring(L, -2), "default") == 0);
+                if (key_ok)
+                    has_default = true;
+            }
+            if (!key_ok)
+                return luaL_error(
+                    L, "og.register_hooks: 'specials' keys must be "
+                       "integers 1..255 or 'default'");
+            if (!lua_isfunction(L, -1))
+                return luaL_error(
+                    L, "og.register_hooks: 'specials' entries must be "
+                       "functions");
+            lua_pop(L, 1);
+            entry_count++;
+        }
+        if (entry_count == 0)
+            return luaL_error(
+                L, "og.register_hooks: 'specials' table is empty "
+                   "(register at least one entry or a default)");
+        // Store a PRIVATE copy: mutating the caller's table after
+        // registration must not be able to change dispatch — the
+        // registered contract is as immutable as a registered function
+        // value (R6 at the registration boundary).
+        lua_createtable(L, static_cast<int>(max_index), has_default ? 1 : 0);
+        for (lua_Integer k = 1; k <= max_index; k++) {
+            lua_rawgeti(L, spec_idx, k);
+            if (lua_isnil(L, -1)) {
+                lua_pop(L, 1);
+                continue;
+            }
+            if (coverage::enabled())
+                coverage_declare_hook(
+                    L, std::string(order_str) + "/" + family_str +
+                           "/do_special[" + std::to_string(k) + "]");
+            lua_rawseti(L, -2, k);
+        }
+        if (has_default) {
+            lua_getfield(L, spec_idx, "default");
+            if (coverage::enabled())
+                coverage_declare_hook(L, std::string(order_str) + "/" +
+                                             family_str +
+                                             "/do_special[default]");
+            lua_setfield(L, -2, "default");
+        }
+        lua_rawgeti(L, family_idx,
+                    static_cast<lua_Integer>(FamilyHook::DoSpecial));
+        const bool occupied = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+        if (occupied)
+            report_duplicate_hook(L, st, order_str, family_str, "specials");
+        lua_rawseti(L, family_idx,
+                    static_cast<lua_Integer>(FamilyHook::DoSpecial));
+        st->owner->note_hook(oi->order, family_id, FamilyHook::DoSpecial);
+        registered++;
+        lua_pop(L, 1);  // the caller's specials table
+    }
     lua_pop(L, 2);
     if (registered == 0)
         return luaL_error(
@@ -1071,6 +1177,52 @@ public:
         return true;
     }
 
+    // begin() for the DoSpecial slot, which may hold either the classic
+    // do_special function or a specials table ({ [1]=fn, ..., default=fn }).
+    // For a table this selects [sp], then "default". When the table holds
+    // neither, sets *ladder_fallthrough and returns false with a clean
+    // stack: the dispatch is consumed as the retired ladders' unmatched
+    // case — a successful no-op, nothing called.
+    bool begin_special(int family_id, lua_Integer sp,
+                       bool* ladder_fallthrough)
+    {
+        VmState* st = get_vm_state(L_);
+        if (st == nullptr)
+            return false;
+        gen_ = push_dispatch_gen(L_);
+        lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
+        lua_rawgeti(L_, -1, hook_table_key(Order::Living, family_id));
+        if (!lua_istable(L_, -1)) {
+            lua_pop(L_, 2);
+            return false;
+        }
+        lua_rawgeti(L_, -1,
+                    static_cast<lua_Integer>(FamilyHook::DoSpecial));
+        if (lua_istable(L_, -1)) {
+            lua_rawgeti(L_, -1, sp);
+            if (!lua_isfunction(L_, -1)) {
+                lua_pop(L_, 1);
+                lua_pushstring(L_, "default");
+                lua_rawget(L_, -2);
+            }
+            if (!lua_isfunction(L_, -1)) {
+                // entry + specials table + family table + hooks root
+                lua_pop(L_, 4);
+                *ladder_fallthrough = true;
+                return false;
+            }
+            lua_remove(L_, -2);  // specials table
+        }
+        if (!lua_isfunction(L_, -1)) {
+            lua_pop(L_, 3);
+            return false;
+        }
+        lua_remove(L_, -2);  // family table
+        lua_remove(L_, -2);  // hooks root
+        nargs_ = 0;
+        return true;
+    }
+
     void arg(walker* w)
     {
         push_walker_handle(L_, w, gen_);
@@ -1168,6 +1320,34 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     return f.call(hook_where(hook), wants_result);
 }
 
+// DoSpecial dispatch, honoring both slot forms (stub generator: do_special
+// is fun(self: og.Walker): boolean, wants_result=true — asserted below).
+// Returns nullopt when no script hook ran (caller falls to the descriptor's
+// C++ callback), the hook's boolean-coerced result otherwise. The
+// specials-table form mirrors the retired switch ladders exactly:
+// self:current_special() selects, a missing index falls to `default`, and a
+// table with neither is the ladder's fall-through — result true, no call.
+std::optional<bool> try_script_do_special(int family_id, walker* self)
+{
+    WorldScripts& ws = active_world_scripts();
+    if (!ws.has_hook(Order::Living, family_id, FamilyHook::DoSpecial))
+        return std::nullopt;
+    // Test dispatches may pass self == nullptr; slot 0 is unmappable
+    // (specials keys are 1..255), so selection falls to `default`.
+    const lua_Integer sp =
+        (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
+                          : 0;
+    HookFrame f(ws);
+    bool ladder_fallthrough = false;
+    if (!f.begin_special(family_id, sp, &ladder_fallthrough)) {
+        if (ladder_fallthrough)
+            return true;
+        return std::nullopt;
+    }
+    f.arg(self);
+    return f.call(hook_where(FamilyHook::DoSpecial), true);
+}
+
 }  // namespace
 
 namespace hooks {
@@ -1186,8 +1366,7 @@ std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self)
 {
     if (fd == nullptr)
         return std::nullopt;
-    if (auto r = try_script_hook(Order::Living, fd->family_id,
-                                 FamilyHook::DoSpecial, true, self))
+    if (auto r = try_script_do_special(fd->family_id, self))
         return r;
     if (fd->do_special != nullptr)
         return fd->do_special(self);

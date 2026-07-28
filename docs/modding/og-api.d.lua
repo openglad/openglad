@@ -249,6 +249,14 @@
 ---@field g_set_strength fun(self: og.Guy, value: integer)
 ---@field g_strength fun(self: og.Guy): integer
 
+-- Table form of the do_special hook (the og.register_hooks key 'specials'):
+-- current_special() selects the entry, a missing index falls to `default`,
+-- and a table with neither is a successful no-op — the retired switch
+-- ladders' exact contract. Entries return like do_special itself.
+---@class og.LivingSpecials
+---@field [integer] fun(self: og.Walker): boolean
+---@field default? fun(self: og.Walker): boolean
+
 -- Hook table for og.register_hooks(order = "living").
 ---@class og.LivingHooks
 ---@field check_special_ai? fun(self: og.Walker): boolean
@@ -265,6 +273,7 @@
 ---@field on_melee_hit? fun(self: og.Walker, target: og.Walker)
 ---@field on_shoved? fun(target: og.Walker)
 ---@field set_difficulty? fun(self: og.Walker, level: integer)
+---@field specials? og.LivingSpecials
 
 -- Hook table for og.register_hooks(order = "weapon").
 ---@class og.WeaponHooks

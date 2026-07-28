@@ -1,6 +1,7 @@
 -- core:skeleton — ranged self-teleport special (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local lc = og.use("living_common")
 
 local function handle_teleport(self)
   self.ani_type = C.ANI_TELE_IN
@@ -19,7 +20,7 @@ local function level_up(guy, level_diff)
 end
 
 local function do_special(self)
-  if self:ani_type() == C.ANI_TELE_OUT or self:ani_type() == C.ANI_TELE_IN then
+  if lc.mid_teleport(self) then
     return false
   end
   self.ani_type = C.ANI_TELE_OUT

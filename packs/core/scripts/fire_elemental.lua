@@ -1,6 +1,8 @@
 -- core:elemental — starburst, parting shot on death, owner drain (cookbook: docs/lua-classpacks-design.md §3).
 -- (Descriptor name "ELEMENTAL" is unique in the living registry.)
 
+local ai = og.use("ai")
+
 local function do_special(self)
   -- starburst: fire the default weapon in all eight directions
   -- shim kept (both): the C++ parks the float aim in int temps: C truncation.
@@ -20,10 +22,6 @@ local function do_special(self)
   self:set_lastx(saved_aim_x)
   self:set_lasty(saved_aim_y)
   return true
-end
-
-local function check_special_ai(self)
-  return og.check_special_ai_distance(self, 130)
 end
 
 local function on_death(self)
@@ -73,7 +71,7 @@ end
 
 og.register_hooks("living", "core:elemental", {
   do_special = do_special,
-  check_special_ai = check_special_ai,
+  check_special_ai = ai.foe_within(130),
   level_up = level_up,
   on_death = on_death,
   on_act_living = on_act_living,

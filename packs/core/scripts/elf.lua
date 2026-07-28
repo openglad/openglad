@@ -13,72 +13,48 @@ local function next_spread_multiplier()
   return og.fadd(0.8, og.fdiv(og.fmul(0.4, spread_roll), 100.0))
 end
 
-local function do_special(self)
-  local sp = self:current_special()
-  if sp == 1 then
-    -- some rocks (normal)
-    -- magicpoints is a C++ float: per-op rounding.
-    self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
-    local rock = self:fire()
-    if not rock then
-      return false
-    end
-    -- lastx/lasty are C++ floats: per-op rounding.
-    rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
-    rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
-    rock = self:fire()
-    if not rock then
-      return false
-    end
-    -- lastx/lasty are C++ floats: per-op rounding.
-    rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
-    rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
-  elseif sp == 2 then
-    -- more rocks, and bouncing
-    -- magicpoints is a C++ float: per-op rounding.
-    self.magicpoints = og.fadd(self.magicpoints, 3 * self:s_weapon_cost())
-    for i = 1, 2 do
-      local rock = self:fire()
-      if not rock then
-        return false
-      end
-      rock:set_lineofsight(rock:lineofsight() * 3 // 2)
-      rock:set_do_bounce(1)
-      -- lastx/lasty are C++ floats: per-op rounding.
-      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
-      rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
-    end
-  elseif sp == 3 then
-    -- magicpoints is a C++ float: per-op rounding.
-    self.magicpoints = og.fadd(self.magicpoints, 4 * self:s_weapon_cost())
-    for i = 1, 3 do
-      local rock = self:fire()
-      if not rock then
-        return false
-      end
-      rock:set_lineofsight(rock:lineofsight() * 2)
-      rock:set_do_bounce(1)
-      -- lastx/lasty are C++ floats: per-op rounding.
-      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
-      rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
-    end
-  else
-    -- C++ switch: case 4 and default share the mega-rocks branch
-    -- magicpoints is a C++ float: per-op rounding.
-    self.magicpoints = og.fadd(self.magicpoints, 5 * self:s_weapon_cost())
-    for i = 1, 4 do
-      local rock = self:fire()
-      if not rock then
-        return false
-      end
-      rock:set_lineofsight(rock:lineofsight() * 5 // 2)
-      rock:set_do_bounce(1)
-      -- lastx/lasty are C++ floats: per-op rounding.
-      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
-      rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
-    end
+local function some_rocks(self)
+  -- magicpoints is a C++ float: per-op rounding.
+  self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
+  local rock = self:fire()
+  if not rock then
+    return false
   end
+  -- lastx/lasty are C++ floats: per-op rounding.
+  rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
+  rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
+  rock = self:fire()
+  if not rock then
+    return false
+  end
+  -- lastx/lasty are C++ floats: per-op rounding.
+  rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
+  rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
   return true
+end
+
+-- The three bouncing volleys (cases 2, 3, 4-and-default) share one shape,
+-- parameterized over chunk-load constants (R6-safe closure). los_num spells
+-- each legacy lineofsight multiplier as `* los_num // 2`; case 3's legacy
+-- `* 2` is `* 4 // 2`, identical over Lua integers.
+local function bounce_volley(cost_mult, count, los_num)
+  return function(self)
+    -- magicpoints is a C++ float: per-op rounding.
+    self.magicpoints = og.fadd(self.magicpoints,
+                               cost_mult * self:s_weapon_cost())
+    for i = 1, count do
+      local rock = self:fire()
+      if not rock then
+        return false
+      end
+      rock:set_lineofsight(rock:lineofsight() * los_num // 2)
+      rock:set_do_bounce(1)
+      -- lastx/lasty are C++ floats: per-op rounding.
+      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
+      rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
+    end
+    return true
+  end
 end
 
 local function level_up(guy, level_diff)
@@ -86,6 +62,11 @@ local function level_up(guy, level_diff)
 end
 
 og.register_hooks("living", "core:elf", {
-  do_special = do_special,
+  specials = {
+    [1] = some_rocks,
+    [2] = bounce_volley(3, 2, 3),
+    [3] = bounce_volley(4, 3, 4),
+    default = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot
+  },
   level_up = level_up,
 })

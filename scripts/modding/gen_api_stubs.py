@@ -592,6 +592,38 @@ def parse_family_hook_signatures(
             out[em.group(1)] = (hook_args, wants_result)
     if not out:
         raise SystemExit("gen_api_stubs: no try_script_hook sites found")
+    # do_special dispatches through its own funnel — the specials-table
+    # dispatcher try_script_do_special — not the generic try_script_hook
+    # template, so its signature is read from that site. Fail loudly if the
+    # dispatch pattern ever moves again.
+    m = re.search(
+        r"std::optional<bool>\s+try_script_do_special\(([^)]*)\)\s*\n\{",
+        src,
+    )
+    if m is None:
+        raise SystemExit(
+            "gen_api_stubs: try_script_do_special not found (the do_special "
+            "dispatch moved; update the stub generator)")
+    params_text = m.group(1)
+    body = balanced_body(src, src.index("{", m.end() - 1))
+    ptypes = {}
+    for ptype, pname in re.findall(
+        r"(?:const\s+)?([\w:]+)\s*[*&]?\s*(\w+)\s*(?:,|$)", params_text
+    ):
+        ptypes[pname] = ptype
+    arg_names = re.findall(r"f\.arg\((\w+)\);", body)
+    call = re.search(
+        r"f\.call\(hook_where\(FamilyHook::DoSpecial\),\s*(true|false)\)",
+        body,
+    )
+    if not arg_names or call is None:
+        raise SystemExit(
+            "gen_api_stubs: try_script_do_special dispatch pattern not "
+            "recognized (update the stub generator)")
+    out["DoSpecial"] = (
+        [hook_arg_of(n, ptypes) for n in arg_names],
+        call.group(1) == "true",
+    )
     return out
 
 
@@ -879,6 +911,32 @@ def generate(repo_root: Path) -> str:
         order_class[order_name] = cls
         aliases = sorted(o for o, _e, t in orders if t == table)
         quoted = " / ".join(f'"{a}"' for a in aliases)
+        hook_names = [h for h, _e in hook_tables[table]]
+        if "do_special" in hook_names:
+            # The living order also accepts the table form of do_special
+            # (og.register_hooks key 'specials'); assert the registration
+            # really exists in the source before declaring it.
+            if 'lua_getfield(L, 3, "specials")' not in world_src:
+                raise SystemExit(
+                    "gen_api_stubs: 'specials' registration not found in "
+                    "world_scripts.cpp (surface moved; update the stub "
+                    "generator)")
+            ds_args, ds_wants = hook_sigs["DoSpecial"]
+            ds_sig = Signature(params=ds_args,
+                               returns=["boolean"] if ds_wants else [])
+            branch_fun = fun_type(ds_sig, None)
+            out.append("-- Table form of the do_special hook (the "
+                       "og.register_hooks key 'specials'):")
+            out.append("-- current_special() selects the entry, a missing "
+                       "index falls to `default`,")
+            out.append("-- and a table with neither is a successful no-op — "
+                       "the retired switch")
+            out.append("-- ladders' exact contract. Entries return like "
+                       "do_special itself.")
+            out.append(f"---@class {cls[:-5]}Specials")
+            out.append(f"---@field [integer] {branch_fun}")
+            out.append(f"---@field default? {branch_fun}")
+            out.append("")
         out.append(f"-- Hook table for og.register_hooks(order = {quoted}).")
         out.append(f"---@class {cls}")
         rows = []
@@ -889,6 +947,9 @@ def generate(repo_root: Path) -> str:
                             todo=enum_name not in hook_sigs)
             rows.append(field_line(hook_name, fun_type(sig, None), "",
                                    sig.todo, optional=True))
+        if "do_special" in hook_names:
+            rows.append(field_line("specials", f"{cls[:-5]}Specials", "",
+                                   False, optional=True))
         out.extend(sorted(rows))
         out.append("")
 

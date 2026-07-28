@@ -1213,38 +1213,38 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/scripts/archmage.lua", 544,
-    "  do_special = do_special,",
-    "  do_special = function() return true end,",
-    "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
+    "packs/core/scripts/archmage.lua", 509,
+    "  specials = {",
+    "  specials = { default = function() return true end }, _ignored = {",
+    "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/scripts/cleric.lua", 297,
-    "  do_special = do_special,",
-    "  do_special = function() return true end,",
-    "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
+    "packs/core/scripts/cleric.lua", 284,
+    "  specials = {",
+    "  specials = { default = function() return true end }, _ignored = {",
+    "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/scripts/mage.lua", 277,
-    "  do_special = do_special,",
-    "  do_special = function() return true end,",
-    "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
+    "packs/core/scripts/mage.lua", 260,
+    "  specials = {",
+    "  specials = { default = function() return true end }, _ignored = {",
+    "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/scripts/thief.lua", 175,
-    "  do_special = do_special,",
-    "  do_special = function() return true end,",
-    "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
+    "packs/core/scripts/thief.lua", 179,
+    "  specials = {",
+    "  specials = { default = function() return true end }, _ignored = {",
+    "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the 'do_special = do_special,' registration line no longer exists — the family registers a specials table. The pin now anchors the 'specials = {' opener and rewrites it to 'specials = { default = function() return true end }, _ignored = {' — the original entries become fields of the inert _ignored table (unknown registration keys are skipped), so every slot falls to the no-op default: the same every-slot success no-op the old to-text produced. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "packs/core/scripts/druid.lua", 12,
-    "    if self:busy() > 0 then",
-    "    if false then",
-    "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. Re-anchored 2026-07-27: the one-statement-per-line reflow (scripts/check_lua_statement_lines.py) split the guard's `return false` onto its own line, so the pin now neuters the condition alone — same substitution, same effect. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged."
+    "packs/core/scripts/druid.lua", 10,
+    "  if lc.is_busy(self) then",
+    "  if false then",
+    "Force-opens the busy gate inside druid_do_special (WP7 canary triage 2026-07-20: the old :191 descriptor neuter was runtime-dead — zero-flip, pre-existing on master — because in this arena every special() attempt arrives with busy>0 and returns false before any observable side effect, so nulling the callback changed nothing; the faerie summon itself is never exercised by the run). With the gate open each attempt runs the plant-tree branch — refunds MP and fires a real bolt via self->fire() — so the trajectory, the sound stream and the exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) pin all diverge. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. Re-anchored 2026-07-27: the one-statement-per-line reflow (scripts/check_lua_statement_lines.py) split the guard's `return false` onto its own line, so the pin now neuters the condition alone — same substitution, same effect. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-3 re-anchor 2026-07-28: the ladder dissolved (branch hoisted into plant_tree) and the busy gate is now living_common.is_busy behind the same if; 'if false then' still force-opens the gate. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 // Per-family-row mutations. Each cranks the named family's base HP —
@@ -2429,10 +2429,10 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/scripts/mage.lua", 226,
-    "    wave:set_lastx(bolt:lastx())",
-    "    wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
-    "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 renames alive->wave, newob->bolt; same halved-heading substitution."
+    "packs/core/scripts/mage.lua", 213,
+    "  wave:set_lastx(bolt:lastx())",
+    "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
+    "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000). Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 renames alive->wave, newob->bolt; same halved-heading substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
@@ -4168,10 +4168,10 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/scripts/mage.lua", 196,
-    "      og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self.level)",
-    "      og.set_enemy_freeze(og.enemy_freeze() + 0)",
-    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: s_level() -> self.level property (S6); the zeroing substitution is unchanged."
+    "packs/core/scripts/mage.lua", 181,
+    "    og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self.level)",
+    "    og.set_enemy_freeze(og.enemy_freeze() + 0)",
+    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: s_level() -> self.level property (S6); the zeroing substitution is unchanged. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_invisibility_thief_scen99[] = {
@@ -4192,9 +4192,9 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
     "packs/core/scripts/thief.lua", 71,
-    "    self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
-    "    self:set_invisibility_left(0)",
-    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the hand-inlined sum/cap chain moved into the Stage-1 og.combat.cloak_total binding; zeroing the setter is unchanged."
+    "  self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
+    "  self:set_invisibility_left(0)",
+    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the hand-inlined sum/cap chain moved into the Stage-1 og.combat.cloak_total binding; zeroing the setter is unchanged. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
@@ -4274,9 +4274,9 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
     "packs/core/scripts/druid.lua", 49,
-    "    faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)",
-    "    faerie.lifetime = 99999",
-    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the composed og.soften chain moved into the Stage-1 og.combat.druid_faerie_lifetime binding and the local is now named faerie; the mutation overrides the same lifetime assignment."
+    "  faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)",
+    "  faerie.lifetime = 99999",
+    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: the composed og.soften chain moved into the Stage-1 og.combat.druid_faerie_lifetime binding and the local is now named faerie; the mutation overrides the same lifetime assignment. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_decrement_faerie_scen99[] = {
@@ -4402,10 +4402,10 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "packs/core/scripts/elf.lua", 48,
+    "packs/core/scripts/elf.lua", 53,
     "      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))",
     "      rock:set_lastx(og.fmul(og.fmul(rock:lastx(), next_spread_multiplier()), 2.0))",
-    "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename fireob->rock. Anchor is the sp==2 bouncing-rock branch; the identical text also serves sp==3/default at lines 62/77, so any future mechanical repin must re-verify it stays on the slot-2 occurrence."
+    "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename fireob->rock. Anchor is the sp==2 bouncing-rock branch; the identical text also serves sp==3/default at lines 62/77, so any future mechanical repin must re-verify it stays on the slot-2 occurrence. Stage-3 re-anchor 2026-07-28: the case-2 loop is now the shared bounce_volley closure serving cases 2/3/4, so the mutation now doubles every bounce volley's x-step; the scenario's slot-2 cast still flips the same predicate. Teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
@@ -4513,10 +4513,10 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "packs/core/scripts/archmage.lua", 241,
-    "        local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
-    "        return false",
-    "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->burst; same substitution."
+    "packs/core/scripts/archmage.lua", 221,
+    "      local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
+    "      return false",
+    "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->burst; same substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_poison_cloud_emit_scen99[] = {
@@ -4535,10 +4535,10 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/scripts/thief.lua", 159,
-    "    local cloud = og.summon(self, \"fx\", FX_CLOUD)",
-    "    return false",
-    "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->cloud. Found ALREADY drifted at the Stage-2 baseline: the stored line 147 held this pin's to-text (a `return false` at deeper indentation contains the 4-space to-text as a substring) while the summon actually sat at line 165, so check_mutation_pins' either-side accept was a false positive and the canary would have refused to apply (exit 6). Teeth re-proven by the Stage-2 staged-copy canary."
+    "packs/core/scripts/thief.lua", 164,
+    "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
+    "  return false",
+    "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->cloud. Found ALREADY drifted at the Stage-2 baseline: the stored line 147 held this pin's to-text (a `return false` at deeper indentation contains the 4-space to-text as a substring) while the summon actually sat at line 165, so check_mutation_pins' either-side accept was a false positive and the canary would have refused to apply (exit 6). Teeth re-proven by the Stage-2 staged-copy canary. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
@@ -4573,10 +4573,10 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
-    "packs/core/scripts/druid.lua", 90,
-    "            local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
-    "            return false",
-    "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 renames alive->circle, newob->friend; same substitution."
+    "packs/core/scripts/druid.lua", 96,
+    "        local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
+    "        return false",
+    "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 renames alive->circle, newob->friend; same substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 
@@ -4614,10 +4614,10 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "packs/core/scripts/thief.lua", 42,
-    "    local bomb = og.add_ob(\"fx\", FX_BOMB)",
-    "    return false",
-    "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->bomb; same substitution."
+    "packs/core/scripts/thief.lua", 40,
+    "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
+    "  return false",
+    "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: S1 rename newob->bomb; same substitution. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 
@@ -4803,10 +4803,10 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "packs/core/scripts/mage.lua", 195,
-    "    if self.team == og.u8(og.my_team()) then",
-    "    if false and self.team == og.u8(og.my_team()) then",
-    "Reroutes the player-team FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the foreign-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: team_num() -> self.team property (S6); same neutered condition."
+    "packs/core/scripts/mage.lua", 180,
+    "  if self.team == og.u8(og.my_team()) then",
+    "  if false and self.team == og.u8(og.my_team()) then",
+    "Reroutes the player-team FREEZE TIME cast into the enemy-freeze branch (WP7 canary triage 2026-07-20: the old sim_input_handler.cpp:209 slot-increment pin was runtime-dead — the parity driver cycles special slots itself via cycle_special in scenario_runtime.cpp; zero-flip, pre-existing on master). The wrapped-to cast still fires, but the foreign-side freeze emits notifications and RequestRedraw instead of the palette tint, so no SetPalette event appears and EventKindAtLeast(set_palette, 1) flips. Stage A retarget 2026-07-26: the C++ family callback this pin used to anchor was deleted (design doc §9a); behavior lives only in the core pack, so the pin now anchors the equivalent line of the family's .lua twin. scripts/parity/_apply_mutation.py is file-type agnostic and og_test_parity restages packs on rebuild, so the mutation still takes effect unchanged. Stage-2 re-anchor 2026-07-28: team_num() -> self.team property (S6); same neutered condition. Stage-3 re-anchor 2026-07-28: the do_special ladder dissolved into a specials table of named branch functions (lua-quality-plan stage 3), so the anchor moved and the texts re-indented to function depth; teeth re-proven by the stage-3 staged-copy canary."
 };
 
 
