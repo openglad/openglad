@@ -1,0 +1,363 @@
+{
+ "_comment": "Stage-2 lane partition: 3 lanes balanced by line count; each lane's `pins` are the scenario_table.h mutation-canary anchors into its files. Every line-shifting batch a lane applies must re-point these pins ({file,line,text} anchors) and prove >= 1 canary scenario flip per moved pin \u2014 anchors are not teeth. Regenerate with scripts/refactor/s2_partition.py.",
+ "corpus": {
+  "files": 36,
+  "lines": 3825
+ },
+ "lanes": [
+  {
+   "lane": "A",
+   "lines": 1273,
+   "files": [
+    "archmage.lua",
+    "barbarian.lua",
+    "effect_ghost_scare.lua",
+    "effect_shield.lua",
+    "elf.lua",
+    "golem.lua",
+    "orc.lua",
+    "tower1.lua",
+    "treasure_navigation.lua",
+    "weapon_projectiles.lua",
+    "weapon_wave.lua"
+   ],
+   "pins": [
+    {
+     "mutation": "kMut_effect_heartburst_multitarget_scen99",
+     "file": "packs/core/scripts/archmage.lua",
+     "line": 235,
+     "from": "        local newob = og.summon(self, \"fx\", FX_EXPLOSION)"
+    },
+    {
+     "mutation": "kMut_special_archmage_do_special",
+     "file": "packs/core/scripts/archmage.lua",
+     "line": 530,
+     "from": "  do_special = do_special,"
+    },
+    {
+     "mutation": "kMut_weapon_exploding_boulder_scen99",
+     "file": "packs/core/scripts/barbarian.lua",
+     "line": 33,
+     "from": "    alive:set_stepsize(og.fmul(self:s_level(), 2.0))"
+    },
+    {
+     "mutation": "kMut_effect_ghost_scare_emission",
+     "file": "packs/core/scripts/effect_ghost_scare.lua",
+     "line": 80,
+     "from": "  on_death = on_death,"
+    },
+    {
+     "mutation": "kMut_weapon_boomerang_return_scen99",
+     "file": "packs/core/scripts/effect_shield.lua",
+     "line": 92,
+     "from": "  self:center_on(owner)"
+    },
+    {
+     "mutation": "kMut_effect_magic_shield_emission",
+     "file": "packs/core/scripts/effect_shield.lua",
+     "line": 100,
+     "from": "  on_act = magic_shield_on_act,"
+    },
+    {
+     "mutation": "kMut_effect_boomerang_emission",
+     "file": "packs/core/scripts/effect_shield.lua",
+     "line": 104,
+     "from": "  on_act = boomerang_on_act,"
+    },
+    {
+     "mutation": "kMut_weapon_rock_slot2_emit_scen99",
+     "file": "packs/core/scripts/elf.lua",
+     "line": 51,
+     "from": "      fireob:set_lastx(og.fmul(fireob:lastx(), next_spread_multiplier()))"
+    },
+    {
+     "mutation": "kMut_exit_withdraw_path",
+     "file": "packs/core/scripts/treasure_navigation.lua",
+     "line": 73,
+     "from": "  if can_withdraw then"
+    },
+    {
+     "mutation": "kMut_level_withdraw_scen99",
+     "file": "packs/core/scripts/treasure_navigation.lua",
+     "line": 73,
+     "from": "  if can_withdraw then"
+    },
+    {
+     "mutation": "kMut_treasure_exit_pickup",
+     "file": "packs/core/scripts/treasure_navigation.lua",
+     "line": 129,
+     "from": "  on_eat = exit_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_teleporter_pickup",
+     "file": "packs/core/scripts/treasure_navigation.lua",
+     "line": 133,
+     "from": "  on_eat = teleporter_on_eat,"
+    }
+   ]
+  },
+  {
+   "lane": "B",
+   "lines": 1280,
+   "files": [
+    "archer.lua",
+    "big_orc.lua",
+    "cleric.lua",
+    "effect_door_open.lua",
+    "effect_knife_back.lua",
+    "ghost.lua",
+    "giant_skeleton.lua",
+    "slime.lua",
+    "soldier.lua",
+    "treasure_consumables.lua",
+    "weapon_animate.lua",
+    "weapon_door.lua",
+    "weapon_rock.lua"
+   ],
+   "pins": [
+    {
+     "mutation": "kMut_special_cleric_do_special",
+     "file": "packs/core/scripts/cleric.lua",
+     "line": 329,
+     "from": "  do_special = do_special,"
+    },
+    {
+     "mutation": "kMut_effect_door_open_emission",
+     "file": "packs/core/scripts/effect_door_open.lua",
+     "line": 38,
+     "from": "  on_act = on_act,"
+    },
+    {
+     "mutation": "kMut_effect_expand_emission",
+     "file": "packs/core/scripts/effect_door_open.lua",
+     "line": 38,
+     "from": "  on_act = on_act,"
+    },
+    {
+     "mutation": "kMut_effect_knife_back_emission",
+     "file": "packs/core/scripts/effect_knife_back.lua",
+     "line": 78,
+     "from": "  on_act = on_act,"
+    },
+    {
+     "mutation": "kMut_special_medium_slime_1_scen99",
+     "file": "packs/core/scripts/slime.lua",
+     "line": 133,
+     "from": "  if self:spaces_clear() > 7 then"
+    },
+    {
+     "mutation": "kMut_special_small_slime_1_scen99",
+     "file": "packs/core/scripts/slime.lua",
+     "line": 133,
+     "from": "  if self:spaces_clear() > 7 then"
+    },
+    {
+     "mutation": "kMut_consumable_inventory_state_scen99",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 35,
+     "from": "  eater:s_set_hitpoints(og.fadd(eater:s_hitpoints(), amount))"
+    },
+    {
+     "mutation": "kMut_invulnerable_potion_scen99",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 69,
+     "from": "                                + 150 * self:s_level())"
+    },
+    {
+     "mutation": "kMut_speed_potion_movement_scen99",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 83,
+     "from": "  eater:set_speed_bonus_left(eater:speed_bonus_left() + 50 * self:s_level())"
+    },
+    {
+     "mutation": "kMut_treasure_drumstick_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 90,
+     "from": "  on_eat = drumstick_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_magic_potion_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 94,
+     "from": "  on_eat = magic_potion_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_flight_potion_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 98,
+     "from": "  on_eat = flight_potion_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_invulnerable_potion_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 102,
+     "from": "  on_eat = invulnerable_potion_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_invis_potion_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 106,
+     "from": "  on_eat = invis_potion_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_speed_potion_pickup",
+     "file": "packs/core/scripts/treasure_consumables.lua",
+     "line": 110,
+     "from": "  on_eat = speed_potion_on_eat,"
+    },
+    {
+     "mutation": "kMut_weapon_circle_protection_emission",
+     "file": "packs/core/scripts/weapon_animate.lua",
+     "line": 90,
+     "from": "  self:center_on(owner)"
+    },
+    {
+     "mutation": "kMut_weapon_glow_emission",
+     "file": "packs/core/scripts/weapon_animate.lua",
+     "line": 105,
+     "from": "  self:set_lifetime(lifetime - 1)"
+    }
+   ]
+  },
+  {
+   "lane": "C",
+   "lines": 1272,
+   "files": [
+    "druid.lua",
+    "effect_bomb.lua",
+    "effect_chain.lua",
+    "effect_cloud.lua",
+    "faerie.lua",
+    "fire_elemental.lua",
+    "mage.lua",
+    "skeleton.lua",
+    "thief.lua",
+    "treasure_ctf.lua",
+    "treasure_valuables.lua",
+    "weapon_knife.lua"
+   ],
+   "pins": [
+    {
+     "mutation": "kMut_summon_druid_do_special",
+     "file": "packs/core/scripts/druid.lua",
+     "line": 15,
+     "from": "    if self:busy() > 0 then"
+    },
+    {
+     "mutation": "kMut_summon_lifetime_faerie_scen99",
+     "file": "packs/core/scripts/druid.lua",
+     "line": 54,
+     "from": "    alive:set_lifetime(og.soften(50 + 40 * self:s_level(), 570, 800))"
+    },
+    {
+     "mutation": "kMut_effect_protection_emit_scen99",
+     "file": "packs/core/scripts/druid.lua",
+     "line": 94,
+     "from": "            alive = og.summon(newob, \"weapon\", WEAP_CIRCLE_PROTECTION)"
+    },
+    {
+     "mutation": "kMut_effect_bomb_emission",
+     "file": "packs/core/scripts/effect_bomb.lua",
+     "line": 109,
+     "from": "  on_death = bomb_on_death,"
+    },
+    {
+     "mutation": "kMut_effect_explosion_emission",
+     "file": "packs/core/scripts/effect_bomb.lua",
+     "line": 113,
+     "from": "  on_death = explosion_on_death,"
+    },
+    {
+     "mutation": "kMut_effect_chain_emission",
+     "file": "packs/core/scripts/effect_chain.lua",
+     "line": 164,
+     "from": "  on_act = on_act,"
+    },
+    {
+     "mutation": "kMut_effect_cloud_emission",
+     "file": "packs/core/scripts/effect_cloud.lua",
+     "line": 82,
+     "from": "  on_act = on_act,"
+    },
+    {
+     "mutation": "kMut_input_special_switch_wrap_scen99",
+     "file": "packs/core/scripts/mage.lua",
+     "line": 188,
+     "from": "    if self:team_num() == og.u8(og.my_team()) then"
+    },
+    {
+     "mutation": "kMut_enemy_freeze_mage_scen99",
+     "file": "packs/core/scripts/mage.lua",
+     "line": 189,
+     "from": "      og.set_enemy_freeze(og.enemy_freeze() + 20 + 11 * self:s_level())"
+    },
+    {
+     "mutation": "kMut_weapon_wave_emission",
+     "file": "packs/core/scripts/mage.lua",
+     "line": 222,
+     "from": "    alive:set_lastx(newob:lastx())"
+    },
+    {
+     "mutation": "kMut_special_mage_do_special",
+     "file": "packs/core/scripts/mage.lua",
+     "line": 273,
+     "from": "  do_special = do_special,"
+    },
+    {
+     "mutation": "kMut_effect_bomb_timer_scen99",
+     "file": "packs/core/scripts/thief.lua",
+     "line": 48,
+     "from": "    local newob = og.add_ob(\"fx\", FX_BOMB)"
+    },
+    {
+     "mutation": "kMut_invisibility_thief_scen99",
+     "file": "packs/core/scripts/thief.lua",
+     "line": 82,
+     "from": "    self:set_invisibility_left(math.max(capped, cur))"
+    },
+    {
+     "mutation": "kMut_effect_poison_cloud_emit_scen99",
+     "file": "packs/core/scripts/thief.lua",
+     "line": 147,
+     "from": "    local newob = og.summon(self, \"fx\", FX_CLOUD)"
+    },
+    {
+     "mutation": "kMut_special_thief_do_special",
+     "file": "packs/core/scripts/thief.lua",
+     "line": 180,
+     "from": "  do_special = do_special,"
+    },
+    {
+     "mutation": "kMut_treasure_gold_bar_pickup",
+     "file": "packs/core/scripts/treasure_valuables.lua",
+     "line": 87,
+     "from": "  on_eat = gold_bar_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_silver_bar_pickup",
+     "file": "packs/core/scripts/treasure_valuables.lua",
+     "line": 91,
+     "from": "  on_eat = silver_bar_on_eat,"
+    },
+    {
+     "mutation": "kMut_effect_flash_emission",
+     "file": "packs/core/scripts/treasure_valuables.lua",
+     "line": 95,
+     "from": "  on_eat = life_gem_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_life_gem_pickup",
+     "file": "packs/core/scripts/treasure_valuables.lua",
+     "line": 95,
+     "from": "  on_eat = life_gem_on_eat,"
+    },
+    {
+     "mutation": "kMut_treasure_key_pickup",
+     "file": "packs/core/scripts/treasure_valuables.lua",
+     "line": 99,
+     "from": "  on_eat = key_on_eat,"
+    }
+   ]
+  }
+ ]
+}

@@ -1,10 +1,50 @@
-# Refactor tooling (Lua quality plan, stage 0)
+# Refactor tooling (Lua quality plan, stages 0 + 2)
 
 Tooling that makes pack-Lua refactor batches cheap to prove. The contract it
 enforces is the one `docs/lua-classpacks-design.md` §3 makes binding:
 byte-exact parity (recorder off AND armed), mutation-pin anchoring, the
 combined coverage bar, and — for refactors that add helper indirection — a
 per-scenario Lua instruction budget.
+
+## Stage-2 mechanical rewriters
+
+Six composable tools generate the Stage-2 de-noising batches over
+`packs/core/scripts`. Each is dry-run by default (unified diff to stdout),
+writes only under `--apply`, takes `--files` to scope a lane's batch, and
+shares the comment/string-aware source model in `lua_corpus.py`. Apply
+order (later tools assume the earlier ones' output shapes):
+
+| order | tool | what it does |
+|---|---|---|
+| 1 | `rewrite_combat.py` | deletes hand-inlined combat_math copies, rewrites calls to `og.combat.*`, fuses the orc stun into `ob:add_frozen_stun` (curated site table; aborts loudly if any site drifted) |
+| 2 | `rewrite_rand0.py` | guard trios and the cleric guard helper -> `og.rand0` |
+| 3 | `rewrite_clamp.py` | clamp/min/max ladders -> `og.max`/`og.min`/`og.clamp`; sign idioms -> `og.sign` (std:: tie semantics preserved; setter-wrapped clamps deliberately untouched) |
+| 4 | `rewrite_headers.py` | 36 boilerplate headers -> curated one-line S2 headers, preserving load-bearing per-file notes verbatim |
+| 5 | `strip_provenance.py` | dead `family_*.cpp` cites and stale guard-wrapper comments (curated surgeries keep every genuine RNG-order record); exits 1 on any unhandled dead cite |
+| 6 | `shim_audit.py` | classifies all arithmetic-shim sites PROVABLY-EXACT (emits the plain-Lua rewrite) vs KEEP (emits the S5 why-comment); writes `build/refactor-audit/shim_manifest.json` incl. the unguarded-og.rand audit |
+
+Proof rules and shim semantics are documented in each tool's docstring; the
+audit is deliberately conservative (unknown ⟹ KEEP — parity is the final
+judge, and a wrong EXACT costs a batch cycle).
+
+**Validated end-to-end 2026-07-28** on the full corpus in one shot: all six
+applied -> statement lint green -> `og_test_parity` **187/187 semantic
+scenarios byte-exact, recorder OFF and ARMED** (the 188th, the pin-anchor
+gate, red exactly as designed — line shifts await per-batch pin re-points)
+-> instruction budget **147/159 scenarios improved, 0 regressed >10%**.
+Net on the corpus: 3,825 -> 3,646 lines; shim call sites 262 -> 208;
+guard trios 0 remaining. The applied state was then reverted: lanes apply
+these tools batch-by-batch through `probe.sh`, re-pointing pins per batch.
+
+### Lane partition
+
+`s2_partition.py` writes the committed `s2_partition.json`: the 36 files in
+3 lanes balanced by line count (A/B/C ~1,273/1,280/1,272 lines), each lane
+carrying the subset of `scenario_table.h` mutation pins that anchor into
+its files (12/17/20 pins). Every line-shifting batch re-points its lane's
+pins (`scripts/parity/check_mutation_pins.py --fix` for the mechanics) and
+proves >= 1 canary scenario flip per moved pin — anchors are not teeth.
+`s2_partition.py --check` verifies the committed JSON is current.
 
 ## probe.sh — batch parity prober
 
