@@ -89,6 +89,15 @@ public:
     std::size_t memory_used() const;
     std::size_t memory_limit() const;
 
+    // Cumulative VM instructions the budget hook has observed over the life
+    // of this host, summed across host entries. Pure reporting — never read
+    // by the sim. The figure is quantized to the budget-check cadence: at
+    // the default cadence a host entry shorter than the check interval never
+    // fires the hook and observes as zero, while under
+    // OPENGLAD_LUA_INSTRUCTION_REPORT (the parity instruction-baseline mode)
+    // hosts count per instruction and the total is exact.
+    std::uint64_t instructions_observed() const;
+
     // Lines emitted by scripts through print()/og.log(), in emission order.
     // Bounded to the most recent kMaxStoredScriptLogLines; every line is
     // traced unconditionally regardless of what the store keeps.

@@ -311,6 +311,25 @@ TEST(ScriptBudget, infinite_loop_trips_instruction_budget)
     EXPECT_EQ(2, *ok);
 }
 
+TEST(ScriptBudget, budget_hook_accumulates_observed_instructions)
+{
+    ScriptHost host;
+    EXPECT_EQ(0u, host.instructions_observed());
+    // ~500k VM instructions — far past the default 4096-instruction check
+    // cadence, so the budget hook fires and accumulates whatever cadence
+    // this process runs under (per-instruction when
+    // OPENGLAD_LUA_INSTRUCTION_REPORT is set, kBudgetCheckInterval quanta
+    // otherwise).
+    ASSERT_TRUE(host.run_chunk(
+        "spin_count", "local x = 0 for i = 1, 100000 do x = x + i end"));
+    const std::uint64_t after_loop = host.instructions_observed();
+    EXPECT_GT(after_loop, 0u);
+    // Cumulative and monotone across host entries.
+    auto ok = host.eval_integer("1 + 1");
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_GE(host.instructions_observed(), after_loop);
+}
+
 TEST(ScriptBudget, allocation_cap_trips_deterministically)
 {
     ScriptLimits limits;
