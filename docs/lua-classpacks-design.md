@@ -79,6 +79,27 @@ transliterated expression bit-identical to the C++ original.
 integers. Use `og.div(a,b)` / `og.mod(a,b)` (C semantics: truncate toward
 zero; div-by-zero raises a script error). Lua `//`/`%` floor instead of
 truncate and differ for negative operands.
+  - Stage-2 amendment: `scripts/refactor/shim_audit.py` may rewrite a
+    shimmed site to plain `//`/`%` when it proves dividend >= 0 and
+    divisor >= 1 from the curated engine ranges in
+    `scripts/refactor/lua_corpus.py` (`METHOD_RANGES`) — e.g. `s_level`
+    is 0..32767 because every engine write path (descriptor data,
+    `guy::upgrade_to_level`, difficulty scaling) keeps levels small and
+    non-negative.
+  - Scope of that proof — a documented limitation: those ranges are
+    engine-WRITE facts, not load-time guarantees. The v9+ save loader
+    assigns the raw on-disk int16 to `guy::level` unchecked
+    (`src/resources/save_data.cpp`), and the wire guy-record and
+    snapshot readers do the same (`net_transport.cpp`,
+    `world_snapshot.cpp`), so byte-crafted hostile data can present a
+    negative level at a rewritten site, where `//` floors while the
+    retired C++ truncated. Every peer runs the same Lua, so hostile
+    data cannot split peers or touch memory — the deviation exists only
+    against the retired C++ semantics (visible only to the parity
+    harness, whose scenarios are engine-generated). Robustness against
+    hostile pack/save data is the sandbox/save-validation layer's job
+    (the walker `ani_count` precedent), not per-site shims; note that
+    layer does not yet bound `guy::level` on load.
 
 **R2 — Float arithmetic is per-op through bindings.** Every C++ float
 operation maps to exactly one call: `og.fadd(a,b)`, `og.fsub`, `og.fmul`,

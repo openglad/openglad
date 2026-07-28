@@ -27,6 +27,20 @@ Proof rules and shim semantics are documented in each tool's docstring; the
 audit is deliberately conservative (unknown ⟹ KEEP — parity is the final
 judge, and a wrong EXACT costs a batch cycle).
 
+**Scope of the range proofs (documented limitation).** The `METHOD_RANGES`
+facts in `lua_corpus.py` that unlock `og.div`/`og.mod` -> `//`/`%` (e.g.
+`s_level` >= 0) are engine-WRITE facts: every path the engine uses to
+produce a level keeps it small and non-negative. They are NOT load-time
+guarantees — the v9+ save loader, the wire guy-record reader and the
+snapshot reader all accept a raw int16 unchecked, so byte-crafted hostile
+save/pack data can reach a rewritten site with a negative value, where
+Lua `//` floors and the retired C++ truncated. That cannot desync peers
+(every peer runs the same Lua) or corrupt memory; it deviates only from
+the retired C++ semantics. Hostile-data robustness is the
+sandbox/save-validation layer's job (the walker `ani_count` precedent),
+not per-site shims — and that layer does not yet bound `guy::level`.
+See the R1 amendment in `docs/lua-classpacks-design.md` §3.
+
 **Validated end-to-end 2026-07-28** on the full corpus in one shot: all six
 applied -> statement lint green -> `og_test_parity` **187/187 semantic
 scenarios byte-exact, recorder OFF and ARMED** (the 188th, the pin-anchor
