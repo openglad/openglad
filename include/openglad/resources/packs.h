@@ -81,6 +81,15 @@ struct PackInstallStats {
     // the latter.
     unsigned pack_parses = 0;
     unsigned pack_parse_reuses = 0;
+    // How many objects the process-lifetime pack store holds right now: the
+    // parsed packs plus every array derived from them that a descriptor
+    // borrows (name pools, animation rows and row-pointer tables). Nothing
+    // in that store is ever freed — the gameplay registries keep the borrows
+    // through static teardown — so it must not grow when the mounted bytes
+    // have not changed, or a session that switches campaigns grows without
+    // bound. Absolute, not a delta: reset_pack_install_stats() does not zero
+    // it, tests compare it across the operation they are pinning.
+    unsigned store_objects = 0;
 };
 
 PackInstallStats pack_install_stats();

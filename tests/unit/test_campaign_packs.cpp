@@ -456,6 +456,9 @@ constexpr const char* kMemoPackMount = "packs/memoprobe/";
 // test would rewrite well inside one — would serve the first parse for the
 // second content and this test would read MEMO PACK 111 back after writing
 // 222.
+// The `names:` pool is here because it is not parsed data: it is a pointer
+// array DERIVED from the parse and appended to the same never-freed store,
+// so it has its own memo and its own way to go stale.
 constexpr const char* kMemoYamlA =
     "pack: org.test.memoprobe\n"
     "version: 1\n"
@@ -463,7 +466,8 @@ constexpr const char* kMemoYamlA =
     "  living:\n"
     "    - id: memoprobe:probe\n"
     "      wire_id: auto\n"
-    "      name: \"MEMO PACK 111\"\n";
+    "      name: \"MEMO PACK 111\"\n"
+    "      names: [\"Probe One\"]\n";
 constexpr const char* kMemoYamlB =
     "pack: org.test.memoprobe\n"
     "version: 1\n"
@@ -471,7 +475,8 @@ constexpr const char* kMemoYamlB =
     "  living:\n"
     "    - id: memoprobe:probe\n"
     "      wire_id: auto\n"
-    "      name: \"MEMO PACK 222\"\n";
+    "      name: \"MEMO PACK 222\"\n"
+    "      names: [\"Probe Two\"]\n";
 
 class PackInstallCostTest : public CampaignPacksTest
 {
@@ -501,14 +506,28 @@ protected:
         ASSERT_TRUE(out.good());
     }
 
-    static const char* probe_family_name()
+    static const FamilyDescriptor* probe_family()
     {
         const int family = og::families::resolve_family_string_id(
             Order::Living, "memoprobe:probe");
-        if (family < 0)
-            return nullptr;
-        const FamilyDescriptor* fd = get_family_descriptor(family);
+        return family < 0 ? nullptr : get_family_descriptor(family);
+    }
+
+    static const char* probe_family_name()
+    {
+        const FamilyDescriptor* fd = probe_family();
         return fd ? fd->name : nullptr;
+    }
+
+    // The one pooled random name, read back through the borrowed pointer
+    // array the descriptor actually carries.
+    static const char* probe_pooled_name()
+    {
+        const FamilyDescriptor* fd = probe_family();
+        if (fd == nullptr || fd->name_pool == nullptr ||
+            fd->name_pool_size != 1)
+            return nullptr;
+        return fd->name_pool[0];
     }
 
     fs::path staging_;
@@ -539,6 +558,26 @@ TEST_F(PackInstallCostTest, repeat_installs_of_an_unchanged_tree_never_reparse)
     EXPECT_EQ(0u, after.pack_parses)
         << "unchanged bytes must never be parsed twice";
     EXPECT_EQ(4u * packs_with_data, after.pack_parse_reuses);
+}
+
+TEST_F(PackInstallCostTest, repeat_installs_never_grow_the_never_freed_store)
+{
+    // Skipping the parse is not the whole job. Nothing in the pack store is
+    // ever freed — the gameplay registries borrow into it through static
+    // teardown — so anything an install rebuilds from scratch accumulates for
+    // the life of the process. The parse memo keeps the parsed packs out of
+    // that; the arrays DERIVED from them are just as permanent, and the
+    // shipped core pack alone has 21 name pools, rebuilt eight times over on
+    // editor entry.
+    og::resources::refresh_pack_scripts();  // memoize the current tree
+    const unsigned warm = og::resources::pack_install_stats().store_objects;
+    ASSERT_GT(warm, 0u) << "the shipped core pack must be mounted";
+
+    for (int i = 0; i < 4; i++)
+        og::resources::refresh_pack_scripts();
+
+    EXPECT_EQ(warm, og::resources::pack_install_stats().store_objects)
+        << "an install of unchanged bytes must add nothing permanent";
 }
 
 TEST_F(PackInstallCostTest, a_campaign_mount_cycle_costs_two_installs_no_parses)
@@ -575,6 +614,7 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
         og::resources::pack_install_stats();
     EXPECT_EQ(1u, first.pack_parses) << "a newly mounted pack has no memo entry";
     ASSERT_STREQ("MEMO PACK 111", probe_family_name());
+    ASSERT_STREQ("Probe One", probe_pooled_name());
 
     // Same path, same length, same second — different bytes.
     write_probe_pack(kMemoYamlB);
@@ -589,6 +629,12 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
            "from the memo";
     ASSERT_STREQ("MEMO PACK 222", probe_family_name())
         << "the registry must describe the bytes on disk right now";
+    ASSERT_STREQ("Probe Two", probe_pooled_name())
+        << "and so must the arrays derived from it: a name pool memoized "
+           "past a reparse would hand back the previous pack's names";
+    EXPECT_EQ(first.store_objects + 2u, second.store_objects)
+        << "a genuine reparse is what may grow the store — one pack, one "
+           "name pool";
 
     // Unmounting the probe pack takes its family back out, and the memo
     // entry with it: remounting the ORIGINAL text must parse again rather

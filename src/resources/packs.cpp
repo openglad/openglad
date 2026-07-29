@@ -40,11 +40,18 @@ namespace {
 // Counters behind pack_install_stats(). Plain increments on paths that
 // already do file I/O; nothing reads them but tests and diagnostics.
 PackInstallStats g_pack_install_stats;
+
+// Live size of the never-freed pack store, defined with it below.
+unsigned store_object_count();
 }  // namespace
 
 PackInstallStats pack_install_stats()
 {
-    return g_pack_install_stats;
+    PackInstallStats out = g_pack_install_stats;
+    // Measured, not counted: the store is the thing that must not grow, so
+    // read it rather than trust an increment next to every push_back.
+    out.store_objects = store_object_count();
+    return out;
 }
 
 void reset_pack_install_stats()
@@ -173,6 +180,13 @@ ClasspackStore& classpack_store()
 {
     static ClasspackStore* store = new ClasspackStore();
     return *store;
+}
+
+unsigned store_object_count()
+{
+    const ClasspackStore& s = classpack_store();
+    return static_cast<unsigned>(s.packs.size() + s.name_pools.size() +
+                                 s.anim_rows.size() + s.anim_tables.size());
 }
 
 // One pack's YAML text, already parsed.
@@ -390,8 +404,38 @@ const char* claim_declared_id(const std::string& id, const char* current,
     return id.c_str();
 }
 
-// Builds the name_pool pointer array for one entry in the store; the
-// pointers reference the stored entry's names vector.
+// Storage DERIVED from a parsed pack — the name-pool pointer arrays a
+// descriptor borrows, and the materialized animation tables below — is
+// memoized on the address of the parsed data it was built from.
+//
+// WHY an address is a safe key: every ClasspackData that reaches an install
+// is owned by classpack_store(), which never frees, moves or mutates an
+// entry, and a pack whose parse failed is rejected WITHOUT being installed —
+// so the only addresses in these maps belong to objects that outlive the
+// process, and none can be recycled for different content.
+//
+// WHY memoize at all: this storage is append-only and never freed either, so
+// rebuilding it on every install grew the store with the mount count. That
+// is the same unbounded growth the parse memo above closes, one level down:
+// the parse memo alone would still have appended 21 fresh name-pool arrays
+// per install, eight times over on editor entry. What a hit hands back is
+// what a rebuild would produce — the same pointers, into the same immortal
+// strings, in the same order — so it is observationally identical.
+struct NamePool {
+    const char* const* data = nullptr;
+    int size = 0;
+};
+
+std::map<const std::vector<std::string>*, NamePool>& name_pool_memo()
+{
+    static auto* memo =
+        new std::map<const std::vector<std::string>*, NamePool>();
+    return *memo;
+}
+
+// Points a descriptor at the name_pool pointer array for one stored entry,
+// building it on first use; the pointers reference the stored entry's own
+// names vector.
 void apply_name_pool(const std::vector<std::string>& names,
                      FamilyDescriptor& d)
 {
@@ -400,14 +444,19 @@ void apply_name_pool(const std::vector<std::string>& names,
         d.name_pool_size = 0;
         return;
     }
-    std::vector<const char*> pool;
-    pool.reserve(names.size());
-    for (const std::string& name : names)
-        pool.push_back(name.c_str());
-    classpack_store().name_pools.push_back(std::move(pool));
-    d.name_pool = classpack_store().name_pools.back().data();
-    d.name_pool_size =
-        static_cast<int>(classpack_store().name_pools.back().size());
+    NamePool& slot = name_pool_memo()[&names];
+    if (slot.data == nullptr) {
+        std::vector<const char*> pool;
+        pool.reserve(names.size());
+        for (const std::string& name : names)
+            pool.push_back(name.c_str());
+        classpack_store().name_pools.push_back(std::move(pool));
+        slot.data = classpack_store().name_pools.back().data();
+        slot.size =
+            static_cast<int>(classpack_store().name_pools.back().size());
+    }
+    d.name_pool = slot.data;
+    d.name_pool_size = slot.size;
 }
 
 // --- pack-defined animation sets ---------------------------------------
@@ -523,6 +572,23 @@ PackAnims materialize_anims(const og::data::ClasspackData& pack)
                              static_cast<int>(rows)});
     }
     return out;
+}
+
+// One stored pack's materialized `anims:`, built on first use and kept —
+// the row storage it appends to the store is never freed, so rebuilding it
+// per install grew the store the same way rebuilt name pools did. See the
+// name-pool memo above for why the address is a safe key. One deliberate
+// consequence, matching what the parse memo already does: a malformed set
+// warns while being built, so it now reports once per parsed pack rather
+// than once per mount.
+const PackAnims& pack_anims(const og::data::ClasspackData& pack)
+{
+    static auto* memo =
+        new std::map<const og::data::ClasspackData*, PackAnims>();
+    const auto hit = memo->find(&pack);
+    if (hit != memo->end())
+        return hit->second;
+    return memo->emplace(&pack, materialize_anims(pack)).first->second;
 }
 
 // Points a descriptor at one of this pack's animation sets. Used by the
@@ -919,7 +985,7 @@ int install_pack_families(const og::data::ClasspackData& pack,
     for (const auto& e : pack.generators)
         wire_ids.take(Order::Generator, e.id, e.wire_id, autos);
 
-    const PackAnims anims = materialize_anims(pack);
+    const PackAnims& anims = pack_anims(pack);
     int installed = 0;
     std::size_t n = 0;
     for (const auto& e : pack.weapons)
