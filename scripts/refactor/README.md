@@ -136,6 +136,21 @@ This closes the self-baseline hole: a baseline re-captured on the tree
 being checked made `--budget-check` compare the tree to itself and pass
 vacuously (the `…-dirty-stage45` incident).
 
+**The staged measurement input is verified too.** `og_test_parity`
+resolves assets exe-adjacent, so the report actually measures the STAGED
+`packs/`, `builtin/` and `cfg/` under `build/ci-test` — and
+`copy_directory` staging historically never deleted removed files, so a
+stale staged `packs/core/lib/zz_probe.lua` once shifted every scenario
++4 instructions on a git-clean tree. Two independent fixes:
+`stage_runtime_assets` now MIRRORS (delete + copy) on every build, and
+both `check` and `recapture` refuse (exit 2,
+`MEASUREMENT REFUSED (staged-drift)` / `(staged-missing)`) unless the
+staged sim-input trees are byte-identical to the repo working tree
+(`--staged-root` overrides the default `build/ci-test`). The assertion
+attests the staged tree at check time, not at the instant the report was
+generated — that residue, like tree_sha value provenance, is review's
+job.
+
 ### Re-capturing the baseline
 
 Deliberate act, its own commit — never a drive-by, and never part of a

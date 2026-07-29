@@ -67,8 +67,34 @@ refuses when:
 `recapture` refuses a dirty tree the same way (exit 2,
 "RECAPTURE REFUSED (dirty-tree)").
 
-Exit status: 0 clean, 1 gate failure or malformed input, 2 baseline or
-recapture refusal (protocol violation).
+Staged-tree refusals (exit 2, "MEASUREMENT REFUSED (<name>)"): og_test_parity
+resolves its assets exe-adjacent (get_asset_path), so the numbers in the raw
+report describe the STAGED copies under build/ci-test — not the repo tree the
+baseline SHA names. `cmake -E copy_directory` staging historically never
+deleted removed files, and one stale staged packs/core/lib/*.lua shifted every
+scenario by a constant on a git-clean tree (the zz_probe incident). The build
+now mirror-stages (delete+copy, CMakeLists stage_runtime_assets), and both
+subcommands independently refuse to trust a report unless the staged
+sim-input trees (packs/, builtin/, cfg/ — the exe-adjacent inputs the
+headless sim reads; pix/ and sound/ are render-only) are byte-identical to
+the repo working tree:
+
+  staged-missing        the staged root (default build/ci-test, override with
+                        --staged-root) or one of its sim-input dirs does not
+                        exist — whatever produced the raw report, it was not
+                        the documented staged binary.
+  staged-drift          a staged file is stale (deleted/renamed in the repo
+                        but still staged), missing, or differs in bytes from
+                        the repo tree. Rebuild (mirror staging heals this)
+                        and re-measure.
+
+This attests the staged tree at CHECK time, not at the instant the report
+was generated — a report measured earlier against different staging can
+still slip through if the tree was rebuilt in between. Like the tree_sha
+value provenance, that deliberate-fraud shape stays review's job.
+
+Exit status: 0 clean, 1 gate failure or malformed input, 2 baseline,
+recapture, or staged-tree refusal (protocol violation).
 """
 
 from __future__ import annotations
@@ -83,6 +109,11 @@ import sys
 SCHEMA = "og-lua-instruction-baseline/1"
 
 REFUSAL_EXIT = 2
+
+# The exe-adjacent staged trees the headless sim reads (get_asset_path
+# resolves next to the binary). pix/ and sound/ are staged too but are
+# render-only and unread by og_test_parity, so they are not asserted.
+STAGED_SIM_DIRS = ("packs", "builtin", "cfg")
 
 
 class Refusal(SystemExit):
@@ -140,6 +171,67 @@ def repo_of(path: pathlib.Path) -> pathlib.Path | None:
     return pathlib.Path(top.strip())
 
 
+def tree_files(root: pathlib.Path) -> dict[str, pathlib.Path]:
+    """{relative-posix-path: absolute path} for every file under root."""
+    return {p.relative_to(root).as_posix(): p
+            for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def verify_staged_assets(repo: pathlib.Path,
+                         staged_root: pathlib.Path | None) -> None:
+    """Refuse (exit 2) unless the staged sim-input trees match the repo.
+
+    og_test_parity reads its packs/builtin/cfg exe-adjacent, so the raw
+    report describes the STAGED trees, not the repo. A stale staged file
+    (the zz_probe incident) skews every scenario while the repo looks
+    clean. Mirror staging (CMake) heals drift on every build; this check
+    refuses to compare or capture through drift that a build has not yet
+    healed. See the module docstring for the refusal names.
+    """
+    if staged_root is None:
+        staged_root = repo / "build" / "ci-test"
+    if not staged_root.is_dir():
+        raise Refusal(
+            "MEASUREMENT", "staged-missing",
+            f"staged root {staged_root} does not exist — the raw report "
+            "cannot have come from the documented staged binary; build "
+            "the ci-test preset (or point --staged-root at the build "
+            "directory that produced the report)")
+    diffs: list[str] = []
+    for name in STAGED_SIM_DIRS:
+        src_dir = repo / name
+        dst_dir = staged_root / name
+        if not src_dir.is_dir():
+            diffs.append(f"{name}/: missing from the repo tree itself")
+            continue
+        if not dst_dir.is_dir():
+            raise Refusal(
+                "MEASUREMENT", "staged-missing",
+                f"{dst_dir} is not staged — build the preset so "
+                "stage_runtime_assets mirrors the repo tree first")
+        src = tree_files(src_dir)
+        dst = tree_files(dst_dir)
+        for rel in sorted(set(dst) - set(src)):
+            diffs.append(f"{name}/{rel}: staged but absent from the repo "
+                         "tree (stale leftover)")
+        for rel in sorted(set(src) - set(dst)):
+            diffs.append(f"{name}/{rel}: in the repo tree but not staged")
+        for rel in sorted(set(src) & set(dst)):
+            if src[rel].read_bytes() != dst[rel].read_bytes():
+                diffs.append(f"{name}/{rel}: staged bytes differ from the "
+                             "repo tree")
+    if diffs:
+        shown = "\n".join("    " + d for d in diffs[:8])
+        more = f"\n    ... and {len(diffs) - 8} more" if len(diffs) > 8 else ""
+        raise Refusal(
+            "MEASUREMENT", "staged-drift",
+            "the staged sim-input trees under "
+            f"{staged_root} differ from the repo tree — the raw report "
+            "measured different Lua/level/config bytes than the tree "
+            "being attested. Rebuild (staging mirrors the repo) and "
+            f"re-measure:\n{shown}{more}")
+
+
 def cmd_recapture(args: argparse.Namespace) -> int:
     out = pathlib.Path(args.out).resolve()
     repo = repo_of(out.parent if out.parent.is_dir() else pathlib.Path.cwd())
@@ -165,6 +257,9 @@ def cmd_recapture(args: argparse.Namespace) -> int:
     if head is None:
         raise SystemExit(f"git rev-parse HEAD failed in {repo}")
     tree_sha = head.strip()
+    verify_staged_assets(
+        repo,
+        pathlib.Path(args.staged_root) if args.staged_root else None)
     totals = read_raw(pathlib.Path(args.raw))
     doc = {
         "schema": SCHEMA,
@@ -247,6 +342,11 @@ def cmd_check(args: argparse.Namespace) -> int:
     baseline_path = pathlib.Path(args.baseline)
     doc = load_baseline(baseline_path)
     verify_baseline_against_git(baseline_path, doc)
+    repo = repo_of(baseline_path.parent)
+    if repo is not None:  # unreachable None: the baseline verify refused
+        verify_staged_assets(
+            repo,
+            pathlib.Path(args.staged_root) if args.staged_root else None)
     base = {str(k): int(v) for k, v in doc["scenarios"].items()}
     cur = read_raw(pathlib.Path(args.raw))
 
@@ -299,6 +399,10 @@ def main() -> int:
     rec.add_argument("--raw", required=True,
                      help="raw TSV written by og_test_parity")
     rec.add_argument("--out", required=True, help="baseline JSON to write")
+    rec.add_argument("--staged-root", default=None,
+                     help="build directory whose staged packs/builtin/cfg "
+                          "must mirror the repo tree "
+                          "(default: <repo>/build/ci-test)")
     rec.set_defaults(func=cmd_recapture)
 
     chk = sub.add_parser("check", help="gate a raw report against a "
@@ -308,6 +412,10 @@ def main() -> int:
     chk.add_argument("--baseline", required=True, help="baseline JSON")
     chk.add_argument("--max-regression", type=float, default=0.10,
                      help="max allowed per-scenario growth (default 0.10)")
+    chk.add_argument("--staged-root", default=None,
+                     help="build directory whose staged packs/builtin/cfg "
+                          "must mirror the repo tree "
+                          "(default: <repo>/build/ci-test)")
     chk.set_defaults(func=cmd_check)
 
     args = parser.parse_args()

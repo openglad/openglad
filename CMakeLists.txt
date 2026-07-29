@@ -1440,7 +1440,22 @@ if(NOT EMSCRIPTEN)
     endif()
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
+    #
+    # MIRROR semantics: each staged directory is deleted before the copy.
+    # copy_directory alone never removes files that were deleted or renamed in
+    # the repo, and binaries resolve assets exe-adjacent (get_asset_path), so a
+    # stale staged file silently contaminates every gate that runs a build-tree
+    # binary — a leftover packs/core/lib/*.lua once shifted every
+    # instruction-budget scenario by a constant on a git-clean tree.
+    # instruction_budget.py additionally refuses to measure against a staged
+    # tree that differs from the repo (see scripts/refactor/README.md).
     add_custom_target(stage_runtime_assets
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            ${CMAKE_BINARY_DIR}/builtin
+            ${CMAKE_BINARY_DIR}/cfg
+            ${CMAKE_BINARY_DIR}/pix
+            ${CMAKE_BINARY_DIR}/sound
+            ${CMAKE_BINARY_DIR}/packs
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/builtin ${CMAKE_BINARY_DIR}/builtin
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
