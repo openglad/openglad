@@ -2282,7 +2282,7 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
     // and emitting SOUND_EXPLODE. The skip_exit'd bolt lingers in flight for
     // several consecutive ticks, giving the trajectory predicates a real
     // per-tick path to measure. kMut_weapon_fire_arrow_emission lowers this
-    // family's base stepsize (gloader.cpp:414, 8 -> 3) so the bolt flies ~3x
+    // family's base stepsize (gloader.cpp:559, 8 -> 3) so the bolt flies ~3x
     // slower; its per-tick step leaves WeaponSpeed's bracket and its net
     // travel drops below the STRAIGHT threshold, flipping both trajectory
     // predicates (the on_death explosion still fires, so the play_sound /
@@ -2305,11 +2305,11 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     // FAMILY_FIRE_ARROW as arg0 of WeaponFamilyEmitted for the coverage scan.
     pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW),
     // Trajectory speed: the EXPLODING-BOLT FIRE_ARROW flies in a straight
-    // line at ~11 px/tick (base stepsize 8 in gloader.cpp:414 scaled by the
+    // line at ~11 px/tick (base stepsize 8 in gloader.cpp:559 scaled by the
     // 362/256 cardinal multiplier in walker.cpp:1092). The lowest-seq track
     // gives max consecutive-tick step = 1105 centi-px/tick on both arms.
-    // kMut_weapon_fire_arrow_emission halves the base stepsize, dropping the
-    // step to ~424, failing the [1000,1250] bracket.
+    // kMut_weapon_fire_arrow_emission cuts the base stepsize 8 -> 3, dropping
+    // the step to ~424, failing the [1000,1250] bracket.
     pred::WeaponSpeed(FAMILY_FIRE_ARROW, 1000, 1250,
         "FIRE_ARROW per-tick speed ~1105 centi-px/tick (base stepsize 8 * 362/256 facing scale); tight bracket flips when the mutation lowers the stepsize"),
     // Trajectory shape: skip_exit'd FIRE_ARROW travels dead straight (net
@@ -2322,10 +2322,10 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
-    "src/resources/gloader.cpp", 408,
-    "8",
-    "3",
-    "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row; the projectile flies ~3x slower so its per-tick step (~424 centi-px/tick) leaves WeaponSpeed's [1000,1250] bracket and its net travel (~848) drops below the STRAIGHT threshold 1500 — both trajectory predicates flip."
+    "src/resources/gloader.cpp", 559,
+    "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        8, 12,  7, 0},",
+    "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        3, 12,  7, 0},",
+    "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row (7th column, the loaded weapon step — same column and same shape as the sibling kMut_weapon_bone/_boulder pins); the projectile flies ~3x slower so its per-tick step (~424 centi-px/tick) leaves WeaponSpeed's [1000,1250] bracket and its net travel (~848) drops below the STRAIGHT threshold 1500 — both trajectory predicates flip. The from/to span the whole EntityDef row rather than the bare digit this pin used to carry: \"8\" occurs twice on the animation-registry line it was mis-pinned to (gloader.cpp:408) and 33 times elsewhere in the file, so it could neither be applied there nor re-pointed automatically."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_lightning_emission[] = {
