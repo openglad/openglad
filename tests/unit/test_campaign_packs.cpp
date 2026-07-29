@@ -429,3 +429,179 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
         ADD_FAILURE() << "pack script error in " << e.where << ": "
                       << e.message;
 }
+
+// ---------------------------------------------------------------------------
+// How much work a mount actually costs
+// ---------------------------------------------------------------------------
+// install_classpacks() runs on every mount AND every unmount, and mounts come
+// in bursts nobody counts by eye: CampaignData::load() is four of them
+// (unmount old, mount new, unmount new, mount old), and the level editor runs
+// that whole dance twice on entry. Re-reading the tree each time is the
+// point — a campaign .glad may carry its own packs/ — but re-PARSING bytes
+// that did not change is pure waste, and once the core pack became 73
+// families/*.yaml it was the single most expensive thing on the path.
+//
+// These pin the COUNTS, deliberately, because counts are the deterministic
+// part: a wall-clock threshold in CI would just be a new flaky deadline (the
+// old one cost an unrelated renderer test a red ASan lane). If a future
+// change reintroduces a per-mount reparse, or grows the number of installs
+// hiding behind one mount, the numbers move and these fail.
+
+namespace {
+namespace fs = std::filesystem;
+
+constexpr const char* kMemoPackMount = "packs/memoprobe/";
+// Same byte LENGTH in both revisions on purpose: a memo keyed on file size —
+// or on a modification time, which PhysFS reports in whole seconds and this
+// test would rewrite well inside one — would serve the first parse for the
+// second content and this test would read MEMO PACK 111 back after writing
+// 222.
+constexpr const char* kMemoYamlA =
+    "pack: org.test.memoprobe\n"
+    "version: 1\n"
+    "families:\n"
+    "  living:\n"
+    "    - id: memoprobe:probe\n"
+    "      wire_id: auto\n"
+    "      name: \"MEMO PACK 111\"\n";
+constexpr const char* kMemoYamlB =
+    "pack: org.test.memoprobe\n"
+    "version: 1\n"
+    "families:\n"
+    "  living:\n"
+    "    - id: memoprobe:probe\n"
+    "      wire_id: auto\n"
+    "      name: \"MEMO PACK 222\"\n";
+
+class PackInstallCostTest : public CampaignPacksTest
+{
+protected:
+    void SetUp() override
+    {
+        CampaignPacksTest::SetUp();
+        staging_ = fs::path(get_user_path()) / "memo_probe_stage";
+        std::error_code ec;
+        fs::create_directories(staging_, ec);
+        ASSERT_FALSE(ec) << ec.message();
+    }
+
+    void TearDown() override
+    {
+        (void)og::resources::unmount(staging_.string().c_str());
+        og::resources::refresh_pack_scripts();
+        std::error_code ec;
+        fs::remove_all(staging_, ec);
+        CampaignPacksTest::TearDown();
+    }
+
+    void write_probe_pack(const char* text) const
+    {
+        std::ofstream out(staging_ / "classpack.yaml", std::ios::binary);
+        out << text;
+        ASSERT_TRUE(out.good());
+    }
+
+    static const char* probe_family_name()
+    {
+        const int family = og::families::resolve_family_string_id(
+            Order::Living, "memoprobe:probe");
+        if (family < 0)
+            return nullptr;
+        const FamilyDescriptor* fd = get_family_descriptor(family);
+        return fd ? fd->name : nullptr;
+    }
+
+    fs::path staging_;
+};
+
+}  // namespace
+
+TEST_F(PackInstallCostTest, repeat_installs_of_an_unchanged_tree_never_reparse)
+{
+    // One pass to learn how many packs the mounted tree actually has data
+    // for, and to leave every one of them memoized.
+    og::resources::reset_pack_install_stats();
+    og::resources::refresh_pack_scripts();
+    const og::resources::PackInstallStats warm =
+        og::resources::pack_install_stats();
+    const unsigned packs_with_data = warm.pack_parses + warm.pack_parse_reuses;
+    ASSERT_GE(packs_with_data, 1u) << "the shipped core pack must be mounted";
+
+    og::resources::reset_pack_install_stats();
+    for (int i = 0; i < 4; i++)
+        og::resources::refresh_pack_scripts();
+    const og::resources::PackInstallStats after =
+        og::resources::pack_install_stats();
+
+    EXPECT_EQ(4u, after.refreshes);
+    EXPECT_EQ(4u, after.installs)
+        << "every refresh still rebuilds the registries from scratch";
+    EXPECT_EQ(0u, after.pack_parses)
+        << "unchanged bytes must never be parsed twice";
+    EXPECT_EQ(4u * packs_with_data, after.pack_parse_reuses);
+}
+
+TEST_F(PackInstallCostTest, a_campaign_mount_cycle_costs_two_installs_no_parses)
+{
+    ASSERT_TRUE(install_pack_campaign());
+    og::resources::refresh_pack_scripts();  // memoize the current tree
+
+    og::resources::reset_pack_install_stats();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(kPackCampaignId));
+    ASSERT_EQ(CampaignPackageIoError::None,
+              unmount_campaign_package_with_error(kPackCampaignId));
+    const og::resources::PackInstallStats after =
+        og::resources::pack_install_stats();
+
+    EXPECT_EQ(2u, after.installs)
+        << "one install per mount transition — if this grows, so does every "
+           "campaign switch, and the editor pays it eight times on entry";
+    EXPECT_EQ(0u, after.pack_parses)
+        << "this campaign ships scripts, not classpack data: nothing about "
+           "the parsed descriptor set changed either way";
+}
+
+TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
+{
+    // The teeth for the memo. Everything above only proves it skips work;
+    // this proves it skips work for the right reason.
+    write_probe_pack(kMemoYamlA);
+    ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
+                                     kMemoPackMount, 1));
+    og::resources::reset_pack_install_stats();
+    og::resources::refresh_pack_scripts();
+    const og::resources::PackInstallStats first =
+        og::resources::pack_install_stats();
+    EXPECT_EQ(1u, first.pack_parses) << "a newly mounted pack has no memo entry";
+    ASSERT_STREQ("MEMO PACK 111", probe_family_name());
+
+    // Same path, same length, same second — different bytes.
+    write_probe_pack(kMemoYamlB);
+    og::resources::reset_pack_install_stats();
+    og::resources::refresh_pack_scripts();
+    const og::resources::PackInstallStats second =
+        og::resources::pack_install_stats();
+    EXPECT_EQ(1u, second.pack_parses)
+        << "changed bytes must invalidate that pack's memo entry";
+    EXPECT_EQ(first.pack_parse_reuses, second.pack_parse_reuses)
+        << "and only that pack's: the untouched core pack is still served "
+           "from the memo";
+    ASSERT_STREQ("MEMO PACK 222", probe_family_name())
+        << "the registry must describe the bytes on disk right now";
+
+    // Unmounting the probe pack takes its family back out, and the memo
+    // entry with it: remounting the ORIGINAL text must parse again rather
+    // than resurrect anything.
+    ASSERT_TRUE(og::resources::unmount(staging_.string().c_str()));
+    og::resources::refresh_pack_scripts();
+    EXPECT_EQ(nullptr, probe_family_name())
+        << "an unmounted pack leaves no family behind";
+    write_probe_pack(kMemoYamlA);
+    ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
+                                     kMemoPackMount, 1));
+    og::resources::reset_pack_install_stats();
+    og::resources::refresh_pack_scripts();
+    EXPECT_EQ(1u, og::resources::pack_install_stats().pack_parses);
+    ASSERT_STREQ("MEMO PACK 111", probe_family_name());
+}

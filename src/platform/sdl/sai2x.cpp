@@ -1773,6 +1773,16 @@ void Screen::swap(int x, int y, int w, int h)
 			last_world_present_used_render2_, smart_present_suppressed_,
 			gameplay_ui_w(), gameplay_ui_h());
 		gameplay_ui_capture_valid_ = composite_gameplay_ui;
+		// One completed World transaction, announced. This is the instant
+		// the filtered scenery scratch and the crisp gameplay-UI capture
+		// both become readable, and it is what a test driving a private
+		// loop (the level editor) has to wait for. Publishing it is what
+		// lets such a test wait for the EVENT instead of guessing a
+		// duration — see stop_editor_after_render in
+		// tests/test_canvas_scale.cpp. Compiled out of production builds.
+		TRACE("world_present", "smart=%d ui=%d",
+		      last_world_present_used_render2_ ? 1 : 0,
+		      composite_gameplay_ui ? 1 : 0);
 		gameplay_ui_frame_active_ = false;
 		set_active_canvas(active_);
 	}

@@ -62,4 +62,28 @@ int install_classpacks();
 // unit tests. Returns the number of family entries installed.
 int install_classpack_data(og::data::ClasspackData&& data);
 
+// How much work the pack path has actually done this process.
+//
+// These exist to be ASSERTED ON. Pack install is on the mount path, and
+// mounts happen in bursts nobody counts by eye — one campaign switch is four
+// (unmount old, mount new, unmount new, mount old). A regression there is
+// invisible to every gate the repo has: it is not a wrong value, not a
+// changed byte, and not a Lua instruction, just a slower startup, and the
+// only thing that ever noticed was a wall-clock deadline in an unrelated
+// renderer test. Counts are the part of that which is deterministic, so
+// counts are what tests pin: `pack_parses` must not grow when the mounted
+// bytes have not changed, and `installs` must not grow behind a mount.
+struct PackInstallStats {
+    unsigned refreshes = 0;  // refresh_pack_scripts() calls
+    unsigned installs = 0;   // install_classpacks() passes
+    // Packs whose YAML text was parsed, and packs served from the parse
+    // memo instead. A repeat install of an unchanged tree must add only to
+    // the latter.
+    unsigned pack_parses = 0;
+    unsigned pack_parse_reuses = 0;
+};
+
+PackInstallStats pack_install_stats();
+void reset_pack_install_stats();
+
 }  // namespace og::resources

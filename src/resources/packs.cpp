@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -35,8 +36,25 @@
 
 namespace og::resources {
 
+namespace {
+// Counters behind pack_install_stats(). Plain increments on paths that
+// already do file I/O; nothing reads them but tests and diagnostics.
+PackInstallStats g_pack_install_stats;
+}  // namespace
+
+PackInstallStats pack_install_stats()
+{
+    return g_pack_install_stats;
+}
+
+void reset_pack_install_stats()
+{
+    g_pack_install_stats = PackInstallStats{};
+}
+
 int refresh_pack_scripts()
 {
+    g_pack_install_stats.refreshes++;
     og::script::clear_pack_scripts();
     og::script::clear_pack_lib_modules();
     const int scripts = register_mounted_pack_scripts();
@@ -155,6 +173,44 @@ ClasspackStore& classpack_store()
 {
     static ClasspackStore* store = new ClasspackStore();
     return *store;
+}
+
+// One pack's YAML text, already parsed.
+//
+// WHY: install_classpacks() runs on EVERY mount and EVERY unmount (see
+// refresh_pack_scripts), and a single campaign switch is four of those —
+// CampaignData::load() unmounts the old campaign, mounts the new one, then
+// puts the old one back. Re-READING the tree each time is the point (a
+// campaign .glad may carry its own packs/, so the bytes really can change);
+// re-PARSING identical bytes is pure waste, and after the core pack moved
+// from one classpack.yaml to 73 families/*.yaml it became the dominant cost
+// of the whole call: ~9.6 ms of a 14.7 ms install under ASan, ~1.0 of 2.2
+// plain. It was also an unbounded leak — every pass pushed another copy of
+// the parsed data into the process-lifetime store, whose entries are never
+// freed, so a session that switched campaigns kept accumulating megabytes of
+// identical descriptor text.
+//
+// The memo caches ONLY the parse. Every install still resets the registries
+// and reinstalls every entry from scratch, in the same order, with the same
+// wire-id counter — so a hit is observationally identical to a miss except
+// for the missing work. `data` points into classpack_store(), which is never
+// destroyed and whose entries never move, so the pointer (and every
+// descriptor field borrowing its strings) stays valid for the process.
+//
+// The one deliberate difference: a doc that parses successfully but logs a
+// warning while doing so (an unresolved reference, say) logs it once rather
+// than once per mount. A doc that FAILS to parse rejects its pack and is
+// never memoized, so the rejection warning still fires on every pass.
+struct ParsedPack {
+    std::string signature;  // length-framed vpath+bytes of every doc, in order
+    const og::data::ClasspackData* data = nullptr;  // owned by the store
+};
+
+// Leaked with the store it points into, for the same reason.
+std::map<std::string, ParsedPack>& parsed_pack_memo()
+{
+    static auto* memo = new std::map<std::string, ParsedPack>();
+    return *memo;
 }
 
 // Deterministic wire-id assignment for one install run: core packs pin
@@ -906,27 +962,37 @@ int install_classpacks()
     // reinstalled from every mounted pack's classpack data.
     reset_all_registry_mod_slots();
     og::script::clear_all_family_tuning();
+    g_pack_install_stats.installs++;
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {
-        const std::string vpath = "packs/" + pack_id + "/classpack.yaml";
-        auto parsed = std::make_unique<og::data::ClasspackData>();
-        bool have_data = false;
+        // One document of a pack: packs/<id>/classpack.yaml, or one
+        // packs/<id>/families/*.yaml. `name` is empty for the former, which
+        // is also what selects its rejection message.
+        struct Doc {
+            std::string vpath;
+            std::string name;
+            std::string text;
+        };
+        std::vector<Doc> docs;
+        // Exact identity of what was read, framed so no combination of
+        // paths and contents can alias another: <vpath>\n<len>\n<bytes>.
+        // Compared byte-for-byte rather than hashed — the whole point is
+        // that a memo hit must mean the SAME text, and 60 KB of memcmp is
+        // three orders of magnitude cheaper than the parse it skips.
+        std::string signature;
         bool rejected = false;
+
+        // READ phase. Always runs: mounts really can change these bytes
+        // (a campaign .glad may carry its own packs/), and the read is what
+        // discovers that. Only the parse below is memoized.
+        const std::string vpath = "packs/" + pack_id + "/classpack.yaml";
         std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
-        if (!bytes.empty()) {
-            if (og::data::parse_classpack_yaml(
-                    std::string_view(
-                        reinterpret_cast<const char*>(bytes.data()),
-                        bytes.size()),
-                    *parsed, vpath.c_str())) {
-                have_data = true;
-            } else {
-                LogWarn("class pack '{}' rejected: classpack.yaml "
-                        "unusable\n", pack_id);
-                rejected = true;
-            }
-        }
+        if (!bytes.empty())
+            docs.push_back({vpath, std::string(),
+                            std::string(reinterpret_cast<const char*>(
+                                            bytes.data()),
+                                        bytes.size())});
         // Split layout: packs/<id>/families/*.yaml, each an ordinary
         // classpack document (usually one family entry), parsed into the
         // SAME ClasspackData AFTER classpack.yaml in sorted filename
@@ -941,36 +1007,75 @@ int install_classpacks()
         // file rejects the whole pack, matching the classpack.yaml
         // contract above.
         const std::string families_dir = "packs/" + pack_id + "/families";
-        if (!rejected) {
-            for (const std::string& name :
-                 og::io::physfs_enumerate_files_sorted(families_dir)) {
-                const std::string fpath = families_dir + "/" + name;
-                if (!name.ends_with(".yaml") ||
-                    og::io::physfs_is_directory(fpath))
-                    continue; // non-YAML notes and subdirs are fine
-                bytes = read_file(fpath.c_str());
-                if (!bytes.empty() &&
-                    og::data::parse_classpack_yaml(
-                        std::string_view(
-                            reinterpret_cast<const char*>(bytes.data()),
-                            bytes.size()),
-                        *parsed, fpath.c_str())) {
-                    have_data = true;
-                    continue;
-                }
+        for (const std::string& name :
+             og::io::physfs_enumerate_files_sorted(families_dir)) {
+            const std::string fpath = families_dir + "/" + name;
+            if (!name.ends_with(".yaml") ||
+                og::io::physfs_is_directory(fpath))
+                continue; // non-YAML notes and subdirs are fine
+            bytes = read_file(fpath.c_str());
+            if (bytes.empty()) {
                 LogWarn("class pack '{}' rejected: family file '{}' "
                         "unusable\n", pack_id, name);
                 rejected = true;
                 break;
             }
+            docs.push_back({fpath, name,
+                            std::string(reinterpret_cast<const char*>(
+                                            bytes.data()),
+                                        bytes.size())});
         }
-        if (rejected || !have_data)
-            continue; // no classpack data at all (scripts-only) is fine
-        // Move into the process-lifetime store BEFORE installing:
-        // descriptors borrow the stored strings.
-        og::data::ClasspackData& stored = *parsed;
-        classpack_store().packs.push_back(std::move(parsed));
-        installed += install_pack_families(stored, autos);
+        auto& memo = parsed_pack_memo();
+        if (rejected || docs.empty()) {
+            // No classpack data at all (scripts-only) is fine. Either way
+            // this pack has no valid parse to remember.
+            memo.erase(pack_id);
+            continue;
+        }
+        for (const Doc& doc : docs) {
+            signature += doc.vpath;
+            signature += '\n';
+            signature += std::to_string(doc.text.size());
+            signature += '\n';
+            signature += doc.text;
+        }
+
+        // PARSE phase, memoized on the exact bytes just read.
+        const og::data::ClasspackData* stored = nullptr;
+        const auto hit = memo.find(pack_id);
+        if (hit != memo.end() && hit->second.signature == signature) {
+            stored = hit->second.data;
+            g_pack_install_stats.pack_parse_reuses++;
+        } else {
+            auto parsed = std::make_unique<og::data::ClasspackData>();
+            for (const Doc& doc : docs) {
+                if (og::data::parse_classpack_yaml(doc.text, *parsed,
+                                                   doc.vpath.c_str()))
+                    continue;
+                if (doc.name.empty())
+                    LogWarn("class pack '{}' rejected: classpack.yaml "
+                            "unusable\n", pack_id);
+                else
+                    LogWarn("class pack '{}' rejected: family file '{}' "
+                            "unusable\n", pack_id, doc.name);
+                rejected = true;
+                break;
+            }
+            if (rejected) {
+                memo.erase(pack_id);
+                continue;
+            }
+            // Move into the process-lifetime store BEFORE installing:
+            // descriptors borrow the stored strings.
+            stored = parsed.get();
+            classpack_store().packs.push_back(std::move(parsed));
+            memo[pack_id] = ParsedPack{std::move(signature), stored};
+            g_pack_install_stats.pack_parses++;
+        }
+        // INSTALL phase. Unconditional, hit or miss: the registries were
+        // just reset, and every entry is reinstalled in the same order with
+        // the same wire-id counter.
+        installed += install_pack_families(*stored, autos);
         packs_seen++;
     }
     if (packs_seen > 0)
