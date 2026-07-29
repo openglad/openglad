@@ -58,7 +58,12 @@ carrying the subset of `scenario_table.h` mutation pins that anchor into
 its files (12/17/20 pins). Every line-shifting batch re-points its lane's
 pins (`scripts/parity/check_mutation_pins.py --fix` for the mechanics) and
 proves >= 1 canary scenario flip per moved pin — anchors are not teeth.
-`s2_partition.py --check` verifies the committed JSON is current.
+`--fix` moves a pin only when exactly one line in the file could carry its
+text; a pin whose `from` is short enough to fit several lines is refused
+with the candidates listed, because picking the nearest is how a pin lands
+on a decoy and stays certified there. Widen the `from` until it names the
+row it mutates, then re-run. `s2_partition.py --check` verifies the
+committed JSON is current.
 
 ## probe.sh — batch parity prober
 

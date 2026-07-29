@@ -343,9 +343,10 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
 
         declared = declarations.get((path, line))
         baseline = baseline_at(path, line) if declared else None
+        here = lines[line - 1] if 1 <= line <= len(lines) else None
         state = None
-        if 1 <= line <= len(lines):
-            state = accepts(lines[line - 1], wanted, mutated,
+        if here is not None:
+            state = accepts(here, wanted, mutated,
                             groups.get((path, line), ()), declared, baseline)
         if state is not None:
             tally[state] += 1
@@ -365,23 +366,24 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
                 problems.append(
                     f"{path}:{line} — declared mid-mutation state is not the "
                     f"image of {describe(declared[0], declared[1])} over "
-                    f"HEAD's line\n    HEAD: {baseline[:70]}\n    tree: "
-                    f"{(lines[line - 1] if 1 <= line <= len(lines) else '')[:70]}")
+                    f"HEAD's line\n    HEAD: {baseline[:70]}"
+                    f"\n    tree: {(here or '')[:70]}")
             return match.group(0)
 
         # How many occurrences the pinned line actually has decides the
         # message: "two of them" is a different bug from "none of them", and
         # only the first one used to pass.
-        here = lines[line - 1].count(wanted) if 1 <= line <= len(lines) else 0
-        if here > 1:
+        occurrences = here.count(wanted) if here is not None else 0
+        if occurrences > 1:
             problems.append(
-                f"{path}:{line} — anchor text occurs {here}x on the pinned "
-                f"line, so the canary's applier refuses it as ambiguous "
-                f"(exit 7); this pin cannot fire\n"
+                f"{path}:{line} — anchor text occurs {occurrences}x on the "
+                f"pinned line, so the canary's applier refuses it as "
+                f"ambiguous (exit 7); this pin cannot fire\n"
                 f"    wanted: {wanted[:70]}")
             return match.group(0)
 
-        hits = [i + 1 for i, text in enumerate(lines) if applicable(text, wanted)]
+        hits = [i + 1 for i, text in enumerate(lines)
+                if applicable(text, wanted)]
         if not hits:
             problems.append(
                 f"{path}:{line} — anchor text no longer present anywhere\n"
