@@ -2309,13 +2309,16 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     // 362/256 cardinal multiplier in walker.cpp:1092). The lowest-seq track
     // gives max consecutive-tick step = 1105 centi-px/tick on both arms.
     // kMut_weapon_fire_arrow_emission cuts the base stepsize 8 -> 3, dropping
-    // the step to ~424, failing the [1000,1250] bracket.
+    // the measured step to 510 centi-px/tick — outside the [1000,1250]
+    // bracket, and the flip the canary observes on this row.
     pred::WeaponSpeed(FAMILY_FIRE_ARROW, 1000, 1250,
         "FIRE_ARROW per-tick speed ~1105 centi-px/tick (base stepsize 8 * 362/256 facing scale); tight bracket flips when the mutation lowers the stepsize"),
     // Trajectory shape: skip_exit'd FIRE_ARROW travels dead straight (net
     // 2209 >= 0.7*pathlen 2210). net_centi=2209 clears the 1500 threshold on
-    // both arms; the slowed projectile under the mutation covers only ~848
-    // net over the same 3-sample window, failing the threshold.
+    // both arms. evaluate_facts reports only the FIRST failing predicate, and
+    // under the mutation that is WeaponSpeed above, so this one's own
+    // post-mutation value is not observable from a canary run; the same
+    // slowdown shrinks net travel over the same 3-sample window.
     pred::WeaponNetTravel(FAMILY_FIRE_ARROW, kWeaponPathStraight, 1500,
         "FIRE_ARROW path is STRAIGHT: net=2209 >= threshold 1500 and >= 0.7*pathlen; the mutation's slower step shrinks net below 1500"),
     pred::EventKindExactly(/*score_change*/9, 0),
@@ -2325,7 +2328,7 @@ inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
     "src/resources/gloader.cpp", 559,
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        8, 12,  7, 0},",
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        3, 12,  7, 0},",
-    "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row (7th column, the loaded weapon step — same column and same shape as the sibling kMut_weapon_bone/_boulder pins); the projectile flies ~3x slower so its per-tick step (~424 centi-px/tick) leaves WeaponSpeed's [1000,1250] bracket and its net travel (~848) drops below the STRAIGHT threshold 1500 — both trajectory predicates flip. The from/to span the whole EntityDef row rather than the bare digit this pin used to carry: \"8\" occurs twice on the animation-registry line it was mis-pinned to (gloader.cpp:408) and 33 times elsewhere in the file, so it could neither be applied there nor re-pointed automatically."
+    "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row (7th column, the loaded weapon step — same column and same shape as the sibling kMut_weapon_bone/_boulder pins). MEASURED under the canary: the bolt's per-tick step falls to 510 centi-px/tick, outside WeaponSpeed's [1000,1250] bracket, so that predicate flips and the branch dump fails; weapon_tracks also diverges from master (151 vs 136 samples). The from/to span the whole EntityDef row rather than the bare digit this pin used to carry: \"8\" occurs twice on the animation-registry line it was mis-pinned to (gloader.cpp:408) and 33 times elsewhere in the file, so it could neither be applied there nor re-pointed automatically — the pin certified green for its whole life without ever mutating anything."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_lightning_emission[] = {
