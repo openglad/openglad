@@ -232,16 +232,16 @@ Dashboard, baseline (§1, 2026-07-27) → now:
 
 | Metric | Was | Now |
 |---|---|---|
-| corpus | 36 files, 3,825 lines | 36 script files, 3,547 lines, **−7.3%** (+ `lib/` 3 modules, 121 lines; the corpus also *absorbed* Stage-3 specials tables and the S5 why-comments) |
+| corpus | 36 files, 3,825 lines | 36 script files, 3,553 lines, **−7.1%** (+ `lib/` 3 modules, 121 lines; the corpus also *absorbed* Stage-3 specials tables and the S5 why-comments) |
 | arithmetic shims | 307 | **163** in scripts (172 with lib): fadd 64, fdiv 22, fmul 21, fsub 20, trunc 13, div 9, i16 7, mod 3, u8 2, i32 1, i8 1 (+ lib: i16 4, fsub 2, div 2, trunc 1) — every kept site audited (`scripts/refactor/shim_audit.py`) and covered by an S5 why (per site or per adjacent cluster); the <60 hypothesis was wrong because most float sites genuinely reproduce C++ `float` rounding |
 | guard trios | 6 (+2 flagged splits) | **0** — 8 `og.rand0` sites |
 | archaeology locals | 486 | **0** (grep's five residual `generic` hits are comment prose in RNG-order records quoting the C++) |
 | dead provenance headers | 17 of 36 | **0**; 36/36 one-line S2 headers |
 | switch ladders | 8 families | **0** — specials tables; hand-inlined `combat_math` copies 0 (7 `og.combat.*` call sites) |
 | duplicated helpers | `do_special`×13, `check_special_ai`×9, … | shared *bodies* live in `lib/living_common.lua` + `lib/ai.lua` + `lib/effect_common.lua` (14 `og.use` call sites); token-identical cross-file bodies ≥4 lines: **0** (lint rule 8b); same-name hook-key *wrappers* remain by design — S1 identity pairs (`level_up`×12, `set_difficulty`×7, `on_death`×5, `on_act`×5, `do_special`×4, `check_special_ai`×4) |
-| tuning | pervasive inline literals | 73 families in `packs/core/families/*.yaml`; 33 `og.tuning` read sites |
-| comment↔code | (not measured) | 544 comment lines / 3,547 (15.3%), dominated by RNG-order records and S5 whys |
+| tuning | pervasive inline literals | 73 families in `packs/core/families/*.yaml`; 32 `og.tuning` read sites (33 before `6715dd44` put the skeleton TUNNEL range back into R-KEEP-4 code) |
+| comment↔code | (not measured) | 550 comment lines / 3,553 (15.5%), dominated by RNG-order records and S5 whys |
 | binding surface | 214 registrations | 447 stub fields; `check_api_stubs.py` green |
-| parity | oracle | **188/188 OFF and ARMED** on this tree (2026-07-28), pins re-pointed + canary-flipped per batch |
+| parity | oracle | **188/188 OFF and ARMED** on this tree (re-measured 2026-07-29 at the final HEAD), pins re-pointed + canary-flipped per batch; all 151 pins anchor |
 | instruction budgets | <10%/scenario | baseline re-captured post-Stage-3 (`adbd62da`); per-batch probe gates held; the one measured blow-up (+23.8% on `bones`, per-tick `og.tuning` in an AI gate) was redesigned to R-KEEP-4 constants — see `lib/ai.lua` |
-| coverage | 95 line / 100 function ×6 | enforced by `probe.sh --full-coverage` per stage; `lib/` and the example pack are in the denominator and exercised |
+| coverage | 95 line / 100 function ×6 | enforced by `probe.sh --full-coverage` per stage; `lib/` and the example pack are in the denominator and exercised. Final full cycle (2026-07-29): C++ 57801/60701 lines 95.22%, 5049/5049 functions 100%; Lua 2331/2410 lines 96.72%, 189/189 functions 100%; combined 60132/63111 lines 95.28%, 5238/5238 functions 100% — six bars PASS |
