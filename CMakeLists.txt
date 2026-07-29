@@ -1,5 +1,34 @@
 cmake_minimum_required(VERSION 3.25)
 project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
+
+# In-source builds are refused, before a single file is generated.
+#
+# `cmake -S . -B .` makes the build tree the WORKING tree, and from there any
+# target that owns its output directory owns tracked sources instead. That is
+# not hypothetical here: stage_runtime_assets MIRRORS builtin/ cfg/ pix/
+# sound/ packs/ into the build tree, and mirroring deletes the destination
+# before it copies — in-source that reads `rm -rf <srcdir>/packs` followed by
+# a copy of packs/ onto itself, i.e. unrecoverable loss of committed assets
+# from a plain `ninja`. Every preset in CMakePresets.json builds out of tree;
+# this guard is for the hand-typed invocation that does not.
+#
+# Real paths, so a symlinked or `.`-suffixed spelling of the same directory
+# cannot slip past the comparison.
+file(REAL_PATH "${CMAKE_SOURCE_DIR}" OG_SOURCE_DIR_REAL)
+file(REAL_PATH "${CMAKE_BINARY_DIR}" OG_BINARY_DIR_REAL)
+if(OG_SOURCE_DIR_REAL STREQUAL OG_BINARY_DIR_REAL)
+    message(FATAL_ERROR
+        "OpenGlad refuses in-source builds: the build directory is the source "
+        "directory (${OG_SOURCE_DIR_REAL}).\n"
+        "Targets here mirror runtime asset directories into the build tree, "
+        "which deletes the destination first — in-source that would delete "
+        "the repository's own builtin/, cfg/, pix/, sound/ and packs/.\n"
+        "Build out of tree instead, e.g.:\n"
+        "    cmake --preset ci-test && cmake --build --preset ci-test\n"
+        "Then remove the CMakeCache.txt and CMakeFiles/ this attempt left in "
+        "the source directory.")
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CheckCXXSourceCompiles)
@@ -1449,18 +1478,33 @@ if(NOT EMSCRIPTEN)
     # instruction-budget scenario by a constant on a git-clean tree.
     # instruction_budget.py additionally refuses to measure against a staged
     # tree that differs from the repo (see scripts/refactor/README.md).
+    #
+    # The rm is emitted PER DIRECTORY and only when that directory's staged
+    # location is not the repository copy itself. `rm -rf X && copy X X` is
+    # not a mirror, it is a delete: copy_directory fails on the source it was
+    # just handed the corpse of, and the tracked files are gone. The
+    # in-source-build guard at the top of this file already refuses the way
+    # that happens in practice; this is the belt that holds if the guard is
+    # ever bypassed or a staged path is otherwise aimed at its own source.
+    set(OG_RUNTIME_ASSET_DIRS builtin cfg pix sound packs)
+    set(OG_STAGE_ASSET_COMMANDS "")
+    foreach(og_asset_dir IN LISTS OG_RUNTIME_ASSET_DIRS)
+        if("${OG_SOURCE_DIR_REAL}/${og_asset_dir}" STREQUAL
+           "${OG_BINARY_DIR_REAL}/${og_asset_dir}")
+            list(APPEND OG_STAGE_ASSET_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E echo
+                    "stage_runtime_assets: ${og_asset_dir}/ already IS the staged copy -- skipping, because mirroring it would delete it")
+            continue()
+        endif()
+        list(APPEND OG_STAGE_ASSET_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E rm -rf
+                ${CMAKE_BINARY_DIR}/${og_asset_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/${og_asset_dir}
+                ${CMAKE_BINARY_DIR}/${og_asset_dir})
+    endforeach()
     add_custom_target(stage_runtime_assets
-        COMMAND ${CMAKE_COMMAND} -E rm -rf
-            ${CMAKE_BINARY_DIR}/builtin
-            ${CMAKE_BINARY_DIR}/cfg
-            ${CMAKE_BINARY_DIR}/pix
-            ${CMAKE_BINARY_DIR}/sound
-            ${CMAKE_BINARY_DIR}/packs
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/builtin ${CMAKE_BINARY_DIR}/builtin
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/packs ${CMAKE_BINARY_DIR}/packs
+        ${OG_STAGE_ASSET_COMMANDS}
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )

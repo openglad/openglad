@@ -177,3 +177,34 @@ re-baseline commit, where review can weigh it.
 disagree — per-scenario totals are deterministic (repeat runs within a
 suite pass match exactly, and recorder off vs armed produce byte-identical
 report files), so a disagreement is a determinism bug, not noise.
+
+## Traps
+
+**`tests/parity/scenario_facts_generated.json` is git-tracked AND a build
+output.** Ninja regenerates it into the source tree, so a build that is
+interrupted between delete and write leaves it *missing* — and every gate
+that demands a clean worktree then refuses: `run_mutation_canary.sh`
+(`worktree not clean`), `instruction_budget.py recapture`
+(`RECAPTURE REFUSED (dirty-tree)`), `probe.sh`'s stash step. The file is
+not corrupt and the tree is not broken. Restore it and re-read the state:
+
+```bash
+git checkout -- tests/parity/scenario_facts_generated.json
+```
+
+Diagnose a refusal with `git status --porcelain` before concluding anything
+about the tree; a lone `D`/`M` on that path means "a build was in flight",
+not "something ate the repo".
+
+**`OPENGLAD_LUA_COVERAGE` is a directory path, never a boolean.**
+`OPENGLAD_LUA_COVERAGE=1` reads like a switch; it used to be honoured as a
+directory named `1`, created in the process's working directory. It is
+rejected now (recording off, with a diagnostic on stderr — see
+`og::script::coverage::validate_output_dir`), but the shape of the variable
+is what to remember: pass a real directory, e.g.
+`OPENGLAD_LUA_COVERAGE="$(mktemp -d)"`. `probe.sh` and the `coverage_run`
+target already do.
+
+**Build out of tree.** `cmake -S . -B .` is refused at configure time: the
+runtime-asset staging target mirrors `builtin/ cfg/ pix/ sound/ packs/` into
+the build tree, and a mirror deletes its destination first. Use the presets.

@@ -220,11 +220,12 @@ struct Recorder {
 };
 
 // Resolved once at static-init time; see the header's determinism contract.
+// The value is validated, not just read — see validate_output_dir().
 std::string read_output_dir()
 {
     const char* dir = std::getenv("OPENGLAD_LUA_COVERAGE");
-    if (dir == nullptr || dir[0] == '\0') return {};
-    return std::string(dir);
+    if (dir == nullptr) return {};
+    return validate_output_dir(dir);
 }
 
 // DELIBERATELY leaked — never destroyed. The Recorder flushes from its own
@@ -326,6 +327,25 @@ std::string program_name()
 const std::string& output_dir()
 {
     return output_dir_storage();
+}
+
+std::string validate_output_dir(std::string_view value)
+{
+    if (value.empty()) return {};
+    if (std::filesystem::path(value).is_absolute())
+        return std::string(value);
+    // Loud, because the alternative is a plausible-looking measurement: the
+    // classic miss is `OPENGLAD_LUA_COVERAGE=1`, which reads as a boolean and
+    // used to leave a directory named `1` wherever the process happened to be
+    // standing. See the header.
+    std::fprintf(stderr,
+                 "OPENGLAD_LUA_COVERAGE=%.*s is not an absolute path, so "
+                 "pack-Lua coverage recording is OFF for this process. The "
+                 "variable names the DIRECTORY raw *.luacov dumps are written "
+                 "to at exit -- it is not a boolean. Use e.g. "
+                 "OPENGLAD_LUA_COVERAGE=\"$(mktemp -d)\".\n",
+                 static_cast<int>(value.size()), value.data());
+    return {};
 }
 
 void set_enabled_for_testing(bool on)

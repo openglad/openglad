@@ -756,6 +756,29 @@ constexpr const char* kBytecodeProbeSource =
 
 }  // namespace
 
+// OPENGLAD_LUA_COVERAGE is a directory path. `=1` reads like a boolean and
+// used to be honoured as a directory named `1`, created in whatever cwd the
+// process happened to have — measurement scattered across the per-binary
+// working directories of one ctest run and no way to tell from the outside.
+// Only absolute paths arm the recorder now; everything else is off and says
+// so, which the report surfaces as an unmet bar instead of a number.
+TEST(ScriptCoverage, output_dir_env_must_be_an_absolute_directory_path)
+{
+    EXPECT_EQ("/tmp/luacov", cov::validate_output_dir("/tmp/luacov"))
+        << "an absolute path is the supported form";
+
+    // Unset/empty is simply "off", and stays silent about it.
+    EXPECT_EQ("", cov::validate_output_dir(""));
+
+    // The footgun itself, plus the other relative spellings of it.
+    for (const char* bad : {"1", "true", "yes", "on", "0",
+                            "luacov", "./luacov", "../luacov"})
+    {
+        EXPECT_EQ("", cov::validate_output_dir(bad))
+            << "relative value " << bad << " must not arm the recorder";
+    }
+}
+
 TEST(ScriptCoverage, recorder_is_inert_when_disabled)
 {
     cov::ScopedRecording recording;      // isolates + restores the store

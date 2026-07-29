@@ -281,8 +281,13 @@ records `(chunk, currentline)` on line events. Chunk names are the paths the
 resources layer loads packs under (`packs/core/scripts/soldier.lua`), so they
 are already repo-relative and drop straight into an lcov `SF:` record.
 
-Arming is a **runtime** decision — set `OPENGLAD_LUA_COVERAGE` to a directory —
-never a compile flag. That is deliberate: the sim is parity-gated to
+Arming is a **runtime** decision — set `OPENGLAD_LUA_COVERAGE` to an **absolute
+directory path**, e.g. `OPENGLAD_LUA_COVERAGE="$(mktemp -d)"` — never a compile
+flag. It is a path, not a boolean: `=1` reads like a switch and used to be
+honoured as a directory named `1` in whatever the process's working directory
+happened to be, scattering the dumps. Anything that is not an absolute path is
+now refused outright (recording OFF, with the reason on stderr), so a
+mis-shaped value shows up as an unmet Lua bar rather than as a number. That is deliberate: the sim is parity-gated to
 byte-exactness and shares this very hook with the budget, so the binary the
 parity gate exercises has to be the binary that ships. With the variable
 unset, `lua_sethook` is called with the identical function pointer, mask and

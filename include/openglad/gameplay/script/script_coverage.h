@@ -110,6 +110,23 @@ inline bool enabled()
 // OPENGLAD_LUA_COVERAGE). Empty when recording is off.
 const std::string& output_dir();
 
+// Interpret one OPENGLAD_LUA_COVERAGE value.
+//
+// THE VARIABLE IS A DIRECTORY PATH, NOT A BOOLEAN. `OPENGLAD_LUA_COVERAGE=1`
+// reads like a switch and used to behave like one — it armed the recorder and
+// then created a directory literally named `1` in whatever the process's
+// working directory happened to be. A relative path is the same defect even
+// when it is meant: the dump is written at process exit, from a cwd the
+// recorder does not control and which differs between the test binaries a
+// single run launches, so the dumps scatter. Only an absolute path is
+// accepted; anything else returns empty (recording OFF) after saying so on
+// stderr, which the coverage report then surfaces as an unmet Lua bar rather
+// than as a plausible-looking number.
+//
+// Exposed so the rule is unit-testable. The process itself reads the
+// environment exactly once, at static-init time.
+std::string validate_output_dir(std::string_view value);
+
 // Test seam: arm/disarm the recorder regardless of the environment. Setting
 // it true without an output directory records in memory only.
 void set_enabled_for_testing(bool on);

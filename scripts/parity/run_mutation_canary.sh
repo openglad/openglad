@@ -113,12 +113,21 @@ for i in hits:
 PY
 }
 
-# Map scenario id -> (file, line, from, to) by reusing the lint parser.
-# Returns one tab-separated line; aborts the canary if the id has no
-# valid mutation declaration.
+# Map scenario id -> (file, line, from, to, declaration-json) by reusing the
+# lint parser. Writes five NUL-terminated fields to ${2}; aborts the canary if
+# the id has no valid mutation declaration.
+#
+# NUL, not tab: pin texts may contain literal tabs (the walker.cpp:1189 group
+# carries two indentation-anchored pins whose from-text opens with four of
+# them). `IFS=$'\t' read` collapses runs of tabs — tab is IFS whitespace — so
+# a tab-separated record silently handed _apply_mutation.py a DIFFERENT string
+# than the table declares, and could not have produced an exact declaration at
+# all. NUL-terminated fields survive verbatim.
 lookup_mutation() {
     local sid="$1"
-    PYTHONPATH="${SCRIPT_DIR}" python3 - "${TABLE_HEADER}" "${sid}" <<'PY'
+    local out="$2"
+    PYTHONPATH="${SCRIPT_DIR}" python3 - "${TABLE_HEADER}" "${sid}" "${out}" <<'PY'
+import json
 import sys
 from pathlib import Path
 import lint_scenario_facts as lint
@@ -138,19 +147,40 @@ m = muts.get(tok)
 if m is None:
     sys.stderr.write(f"lookup_mutation: {sys.argv[2]} references unknown {tok}\n")
     sys.exit(6)
-print(f"{m['file']}\t{m['line']}\t{m['from']}\t{m['to']}")
+# The declaration the pin check consumes. It names the pin EXACTLY as the
+# table spells it, which is also exactly what _apply_mutation.py is about to
+# write — the two must not be able to disagree, so both come from this record.
+declaration = json.dumps({"file": m["file"], "line": int(m["line"]),
+                          "from": m["from"], "to": m["to"]})
+fields = [m["file"], str(m["line"]), m["from"], m["to"], declaration]
+Path(sys.argv[3]).write_bytes(
+    b"".join(f.encode("utf-8") + b"\0" for f in fields))
 PY
 }
+
+# The mutation the tree currently carries, as the JSON declaration
+# check_mutation_pins.py accepts — empty whenever the tree is clean.
+#
+# That check is a build dependency of og_test_parity, so every rebuild below
+# runs it. On a shared anchor (several pins on one line) the mutated line
+# matches neither side of the siblings' substitutions, and the check would red
+# and abort the canary. The declaration is how the canary says which single
+# known mutation it applied; the check recognises that one state and nothing
+# else. An UNdeclared tree is judged exactly as a hand-edited tree is — see
+# accepts() in check_mutation_pins.py.
+IN_FLIGHT_JSON=""
 
 # Build targets needed for the canary loop. `--target` accepts multiple
 # names so Ninja can schedule them together; the binaries share most TUs
 # so the incremental rebuild after a single source edit is one .cpp +
 # one .a re-archive + two executable re-links.
 rebuild_targets() {
-    cmake --build --preset "${PRESET}" \
-        --target og_test_parity parity_runner_smoke >/dev/null 2>&1 \
-        || { cmake --build --preset "${PRESET}" \
-                --target og_test_parity parity_runner_smoke; exit 1; }
+    OPENGLAD_MUTATION_IN_FLIGHT="${IN_FLIGHT_JSON}" \
+        cmake --build --preset "${PRESET}" \
+            --target og_test_parity parity_runner_smoke >/dev/null 2>&1 \
+        || { OPENGLAD_MUTATION_IN_FLIGHT="${IN_FLIGHT_JSON}" \
+                cmake --build --preset "${PRESET}" \
+                    --target og_test_parity parity_runner_smoke; exit 1; }
 }
 
 # Run a single scenario through the smoke runner with --evaluate-facts;
@@ -272,13 +302,24 @@ for sid in "${scenarios[@]}"; do
     total_processed+=1
     echo "--- ${sid} ---"
 
-    if ! lookup_line="$(lookup_mutation "${sid}")"; then
+    mut_record="${TMPDIR_CANARY}/${sid}.mutation"
+    if ! lookup_mutation "${sid}" "${mut_record}"; then
         echo "  SKIP: mutation lookup failed (see stderr)"
         total_zero_flips+=1
         zero_flip_log+=("${sid}: lookup_mutation failed")
         continue
     fi
-    IFS=$'\t' read -r mut_file mut_line mut_from mut_to <<<"${lookup_line}"
+    if ! { IFS= read -r -d '' mut_file
+           IFS= read -r -d '' mut_line
+           IFS= read -r -d '' mut_from
+           IFS= read -r -d '' mut_to
+           IFS= read -r -d '' mut_decl
+         } < "${mut_record}"; then
+        echo "  SKIP: malformed mutation record for ${sid}" >&2
+        total_zero_flips+=1
+        zero_flip_log+=("${sid}: malformed mutation record")
+        continue
+    fi
     echo "  mutation: ${mut_file}:${mut_line}"
 
     pre_eval="${TMPDIR_CANARY}/${sid}.pre.json"
@@ -303,11 +344,15 @@ for sid in "${scenarios[@]}"; do
         zero_flip_log+=("${sid}: _apply_mutation failed")
         continue
     fi
+    # Declared only between a successful apply and the restore below: the
+    # window in which the pinned line legitimately holds a mutated state.
+    IN_FLIGHT_JSON="${mut_decl}"
 
     if ! rebuild_targets; then
         echo "  FAIL: rebuild after mutation"
         git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
         MUTATED_FILES=()
+        IN_FLIGHT_JSON=""
         rebuild_targets >/dev/null 2>&1 || true
         total_zero_flips+=1
         zero_flip_log+=("${sid}: rebuild after mutation failed")
@@ -317,6 +362,7 @@ for sid in "${scenarios[@]}"; do
     if ! capture_eval "${sid}" "${post_eval}"; then
         git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
         MUTATED_FILES=()
+        IN_FLIGHT_JSON=""
         rebuild_targets >/dev/null 2>&1 || true
         total_zero_flips+=1
         zero_flip_log+=("${sid}: post-capture failed")
@@ -329,6 +375,7 @@ for sid in "${scenarios[@]}"; do
     # the next scenario sees the same baseline.
     git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
     MUTATED_FILES=()
+    IN_FLIGHT_JSON=""
     rebuild_targets
 
     diff_line="$(diff_eval "${pre_eval}" "${post_eval}" "${pre_gtest}" "${post_gtest}")"
