@@ -801,6 +801,77 @@
         });
 
         // ------------------------------------------------------------------
+        // Hardware-keyboard keyup resilience.
+        //
+        // iPad Safari (and Cocoa browsers generally) can swallow keyup
+        // events: releases while Cmd/Globe is held, system HUD overlays,
+        // shared-keyboard mashing in multi-player. SDL then believes the
+        // key is held forever — a latched arrow key walks that player's
+        // character until a matching keyup finally arrives, and opposite
+        // presses net to a dead axis.
+        //
+        // This shell-level tracker runs BEFORE SDL's own listeners (these
+        // capture-phase hooks are registered while the wasm module is still
+        // loading) and synthesizes the missing keyups:
+        //  - page lifecycle (pagehide / blur / hidden): release everything
+        //    (SDL resets its keyboard on blur itself, but not on
+        //    visibilitychange, and the tracker must stay coherent);
+        //  - Meta released: Cocoa suppressed other keys' keyups while it
+        //    was down, and they will never arrive — release everything;
+        //  - a fresh (non-repeat) keydown for a key whose last delivered
+        //    event is old, while we still think it is down: that earlier
+        //    keyup was swallowed. Release it first so SDL sees a clean
+        //    re-press edge (the engine's last-press priority then rides it).
+        // Auto-repeat keeps a genuinely held key's timestamp fresh, so the
+        // age gate never misfires on real holds; non-repeating keys never
+        // produce a keydown while held at all.
+        // ------------------------------------------------------------------
+        (function keyupResilience() {
+            var STALE_HOLD_MS = 1500;
+            var down = Object.create(null); // event.code -> last event ms
+            function synthesizeKeyUp(code, keyValue) {
+                var e = new KeyboardEvent('keyup', {
+                    code: code,
+                    key: keyValue || '',
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                window.dispatchEvent(e);
+            }
+            function releaseAll() {
+                for (var code in down) {
+                    synthesizeKeyUp(code);
+                    delete down[code];
+                }
+            }
+            window.addEventListener('keydown', function(e) {
+                if (!e.isTrusted || !e.code) { return; }
+                var now = Date.now();
+                var last = down[e.code];
+                if (last !== undefined && !e.repeat &&
+                        (now - last) > STALE_HOLD_MS) {
+                    synthesizeKeyUp(e.code, e.key);
+                }
+                down[e.code] = now;
+            }, true);
+            window.addEventListener('keyup', function(e) {
+                if (!e.isTrusted || !e.code) { return; }
+                delete down[e.code];
+                if (e.key === 'Meta' || e.key === 'OS') {
+                    releaseAll();
+                }
+            }, true);
+            window.addEventListener('pagehide', releaseAll);
+            window.addEventListener('blur', releaseAll);
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'hidden') {
+                    releaseAll();
+                }
+            });
+        })();
+
+        // ------------------------------------------------------------------
         // Touch controls overlay.
         //
         // Two injection tiers into the engine (web_touch_bridge.cpp):

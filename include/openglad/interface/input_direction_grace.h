@@ -39,3 +39,43 @@ struct DirectionGraceState
 // deterministic: same timeline of raw masks -> same outputs.
 std::uint8_t coalesce_direction_release(std::uint8_t raw_mask,
                                         DirectionGraceState& state);
+
+// ---------------------------------------------------------------------------
+// Opposite-direction re-assert (missed-keyup resilience).
+//
+// Browsers on some devices swallow keyup events outright — iPad Safari
+// around system gestures and the Globe/Cmd HUD, shared-keyboard mashing —
+// and no later event corrects the record. The sampled keyboard state then
+// keeps the key down forever ("latched"). Because held[] is re-derived from
+// that state every sample, a latched UP alone walks the character up
+// constantly, and a REAL press of the opposite direction nets to zero in
+// PlayerInput::move_x()/move_y(): the whole axis looks dead while the other
+// axis keeps working (the 3-player iPad arrow-seat bug).
+//
+// resolve_opposing_directions() gives the fresh press priority: while both
+// sides of an axis are held, the side whose key rose most recently wins and
+// the stale side is suppressed from the reported mask. Both sides rising in
+// the same sample keep the legacy cancellation; releasing either side ends
+// the conflict; a correctly-delivered keyup behaves exactly as before.
+// Suppression is group-level: a suppressed stale diagonal (e.g. UP_LEFT
+// vs. a fresh DOWN) stops contributing to BOTH axes — it is presumed
+// phantom.
+//
+// This runs in the client input sampling (input_state_from_sdl) BEFORE
+// coalesce_direction_release, so the wire format and the sim are untouched
+// and the result is deterministic per input timeline.
+
+// Per-player conflict state. prev_raw is a bitmask over the eight direction
+// key slots KEY_UP(0)..KEY_UP_LEFT(7) (bit d == key slot d).
+struct DirectionConflictState
+{
+    std::uint8_t prev_raw = 0;  // raw direction mask from the previous sample
+    std::int8_t x_winner = 0;   // -1: left side wins, +1: right side, 0: none
+    std::int8_t y_winner = 0;   // -1: up side wins, +1: down side, 0: none
+};
+
+// Feed one raw direction-key sample; returns the mask to report (the stale
+// opposite side suppressed while a fresher press holds priority). Pure and
+// deterministic: same timeline of raw masks -> same outputs.
+std::uint8_t resolve_opposing_directions(std::uint8_t raw_mask,
+                                         DirectionConflictState& state);

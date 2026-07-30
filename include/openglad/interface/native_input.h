@@ -122,6 +122,13 @@ const bool* keyboard_state();
 int scancode_from_key(int keycode);
 const char* key_name(int keycode);
 
+// Clears SDL's keyboard held-state (SDL synthesizes key-up events for every
+// key it believes is down). Used on focus/visibility loss: a release that
+// happened while another window/app had the keys — or that the browser
+// swallowed outright — never reaches us, and the key would stay latched
+// forever. Genuine holds re-assert on the next delivered key events.
+void reset_keyboard_state();
+
 using JoystickHandle = void*;
 int num_joysticks();
 JoystickHandle joystick_open(int index);
