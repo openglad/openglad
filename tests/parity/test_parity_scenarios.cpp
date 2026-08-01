@@ -406,6 +406,15 @@ OG_PARITY_TEST(elemental_death_starburst_scen99)
 OG_PARITY_TEST(ai_slime_split_scen99)
 OG_PARITY_TEST(slime_grow_blocked_scen99)
 OG_PARITY_TEST(generator_owner_cascade_scen99)
+OG_PARITY_TEST(effect_cloud_poison_scen99)
+OG_PARITY_TEST(effect_explosion_range_scen99)
+OG_PARITY_TEST(effect_bomb_bystander_scen99)
+OG_PARITY_TEST(effect_shield_absorb_scen99)
+OG_PARITY_TEST(effect_boomerang_contact_scen99)
+OG_PARITY_TEST(effect_boomerang_drawcycle_cap_scen99)
+OG_PARITY_TEST(effect_chain_fork_scen99)
+OG_PARITY_TEST(effect_knife_back_catch_scen99)
+OG_PARITY_TEST(effect_ghost_scare_moving_caster_scen99)
 
 #undef OG_PARITY_TEST
 
