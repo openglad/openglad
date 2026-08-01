@@ -5130,6 +5130,342 @@ inline constexpr FloorPaint kZFall2Paints[] = {
     { /*floor=*/2, 7, 7, kPixAir },      // air hole under the soldier on floor 2
 };
 
+// --- Treasure guard-arm and consequence scenarios --------------------------
+//
+// Every treasure_*_pickup_scen99 row above proves the CONSUMPTION half of a
+// treasure hook: the treasure is eaten, notifies, and leaves oblist. The rows
+// below cover the two halves nothing else reaches -- the CONSEQUENCE of the
+// grant (flight_left / invisibility_left / the mana overfill, none of which is
+// a dumped field, so each is read through a downstream sim behaviour) and the
+// GUARD arms that refuse the eat (natural flier, unwounded eater, wrong team,
+// non-player key pickup), which leave the treasure lying in the world.
+//
+// The guard rows lean on WalkerOfTeamAlive(2, 1, 1): a treasure keeps its
+// SpawnSpec team in oblist and a consumed one stays there with alive:false, so
+// a treasure spawned alone on team 2 reads a determinate 1 while it survives
+// and a determinate 0 once a hook marks it dead. That is the flip direction
+// TreasureFamilyOfOrderRemovedFromOblist structurally cannot express (it goes
+// indeterminate for a live survivor). Team 2 is inert: sim_find_next_control
+// and master's find_player_walker both require Order::Living, and find_far_foe
+// only accepts ORDER_LIVING/ORDER_GENERATOR, so a team-2 treasure neither
+// steals player control nor becomes anybody's foe.
+
+// Flight-potion CONSEQUENCE row (the pickup twin only proves consumption).
+// The soldier holds K_RIGHT for the whole budget. Grounded, the scen1 y=120
+// lane pins every walker at xpos 224: grid row 7 tiles 15/16/17 are
+// PIX_TREE_B1 and at xpos 225 the collision box (sizex 16) starts testing
+// tile 15 (screen.cpp query_grid_passable). flight_left != 0 breaks out of
+// that case, so the flier crosses and runs the clear grass corridor east to
+// the map edge. Level-2 potion => 300 flight ticks, twice the budget.
+inline constexpr SpawnSpec kFamilySpawns_treasure_flight_effect[] = {
+    { FAMILY_FLIGHT_POTION, 2, kOrderTreasure, 96, 120, 0, 0, 2, 0 }, // level 2 -> 300 flight ticks; TEAM 2 so it cannot be mistaken for a control candidate
+    { FAMILY_SOLDIER,       0, kOrderLiving,   96, 120, 0, 0       }, // player LAST (oblist head after the prepending spawner) and co-located, so the tick-0 step eats the potion
+};
+
+inline constexpr FactPredicate kFacts_treasure_flight_effect_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
+    // TEETH. Every grounded y=120 walker in the corpus stops at xpos 224
+    // (family_orc/faerie/archer, treasure_speed_potion_pickup,
+    // invulnerable_potion). Only flight_left gets past tile 15, so an xpos
+    // floor of 260 separates the arms structurally. Zeroing
+    // duration_per_level pins the soldier back at 224 and this fails.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 620, 120,
+        "consequence: flight_left != 0 makes PIX_TREE_B1 passable (screen.cpp query_grid_passable), so the soldier crosses the tile-15..17 tree line the whole corpus is pinned behind at xpos 224 and runs the grass corridor out to the east map edge; branch and companion both land on (623,120), so the floor sits 3 px under the captured value. duration_per_level: 0 leaves flight_left at 0 and the soldier stops at 224, four hundred px below this floor"),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_treasure_flight_effect = {
+    "packs/core/families/treasure-07-flight_potion.yaml", 20,
+    "duration_per_level: 150",
+    "duration_per_level: 0",
+    "Zeroes core:flight_potion's per-level flight duration in its YAML tuning block, which flight_potion_on_eat reads through og.tuning(self).duration_per_level. The potion is still consumed and still notifies (the guard and notify_potion_consume are outside the tuning read), so the ONLY change is flight_left staying 0: the soldier is stopped by the PIX_TREE_B1 tiles at grid x=15..17 exactly like every other y=120 row in the corpus and ends at xpos 224, flipping WalkerPositionMoved(FAMILY_SOLDIER, 260, 100) on the x floor."
+};
+
+// Invis-potion CONSEQUENCE row. Same arena as invulnerable_potion_scen99
+// (proven ranged-attrition geometry), swapping in a level-2 INVIS_POTION so
+// invisibility_left = 300 covers the whole 250-tick budget. living.cpp:50
+// drops the archer's foe with random(invisibility_left/20) > 0 == random(15),
+// and screen.cpp:1013/1069 refuse to re-acquire on the same draw, so the
+// archer almost never fires and the soldier keeps its HP.
+inline constexpr SpawnSpec kFamilySpawns_treasure_invis_effect[] = {
+    { FAMILY_INVIS_POTION, 2, kOrderTreasure, 128, 120, 0, 0, 2, 0 }, // level 2 -> 300 invisibility ticks > 250-tick budget; TEAM 2 (never a control candidate, never a foe)
+    { FAMILY_ARCHER,       1, kOrderLiving,   260, 120, 0, 0       }, // ranged attacker east of the potion (invulnerable_potion_scen99 geometry)
+    { FAMILY_SOLDIER,      0, kOrderLiving,    96, 120, 0, 0       }, // player LAST
+};
+
+inline constexpr FactPredicate kFacts_treasure_invis_effect_scen99[] = {
+    pred::TickReached(250),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVIS_POTION, kOrderTreasure),
+    // TEETH. Invisible for the whole run, the soldier takes at most a stray
+    // arrow; with duration_per_level: 0 the archer holds its lock and the
+    // arena becomes plain ranged attrition, dropping HP under the floor.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: invisibility_left=300 makes the archer drop/refuse its lock on ~14 of every 15 ticks (living.cpp:50, screen.cpp:1013/1069); it never holds one long enough to fire, wanders off south-west and the soldier finishes the 250-tick run untouched at exactly max HP on both arms. duration_per_level: 0 restores the lock, arrows land, and the final HP drops out of this exact pin"),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_treasure_invis_effect = {
+    "packs/core/families/treasure-05-invis_potion.yaml", 20,
+    "duration_per_level: 150",
+    "duration_per_level: 0",
+    "Zeroes core:invis_potion's per-level duration in its YAML tuning block, which invis_potion_on_eat reads through og.tuning(self).duration_per_level. The potion is still consumed and still notifies, so the only change is invisibility_left staying 0: the team-1 archer holds its lock for the full 250 ticks instead of losing it on ~14 of every 15 ticks, arrows land, and the soldier's final HP falls below WalkerHpRangeAtFinalTick's floor."
+};
+
+// Flight-potion GUARD row: a natural flier neither gains flight nor consumes
+// the potion (treasure_consumables.lua:50; master treasure.cpp:106-116 keeps
+// dead=1 inside the same guard). GHOST carries BIT_FLYING on both arms
+// (gloader.cpp:947 / living-12-ghost.yaml init_bit_flags). No foe, so nothing
+// can die and no death notification can pollute the exact-0 event count.
+inline constexpr SpawnSpec kFamilySpawns_treasure_flight_flier[] = {
+    { FAMILY_FLIGHT_POTION, 2, kOrderTreasure, 96, 120, 0, 0 }, // TEAM 2 and the arena's only team-2 entity: WalkerOfTeamAlive(2,1,1) is then a direct "the potion survived" read
+    { FAMILY_GHOST,         0, kOrderLiving,   96, 120, 0, 0 }, // player LAST; BIT_FLYING eater, co-located so the tick-0 step reaches eat_me
+};
+
+inline constexpr FactPredicate kFacts_treasure_flight_potion_flier_noconsume_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerAliveAtFinal(FAMILY_GHOST, 1),
+    // TEETH #1. notify_potion_consume never runs for a flier.
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: flight_potion_on_eat's BIT_FLYING guard skips notify_potion_consume entirely for a natural flier; forcing the guard open emits one Potion of Flight notification and flips this exact-0 count"),
+    // TEETH #2. The potion is the only team-2 entity, so alive-count 1 means
+    // "not consumed" -- the assertion TreasureFamilyOfOrderRemovedFromOblist
+    // structurally cannot make (a live survivor reads indeterminate).
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
+        "consequence: set_dead(1) also lives inside the BIT_FLYING guard, so the potion stays alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    // Structural coverage anchor only: a live survivor with no consumed twin
+    // reads indeterminate on both arms.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_flight_potion_flier_noconsume = {
+    "packs/core/scripts/treasure_consumables.lua", 50,
+    "if not eater:s_query_bit_flags(C.BIT_FLYING) then",
+    "if true then",
+    "Forces flight_potion_on_eat's natural-flier guard open. Unmutated, a BIT_FLYING eater (GHOST) skips the whole body: no flight_left grant, no notify_potion_consume, no set_dead(1), so the potion stays alive in oblist and the event stream carries zero notifications. Mutated, the ghost consumes the potion: one 'Potion of Flight' notification appears (EventKindExactly(notification,0) 0->1) and the potion is marked dead (WalkerOfTeamAlive(2,1,1) 1->0). Two independent teeth."
+};
+
+// Drumstick GUARD row: an unwounded eater triggers no heal, no set_dead(1)
+// and no SOUND_EAT (treasure_consumables.lua:18; master treasure.cpp:70-71
+// puts all three in the else arm). No foe and no second treasure, so the
+// soldier is provably still at max HP when it walks over the drumstick.
+inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_fullhp[] = {
+    { FAMILY_DRUMSTICK, 2, kOrderTreasure, 96, 120, 0, 0, 10, 0 }, // level 10 (would heal 100 + rand0(100) if the guard fell through); TEAM 2 and the only team-2 entity, so WalkerOfTeamAlive(2,1,1) reads "not consumed"
+    { FAMILY_SOLDIER,   0, kOrderLiving,   96, 120, 0, 0        }, // player LAST, spawns at full HP and stays there (no foe in the arena)
+};
+
+inline constexpr FactPredicate kFacts_treasure_drumstick_fullhp_noconsume_scen99[] = {
+    pred::TickReached(150),
+    // Untouched max HP is the guard's precondition; it holds on both arms
+    // (the mutated heal clamps back to max), so this is the anchor, not teeth.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    // TEETH #1: no SOUND_EAT. Verified reachable: the lone-soldier treasure
+    // goldens (flight/invulnerable potion) carry zero play_sound events.
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: the hp >= max_hp early return skips og.emit_sound(SOUND_EAT); with the guard forced open the drumstick is eaten and exactly one play_sound appears"),
+    // TEETH #2: the drumstick is still in the world.
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
+        "consequence: set_dead(1) sits after the hp >= max_hp early return, so an unwounded eater leaves the drumstick alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_drumstick_fullhp_noconsume = {
+    "packs/core/scripts/treasure_consumables.lua", 18,
+    "if eater.hp >= eater.max_hp then",
+    "if false then",
+    "Removes drumstick_on_eat's unwounded early return. Unmutated, a full-HP eater walks over the drumstick and nothing happens: no og.rand0 draw, no do_heal_effects, no set_dead(1), no SOUND_EAT -- the drumstick stays alive in oblist and the event stream has zero play_sound entries. Mutated, the level-10 drumstick is consumed at full HP (the heal clamps straight back to max_hitpoints), emitting one SOUND_EAT play_sound (EventKindExactly(play_sound,0) 0->1) and marking the drumstick dead (WalkerOfTeamAlive(2,1,1) 1->0)."
+};
+
+// Gold-bar GUARD row: a non-zero-team eater with no roster character banks
+// nothing and does not consume the bar (treasure_valuables.lua:16; master
+// treasure.cpp:85-93 keeps m_score, dead=1 and SOUND_MONEY inside the same
+// guard). The eater is an AI orc co-located with the bar so its first chase
+// step overlaps it -- the same overlap-at-tick-1 mechanism the passing
+// gold_bar pickup row uses. The pair sits at (96,400), 280 px straight south
+// of the player through open grass (scen1 grid rows 8..25 at tile x=6 are all
+// grass), and the budget is 90 ticks, so the orc cannot reach melee: nothing
+// dies, so no death award_score and no death notification can pollute the
+// score/event reads.
+inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_team_reject[] = {
+    { FAMILY_GOLD_BAR, 2, kOrderTreasure, 96, 400, 0, 0, 3, 0 }, // level 3 -> 600 points if the guard fell through; TEAM 2 and the only team-2 entity
+    { FAMILY_ORC,      1, kOrderLiving,   96, 400, 0, 0       }, // team-1 eater, no myguy -> both guard clauses false; co-located with the bar
+    { FAMILY_SOLDIER,  0, kOrderLiving,   96, 120, 0, 0       }, // player LAST, parked far from the bar
+};
+
+inline constexpr FactPredicate kFacts_treasure_gold_bar_team_reject_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // TEETH #1: nothing is banked for the orc's team.
+    pred::ScoreDelta(/*team*/1, 0, 0,
+        "consequence: the eater.team == 0 or eater:has_guy() guard refuses the credit for a team-1 orc with no roster character; forcing the guard open banks score_per_level(200) * level 3 = 600 into m_score[1]"),
+    pred::ScoreDelta(/*team*/0, 0, 0),
+    // TEETH #2: the bar is still in the world.
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
+        "consequence: self.dead = 1 sits inside the same guard, so a rejected bar stays alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_gold_bar_team_reject = {
+    "packs/core/scripts/treasure_valuables.lua", 16,
+    "if eater.team == 0 or eater:has_guy() then",
+    "if true then",
+    "Forces gold_bar_on_eat's scoring guard open (the line number pins gold_bar_on_eat; silver_bar_on_eat carries the identical text at line 27 and _apply_mutation.py edits the named line only). Unmutated, the team-1 orc that walks onto the bar banks nothing, the bar is never set_dead and no SOUND_MONEY fires. Mutated, the orc cashes it: og.award_score(1, 200*3) puts 600 into m_score[1] (ScoreDelta(1,0,0) fails) and self.dead = 1 marks the bar consumed (WalkerOfTeamAlive(2,1,1) 1->0)."
+};
+
+// Life-gem GUARD row: only the gem's own team can claim it
+// (treasure_valuables.lua:40; master treasure.cpp:287-288). The gem is TEAM 2
+// and the eater is the team-0 player, so the guard rejects. NOTE the score
+// credit cannot be the signal: a harness-spawned gem has hp 0, so
+// og.award_score(team, trunc(0)) banks nothing on either arm (see the
+// treasure_life_gem_pickup golden's score_per_team [0,0,0,0]). The FLASH is
+// likewise unreachable -- it lands in oblist as an Order::FX entity rendered
+// "FAMILY_FLASH", which no FactKind can address (EffectFamilyCount resolves
+// arg0 through the FX table, WalkerFamilyCount through the Living table).
+// The gem's own survival is the honest observable.
+inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_enemy_reject[] = {
+    { FAMILY_LIFE_GEM, 2, kOrderTreasure, 96, 120, 0, 0 }, // TEAM 2 != eater team 0 -> guard rejects; also the arena's only team-2 entity
+    { FAMILY_SOLDIER,  0, kOrderLiving,   96, 120, 0, 0 }, // player LAST, co-located (proven eat geometry from the life_gem pickup row)
+};
+
+inline constexpr FactPredicate kFacts_treasure_life_gem_enemy_reject_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // Same walk as treasure_life_gem_pickup_scen99 (xpos 168, ypos ~120):
+    // an uneaten treasure does not block movement (obmap.cpp calls eat_me and
+    // continues), which the treasure_key_pickup golden already demonstrates.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
+    // TEETH: the gem survives the cross-team touch.
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
+        "consequence: the eater.team ~= self.team early return skips self.dead = 1 and self:death(), so the gem stays alive in oblist; forcing the guard open lets the team-0 soldier claim it and the team-2 alive count drops to 0"),
+    pred::ScoreDelta(/*team*/0, 0, 0),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_life_gem_enemy_reject = {
+    "packs/core/scripts/treasure_valuables.lua", 40,
+    "if eater.team ~= self.team then",
+    "if false then",
+    "Removes life_gem_on_eat's own-team-only early return. Unmutated, the team-0 soldier walking over a TEAM 2 gem is refused: no award_score, no FAMILY_FLASH, no self.dead = 1 and no self:death(), so the gem is still alive in oblist at the final tick. Mutated, the cross-team eater claims it -- the gem is marked dead and death() runs -- and WalkerOfTeamAlive(2,1,1) flips 1 -> 0. (The score stays 0 on both arms because a harness-spawned gem has hp 0, so it cannot be the flip channel.)"
+};
+
+// Magic-potion OVERFILL row. Reuses enemy_freeze_mage_scen99's arena and its
+// proven observable (a frozen archer pinned at its spawn), but the mage is
+// spawned WITHOUT the usual magicpoints override: SpawnSpec.magicpoints = 0
+// leaves the statistics default of 50 (stats.cpp:73 / master stats.cpp:41),
+// far below the mage's 500-point FREEZE TIME. A level-10 MAGIC_POTION adds
+// mana_overfill_per_level(50) * 10 = 500 on top of the topped-off pool, taking
+// it to 550; walker::special() hard-returns when magicpoints < special_cost,
+// so the overfill alone decides whether the freeze happens.
+inline constexpr InputEvent kInputs_magic_potion_overfill[] = {
+    {  0, 0, K_RIGHT},          // take control + step onto the co-located potion
+    {  4, 0, K_NONE},
+    {  5, 0, K_SPECIAL_SWITCH}, // slot 1 -> 2
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH}, // slot 2 -> 3 (FREEZE TIME; cycling gate needs level >= (3-1)*3+1 = 7)
+    {  9, 0, K_NONE},
+    { 20, 0, K_SPECIAL},        // cast: affordable only with the overfill
+    { 21, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_overfill[] = {
+    { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 120, 120, 0, 0, 10, 0 }, // level 10 -> +500 mana on top of the 50-point pool; TEAM 2
+    { FAMILY_ARCHER,       1, kOrderLiving,   200, 120, 0, 0,  5, 0 }, // freeze target, pinned at spawn while enemy_freeze runs
+    { FAMILY_MAGE,         0, kOrderLiving,   120, 120, 0, 0, 12, 0 }, // caster LAST. magicpoints deliberately 0 (== do not override) so the pool is the 50-point default; level 12 clears the slot-3 cycling gate and gives freeze 20 + 11*12 = 152 ticks
+};
+
+inline constexpr FactPredicate kFacts_treasure_magic_potion_overfill_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
+    // TEETH. Freeze duration 152 > the 150-tick budget, so a cast pins the
+    // archer at its spawn for the whole run. Without the overfill the mage's
+    // 50-point pool cannot pay the 500-point cost, walker::special() returns
+    // 0, and the archer walks west toward the mage.
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
+        "consequence: the potion's mana overfill (50 * level 10 = 500 on top of the 50-point default pool) is the only thing that funds the mage's 500-cost FREEZE TIME; the resulting enemy_freeze of 152 ticks holds the archer at its (200,120) spawn for the whole budget. With mana_overfill_per_level: 0 the pool stays at 50, walker::special() returns 0 without casting, and the archer steps west below the x floor"),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_treasure_magic_potion_overfill = {
+    "packs/core/families/treasure-04-magic_potion.yaml", 20,
+    "mana_overfill_per_level: 50",
+    "mana_overfill_per_level: 0",
+    "Zeroes core:magic_potion's per-level mana overfill in its YAML tuning block, which magic_potion_on_eat reads through og.tuning(self).mana_overfill_per_level. The potion is still consumed and still notifies; the only change is the eater's pool. Unmutated the level-10 potion takes the mage from its 50-point default pool (stats.cpp default; SpawnSpec.magicpoints is deliberately left unset) to 550, funding the 500-cost FREEZE TIME whose 20 + 11*12 = 152-tick enemy_freeze pins the archer at its (200,120) spawn. Mutated the pool stays at 50, walker::special() hits the magicpoints < special_cost guard and returns 0 without casting, the archer chases the mage west and WalkerPositionMoved(FAMILY_ARCHER, 200, 120) fails on the x floor."
+};
+
+// Key GUARD row: a non-player eater sets the key bit silently
+// (treasure_valuables.lua:73; master treasure.cpp:305-312). The key is never
+// consumed on either arm, so the event stream carries the whole signal --
+// which means the arena must be provably notification-free: no second
+// treasure, and the AI eater parked 280 px from the player through open grass
+// (scen1 tile column x=6, rows 8..25, is all grass) with a 90-tick budget so
+// they never meet and nothing can die (walker_combat.cpp:392/397/415 emit a
+// notification on every death).
+inline constexpr SpawnSpec kFamilySpawns_treasure_key_team1_silent[] = {
+    { FAMILY_KEY,     2, kOrderTreasure, 96, 400, 0, 0 }, // level 1 (default) -> key bit 2; TEAM 2, never consumed on either arm
+    { FAMILY_ORC,     1, kOrderLiving,   96, 400, 0, 0 }, // team-1 eater, co-located: its first chase step overlaps the key
+    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0 }, // player LAST, parked 280 px north
+};
+
+inline constexpr FactPredicate kFacts_treasure_key_team1_silent_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // TEETH #1: no "<name> picks up key 1" message for a non-player eater.
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: key_on_eat's eater.team == 0 gate suppresses the pickup message for a team-1 orc; forcing the gate open emits one ' picks up key 1' notification"),
+    // TEETH #2: no SOUND_MONEY either (both live inside the same gate).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: og.emit_sound(C.SOUND_MONEY) sits inside the same eater.team == 0 gate; forcing the gate open adds exactly one play_sound"),
+    // Anchor: the key is never set_dead by the hook, so this reads
+    // indeterminate on both arms (and WalkerOfTeamAlive stays 1 on both).
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_KEY, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_key_team1_silent = {
+    "packs/core/scripts/treasure_valuables.lua", 73,
+    "if eater.team == 0 then",
+    "if true then",
+    "Forces key_on_eat's player-only announcement gate open. Unmutated, the team-1 orc that walks onto the key sets its key bit silently -- no notification, no SOUND_MONEY -- and the parked player never touches a treasure, so the event stream contains zero notifications and zero play_sounds. Mutated, the orc's pickup announces itself: EventKindExactly(notification,0) flips 0 -> 1 and EventKindExactly(play_sound,0) flips 0 -> 1. The key itself is never consumed on either arm (the hook has no set_dead), so the removal predicate stays a passing anchor."
+};
+
+// Exit-pad OPEN-PROMPT row (branch-internal Invariant; master records
+// RequestExitConfirmation only in its withdraw block and its exit arm calls
+// endgame() from inside eat_me, so no comparable master golden exists).
+// No foe, so level_done reaches 2, foes_left is 0 and can_exit_now is true;
+// no precompleted_level, so can_withdraw is false and the mutated fallthrough
+// lands on the "Foes remain!" arm.
+inline constexpr SpawnSpec kFamilySpawns_treasure_exit_open_prompt[] = {
+    { FAMILY_EXIT,    2, kOrderTreasure, 120, 120, 0, 0 }, // TEAM 2 (matches the teleporter/exit rows); level 1 -> og.scenario_title("scen1")
+    { FAMILY_SOLDIER, 0, kOrderLiving,   120, 120, 0, 0 }, // player LAST, co-located; ACT_CONTROL + skip_exit 0 clears exit_on_eat's prefix guards
+};
+
+inline constexpr FactPredicate kFacts_treasure_exit_open_prompt_scen99[] = {
+    pred::TickReached(150),
+    pred::LevelDoneEquals(2),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // TEETH #1: the b=0 "Exit to X?" prompt fires.
+    pred::EventKindAtLeast(/*request_exit_confirmation*/7, 1,
+        "consequence: with no foes left, can_exit_now is true and exit_on_eat emits the plain Exit-to prompt (b=0); disabling the can_exit_now arm drops the count to 0"),
+    pred::EventKindExactly(/*withdraw_to_level*/8, 0),
+    // TEETH #2: the exit arm returns before the else branch, so the
+    // branch-only "Foes remain!" notification never appears.
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: the can_exit_now arm returns before the else branch, so no 'Foes remain!' notification is emitted; disabling can_exit_now falls through to it (can_withdraw is false with no precompleted_level) and the count flips to >= 1"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
+};
+
+inline constexpr Mutation kMut_treasure_exit_open_prompt = {
+    "packs/core/scripts/treasure_navigation.lua", 65,
+    "if can_exit_now then",
+    "if false then",
+    "Disables exit_on_eat's clear-level exit arm. Unmutated, the lone soldier's arena auto-completes (level_done 2, foes_left 0), so can_exit_now is true and the pad emits the plain 'Exit to <title>?' RequestExitConfirmation with b=0 and returns. Mutated, control falls through to the withdraw check, which is false (no precompleted_level), and lands on the else branch: the RequestExitConfirmation count flips >=1 -> 0 and a 'Foes remain!' notification appears, flipping EventKindExactly(notification,0) 0 -> 1."
+};
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -6503,6 +6839,79 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_undead_no_corpse_raise_scen99, std::size(kFacts_undead_no_corpse_raise_scen99),
       kMut_undead_no_corpse_raise_scen99 },
+
+    // Treasure guard-arm / consequence scenarios ---------------------------
+    { "treasure_flight_effect_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsExitWalkRight, std::size(kInputsExitWalkRight), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_flight_effect, std::size(kFamilySpawns_treasure_flight_effect),
+      0, false, true, Exercises::None,
+      kFacts_treasure_flight_effect_scen99, std::size(kFacts_treasure_flight_effect_scen99),
+      kMut_treasure_flight_effect },
+
+    { "treasure_invis_effect_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsPotionWalk200, std::size(kInputsPotionWalk200), 250,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_invis_effect, std::size(kFamilySpawns_treasure_invis_effect),
+      0, false, true, Exercises::None,
+      kFacts_treasure_invis_effect_scen99, std::size(kFacts_treasure_invis_effect_scen99),
+      kMut_treasure_invis_effect },
+
+    { "treasure_flight_potion_flier_noconsume_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_flight_flier, std::size(kFamilySpawns_treasure_flight_flier),
+      0, false, true, Exercises::None,
+      kFacts_treasure_flight_potion_flier_noconsume_scen99, std::size(kFacts_treasure_flight_potion_flier_noconsume_scen99),
+      kMut_treasure_flight_potion_flier_noconsume },
+
+    { "treasure_drumstick_fullhp_noconsume_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_drumstick_fullhp, std::size(kFamilySpawns_treasure_drumstick_fullhp),
+      0, false, true, Exercises::None,
+      kFacts_treasure_drumstick_fullhp_noconsume_scen99, std::size(kFacts_treasure_drumstick_fullhp_noconsume_scen99),
+      kMut_treasure_drumstick_fullhp_noconsume },
+
+    { "treasure_gold_bar_team_reject_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_gold_bar_team_reject, std::size(kFamilySpawns_treasure_gold_bar_team_reject),
+      0, false, true, Exercises::None,
+      kFacts_treasure_gold_bar_team_reject_scen99, std::size(kFacts_treasure_gold_bar_team_reject_scen99),
+      kMut_treasure_gold_bar_team_reject },
+
+    { "treasure_life_gem_enemy_reject_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_life_gem_enemy_reject, std::size(kFamilySpawns_treasure_life_gem_enemy_reject),
+      0, false, true, Exercises::None,
+      kFacts_treasure_life_gem_enemy_reject_scen99, std::size(kFacts_treasure_life_gem_enemy_reject_scen99),
+      kMut_treasure_life_gem_enemy_reject },
+
+    { "treasure_magic_potion_overfill_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_magic_potion_overfill, std::size(kInputs_magic_potion_overfill), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_magic_potion_overfill, std::size(kFamilySpawns_treasure_magic_potion_overfill),
+      0, false, true, Exercises::None,
+      kFacts_treasure_magic_potion_overfill_scen99, std::size(kFacts_treasure_magic_potion_overfill_scen99),
+      kMut_treasure_magic_potion_overfill },
+
+    { "treasure_key_team1_silent_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_key_team1_silent, std::size(kFamilySpawns_treasure_key_team1_silent),
+      0, false, true, Exercises::None,
+      kFacts_treasure_key_team1_silent_scen99, std::size(kFacts_treasure_key_team1_silent_scen99),
+      kMut_treasure_key_team1_silent },
+
+    { "treasure_exit_open_prompt_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
+      CompareMode::Invariant, true,
+      kFamilySpawns_treasure_exit_open_prompt, std::size(kFamilySpawns_treasure_exit_open_prompt),
+      0, false, true, Exercises::None,
+      kFacts_treasure_exit_open_prompt_scen99, std::size(kFacts_treasure_exit_open_prompt_scen99),
+      kMut_treasure_exit_open_prompt },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

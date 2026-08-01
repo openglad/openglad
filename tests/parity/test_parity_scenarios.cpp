@@ -375,6 +375,17 @@ OG_PARITY_TEST(cleric_turn_undead_scen99)
 OG_PARITY_TEST(cleric_resurrect_friendly_scen99)
 OG_PARITY_TEST(undead_no_corpse_raise_scen99)
 
+// Treasure guard-arm and consequence scenarios.
+OG_PARITY_TEST(treasure_flight_effect_scen99)
+OG_PARITY_TEST(treasure_invis_effect_scen99)
+OG_PARITY_TEST(treasure_flight_potion_flier_noconsume_scen99)
+OG_PARITY_TEST(treasure_drumstick_fullhp_noconsume_scen99)
+OG_PARITY_TEST(treasure_gold_bar_team_reject_scen99)
+OG_PARITY_TEST(treasure_life_gem_enemy_reject_scen99)
+OG_PARITY_TEST(treasure_magic_potion_overfill_scen99)
+OG_PARITY_TEST(treasure_key_team1_silent_scen99)
+OG_PARITY_TEST(treasure_exit_open_prompt_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
@@ -484,6 +495,34 @@ TEST(Parity, z_multifloor_walker_floor_transitions)
         pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
         fall2_out.dump).ok)
         << "z_fall_two_story: soldier unexpectedly took no fall damage";
+}
+
+// Branch-internal Invariant rows skip fact evaluation in run_one_scenario --
+// that path only re-runs the dumper and asserts determinism, because there is
+// no master golden to evaluate the other side against. Their expected_facts[]
+// therefore need a hand-written assertion, exactly as the z-axis rows above
+// get one. treasure_exit_open_prompt_scen99 is Invariant because the companion
+// records RequestExitConfirmation only inside its withdraw block and its exit
+// arm calls endgame() from inside eat_me, so no comparable master dump exists;
+// the branch behaviour is still worth pinning, and without this test its
+// mutation (treasure_navigation.lua:65 `if can_exit_now then` -> `if false
+// then`) has nothing to flip in the suite.
+TEST(Parity, treasure_exit_open_prompt_facts)
+{
+    const og::parity::ScenarioSpec* spec =
+        find_scenario("treasure_exit_open_prompt_scen99");
+    ASSERT_NE(spec, nullptr)
+        << "treasure_exit_open_prompt_scen99 missing from kScenarios";
+    ASSERT_NE(spec->expected_facts, nullptr);
+    ASSERT_GT(spec->fact_count, 0u);
+
+    const auto outcome = og::parity::run_scenario(*spec);
+    const og::parity::FactEvalResult facts =
+        og::parity::evaluate_facts(og::parity::FactSide::Branch,
+                                   spec->expected_facts, spec->fact_count,
+                                   outcome.dump);
+    EXPECT_TRUE(facts.ok)
+        << "treasure_exit_open_prompt_scen99 facts failed: " << facts.message;
 }
 
 // Phase 01 new gtests --------------------------------------------------------
