@@ -1046,7 +1046,18 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     // current_pack scopes og.use to the pack whose chunk is loading.
     for (const PackScript& ps : pack_scripts()) {
         detail_->state.current_pack = ps.pack_id;
-        host_->run_chunk(ps.chunk_name, ps.source, ps.pack_id);
+        if (!host_->run_chunk(ps.chunk_name, ps.source, ps.pack_id)) {
+            // A chunk that fails to compile (or errors at its top level)
+            // registers nothing: every family it carries silently loses all
+            // behavior while the pack still reports installed. run_chunk
+            // already latched the record; this is the operator-facing half,
+            // same channel as the duplicate-hook warning above.
+            const auto& errs = host_->errors();
+            LogError("class pack '{}': chunk {} failed to load: {}\n",
+                     ps.pack_id, ps.chunk_name,
+                     errs.empty() ? "(no error record)"
+                                  : errs.back().message.c_str());
+        }
     }
     detail_->state.current_pack.clear();
 }

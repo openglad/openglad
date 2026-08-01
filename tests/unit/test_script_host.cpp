@@ -588,6 +588,33 @@ TEST_F(ScriptHostPackTest, duplicate_hook_registration_is_reported_and_wins)
                             og::script::FamilyHook::DoSpecial));
 }
 
+TEST_F(ScriptHostPackTest, a_chunk_that_fails_to_compile_is_recorded_not_silent)
+{
+    // A pack chunk with a syntax error registers nothing: every family it
+    // carries silently loses all behavior while the pack still reports
+    // installed. The load must land in errors() (and the replay loop logs
+    // an operator-facing [ERROR] line through the same channel as the
+    // duplicate-hook warning) — a silently-degraded class is how one broken
+    // line once took out eleven parity scenarios with no diagnostic at all.
+    og::script::register_pack_script(
+        {"test.pack", "a_broken.lua", "this is not lua (\n"});
+    og::script::register_pack_script(
+        {"test.pack", "b_healthy.lua",
+         "og.register_hooks('living', 'core:soldier', "
+         "{ do_special = function() return true end })\n"});
+
+    og::script::WorldScripts& ws = og::script::active_world_scripts();
+
+    ASSERT_EQ(1u, ws.host().errors().size());
+    const og::script::ScriptError& e = ws.host().errors()[0];
+    EXPECT_NE(std::string::npos, e.where.find("a_broken")) << e.where;
+    EXPECT_NE(std::string::npos, e.message.find("syntax error")) << e.message;
+
+    // The broken chunk must not take its pack-mates down with it.
+    EXPECT_TRUE(ws.has_hook(Order::Living, FAMILY_SOLDIER,
+                            og::script::FamilyHook::DoSpecial));
+}
+
 TEST_F(ScriptHostPackTest, distinct_hooks_for_one_family_are_not_a_duplicate)
 {
     og::script::register_pack_script(
