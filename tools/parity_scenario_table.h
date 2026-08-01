@@ -6349,6 +6349,462 @@ inline constexpr Mutation kMut_generator_owner_cascade_scen99 = {
     "Gives core:tent the TOWER/TREEHOUSE owner policy while it still declares has_lifetime. walker.cpp:649 then nulls each skeleton's owner at spawn, so living::act's lifetime branch (`if (!owner || owner->dead)`) kills every skeleton on its very first act: the escort never fights, the demolisher finishes at full 18000-cent HP above the WalkerHpRangeAtFinalTick bound, and the frozen-sweep skeleton corpse count moves off its band."
 };
 
+// --- effects batch ---------------------------------------------------------
+//
+// Group-wide facts these nine rows lean on:
+//   * walker::attack refuses friendly targets (is_friendly walks the owner
+//     chain to its head before comparing team_num), so every FX inherits its
+//     owner's team for that test and no friendly-tier damage is observable.
+//   * find_foe_weapons_in_range scans oblist while add_ob(Order::Weapon, ...)
+//     diverts weapons to weaplist, so guard_tail's weapon-absorb arm is
+//     structurally unreachable on BOTH arms. No row below asserts it.
+//   * FAMILY_TOWER1 (living-20-beast.yaml) is the corpus's only stationary
+//     living family: is_stationary, hp 130, damage 0, stepsize 0, identical to
+//     master's guy.cpp:261 entry. It is the fixed-geometry victim in six rows
+//     because ordinary AI foes drift 100+ px in 25 ticks and would make every
+//     distance-sensitive assertion RNG-shaped. It still fires ~5-damage arrows
+//     at foes inside lineofsight*GRID_SIZE = 320 px.
+//   * Caster levels are deliberately at or below the runaway-effects soft
+//     knees (bomb_damage knee 210, scare_duration knee 325, kMpPoolDamageCap
+//     600) so the branch and master formulas agree exactly and the mandatory
+//     weapon_tracks byte-compare holds.
+
+// effect_cloud_poison_scen99: core:cloud's per-tick attack loop
+// (packs/core/scripts/effect_cloud.lua:33-40, ported from
+// openglad-master/src/effect.cpp:356-390) scans foes inside sizex (48) and
+// attacks every one whose box overlaps the 48x48 cloud, once per tick, for
+// damage == caster level. Both existing cloud rows explicitly refuse to assert
+// poisoning because their soldier sits 12 px outside the cloud's right edge.
+// This row parks a STATIONARY team-1 FAMILY_TOWER1 so the box overlap is a
+// geometric certainty from the cast tick, and keeps the budget at 30 so the
+// victim survives with margin. The caster stands fully inside its own cloud,
+// which pins the friends-are-spared arm.
+inline constexpr SpawnSpec kFamilySpawns_effect_cloud_poison_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 108,  88, 0, 0 },             // stationary team-1 victim; box 108..133 x 88..117 overlaps the cloud box 104..152 x 102..150 and sits Manhattan 18 from the cloud's top-left corner (find_foes_in_range range == cloud sizex == 48)
+    { FAMILY_THIEF,  0, kOrderLiving, 120, 120, 0, 0, 10, 300 },    // player-controlled caster LAST (spawns prepend; the player binds the oblist head). level 10 is the minimum that can cycle to slot 4 ((4-1)*3+1 <= level) and 300 MP covers POISON CLOUD's 150 cost. Cloud damage == level == 10 on both arms (master walker.cpp:3686).
+};
+
+inline constexpr FactPredicate kFacts_effect_cloud_poison_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    // FLIPPING PREDICATE. The cloud overlaps the stationary TOWER1 from tick 21
+    // and attacks it once per act for level-10 damage. Nothing else in the arena
+    // can hurt it: the thief's script is special-only and TOWER1 is the only foe.
+    // kMut_effect_cloud_poison_scen99 collapses effect_cloud.lua's foe scan
+    // radius to 0, so no foe is ever found, no attack() runs, and TOWER1
+    // finishes at its full 13000 cents -- above this ceiling.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1300, 1500,
+        "consequence: core:cloud's on_act attack loop poisons the overlapping stationary TOWER1 once per tick for caster-level damage; ten acts take it from 13000 cents to 1400. The mutation zeroes the foe-scan radius so the cloud drifts harmlessly and TOWER1 ends at 13000"),
+    // Friendly arm: the thief stands FULLY inside its own 48x48 cloud
+    // (box 120..136 x 120..133 vs 104..152 x 102..150) and is never poisoned --
+    // find_foes_in_range excludes friendlies, and attack() would refuse them
+    // anyway. Pinned exactly from the golden so any drift in the caster's own
+    // timeline is caught.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600),
+    pred::WalkerOfTeamAlive(0, 2, 2,
+        "consequence: POISON CLOUD adds the FAMILY_CLOUD FX walker to the thief's team, so team 0 holds thief + cloud"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_effect_cloud_poison_scen99 = {
+    "packs/core/scripts/effect_cloud.lua", 33,
+    "  local foes = og.find_foes_in_range(\"ob\", self:sizex(), self)",
+    "  local foes = og.find_foes_in_range(\"ob\", 0, self)",
+    "Collapses core:cloud's foe-acquisition radius from its 48px sprite width to 0, so the per-tick attack loop never finds the overlapping TOWER1. The cloud still spawns, drifts and expires identically, but poisons nothing: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 0, ...) flips because the victim finishes at its full 13000 cents."
+};
+
+// effect_explosion_range_scen99: compute_explosion_range
+// (packs/core/scripts/effect_bomb.lua:12-20, ported from
+// openglad-master/src/effect.cpp:648-664) turns the owner's level into the
+// blast's Manhattan reach 15 + clamp(level*4, 16, 96). Every existing blast row
+// uses a level-4/5 caster whose range is pinned at the 16-20 floor, so nothing
+// in the corpus distinguishes a big blast from a small one. A level-10 thief
+// gives range 40 / reach 55 and the single victim is a STATIONARY team-1 TOWER1
+// parked at Manhattan 45 from the explosion's corner -- inside the real reach,
+// outside the mutated one. No mobile walker is used because a charging melee
+// foe kills a 75hp thief before the 50-tick fuse completes and a dead owner
+// collapses blast.level to the bomb's own level, destroying the test.
+inline constexpr SpawnSpec kFamilySpawns_effect_explosion_range_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 232, 203, 0, 0 },            // stationary team-1 victim: Manhattan |232-196|+|203-194| = 45 from the explosion's top-left (196,194). Inside 15+40=55, outside the mutated 15+16=31.
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 },   // player-controlled bomb owner LAST. level 10 -> bomb_damage 165 (raw 15*11, below the 210 soften knee so branch == master) and explosion range clamp(40,16,96) = 40; 300 MP covers DROP BOMB's 35 cost.
+};
+
+inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
+    // FLIPPING PREDICATE. The blast reaches Manhattan 55 and lands full damage
+    // (165 -> 158..169) on the 130hp stationary TOWER1, which dies and is reaped.
+    // kMut_effect_explosion_range_scen99 pins the clamp ceiling at the 16px
+    // floor, so the reach drops to 31, TOWER1 at Manhattan 45 is never
+    // enumerated by find_in_range, and an alive TOWER1 remains.
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: compute_explosion_range scales the blast to 15+4*level = 55 Manhattan px, which covers the stationary TOWER1 at 45 and kills it with the full 165-damage tier; the clamp mutation shrinks the reach to 31 so the same walker is outside the blast and survives at full HP"),
+    // Anchor: the detonation itself still happens under every mutation of the
+    // range clamp (bomb_on_death emits SOUND_EXPLODE before the blast resolves),
+    // so a play_sound floor separates "blast never fired" from "blast too small".
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3200, 3400,
+        "structural: the owner tier is a refused attack, so the caster's 33 of 75 is entirely TOWER1 arrow fire across the 71-tick fuse -- a drift here means the fuse or the arrow cadence moved"),
+};
+
+inline constexpr Mutation kMut_effect_explosion_range_scen99 = {
+    "packs/core/scripts/effect_bomb.lua", 17,
+    "  range = og.clamp(range, 16, 96)",
+    "  range = og.clamp(range, 16, 16)",
+    "Pins compute_explosion_range's clamp ceiling at its own floor, so a level-10 owner's 40px range collapses to 16 and the blast's Manhattan reach falls from 55 to 31. The stationary TOWER1 at 45 is no longer enumerated by find_in_range, survives, and WalkerDiedByFinal(FAMILY_TOWER1) fails."
+};
+
+// effect_bomb_bystander_scen99: two things nothing in the corpus proves -- the
+// bomb -> explosion field inheritance (blast.damage = self:damage(),
+// blast.level = self:owner().level, packs/core/scripts/effect_bomb.lua:32-38,
+// master effect.cpp:633-646) and the FULL damage tier landing on a non-friendly
+// bystander. effect_bomb_emission asserts only a sound count and its soldier is
+// back at 120/120 by tick 200; effect_bomb_timer parks its foe at 400,400 so the
+// blast never reaches it. This row also carries the SHOVE: the explosion's 24x24
+// box and the thief's 16x13 box give the owner sign(dx)=sign(dy)=+1, so
+// s_force_command(COMMAND_WALK, shove, +1, +1) moves the otherwise-motionless
+// player caster -- the only fact-observable consequence left in the owner branch
+// (its damage is refused by is_friendly).
+inline constexpr SpawnSpec kFamilySpawns_effect_bomb_bystander_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 222, 196, 0, 0 },           // stationary team-1 bystander at Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194); inside the level-5 reach 15+20 = 35 with 7px to spare
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // player-controlled bomb owner LAST; level 5 -> bomb_damage 90 (identical on master) and range clamp(20,16,96) = 20
+};
+
+inline constexpr FactPredicate kFacts_effect_bomb_bystander_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // FLIPPING PREDICATE. bomb_on_death hands the bomb's own damage to the
+    // explosion it spawns; explosion_on_death then lands that FULL amount on the
+    // non-friendly TOWER1 (85..93 off 130). kMut_effect_bomb_bystander_scen99
+    // severs the inheritance (blast.damage = 0) so the blast still fires, still
+    // emits SOUND_EXPLODE and still shoves, but get_base_damage(0) is 0 and
+    // TOWER1 finishes untouched at 13000 cents.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3800, 4000,
+        "consequence: the bomb's on_death hands its damage to the FAMILY_EXPLOSION it spawns, which lands the full non-friendly tier on the stationary bystander and takes it from 13000 cents to 3900; the mutation zeroes the inherited damage so the blast is cosmetic and the bystander ends untouched"),
+    // The blast shoves everything it enumerates, friendly or not. The owner is
+    // enumerated (skip_exit == 0 for a bomb blast) and, because the 24x24
+    // explosion and the 16x13 thief have different top-left corners, its shove
+    // direction is (+1,+1): the otherwise-motionless player walker ends
+    // south-east of its 200,200 spawn.
+    pred::WalkerPositionMoved(FAMILY_THIEF, 201, 201,
+        "consequence: explosion_on_death force-walks every enumerated walker away from the blast centre, including its own owner; the special-only thief has no other reason to move, so it finishes south-east of its 200,200 spawn"),
+    pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_effect_bomb_bystander_scen99 = {
+    "packs/core/scripts/effect_bomb.lua", 38,
+    "  blast.damage = self:damage()",
+    "  blast.damage = 0",
+    "Severs the bomb -> explosion damage inheritance. The FAMILY_EXPLOSION still spawns, still emits SOUND_EXPLODE and still shoves, but carries no damage, so get_base_damage(0) leaves the bystander at its full 13000 cents and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 0, ...) fails."
+};
+
+// effect_shield_absorb_scen99: guard_tail's foe arm
+// (packs/core/scripts/effect_shield.lua:36-44, master effect.cpp:155-168)
+// attacks every foe within the guard's sizex and drains the guard by that foe's
+// damage. kFamilySpawns_magic_shield_arena deliberately parks its foe at 200,120
+// "too far to melee/drain the orbiting shield", and the golden confirms the
+// whole tail is dead there. The subtlety that kept it dead is geometric:
+// find_foes_in_range compares TOP-LEFT corners with range == the shield's 8px
+// sprite width, while the shield orbits at radius 24 around a point derived from
+// the caster's centre -- so an ordinary melee foe standing shoulder-to-shoulder
+// with the cleric is still 13-20 px from every orbit stop.
+//
+// Special-only input: the tick-10 K_FIRE of kInputsMagicShieldEmit is dropped so
+// the cleric's GLOW never touches the victim and every point of its damage is
+// orbit contact.
+inline constexpr InputEvent kInputsMagicShieldNoFire[] = {
+    { 5, 0, (K_SPECIAL | K_SHIFT)},   // Shift+Special -> shifter_down = 1 -> MYSTIC MACE summons the orbiting FAMILY_MAGIC_SHIELD
+    { 6, 0, K_NONE},
+};
+
+// The shield orbits at radius 24 about (124,122) = the cleric's centre minus the
+// shield's half-extent, so a melee foe hugging the cleric is never within 8 of
+// any orbit stop. (147,127) is Manhattan 6 from orbit corner 12 (148,122) and
+// Manhattan 5 from corner 11 (146,131): two contacts per 16-tick revolution, and
+// TOWER1 is stationary so those two stay exact for the whole run.
+inline constexpr SpawnSpec kFamilySpawns_effect_shield_absorb_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 147, 127, 0, 0 },        // stationary team-1 victim sitting on the shield's right-hand orbit lobe; box 147..172 x 127..156 clears the cleric's 120..136 x 120..132
+    { FAMILY_CLERIC, 0, kOrderLiving, 120, 120, 0, 0, 0, 80 }, // player-controlled caster LAST. magicpoints 80 reproduces the existing mace arena exactly: spare = (80 - special_cost(1)=2)/2 = 39 -> lifetime 100+39 = 139, hp 100+19 = 119, damage 10+9.75 = 19.75
+};
+
+inline constexpr FactPredicate kFacts_effect_shield_absorb_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    // FLIPPING PREDICATE. guard_tail attacks every foe inside the guard's sizex.
+    // The stationary TOWER1 sits on two of the sixteen orbit stops, so the mace
+    // strikes it twice per revolution for 17..20 and nothing else in the arena
+    // can hurt it (the cleric never fires). kMut_effect_shield_absorb_scen99
+    // collapses guard_tail's foe radius to 0 so the mace orbits harmlessly and
+    // TOWER1 ends at its full 13000 cents.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 5200, 5400,
+        "consequence: core:magic_shield's guard tail attacks every foe inside its 8px guard radius, and the stationary TOWER1 is parked on two of the sixteen orbit stops, so four mace strikes take it from 13000 cents to 5300; the mutation zeroes that radius and the victim finishes untouched"),
+    pred::WalkerOfTeamAlive(0, 2, 2,
+        "consequence: MYSTIC MACE puts the FAMILY_MAGIC_SHIELD FX on the cleric's team; its lifetime (139) and the zero-damage victim keep it alive through the 45-tick budget"),
+    // This arena emits NO sound at all -- the cleric never fires and a mace
+    // contact is silent -- so the event floor is the score award instead: one
+    // score_change per strike, four in the 45-tick budget, zero once the
+    // mutation stops the tail from finding anything.
+    pred::EventKindAtLeast(/*score_change*/9, 4,
+        "consequence: each guard-tail strike on the TOWER1 awards score, so the four contacts inside the budget are visible as four score_change events; the radius mutation lands no strikes and emits none"),
+};
+
+inline constexpr Mutation kMut_effect_shield_absorb_scen99 = {
+    "packs/core/scripts/effect_shield.lua", 36,
+    "  local foes = og.find_foes_in_range(\"ob\", self:sizex(), self)",
+    "  local foes = og.find_foes_in_range(\"ob\", 0, self)",
+    "Collapses guard_tail's foe-contact radius from the guard's sprite width to 0. The mace still summons, still orbits and still expires on its lifetime, but strikes nothing: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 0, ...) flips because the victim finishes at its full 13000 cents."
+};
+
+// effect_boomerang_contact_scen99: the boomerang shares guard_tail with the
+// shield but rides a GROWING orbit -- xd *= (drawcycle+4); xd /= 48
+// (packs/core/scripts/effect_shield.lua:89-95, master effect.cpp:250-253) -- so
+// which foes it can reach is a function of time, not just position.
+// weapon_boomerang_return_scen99's golden already shows the tail firing
+// incidentally but asserts only the caster's HP; no predicate names the victim.
+// This row makes the contact schedule the assertion by putting a stationary
+// victim exactly on the sweep line at x = 147, which the blade's right-hand
+// extreme (123 + 24*(d+4)/48) reaches at drawcycle 44 and brackets within the
+// 11px contact radius at 28 and 60. kInputsSpecialSlot2 contains no K_FIRE, so
+// the soldier never throws a knife and every point of the victim's damage is
+// blade contact.
+inline constexpr SpawnSpec kFamilySpawns_effect_boomerang_contact_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 147, 123, 0, 0 },           // stationary team-1 victim on the blade's +x sweep line; box 147..172 x 123..152 clears the soldier's 120..136 x 120..136
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 4, 300 },   // player-controlled caster LAST; level 4 satisfies the slot-2 cycle gate ((2-1)*3+1 <= 4) and 300 MP covers BOOMERANG's 100 cost. lifetime 30+48 = 78, damage 8+16 = 24, hp 50+48 = 98 -- all identical on master.
+};
+
+inline constexpr FactPredicate kFacts_effect_boomerang_contact_scen99[] = {
+    pred::TickReached(85),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // FLIPPING PREDICATE. The widening orbit sweeps the stationary TOWER1
+    // several times inside the blade's 78-act lifetime and guard_tail attacks it
+    // each time for 21..24. kMut_effect_boomerang_contact_scen99 divides the
+    // orbit's x component by 480 instead of 48, so the blade's horizontal
+    // excursion never exceeds ~3px, the victim at Manhattan 21+ is never inside
+    // the 11px contact radius, and it finishes at its full 13000 cents.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4000, 4200,
+        "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 4100; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
+    pred::WalkerOfTeamAlive(0, 2, 2,
+        "consequence: BOOMERANG adds the FAMILY_BOOMERANG FX to the caster's team; the zero-damage victim never drains it, so it survives its 78-act lifetime through the 85-tick budget"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_effect_boomerang_contact_scen99 = {
+    "packs/core/scripts/effect_shield.lua", 93,
+    "  xd = og.fdiv(xd, 48)",
+    "  xd = og.fdiv(xd, 480)",
+    "Shrinks the boomerang's horizontal orbit excursion tenfold (the /48 scale is boomerang-only; magic_shield uses the raw table offsets). The blade stays within ~3px of the caster's x, never comes within the 11px contact radius of the victim at x=147, and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 0, ...) flips to the full 13000 cents."
+};
+
+// effect_boomerang_drawcycle_cap_scen99: Zardus's 2002 fix --
+// `or self:drawcycle() > 253` in boomerang_on_act
+// (packs/core/scripts/effect_shield.lua:84, master effect.cpp:179) -- kills a
+// long-lived blade rather than letting the byte-sized drawcycle wrap and snap
+// the orbit back onto its owner. drawcycle is stored as unsigned char and
+// advanced once per effect::act, so the guard fires on the blade's 254th act.
+// Boomerang lifetime is 30 + 12*level, so the cap only bites above level 18; all
+// three existing boomerang rows use a level-4 caster (lifetime 78) with an
+// 80-tick budget, leaving the guard unreachable. A level-22 caster gives
+// lifetime 294 -- 40 acts past the cap -- so the two death causes are cleanly
+// separated in time. The off-map stationary TOWER1 is the standard "keep the
+// level alive" prop (same trick as kFamilySpawns_marker_emission_generator's
+// 2000,2000 observer): far outside both walkers' firing ranges, so no combat RNG
+// enters the run and the blade's death tick is a pure function of the counter.
+inline constexpr SpawnSpec kFamilySpawns_effect_boomerang_cap_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 2000, 2000, 0, 0 },          // off-map stationary team-1 prop: keeps level_done at 0, never engages
+    { FAMILY_SOLDIER, 0, kOrderLiving,  120,  120, 0, 0, 22, 600 }, // player-controlled caster LAST; level 22 -> boomerang lifetime 30+264 = 294 acts, so the drawcycle cap at act 254 fires FIRST. 600 MP covers BOOMERANG's 100 cost.
+};
+
+inline constexpr FactPredicate kFacts_effect_boomerang_cap_scen99[] = {
+    pred::TickReached(290),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // FLIPPING PREDICATE. The blade's drawcycle is a byte advanced once per
+    // effect::act, so boomerang_on_act's `> 253` guard kills it on act 254
+    // (tick ~274) -- 40 ticks before its 294-act lifetime would have expired.
+    // At tick 290 team 0 therefore holds the lone caster.
+    // kMut_effect_boomerang_cap_scen99 raises the threshold past the byte's
+    // range so the guard can never fire; the blade survives to its lifetime and
+    // team 0 still holds caster+blade = 2.
+    pred::WalkerOfTeamAlive(0, 1, 1,
+        "consequence: the byte-sized drawcycle crosses 253 on the blade's 254th act, and boomerang_on_act kills it there rather than letting the counter wrap the orbit back onto its owner; team 0 is down to the lone caster well before the 294-act lifetime would have expired. Raising the threshold above the byte's range keeps the blade alive and the count at 2"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11900, 12100,
+        "structural: the arena is combat-free (off-map prop, special-only input), so the caster must finish at full HP -- any drift here means an unintended engagement"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+};
+
+inline constexpr Mutation kMut_effect_boomerang_cap_scen99 = {
+    "packs/core/scripts/effect_shield.lua", 84,
+    "      or self:drawcycle() > 253 then",
+    "      or self:drawcycle() > 300 then",
+    "Raises Zardus's drawcycle cap above the range of the unsigned-char counter, so the guard can never fire. The level-22 blade then survives to its 294-act lifetime instead of dying on act 254, and WalkerOfTeamAlive(0, 1, 1) flips to 2 at the tick-290 dump."
+};
+
+// effect_chain_fork_scen99: chain lightning's death fork
+// (packs/core/scripts/effect_chain.lua:58-90, master effect.cpp:433-459) spawns
+// successor bolts at nearby foes, each inheriting damage * fork_damage_mult,
+// gated by fork_damage > fork_min_damage and skipping the current leader. The
+// four fork knobs in packs/core/families/effect-10-chain.yaml are new PR data
+// with no reachable coverage. This row makes a second, distinct-family victim's
+// HP the assertion, and makes the fork deterministic by ordering the spawns so
+// the non-leader foe precedes the leader in oblist -- the fork loop decrements
+// its budget on the skipped leader too, so a rand0(level)+1 draw of 1 would
+// otherwise consume the only slot. The ARCHER is placed diagonally so its
+// Manhattan distance from the primary explosion is far outside that blast's
+// 15+4*10 = 55 reach: only a genuine fork can damage it. Its Euclidean placement
+// also keeps distance_to_ob_center at 12961, under the 32767 where master's
+// `short dist` leader pick would wrap.
+inline constexpr InputEvent kInputsChainFork[] = {
+    {  5, 0, K_SPECIAL_SWITCH},          // cycle current_special 1 -> 2 (heartburst/chain slot)
+    {  6, 0, K_NONE},
+    { 12, 0, (K_SPECIAL | K_SHIFT)},     // Shift+Special -> shifter_down = 1 -> CHAIN LIGHTNING
+    { 13, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_chain_fork_scen99[] = {
+    { FAMILY_ORC,      1, kOrderLiving, 150, 120, 0, 0 },          // nearest foe -> the primary leader (distance_to_ob_center 901)
+    { FAMILY_ARCHER,   1, kOrderLiving, 200, 200, 0, 0 },          // fork-only victim: Manhattan ~138 from the primary blast (reach 55), well inside the 240+5*level = 290 fork acquisition radius
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 300 }, // player-controlled caster LAST; level 10, 300 MP -> pool min((300-80)/2, 600) = 110, unclamped and identical to master
+};
+
+inline constexpr FactPredicate kFacts_effect_chain_fork_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    // Primary hop -- already known to work, kept as the always-true anchor that
+    // separates "the bolt never landed" from "the bolt landed but never forked".
+    pred::WalkerDiedByFinal(FAMILY_ORC,
+        "consequence: the primary bolt homes on its nearest foe and detonates a 110-damage explosion on it, and a later generation finishes the 140hp ORC off inside the budget; with the fork gate closed only the single 110-damage hop lands and the ORC survives"),
+    // FLIPPING PREDICATE. The ARCHER is ~138 Manhattan px from the primary blast,
+    // far outside its 55px reach, and the archmage never fires (special-only
+    // input), so the ONLY thing that can damage it is a successor bolt spawned by
+    // effect_chain.lua's death fork at damage*fork_damage_mult = 55.
+    // kMut_effect_chain_fork_scen99 raises fork_min_damage above every reachable
+    // fork damage, so the gate never opens, exactly one hop lands, and the
+    // ARCHER finishes at its full 9000 cents.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3700,
+        "consequence: chain lightning's death fork spawns a successor bolt carrying half the parent damage at a foe the primary blast cannot reach, dropping the ARCHER below its full 9000-cent HP; raising fork_min_damage past every reachable fork damage closes the gate, no successor is created, and the ARCHER ends untouched"),
+    // Hop count is NOT visible as a sound floor -- measured, the fork-free arm
+    // emits the same 7 play_sound events (the ARCHER's own arrows dominate the
+    // count). It IS visible as score awards: two hops that damage a foe award
+    // twice, the single-hop arm awards once.
+    pred::EventKindAtLeast(/*score_change*/9, 2,
+        "consequence: each chain detonation that damages a foe awards score, so the primary hop and the fork show up as two score_change events; with the fork gate closed only the primary lands and the count drops to one"),
+    pred::WalkerAliveAtFinal(FAMILY_ARCHMAGE, 1),
+};
+
+inline constexpr Mutation kMut_effect_chain_fork_scen99 = {
+    "packs/core/families/effect-10-chain.yaml", 26,
+    "        fork_min_damage: 20",
+    "        fork_min_damage: 100000",
+    "Raises core:chain's fork floor above every reachable fork damage, so the `fork_damage > fork_min_damage` gate never opens. The primary bolt still homes, detonates and emits its sound, but spawns no successor: the ARCHER -- unreachable by the primary blast -- finishes at its full 9000 cents and its HP band fails."
+};
+
+// effect_knife_back_catch_scen99: two halves of the returning-knife economy that
+// nothing reads. (a) effect_knife_back.lua:53 credits owner:set_weapons_left(+1)
+// when the blade gets within 10 px of its thrower, and soldier.lua's
+// on_fire_weapon refuses a ranged release when weapons_left <= 0 (the branch's
+// descriptor-driven replacement for master's order==ORDER_LIVING &&
+// family==FAMILY_SOLDIER test at walker.cpp:791-799). A harness-spawned soldier
+// starts with weapons_left = 1, so that one line is the difference between a
+// soldier that throws all run and one that throws exactly once.
+// (b) weapon_knife.lua gates the return on the has_returning_weapon descriptor
+// field the PR introduced. dump.walkers[].weapons_left is serialized but no
+// FactKind reads it, so the observable is THROW VOLUME, measured as accumulated
+// damage on a fixed target.
+//
+// Target is a STATIONARY team-1 FAMILY_TOWER1 rather than a melee foe for two
+// reasons: a charging foe closes to melee, and walker::fire takes the melee
+// branch (no weapons_left consumption, no knife, no knife_back) whenever the
+// spawn tile is impassable -- which would delete the mechanism under test.
+inline constexpr InputEvent kInputsKnifeBackCatch[] = {
+    {  1, 0, K_RIGHT},   // three ticks of K_RIGHT turn the freshly spawned soldier east onto the target (a spawned living faces up; init_fire uses lastx/lasty)
+    {  4, 0, K_NONE},
+    {  5, 0, K_FIRE},    // held fire: the soldier releases a knife whenever weapons_left > 0
+    {149, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_knife_back_catch_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 176, 120, 0, 0 },   // stationary team-1 target 44px east of the thrower's post-turn position (~132,120); knife spawn (149,125) is passable and the 35px flight reaches the target box at 176
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },   // player-controlled thrower LAST; default level 1 -> knife damage (6*4)/4*1 = 6, weapons_left starts at 1 (walker.cpp:168; soldier.lua's on_create is guy-only)
+};
+
+inline constexpr FactPredicate kFacts_effect_knife_back_catch_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // FLIPPING PREDICATE. A harness-spawned soldier holds ONE weapons_left. The
+    // returning blade's arrival branch credits it back, so the thrower re-arms
+    // every ~15 ticks and grinds the stationary target down across ~8 throws.
+    // kMut_effect_knife_back_catch_scen99 turns that credit into a no-op: the
+    // soldier throws exactly once, soldier.lua's on_fire_weapon refuses every
+    // later release, and the target keeps almost all of its 13000 cents.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9200, 9400,
+        "consequence: the returning blade credits weapons_left back to its thrower on arrival, so the soldier keeps throwing for the whole run and the ten accepted releases grind the stationary target from 13000 cents to 9300; dropping the credit starves the thrower after one throw and the target finishes near full"),
+    // Throw volume shows up as score awards, one per knife that connects with
+    // the target: eight when the thrower keeps re-arming, one when it does not.
+    // A play_sound floor would NOT discriminate here -- the TOWER1's own arrow
+    // stream keeps that count at 27 even in the starved arm.
+    pred::EventKindAtLeast(/*score_change*/9, 6,
+        "consequence: every knife that lands on the target awards score, so the sustained throw cycle produces eight score_change events; the credit-free arm lands exactly one knife and emits one"),
+};
+
+inline constexpr Mutation kMut_effect_knife_back_catch_scen99 = {
+    "packs/core/scripts/effect_knife_back.lua", 53,
+    "    owner:set_weapons_left(owner:weapons_left() + 1)",
+    "    owner:set_weapons_left(owner:weapons_left() + 0)",
+    "Removes the returning blade's arrival credit. The blade still flies home and still probes for collisions, but the thrower never re-arms: soldier.lua's on_fire_weapon refuses every release after the first, the target takes one knife instead of ~8, and both the HP band and the play_sound floor fail."
+};
+
+// effect_ghost_scare_moving_caster_scen99: effect_ghost_scare.lua's on_act
+// re-centres the scare cloud on its owner every tick (self:center_on(owner),
+// master effect.cpp:65-66), so a walking ghost drags the cloud with it and
+// on_death computes its flee vector from wherever the cloud ended up. The
+// existing row uses special-only input, so the ghost never moves and all eight
+// FX track samples sit on one spot -- center_on is proven only in its degenerate
+// form. Here the ghost walks west for the cloud's whole life, which turns the FX
+// track into a straight line the EffectNetTravel predicate can classify. That is
+// the right observable: the flee DIRECTION cannot be made to differ, because the
+// caster and the fleeing foe move at the same stepsize and the foe is always on
+// the same side of the cloud, so the only fact-visible consequence of center_on
+// is the cloud's own path.
+inline constexpr InputEvent kInputsGhostScareWalk[] = {
+    {  5, 0, K_SPECIAL},   // cast SCARE (slot 1, cost 30)
+    {  6, 0, K_LEFT},      // walk WEST for the cloud's whole 8-act life
+    { 16, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_ghost_scare_walk_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 180, 120, 0, 0 },         // lone foe, same geometry as the stationary-caster row; closes toward the ghost and is inside scare_radius(5) = 100 of the walked-to ghost when the cloud dies
+    { FAMILY_GHOST,   0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // player-controlled caster LAST; level 5 keeps scare_radius (100) and scare_duration (125) below the branch soft-cap knees, so both arms compute identically
+};
+
+inline constexpr FactPredicate kFacts_effect_ghost_scare_walk_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_GHOST, 1),
+    // FLIPPING PREDICATE. ghost_scare_on_act re-centres the cloud on its owner
+    // every tick, so a ghost walking west for the cloud's eight acts drags it
+    // along a single axis: net displacement == path length, a STRAIGHT class.
+    // kMut_effect_ghost_scare_walk_scen99 drops the center_on so the cloud is
+    // stranded at the cast point; its track collapses to a single repeated
+    // sample, net travel is 0, and the STRAIGHT threshold fails.
+    pred::EffectNetTravel(FAMILY_GHOST_SCARE, /*kWeaponPathStraight*/0, 1500,
+        "consequence: the scare cloud re-centres on its owner every tick, so a walking ghost drags it along one axis (net == pathlen, STRAIGHT); the mutation strands the cloud at the cast point and its net travel collapses to 0, below the threshold"),
+    // The scare still fires from the moved origin: the foe is force-walked away
+    // from the cloud for scare_duration(5) = 125 iterations.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 300, 300,
+        "consequence: GHOST_SCARE's on_death force-walks the frightened foe away from the cloud for 125 iterations; the foe ends far south-east of its 180,120 spawn"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_effect_ghost_scare_walk_scen99 = {
+    "packs/core/scripts/effect_ghost_scare.lua", 17,
+    "    self:center_on(owner)",
+    "    local _ = owner",
+    "Removes the scare cloud's per-tick re-centring on its owner. The cloud is stranded at the cast point while the ghost walks away, so its FX track collapses to one repeated sample and the on_death flee vector is measured from the wrong origin: EffectNetTravel(FAMILY_GHOST_SCARE, STRAIGHT, ...) flips to 0. Strictly finer than kMut_effect_ghost_scare_emission, which neuters on_death instead."
+};
+
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -7932,6 +8388,79 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_generator_owner_cascade_scen99, std::size(kFacts_generator_owner_cascade_scen99),
       kMut_generator_owner_cascade_scen99 },
+
+    // effects batch — FX consequence rows
+    { "effect_cloud_poison_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_cloud_poison_scen99, std::size(kFamilySpawns_effect_cloud_poison_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_cloud_poison_scen99, std::size(kFacts_effect_cloud_poison_scen99),
+      kMut_effect_cloud_poison_scen99 },
+
+    { "effect_explosion_range_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_explosion_range_scen99, std::size(kFamilySpawns_effect_explosion_range_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_explosion_range_scen99, std::size(kFacts_effect_explosion_range_scen99),
+      kMut_effect_explosion_range_scen99 },
+
+    { "effect_bomb_bystander_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_bomb_bystander_scen99, std::size(kFamilySpawns_effect_bomb_bystander_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_bomb_bystander_scen99, std::size(kFacts_effect_bomb_bystander_scen99),
+      kMut_effect_bomb_bystander_scen99 },
+
+    { "effect_shield_absorb_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsMagicShieldNoFire, std::size(kInputsMagicShieldNoFire), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_shield_absorb_scen99, std::size(kFamilySpawns_effect_shield_absorb_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_shield_absorb_scen99, std::size(kFacts_effect_shield_absorb_scen99),
+      kMut_effect_shield_absorb_scen99 },
+
+    { "effect_boomerang_contact_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 85,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_boomerang_contact_scen99, std::size(kFamilySpawns_effect_boomerang_contact_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_boomerang_contact_scen99, std::size(kFacts_effect_boomerang_contact_scen99),
+      kMut_effect_boomerang_contact_scen99 },
+
+    { "effect_boomerang_drawcycle_cap_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 290,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_boomerang_cap_scen99, std::size(kFamilySpawns_effect_boomerang_cap_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_boomerang_cap_scen99, std::size(kFacts_effect_boomerang_cap_scen99),
+      kMut_effect_boomerang_cap_scen99 },
+
+    { "effect_chain_fork_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsChainFork, std::size(kInputsChainFork), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_chain_fork_scen99, std::size(kFamilySpawns_effect_chain_fork_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_chain_fork_scen99, std::size(kFacts_effect_chain_fork_scen99),
+      kMut_effect_chain_fork_scen99 },
+
+    { "effect_knife_back_catch_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsKnifeBackCatch, std::size(kInputsKnifeBackCatch), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_knife_back_catch_scen99, std::size(kFamilySpawns_effect_knife_back_catch_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_knife_back_catch_scen99, std::size(kFacts_effect_knife_back_catch_scen99),
+      kMut_effect_knife_back_catch_scen99 },
+
+    { "effect_ghost_scare_moving_caster_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsGhostScareWalk, std::size(kInputsGhostScareWalk), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_ghost_scare_walk_scen99, std::size(kFamilySpawns_effect_ghost_scare_walk_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_ghost_scare_walk_scen99, std::size(kFacts_effect_ghost_scare_walk_scen99),
+      kMut_effect_ghost_scare_walk_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
