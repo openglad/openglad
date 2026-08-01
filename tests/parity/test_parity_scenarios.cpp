@@ -62,6 +62,22 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
         const std::string actual2 = og::parity::canonical_serialize(again.dump);
         EXPECT_EQ(actual, actual2)
             << "branch-internal dumper is non-deterministic for " << spec.id;
+
+        // A branch-internal row has no golden, but its branch-side
+        // predicates are still contracts — without this they sit compiled
+        // and unevaluated, and the row's discriminating mutation flips
+        // nothing (treasure_exit_open_prompt_scen99 shipped exactly that
+        // way: mutation applied, test green).
+        if (spec.expected_facts != nullptr && spec.fact_count > 0)
+        {
+            const og::parity::FactEvalResult branch =
+                og::parity::evaluate_facts(og::parity::FactSide::Branch,
+                                           spec.expected_facts,
+                                           spec.fact_count, outcome.dump);
+            EXPECT_TRUE(branch.ok)
+                << "branch-internal facts failed for " << spec.id << ": "
+                << branch.message;
+        }
         return;
     }
 
