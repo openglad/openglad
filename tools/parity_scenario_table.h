@@ -6805,6 +6805,378 @@ inline constexpr Mutation kMut_effect_ghost_scare_walk_scen99 = {
 };
 
 
+// --- Weapon-behaviour scenarios ---------------------------------------------
+//
+// Every arena below places its victim NORTH of the caster. A player-controlled
+// walker fires along its default heading: walker_init_common leaves
+// lastx = lasty = 0 and walker::fire() branches on facing(lastx, lasty), which
+// returns FACE_UP for (0,0). That is why the older "wielder at (120,120),
+// target at (200,120)" emission rows shoot at empty sky — their goldens end
+// with the target at full HP. Keeping the victim north keeps these arenas
+// input-free (no direction press, no extra drift).
+
+// weapon_boulder_explode_damage_scen99: the barbarian's EXPLODING BOULDER
+// detonating ON a body instead of on empty ground. The caster is spawned facing
+// its default heading, so the boulder flies NORTH -- which is why both victims
+// are placed north of the barbarian rather than east of it the way
+// weapon_exploding_boulder_scen99 does (that row's golden shows all three of its
+// eastern soldiers at a full 120 HP: the boulder never touched them).
+//   * FAMILY_SOLDIER on the flight line is the IMPACT victim;
+//   * FAMILY_ORC is laterally offset by two tiles, so the boulder body can never
+//     reach it -- the ONLY thing that can wound it is the FAMILY_EXPLOSION that
+//     explode_on_death spawns with damage = boulder damage * 2. ORC also carries
+//     BIT_NO_RANGED so it cannot counter-fire, and the input-only-special
+//     barbarian never melees, so the orc has exactly one damage source.
+// Cast at tick 8 (not the corpus-usual 20) so the two AI foes have only ~10px of
+// charge drift before the detonation and the geometry stays as authored.
+inline constexpr InputEvent kInputs_weapon_boulder_explode_damage[] = {
+    {  4, 0, K_SPECIAL_SWITCH},   // current_special 1 (HURL) -> 2 (EXPLODING BOULDER)
+    {  5, 0, K_NONE},
+    {  8, 0, K_SPECIAL},
+    {  9, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_boulder_explode_damage_scen99[] = {
+    { FAMILY_SOLDIER,   1, kOrderLiving, 120, 120, 0, 0 },              // impact victim on the northward flight line
+    { FAMILY_ORC,       1, kOrderLiving, 152, 136, 0, 0 },              // blast-only victim: off the flight line, ~36 Manhattan from the detonation
+    { FAMILY_BARBARIAN, 0, kOrderLiving, 120, 168, 0, 0, 15, 300 },     // caster LAST -> head of oblist -> the player-controlled walker
+};
+
+inline constexpr FactPredicate kFacts_weapon_boulder_explode_damage_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1,
+        "consequence: the doubled blast is well under the ORC's 14000-cent pool, so it survives to be measured"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 2200, 2400,
+        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 2300 cents; the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. A fresh companion recapture reads 2700 off the same blast (a two-tick cadence difference), which is why this row's golden is the blessed branch dump -- see tests/parity/golden/DRIFT_LEDGER.md"),
+    pred::WeaponFamilyEmitted(FAMILY_BOULDER),
+    pred::EventKindAtLeast(/*play_sound*/1, 2,
+        "consequence: SOUND_FWIP on the throw plus SOUND_EXPLODE from explode_on_death"),
+};
+
+inline constexpr Mutation kMut_weapon_boulder_explode_damage_scen99 = {
+    "packs/core/scripts/weapon_projectiles.lua", 27,
+    "  explosion.damage = og.fmul(self:damage(), 2.0)",
+    "  explosion.damage = og.fmul(self:damage(), 0.0)",
+    "Zeroes the doubled blast damage explode_on_death hands the FAMILY_EXPLOSION (openglad-master/src/weap.cpp:206, `newob->damage = damage*2`). The explosion still spawns, still plays SOUND_EXPLODE and still shoves, so WeaponFamilyEmitted and the play_sound floor stay green; the laterally offset ORC's only damage source vanishes and it finishes at a full 14000 cents, outside WalkerHpRangeAtFinalTick's ceiling -- that predicate alone flips."
+};
+
+// weapon_door_unlock_chain_scen99: the whole keyed-door chain in one run --
+// key_on_eat banks 1<<clamp(level,0,30) (treasure_valuables.lua), obmap.cpp:326
+// reads that bit against the door's level and kills the door, weapon_door.lua's
+// on_death hands the spot to an ANI_DOOR_OPEN FAMILY_DOOR_OPEN on weaplist, and
+// effect_door_open.lua parks the finished sprite on fxlist ("the amusing part":
+// the fxlist copy does not act, so it cannot respawn itself).
+// Geometry is the proven treasure_key_pickup_scen99 walk (player SOLDIER at
+// (96,120) with the treasure co-located so the eat lands on the first step),
+// with the DOOR added on the same y=120 lane. The door is on TEAM 1 on purpose:
+// ob_pass_check lets a walker pass straight over a FRIENDLY weapon, so a team-0
+// door would never reach the unlock arbitration at all.
+inline constexpr InputEvent kInputs_weapon_door_unlock_chain[] = {
+    {  1, 0, K_RIGHT},
+    { 40, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_door_unlock_chain_scen99[] = {
+    { FAMILY_KEY,     2, kOrderTreasure,  96, 120, 0, 0, 1, 0 },  // level-1 key, team 2 so it is nobody's prop; eat_me is team-agnostic for Order::Treasure
+    { FAMILY_DOOR,    1, kOrderWeapon,   160, 120, 0, 0, 1, 0 },  // level-1 door on the walk lane; team 1 so the player is NOT friendly to it
+    { FAMILY_SOLDIER, 0, kOrderLiving,    96, 120, 0, 0 },        // player LAST -> head of oblist; co-located with the key
+};
+
+inline constexpr FactPredicate kFacts_weapon_door_unlock_chain_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EffectFamilyCount(FAMILY_DOOR_OPEN, 1, 1, /*source_family_qualifier=*/0, /*window_marker=*/0,
+        "consequence: the unlocked door's weap::death runs weapon_door.lua's on_death, which puts an ANI_DOOR_OPEN FAMILY_DOOR_OPEN on weaplist; five frames later effect_door_open.lua's on_act hands one persistent copy to fxlist"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 200, 0,
+        "consequence: the key-holder is blocked for a single tick at the door tile and then walks THROUGH the opened doorway, finishing at xpos 224; a run whose key bit never matched is stopped dead around xpos 144 by the 5000-HP door. This is an ANCHOR, not the teeth -- kMut_weapon_door_unlock_chain_scen99 removes only the DOOR_OPEN handoff, so the unlock and the walk-through are unchanged under it"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_KEY, kOrderTreasure,
+        "binding anchor, evaluates Indeterminate on both arms: key_on_eat banks the bit and emits its notification on tick 3 (the golden carries it), but the eaten FAMILY_KEY stays in oblist with alive=true, so the predicate's alive-with-no-consumed-instance arm cannot prove removal. treasure_key_pickup_scen99's golden has exactly the same shape -- this is a schema-v1 limit, not a behaviour difference. The chain's real observable is EffectFamilyCount(FAMILY_DOOR_OPEN) above: bank the WRONG bit and the soldier is stopped at xpos 145 by a surviving door and no DOOR_OPEN is ever created"),
+    pred::WalkerKeysApplied(/*min_keys=*/1,
+        "binding anchor: schema-v1 dumps carry no inventory_keys so this evaluates Indeterminate on both arms; it keeps the key-mask consumer bound to a named predicate for the coverage scan"),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: key_on_eat emits one '<name> picks up key 1' notification because the eater is on team 0"),
+};
+
+inline constexpr Mutation kMut_weapon_door_unlock_chain_scen99 = {
+    "packs/core/scripts/weapon_door.lua", 10,
+    "  local opened = og.add_weap_ob(\"fx\", FX_DOOR_OPEN)",
+    "  local opened = nil",
+    "Suppresses the broken door's FAMILY_DOOR_OPEN handoff (openglad-master/src/weap.cpp:219, `newob = add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN)`); on_death takes its `if not opened then return false end` failsafe, so no DOOR_OPEN ever reaches weaplist, effect_door_open.lua's on_act never runs, and fxlist holds zero FAMILY_DOOR_OPEN -- EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) flips 1 -> 0. The key mask, the obmap unlock and the walk-through are untouched, so this pins weapon_door.lua's on_death specifically."
+};
+
+// weapon_rock_bounce_edge_scen99: the FIRST row in the corpus to exercise
+// weapon_rock.lua's reflect body and the kWeaponPathReturns behaviour class.
+//
+// GEOMETRY. A player-controlled caster fires along its default heading
+// (facing() == FACE_UP), which golden/weapon_rock_slot2_emit_scen99.json
+// confirms: that elf's rocks climb from (122,113) to (141,59). So the barrier
+// has to be NORTH.
+// The barrier is the MAP EDGE, not terrain. The design sketch aimed the volley
+// into a tree block, but core:rock carries init_bit_flags: [FORESTWALK]
+// (packs/core/families/weapon-01-rock.yaml), and game_world.cpp's PIX_TREE_*
+// arm lets a FORESTWALK walker straight through -- a rock cannot be stopped by
+// any tree in the game. scen1's decoded tile grid (pix/scen0001.png, 40x60 at
+// GRID_SIZE 16) contains no PIX_H_WALL1/WALL2/WALL3/WALL_LL/WALLTOP_H cell at
+// all, so terrain cannot stop this projectile anywhere on this map. The one
+// remaining hard barrier is query_grid_passable's own bounds test
+// (`x_i < 0 || y_i < 0 || ...`), which walker::walk consults through
+// query_passable: a rock stepping off the top of the map fails its walk, and
+// act_fire's `else if (!walk() ...)` arm calls death() with a NULL collide_ob --
+// exactly the state rock_on_death demands.
+// The elf therefore stands at (192, 56) = tile (12, 3), a grass column whose
+// rows 0..4 are all grass, with the rocks leaving at (194, 49): six clear 8px
+// climbs to y = 1, and the seventh probe (y = -7) is off the map. The reflect
+// then takes the third probe (xpos+lastx, ypos-lasty = y+8, open), flips lasty,
+// and the rock flies back down for the rest of its line of sight.
+// No enemies are spawned: an enemy knife can collide with our rock, and a rock
+// that dies with a non-null collide_ob takes rock_on_death's "died of natural
+// causes" early return instead of bouncing.
+inline constexpr SpawnSpec kFamilySpawns_weapon_rock_bounce_edge_scen99[] = {
+    { FAMILY_ELF, 0, kOrderLiving, 192, 56, 0, 0, 4, 300 }, // lone caster (level 4 -> slot 2 reachable, 300 mp affordable); the player-controlled walker
+};
+
+inline constexpr FactPredicate kFacts_weapon_rock_bounce_edge_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_ROCK),
+    pred::WeaponNetTravel(FAMILY_ROCK, /*kWeaponPathReturns*/1, 8000,
+        "trajectory: the slot-2 BOUNCING ROCKS volley climbs six 8px steps to y=3, steps off the top of the map, and rock_on_death un-deads it and reflects lasty, so seq 0 walks 49 -> 3 -> 55 for pathlen 9800 centi against net 600 -- the RETURNS class (pathlen >= 8000 AND net*2 < pathlen), which NO existing row produces. Suppress the reflect and the rock simply dies at the edge: the track is a 7-sample straight climb whose pathlen is 4600 (under the 8000 threshold) and whose net EQUALS its pathlen, so RETURNS fails twice over"),
+    pred::WeaponSpeed(FAMILY_ROCK, 700, 900,
+        "trajectory: the cardinal-fired rock steps 8px/tick (800 centi) both before and after the reflect; this is an anchor, not the teeth, and stays green under the mutation"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_weapon_rock_bounce_edge_scen99 = {
+    "packs/core/scripts/weapon_rock.lua", 8,
+    "  if self:do_bounce() == 0 or self:lineofsight() == 0",
+    "  if self:do_bounce() ~= 0 or self:lineofsight() == 0",
+    "Inverts the do_bounce admission test that guards the whole reflect body (openglad-master/src/weap.cpp:156, `if (!do_bounce || !lineofsight || collide_ob) break;`). An ARMED bouncing rock now takes the 'died of natural causes' early return and simply dies against the tree ceiling, so its weapon_tracks entry is a pure straight climb: net == pathlen and pathlen drops below the RETURNS threshold, flipping WeaponNetTravel(FAMILY_ROCK, kWeaponPathReturns, ...). Emission and per-tick speed are untouched, so the flip is isolated to the path class. NOTE: a naive `set_lastx(-lastx) -> set_lastx(lastx)` mutation does NOT work here -- the rock then oscillates against the wall once per tick and still classifies as RETURNS."
+};
+
+// weapon_wave_promote_wave2_scen99: WAVE -> WAVE2 promotion, the one place
+// walker::transform_to runs inside a weapon on_death. Reuses the proven
+// weapon_wave_emission_scen99 arena and cadence verbatim and only extends the
+// budget past the promotion tick, so the only new thing under test is the
+// transform. FAMILY_WAVE's lineofsight is 3 (gloader) and it is IMMORTAL +
+// NO_COLLIDE, so act_fire's `if (!(lineofsight--))` arm -- not a collision -- is
+// what calls death() on the fourth tick of flight; the promotion tick is
+// therefore deterministic rather than geometry-dependent.
+// WeaponFamilyEmitted is satisfied by a recorded weapon TRACK as well as by a
+// live weapon, so the assertion survives even if the promoted entity later moves
+// on to WAVE3 -- the exact dump tick is not critical.
+// Do NOT add an EventKindExactly(notification, ...) pin: a promoted WAVE2 whose
+// act_type survives the transform can reach weap::act's ACT_RANDOM arm, which
+// emits one Notification per tick by design.
+inline constexpr FactPredicate kFacts_weapon_wave_promote_wave2_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_WAVE2,
+        "consequence: wave_on_death un-deads the expiring WAVE and transform_to's it into FAMILY_WAVE2 in place, so weaplist / weapon_tracks carry the WAVE2 family string from the promotion tick onward. This is the first UNGATED FAMILY_WAVE2 binding in the corpus -- weapon_wave2_emission_scen99 has to FactSide-gate its copy because K_FIRE never produces one there"),
+    pred::WeaponFamilyEmitted(FAMILY_WAVE,
+        "anchor: the tick-25 cast is still in stage 1 at the dump, and the first wave's pre-promotion track is recorded regardless; stays green under the mutation so the flip is isolated to WAVE2"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_weapon_wave_promote_wave2_scen99 = {
+    "packs/core/scripts/weapon_wave.lua", 16,
+    "  self:transform_to(\"weapon\", WEAPON_WAVE2)",
+    "  self:transform_to(\"weapon\", WEAPON_WAVE3)",
+    "Retargets the first promotion stage past FAMILY_WAVE2 (openglad-master/src/weap.cpp:210, `transform_to(ORDER_WEAPON, FAMILY_WAVE2)`). The entity still survives its death -- no cascade of unrelated diffs, the caster and the soldier are untouched -- but no FAMILY_WAVE2 ever exists in weaplist or in weapon_tracks, so WeaponFamilyEmitted(FAMILY_WAVE2) flips true -> false while WeaponFamilyEmitted(FAMILY_WAVE) stays green. WEAPON_WAVE3 is already a file-local in weapon_wave.lua (wave2_on_death uses it), so the mutated line resolves cleanly."
+};
+
+// weapon_sprinkle_freeze_scen99: the faerie's sprinkle writing frozen_delay into
+// a living target (weapon_animate.lua sprinkle_on_hit_target; original
+// openglad-master/src/walker.cpp:1995).
+//
+// DIRECTION MATTERS TWICE. (a) A player-controlled walker fires along its
+// default heading, which is FACE_UP -- that is why
+// weapon_sprinkle_emission_scen99's soldier finishes at a FULL 120 HP: no
+// sprinkle ever touched it. Three K_RIGHT ticks give the faerie an eastward
+// lastx that survives the release, so the single throw actually connects.
+// (b) WalkerPositionMoved is a LOWER bound, so the victim has to be the one that
+// moves in -x: the ORC charges WEST toward the faerie, so "still near its spawn
+// column" is expressible as a floor on xpos, and an unfrozen orc falls below it.
+// The victim is FAMILY_ORC: BIT_NO_RANGED (it cannot counter-fire), a family
+// distinct from the caster (the ANY-match predicates stay unambiguous), and a
+// 14000-cent pool that the 1-damage sprinkle barely dents.
+// HARD CONSTRAINT (keeps the row capturable on master): ONE throw and a caster
+// BELOW level 21. Repeated sprinkles engage the branch-only refresh gate
+// (`owner.level >= 21 and target:s_frozen_delay() > 10`) and the negative
+// thaw-immunity guard, neither of which master has a counterpart for. Level 20 +
+// a single throw leaves both provably inert.
+inline constexpr InputEvent kInputs_weapon_sprinkle_freeze[] = {
+    {  1, 0, K_RIGHT},   // establish an eastward lastx/curdir; ~11px of drift
+    {  4, 0, K_NONE},
+    { 10, 0, K_FIRE},    // held long enough for the attack animation to reach fire()
+    { 18, 0, K_NONE},    // fire_frequency 9 makes a second throw impossible inside this window
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_sprinkle_freeze_scen99[] = {
+    { FAMILY_ORC,    1, kOrderLiving, 200, 120, 0, 0 },            // victim: charges WEST, so "did not move" is a floor on xpos
+    { FAMILY_FAERIE, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 },   // caster LAST; level 20 (< 21) keeps the branch-only refresh gate inert
+};
+
+inline constexpr FactPredicate kFacts_weapon_sprinkle_freeze_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 1, 1,
+        "consequence: the frozen orc never reaches melee inside the budget, so the fragile 7500-cent faerie survives"),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 140, 0,
+        "consequence: sprinkle_on_hit_target writes og.freeze_duration(owner.level, constitution) into the orc's frozen_delay and living::act returns early every tick it is non-zero, so the orc's westward charge stalls at the throw tick and only resumes when it thaws. WalkerPositionMoved is a LOWER bound and the orc closes in -x, so the floor holds only while the freeze does: measured 152 frozen against 131 unfrozen at the 150-tick dump, and the floor sits 12 px inside each. The 60-tick budget the design sketch used separates the two arms by only 6 px -- the freeze has not expired yet on EITHER arm at that point, so the entire measurable gap is the 42 ticks the frozen orc lost; 150 lets the thawed orc bank its recovery too"),
+    pred::WeaponFamilyEmitted(FAMILY_SPRINKLE),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_weapon_sprinkle_freeze_scen99 = {
+    "packs/core/scripts/weapon_animate.lua", 129,
+    "    target:s_set_frozen_delay(roll)",
+    "    target:s_set_frozen_delay(0)",
+    "Drops the freeze while PRESERVING the og.freeze_duration RNG draw one line above it, so the gameplay RNG stream -- and therefore every other entity in the arena -- is untouched and the flip is attributable to the freeze alone. The unfrozen orc resumes its westward charge and its dumped xpos falls below WalkerPositionMoved's floor."
+};
+
+// weapon_fire_arrow_explode_damage_scen99: the ARCHER EXPLODING BOLT half of
+// weapon_projectiles.lua's explode_on_death. Same shape as
+// weapon_boulder_explode_damage_scen99 -- an impact victim on the default
+// FACE_UP flight line plus a laterally offset FAMILY_ORC that only the blast can
+// reach -- but a different caster, a different slot and (deliberately) a
+// different mutation anchor inside the SAME shared Lua function, so the pin
+// table gets two independent anchors in one file.
+// The offset blast-only victim is a STATIONARY FAMILY_TOWER1 (living-20-beast.yaml
+// is the corpus's only is_stationary living, and its derived_bonuses[2] damage is
+// 0). An ORC in that seat charges the archer, wanders in and out of the blast
+// footprint and dies to the level-10 detonation -- measured, not guessed. The
+// tower cannot leave its tile, cannot wander onto the flight line, and cannot
+// deal damage to anything, so the only thing that ever touches it is the blast.
+// The ARCHER is deliberately NOT counted: the impact SOLDIER's knives kill it
+// a few ticks after the detonation, which is irrelevant to the tower's reading.
+inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_explode_damage_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 104, 0, 0 },            // impact victim on the northward flight line
+    { FAMILY_TOWER1,  1, kOrderLiving, 152, 136, 0, 0 },            // blast-only victim: stationary, off the flight line, deals no damage
+    { FAMILY_ARCHER,  0, kOrderLiving, 120, 168, 0, 0, 10, 600 },   // caster LAST (level 10 clears the slot-3 cycling gate (3-1)*3+1 = 7; 600 mp affordable)
+};
+
+inline constexpr FactPredicate kFacts_weapon_fire_arrow_explode_damage_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: the skip_exit(5000) bolt detonates ON the soldier and the doubled-damage FAMILY_EXPLOSION is the only thing in the arena that can reach the offset stationary TOWER1. An HP window is not available here: a spawned (myguy-less) caster takes walker::fire's `damage *= level` arm, so a level-10 archer's exploding bolt carries 227 damage and the blast carries twice that -- nothing in the family table survives it. Dead-or-alive is the honest observable. Invert the sentinel gate and no explosion is spawned at all: the tower is never touched and finishes alive at its full 13000 cents, so this predicate flips"),
+    pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW),
+    pred::EventKindAtLeast(/*play_sound*/1, 5,
+        "anchor: SOUND_BOW on the shot plus the melee traffic; the measured count is 9. NOT a tooth -- suppressing the detonation also keeps the impact soldier alive to throw more knives, so the mutated arm's play_sound count goes UP, not down. WalkerDiedByFinal carries the flip"),
+};
+
+inline constexpr Mutation kMut_weapon_fire_arrow_explode_damage_scen99 = {
+    "packs/core/scripts/weapon_projectiles.lua", 8,
+    "  if self:skip_exit() == 0 then",
+    "  if self:skip_exit() ~= 0 then",
+    "Inverts the legacy sentinel gate (openglad-master/src/weap.cpp:192, `if (!skip_exit) break;  // skip_exit means we're supposed to explode :)`): the ARMED bolt now takes the early return and an ORDINARY arrow would explode instead. No FAMILY_EXPLOSION is spawned, so the offset ORC stays at a full 14000 cents and the SOUND_EXPLODE contribution to the play_sound floor disappears. Deliberately a DIFFERENT (line, text) anchor from kMut_weapon_boulder_explode_damage_scen99's damage-multiplier flip in the same file."
+};
+
+// weapon_circle_protection_follow_scen99: proves the ring TRACKS a moving owner.
+// Reuses kFamilySpawns_effect_protection_emit_scen99 and kInputsSpecialSlot4
+// unchanged -- that arena is the corpus's only real druid-cast ring on a real
+// owner, and its no-enemies design is load-bearing. Only the budget grows, from
+// 25 to 60, so the ring accumulates a long track behind the friendly's
+// deterministic idle wander (that golden already moves the friendly 85,90 ->
+// 145,166 in 25 ticks and the ring with it, 137,162).
+// The assertion is WeaponSpeed with a NON-ZERO floor, not a path class: a
+// wandering owner produces a meandering path that is neither STRAIGHT
+// (net << pathlen) nor STATIONARY, but its per-tick step is always the owner's
+// step -- and a ring that stopped following steps exactly 0.
+inline constexpr FactPredicate kFacts_weapon_circle_protection_follow_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION),
+    pred::WeaponSpeed(FAMILY_CIRCLE_PROTECTION, 400, 700,
+        "trajectory: circle_protection_on_animate calls center_on(owner) every tick, so the ring's per-tick displacement IS the protected friendly's step -- 566 centi for the stepsize-4 soldier's diagonal wander, measured over a 40-sample track. The FLOOR is the tooth: strip the re-centre and the ring is pinned at its emit coordinate with max consecutive-tick step 0, below 400. The ring is IMMORTAL and never damaged in this arena, so it survives the whole budget and the track always has consecutive samples (no Indeterminate escape)"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_weapon_circle_protection_follow_scen99 = {
+    "packs/core/scripts/weapon_animate.lua", 83,
+    "  self:center_on(owner)",
+    "  local _ = owner",
+    "Removes the per-tick re-centre from circle_protection_on_animate (openglad-master/src/weap.cpp:278, `center_on(owner);`) while keeping `owner` referenced so the hook's dead-owner guard above it is unchanged. The ring stays where it was summoned instead of tracking the walking friendly: its weapon_tracks max consecutive-tick step collapses from the owner's step to 0, below WeaponSpeed's floor. WeaponFamilyEmitted stays green (the ring is still created), so the flip is isolated to the follow behaviour."
+};
+
+// weapon_sit_notify_quiet_scen99: the skip_sit_notify descriptor field, whose
+// only consumer is weap::act's ACT_SIT arm. The arena is deliberately silent --
+// two direct-spawn ACT_SIT scenery weapons and one idle team-0 soldier, no
+// enemies and no inputs -- so an EXACT zero-notification pin cannot be broken by
+// combat chatter. golden/weapon_door_emission_scen99.json already records
+// notification: 0 with a full two-soldier melee running, so the pin has margin.
+// FAMILY_WAVE2 and FAMILY_BLOOD are deliberately EXCLUDED: WAVE2's ACT_RANDOM
+// arm emits a Notification every tick by design, and BLOOD is ACT_DIE and never
+// reaches the sit arm at all.
+inline constexpr SpawnSpec kFamilySpawns_weapon_sit_notify_quiet_scen99[] = {
+    { FAMILY_DOOR,    0, kOrderWeapon, 120, 120, 0, 0 }, // ACT_SIT scenery, skip_sit_notify: true
+    { FAMILY_TREE,    0, kOrderWeapon, 120, 152, 0, 0 }, // ACT_SIT scenery, skip_sit_notify: true
+    { FAMILY_SOLDIER, 0, kOrderLiving, 176, 120, 0, 0 }, // lone idle observer; the player-controlled walker (no inputs are scripted)
+};
+
+inline constexpr FactPredicate kFacts_weapon_sit_notify_quiet_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: both sitting weapons carry skip_sit_notify: true, so weap::act's ACT_SIT arm emits nothing for 150 ticks; master's twin excludes the same three families by hardcoded family test (openglad-master/src/weap.cpp:72). Clear the flag on either descriptor and that weapon contributes ONE Notification per tick -- the exact-zero pin goes 0 -> 150"),
+    pred::WeaponFamilyEmitted(FAMILY_DOOR),
+    pred::WeaponFamilyEmitted(FAMILY_TREE),
+    pred::WeaponNetTravel(FAMILY_DOOR, kWeaponPathStationary, 100,
+        "anchor: the ACT_SIT arm never walks the entity, so the door's pathlen is 0 on both arms; stays green under the descriptor mutation so the flip is isolated to the event count"),
+};
+
+inline constexpr Mutation kMut_weapon_sit_notify_quiet_scen99 = {
+    "packs/core/families/weapon-18-door.yaml", 8,
+    "      skip_sit_notify: true",
+    "      skip_sit_notify: false",
+    "Clears the descriptor flag on core:door. weap::act's ACT_SIT arm (src/gameplay/weap.cpp:94, `if (!wfd || !wfd->skip_sit_notify)`) then emits a 'Weapon sitting' Notification for the direct-spawned door on every one of the 150 ticks, so EventKindExactly(notification, 0) flips 0 -> 150. The door still sits, still appears in dump.weapons and still has pathlen 0, so the emission and trajectory anchors stay green."
+};
+
+// weapon_ranged_impact_hp_scen99: the corpus's first genuine ranged-impact HP
+// pin. The six existing *_emission rows assert only WalkerAliveAtFinal on their
+// victim, and their goldens show the victim untouched at full HP -- their
+// wielders shoot NORTH at empty sky while the target sits EAST. Here the victim
+// is placed on the actual flight line.
+// FAMILY_ORC is the victim on purpose: BIT_NO_RANGED means it cannot
+// counter-fire, its family is distinct from the archer so the ANY-match HP
+// predicate is unambiguous, and its 14000-cent pool survives the barrage so
+// there is always a walker to measure.
+// The victim is a STATIONARY FAMILY_TOWER1, not the sketch's ORC: an orc walks
+// into the stream and its dumped HP mixes arrow hits with its own melee trade,
+// and at any wielder level above 1 the barrage simply kills it (measured: a
+// level-5 archer empties the orc's pool by tick 42, a level-20 archer by tick
+// 19). living-20-beast.yaml is is_stationary with derived_bonuses[2] damage 0,
+// so the tower holds the flight line, contributes nothing back, and its 13000
+// cents are a pure readout of FAMILY_ARROW's damage column.
+// The wielder is left at the DEFAULT level 1 on purpose. walker::fire scales a
+// spawned (myguy-less) wielder's projectile by `damage * (level+3)/4 * level`,
+// so level is a quadratic lever on arrow damage: level 1 gives the 5-point
+// column its face value and keeps the readout in a measurable band.
+inline constexpr SpawnSpec kFamilySpawns_weapon_ranged_impact_hp_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 120,  88, 0, 0 },            // victim on the northward flight line; stationary, deals no damage, 13000-cent pool
+    { FAMILY_ARCHER, 0, kOrderLiving, 120, 168, 0, 0 },            // wielder LAST; default level 1 (see above) so the barrage wounds instead of erasing
+};
+
+inline constexpr FactPredicate kFacts_weapon_ranged_impact_hp_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "the 13000-cent stationary tower outlasts the barrage, so there is always an entry for the HP window to measure"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10200, 10400,
+        "consequence: FAMILY_ARROW's damage column is the TOWER1's only damage source in this arena (the tower is stationary, deals 0 damage and cannot leave the flight line; the archer's only act is firing). Seven arrows take it from 13000 to a measured 10300 cents. The ceiling is strictly below the untouched 13000 the damage-column mutation leaves behind"),
+    pred::WeaponFamilyEmitted(FAMILY_ARROW),
+    pred::EventKindAtLeast(/*play_sound*/1, 5,
+        "anchor: the archer's bow fires nine times inside the budget; zeroing the damage column does not silence it, so this stays green and the HP window carries the flip"),
+};
+
+inline constexpr Mutation kMut_weapon_ranged_impact_hp_scen99 = {
+    "src/resources/gloader.cpp", 559,
+    "{Order::Weapon, FAMILY_ARROW,             \"arrow.png\",    5, ACT_FIRE, aniarrow.data(),        8, 12,  5, 0},",
+    "{Order::Weapon, FAMILY_ARROW,             \"arrow.png\",    5, ACT_FIRE, aniarrow.data(),        8, 12,  0, 0},",
+    "Zeroes FAMILY_ARROW's damage column in the EntityDef weapon-defaults table."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -8461,6 +8833,78 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_effect_ghost_scare_walk_scen99, std::size(kFacts_effect_ghost_scare_walk_scen99),
       kMut_effect_ghost_scare_walk_scen99 },
+
+    { "weapon_boulder_explode_damage_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_weapon_boulder_explode_damage, std::size(kInputs_weapon_boulder_explode_damage), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_boulder_explode_damage_scen99, std::size(kFamilySpawns_weapon_boulder_explode_damage_scen99),
+      0, false, true, Exercises::Special_Barbarian_2,
+      kFacts_weapon_boulder_explode_damage_scen99, std::size(kFacts_weapon_boulder_explode_damage_scen99),
+      kMut_weapon_boulder_explode_damage_scen99 },
+
+    { "weapon_door_unlock_chain_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_weapon_door_unlock_chain, std::size(kInputs_weapon_door_unlock_chain), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_door_unlock_chain_scen99, std::size(kFamilySpawns_weapon_door_unlock_chain_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_door_unlock_chain_scen99, std::size(kFacts_weapon_door_unlock_chain_scen99),
+      kMut_weapon_door_unlock_chain_scen99 },
+
+    { "weapon_rock_bounce_edge_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_rock_bounce_edge_scen99, std::size(kFamilySpawns_weapon_rock_bounce_edge_scen99),
+      0, false, true, Exercises::Special_Elf_2,
+      kFacts_weapon_rock_bounce_edge_scen99, std::size(kFacts_weapon_rock_bounce_edge_scen99),
+      kMut_weapon_rock_bounce_edge_scen99 },
+
+    { "weapon_wave_promote_wave2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWaveSpecialEmit, std::size(kInputsWaveSpecialEmit), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_wave_emission, std::size(kFamilySpawns_weapon_wave_emission),
+      0, false, true, Exercises::Special_Mage_4,
+      kFacts_weapon_wave_promote_wave2_scen99, std::size(kFacts_weapon_wave_promote_wave2_scen99),
+      kMut_weapon_wave_promote_wave2_scen99 },
+
+    { "weapon_sprinkle_freeze_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_weapon_sprinkle_freeze, std::size(kInputs_weapon_sprinkle_freeze), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_sprinkle_freeze_scen99, std::size(kFamilySpawns_weapon_sprinkle_freeze_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_sprinkle_freeze_scen99, std::size(kFacts_weapon_sprinkle_freeze_scen99),
+      kMut_weapon_sprinkle_freeze_scen99 },
+
+    { "weapon_fire_arrow_explode_damage_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_fire_arrow_explode_damage_scen99, std::size(kFamilySpawns_weapon_fire_arrow_explode_damage_scen99),
+      0, false, true, Exercises::Special_Archer_3,
+      kFacts_weapon_fire_arrow_explode_damage_scen99, std::size(kFacts_weapon_fire_arrow_explode_damage_scen99),
+      kMut_weapon_fire_arrow_explode_damage_scen99 },
+
+    { "weapon_circle_protection_follow_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_protection_emit_scen99, std::size(kFamilySpawns_effect_protection_emit_scen99),
+      0, false, true, Exercises::Special_Druid_4,
+      kFacts_weapon_circle_protection_follow_scen99, std::size(kFacts_weapon_circle_protection_follow_scen99),
+      kMut_weapon_circle_protection_follow_scen99 },
+
+    { "weapon_sit_notify_quiet_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_sit_notify_quiet_scen99, std::size(kFamilySpawns_weapon_sit_notify_quiet_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_sit_notify_quiet_scen99, std::size(kFacts_weapon_sit_notify_quiet_scen99),
+      kMut_weapon_sit_notify_quiet_scen99 },
+
+    { "weapon_ranged_impact_hp_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_ranged_impact_hp_scen99, std::size(kFamilySpawns_weapon_ranged_impact_hp_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_ranged_impact_hp_scen99, std::size(kFacts_weapon_ranged_impact_hp_scen99),
+      kMut_weapon_ranged_impact_hp_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
