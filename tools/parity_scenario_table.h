@@ -5370,6 +5370,332 @@ inline constexpr Mutation kMut_treasure_exit_open_prompt = {
     "Disables exit_on_eat's clear-level exit arm. Unmutated, the lone soldier's arena auto-completes (level_done 2, foes_left 0), so can_exit_now is true and the pad emits the plain 'Exit to <title>?' RequestExitConfirmation with b=0 and returns. Mutated, control falls through to the withdraw check, which is false (no precompleted_level), and lands on the else branch: the RequestExitConfirmation count flips >=1 -> 0 and a 'Foes remain!' notification appears, flipping EventKindExactly(notification,0) 0 -> 1."
 };
 
+// --- Specials: mage / thief / archmage alternate arms ----------------------
+//
+// Seven rows covering the Shift-gated ALTERNATE arms of the mage, thief and
+// archmage slot specials, plus the illusion / mind-control / eight-way-fan
+// observables the existing `special_*` rows reach but never assert. The
+// harness input driver (scenario_runtime.cpp:317-325) sets shifter_down from
+// the held mask and then calls control->special() exactly once per held tick,
+// so a `{N, K_SPECIAL|K_SHIFT}, {N+1, K_NONE}` pair casts the alternate arm
+// exactly once.
+//
+// scen1.fss is 40x60 tiles at GRID_SIZE 16 (640x960 px). The lake occupies the
+// top-left corner only; tile rows 15-17, 19-22 and 24-25 are grass across the
+// full width, and (120,120) is tile (7,7), grass — which is why the whole
+// existing corpus stands there.
+
+// Shift+Special on special slot 3 -> the ALTERNATE branch. Two
+// K_SPECIAL_SWITCH rising edges walk current_special 1 -> 2 -> 3 (the harness
+// cycler, scenario_runtime.cpp:247, gates on special_names[slot] != "NONE" and
+// (slot-1)*3+1 <= stats.level), then a single K_SPECIAL held together with
+// K_SHIFT casts the alternate once.
+inline constexpr InputEvent kInputsSpecialSlot3Shift[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 20, 0, K_SPECIAL | K_SHIFT},
+    { 21, 0, K_NONE},
+};
+
+// THIEF slot-3 CHARM OPPONENT (thief.lua taunt_or_charm, shifter_down != 0).
+// A level-7 thief against a level-1 soldier 25 px away clears both the
+// acquisition range (charm_range_base 16 + 4 * level 7 = 44) and the level
+// edge (+6), so the single og.rand(20) resist roll is the only stochastic
+// element. The victim's dumped `team` is the observable, and no other row in
+// the corpus asserts it.
+inline constexpr SpawnSpec kFamilySpawns_thief_charm_opponent_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 145, 120, 0, 0 },          // level-1 victim 25px east: inside charm range 16+4*7=44, level edge +6
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 7, 600 },  // player THIEF LAST (find_player_walker takes the first team-0 Living in oblist and spawns PREPEND); level 7 clears the slot-3 cycle gate, 600 MP covers special_cost[3]=100
+};
+
+inline constexpr FactPredicate kFacts_thief_charm_opponent_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // TEETH. thief.lua's charm arm latches target:set_real_team_num(target.team)
+    // and then target.team = self.team, so the level-1 SOLDIER's dumped team
+    // goes 1 -> 0. charm_left = og.soften(75 + 6*25, 375, 490) = 225 ticks, far
+    // beyond the 60-tick budget, so it cannot expire. The kMut leaves the victim
+    // on team 1: team-0 alive falls to 1 and team-1 alive rises to 1.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: THIEF slot-3 CHARM OPPONENT reassigns the victim to the caster's team, so team-0 alive is thief+charmed soldier; neutering the team latch leaves the soldier hostile and team-0 alive drops to 1"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0,
+        "consequence: the charmed soldier vacates team 1 entirely; the kMut keeps it there so team-1 alive becomes 1"),
+    // The victim is never damaged: the input script never presses K_FIRE and a
+    // charmed walker stops fighting its former ally.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_thief_charm_opponent_scen99 = {
+    "packs/core/scripts/thief.lua", 141,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "Keeps the charm bookkeeping (real_team_num latch, charm_left, the notification, busy += 10) but never moves the victim onto the caster's team, so both WalkerOfTeamAlive predicates flip (team-0 alive 2 -> 1, team-1 alive 0 -> 1)."
+};
+
+// ARCHMAGE slot-3 TRUE SUMMON (archmage.lua summon_image, shifter_down != 0).
+// The only in-sim path that creates a summoned FAMILY_FIREELEMENTAL, and hence
+// the only trigger for fire_elemental.lua's on_act_living owner toll.
+inline constexpr SpawnSpec kFamilySpawns_archmage_summon_elemental_scen99[] = {
+    { FAMILY_SOLDIER,  1, kOrderLiving, 180, 120, 0, 0 },           // sparring soldier (same placement as special_archmage_3_scen99) so the summoned elemental takes damage and fire_elemental.lua's owner-drain hook actually runs
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 12, 900 },  // player ARCHMAGE LAST; level 12 clears the slot-3 cycle gate, 900 MP covers special_cost[3]=500 plus the halved surcharge
+};
+
+inline constexpr FactPredicate kFacts_archmage_summon_elemental_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    // TEETH. The Shift arm of archmage.lua's summon_image is the only in-sim
+    // producer of a FAMILY_FIREELEMENTAL; lifetime = 200 + 60*12 = 920 keeps it
+    // alive far past the budget. The kMut makes the add_ob yield nothing, so
+    // the family disappears from the dump entirely.
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1,
+        "consequence: archmage slot-3 TRUE SUMMON adds one FAMILY_FIREELEMENTAL to oblist on the caster's team; the kMut nulls the add_ob so no elemental exists"),
+    pred::WalkerAliveAtFinal(FAMILY_FIREELEMENTAL, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the summoned elemental is a second alive team-0 oblist entry; the kMut removes it and team-0 alive falls to 1"),
+    // NO owner-drain assertion. fire_elemental.lua's on_act_living toll only
+    // runs while the summon is hurt, and the golden shows the elemental at a
+    // full 496/496 after wandering to (121,325) without ever being touched --
+    // the caster ends on exactly 147 HP, the no-drain value. The drain arm is
+    // therefore still UNCOVERED by this row; pinning the caster HP here would
+    // assert melee timing, not the toll.
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_archmage_summon_elemental_scen99 = {
+    "packs/core/scripts/archmage.lua", 298,
+    "    local elemental = og.add_ob(\"living\", LIVING_ELEMENTAL)",
+    "    local elemental = nil",
+    "Makes the TRUE SUMMON branch's add_ob yield nothing, so the `if not elemental then return false end` failsafe aborts the cast: no FAMILY_FIREELEMENTAL ever enters oblist, WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1) collapses to 0, WalkerAliveAtFinal fails, and team-0 alive drops below 2."
+};
+
+// MAGE slot-1 TELEPORT MARKER (mage.lua, shifter_down != 0) end to end: place a
+// marker, walk away past walker::teleport's 64 px threshold, then plain-teleport
+// back onto it. Nothing in the corpus proves a caster lands on its own marker.
+// y = 320 is tile row 20, grass across the full width of the arena, so the
+// east-west corridor has no lake, wall or decor to block the walk or the
+// landing probe.
+inline constexpr InputEvent kInputsMarkerPlaceReturn[] = {
+    {   5, 0, K_SPECIAL | K_SHIFT},  // drop the marker at the start cell
+    {   6, 0, K_NONE},
+    {  10, 0, K_LEFT},               // walk WEST so the return teleport is EASTWARD (WalkerPositionMoved is a >= bound)
+    {  90, 0, K_NONE},
+    { 100, 0, K_SPECIAL},            // plain TELEPORT -> ANI_TELE_OUT -> walker::teleport lands on the owned marker
+    { 101, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_mage_teleport_marker_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 100, 700, 0, 0 },           // far-off team-1 walker (tile 6,43 grass) keeps the level unwon; 520px away, AI closes only a few px in 140 ticks
+    { FAMILY_MAGE,    0, kOrderLiving, 240, 320, 0, 0, 8, 600 },   // player MAGE LAST; level 8 -> marker lifetime 8//4+1 = 3 uses, 600 MP covers special_cost[1]=15 twice plus the surcharge
+};
+
+inline constexpr FactPredicate kFacts_mage_teleport_marker_scen99[] = {
+    pred::TickReached(140),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    // TEETH. The FX-order FAMILY_MARKER lands in oblist as a team-0 walker
+    // (same mechanism as the cleric's MAGIC_SHIELD), and its lifetime is a USE
+    // counter, not a tick timer, so 3 uses minus the one return teleport leaves
+    // it alive. The kMut sets the count to 1, so the single teleport consumes
+    // it and effect::death reaps it.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: mage.lua's marker arm places a persistent FAMILY_MARKER FX into oblist as a second alive team-0 walker and walker::teleport spends only one of its 3 uses; the kMut gives it 1 use so the return teleport kills it and team-0 alive drops to 1"),
+    // The mage walked WEST and only the marker teleport can put it back east.
+    pred::WalkerPositionMoved(FAMILY_MAGE, 240, 320,
+        "consequence: the caster lands centred on its own marker, back at exactly its (240,320) start cell after walking west to x ~= 80; without the marker binding walker::teleport falls through to a random passable cell"),
+    // "Teleport Marker Placed" + "(3 Uses)"; both are gated on
+    // (team == 0 or has_guy()) AND user() != -1, and the harness driver claims
+    // the walker (user = 0) on tick 0.
+    pred::EventKindAtLeast(/*notification*/2, 2),
+};
+
+inline constexpr Mutation kMut_mage_teleport_marker_scen99 = {
+    "packs/core/scripts/mage.lua", 124,
+    "    marker.lifetime = self.level // 4 + 1",
+    "    marker.lifetime = 1",
+    "Gives the placed marker a single use instead of level//4+1 = 3. walker::teleport decrements the use counter on a successful jump and calls death() when it reaches 0, so the marker is reaped and WalkerOfTeamAlive(0,2,2) falls to 1 -- proving both that the marker persisted and that the return teleport actually consumed it."
+};
+
+// ARCHMAGE slot-1 TELEPORT MARKER: a deliberately divergent twin of the mage
+// body (notifications not gated on user() != -1, hardcoded Int requirement 75,
+// and marker.ani_type set to a raw 2 instead of ANI_SPIN == 1).
+// archmage.lua's hit_response sets shifter_down 0 before recasting slot 1, so
+// an AI archmage can never reach this arm and no other row in the corpus does.
+//
+// WHAT THIS ROW CANNOT ASSERT, AND WHY. On the branch the archmage's marker is
+// reaped on its first act tick: raw ani_type 2 makes effect::animate compute
+// ani_index = curdir + 2*8 >= 16, past the marker family's 16-row animation
+// table, so the ani_count bound (src/gameplay/effect.cpp:120-127) resets it to
+// ANI_WALK and effect::act then kills it. The e761 companion has no such bound,
+// reads past the table, and keeps the marker spinning -- which is why its
+// golden shows a live FAMILY_MARKER, an "(Old Marker Removed)" notice on the
+// second cast, and a return teleport that lands on the marker. The merge base
+// 05eaaa23 reproduces the branch exactly, so the divergence is master-era, not
+// this PR; see tests/parity/golden/DRIFT_LEDGER.md. mage.lua's ANI_SPIN twin is
+// unaffected, which is what mage_teleport_marker_scen99 pins. This row
+// therefore asserts only the placement arm, which does run: two casts, four
+// notifications, and the caster's own eastward walk.
+inline constexpr InputEvent kInputsMarkerTwiceEast[] = {
+    {   5, 0, K_SPECIAL | K_SHIFT},  // cast 1: place a marker at the start cell
+    {   6, 0, K_NONE},
+    {  10, 0, K_RIGHT},              // walk EAST
+    {  70, 0, K_NONE},
+    {  80, 0, K_SPECIAL | K_SHIFT},  // cast 2: place a second marker here
+    {  81, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_archmage_teleport_marker_scen99[] = {
+    { FAMILY_SOLDIER,  1, kOrderLiving, 100, 700, 0, 0 },          // far-off team-1 walker keeps the level unwon and never reaches the corridor
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 240, 320, 0, 0, 8, 600 },  // player ARCHMAGE LAST; level 8 -> marker lifetime 3 uses; 600 MP covers three casts of special_cost[1]=10 plus two halved surcharges
+};
+
+inline constexpr FactPredicate kFacts_archmage_teleport_marker_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    // TEETH. Two Shift casts, each emitting "Teleport Marker Placed" and
+    // "(3 Uses)" -- archmage.lua does NOT gate either on user() != -1, which is
+    // the divergence from mage.lua this row exists to pin. Everything upstream
+    // of the notifications (the hardcoded Int 75 gate, add_ob, set_owner,
+    // set_floor, center_on and the level//4+1 use count that fills the "(3
+    // Uses)" text) has to run for the floor of 4 to hold.
+    pred::EventKindAtLeast(/*notification*/2, 4,
+        "consequence: each Shift cast of archmage slot 1 emits Teleport Marker Placed + (N Uses), ungated by user(); nulling the marker add_ob takes the `if not marker then return false end` exit before either notification and the count drops to 0"),
+    // The caster's own eastward walk (stepsize 3, ticks 10..69), unperturbed:
+    // the lone team-1 soldier is parked 520 px away and is still at (272,400)
+    // at the final tick, so nothing interrupts the walk or the two casts.
+    pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 414, 320),
+    // The caster is the ONLY alive team-0 entry: both placed markers are
+    // already reaped (see the ani_type note above). This is a drift sentinel --
+    // if the marker ever survives on the branch again, this predicate fails and
+    // forces a conscious rebaseline instead of a silent behaviour change.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+};
+
+inline constexpr Mutation kMut_archmage_teleport_marker_scen99 = {
+    "packs/core/scripts/archmage.lua", 170,
+    "  local marker = og.add_ob(\"fx\", FX_MARKER)",
+    "  local marker = nil",
+    "Makes the marker arm's add_ob yield nothing, so the body takes its own `if not marker then return false end` exit before set_owner / center_on / the use count and before either notification. Both casts go silent: EventKindAtLeast(notification, 4) collapses to 0. mage.lua carries the identical text at line 114, but that is a different file, so the pin stays unambiguous."
+};
+
+// ARCHMAGE slot-4 MIND CONTROL. special_archmage_4_scen99 reaches this code but
+// asserts only a notification floor and a caster-HP band; the victim's `team`
+// field -- the single observable that separates the success arm from the
+// berserk arm -- is asserted nowhere in the corpus.
+inline constexpr SpawnSpec kFamilySpawns_archmage_mind_control_team_flip_scen99[] = {
+    { FAMILY_SOLDIER,  1, kOrderLiving, 180, 120, 0, 0 },           // level-1 victim 60px east: inside mind-control range 80+4*10 = 120, level edge +9
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // player ARCHMAGE LAST; level 10 clears the slot-4 cycle gate, 600 MP covers special_cost[4]=150
+};
+
+inline constexpr FactPredicate kFacts_archmage_mind_control_team_flip_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // TEETH. archmage.lua's mind_control success arm latches
+    // foe:set_real_team_num(foe.team) then foe.team = self.team, so the
+    // victim's dumped team goes 1 -> 0 for charm_duration(9) = 25 + rand(180)
+    // ticks. The kMut keeps the victim hostile: team-0 alive falls to 1 and
+    // team-1 alive rises to 1.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: slot-4 MIND CONTROL moves the level-1 soldier onto the caster's team, so team-0 alive is archmage+victim; the kMut drops the reassignment and team-0 alive falls to 1"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0,
+        "consequence: the controlled soldier vacates team 1 entirely; the kMut leaves it there and it also turns on the archmage"),
+    // The controlled soldier stops fighting and is never attacked, so it holds
+    // full HP; under the kMut it stays hostile and trades melee instead.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_archmage_mind_control_team_flip_scen99 = {
+    "packs/core/scripts/archmage.lua", 499,
+    "        foe.team = self.team",
+    "        foe.team = foe.team",
+    "Keeps the real_team_num latch, charm_left and the 'has controlled N men' notification but never moves the victim onto the caster's team: WalkerOfTeamAlive(0,2,2) falls to 1, WalkerOfTeamAlive(1,0,0) rises to 1, and the still-hostile soldier melees the archmage."
+};
+
+// ARCHMAGE slot-3 ILLUSION arm (shifter_down == 0): a real Order::Living oblist
+// entry with max_hp = 1, hp = 0, armor 0 and the name "Phantom", on the
+// caster's team, chosen from a five-tier ladder keyed on post-cost MP.
+// 550 MP is load-bearing: lc.spare_mp(self,3) = 50 selects the mp_pool < 100
+// tier, the only tier that draws no RNG, so the phantom family is deterministic.
+inline constexpr SpawnSpec kFamilySpawns_archmage_summon_image_phantom_scen99[] = {
+    { FAMILY_SOLDIER,  1, kOrderLiving, 400, 400, 0, 0 },           // parked far (tile 25,25, grass) so nothing can kill the 0-HP phantom or perturb the caster
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0,  7, 550 },  // player ARCHMAGE LAST; level 7 clears the slot-3 cycle gate. 550 MP is the load-bearing number: lc.spare_mp(self,3) = 550-500 = 50 lands in the mp_pool < 100 tier, the ONLY illusion tier that draws no RNG
+};
+
+inline constexpr FactPredicate kFacts_archmage_summon_image_phantom_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    // The illusion tier ladder is pinned to its no-RNG branch by the 550 MP
+    // spawn, so the phantom family is deterministic.
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    // Phantom signature: max_hp = 1 and hp = 0. A real FAMILY_ELF spawns at
+    // 75 HP = 7500 cents, so this window can only be satisfied by an illusion.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 0, 100,
+        "consequence: summon_image's illusion arm sets max_hp = 1 / hp = 0 on the conjured walker, so the ELF entry sits in the 0..1 HP window a genuine 75-HP elf can never reach"),
+    // TEETH. team-0 alive = archmage + phantom; the kMut moves the phantom to
+    // team 3.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the phantom inherits the caster's team and is a second alive team-0 oblist entry; the kMut assigns it team 3 so team-0 alive drops to 1"),
+};
+
+inline constexpr Mutation kMut_archmage_summon_image_phantom_scen99 = {
+    "packs/core/scripts/archmage.lua", 433,
+    "          phantom.team = self.team",
+    "          phantom.team = 3",
+    "Conjures the illusion onto an unrelated team instead of the caster's, so the phantom stops counting as an allied oblist entry and WalkerOfTeamAlive(0,2,2) falls to 1 while the family and HP-signature predicates still hold -- isolating the team binding."
+};
+
+// MAGE slot-2 WARP SPACE, the eight-way fan. special_mage_2_scen99 can only
+// infer the fan from a play_sound floor; nothing in the corpus shows the bolts
+// actually reaching more than one heading.
+//
+// GEOMETRY IS LOAD-BEARING. starburst normalises each bolt's lastx/lasty to
+// +-1 (mage.lua:164-171), so the fan's fireballs crawl at 1 px per axis per
+// tick -- roughly a sixth of an ordinary cardinal-fire fireball -- and expire
+// after 20 ticks, i.e. ~29 px per axis from the caster including the 9 px
+// spawn offset. The observed headings are all DIAGONAL (2 NW, 2 SW, 3 NE,
+// 1 SE); no bolt travels due north/south/east/west. The three foes therefore
+// sit on three different diagonals 24 px out on each axis, which is the only
+// band a fan bolt can reach: further and every bolt expires short, closer and
+// the bolts spawn already inside the target. Three DIFFERENT families with one
+// member each keep every per-foe predicate a per-heading assertion.
+// FAMILY_TOWER1 (living-20-beast.yaml) is is_stationary, so the SW anchor
+// cannot step out of the bolt's path.
+inline constexpr SpawnSpec kFamilySpawns_mage_starburst_ring_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 144,  96, 0, 0 },          // NE diagonal, 24px per axis; BIT_NO_RANGED, survives its bolt at 136/140
+    { FAMILY_TOWER1,  1, kOrderLiving,  96, 144, 0, 0 },          // SW diagonal, 24px per axis; is_stationary, so it cannot leave the bolt path
+    { FAMILY_SOLDIER, 1, kOrderLiving,  96,  96, 0, 0 },          // NW diagonal, 24px per axis
+    { FAMILY_MAGE,    0, kOrderLiving, 120, 120, 0, 0, 4, 600 },  // player MAGE LAST; level 4 clears the slot-2 cycle gate, 600 MP funds special_cost[2]=60 plus the eight bolts
+};
+
+inline constexpr FactPredicate kFacts_mage_starburst_ring_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    // TEETH -- one per heading, and each family has exactly one member, so each
+    // predicate names one specific walker. A single-direction fire can satisfy
+    // at most one of the three; the kMut empties the sweep and all three foes
+    // finish untouched, alive, at their spawn maxima.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER,
+        "consequence: the NW bolts of the eight-way WARP SPACE fan kill the north-west soldier outright at tick 21; with the sweep emptied it is never fired on and is still alive at the final tick"),
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: the SW bolts kill the stationary south-west tower at tick 25 -- a heading no ordinary forward fire reaches; with the sweep emptied it survives untouched"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13600, 13600,
+        "consequence: the NE bolt clips the north-east orc for exactly 4 of its 140 HP; with the sweep emptied it ends on its full 14000 cents and this exact-value pin fails"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: only the NE orc outlives the fan, so exactly one of the three foes is still alive; with the sweep emptied all three survive and team-1 alive is 3"),
+    pred::WeaponFamilyEmitted(FAMILY_FIREBALL),
+};
+
+inline constexpr Mutation kMut_mage_starburst_ring_scen99 = {
+    "packs/core/scripts/mage.lua", 157,
+    "      if i ~= 0 or j ~= 0 then",
+    "      if false then",
+    "Suppresses every bolt of the WARP SPACE fan while leaving the aim save/restore, the damage-bonus MP spend and the 8*weapon_cost refund intact. No FIREBALL is emitted and all three foes end at their full spawn HP, failing WeaponFamilyEmitted and all three per-heading HP windows."
+};
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -6786,6 +7112,62 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_treasure_exit_open_prompt_scen99, std::size(kFacts_treasure_exit_open_prompt_scen99),
       kMut_treasure_exit_open_prompt },
+
+    { "thief_charm_opponent_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_opponent_scen99, std::size(kFamilySpawns_thief_charm_opponent_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_charm_opponent_scen99, std::size(kFacts_thief_charm_opponent_scen99),
+      kMut_thief_charm_opponent_scen99 },
+
+    { "archmage_summon_elemental_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_summon_elemental_scen99, std::size(kFamilySpawns_archmage_summon_elemental_scen99),
+      0, false, true, Exercises::Special_Archmage_3,
+      kFacts_archmage_summon_elemental_scen99, std::size(kFacts_archmage_summon_elemental_scen99),
+      kMut_archmage_summon_elemental_scen99 },
+
+    { "mage_teleport_marker_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsMarkerPlaceReturn, std::size(kInputsMarkerPlaceReturn), 140,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_teleport_marker_scen99, std::size(kFamilySpawns_mage_teleport_marker_scen99),
+      0, false, true, Exercises::Special_Mage_1,
+      kFacts_mage_teleport_marker_scen99, std::size(kFacts_mage_teleport_marker_scen99),
+      kMut_mage_teleport_marker_scen99 },
+
+    { "archmage_teleport_marker_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsMarkerTwiceEast, std::size(kInputsMarkerTwiceEast), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_teleport_marker_scen99, std::size(kFamilySpawns_archmage_teleport_marker_scen99),
+      0, false, true, Exercises::Special_Archmage_1,
+      kFacts_archmage_teleport_marker_scen99, std::size(kFacts_archmage_teleport_marker_scen99),
+      kMut_archmage_teleport_marker_scen99 },
+
+    { "archmage_mind_control_team_flip_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_mind_control_team_flip_scen99, std::size(kFamilySpawns_archmage_mind_control_team_flip_scen99),
+      0, false, true, Exercises::Special_Archmage_4,
+      kFacts_archmage_mind_control_team_flip_scen99, std::size(kFacts_archmage_mind_control_team_flip_scen99),
+      kMut_archmage_mind_control_team_flip_scen99 },
+
+    { "archmage_summon_image_phantom_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_summon_image_phantom_scen99, std::size(kFamilySpawns_archmage_summon_image_phantom_scen99),
+      0, false, true, Exercises::Special_Archmage_3,
+      kFacts_archmage_summon_image_phantom_scen99, std::size(kFacts_archmage_summon_image_phantom_scen99),
+      kMut_archmage_summon_image_phantom_scen99 },
+
+    { "mage_starburst_ring_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_starburst_ring_scen99, std::size(kFamilySpawns_mage_starburst_ring_scen99),
+      0, false, true, Exercises::Special_Mage_2,
+      kFacts_mage_starburst_ring_scen99, std::size(kFacts_mage_starburst_ring_scen99),
+      kMut_mage_starburst_ring_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
