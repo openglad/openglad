@@ -184,31 +184,6 @@ struct SpawnSpec
     std::int32_t  stats_level        = 0;
     std::int32_t  magicpoints        = 0;
     std::int32_t  precompleted_level = 0;
-    // Z-axis / multi-floor (branch-internal Invariant scenarios only). The
-    // walker is created on floor 0 and apply_post_load_spawns relocates it via
-    // walker::change_floor when floor != 0. Trailing + defaulted so every
-    // existing row compiles unchanged.
-    std::int32_t  floor              = 0;
-};
-
-// Numeric mirrors of the PIX_* tile ids used by FloorPaint. scenario_table.h
-// deliberately does NOT include <openglad/core/pixdefs.h> (it stays byte-
-// mirrorable to the master companion), so these are spelled numerically and
-// guarded by a static_assert against the real PIX_* macros in
-// scenario_runtime.cpp.
-inline constexpr std::int32_t kPixGrass1   = 1;   // PIX_GRASS1
-inline constexpr std::int32_t kPixAir      = 134; // PIX_AIR
-inline constexpr std::int32_t kPixZStairUp = 140; // PIX_ZSTAIR_UP
-
-// One grid-cell overwrite applied to a floor after the multi-floor arena is
-// built (see apply_floor_setup). `floor` selects the stacked floor (0 ==
-// ground); (tile_x, tile_y) is a grid cell; `pix` is one of the kPix* mirrors.
-struct FloorPaint
-{
-    std::int32_t floor;
-    std::int32_t tile_x;
-    std::int32_t tile_y;
-    std::int32_t pix;
 };
 
 // Discriminating mutation declaration: a single source-line edit that
@@ -255,13 +230,6 @@ struct ScenarioSpec
     std::size_t          fact_count     = 0;
     Mutation             discriminating_mutation = {};
     std::string_view     coverage_audit = {};
-    // Z-axis / multi-floor arena setup (branch-internal Invariant scenarios).
-    // floor_count > 1 makes apply_floor_setup build the extra floor grids and
-    // apply floor_paints[] before the spawns. All trailing + defaulted so the
-    // single-floor rows above are byte-identical (floor_count == 1 -> no-op).
-    std::int32_t         floor_count       = 1;
-    const FloorPaint*    floor_paints      = nullptr;
-    std::size_t          floor_paint_count = 0;
 };
 
 // --- Per-scenario input scripts (constexpr, no file I/O at test time) ---
@@ -894,13 +862,7 @@ inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_MAGE, 200, 110),
+    pred::WalkerPositionMoved(FAMILY_MAGE, 224, 85),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8900, 9100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -916,13 +878,7 @@ inline constexpr FactPredicate kFacts_family_cleric_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_CLERIC, 200, 110),
+    pred::WalkerPositionMoved(FAMILY_CLERIC, 207, 132),
     pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 11900, 12100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -930,13 +886,7 @@ inline constexpr FactPredicate kFacts_family_fireelemental_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_FIREELEMENTAL, 220, 80),
+    pred::WalkerPositionMoved(FAMILY_FIREELEMENTAL, 205, 105),
     pred::WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 9900, 10100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -976,13 +926,7 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_THIEF, 200, 110),
+    pred::WalkerPositionMoved(FAMILY_THIEF, 128, 120),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -990,13 +934,7 @@ inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-07 guard-standoff fix: the ghost (BIT_NO_RANGED) now
-    // snap-faces its prey at bump range instead of orbit-sliding, so the
-    // duel stays engaged next to the soldier's arena corner — final pos
-    // (241,103) vs the classic wander endpoint (0,115). Repinned to the
-    // engaged-duel region; the spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_GHOST, 200, 90),
+    pred::WalkerPositionMoved(FAMILY_GHOST, 0, 115),
     pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 4900, 5100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1004,13 +942,7 @@ inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_DRUID, 200, 110),
+    pred::WalkerPositionMoved(FAMILY_DRUID, 220, 129),
     pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 10900, 11100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1042,13 +974,7 @@ inline constexpr FactPredicate kFacts_family_archmage_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
-    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
-    // longer corner-dances on scen99's terrain and presses to engagement
-    // range of the player soldier at (224,120) — repinned to the engaged
-    // endpoint region. The spawn-identity mutation still flips the
-    // WalkerFamilyCount pin above.
-    pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 200, 110),
+    pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 128, 120),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 14900, 15100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1127,70 +1053,70 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 // the descriptor).
 
 inline constexpr Mutation kMut_combat_damage = {
-    "src/gameplay/walker_combat.cpp", 209,
+    "src/gameplay/walker_combat.cpp", 189,
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes the per-hit damage applied to combat targets in walker::do_combat_damage; for any scenario that actually exercises melee combat this leaves the target alive and flips WalkerDiedByFinal and team-alive predicates."
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 302,
+    "src/gameplay/walker_combat.cpp", 282,
     "do_combat_damage(attacker, target, tempdamage_i);",
     "do_combat_damage(attacker, target, 0);",
     "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
 };
 
 inline constexpr Mutation kMut_exit_withdraw_path = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 85,
+    "src/gameplay/families/treasure_family_navigation.cpp", 84,
     "    if (can_withdraw)",
     "    if (false)",
     "Forces the withdraw branch of exit_on_eat (the FAMILY_EXIT treasure's on_eat) to be skipped. When the player steps on an EXIT whose destination level is already completed while enemies remain on the current level, the game normally emits WithdrawToLevel + RequestExitConfirmation and sets world.withdraw_requested. Disabling can_withdraw suppresses BOTH events, flipping EventKindExactly(withdraw_to_level=8,1) and EventKindExactly(request_exit_confirmation=7,1) from count=1 to count=0. This is the behavior scripted_input_scen9301 is named for; the prior shared kMut_walker_ai_wander (combat-damage zeroing) is toothless here because the scenario never lands a melee hit (both soldiers end at full 120/120 HP)."
 };
 
 inline constexpr Mutation kMut_smoke_score_event = {
-    "src/gameplay/walker_combat.cpp", 99,
+    "src/gameplay/walker_combat.cpp", 89,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Re-labels score_change emissions to EventKind::None; the canonical event-kind field flips so EventKindAtLeast(score_change,2) reads 0 occurrences, flipping that predicate in both smoke rows."
 };
 
 inline constexpr Mutation kMut_smoke_inputs_no_move = {
-    "src/gameplay/sim_input_handler.cpp", 345,
+    "src/gameplay/sim_input_handler.cpp", 340,
     "control->walkstep(walkx, walky);",
     "control->walkstep(0, 0);",
     "Drops the input-driven walkstep delta so the player walker no longer steps east when K_RIGHT is held; flips WalkerPositionMoved(SOLDIER,240,0)."
 };
 
 inline constexpr Mutation kMut_smoke_empty_tick_count = {
-    "src/gameplay/game_world.cpp", 1622,
+    "src/gameplay/game_world.cpp", 1375,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing. The empty smoke row has no gameplay entities by design, but its schema-v1 dump still records tick=1 after one tick; this mutation changes that field and flips the byte-level empty-dump canary without inventing gameplay predicates."
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
-    "src/gameplay/effect.cpp", 95,
+    "src/gameplay/effect.cpp", 91,
     "set_dead(1);",
     "set_dead(0);",
     "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."
 };
 
 inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 118,
+    "src/resources/save_data.cpp", 107,
     "std::uint8_t temp_version = 9;",
     "std::uint8_t temp_version = 0;",
     "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
 };
 
 inline constexpr Mutation kMut_exit_neuter = {
-    "src/gameplay/sim_input_handler.cpp", 340,
+    "src/gameplay/sim_input_handler.cpp", 335,
     "int walkx = pi.move_x();",
     "int walkx = 0;",
     "Force-zeroes the east/west walk vector at the sim_input_handler movement dispatch site (distinct line from kMut_smoke_inputs_no_move which mutates the walkstep call site at line 340); exit_trigger scenarios rely on K_RIGHT translation to reach the exit tile, and zeroing walkx leaves the player walker at its spawn xpos so WalkerPositionMoved(SOLDIER, X, 0) flips."
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1620,
+    "src/gameplay/game_world.cpp", 1355,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "state_dump.cpp (the original Phase 01 target) lives under tests/parity/ which the canary refuses to mutate; the next-best upstream subject is the game_world per-tick level_done assignment that flows straight into the snapshot dump. A static-counter lambda persists across run_scenario() invocations and breaks dual-capture byte equality, flipping the Invariant determinism check."
@@ -1202,35 +1128,35 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "src/gameplay/families/family_archmage.cpp", 528,
+    "src/gameplay/families/family_archmage.cpp", 506,
     ".do_special = archmage_do_special,",
     ".do_special = (true ? nullptr : archmage_do_special),",
     "Descriptor sets archmage do_special to nullptr while still referencing the function symbol (silences -Wunused-function). Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "src/gameplay/families/family_cleric.cpp", 352,
+    "src/gameplay/families/family_cleric.cpp", 348,
     ".do_special = cleric_do_special,",
     ".do_special = (true ? nullptr : cleric_do_special),",
     "Descriptor neuters cleric heal/raise specials by setting do_special to nullptr; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "src/gameplay/families/family_mage.cpp", 308,
+    "src/gameplay/families/family_mage.cpp", 300,
     ".do_special = mage_do_special,",
     ".do_special = (true ? nullptr : mage_do_special),",
     "Descriptor neuters mage teleport/warp/freeze specials; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "src/gameplay/families/family_thief.cpp", 214,
+    "src/gameplay/families/family_thief.cpp", 212,
     ".do_special = thief_do_special,",
     ".do_special = (true ? nullptr : thief_do_special),",
     "Descriptor neuters thief bomb/cloak/taunt specials; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "src/gameplay/families/family_druid.cpp", 191,
+    "src/gameplay/families/family_druid.cpp", 184,
     ".do_special = druid_do_special,",
     ".do_special = (true ? nullptr : druid_do_special),",
     "Descriptor neuters druid summon-faerie special; the faerie pet never appears, flipping LevelDoneEquals(2) downstream and any predicate that counts the summoned child."
@@ -1242,42 +1168,42 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 // the row's predicates flips on canary run.
 
 inline constexpr Mutation kMut_family_spawn_identity = {
-    "src/resources/gloader.cpp", 672,
+    "src/resources/gloader.cpp", 608,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_spawn_identity_elf = {
-    "src/resources/gloader.cpp", 672,
+    "src/resources/gloader.cpp", 608,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
     "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
 };
 
 inline constexpr Mutation kMut_family_elf_init = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 121,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 121,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "src/gameplay/families/family_mage.cpp", 289,
+    "src/gameplay/families/family_mage.cpp", 281,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
@@ -1291,63 +1217,63 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 329,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "src/gameplay/families/family_fire_elemental.cpp", 96,
+    "src/gameplay/families/family_fire_elemental.cpp", 94,
     "BASE_GUY_HP+70",
     "BASE_GUY_HP+9000",
     "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
-    "src/gameplay/families/family_faerie.cpp", 34,
+    "src/gameplay/families/family_faerie.cpp", 32,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 161,
+    "src/gameplay/families/family_slime.cpp", 155,
     "BASE_GUY_HP+120",
     "10",
     "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 221,
+    "src/gameplay/families/family_slime.cpp", 215,
     "BASE_GUY_HP+50",
     "BASE_GUY_HP+9000",
     "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 281,
+    "src/gameplay/families/family_slime.cpp", 275,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 193,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
 };
 
 inline constexpr Mutation kMut_family_ghost_init = {
-    "src/resources/gloader.cpp", 672,
+    "src/resources/gloader.cpp", 608,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>(0));",
     "Forces every gloader-spawned walker to be tagged FAMILY_SOLDIER; in any build env the GHOST walker is dumped as SOLDIER, so WalkerFamilyCount(GHOST,1,1) drops to 0 and WalkerAliveAtFinal(GHOST,1) loses its quorum."
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 165,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
@@ -1368,14 +1294,14 @@ inline constexpr Mutation kMut_family_big_orc_init = {
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 77,
     "BASE_GUY_HP+120",
     "10",
     "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 487,
     "BASE_GUY_HP+120",
     "10",
     "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
@@ -1464,33 +1390,10 @@ inline constexpr InputEvent kInputsEffectCombat[] = {
     {5, 0, K_FIRE}, {149, 0, K_NONE},
 };
 
-// Event-arena twin of kInputsEffectCombat (2026-07-07 guard-standoff fix
-// audit): the arena's team-1 line approaches from the EAST but a freshly
-// spawned player faces UP, so a bare K_FIRE hold threw every knife due
-// north. Master's score_change events came from enemies chaotically
-// orbit-sliding through that north lane; with the wedge fixed the approach
-// is clean and nothing ever crossed it, zeroing the arena's ScoreChange
-// canary teeth. Three ticks of K_RIGHT turn the player onto the incoming
-// line before the same tick-5 fire hold begins.
-inline constexpr InputEvent kInputsEventArena[] = {
-    {1, 0, K_RIGHT}, {4, 0, K_NONE}, {5, 0, K_FIRE}, {149, 0, K_NONE},
-};
-
 inline constexpr SpawnSpec kFamilySpawns_event_arena[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 },
-    // 2026-07-07 guard-standoff fix audit: the team-1 soldier used to lead
-    // this line from x=180 and CHARGE down the player's due-east knife lane
-    // (its denied fire_checks always answered "walk"), eating scoring hits
-    // on the way in. Post-fix it stops at weapon reach, snap-faces, and
-    // counter-fires — the two knife streams interdicted each other and
-    // score_change dropped to zero, killing this arena's ScoreChange canary
-    // teeth. The line now LEADS with the orc (BIT_NO_RANGED: it can never
-    // counter-fire, so the player's opening throws land and score) and the
-    // soldier duels from the second rank, surviving to keep the
-    // WalkerFamilyCount(FAMILY_SOLDIER) pin satisfied after the player
-    // falls to the melee.
-    { 14, 1, kOrderLiving, 150, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 220, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 14, 1, kOrderLiving, 220, 120, 0, 0 },
     {  4, 1, kOrderLiving, 260, 120, 0, 0 },
 };
 
@@ -1633,7 +1536,7 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
-    "src/gameplay/families/family_faerie.cpp", 34,
+    "src/gameplay/families/family_faerie.cpp", 32,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+90000",
     "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick)."
@@ -1679,7 +1582,7 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 106,
+    "src/gameplay/families/treasure_family_valuables.cpp", 102,
     ".on_eat = gold_bar_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
@@ -1702,7 +1605,7 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 118,
+    "src/gameplay/families/treasure_family_valuables.cpp", 114,
     ".on_eat = silver_bar_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
@@ -1818,7 +1721,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     // Structural coverage anchor: keeps FAMILY_TELEPORTER bound to
     // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
     // treasures. The co-located teleporter only bumps the eater's skip_exit
-    // (treasure_family_navigation.cpp:125); it is never set_dead, so the
+    // (treasure_family_navigation.cpp:113); it is never set_dead, so the
     // literal stays alive in oblist (hp 0) on BOTH branch and master. With a
     // single alive instance and no consumed one, the Order-aware evaluator
     // returns indeterminate (non-failing) on both arms — a passing anchor,
@@ -1827,7 +1730,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 170,
+    "src/gameplay/families/treasure_family_navigation.cpp", 154,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly."
@@ -1850,7 +1753,7 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 130,
+    "src/gameplay/families/treasure_family_valuables.cpp", 126,
     ".on_eat = life_gem_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip."
@@ -1870,7 +1773,7 @@ inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_key_pickup = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 142,
+    "src/gameplay/families/treasure_family_valuables.cpp", 138,
     ".on_eat = key_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips."
@@ -1915,9 +1818,9 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
     // The player SOLDIER (team 0) walks onto a co-located FAMILY_EXIT whose
     // destination (scen2) is already completed while a live team-1 foe remains,
     // so exit_on_eat takes the withdraw branch (treasure_family_navigation.cpp:
-    // 85-97) and emits BOTH WithdrawToLevel and the withdraw-flavoured
+    // 84-96) and emits BOTH WithdrawToLevel and the withdraw-flavoured
     // RequestExitConfirmation exactly once. The discriminating mutation neuters
-    // .on_eat = exit_on_eat (line 158) -> the dispatcher at treasure.cpp:61-62
+    // .on_eat = exit_on_eat (line 142) -> the dispatcher at treasure.cpp:61-62
     // ("if (tfd && tfd->on_eat)") skips the callback entirely, so NEITHER event
     // is emitted: both EventKindExactly predicates flip 1 -> 0. These are the
     // teeth.
@@ -1938,7 +1841,7 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 158,
+    "src/gameplay/families/treasure_family_navigation.cpp", 142,
     ".on_eat = exit_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly."
@@ -1962,7 +1865,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1092, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -1985,7 +1888,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon-stepsize scale factor (362.0f -> 181.0f) at walker.cpp:1092, the only 362.0f site in src/gameplay/ and the line that turns a rock's base stepsize into its effective +7px/tick travel. With the scale halved the rock's per-tick step drops from 7px (707 centi-px/tick) to ~4px (412 centi-px/tick measured), below the 650 floor, so pred::WeaponSpeed(FAMILY_ROCK,650,760) flips pass->fail. FAMILY_ROCK is still emitted (WeaponFamilyEmitted unaffected) and the path stays straight (WeaponNetTravel STRAIGHT still passes), so the canary records exactly the WeaponSpeed flip — a true trajectory-speed flip. The from/to omit the line's leading TABs and match as the unique substring of line 1092 (the canary's _apply_mutation does a substring str.replace, and the from-text is read verbatim from this source literal — leading TABs would be parsed as literal backslash-t and fail to match the real tabs, exactly like the sibling kMut_weapon_knife_emission which targets the same line). NOTE: the OLD kMut (family_elf.cpp:125 ->FAMILY_BLOOD) only flipped WeaponFamilyEmitted and could NOT exercise the trajectory teeth, since a no-track family makes WeaponSpeed/WeaponNetTravel return Indeterminate (fact_predicate.cpp:446-449, 461-464)."
@@ -2008,7 +1911,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (weapon_family_registry.cpp:44, no movement callback) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2038,7 +1941,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2096,7 +1999,7 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
-    "src/gameplay/weap.cpp", 94,
+    "src/gameplay/weap.cpp", 88,
     "if (!wfd || !wfd->skip_sit_notify)",
     "if (family() == FAMILY_TREE) setxy(static_cast<short>(xpos() + 2), ypos()); if (!wfd || !wfd->skip_sit_notify)",
     "ACT_SIT case in weap::act() normally leaves the direct-spawn tree fixed at its spawn xy; this family-gated nudge advances FAMILY_TREE +2px/tick every tick it sits, so its weapon_tracks path becomes a straight x-run (pathlen ~= 29800 centi over 149 steps, max step = 200 centi). WeaponNetTravel(FAMILY_TREE,STATIONARY,200) flips (29800 > 200) and WeaponSpeed(FAMILY_TREE,0,0) flips (200 > 0)."
@@ -2118,7 +2021,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2142,7 +2045,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) at walker.cpp:1092 applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_SPRINKLE is fired RIGHT (cardinal), so its per-tick stepsize roughly halves: max_step_centi drops from ~922 to ~460 centi-px/tick (below the 900 floor of WeaponSpeed(FAMILY_SPRINKLE,900,950)) AND the seq-0 net displacement halves from ~3396 to ~1700 centi-px (below the 2500 threshold of WeaponNetTravel STRAIGHT), so BOTH trajectory predicates flip pass->fail. The prior target (faerie default_weapon swap) was a presence-only flip that never exercised trajectory."
@@ -2167,9 +2070,9 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
-    "src/resources/gloader.cpp", 473,
-    "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          6,  6,  5, 0},",
-    "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          3,  6,  5, 0},",
+    "src/resources/gloader.cpp", 420,
+    "\t\t{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni,          6,  6,  5, 0},",
+    "\t\t{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni,          3,  6,  5, 0},",
     "Halves FAMILY_BONE's base stepsize (7th column, the loaded weapon step) from 6 to 3. The cardinal firing path (walker.cpp:1092 stepsize*362/256) then yields 3*1.414=4.24 px/tick, so the seq-0 BONE projectile's max consecutive-tick step drops from 900 to ~500 centi-px, OUTSIDE WeaponSpeed(FAMILY_BONE,850,950) -> that predicate FLIPS. BONE is still emitted (WeaponFamilyEmitted stays green) and still travels straight, so the flip is isolated to the speed teeth."
 };
 
@@ -2195,7 +2098,7 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 72,
+    "src/gameplay/families/weapon_family_animate.cpp", 29,
     "return true;",
     "self->setxy(static_cast<short>(self->xpos() + 8), self->ypos()); return true;",
     "Injects an 8-px/tick eastward drift into tree_blood_on_animate (the BLOOD/TREE animate callback) so the death-spatter BLOOD weapon advances each tick instead of staying at the kill tile. The static_cast<short> on the x-arg keeps both setxy args short so weap::setxy(short,short) is selected unambiguously (xpos()/ypos() return short; xpos()+8 promotes to int). max consecutive-tick step becomes hypot(8,0)*100 = 800 centi-px/tick and pathlen over 4 samples becomes ~2400 centi-px, so WeaponSpeed(FAMILY_BLOOD,0,0) and WeaponNetTravel(FAMILY_BLOOD,STATIONARY,50) both flip pass->fail on the branch arm."
@@ -2233,7 +2136,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1092 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2288,7 +2191,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
-    "src/resources/gloader.cpp", 467,
+    "src/resources/gloader.cpp", 414,
     "8",
     "3",
     "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row; the projectile flies ~3x slower so its per-tick step (~424 centi-px/tick) leaves WeaponSpeed's [1000,1250] bracket and its net travel (~848) drops below the STRAIGHT threshold 1500 — both trajectory predicates flip."
@@ -2312,9 +2215,9 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
-    "src/resources/gloader.cpp", 475,
-    "aniarrow.data(),        9, 13,  6, 0",
-    "aniarrow.data(),        2, 13,  6, 0",
+    "src/resources/gloader.cpp", 422,
+    "aniarrow,        9, 13,  6, 0",
+    "aniarrow,        2, 13,  6, 0",
     "Halves+ the FAMILY_LIGHTNING base stepsize (column 'step' 9 -> 2) in the EntityDef weapon-defaults table; the cardinal-fired bolt's per-tick step collapses from ~12.7 px (max_step 1304 centi-px/tick) to ~2.8 px (~283 centi-px/tick), so WeaponSpeed(FAMILY_LIGHTNING,1250,1360) flips (and seq0 net falls below the WeaponNetTravel STRAIGHT threshold 2000 too)."
 };
 
@@ -2347,7 +2250,7 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_glow_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 100,
+    "src/gameplay/families/weapon_family_animate.cpp", 59,
     "self->set_lifetime(lifetime - 1);",
     "self->set_lifetime(lifetime - 1); self->set_xpos(self->xpos() + 1);",
     "Injects a +1px/tick x-displacement into glow_on_animate so the cleric's GLOW aura moves instead of staying fixed. The seq=0 weapon_track then shows max consecutive step = 100 centi-px/tick and pathlen ~14300 centi-px over ticks 7..150, so WeaponSpeed(FAMILY_GLOW,0,50) (100 > 50) and WeaponNetTravel(FAMILY_GLOW,STATIONARY,50) (pathlen 14300 > 50) both flip. The prior target (registry e[FAMILY_GLOW]->e[0] index swap) was not observed by any trajectory predicate."
@@ -2395,7 +2298,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "src/gameplay/families/family_mage.cpp", 231,
+    "src/gameplay/families/family_mage.cpp", 227,
     "            alive->set_lastx(newob->lastx());",
     "            alive->set_lastx(newob->lastx() / 2);",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -2446,7 +2349,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
-    "src/gameplay/weap.cpp", 141,
+    "src/gameplay/weap.cpp", 126,
     "\t\t\t\treturn 1;",
     "\t\t\t\tif (family() == FAMILY_WAVE2) { setxy(xpos() + 5, ypos() + 0); } return 1;",
     "Injects a per-tick +5px x-step into FAMILY_WAVE2's ACT_RANDOM act() path; the previously-stationary wave moves, so max_step_centi jumps to 500 and pathlen_centi grows ~74500, flipping WeaponSpeed([0,0]) and WeaponNetTravel(STATIONARY,50). The braces + ypos()+0 keep both setxy args int (unambiguous int32_t overload) and suppress -Wmisleading-indentation."
@@ -2572,7 +2475,7 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
-    "src/gameplay/families/weapon_family_animate.cpp", 84,
+    "src/gameplay/families/weapon_family_animate.cpp", 41,
     "self->center_on(self->owner());",
     "self->setxy(self->xpos() + 2, self->ypos() + 0);",
     "Replaces the per-tick recenter-on-owner (a no-op for the owner-less direct-spawn ring, hence stationary) with a fixed +2px/tick x-displacement; the FAMILY_CIRCLE_PROTECTION track then walks 122,124,...,(120+2*149) so max consecutive-tick step jumps 0->200 centi-px/tick and pathlen 0->~29800 centi-px, flipping BOTH WeaponSpeed([0,0] -> speed=200 out of range) and WeaponNetTravel(STATIONARY pathlen 0<=50 -> 29800>50). The +0 on ypos keeps both setxy args int so the unambiguous setxy(int32_t,int32_t) overload binds (xpos()+2 alone vs short ypos() is ambiguous)."
@@ -2602,7 +2505,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1192,
+    "src/gameplay/walker.cpp", 1092,
     "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier (362->181, i.e. ~1.414x -> ~0.707x). HAMMER fires FACE_RIGHT in this scenario so this branch runs; its per-tick step collapses from ~922 to ~460 centi-px. WeaponSpeed(FAMILY_HAMMER,850,1000) then sees max_step_centi~460 < 850 and FLIPS on the branch arm vs the unmutated master golden (~922). WeaponNetTravel(STRAIGHT) and WeaponFamilyEmitted stay satisfied. Prior target (.default_weapon FAMILY_HAMMER->FAMILY_KNIFE) only flipped binary emission, not trajectory."
@@ -2657,7 +2560,7 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
-    "src/gameplay/weap.cpp", 94,
+    "src/gameplay/weap.cpp", 88,
     "if (!wfd || !wfd->skip_sit_notify)",
     "if (wfd && (worldmove(1, 0), false))",
     "Rewrites the guard in weap::act()'s ACT_SIT case (weap.cpp:85-91) so the case, instead of being a stationary no-op, worldmoves the sitting weapon 1px east every tick. The original guard `if (!wfd || !wfd->skip_sit_notify)` gates a 'Weapon sitting' notification; the mutated `if (wfd && (worldmove(1, 0), false))` keeps wfd referenced (no unused-variable warning), unconditionally evaluates worldmove(1,0) -- advancing xpos by 1px/tick -- then yields false so the notification is still suppressed (DOOR has skip_sit_notify=true). The direct-spawned FAMILY_DOOR weapon, which hits this ACT_SIT case every tick, is no longer stationary: its weapon_tracks walk from (120,120) at tick0 to (270,120) at tick150 (150 distinct positions). max_step_centi jumps from 0 to 100 (WeaponSpeed(FAMILY_DOOR,0,0) fails its [0,0] bracket) and pathlen_centi reaches ~15000 (WeaponNetTravel STATIONARY,100 fails). Both trajectory predicates flip from pass to fail; the mutation lives in src/gameplay/weap.cpp, outside the forbidden tests/parity and openglad-master prefixes, and the canary restores via git checkout."
@@ -2680,9 +2583,9 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
-    "src/resources/gloader.cpp", 483,
-    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),        10,  9, 25, 0}",
-    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),         4,  9, 25, 0}",
+    "src/resources/gloader.cpp", 430,
+    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone,        10,  9, 25, 0}",
+    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone,         4,  9, 25, 0}",
     "Cuts FAMILY_BOULDER's base stepsize from 10 to 4 in the gloader weapon table; after the cardinal-direction *1.414 scaling (walker.cpp:1092) the boulder now moves ~5.66px/tick instead of ~14.14, so its seq-0 per-tick step drops to ~566 centi-px/tick — outside WeaponSpeed's [1350,1600] window — flipping WeaponSpeed(FAMILY_BOULDER) pass->fail. The boulder still emits (WeaponFamilyEmitted stays green) and still travels straight, isolating the speed-trajectory tooth. The from/to omit line 430's two leading TABs and match the unique substring of that line (the canary's lookup_mutation emits a TAB-separated record consumed by `IFS=$'\\t' read`, so embedded tabs would corrupt the field split — identical convention to the sibling kMut_weapon_knife/_rock/_arrow which target a TAB-indented line)."
 };
 
@@ -2864,7 +2767,7 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
-    "src/gameplay/families/treasure_family_valuables.cpp", 130,
+    "src/gameplay/families/treasure_family_valuables.cpp", 126,
     ".on_eat = life_gem_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_LIFE_GEM on_eat hook (life_gem_on_eat), which is the FAMILY_FLASH emitter: on pickup it add_ob(Order::FX, FAMILY_FLASH)s the telflash effect, then award_score emits one ScoreChange and set_dead(1) reaps the gem. With the hook nulled the FLASH is never emitted, no ScoreChange fires, and the gem stays alive in oblist -> EventKindAtLeast(score_change,1) flips 1->0. (Substring from-text matches the 8-space-indented line 126 exactly once, mirroring the canary-positive kMut_treasure_gold_bar_pickup/kMut_treasure_life_gem_pickup pattern.)"
@@ -2993,21 +2896,19 @@ inline constexpr SpawnSpec kFamilySpawns_marker_emission_generator[] = {
 
 inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     pred::TickReached(2500),
-    // Rebaselined 2026-07 (A12b + A6/A7): generator spawns now take ONE
-    // set_difficulty at the rolled level (less MP -> different mage special
-    // cadence) and mage teleports probe eat-free under ground rules, so the
-    // RNG stream and emission cadence shifted; 27 mages by the budget.
-    pred::WalkerFamilyCount(FAMILY_MAGE, 27, 27),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 40, 40),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
-    // FLIPPING PREDICATE. team-1 alive = TOWER(1) + surviving MAGEs (7 on
-    // the rebaselined golden). Markers persist ONLY because
+    // FLIPPING PREDICATE. team-1 alive = TOWER(1) + MAGEs + persistent
+    // FAMILY_MARKER FX the mages leave behind. Markers persist ONLY because
     // effect_family_registry sets FAMILY_MARKER loops_animation=true
-    // (effect.cpp:88-113). The discriminating_mutation sets it false; every
-    // marker dies within a couple ticks of placement and is reaped from
-    // oblist, which shifts the reap order + mage special cadence and moves
-    // the deterministic team-alive count off the exact 8-pin.
-    pred::WalkerOfTeamAlive(/*team=*/1, 8, 8,
-        "consequence: killing the persistent markers via the mutation perturbs oblist reaping and the mage-special RNG cadence, moving the exact team-1 alive count (1 tower + 7 mages) off its pin"),
+    // (effect.cpp:88-113). The discriminating_mutation sets it false, so every
+    // marker dies within a couple ticks of placement and is reaped from oblist.
+    // Branch working count ~15 (1 tower + 9 mages + 5 markers), master ~18
+    // (1 + 9 + 8); with markers killed both collapse to ~10 (tower + mages
+    // only), which is < 12 -> the floor flips on both sides while the working
+    // count stays comfortably above it.
+    pred::WalkerOfTeamAlive(/*team=*/1, 12, 30,
+        "consequence: persistent FAMILY_MARKER FX (loops_animation=true) make up 5-8 of the team-1 alive population; killing them via the mutation drops the count below 12; upper bound spans MAGE-emission RNG drift"),
     // rng_drift: marker-emitting mage saturation has intentionally wide team population drift but a stable floor; commit 244d4bcf
     // Structural coverage anchor: binds FAMILY_MARKER to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. Teleport markers ride the walkers[]
@@ -3120,7 +3021,7 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_hit_emission = {
-    "src/gameplay/walker_combat.cpp", 146,
+    "src/gameplay/walker_combat.cpp", 136,
     "            walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);",
     "            walker* newob = current_game->world->add_fx_ob(Order::FX, FAMILY_HIT);",
     "do_hit_effects() emits the combat HIT animation via add_ob(Order::FX, FAMILY_HIT), which routes the object into world.oblist (game_world.cpp:564) where it is dumped as a team-0 walker. Repointing add_ob -> add_fx_ob (game_world.cpp:567, public, identical 2-arg signature) routes the HIT into world.fxlist instead, so it is no longer an oblist walker and no longer counted by WalkerOfTeamAlive(team 0). This is a genuine break of HIT-effect emission routing."
@@ -3132,11 +3033,9 @@ inline constexpr SpawnSpec kFamilySpawns_generator_tent[] = {
 
 inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
     pred::TickReached(1500),
-    // Rebaselined 2026-07 (A12b): spawns take one rolled-level
-    // set_difficulty; the changed spawn stats shift the emission cadence.
-    pred::WalkerFamilyCount(FAMILY_SKELETON, 6, 6),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 5, 5),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 4, 4),
+    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
@@ -3157,11 +3056,10 @@ inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
     // aliases to a walker-family name. The MAGE family ID 3
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
-    // Rebaselined 2026-07 (A12b): single rolled-level set_difficulty per
-    // spawn shifts the emission cadence.
-    pred::WalkerFamilyCount(FAMILY_MAGE, 5, 5),
+    // The widened (0, 6) range accommodates RNG-driven emission counts.
+    pred::WalkerFamilyCount(FAMILY_MAGE, 4, 4),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerOfTeamAlive(/*team=*/1, 6, 6),
+    pred::WalkerOfTeamAlive(/*team=*/1, 5, 5),
 };
 
 inline constexpr Mutation kMut_generator_tower_emission = {
@@ -3195,11 +3093,9 @@ inline constexpr SpawnSpec kFamilySpawns_generator_treehouse[] = {
 
 inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
     pred::TickReached(1500),
-    // Rebaselined 2026-07 (A12b): single rolled-level set_difficulty per
-    // spawn shifts the emission cadence.
-    pred::WalkerFamilyCount(FAMILY_ELF, 6, 6),
+    pred::WalkerFamilyCount(FAMILY_ELF, 4, 4),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
-    pred::WalkerOfTeamAlive(/*team=*/1, 7, 7),
+    pred::WalkerOfTeamAlive(/*team=*/1, 5, 5),
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {
@@ -3218,7 +3114,7 @@ inline constexpr FactPredicate kFacts_event_notification_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_notification_emission = {
-    "src/gameplay/walker_combat.cpp", 99,
+    "src/gameplay/walker_combat.cpp", 89,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Replaces the ScoreChange event kind emitted on combat damage with EventKind::None at walker_combat.cpp:89; the resulting score_change drop cascades into the downstream notification chain (death messages, level-end notifications) flipping the notification count."
@@ -3234,7 +3130,7 @@ inline constexpr FactPredicate kFacts_event_set_palette_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_palette_emission = {
-    "src/gameplay/walker_combat.cpp", 99,
+    "src/gameplay/walker_combat.cpp", 89,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Same line as kMut_event_notification_emission; the score_change drop indirectly suppresses the downstream palette-set event triggered on certain combat / score milestones."
@@ -3250,7 +3146,7 @@ inline constexpr FactPredicate kFacts_event_request_redraw_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_request_redraw_emission = {
-    "src/gameplay/walker_combat.cpp", 99,
+    "src/gameplay/walker_combat.cpp", 89,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Same line as kMut_event_notification_emission; score_change ultimately drives HUD request_redraw counts which fall when the line is neutered."
@@ -3265,7 +3161,7 @@ inline constexpr FactPredicate kFacts_event_end_game_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_end_game_emission = {
-    "src/gameplay/walker_combat.cpp", 209,
+    "src/gameplay/walker_combat.cpp", 189,
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes per-hit damage in walker::do_combat_damage; the lone-player-vs-three-enemies arena no longer kills the player so end_game (which fires when the last team-0 walker dies) is never reached."
@@ -3279,19 +3175,11 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 5),
 };
 
-// 2026-07-10: retargeted from 1694 (and 1603 before the forest-pathing
-// wave) back onto the AWAKE-enemy guard in the living act phase — the
-// occurrence master pins. An earlier mechanical line-shift landed this
-// pin on the branch-only DORMANT-spawn guard (same "level_done = 0;"
-// text, 16 lines above), which never executes in this arena (no parity
-// arena spawns dormant walkers), leaving the canary silently toothless.
-// Verified: the awake-guard mutation flips EventKindExactly(set_end, 0);
-// the dormant-guard mutation leaves the dump byte-identical.
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1710,
+    "src/gameplay/game_world.cpp", 1408,
     "level_done = 0;",
     "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1800) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
+    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1484) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
@@ -3308,7 +3196,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3327,7 +3215,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3346,7 +3234,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3365,7 +3253,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 171,
+    "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3384,7 +3272,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 121,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3404,7 +3292,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 121,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3424,7 +3312,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 121,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3444,7 +3332,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 130,
+    "src/gameplay/families/family_elf.cpp", 121,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3465,7 +3353,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 121,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3485,7 +3373,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 121,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3504,7 +3392,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "src/gameplay/families/family_archer.cpp", 123,
+    "src/gameplay/families/family_archer.cpp", 121,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3526,7 +3414,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 289,
+    "src/gameplay/families/family_mage.cpp", 281,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3546,7 +3434,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 289,
+    "src/gameplay/families/family_mage.cpp", 281,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3566,7 +3454,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 289,
+    "src/gameplay/families/family_mage.cpp", 281,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3586,7 +3474,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 289,
+    "src/gameplay/families/family_mage.cpp", 281,
     "BASE_GUY_HP+60",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3632,7 +3520,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 329,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3651,7 +3539,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 329,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3670,7 +3558,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "src/gameplay/families/family_cleric.cpp", 333,
+    "src/gameplay/families/family_cleric.cpp", 329,
     "BASE_GUY_HP+90",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3690,7 +3578,7 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "src/gameplay/families/family_fire_elemental.cpp", 96,
+    "src/gameplay/families/family_fire_elemental.cpp", 94,
     "BASE_GUY_HP+70",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3714,7 +3602,7 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 161,
+    "src/gameplay/families/family_slime.cpp", 155,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3733,7 +3621,7 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 221,
+    "src/gameplay/families/family_slime.cpp", 215,
     "BASE_GUY_HP+50",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_SMALL_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3754,7 +3642,7 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
-    "src/gameplay/families/family_slime.cpp", 281,
+    "src/gameplay/families/family_slime.cpp", 275,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_MEDIUM_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3773,7 +3661,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 193,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3799,7 +3687,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 193,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3818,7 +3706,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 195,
+    "src/gameplay/families/family_thief.cpp", 193,
     "BASE_GUY_HP+45",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3837,7 +3725,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "src/gameplay/families/family_ghost.cpp", 45,
+    "src/gameplay/families/family_ghost.cpp", 42,
     "BASE_GUY_HP+20",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3858,7 +3746,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 165,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3879,7 +3767,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 165,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3898,7 +3786,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 165,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3917,7 +3805,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 172,
+    "src/gameplay/families/family_druid.cpp", 165,
     "BASE_GUY_HP+80",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3978,7 +3866,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 77,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3999,7 +3887,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
+    "src/gameplay/families/family_barbarian.cpp", 77,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4020,7 +3908,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 487,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4039,7 +3927,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 487,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4071,7 +3959,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 509,
+    "src/gameplay/families/family_archmage.cpp", 487,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4112,7 +4000,7 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "src/gameplay/families/family_mage.cpp", 200,
+    "src/gameplay/families/family_mage.cpp", 198,
     "                current_game->world->enemy_freeze += 20 + 11 * self->stats()->level();",
     "                current_game->world->enemy_freeze += 0;",
     "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
@@ -4135,10 +4023,10 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 95,
-    "            self->set_invisibility_left(static_cast<short>(og::combat::cloak_total(self->invisibility_left(), 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level())));",
+    "src/gameplay/families/family_thief.cpp", 93,
+    "            self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level()));",
     "            self->set_invisibility_left(0);",
-    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
+    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover; the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
@@ -4187,9 +4075,8 @@ inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
 // --- Summon-lifecycle scenarios --------------------------------------------
 //
 // Druid slot-2 SUMMON FAERIE deterministically spawns a FAMILY_FAERIE walker
-// owned by the caster with lifetime = druid_faerie_lifetime(level)
-// (family_druid.cpp:78) — bit-exact legacy 50 + level*40 below the 570-tick
-// soft-cap knee. At level 4 that is 210 ticks. The faerie is reaped by the per-tick lifetime
+// owned by the caster with lifetime = 50 + level*40 (family_druid.cpp:71). At
+// level 4 that is 210 ticks. The faerie is reaped by the per-tick lifetime
 // decrement in living.cpp:104-109 once its counter hits zero. Both rows place
 // the team-1 enemy far off-map (2000,2000) so range-gated AI targeting
 // (game_world.cpp:1078-1103) never reaches the faerie or the druid: the druid
@@ -4217,10 +4104,10 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 };
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 78,
-    "            alive->set_lifetime(og::combat::druid_faerie_lifetime(self->stats()->level()));",
+    "src/gameplay/families/family_druid.cpp", 71,
+    "            alive->set_lifetime(50 + self->stats()->level() * 40);",
     "            alive->set_lifetime(99999);",
-    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
+    "Replaces the spawn-time lifetime initialisation with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_decrement_faerie_scen99[] = {
@@ -4240,7 +4127,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] 
 };
 
 inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
-    "src/gameplay/living.cpp", 114,
+    "src/gameplay/living.cpp", 104,
     "const auto remaining_lifetime = lifetime() - 1;",
     "const auto remaining_lifetime = lifetime();",
     "Removes the `- 1` so remaining_lifetime == lifetime() every tick; `if (remaining_lifetime < 1)` at line 106 is permanently false and the lifetime-expiry kill at 108-109 never fires. With the druid kept alive (off-map enemy), owner-death cascades at 87/98 also never fire, so the faerie is still alive at tick 650 and WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Exercises the decrement path rather than initialisation."
@@ -4274,20 +4161,16 @@ inline constexpr SpawnSpec kFamilySpawns_generator_saturation_scen99[] = {
 // the emitted FAMILY_MAGE walkers — both their count and their final-tick HP.
 inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
     pred::TickReached(2500),
-    // Rebaselined 2026-07 (A12b + A6/A7): single rolled-level set_difficulty
-    // per spawn (no more compounded generator-level boost) + eat-free
-    // ground-rules teleport probes shift the emission cadence to 27 mages.
-    pred::WalkerFamilyCount(FAMILY_MAGE, 27, 27),
-    // At least one of those mages finishes at exactly hp 97 on the
-    // rebaselined golden — the single-application rolled-level stat line
-    // (the old 272 pin was the double-application artifact A12b removed).
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 9700, 9700),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 40, 40),
+    // At least one of those mages finishes at exactly hp 272 on both arms
+    // (the "any walker in range" predicate is pinned to that exact value).
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 27200, 27200),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
-    pred::WalkerOfTeamAlive(1, 8, 8),
+    pred::WalkerOfTeamAlive(1, 13, 13),
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1354,
+    "src/gameplay/walker.cpp", 1219,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4346,7 +4229,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 80,
+    "src/gameplay/families/family_elf.cpp", 71,
     "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng))",
     "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng) * 2.0f)",
     "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate."
@@ -4394,7 +4277,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 47,
+    "src/gameplay/families/family_barbarian.cpp", 43,
     "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 2.0f);",
     "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 0.5f);",
     "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
@@ -4457,7 +4340,7 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 241,
+    "src/gameplay/families/family_archmage.cpp", 239,
     "                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);",
     "                        return false;",
     "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail."
@@ -4479,7 +4362,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "src/gameplay/families/family_thief.cpp", 171,
+    "src/gameplay/families/family_thief.cpp", 169,
     "            newob = summon_entity(self, Order::FX, FAMILY_CLOUD);",
     "            return false;",
     "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound."
@@ -4489,20 +4372,13 @@ inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
     // The friendly soldier is spawned FIRST so the druid — spawned next — lands
     // ahead of it in oblist (add_ob prepends), making the druid the walker that
     // find_player_walker binds and the special input drives. No enemies are
-    // spawned: with no foe to charge, the AI friendly idles near the druid
-    // and stays inside range 60 at the tick-20 cast, so PROTECTION's
-    // howmany>1 gate opens deterministically (whether a foe is in range at
-    // the exact cast tick is RNG/AI-movement sensitive and diverges between
-    // branch and master). With no incoming damage the emitted circle is
-    // never consumed as a shield, so it persists in weaplist.
-    // 2026-07-07 guard-standoff fix audit: the friendly originally spawned
-    // 10px from the druid — INTERPENETRATED — and only "idled next to it"
-    // because the classic absorbing interpenetration trap blocked its every
-    // step; with the escape rule the trapped walker wanders off (SE on this
-    // seed) and left range before the cast. Spawned at a LEGAL separation
-    // NW of the druid instead so its (deterministic, SE-trending) idle
-    // wander keeps it inside range 60 through the cast tick.
-    { FAMILY_SOLDIER, 0, kOrderLiving, 85, 90, 0, 0 },            // team-0 friendly, Manhattan 65->wanders SE into range by the cast, no body overlap
+    // spawned: with no foe to charge, the AI friendly idles next to the druid
+    // and stays well inside range 60 at the tick-20 cast on BOTH branch and
+    // master, so PROTECTION's howmany>1 gate opens deterministically (whether a
+    // foe is in range at the exact cast tick is RNG/AI-movement sensitive and
+    // diverges between branch and master). With no incoming damage the emitted
+    // circle is never consumed as a shield, so it persists in weaplist.
+    { FAMILY_SOLDIER, 0, kOrderLiving, 130, 120, 0, 0 },          // second team-0 friendly, 10px from the druid -> inside range 60 throughout
     { FAMILY_DRUID,   0, kOrderLiving, 120, 120, 0, 0, 10, 300 }, // druid caster (level 10 + 300 magicpoints -> slot 4 PROTECTION affordable); the player-controlled walker
 };
 
@@ -4517,7 +4393,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
-    "src/gameplay/families/family_druid.cpp", 123,
+    "src/gameplay/families/family_druid.cpp", 116,
     "                                alive = summon_entity(newob, Order::Weapon, FAMILY_CIRCLE_PROTECTION);",
     "                                return false;",
     "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires."
@@ -4559,7 +4435,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
     "src/gameplay/families/family_thief.cpp", 69,
-    "            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB);",
+    "            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);",
     "            return false;",
     "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor."
 };
@@ -4601,7 +4477,7 @@ inline constexpr FactPredicate kFacts_input_diagonal_movement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_diagonal_movement_scen99 = {
-    "src/interface/input/input_state.cpp", 35,
+    "src/interface/input/input_state.cpp", 26,
     "        held[static_cast<int>(InputKey::DownRight)])",
     "        false)",
     "Drops the DownRight bit from PlayerInput::move_y(): the diagonal key no longer contributes a +1 y component, so the soldier advances only in x and never clears the ypos floor of WalkerPositionMoved(FAMILY_SOLDIER, 175, 175)."
@@ -4641,7 +4517,7 @@ inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 353,
+    "src/gameplay/sim_input_handler.cpp", 350,
     "        if (pi.is_held(InputAction::Fire))",
     "        if (false)",
     "Disables the held-fire branch so the soldier fires only on the single press edge at line 329; the sustained knife stream collapses to one throw and the play_sound count falls below the floor of EventKindAtLeast(play_sound, 5)."
@@ -4691,7 +4567,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 193,
+    "src/gameplay/sim_input_handler.cpp", 188,
     "        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);",
     "        control = oldcontrol;",
     "Makes K_SWITCH a no-op: control never leaves the soldier, so the held K_FIRE throws FAMILY_KNIFE rather than the archer's FAMILY_ARROW, and WeaponFamilyEmitted(FAMILY_ARROW) finds no arrow."
@@ -4740,7 +4616,7 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "src/gameplay/sim_input_handler.cpp", 209,
+    "src/gameplay/sim_input_handler.cpp", 204,
     "        control->set_current_special(control->current_special() + 1);",
     "        control->set_current_special(1);",
     "Replaces the per-press increment with a hard reset to slot 1, so the wrap never reaches FREEZE TIME (slot 3); K_SPECIAL fires TELEPORT, which emits no SetPalette event, failing EventKindAtLeast(set_palette, 1)."
@@ -4792,18 +4668,13 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
     pred::TickReached(44),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    // 2026-07-07 guard-standoff fix: the three-way melee resolves along a
-    // different (snap-faced, non-orbiting) path; the archer finishes the
-    // 44-tick budget at 90.0 hp instead of 78.0. Exact pin moved with the
-    // golden rebaseline; the friendliness mutation's teeth live in the
-    // play_sound floor below, unaffected.
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 9000, 9000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 7800, 7800),
     pred::EventKindAtLeast(/*play_sound*/1, 4,
         "consequence: the soldier (team 0), thief (team 2), and archer (team 1) carry three distinct team_nums and none holds a myguy pointer, so is_friendly takes the no-myguy branch and the verdict reduces to the team_num comparison on walker.cpp:1723; because the numbers differ every pair is hostile and the units trade blows, emitting a stream of combat play_sound events (branch ~10, master ~12). The mutation rewrites line 1723 to `return 1`, making every pair friendly: combat ceases, only the player's lone scripted fire remains, and the play_sound count collapses to 1 — below this floor of 4."),
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2262,
+    "src/gameplay/walker.cpp", 1723,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."
@@ -4816,7 +4687,7 @@ inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
 // its input script (kInputsScripted9301: UP→RIGHT→FIRE) which walks the player
 // onto the exit. Because the destination level is completed but the current one
 // is not, exit_on_eat takes the withdraw branch
-// (treasure_family_navigation.cpp:85-97): it sets world.withdraw_requested=true
+// (treasure_family_navigation.cpp:84-96): it sets world.withdraw_requested=true
 // and emits WithdrawToLevel. From the next tick on, the early-break guards at
 // game_world.cpp:1393/1438/etc fire before any living foe can set level_done=0,
 // so level_done holds at its default 2 (game_world.cpp:1357) — the loop never
@@ -4836,7 +4707,7 @@ inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
 };
 
 inline constexpr Mutation kMut_level_withdraw_scen99 = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 87,
+    "src/gameplay/families/treasure_family_navigation.cpp", 86,
     "        world.withdraw_requested = true;",
     "        world.withdraw_requested = false;",
     "Forces the withdraw-request flag false at the instant the player eats the FAMILY_EXIT treasure on a completed destination level; the early-break guards at game_world.cpp:1393/1438 never fire, the entity-act loop runs to completion, the surviving team-1 enemy sets level_done=0 at game_world.cpp:1408, and the level_done==2 completion branch at 1484 is skipped — so LevelDoneEquals(2) flips to level_done==0 (verified against the mutated branch dump)."
@@ -4873,7 +4744,7 @@ inline constexpr FactPredicate kFacts_midcombat_partial_hp_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 4),
 };
 inline constexpr Mutation kMut_midcombat_partial_hp_scen99 = {
-    "src/gameplay/walker_combat.cpp", 209,
+    "src/gameplay/walker_combat.cpp", 189,
     "    target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "    target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes the central per-hit combat-damage write in walker::do_combat_damage; neither soldier takes damage and both finish at full HP (12000), leaving no FAMILY_SOLDIER in the WalkerHpRangeAtFinalTick band -- flipping it."
@@ -4914,55 +4785,6 @@ inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
     "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + amount);",
     "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + 0);",
     "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it."
-};
-
-// --- Z-axis / multi-floor arenas (branch-internal Invariant) ---------------
-//
-// GRID_SIZE is 16, so pixel 112 == tile 7. A FAMILY_SOLDIER sprite is well
-// under 32px, so its centre cell ((xpos+sizex/2)/16) is (7,7) — exactly the
-// cell apply_floor_setup paints the Z tile into. apply_z_motion (run at the top
-// of living::act every tick, gated floor_count>1) reads the genre under the
-// walker's centre cell and performs the floor transition.
-
-// Z-stair: soldier stands on a PIX_ZSTAIR_UP on floor 0 and climbs to floor 1.
-inline constexpr SpawnSpec kZStairSpawns[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/0 },
-};
-inline constexpr FloorPaint kZStairPaints[] = {
-    { /*floor=*/0, 7, 7, kPixZStairUp }, // stair under the soldier's centre cell
-    { /*floor=*/0, 8, 7, kPixGrass1 },   // grass footprint around the stair
-    { /*floor=*/0, 7, 8, kPixGrass1 },
-    { /*floor=*/0, 8, 8, kPixGrass1 },
-};
-
-// Fall-through-air: soldier spawns on floor 1 over a PIX_AIR hole and falls to
-// the solid grass floor 0 below.
-inline constexpr SpawnSpec kZFallSpawns[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/1 },
-};
-inline constexpr FloorPaint kZFallPaints[] = {
-    { /*floor=*/0, 7, 7, kPixGrass1 },   // solid landing pad on floor 0
-    { /*floor=*/0, 8, 7, kPixGrass1 },
-    { /*floor=*/0, 7, 8, kPixGrass1 },
-    { /*floor=*/0, 8, 8, kPixGrass1 },
-    { /*floor=*/1, 7, 7, kPixAir },      // air hole under the soldier on floor 1
-};
-
-// Two-story fall (fall DAMAGE teeth): soldier spawns on floor 2 over a stacked
-// PIX_AIR shaft (air at (7,7) on floors 2 AND 1) and cascades down to the
-// solid grass pad on floor 0. Two stories fallen -> the first is free, the
-// second costs 15% of max HP (walker::resolve_fall_landing), pinned by
-// WalkerHpRangeAtFinalTick in Parity.z_multifloor_walker_floor_transitions.
-inline constexpr SpawnSpec kZFall2Spawns[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/2 },
-};
-inline constexpr FloorPaint kZFall2Paints[] = {
-    { /*floor=*/0, 7, 7, kPixGrass1 },   // solid landing pad on floor 0
-    { /*floor=*/0, 8, 7, kPixGrass1 },
-    { /*floor=*/0, 7, 8, kPixGrass1 },
-    { /*floor=*/0, 8, 8, kPixGrass1 },
-    { /*floor=*/1, 7, 7, kPixAir },      // shaft continues through floor 1
-    { /*floor=*/2, 7, 7, kPixAir },      // air hole under the soldier on floor 2
 };
 
 // --- Scenario table --------------------------------------------------------
@@ -5107,32 +4929,6 @@ inline constexpr ScenarioSpec kScenarios[] = {
       nullptr, 0,                                                       50,  CompareMode::Invariant, true,
       nullptr, 0, 0, false, false, Exercises::None,
       nullptr, 0, kMut_snapshot_dirty },
-
-    // Z-axis / multi-floor (branch-internal Invariant; no master companion can
-    // model stacked floors). fresh_arena drops scen9301's (empty) population;
-    // apply_floor_setup builds the 2-floor grass arena and paints the Z tiles
-    // before the soldier spawns. The teethed WalkerOnFloor predicate is checked
-    // in Parity.z_multifloor_walker_floor_transitions; the Invariant rows
-    // themselves rely on the dual-capture determinism check. Lint exempts
-    // Invariant rows from fact/mutation requirements (expected_facts nullptr,
-    // discriminating_mutation {}).
-    { "z_stair_up_scen9301", "scen/scen9301.fss", 0x00000055u,
-      nullptr, 0, 50, CompareMode::Invariant, true,
-      kZStairSpawns, std::size(kZStairSpawns), 0, false, true, Exercises::None,
-      nullptr, 0, {}, {},
-      2, kZStairPaints, std::size(kZStairPaints) },
-
-    { "z_fall_through_air_scen9301", "scen/scen9301.fss", 0x00000055u,
-      nullptr, 0, 50, CompareMode::Invariant, true,
-      kZFallSpawns, std::size(kZFallSpawns), 0, false, true, Exercises::None,
-      nullptr, 0, {}, {},
-      2, kZFallPaints, std::size(kZFallPaints) },
-
-    { "z_fall_two_story_scen9301", "scen/scen9301.fss", 0x00000055u,
-      nullptr, 0, 50, CompareMode::Invariant, true,
-      kZFall2Spawns, std::size(kZFall2Spawns), 0, false, true, Exercises::None,
-      nullptr, 0, {}, {},
-      3, kZFall2Paints, std::size(kZFall2Paints) },
 
     // Phase 02 smoke scenarios. fresh_arena drops any walkers the loaded
     // scen file may have produced and replaces them with kSmokeArenaSpawns,
@@ -5757,7 +5553,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04 — event-kind emission scenarios
     { "event_notification_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEventArena, std::size(kInputsEventArena), 150,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5765,7 +5561,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_notification_emission },
 
     { "event_set_palette_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEventArena, std::size(kInputsEventArena), 150,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5773,7 +5569,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_set_palette_emission },
 
     { "event_request_redraw_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEventArena, std::size(kInputsEventArena), 150,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5781,7 +5577,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_request_redraw_emission },
 
     { "event_end_game_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEventArena, std::size(kInputsEventArena), 150,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5789,7 +5585,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_end_game_emission },
 
     { "event_set_end_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEventArena, std::size(kInputsEventArena), 150,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
