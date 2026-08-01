@@ -1115,7 +1115,7 @@ inline constexpr Mutation kMut_walker_ai_wander = {
 };
 
 inline constexpr Mutation kMut_exit_withdraw_path = {
-    "packs/core/scripts/treasure_navigation.lua", 72,
+    "packs/core/scripts/treasure_navigation.lua", 74,
     "  if can_withdraw then",
     "  if false then",
     "Skips exit_on_eat's withdraw branch. With a completed destination and enemies remaining, the normal branch emits WithdrawToLevel and RequestExitConfirmation and sets world.withdraw_requested; disabling it suppresses both events and flips their exact-count predicates."
@@ -1801,7 +1801,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
-    "packs/core/scripts/treasure_navigation.lua", 130,
+    "packs/core/scripts/treasure_navigation.lua", 135,
     "  on_eat = teleporter_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly."
@@ -1912,7 +1912,7 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
-    "packs/core/scripts/treasure_navigation.lua", 126,
+    "packs/core/scripts/treasure_navigation.lua", 131,
     "  on_eat = exit_on_eat,",
     "  on_eat = function() return true end,",
     "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly."
@@ -2946,7 +2946,7 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_cloud_emission = {
-    "packs/core/scripts/effect_cloud.lua", 58,
+    "packs/core/scripts/effect_cloud.lua", 59,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
     "Neuters core:cloud's on_act hook (false = \"not handled\", the no-registered-hook path), so the cloud stops drifting and damaging what it covers, flipping the cloud-emission predicates."
@@ -3027,7 +3027,7 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
-    "packs/core/scripts/effect_chain.lua", 123,
+    "packs/core/scripts/effect_chain.lua", 126,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
     "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates."
@@ -3686,7 +3686,7 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
-    "packs/core/scripts/slime.lua", 130,
+    "packs/core/scripts/slime.lua", 133,
     "  if self:spaces_clear() > 7 then",
     "  if false then",
     "Blocks small_slime_do_special's grow gate so the caster never transforms into FAMILY_MEDIUM_SLIME. The small slime survives and no medium exists, flipping both family-count predicates and WalkerDiedByFinal(SMALL_SLIME)."
@@ -3707,7 +3707,7 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
-    "packs/core/scripts/slime.lua", 130,
+    "packs/core/scripts/slime.lua", 133,
     "  if self:spaces_clear() > 7 then",
     "  if false then",
     "Blocks medium_slime_do_special's grow gate so the caster never transforms into FAMILY_SLIME. The medium slime survives, flipping its zero-count assertion and dropping grow/act sounds below the play_sound floor."
@@ -4754,7 +4754,7 @@ inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
 };
 
 inline constexpr Mutation kMut_level_withdraw_scen99 = {
-    "packs/core/scripts/treasure_navigation.lua", 72,
+    "packs/core/scripts/treasure_navigation.lua", 74,
     "  if can_withdraw then",
     "  if false then",
     "Skips exit_on_eat's can_withdraw branch. RequestExitConfirmation and WithdrawToLevel are not emitted and withdraw completion is not reached, flipping both event floors and LevelDoneEquals(2)."

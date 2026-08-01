@@ -39,12 +39,14 @@ local function exit_on_eat(self, eater)
   end
 
   eater:set_skip_exit(10)
+  -- See if there are any enemies left ...
   local foes_left
   if og.level_done() == 0 then
     foes_left = 1
   else
     foes_left = 0
   end
+  -- Get the name of our exit..
   local exit_name = og.scenario_title(string.format("scen%d", self.level))
   if exit_name == "none" then
     exit_name = string.format("Level %d", self.level)
@@ -89,6 +91,7 @@ local function teleporter_on_eat(self, eater)
   if eater:skip_exit() > 1 then
     return true
   end
+  -- how far away?
   local dist = self:distance_to_ob_center(eater)
   if dist > 21 then
     return true
@@ -97,6 +100,7 @@ local function teleporter_on_eat(self, eater)
     eater:set_skip_exit(8)
     return true
   end
+  -- If we're close enough, teleport ..
   eater:set_skip_exit(eater:skip_exit() + 20)
   local target
   if not self:leader() then
@@ -113,6 +117,7 @@ local function teleporter_on_eat(self, eater)
     eater:center_on(self)
     return true
   end
+  -- Now do special effects
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
     flash.ani_type = C.ANI_EXPAND_8

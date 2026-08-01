@@ -84,15 +84,18 @@ local function slime_on_ani_complete(self)
 
   self:set_ani_type(C.ANI_WALK)
   self:set_cycle(0)
+  -- First, shrink (and move) normal guy ..
   self:transform_to("living", LIVING_SMALL_SLIME)
   self:setxy(self:xpos() - 10, self:ypos() + 10)
 
+  -- Create a new small slime ..
   local child = og.add_ob("living", LIVING_SMALL_SLIME)
   if not child then
     return true
   end
   child:set_floor(self:floor())  -- split child stays on our floor
   child:setxy(self:xpos() + 12, self:ypos() - 12)
+  -- Transfer stats/etc. across to new guy ..
   self:transfer_stats(child)
   local exp_needed = 1000 * self.level  -- uint32 cast as above
   if exp_needed < 0 then

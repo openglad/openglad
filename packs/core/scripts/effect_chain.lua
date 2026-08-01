@@ -23,6 +23,7 @@ local function on_act(self)
     self:death()
     return true
   end
+  -- Are we at our leader? If so, attack him :)
   if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),
           leader:xpos(), leader:ypos(), leader:sizex(), leader:sizey()) then
     local blast = og.add_ob("fx", FX_EXPLOSION)
@@ -40,6 +41,7 @@ local function on_act(self)
     blast:center_on(self)
     leader:set_skip_exit(leader:skip_exit() + 3)
     og.emit_sound(C.SOUND_EXPLODE)
+    -- Now make new objects to seek out foes ..
     local t = og.tuning(self)
     -- shim kept: damage is a C++ float: the fork's damage cut (a YAML
     -- float, 0.5) rounds through float.
@@ -90,6 +92,7 @@ local function on_act(self)
     self:death()
     return true
   end
+  -- Move toward our leader ..
   self:set_lineofsight(self:lineofsight() - 1)
   local distance = self:distance_to_ob_center(leader)
   -- shim kept: stepsize is a C++ float: per-op float rounding.

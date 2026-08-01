@@ -7,6 +7,7 @@ local lc = og.use("living_common")
 local ai = og.use("ai")
 
 local function yell(self)
+  -- yell and 'freeze' foes (special 1)
   if lc.is_busy(self) then
     return false
   end
@@ -68,6 +69,7 @@ local function eat_corpse(self)
     self:g_set_exp(self:g_exp() +
                    og.exp_from_action(self, corpse, "eat_corpse", 0))
   end
+  -- Print the eating notice
   og.emit_notification(
     og.entity_display_name(self, "Orc") .. " ate a corpse.")
   -- Overheal clamps only AFTER the exp grant and the notice (C++ order),

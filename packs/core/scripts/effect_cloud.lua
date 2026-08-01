@@ -39,6 +39,7 @@ local function on_act(self)
     end
   end
 
+  -- Are we performing some action?
   if self:s_has_commands() then
     self:s_do_command()
   else
