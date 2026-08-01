@@ -415,6 +415,15 @@ OG_PARITY_TEST(effect_boomerang_drawcycle_cap_scen99)
 OG_PARITY_TEST(effect_chain_fork_scen99)
 OG_PARITY_TEST(effect_knife_back_catch_scen99)
 OG_PARITY_TEST(effect_ghost_scare_moving_caster_scen99)
+OG_PARITY_TEST(weapon_boulder_explode_damage_scen99)
+OG_PARITY_TEST(weapon_door_unlock_chain_scen99)
+OG_PARITY_TEST(weapon_rock_bounce_edge_scen99)
+OG_PARITY_TEST(weapon_wave_promote_wave2_scen99)
+OG_PARITY_TEST(weapon_sprinkle_freeze_scen99)
+OG_PARITY_TEST(weapon_fire_arrow_explode_damage_scen99)
+OG_PARITY_TEST(weapon_circle_protection_follow_scen99)
+OG_PARITY_TEST(weapon_sit_notify_quiet_scen99)
+OG_PARITY_TEST(weapon_ranged_impact_hp_scen99)
 
 #undef OG_PARITY_TEST
 
