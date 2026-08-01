@@ -7177,6 +7177,379 @@ inline constexpr Mutation kMut_weapon_ranged_impact_hp_scen99 = {
     "Zeroes FAMILY_ARROW's damage column in the EntityDef weapon-defaults table."
 };
 
+// --- corner-misc batch -----------------------------------------------------
+
+// archer_hit_response_backpedal_scen99: a player FAMILY_SOLDIER holds RIGHT+FIRE and
+// walks into an AI FAMILY_ARCHER 30px east of it. Every landed melee swing runs the
+// archer's hit_response (master stats.cpp:556-576 / packs/core/scripts/archer.lua):
+// distance_to_ob < melee_backpedal_range (64, Manhattan) force-commands an 8-step
+// COMMAND_WALK directly away, so the archer is shoved ahead of the advancing soldier.
+// hit_response early-returns for ACT_CONTROL walkers, which is why the archer must be
+// the AI side and the soldier the player.
+inline constexpr InputEvent kInputs_archer_backpedal[] = {
+    {  1, 0, K_RIGHT | K_FIRE },
+    { 70, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_archer_hit_response_backpedal_scen99[] = {
+    { FAMILY_ARCHER,  1, kOrderLiving, 150, 120, 0, 0 }, // AI archer, 30px east: inside the 64px backpedal trigger
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 }, // player LAST (oblist head -> takes ACT_CONTROL)
+};
+
+inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_ARCHER, 1),
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 220, 0,
+        "consequence: each landed melee swing force-commands COMMAND_WALK 8 steps directly away from the attacker, so the archer is driven from its 150 spawn out to xpos 220 ahead of the advancing soldier; with the backpedal disabled it stands its ground and its own approach leaves it at 202, short of this bound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3000, 3000,
+        "consequence: the backpedal pulls the archer out of the soldier's swing arc for 8 ticks after every hit, so it ends on exactly 3000 cents; disabling it re-times the whole exchange and the archer ends on 3100 instead"),
+    pred::EventKindAtLeast(/*play_sound*/1, 4,
+        "anchor: SOUND_CLANG per landed melee swing plus the archer's SOUND_BOW volleys; the backpedal mutation makes the exchange noisier, not quieter, so this stays green and the position/HP pins carry the flip"),
+};
+
+inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
+    "packs/core/scripts/archer.lua", 73,
+    "  if distance < og.tuning(self).melee_backpedal_range then",
+    "  if false then",
+    "Disables the archer's melee backpedal entirely. The archer never receives the away-facing COMMAND_WALK, so it stays in the soldier's swing arc: its final xpos drops 220 -> 202 (below the WalkerPositionMoved bound) and its HP lands on 3100 instead of 3000."
+};
+
+// orc_yell_zero_constitution_scen99: the yell's constitution roll at a ZERO bound.
+// Spawns prepend, so oblist order is the reverse of this array: the player orc is the
+// head (ACT_CONTROL), then the FAMILY_TOWER generator, then the skeleton. Harness-spawned
+// generators have hitpoints == 0, so trunc(hp/30) == 0 and og.rand0(0 * mult) must answer
+// 0 WITHOUT advancing the stream (bindings_entity.cpp:1801 == master screen.cpp:66). The
+// skeleton is iterated second with con == 2, so any spurious draw at the tower shifts its
+// stun roll and every downstream draw for the rest of the run.
+inline constexpr SpawnSpec kFamilySpawns_orc_yell_zero_constitution_scen99[] = {
+    { FAMILY_SKELETON, 1, kOrderLiving,    150, 140, 0, 0 },       // living foe, con = trunc(60/30) = 2 -> two draws
+    { FAMILY_TOWER,    1, kOrderGenerator, 180, 120, 0, 0 },       // hp 0 -> con 0 -> the zero-bound roll (NO draw)
+    { FAMILY_ORC,      0, kOrderLiving,    120, 120, 0, 0, 1, 600 }, // caster LAST; yell_radius(1) = 180 covers both
+};
+
+inline constexpr FactPredicate kFacts_orc_yell_zero_constitution_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1),
+    pred::WalkerPositionMoved(FAMILY_SKELETON, 138, 128,
+        "anchor: the frozen skeleton ends its melee shuffle at exactly (138,128) on both arms; the zero-bound draw changes the damage cadence, not where the skeleton stands, so this pins the arena shape while the HP band carries the flip"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200,
+        "consequence: the orc only takes damage while the skeleton is unfrozen. A spurious draw at the tower's zero constitution bound shifts every later roll by one position, which re-times the skeleton's 100-tick attack cadence and leaves the orc on 8700 cents instead of 8200"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "anchor: SOUND_ROAR is emitted unconditionally at the end of the yell on both arms"),
+};
+
+inline constexpr Mutation kMut_orc_yell_zero_constitution_scen99 = {
+    "packs/core/scripts/orc.lua", 37,
+    "      local con_roll = og.rand0(con * t.yell_con_roll_mult)",
+    "      local con_roll = og.rand0(og.max(con, 1) * t.yell_con_roll_mult)",
+    "Forces a real RNG draw at the tower generator's zero constitution bound, which master's random(x<1) early return never takes. The mutation is a no-op for every foe with con >= 1, so it isolates exactly the zero-bound semantics: every subsequent draw in the run shifts by one position and the orc finishes on 8700 cents instead of 8200."
+};
+
+// mage_freeze_time_offteam_scen99: the freeze_time ELSE arm (caster team != my_team).
+// An AI FAMILY_MAGE on team 1 reaches slot 3 through living::act's ACT_RANDOM roll
+// (living.cpp:358-375: 1-in-5 tick, then rng.next((level+2)/3)+1 == 3 at level 15) and
+// grants min(5 + 2*15, 50) = 35 bonus_rounds to every friend within 30000. Each bonus
+// round is a recursive extra living::act, so the two allied orcs surge toward the distant
+// player soldier. player_team is 0 and the caster is team 1, so BOTH arms take the else
+// branch (master's condition is team_num == 0 || myguy).
+// Harness note: master's else arm announces the grant with viewob[0]->set_display_text()
+// + redraw(), neither of which the master recorder observes. parity_runner.cpp therefore
+// drops the branch's "TIME IS FROZEN!" Notification (is_classic_display_text_notification)
+// and its RequestRedraw, the same normalisation already applied to "TIME LEFT: " and
+// DamageTile. The row asserts no event facts as a result.
+inline constexpr SpawnSpec kFamilySpawns_mage_freeze_time_offteam_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 100,  60, 0, 0 },            // ally A: receives bonus_rounds
+    { FAMILY_ORC,     1, kOrderLiving,  60, 100, 0, 0 },            // ally B: receives bonus_rounds
+    { FAMILY_MAGE,    1, kOrderLiving,  60,  60, 0, 0, 15, 900 },   // AI caster (slot-3 cost 500)
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },            // player LAST, 880px away (Manhattan)
+};
+
+inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
+    pred::TickReached(300),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    pred::WalkerPositionMoved(FAMILY_ORC, 387, 523,
+        "consequence: freeze_time's off-team arm grants min(5 + 2*level, 50) = 35 bonus_rounds to every ally and each bonus round is a recursive extra living::act, so the trailing orc is carried out to (387,523); with the per-level term zeroed the grant collapses to the base 5 and neither orc gets past ypos 439"),
+};
+
+inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
+    "packs/core/families/living-03-mage.yaml", 50,
+    "        bonus_rounds_per_level: 2",
+    "        bonus_rounds_per_level: 0",
+    "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
+};
+
+// beast_set_difficulty_invariant_scen99: reach living::set_difficulty for a family with no
+// generator of its own. SpawnSpec.default_weapon is applied on both arms, and a generator's
+// create_weapon spawns add_ob(Order::Living, default_weapon()), so a TREEHOUSE pointed at
+// FAMILY_GOLEM emits golems and runs golem.lua's og.apply_difficulty_scaling(self, level,
+// 18.0, 5.0, 7.0, 4.0). Generator level 1 -> rolled spawn level 1 -> the hp tuple constant
+// is directly readable as max_hp (300 base + 18*1 = 318). Same shape covers the other
+// uncovered tuples by swapping default_weapon: FAMILY_ARCHER (2), FAMILY_CLERIC (5),
+// FAMILY_DRUID (13), FAMILY_ORC (14). FAMILY_SOLDIER is id 0 and default_weapon == 0 means
+// "skip", so soldier's tuple stays uncovered by this route.
+// GOLDEN NOTE: the companion emits FOUR golems at 336 hp because master applies
+// set_difficulty a second time inside create_weapon (the A12b divergence, dropped branch-
+// side and already documented for generator_owner_cascade_scen99). The merge base
+// reproduces the branch's two 318-hp golems exactly, so the golden here is the branch dump
+// -- see tests/parity/golden/DRIFT_LEDGER.md.
+inline constexpr SpawnSpec kFamilySpawns_beast_set_difficulty_invariant_scen99[] = {
+    { FAMILY_TREEHOUSE, 1, kOrderGenerator, 120, 120, FAMILY_GOLEM, 0 }, // no lifetime, clears owner
+};
+
+inline constexpr FactPredicate kFacts_beast_set_difficulty_invariant_scen99[] = {
+    pred::TickReached(1500),
+    pred::WalkerFamilyCount(FAMILY_GOLEM, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_GOLEM, 31800, 31800,
+        "consequence: golem.lua's set_difficulty tuple adds 18*level^2 hp on top of the 300 base, so a rolled level-1 generator spawn is exactly 318; collapsing the constant to 1.0 puts every emitted golem on 301"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+};
+
+inline constexpr Mutation kMut_beast_set_difficulty_invariant_scen99 = {
+    "packs/core/scripts/golem.lua", 8,
+    "  og.apply_difficulty_scaling(self, level, 18.0, 5.0, 7.0, 4.0)",
+    "  og.apply_difficulty_scaling(self, level, 1.0, 5.0, 7.0, 4.0)",
+    "Collapses the BEAST hp scaling constant from 18 to 1. Every generator-emitted golem lands at 301 hp instead of 318, outside WalkerHpRangeAtFinalTick. set_difficulty draws no RNG, so the spawn cadence and both golem positions are unchanged and the flip is isolated to the hp column."
+};
+
+// thief_taunt_matched_levels_scen99: matched levels make the taunt adjudication
+// falsifiable. Both rolls are og.rand(7), so the LEFT-first (parity) and RIGHT-first
+// orders consume the same two draws but reach the opposite verdict on every unequal pair,
+// and the taunted foe costs one extra og.rand(level) for its FOLLOW duration -- so the
+// verdict moves that draw's POSITION in the stream and every later roll shifts with it.
+// Level 7 is forced by the slot-3 cycling gate ((3-1)*3+1 == 7) and the two foes must
+// match it, so both foes are melee-only families: a level-7 knife thrower one-shots the
+// 75-hp thief (measured), a level-7 melee walker does not, because SpawnSpec.stats_level
+// writes the level field without recomputing the damage column.
+// The team-0 FAMILY_TOWER1 is a stationary, zero-damage punching bag that both foes chew
+// on; its hp is a pure readout of the shifted damage rolls. It is FIRST in the array so
+// the thief (LAST) is still the oblist head and takes ACT_CONTROL.
+inline constexpr SpawnSpec kFamilySpawns_thief_taunt_matched_levels_scen99[] = {
+    { FAMILY_TOWER1,      0, kOrderLiving, 200, 200, 0, 0 },         // stationary team-0 decoy, damage column 0
+    { FAMILY_ORC,         1, kOrderLiving, 180, 150, 0, 0, 7, 0 },   // matched level 7, melee-only (BIT_NO_RANGED)
+    { FAMILY_SMALL_SLIME, 1, kOrderLiving, 150, 180, 0, 0, 7, 0 },   // matched level 7, melee-only, distinct family
+    { FAMILY_THIEF,       0, kOrderLiving, 120, 120, 0, 0, 7, 600 }, // caster LAST
+};
+
+inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "anchor: the taunt arm emits \"THIEF: 'Nyah Nyah!'\" unconditionally once the loop finishes, on either adjudication order"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11100, 11100,
+        "consequence: the taunted foe's FOLLOW-duration draw sits at a different position in the stream under the two adjudication orders, so every later combat roll shifts; the decoy tower reads out that shift as exactly 11100 cents against 11300 under the inverted comparison"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 156, 132,
+        "consequence: the same one-position stream shift re-times the orc's approach; it ends at exactly (156,132) here and at (153,129) under the inverted comparison, short of this bound on both axes"),
+};
+
+inline constexpr Mutation kMut_thief_taunt_matched_levels_scen99 = {
+    "packs/core/scripts/thief.lua", 97,
+    "      if my_roll >= foe_roll then",
+    "      if foe_roll >= my_roll then",
+    "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (decoy tower 11100 -> 11300, orc (156,132) -> (153,129))."
+};
+
+// Face east, then cycle to special slot 4 and cast. The leading K_RIGHT is required:
+// fire() aims from lastx/lasty and an un-nudged ACT_CONTROL walker still has (0, 0)
+// (combat_attack_scen99's golden shows a K_FIRE-only player never lands a hit at all).
+inline constexpr InputEvent kInputsFaceRightSpecialSlot4[] = {
+    {  1, 0, K_RIGHT },        {  3, 0, K_NONE },
+    {  5, 0, K_SPECIAL_SWITCH},{  6, 0, K_NONE },
+    {  8, 0, K_SPECIAL_SWITCH},{  9, 0, K_NONE },
+    { 11, 0, K_SPECIAL_SWITCH},{ 12, 0, K_NONE },
+    { 20, 0, K_SPECIAL },      { 21, 0, K_NONE },
+};
+
+// elf_mega_rocks_volley_scen99: slot 4 MEGA ROCKS fires FOUR bouncing rocks
+// (bounce_volley(5, 4, 5)). Each ranged release emits exactly one play_sound on both
+// arms, so the volley size is directly countable, and four bouncing rocks are enough to
+// finish the lead orc inside the 45-tick budget -- the surviving-orc count is the
+// cleanest discriminator the volley size has.
+inline constexpr SpawnSpec kFamilySpawns_elf_mega_rocks_volley_scen99[] = {
+    { FAMILY_ORC, 1, kOrderLiving, 200, 120, 0, 0 },          // BIT_NO_RANGED: cannot counter-fire
+    { FAMILY_ORC, 1, kOrderLiving, 232, 120, 0, 0 },
+    { FAMILY_ELF, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST; level 10 clears the slot-4 cycling gate
+};
+
+inline constexpr FactPredicate kFacts_elf_mega_rocks_volley_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1,
+        "consequence: the four-rock volley kills one of the two orcs inside the budget; a single rock leaves both standing and this count goes 1 -> 2"),
+    pred::EventKindAtLeast(/*play_sound*/1, 4,
+        "consequence: MEGA ROCKS releases four rocks and fire() emits one play_sound per ranged release on both arms; the one-rock volley reaches only 3 sounds in this arena and cannot meet the floor"),
+    pred::WeaponSpeed(FAMILY_ROCK, 590, 610,
+        "trajectory: the volley's rocks step at 600 centi-px/tick, the elf rock stepsize after next_spread_multiplier scaling"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13400, 13400,
+        "anchor: the trailing orc is untouched by the volley and idles on 13400 cents on both arms, so the family-count and sound-floor pins carry the flip"),
+};
+
+inline constexpr Mutation kMut_elf_mega_rocks_volley_scen99 = {
+    "packs/core/scripts/elf.lua", 72,
+    "    default = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
+    "    default = bounce_volley(5, 1, 5),  -- case 4 and every unmapped slot",
+    "Shrinks MEGA ROCKS from four rocks to one while keeping the MP refund and line-of-sight scaling. The play_sound floor of 4 collapses to 3, the weapon_tracks sample set drops from 62 to 5, and the lead orc survives, so WalkerFamilyCount(FAMILY_ORC, 1, 1) goes to 2."
+};
+
+// fireelemental_starburst_ring_scen99: STARBURST fires the default weapon in all eight
+// (i, j) headings. One play_sound per ranged release on both arms makes the fan
+// countable; a foe on each side of the caster proves it is a ring, not an aimed shot.
+// Budget is short so the caster cannot die and trigger the free parting starburst its
+// on_death hook fires (which would reproduce the fan even with the mutation applied).
+inline constexpr SpawnSpec kFamilySpawns_fireelemental_starburst_ring_scen99[] = {
+    { FAMILY_ORC,           1, kOrderLiving, 180, 120, 0, 0 },          // east of the caster
+    { FAMILY_ORC,           1, kOrderLiving,  60, 120, 0, 0 },          // west of the caster
+    { FAMILY_FIREELEMENTAL, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },  // caster LAST (slot-1 cost 50 > 28 max MP)
+};
+
+inline constexpr FactPredicate kFacts_fireelemental_starburst_ring_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::EventKindAtLeast(/*play_sound*/1, 8,
+        "consequence: the eight-heading fan releases eight meteors and fire() emits one play_sound per ranged release on both arms; suppressing the fan drops the arena to a single sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 12800, 13000,
+        "consequence: the east-facing and west-facing meteors each strike one flanking orc, leaving them on 13000 and 12800 cents; with no meteor released both finish untouched at their 14000-cent max, above this window"),
+};
+
+inline constexpr Mutation kMut_fireelemental_starburst_ring_scen99 = {
+    "packs/core/scripts/fire_elemental.lua", 16,
+    "      if i ~= 0 or j ~= 0 then",
+    "      if false then",
+    "Suppresses every heading of the starburst fan. No meteor is released, so the play_sound floor of 8 collapses to 1, weapon_tracks empties, and both flanking orcs finish at full 14000-cent HP outside the window."
+};
+
+// mage_heartburst_multitarget_scen99: the MAGE's own slot-5 heartburst (distinct range
+// formula and MP slot from the ARCHMAGE twin). Level 13 clears the slot-5 cycling gate
+// ((5-1)*3+1 == 13) and gives an acquisition range of 80 + 2*13 = 106; the three orcs sit
+// at Manhattan 40 / 70 / 60. The pool is (magicpoints - cost)/2 split across the acquired
+// foes, which is enough to finish two of the three inside the 30-tick budget.
+inline constexpr SpawnSpec kFamilySpawns_mage_heartburst_multitarget_scen99[] = {
+    { FAMILY_ORC,  1, kOrderLiving, 160, 120, 0, 0 },
+    { FAMILY_ORC,  1, kOrderLiving, 190, 120, 0, 0 },
+    { FAMILY_ORC,  1, kOrderLiving, 150, 150, 0, 0 },
+    { FAMILY_MAGE, 0, kOrderLiving, 120, 120, 0, 0, 13, 600 }, // caster LAST
+};
+
+inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 5600, 5600,
+        "consequence: heartburst detonates one BIT_MAGICAL explosion on each in-range foe for (magicpoints - cost)/2/foe_count damage, leaving the survivor on exactly 5600 cents; with the acquisition radius collapsed to 2*13 = 26px the far foes are never acquired and the survivor finishes untouched at 14000"),
+    pred::EventKindAtLeast(/*play_sound*/1, 6,
+        "consequence: one on_screen-gated SOUND_EXPLODE per detonated foe plus the deaths they cause; the collapsed radius detonates a single explosion and the arena only reaches 4 sounds"),
+};
+
+inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
+    "packs/core/families/living-03-mage.yaml", 53,
+    "        heartburst_range_base: 80",
+    "        heartburst_range_base: 0",
+    "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 8 -> 4, and the surviving orc finishes on 14000 cents instead of 5600."
+};
+
+// Face east for 9 ticks (sets lastx = stepsize so COMMAND_RUSH has a direction), then cast
+// slot 1. The leading walk is mandatory: charge computes its rush vector as
+// trunc(lastx/stepsize), and an un-nudged ACT_CONTROL walker still has lastx == 0.
+inline constexpr InputEvent kInputsFaceRightSpecialSlot1[] = {
+    {  1, 0, K_RIGHT },  { 10, 0, K_NONE },
+    { 20, 0, K_SPECIAL },{ 21, 0, K_NONE },
+};
+
+// soldier_charge_displacement_scen99: pins the CHARGE rush displacement. The soldier is
+// alone in the open so nothing but the scripted rush moves it; a single far-away orc keeps
+// the level from completing (a team-1-free arena ends instantly, as the generator rows'
+// goldens show). COMMAND_RUSH runs three walksteps per iteration (stats.cpp), so three
+// iterations at soldier stepsize 4 add 24px over a single iteration.
+inline constexpr SpawnSpec kFamilySpawns_soldier_charge_displacement_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 560, 440, 0, 0 },          // far foe: keeps level_done at 0, never reaches the caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },  // caster LAST (slot-1 cost 25 > 20 max MP)
+};
+
+inline constexpr FactPredicate kFacts_soldier_charge_displacement_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 184, 0,
+        "consequence: nine ticks of scripted walking put the soldier on xpos 160 and the three-iteration COMMAND_RUSH adds the last 24px to 184; a single-iteration rush stops exactly on 160 and never reaches this bound"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "anchor: SOUND_CHARGE fires once the forward-blocked check passes, whatever the iteration count, so the position pin carries the flip alone"),
+};
+
+inline constexpr Mutation kMut_soldier_charge_displacement_scen99 = {
+    "packs/core/scripts/soldier.lua", 13,
+    "  self:s_add_command(C.COMMAND_RUSH, 3,",
+    "  self:s_add_command(C.COMMAND_RUSH, 1,",
+    "Cuts the charge from three COMMAND_RUSH iterations to one, dropping the rush contribution from 24px to 0 measurable travel by the dump tick (xpos 184 -> 160). SOUND_CHARGE still fires, so only the position bound flips - the displacement is isolated."
+};
+
+// elf_rocks_pair_scen99: slot 1 ROCKS fires exactly TWO rocks with no do_bounce and no
+// lineofsight boost. Budget 30 and a lone orc downrange mirror weapon_rock_slot2_emit_scen99
+// so the straight two-rock volley and the bouncing slot-2 volley are directly comparable.
+// Reuses kInputsFaceRightSpecialSlot1 (the leading K_RIGHT sets the fire aim).
+inline constexpr SpawnSpec kFamilySpawns_elf_rocks_pair_scen99[] = {
+    { FAMILY_ORC, 1, kOrderLiving, 220, 120, 0, 0 },         // downrange target; BIT_NO_RANGED
+    { FAMILY_ELF, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 }, // caster LAST
+};
+
+inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 4,
+        "consequence: some_rocks releases exactly two rocks, fire() emits one play_sound per ranged release on both arms and both rocks connect; suppressing the second release drops the arena to 3 sounds"),
+    pred::WeaponSpeed(FAMILY_ROCK, 890, 920,
+        "trajectory: the un-boosted slot-1 pair steps at 906 centi-px/tick, measurably faster than the slot-4 volley's 600 because next_spread_multiplier scales each release independently"),
+    pred::WeaponNetTravel(FAMILY_ROCK, kWeaponPathStraight, 1000,
+        "trajectory: slot-1 rocks carry no do_bounce flag, so net == pathlen in open-field scen1.fss and the 1000-centi threshold is cleared within two ticks of flight"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13300, 13300,
+        "consequence: both rocks of the pair land on the downrange orc for a total of 700 cents; with only one released it keeps 13600"),
+};
+
+inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
+    "packs/core/scripts/elf.lua", 25,
+    "  rock = self:fire()",
+    "  rock = nil",
+    "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 4 fails at 3, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13300."
+};
+
+// thief_ai_bomb_flee_scen99: the AI-only drop_bomb flee branch. check_special's thief
+// slot-1 arm refuses only for foe distances strictly inside (35, 130), so the bomber is
+// parked in the middle of the team-0 cluster at Manhattan 30 from all three and the bomb
+// fires. Level 3 is deliberate: living::act rolls rng.next((level+2)/3)+1 for its special
+// slot, which is identically 1 (DROP BOMB) only while (level+2)/3 == 1 -- at level 5 the
+// AI reached for CLOAK every time and never bombed at all.
+// Both flee draws share the bound rand(3), so the LEFT-first (parity) and RIGHT-first
+// orders consume the identical stream and differ ONLY in which axis gets which value.
+// Seed 0x44 is chosen (0x42 draws the symmetric (-1,-1), which no transposition can
+// distinguish): it produces three flees, (0,-1) / (0,1) / (-1,1), all asymmetric.
+inline constexpr SpawnSpec kFamilySpawns_thief_ai_bomb_flee_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 130, 150, 0, 0 },          // Manhattan 30 from the thief
+    { FAMILY_SOLDIER, 0, kOrderLiving, 150, 110, 0, 0 },          // Manhattan 30
+    { FAMILY_THIEF,   1, kOrderLiving, 140, 130, 0, 0, 3, 600 },  // AI bomber (slot-1 cost 35)
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },          // player LAST, Manhattan 30
+};
+
+inline constexpr FactPredicate kFacts_thief_ai_bomb_flee_scen99[] = {
+    pred::TickReached(35),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 3, 3),
+    pred::LevelDoneEquals(2,
+        "consequence: the LEFT-first flee vectors walk the bomber back through the team-0 cluster and it dies inside the budget, completing the level; the transposed vectors carry it clear and the level is still running at the dump tick"),
+    pred::WalkerDiedByFinal(FAMILY_THIEF,
+        "consequence: the flee vector decides whether the bomber clears its own blast and the soldiers' swing arc. LEFT-first it does not and is dead by tick 35; transposing the two draws leaves it alive on 900 cents at (105,135)"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 146, 166,
+        "consequence: the pursuing soldier follows the bomber's flee path, so the transposed vectors leave every soldier north-west of this corner (furthest is (135,129)) while the LEFT-first chase carries one out to exactly (146,166)"),
+};
+
+inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
+    "packs/core/scripts/thief.lua", 64,
+    "    local flee_dy = og.rand(3) - 1",
+    "    local flee_dy = flee_dx; flee_dx = og.rand(3) - 1",
+    "Transposes the two flee draws so the FIRST value lands on dy and the SECOND on dx - exactly the RIGHT-first adjudication the parity port rejected. Stream consumption is unchanged (both bounds are 3), so the only effect is the flee vector: the bomber survives to the dump tick, the level never completes and no soldier reaches (146,166)."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -8905,6 +9278,94 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_weapon_ranged_impact_hp_scen99, std::size(kFacts_weapon_ranged_impact_hp_scen99),
       kMut_weapon_ranged_impact_hp_scen99 },
+
+    { "archer_hit_response_backpedal_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_backpedal, std::size(kInputs_archer_backpedal), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_hit_response_backpedal_scen99, std::size(kFamilySpawns_archer_hit_response_backpedal_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_hit_response_backpedal_scen99, std::size(kFacts_archer_hit_response_backpedal_scen99),
+      kMut_archer_hit_response_backpedal_scen99 },
+
+    { "orc_yell_zero_constitution_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_yell_zero_constitution_scen99, std::size(kFamilySpawns_orc_yell_zero_constitution_scen99),
+      0, false, true, Exercises::Special_Orc_1,
+      kFacts_orc_yell_zero_constitution_scen99, std::size(kFacts_orc_yell_zero_constitution_scen99),
+      kMut_orc_yell_zero_constitution_scen99 },
+
+    { "mage_freeze_time_offteam_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 300,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_freeze_time_offteam_scen99, std::size(kFamilySpawns_mage_freeze_time_offteam_scen99),
+      0, false, true, Exercises::Special_Mage_3,
+      kFacts_mage_freeze_time_offteam_scen99, std::size(kFacts_mage_freeze_time_offteam_scen99),
+      kMut_mage_freeze_time_offteam_scen99 },
+
+    { "beast_set_difficulty_invariant_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 1500,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_beast_set_difficulty_invariant_scen99, std::size(kFamilySpawns_beast_set_difficulty_invariant_scen99),
+      0, false, true, Exercises::None,
+      kFacts_beast_set_difficulty_invariant_scen99, std::size(kFacts_beast_set_difficulty_invariant_scen99),
+      kMut_beast_set_difficulty_invariant_scen99 },
+
+    { "thief_taunt_matched_levels_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_taunt_matched_levels_scen99, std::size(kFamilySpawns_thief_taunt_matched_levels_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_taunt_matched_levels_scen99, std::size(kFacts_thief_taunt_matched_levels_scen99),
+      kMut_thief_taunt_matched_levels_scen99 },
+
+    { "elf_mega_rocks_volley_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsFaceRightSpecialSlot4, std::size(kInputsFaceRightSpecialSlot4), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_mega_rocks_volley_scen99, std::size(kFamilySpawns_elf_mega_rocks_volley_scen99),
+      0, false, true, Exercises::Special_Elf_4,
+      kFacts_elf_mega_rocks_volley_scen99, std::size(kFacts_elf_mega_rocks_volley_scen99),
+      kMut_elf_mega_rocks_volley_scen99 },
+
+    { "fireelemental_starburst_ring_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_fireelemental_starburst_ring_scen99, std::size(kFamilySpawns_fireelemental_starburst_ring_scen99),
+      0, false, true, Exercises::Special_FireElemental_1,
+      kFacts_fireelemental_starburst_ring_scen99, std::size(kFacts_fireelemental_starburst_ring_scen99),
+      kMut_fireelemental_starburst_ring_scen99 },
+
+    { "mage_heartburst_multitarget_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot5, std::size(kInputsSpecialSlot5), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_heartburst_multitarget_scen99, std::size(kFamilySpawns_mage_heartburst_multitarget_scen99),
+      0, false, true, Exercises::Special_Mage_5,
+      kFacts_mage_heartburst_multitarget_scen99, std::size(kFacts_mage_heartburst_multitarget_scen99),
+      kMut_mage_heartburst_multitarget_scen99 },
+
+    { "soldier_charge_displacement_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsFaceRightSpecialSlot1, std::size(kInputsFaceRightSpecialSlot1), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_displacement_scen99, std::size(kFamilySpawns_soldier_charge_displacement_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_soldier_charge_displacement_scen99, std::size(kFacts_soldier_charge_displacement_scen99),
+      kMut_soldier_charge_displacement_scen99 },
+
+    { "elf_rocks_pair_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsFaceRightSpecialSlot1, std::size(kInputsFaceRightSpecialSlot1), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_rocks_pair_scen99, std::size(kFamilySpawns_elf_rocks_pair_scen99),
+      0, false, true, Exercises::Special_Elf_1,
+      kFacts_elf_rocks_pair_scen99, std::size(kFacts_elf_rocks_pair_scen99),
+      kMut_elf_rocks_pair_scen99 },
+
+    { "thief_ai_bomb_flee_scen99", "scen/scen1.fss", 0x00000044u,
+      kInputsEmpty, std::size(kInputsEmpty), 35,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_ai_bomb_flee_scen99, std::size(kFamilySpawns_thief_ai_bomb_flee_scen99),
+      0, false, true, Exercises::Special_Thief_1,
+      kFacts_thief_ai_bomb_flee_scen99, std::size(kFacts_thief_ai_bomb_flee_scen99),
+      kMut_thief_ai_bomb_flee_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
