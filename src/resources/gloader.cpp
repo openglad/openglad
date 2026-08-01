@@ -551,6 +551,7 @@ void loader::reload_graphics()
 
 	// clang-format off
 	static const EntityDef defs[] = {
+		// The los column acts as a weapon's range (pixel range == lineofsight * stepsize)
 		// Weapon entities (BLOOD pix handled separately for gore toggle)
 		//                                                       hp  act         anim           step los  dmg freq
 		{Order::Weapon, FAMILY_KNIFE,             "knife.png",    6, ACT_FIRE, anikni.data(),          5,  7,  6, 0},

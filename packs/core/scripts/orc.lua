@@ -48,6 +48,7 @@ end
 
 local function eat_corpse(self)
   -- eat corpse for health (specials 2/3/4 and the default case)
+  -- can't eat if we're 'full'
   if self.hp >= self.max_hp then
     return false
   end

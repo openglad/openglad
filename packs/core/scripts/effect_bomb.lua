@@ -13,6 +13,7 @@ local function compute_explosion_range(level, skip_exit)
     -- to the 16-pixel minimum instead of keeping the caster's level range.
     range = 0
   end
+  -- set max range to about 6 tiles
   range = og.clamp(range, 16, 96)
   return range
 end

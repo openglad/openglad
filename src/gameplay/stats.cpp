@@ -1295,6 +1295,7 @@ bool statistics::walk_to_foe()
 			}
 			else // our foe has moved; we need a new one
 			{
+				// Zardus: PORT: needs to check for commandlist
 				if (!commands.empty())
 					commands.front().commandcount = 0;
 			}
@@ -1337,6 +1338,7 @@ bool statistics::walk_to_foe()
 	// Are we really really close? Stop searching, then :)  But never abandon a
 	// cross-floor chase on 2D proximity — the foe is on another floor and we
 	// still need to reach the Z-stair and climb.
+	// Zardus: lets check if commandlist exists, too
 	if (!cross_floor && tempdistance < 30 && !commands.empty())
 	{
 		commands.front().commandcount = 0;

@@ -166,6 +166,7 @@ public:
 
     int living_count = 0;
     EntityList oblist;
+    // fx--explosions, etc.
     EntityList fxlist;
     EntityList weaplist;
     EntityList dead_list;
@@ -384,7 +385,9 @@ public:
     bool completion_events_emitted = false;
     short next_level = -1;
     short ending = 0;
+    // stops enemies from acting
     std::int32_t enemy_freeze = 0;
+    // 'moderate' speed setting
     signed char timer_wait = 6;
     char end = 0;
     bool retry = false;

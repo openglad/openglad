@@ -566,6 +566,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (scorecountup[team_num] > myscore)
                     scorecountup[team_num] = myscore;
 
+                // above should count up the score towards the current amount
                 int special_y = bm + special_offset;
                 if (s->numviews > 2 && !(s->numviews == 3 && players == 0))
                 {
@@ -583,6 +584,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));
                 }
 
+                // Currently-select special
                 if (control->shifter_down() &&
                     s->alternate_name[fam][spc] != "NONE")
                     message = std::format("SPC: {}", s->alternate_name[fam][spc]);
@@ -736,6 +738,7 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
 {
     short i, j;
 
+    // Draw the black border ..
     s->fastbox(left+2, top, somelength-4, 1, 0, 1);
     s->fastbox(left+1, top+1, 1,  1, 0, 1);
     s->fastbox(left+58, top+1, 1, 1, 0, 1);
@@ -749,6 +752,7 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
     s->fastbox(left+1, top+2, somelength-2, 3, somecolor, 1);
     s->fastbox(left+2, top+5, somelength-4, 1, somecolor, 1);
 
+    // rotating colors .. do special ..
     if ((somecolor == ORANGE_START) || (somecolor == WATER_START))
     {
         for (i=0; i < (somelength-4)/2; i++)

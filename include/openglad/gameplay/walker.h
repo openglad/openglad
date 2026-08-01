@@ -200,8 +200,10 @@ class walker : public og::sim::SimEntity
 		// projectiles use it; 0 for everything else (legacy flat behavior).
 		OG_WALKER_DIRTY_FIELD(float, vz, og::dirty::BIT_VZ);
 		OG_WALKER_DIRTY_FIELD(float, stepsize, og::dirty::BIT_STEPSIZE);
+		// used for elven forestwalk
 		OG_WALKER_DIRTY_FIELD(float, normal_stepsize, og::dirty::BIT_NORMAL_STEPSIZE);
 		OG_WALKER_DIRTY_FIELD(signed char, curdir, og::dirty::BIT_CURDIR);
+		// Proposed direction facing
 		OG_WALKER_DIRTY_FIELD(char, enddir, og::dirty::BIT_ENDDIR);
 		OG_WALKER_DIRTY_FIELD(float, damage, og::dirty::BIT_DAMAGE);
 		OG_WALKER_DIRTY_FIELD(float, fire_frequency, og::dirty::BIT_FIRE_FREQUENCY);
@@ -225,19 +227,28 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(signed char, cycle, og::dirty::BIT_CYCLE);
 		OG_WALKER_DIRTY_FIELD(unsigned char, drawcycle, og::dirty::BIT_DRAWCYCLE);
 		OG_WALKER_DIRTY_FIELD(char, current_special, og::dirty::BIT_CURRENT_SPECIAL);
+		// for non-colliding objects
 		OG_WALKER_DIRTY_FIELD(char, ignore, og::dirty::BIT_IGNORE);
+		// Zardus: ADD: in_act should be set while in an action
 		OG_WALKER_DIRTY_FIELD(bool, in_act, og::dirty::BIT_IN_ACT);
+		// is our shifter/alternate key pressed?
 		OG_WALKER_DIRTY_FIELD(short, shifter_down, og::dirty::BIT_SHIFTER_DOWN);
 		OG_WALKER_DIRTY_FIELD(short, yo_delay, og::dirty::BIT_YO_DELAY);
+		// cycles after failed exit choice
 		OG_WALKER_DIRTY_FIELD(short, skip_exit, og::dirty::BIT_SKIP_EXIT);
 		OG_WALKER_DIRTY_FIELD(unsigned char, outline, og::dirty::BIT_OUTLINE);
 		OG_WALKER_DIRTY_FIELD(bool, hurt_flash, og::dirty::BIT_HURT_FLASH);
 		OG_WALKER_DIRTY_FIELD(std::int32_t, lifetime, og::dirty::BIT_LIFETIME);
+		// These two are used for
+		// speed potions, etc.
 		OG_WALKER_DIRTY_FIELD(float, speed_bonus, og::dirty::BIT_SPEED_BONUS);
 		OG_WALKER_DIRTY_FIELD(std::int32_t, speed_bonus_left, og::dirty::BIT_SPEED_BONUS_LEFT);
 		OG_WALKER_DIRTY_FIELD(short, charm_left, og::dirty::BIT_CHARM_LEFT);
+		// for fighter's blades
 		OG_WALKER_DIRTY_FIELD(short, weapons_left, og::dirty::BIT_WEAPONS_LEFT);
+		// used to open doors
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, keys, og::dirty::BIT_KEYS);
+		// used for seeing treasures, etc. on radar
 		OG_WALKER_DIRTY_FIELD(short, view_all, og::dirty::BIT_VIEW_ALL);
 		OG_WALKER_DIRTY_FIELD(std::int32_t, lineofsight, og::dirty::BIT_LINEOFSIGHT);
 		OG_WALKER_DIRTY_FIELD(int, path_check_counter, og::dirty::BIT_PATH_CHECK_COUNTER);

@@ -37,6 +37,7 @@ local function throw_boomerang(self)
 end
 
 local function whirlwind(self)
+  -- can't do while attacking, etc.
   if self:busy() ~= 0 then
     return false
   end
@@ -72,6 +73,7 @@ local function disarm(self)
   if self:busy() ~= 0 then
     return false
   end
+  -- can't do this if no frontal enemy
   if not self:s_forward_blocked() then
     return false
   end

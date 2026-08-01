@@ -1129,7 +1129,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 1663,
+    "src/gameplay/game_world.cpp", 1672,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result."
@@ -1157,7 +1157,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1661,
+    "src/gameplay/game_world.cpp", 1670,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check."
@@ -1169,28 +1169,28 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/scripts/archmage.lua", 522,
+    "packs/core/scripts/archmage.lua", 527,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/scripts/cleric.lua", 296,
+    "packs/core/scripts/cleric.lua", 301,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/scripts/mage.lua", 272,
+    "packs/core/scripts/mage.lua", 276,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/scripts/thief.lua", 194,
+    "packs/core/scripts/thief.lua", 195,
     "  specials = {",
     "  specials = { default = function() return true end }, _ignored = {",
     "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates."
@@ -1219,14 +1219,14 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 // instead of being measured.
 
 inline constexpr Mutation kMut_family_spawn_identity = {
-    "src/resources/gloader.cpp", 796,
+    "src/resources/gloader.cpp", 797,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_spawn_identity_elf = {
-    "src/resources/gloader.cpp", 796,
+    "src/resources/gloader.cpp", 797,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
     "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
@@ -1317,7 +1317,7 @@ inline constexpr Mutation kMut_family_thief_init = {
 };
 
 inline constexpr Mutation kMut_family_ghost_init = {
-    "src/resources/gloader.cpp", 796,
+    "src/resources/gloader.cpp", 797,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>(0));",
     "Forces every gloader-spawned walker to be tagged FAMILY_SOLDIER; in any build env the GHOST walker is dumped as SOLDIER, so WalkerFamilyCount(GHOST,1,1) drops to 0 and WalkerAliveAtFinal(GHOST,1) loses its quorum."
@@ -2140,7 +2140,7 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
-    "src/resources/gloader.cpp", 565,
+    "src/resources/gloader.cpp", 566,
     "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          6,  6,  5, 0},",
     "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          3,  6,  5, 0},",
     "Halves FAMILY_BONE's base stepsize (7th column, the loaded weapon step) from 6 to 3. The cardinal firing path (walker.cpp:1190 stepsize*362/256) then yields 3*1.414=4.24 px/tick, so the seq-0 BONE projectile's max consecutive-tick step drops from 900 to ~500 centi-px, OUTSIDE WeaponSpeed(FAMILY_BONE,850,950) -> that predicate FLIPS. BONE is still emitted (WeaponFamilyEmitted stays green) and still travels straight, so the flip is isolated to the speed teeth."
@@ -2252,7 +2252,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
-    "src/resources/gloader.cpp", 559,
+    "src/resources/gloader.cpp", 560,
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        8, 12,  7, 0},",
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        3, 12,  7, 0},",
     "Lowers FAMILY_FIRE_ARROW's base stepsize from 8 to 3. The bolt's per-tick step falls to about 510 centipixels, outside WeaponSpeed's [1000,1250] bracket, and the same slowdown reduces its straight-line travel."
@@ -2276,7 +2276,7 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
-    "src/resources/gloader.cpp", 567,
+    "src/resources/gloader.cpp", 568,
     "aniarrow.data(),        9, 13,  6, 0",
     "aniarrow.data(),        2, 13,  6, 0",
     "Halves+ the FAMILY_LIGHTNING base stepsize (column 'step' 9 -> 2) in the EntityDef weapon-defaults table; the cardinal-fired bolt's per-tick step collapses from ~12.7 px (max_step 1304 centi-px/tick) to ~2.8 px (~283 centi-px/tick), so WeaponSpeed(FAMILY_LIGHTNING,1250,1360) flips (and seq0 net falls below the WeaponNetTravel STRAIGHT threshold 2000 too)."
@@ -2355,7 +2355,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/scripts/mage.lua", 221,
+    "packs/core/scripts/mage.lua", 225,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -2640,7 +2640,7 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
-    "src/resources/gloader.cpp", 575,
+    "src/resources/gloader.cpp", 576,
     "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),        10,  9, 25, 0}",
     "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),         4,  9, 25, 0}",
     "Cuts FAMILY_BOULDER's base stepsize from 10 to 4 in the gloader weapon table; after the cardinal-direction *1.414 scaling (walker.cpp:1190) the boulder now moves ~5.66px/tick instead of ~14.14, so its seq-0 per-tick step drops to ~566 centi-px/tick — outside WeaponSpeed's [1350,1600] window — flipping WeaponSpeed(FAMILY_BOULDER) pass->fail. The boulder still emits (WeaponFamilyEmitted stays green) and still travels straight, isolating the speed-trajectory tooth. The from/to omit line 430's two leading TABs and match the unique substring of that line (the canary's lookup_mutation emits a TAB-separated record consumed by `IFS=$'\\t' read`, so embedded tabs would corrupt the field split — identical convention to the sibling kMut_weapon_knife/_rock/_arrow which target a TAB-indented line)."
@@ -2757,7 +2757,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_emission = {
-    "packs/core/scripts/effect_bomb.lua", 96,
+    "packs/core/scripts/effect_bomb.lua", 97,
     "  on_death = bomb_on_death,",
     "  on_death = function() return false end,",
     "Neuters core:bomb's on_death hook (false = \"not handled\", the no-registered-hook path), so the thief's dropped bomb expires without detonating: no EXPLOSION effect is spawned and no blast damage lands, flipping the scenario's effect-count and surviving-HP predicates."
@@ -2797,7 +2797,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_explosion_emission = {
-    "packs/core/scripts/effect_bomb.lua", 100,
+    "packs/core/scripts/effect_bomb.lua", 101,
     "  on_death = explosion_on_death,",
     "  on_death = function() return false end,",
     "Neuters core:explosion's on_death hook (false = \"not handled\", the no-registered-hook path), so the blast's terminal damage/sound pass never runs and the explosion FX simply expires, flipping the scenario's explosion-emission predicates."
@@ -3027,7 +3027,7 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
-    "packs/core/scripts/effect_chain.lua", 126,
+    "packs/core/scripts/effect_chain.lua", 128,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
     "Neuters core:chain's on_act hook (false = \"not handled\", the no-registered-hook path), so chain lightning never seeks its nearest foe or explodes on it, flipping the chain-emission predicates."
@@ -3238,10 +3238,10 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1742,
+    "src/gameplay/game_world.cpp", 1768,
     "level_done = 0;",
     "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1800) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
+    "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
@@ -3686,7 +3686,7 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
-    "packs/core/scripts/slime.lua", 133,
+    "packs/core/scripts/slime.lua", 134,
     "  if self:spaces_clear() > 7 then",
     "  if false then",
     "Blocks small_slime_do_special's grow gate so the caster never transforms into FAMILY_MEDIUM_SLIME. The small slime survives and no medium exists, flipping both family-count predicates and WalkerDiedByFinal(SMALL_SLIME)."
@@ -3707,7 +3707,7 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
-    "packs/core/scripts/slime.lua", 133,
+    "packs/core/scripts/slime.lua", 134,
     "  if self:spaces_clear() > 7 then",
     "  if false then",
     "Blocks medium_slime_do_special's grow gate so the caster never transforms into FAMILY_SLIME. The medium slime survives, flipping its zero-count assertion and dropping grow/act sounds below the play_sound floor."
@@ -4088,7 +4088,7 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "packs/core/scripts/thief.lua", 76,
+    "packs/core/scripts/thief.lua", 77,
     "  self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "  self:set_invisibility_left(0)",
     "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
@@ -4343,7 +4343,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "packs/core/scripts/barbarian.lua", 33,
+    "packs/core/scripts/barbarian.lua", 35,
     "    boulder:set_stepsize(self.level * 2)",
     "    boulder:set_stepsize(self.level * 0.5)",
     "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
@@ -4404,7 +4404,7 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "packs/core/scripts/archmage.lua", 227,
+    "packs/core/scripts/archmage.lua", 229,
     "      local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
     "      return false",
     "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail."
@@ -4426,7 +4426,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/scripts/thief.lua", 178,
+    "packs/core/scripts/thief.lua", 179,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  return false",
     "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound."
@@ -4501,7 +4501,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "packs/core/scripts/thief.lua", 44,
+    "packs/core/scripts/thief.lua", 45,
     "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "  return false",
     "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor."
@@ -4669,7 +4669,7 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "packs/core/scripts/mage.lua", 185,
+    "packs/core/scripts/mage.lua", 189,
     "  if self.team == og.u8(og.my_team()) then",
     "  if false and self.team == og.u8(og.my_team()) then",
     "Reroutes the player-team FREEZE TIME cast into the foreign-team branch. The cast still fires, but emits notifications and RequestRedraw instead of tinting the palette, so EventKindAtLeast(set_palette,1) flips."

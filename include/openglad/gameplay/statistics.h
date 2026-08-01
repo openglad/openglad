@@ -235,7 +235,9 @@ class command
 	public:
 		command();
 		std::int32_t commandtype;
+		// # times to execute command
 		std::int32_t commandcount;
+		// parameters to command
 		std::int32_t com1;
 		std::int32_t com2;
 		// True only for entries injected via statistics::force_command

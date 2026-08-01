@@ -106,6 +106,7 @@ short obmap::query_list(walker  *ob, short x, short y)
 
 short obmap::remove(walker  *ob)  // This goes in walker's destructor
 {
+    // Some of this is redundant, but its worth avoiding segfaults, IMO :-)
     if (!ob)
         return 0;
 

@@ -227,6 +227,8 @@ SimInputResult sim_process_player_input(
     }
 
     // --- yo_delay tick ---
+    // Make sure we haven't yelled recently (this is here because it is
+    // guaranteed to run exactly once each frame)
     if (control->yo_delay() > 0)
         control->set_yo_delay(control->yo_delay() - 1);
 
@@ -317,6 +319,7 @@ SimInputResult sim_process_player_input(
     }
 
     // --- Movement and actions ---
+    // Make sure we're not performing some queued action ..
     if (control->stats()->commands.empty())
     {
         #ifndef USE_TOUCH_INPUT

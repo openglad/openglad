@@ -41,6 +41,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 		walker* result = nullptr;
 		control->set_user(-1);
+		// hope this works
 		control->set_act_type(ACT_RANDOM);
 
 		short oldteam = game_screen->save_data.my_team;
@@ -72,6 +73,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 		control->set_act_type(ACT_CONTROL);
 	}
 
+	// Testing effect object ..
+	// kill living bad guys
 	if (query_key_event(KEYCODE_F12, native_event))
 	{
 		for (auto& uptr : game_screen->world().oblist)

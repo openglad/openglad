@@ -8,6 +8,7 @@ local function do_special(self)
     return false
   end
   local shot = self:fire()
+  -- failed somehow? !?!
   if not shot then
     return false
   end
@@ -21,6 +22,7 @@ local function do_special(self)
   boulder.level = self.level
   boulder:set_lastx(shot:lastx())
   boulder:set_lasty(shot:lasty())
+  -- Set our boulder's speed and extra damage ..
   if self:has_guy() then
     -- guy strength is a short: strength / 7 is INTEGER division in the C++,
     -- then the int joins 1.0f in a single float add.

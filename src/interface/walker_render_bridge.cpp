@@ -123,6 +123,7 @@ walker::~walker()
 	myself_ = nullptr;
 }
 
+// This is used for grabbing a pixieN directly, not through a walker
 std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, std::int32_t family)
 {
 	if (!graphics[PIX(order, family)].valid())

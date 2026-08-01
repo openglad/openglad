@@ -73,6 +73,8 @@ bool help_testing_force_scroll_text()
 
 // Shared scrolling text viewer used by read_scenario and read_campaign_intro.
 // GetLine(int index) should return a std::string for the given line index.
+// Note: this code has been redone to work in 'scanlines,'
+//       so that the text scrolls by pixels rather than lines.
 template <typename GetLine>
 static short scroll_text_view(screen* scr, int num_lines, int box_width,
     const char* title, Sint32 buf_x, Sint32 buf_y, Sint32 buf_w, Sint32 buf_h,
@@ -180,6 +182,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 					                line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
 			}
 
+			// Draw a bounding box (top and bottom edges) ..
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
 			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP-2);
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
@@ -231,6 +234,9 @@ short read_campaign_intro(screen *s)
 
 
 // OgFile-based overloads (used by tests and headless builds)
+// This function reads one text line from file infile,
+// stopping at length (length), or when encountering an
+// end-of-line character ..
 std::string read_one_line(og::io::OgFile& infile, short length)
 {
     char temp;
@@ -245,6 +251,8 @@ std::string read_one_line(og::io::OgFile& infile, short length)
     return newline;
 }
 
+// This function fills the array with the help file text ..
+// It returns the # of lines successfully filled ..
 short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile)
 {
     short i;

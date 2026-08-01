@@ -50,6 +50,8 @@ local function exploding_shot(self)
   if not arrow then
     return false
   end
+  -- used as a dummy variable to
+  -- signify exploding .. :(
   arrow:set_skip_exit(5000)
   -- Keep the old "buffed arrow" hitpoint pool.
   arrow.hp = t.exploding_shot_hp
@@ -90,6 +92,7 @@ og.register_hooks("living", "core:archer", {
     [2] = flurry,
     default = exploding_shot,  -- cases 3, 4, and every unmapped slot
   },
+  -- about 6 squares
   check_special_ai = ai.foe_within(130),  -- fixed per-tick AI gate
   hit_response = hit_response,
   set_difficulty = set_difficulty,

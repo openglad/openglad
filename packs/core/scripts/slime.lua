@@ -86,6 +86,7 @@ local function slime_on_ani_complete(self)
   self:set_cycle(0)
   -- First, shrink (and move) normal guy ..
   self:transform_to("living", LIVING_SMALL_SLIME)
+  -- diagonal 'down left' of normal
   self:setxy(self:xpos() - 10, self:ypos() + 10)
 
   -- Create a new small slime ..

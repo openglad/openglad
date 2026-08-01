@@ -67,6 +67,7 @@ local function heal_or_mace(self)
     -- normal heal
     local friends, friend_count =
       og.find_friends_in_range("ob", t.heal_range, self)
+    -- no friends, so don't charge us
     if friend_count <= 1 then
       return false
     end
@@ -98,6 +99,7 @@ local function heal_or_mace(self)
         self:do_heal_effects(self, ally, amount)
       end
     end
+    -- everyone was healthy; don't charge us
     if healed == 0 then
       return false
     end
@@ -128,6 +130,7 @@ local function heal_or_mace(self)
     self:g_set_total_shots(self:g_total_shots() + 1)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
   end
+  -- All okay, let's summon!
   local mace = og.summon(self, "fx", FX_MAGIC_SHIELD)
   if not mace then
     return false
@@ -242,6 +245,7 @@ local function resurrect(self)
       end
     end
   else
+    -- raise an opponent as undead
     alive = self:do_summon(LIVING_GHOST, t.resurrect_ghost_lifetime)
     if not alive then
       return false
@@ -265,6 +269,7 @@ local function check_special_ai(self)
   if self:current_special() == 1 then -- healing
     local _, friend_count = og.find_friends_in_range(
       "ob", og.tuning(self).heal_range, self)
+    -- other than ourselves?
     if friend_count > 1 then
       self:set_shifter_down(0) -- we're HEALING
       return true

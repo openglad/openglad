@@ -3767,6 +3767,7 @@ Sint32 level_editor()
 
 
 		// Scroll the screen (panning)
+		// Zardus: ADD: added scrolling by keyboard
 		#ifndef OUYA
 		eds().pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
 		eds().pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
@@ -4187,6 +4188,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
         }
 	}
 
+    // Also check the fx list ..
     for(auto& uptr : data->world().fxlist)
 	{
 	    walker* w = uptr.get();
@@ -4201,6 +4203,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
         }
 	}
 
+    // Also check the weapons list ..
     for(auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();

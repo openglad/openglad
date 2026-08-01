@@ -633,6 +633,7 @@ short GameWorld::remove_ob(walker* ob)
 {
     auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
 
+    // most common case
     auto& weapons = weaplist.raw_mutable();
     auto e = std::find_if(weapons.begin(), weapons.end(), pred);
     if (e != weapons.end())
@@ -687,6 +688,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
         return false;
 
+    // Are we ethereal?
     if (ob->stats()->query_bit_flags(BIT_ETHEREAL))
         return true;
 
@@ -701,6 +703,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     const bool has_decor =
         dec.valid() && dec.w == fg.w && dec.h == fg.h;
 
+    // Check if our butt hangs over shorto next grid square
     if ((xover % GRID_SIZE) == 0)
         xtrax = 0;
     if ((yover % GRID_SIZE) == 0)
@@ -793,6 +796,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                 case PIX_PATH_3:
                 case PIX_PATH_4:
                     break;
+                // trees are usually bad, but we can fly over them
                 case PIX_TREE_M1:
                 case PIX_TREE_ML:
                 case PIX_TREE_MR:
@@ -813,6 +817,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                         break;
                     return false;
 
+                // walls bad, but we can "ethereal" through them by default
                 case PIX_H_WALL1:
                 case PIX_WALL2:
                 case PIX_WALL3:
@@ -1172,10 +1177,13 @@ walker* GameWorld::find_near_foe(walker* ob)
             }
         }
 
+        // change whether we do x or y in each for loop
         ++xchange;
         if ((xchange % 2) == 0)
         {
+            // reverse direction around the search every other for
             resolution = static_cast<short>(-resolution);
+            // increase the search width every other for
             ++spread;
         }
     }
@@ -1221,6 +1229,7 @@ walker* GameWorld::find_far_foe(walker* ob)
     return endfoe;
 }
 
+// This can be slow, so don't call it much
 walker* GameWorld::find_nearest_blood(walker* who)
 {
     if (!who)
@@ -1748,6 +1757,7 @@ void GameWorld::tick()
         {
             if (ob && !ob->dead())
             {
+                // Zardus: while acting, in_act is set
                 ob->set_in_act(true);
                 ob->act();
                 ob->set_in_act(false);
@@ -1756,6 +1766,7 @@ void GameWorld::tick()
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                         level_done = 0;
+                    // Testing .. trying to FORCE foes :)
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
                         ob->set_foe(find_far_foe(ob));
                 }
@@ -1822,6 +1833,7 @@ void GameWorld::tick()
             if (ob->query_order() == Order::Treasure &&
                 ob->family() == FAMILY_EXIT && level_done != 0)
             {
+                // 0 => foes, 1 => no foes but exit, 2 => no foes or exit
                 level_done = 1;
             }
         }

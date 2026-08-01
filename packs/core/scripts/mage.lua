@@ -16,6 +16,7 @@ local function check_special_ai(self)
   -- count_foes_in_range(self, 110) == the howmany out-param of the same
   -- world->find_foes_in_range(oblist, ...) call the binding performs.
   local _, foe_count = og.find_foes_in_range("ob", 110, self)
+  -- TP if away from guys .. or too many enemies!
   return foe_count < 1 or foe_count > 3
 end
 
@@ -32,6 +33,7 @@ local function hit_response(self, foe)
     threshold = og.fdiv(og.fmul(3.0, self.max_hp), 8.0)
   end
 
+  -- Determine which specials we can do (by level and sp) ..
   local possible = {}
   for i = 0, (self.level + 2) // 3 do
     if i < C.NUM_SPECIALS
@@ -41,6 +43,8 @@ local function hit_response(self, foe)
   end
 
   if self.hp < threshold and possible[1] then
+    -- teleport to safety: shifter_down 0 means TELEPORT, not the marker,
+    -- and busy = 0 force-allows us to special
     self.current_special = 1
     self:set_shifter_down(0)
     self.busy = 0

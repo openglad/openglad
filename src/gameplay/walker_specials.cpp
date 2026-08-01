@@ -134,6 +134,7 @@ bool walker::special()
 
 	TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
+	// Are we somehow dead already?
 	if (dead())
 	{
 		Log("Dead guy doing special!\n");
@@ -154,6 +155,7 @@ bool walker::special()
 			special_index = 1;
 		}
 
+	// Do we have enough for our special ability?
 	if (stats_->magicpoints() < stats_->special_cost(special_index))
 		return 0;
 

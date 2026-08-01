@@ -2201,6 +2201,7 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	og::runtime::current_session->current_team_num_ = og::runtime::current_session->current_guy_->teamnum;
 
 	// Set our team button back to normal color
+	// Zardus: FIX: added a check for null pointers
 	if (og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex])
 		og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex]->do_outline = 0;
 
@@ -2296,6 +2297,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 	if (!picker_lobby_save_slot_editable(pks().train_session->current_slot()))
 		return MENU_OK;
 
+	// This is for cheating! Only CHEAT :)
 	// SDL-specific: cheat mode (hold right mouse → free changes)
 	bool force = false;
 	if (CHEAT_MODE) {

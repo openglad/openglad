@@ -16,6 +16,7 @@ local hits = og.use("effect_common").hits
 -- forks into up to rand(owner level)+1 new bolts aimed at nearby foes.
 local function on_act(self)
   local leader = self:leader()
+  -- lost our leader, etc.? kill us ..
   if not leader
       or self:lineofsight() < 1
       or not self:owner() then
@@ -39,6 +40,7 @@ local function on_act(self)
     blast.ani_type = C.ANI_EXPLODE
     blast:set_floor(self:floor())  -- strike on the bolt's floor
     blast:center_on(self)
+    -- can't hit us for 3 rounds ..
     leader:set_skip_exit(leader:skip_exit() + 3)
     og.emit_sound(C.SOUND_EXPLODE)
     -- Now make new objects to seek out foes ..

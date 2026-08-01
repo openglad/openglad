@@ -219,6 +219,7 @@ void bootstrap_runtime(int argc, char* argv[])
     //buffers: setting the seed
     srand(static_cast<unsigned int>(time(nullptr)));
 
+    // Zardus: add: init the input
     init_input();
     load_player_control_settings_from_cfg(cfg);
     save_player_control_settings_to_cfg(cfg);
@@ -540,6 +541,7 @@ int main(int argc, char *argv[])
 }
 #endif // TESTING
 
+// Draw the pretty gems
 void draw_radar_gems(screen* s)
 {
 	short upper_left_x = 246;

@@ -87,12 +87,14 @@ local function hit_response(self, foe)
     end
     local _, foe_count = og.find_foes_in_range("ob", 200, self)
     if foe_count ~= 0 then
+      -- can we summon illusion?
       if possible[3] then
         self.current_special = 3
         if self:special() then
           return
         end
       end
+      -- heartburst, chain lightning, etc.
       if possible[2] then
         -- The old source called the follow-up "then leave! :)", but never
         -- switched to teleport: it repeats slot 2 as a normal heartburst.
@@ -434,6 +436,7 @@ local function summon_image(self)
           phantom.max_hp = 1
           phantom.hp = 0
           phantom:s_set_armor(0)
+          -- just to help out ..
           phantom.foe = self:foe()
           phantom:s_set_bit_flags(C.BIT_MAGICAL, 1)
           phantom:s_set_name("Phantom")
@@ -471,6 +474,7 @@ local function mind_control(self)
       break
     end
     local foe = foes[i]
+    -- never been charmed
     if foe:real_team_num() == 255
         and foe:order() == C.ORDER_LIVING
         and foe:charm_left() <= 10 then
@@ -493,6 +497,7 @@ local function mind_control(self)
       else
         foe:set_real_team_num(foe.team)
         foe.team = self.team
+        -- allow choice of new foe
         foe.foe = nil
         foe:set_charm_left(og.charm_duration(level_edge))
       end

@@ -242,6 +242,7 @@ public:
 
     std::array<unsigned char, 768> ourpalette{};
     std::array<unsigned char, 768> redpalette{};
+    // for special effects like time-freeze
     std::array<unsigned char, 768> bluepalette{};
     std::array<unsigned char, 768> dospalette{};
 
@@ -250,6 +251,7 @@ public:
         std::vector<unsigned char>(static_cast<std::size_t>(kUiCanvasW) *
                                        static_cast<std::size_t>(kUiCanvasH),
                                    0);
+    // color cycling on or off
     short cyclemode = 0;
 
     //buffers: screen vars

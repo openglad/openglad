@@ -14,6 +14,7 @@ local function check_special_ai(self)
     local foe = self:foe()
     if foe then
       local distance = self:distance_to_ob(foe)
+      -- about 6 squares max, 2 min
       if distance < 130 and distance > 35 then
         return false
       end

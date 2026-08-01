@@ -30,6 +30,7 @@ namespace og::ui {
 
 // --- Constants ---
 
+// please also change in guy.cpp
 inline constexpr float kStatCostExponent = 1.85f;
 
 inline constexpr std::array<int, 14> kAllowableGuys = {

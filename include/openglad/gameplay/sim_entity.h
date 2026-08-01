@@ -257,7 +257,10 @@ private:
     short sizey_ = 0;
     short floor_ = 0;   // stacked floor index (0 == ground / single-floor)
     short sizez_ = 0;   // cylinder height; 0 == full/unbounded sentinel
+    // Zardus: FIX: lets make these unsigned so that real_team_num doesn't
+    // wrap around from 255 to -1 :-)
     unsigned char team_num_ = 0;
+    // to show nothing's changed
     unsigned char real_team_num_ = 255;
     signed char user_ = -1;
     short dead_ = 0;

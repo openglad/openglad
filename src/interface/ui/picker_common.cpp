@@ -40,6 +40,7 @@ std::uint32_t calculate_exp(std::int32_t level);
 // Legacy global used by entity code (living.cpp, walker.cpp) via
 // extern std::int32_t difficulty_level[].  Centralised here so both
 // the SDL and headless clients share a single definition.
+// Difficulty settings .. in percent, so 100 == normal
 extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = {50, 100, 200};
 
 namespace og::ui {
@@ -1924,6 +1925,7 @@ int HireSession::hire()
 
     int newfamily = recruit_->family;
     recruit_->teamnum = static_cast<short>(team_num_);
+    // Ensure we have the right exp for our level
     recruit_->exp = calculate_exp(recruit_->level);
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
