@@ -39,3 +39,22 @@ blessed — it is reported instead.
 | `fireelemental_starburst_ring_scen99` | Whether the flanking orcs reach the caster. On the branch they stall at (69,120)/(165,120) and the elemental finishes untouched on 100/100 with the orcs on 130/128; on the companion they close to (105,114)/(135,123), melee the elemental down to 11/100 and take 115/111. The branch records all EIGHT meteors in `weapon_tracks`; the companion records six, because the due-west and due-east meteors detonate on the already-adjacent orcs before their first sample (one diagonal also differs by a pixel, (144,104) vs (143,103)). `play_sound` 11 vs 14; only the branch awards score. | The guard-standoff melee-approach change above — both orcs are `BIT_NO_RANGED`, so e761's slide-around approach reaches bump range inside 40 ticks and the branch's face-and-hold approach does not. The eight-heading fan this row pins is emitted on both arms at the same tick from the same origin. Merge base reproduces the branch exactly. |
 | `mage_heartburst_multitarget_scen99` | Which orcs are in range when the burst lands. The companion's orcs reach melee first (`FAMILY_HIT` at ticks 13 and 14, which the branch has none of), so its detonations centre on (119,134)/(146,119) against the branch's (134,134)/(177,116): the branch kills two of three orcs and leaves one on 56/140 with the mage untouched on 90/90 (score 609), the companion kills one, leaves two on 57/56 and lets them melee the mage down to 28/90 (score 422). `weapon_tracks` 17 vs 19, `play_sound` 8 vs 9. | The same guard-standoff melee-approach change; the three foes are `BIT_NO_RANGED` orcs and their positions at the tick-20 cast decide which of them `find_foes_in_range` acquires and how the (magicpoints-cost)/2 pool is split. Merge base reproduces the branch exactly. |
 | `elf_rocks_pair_scen99` | `weapon_tracks` (18 vs 10) and the target orc's xpos only: it stalls at 205 on the branch and closes to 157 on the companion over the same 30 ticks, so the two rocks — whose first two samples are byte-identical on both arms — connect at tick 23 (173,126) on the companion and tick 27 (206,127) on the branch. HP (133/140), all five events, the score and the elf's own position are identical. | The guard-standoff melee-approach change on a single `BIT_NO_RANGED` orc. The rock pair this row pins is identical in count, release tick and initial trajectory; only the flight length differs, because the target is further away. Merge base reproduces the branch exactly. |
+
+## Intentional gameplay changes
+
+Distinct from the table above. Those goldens differ from the companion because
+of a master-era change nobody made on purpose in this PR. A golden listed HERE
+records behaviour that is new BY DESIGN — a bug fixed on the user's order — so
+it can never match the companion, the merge base, or any other historical
+reference. It was captured from the branch at the fix commit named below.
+
+**A companion or merge-base recapture must never replace one of these
+goldens.** `capture_master_golden.sh --all` will happily overwrite it with the
+old behaviour, because the row is not `is_branch_internal` (marking it so would
+switch `og_test_parity` to the determinism double-run and stop evaluating the
+row's predicates entirely, which would cost the fix its only teeth). Recapture
+these ids one at a time, from the branch, with `parity_runner_smoke --out`.
+
+| id | what changed | why | golden captured from |
+|---|---|---|---|
+| `druid_protection_refresh_scen99` | Recasting the druid's slot-4 PROTECTION on a friend who already carries a circle now tops that circle up (50 → 100 hp, one ring in weaplist) instead of summoning a second one (two rings). | `protection_circle`'s top-up arm selected the existing circle by walking `og.oblist()`, mirroring `openglad-master/src/walker.cpp:3813`; summoned weapons live in `weaplist`, so the scan never matched and the arm never ran between the 2002 FSGames import and 2026. Fixed on the user's order: the scan now uses `og.find_in_range("weap", 100, friend)`. | Branch, commit `be57275f6b8e47979c9e278539b15570085c7a2d` ("Fix the druid's protection top-up, dead since the 2002 import"). The companion still stacks, so a companion capture would read `WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1)` = 2 and turn the row's discriminating predicate into a permanent red. |

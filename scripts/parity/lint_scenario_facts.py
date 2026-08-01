@@ -517,11 +517,11 @@ def parse_spawn_arrays(text: str) -> dict[str, list[dict]]:
 
 def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     """Return (is_widened, human-readable predicate signature). Widened
-    iff WalkerFamilyCount/WalkerOfTeamAlive with arg1 != arg2 OR
-    WalkerHpRangeAtFinalTick with (arg2-arg1) > 200. Unparseable args
-    short-circuit to "not widened" so the lint never false-fires on a
-    novel call shape."""
-    if kind in ("WalkerFamilyCount", "WalkerOfTeamAlive"):
+    iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive with
+    arg1 != arg2 OR WalkerHpRangeAtFinalTick with (arg2-arg1) > 200.
+    Unparseable args short-circuit to "not widened" so the lint never
+    false-fires on a novel call shape."""
+    if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive"):
         if len(args) < 3:
             return False, kind
         mn = parse_int_arg(args[1])
@@ -645,8 +645,9 @@ def main() -> int:
                     f"use EventKindAtLeast(*, 1) or EventKindExactly(*, n)")
 
     # Phase 04-prep — zero_zero_count_no_negation rule. A
-    # `WalkerFamilyCount(F, 0, 0)` or `EffectFamilyCount(F, 0, 0)`
-    # predicate is an assertion that the family is absent. That is
+    # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)` or
+    # `EffectFamilyCount(F, 0, 0)` predicate is an assertion that the
+    # family is absent. That is
     # only honest as a paired negative assertion (policy P3), so the
     # source row MUST carry an inline `// negative_assertion: <reason>`
     # comment that the lint can grep for. Absent comment -> violation.
@@ -654,7 +655,8 @@ def main() -> int:
     for arr_name, preds in pred_calls.items():
         for i, pred in enumerate(preds):
             kind = pred["kind"]
-            if kind not in ("WalkerFamilyCount", "EffectFamilyCount"):
+            if kind not in ("WalkerFamilyCount", "WeaponFamilyCount",
+                            "EffectFamilyCount"):
                 continue
             args = pred["args"]
             if len(args) < 3:

@@ -76,6 +76,7 @@ const char* kind_name(og::parity::FactKind k)
         case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
         case FactKind::EventKindExactly:                return "EventKindExactly";
         case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
+        case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
         case FactKind::EffectNetTravel:                 return "EffectNetTravel";
@@ -213,6 +214,7 @@ int arg0_order_for_symbol(og::parity::FactKind k)
         case FactKind::EffectNetTravel:
             return og::parity::kOrderFX;
         case FactKind::WeaponFamilyEmitted:
+        case FactKind::WeaponFamilyCount:
         case FactKind::WeaponSpeed:
         case FactKind::WeaponNetTravel:
             return og::parity::kOrderWeapon;
@@ -369,6 +371,10 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::WeaponFamilyEmitted:
             std::snprintf(buf, sizeof(buf), "WeaponFamilyEmitted(%s)",
                           weapon(p.arg0).c_str());
+            return buf;
+        case FactKind::WeaponFamilyCount:
+            std::snprintf(buf, sizeof(buf), "WeaponFamilyCount(%s, %d, %d)",
+                          weapon(p.arg0).c_str(), p.arg1, p.arg2);
             return buf;
         case FactKind::WeaponSpeed:
             std::snprintf(buf, sizeof(buf), "WeaponSpeed(%s, %d, %d)",

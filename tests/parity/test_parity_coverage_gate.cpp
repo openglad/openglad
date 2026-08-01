@@ -911,6 +911,7 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
                     bad = true;
                 break;
             case FK::WalkerFamilyCount:
+            case FK::WeaponFamilyCount:
                 if (p.arg2 > p.arg1 + 5 && !label_exempted(p.label))
                     bad = true;
                 break;

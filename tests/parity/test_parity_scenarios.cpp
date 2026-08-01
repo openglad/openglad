@@ -438,6 +438,7 @@ OG_PARITY_TEST(mage_heartburst_multitarget_scen99)
 OG_PARITY_TEST(soldier_charge_displacement_scen99)
 OG_PARITY_TEST(elf_rocks_pair_scen99)
 OG_PARITY_TEST(thief_ai_bomb_flee_scen99)
+OG_PARITY_TEST(druid_protection_refresh_scen99)
 
 #undef OG_PARITY_TEST
 

@@ -7716,6 +7716,87 @@ inline constexpr Mutation kMut_effect_explosion_ally_tier_scen99 = {
     "Widens the ally divisor from the half tier to an eighth. The blast still fires, still emits SOUND_EXPLODE, still shoves and still lands the quarter tier on its owner (the caster stays on 5200 cents), so only the allied victim moves: the team-0 TOWER1 finishes on 12000 cents instead of 8500 and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500) has no walker left in its window."
 };
 
+// druid_protection_refresh_scen99 --------------------------------------------
+// The corpus's first INTENTIONAL gameplay change, and the reason its golden
+// cannot be captured from the companion.
+//
+// `protection_circle`'s top-up arm -- mint a throwaway circle, add its charge
+// to the friend's existing one, discard the throwaway -- selected that
+// existing circle by walking og.oblist(), faithfully mirroring
+// openglad-master/src/walker.cpp:3813. Summoning a weapon files it in
+// weaplist, so the scan never matched and the arm never ran: from the 2002
+// import until 2026 every recast on an already-protected friend minted a
+// SECOND circle. The scan now searches weaplist through
+// og.find_in_range("weap", 100, friend), so a recast refreshes.
+//
+// The arena descends from effect_protection_emit_scen99 -- player-controlled
+// druid spawned LAST so it lands first in oblist and takes control, one
+// team-0 friendly to protect, no combat -- but two casts need two things that
+// arena cannot give.
+//
+// The protectee is a stationary team-0 TOWER1 instead of a soldier. The
+// soldier's idle wander leaves range 60 and comes back (measured on this very
+// seed: Manhattan 67 at tick 28, 43 at tick 34), so a second cast tick would
+// be a hostage to AI cadence. A tower parked at Manhattan 50 is inside the
+// gate at every tick of the run.
+//
+// The distant team-1 TOWER1 at (400,400) is not a target, it is what keeps
+// the level alive. GameWorld::tick returns immediately after latching
+// game_ended, BEFORE the dead sweep, so in an enemy-free arena nothing is
+// ever reaped: the throwaway circle the top-up arm mints and kills would
+// linger in weaplist at (0,0) and the count below would read 2 on both arms.
+// One live foe keeps level_done at 0, the sweep runs, and the husk is gone by
+// the next tick. Manhattan 610 from the protectee and 560 from the druid puts
+// it outside every ai_line_of_sight-10 (320px) firing gate, so it only sits
+// there.
+//
+// The druid carries 600 magicpoints rather than 300 because slot-4
+// PROTECTION costs 200 and this row casts twice.
+inline constexpr InputEvent kInputsSpecialSlot4Twice[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},        // first cast: mints the protectee's circle
+    { 21, 0, K_NONE},
+    { 30, 0, K_SPECIAL},        // recast: must top the SAME circle up
+    { 31, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_druid_protection_refresh_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // distant team-1 tower: holds level_done at 0 so the dead sweep runs; out of every firing gate
+    { FAMILY_TOWER1, 0, kOrderLiving, 90, 100, 0, 0 },           // the protectee: stationary, Manhattan 50 from the druid, inside range 60 at BOTH cast ticks
+    { FAMILY_DRUID,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // druid caster LAST (spawns prepend, so it heads oblist and find_player_walker binds it); level 10 + 600 magicpoints -> TWO slot-4 casts at 200 each
+};
+
+inline constexpr FactPredicate kFacts_druid_protection_refresh_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 2, 2),
+    pred::WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION),
+    // THE DISCRIMINATOR. Two successful casts, ONE surviving ring. The
+    // throwaway circle the top-up arm mints to read a charge off is dead the
+    // same tick and reaped before the dump, so weaplist holds exactly the
+    // friendly's own refreshed ring. Resurrect the 2002 oblist scan and the
+    // recast cannot see it: a second ring is summoned onto the same friendly
+    // and the count is 2. The circle's hitpoints (50 -> 100) are the other
+    // half of the refresh, but schema-v1's WeaponEntry carries no hp field,
+    // so cardinality is the honest observable.
+    pred::WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1,
+        "consequence: PROTECTION recast on an already-protected friend tops up the existing ring instead of stacking a second one; the dead-scan behaviour this replaced leaves 2 in weaplist"),
+    pred::EventKindAtLeast(/*play_sound*/1, 2,
+        "anchor: both casts succeed and each emits SOUND_HEAL, so the floor is 2. NOT a tooth -- the stacking behaviour also charges and sounds twice; WeaponFamilyCount carries the flip"),
+};
+
+inline constexpr Mutation kMut_druid_protection_refresh_scen99 = {
+    "packs/core/scripts/druid.lua", 92,
+    "      local circles = og.find_in_range(\"weap\", 100, friend)",
+    "      local circles = og.find_in_range(\"ob\", 100, friend)",
+    "Points the existing-circle scan back at oblist, resurrecting the bug this row exists to pin. oblist holds livings, generators and FX; a summoned circle lives in weaplist, so the scan finds nothing, `existing` stays nil and the recast takes the mint arm instead of the top-up arm. The friendly ends the run wearing TWO rings and WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) reads 2. Everything else holds: both casts still succeed, both still charge 200 magicpoints and emit SOUND_HEAL, so the play_sound floor and WeaponFamilyEmitted stay green and the flip is isolated to the stacking."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -9571,6 +9652,15 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_effect_explosion_ally_tier_scen99, std::size(kFacts_effect_explosion_ally_tier_scen99),
       kMut_effect_explosion_ally_tier_scen99,
       "explosion damage tiers: this row carries the ALLY half tier (team-0 TOWER1 on 222,196 loses 45 of 130); the OWNER quarter tier and the FULL tier are pinned by effect_bomb_bystander_scen99 on the identical arena (thief 75 -> 55, team-1 TOWER1 on the same 222,196 loses 91 of 130)" },
+
+    { "druid_protection_refresh_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4Twice, std::size(kInputsSpecialSlot4Twice), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_protection_refresh_scen99, std::size(kFamilySpawns_druid_protection_refresh_scen99),
+      0, false, true, Exercises::Special_Druid_4,
+      kFacts_druid_protection_refresh_scen99, std::size(kFacts_druid_protection_refresh_scen99),
+      kMut_druid_protection_refresh_scen99,
+      "INTENTIONAL GAMEPLAY CHANGE -- golden captured from the branch at be57275f6b8e47979c9e278539b15570085c7a2d, never from the companion or the merge base, because the behaviour it records is new by design (the druid's protection top-up arm was dead from the 2002 import until that commit). See the \"Intentional gameplay changes\" section of tests/parity/golden/DRIFT_LEDGER.md before recapturing anything for this row." },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

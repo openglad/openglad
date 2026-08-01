@@ -460,6 +460,18 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                         r);
             return r;
         }
+        case FactKind::WeaponFamilyCount:
+        {
+            const std::size_t n = count_weapons_family(dump, p.arg0);
+            if (static_cast<std::int32_t>(n) < p.arg1 ||
+                static_cast<std::int32_t>(n) > p.arg2)
+                return (make_fail(r, p, "weapons(" +
+                                  family_symbol_by_order(kWeaponOrder, p.arg0) +
+                                  ")=" + std::to_string(n) + " out of [" +
+                                  std::to_string(p.arg1) + "," +
+                                  std::to_string(p.arg2) + "]"), r);
+            return r;
+        }
         case FactKind::WeaponSpeed:
         {
             const WeaponTrackMetrics m = weapon_track_metrics(dump, p.arg0);
