@@ -80,14 +80,19 @@ local function protection_circle(self)
   for i = 1, #friends do
     local friend = friends[i]
     if friend ~= self then
-      -- Historic slow path: scan the world oblist for an existing circle
-      -- owned by this friend (same list and order the C++ walked).
+      -- Historic slow path, now looking where circles actually live. The
+      -- C++ walked oblist (openglad-master/src/walker.cpp:3813), but
+      -- add_ob routes ORDER_WEAPON to add_weap_ob and the circle lands in
+      -- weaplist, so the scan never matched once between the 2002 import
+      -- and 2026 and every recast minted a second circle. Range 100 is a
+      -- loose bound on a ring that circle_protection_on_animate re-centres
+      -- on its owner every tick, so the true distance is ~0; the owner
+      -- filter, not the radius, is what selects the friend's own circle.
       local existing = nil
-      local obs = og.oblist()
-      for j = 1, #obs do
-        local ob = obs[j]
+      local circles = og.find_in_range("weap", 100, friend)
+      for j = 1, #circles do
+        local ob = circles[j]
         if ob:owner() == friend
-            and ob:order() == C.ORDER_WEAPON
             and ob:family() == WEAP_CIRCLE_PROTECTION then
           existing = ob
           break

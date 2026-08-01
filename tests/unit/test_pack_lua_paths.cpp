@@ -263,17 +263,16 @@ TEST(PackLuaCloud, an_expired_cloud_dies_on_the_next_act)
 // core:druid — circle of protection, faerie placement
 // ---------------------------------------------------------------------------
 
-// The circle of protection: one circle per friend in range, per cast.
+// The circle of protection: one circle per friend in range, and a re-cast
+// refreshes that circle rather than stacking another.
 //
-// druid.lua contains a merge branch meant to fold a re-cast into a friend's
-// existing circle instead of stacking a second one. It is DEAD, and
-// deliberately so: it scans og.oblist() — the LIVING list — for a
-// FAMILY_CIRCLE_PROTECTION entity, but both creation paths
-// (og.summon / og.add_ob with Order::Weapon) file the circle in weaplist.
-// The historic implementation had the same living-list/weapon mismatch, so
-// the branch has never run in this engine and the observable rule is that a
-// re-cast STACKS. That is pinned below: changing it would change the sim,
-// which is parity-gated byte-for-byte.
+// druid.lua has always carried a merge branch meant to fold a re-cast into
+// a friend's existing circle. It never ran: the scan walked og.oblist() —
+// the LIVING list — while both creation paths (og.summon / og.add_ob with
+// Order::Weapon) file the circle in weaplist. The historic C++ had the same
+// list mismatch, so from the 2002 import until 2026 every recast minted a
+// second circle. The scan now searches weaplist, which is what the branch
+// always meant, so the observable rule below is REFRESH, not stack.
 TEST(PackLuaDruid, each_circle_of_protection_cast_shields_every_friend_in_range)
 {
     og::test::mount_core_pack();
@@ -309,17 +308,21 @@ TEST(PackLuaDruid, each_circle_of_protection_cast_shields_every_friend_in_range)
     druid->set_busy(0);
     ASSERT_TRUE(og::test::do_special(desc, druid));
 
-    EXPECT_EQ(2 * after_first,
-              count_family(w, Order::Weapon, FAMILY_CIRCLE_PROTECTION))
-        << "pinned quirk: the merge branch cannot see a weaplist circle, so "
-           "a re-cast stacks a second one per friend";
+    std::size_t live_circles = 0;
     float shield_after = 0.0f;
     for (walker* ob : entities_of(w, Order::Weapon)) {
-        if (ob->family() == static_cast<char>(FAMILY_CIRCLE_PROTECTION))
-            shield_after += ob->stats()->hitpoints();
+        if (ob->family() != static_cast<char>(FAMILY_CIRCLE_PROTECTION))
+            continue;
+        if (ob->dead() != 0)
+            continue;
+        ++live_circles;
+        shield_after += ob->stats()->hitpoints();
     }
+    EXPECT_EQ(after_first, live_circles)
+        << "a re-cast tops up the friend's existing circle; it must not mint "
+           "a second live one";
     EXPECT_GT(shield_after, shield_before)
-        << "the merged circle absorbs the new one's strength";
+        << "the merged circle absorbs the fresh one's strength";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
