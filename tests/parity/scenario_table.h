@@ -1169,31 +1169,31 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/scripts/archmage.lua", 527,
-    "  specials = {",
-    "  specials = { default = function() return true end }, _ignored = {",
-    "Swaps core:archmage's registered do_special hook for a no-op that reports success. Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
+    "packs/core/scripts/archmage.lua", 132,
+    "if lc.mid_teleport(self) then",
+    "if true then",
+    "Makes the archmage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT that hands off to handle_teleport. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_ARCHMAGE, 240, 880) fails."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/scripts/cleric.lua", 301,
-    "  specials = {",
-    "  specials = { default = function() return true end }, _ignored = {",
-    "Swaps core:cleric's registered do_special hook for a no-op that reports success, neutering the heal/raise specials; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates."
+    "packs/core/scripts/cleric.lua", 134,
+    "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
+    "local mace = nil",
+    "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/scripts/mage.lua", 276,
-    "  specials = {",
-    "  specials = { default = function() return true end }, _ignored = {",
-    "Swaps core:mage's registered do_special hook for a no-op that reports success, neutering teleport/warp/freeze; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates."
+    "packs/core/scripts/mage.lua", 71,
+    "if lc.mid_teleport(self) then",
+    "if true then",
+    "Makes the mage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT hand-off. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_MAGE, 240, 640) fails."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/scripts/thief.lua", 195,
-    "  specials = {",
-    "  specials = { default = function() return true end }, _ignored = {",
-    "Swaps core:thief's registered do_special hook for a no-op that reports success, neutering bomb/cloak/taunt; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates."
+    "packs/core/scripts/thief.lua", 45,
+    "local bomb = og.add_ob(\"fx\", FX_BOMB)",
+    "local bomb = nil",
+    "Suppresses DROP BOMB's FX_BOMB creation, so drop_bomb takes its 'if not bomb' exit and the timed bomb never enters oblist. Team-0 alive collapses from 2 to the lone thief and WalkerOfTeamAlive(0, 2, 3) fails its floor."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
@@ -3258,10 +3258,10 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "packs/core/families/living-00-soldier.yaml", 10,
-    "[120",
-    "[12000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/soldier.lua", 9,
+    "if self:s_forward_blocked() then",
+    "if true then",
+    "Closes CHARGE's forward-blocked gate permanently, so soldier slot 1 returns false before it issues COMMAND_RUSH or emits SOUND_CHARGE. The level-1 caster never dashes into the team-1 soldier and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) no longer finds a caster at exactly 63 HP."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_2_scen99[] = {
@@ -3277,10 +3277,10 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "packs/core/families/living-00-soldier.yaml", 10,
-    "[120",
-    "[12000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/soldier.lua", 24,
+    "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6500, 6500)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_3_scen99[] = {
@@ -3296,10 +3296,10 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "packs/core/families/living-00-soldier.yaml", 10,
-    "[120",
-    "[12000",
-    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/soldier.lua", 60,
+    "self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
+    "self, 200)",
+    "Widens WHIRLWIND's strike ring from 32+2*level px (46 at this level-7 caster, short of the 60 px to the team-1 soldier) to a flat 200 px, so the spin now lands attack() rolls instead of finding nobody. The added combat draws move the caster off exactly 63 HP and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) fails."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_4_scen99[] = {
@@ -3334,10 +3334,10 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "packs/core/families/living-01-elf.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/elf.lua", 18,
+    "local rock = self:fire()",
+    "local rock = nil",
+    "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_2_scen99[] = {
@@ -3354,10 +3354,10 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "packs/core/families/living-01-elf.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/elf.lua", 68,
+    "bounce_volley(3, 2, 3)",
+    "bounce_volley(3, 1, 3)",
+    "Halves slot 2's BOUNCING ROCKS volley by dropping the shared bounce_volley body's per-slot rock count from 2 to 1, so only one bouncing rock leaves the elf. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_3_scen99[] = {
@@ -3374,10 +3374,10 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "packs/core/families/living-01-elf.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/elf.lua", 70,
+    "bounce_volley(4, 3, 4)",
+    "bounce_volley(4, 1, 4)",
+    "Cuts slot 3's BOUNCING ROCKS volley from three rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_4_scen99[] = {
@@ -3394,10 +3394,10 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "packs/core/families/living-01-elf.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/elf.lua", 72,
+    "bounce_volley(5, 4, 5)",
+    "bounce_volley(5, 1, 5)",
+    "Cuts the default (slot 4) BOUNCING ROCKS volley from four rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_1_scen99[] = {
@@ -3415,10 +3415,10 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "packs/core/families/living-02-archer.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archer.lua", 17,
+    "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, 1, 0)",
+    "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, -1, 0)",
+    "Turns the one eastward shot of FIRE ARROWS' eight-direction volley around (dx +1 -> -1), so the only ray aimed at the team-1 soldier 60 px east now flies away from it. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_2_scen99[] = {
@@ -3435,10 +3435,10 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "packs/core/families/living-02-archer.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archer.lua", 28,
+    "if self:busy() ~= 0 then",
+    "if true then",
+    "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_3_scen99[] = {
@@ -3457,10 +3457,10 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/families/living-02-archer.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archer.lua", 48,
+    "local arrow = self:fire()",
+    "local arrow = nil",
+    "Suppresses EXPLODING SHOT's arrow release, so the body restores the old weapon and takes its 'if not arrow' exit; no skip_exit-5000 buffed arrow is ever created. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_2_scen99[] = {
@@ -3482,10 +3482,10 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/mage.lua", 157,
+    "if i ~= 0 or j ~= 0 then",
+    "if false then",
+    "Empties STARBURST's 3x3 direction sweep so not one of the eight fireballs is fired, while the MP refund and the aim save/restore still run. EventKindAtLeast(play_sound, 22) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_3_scen99[] = {
@@ -3502,10 +3502,10 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/mage.lua", 189,
+    "if self.team == og.u8(og.my_team()) then",
+    "if false and self.team == og.u8(og.my_team()) then",
+    "Reroutes FREEZE TIME's player-team branch into the foreign-team branch: no world enemy_freeze bank and no palette tint, but a 'TIME IS FROZEN' notification instead. EventKindExactly(notification, 0) flips to one notification and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800) fails."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_4_scen99[] = {
@@ -3522,10 +3522,10 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/mage.lua", 213,
+    "local bolt = self:fire()",
+    "local bolt = nil",
+    "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_5_scen99[] = {
@@ -3542,10 +3542,10 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 10,
-    "[90",
-    "[9000",
-    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/mage.lua", 237,
+    "if foe_count == 0 then",
+    "if true then",
+    "Makes HEARTBURST report 'no foes in range' unconditionally, so mage slot 5 returns false before draining the MP pool or summoning one explosion per foe. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_skeleton_1_scen99[] = {
@@ -3566,10 +3566,10 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
-    "packs/core/families/living-04-skeleton.yaml", 10,
-    "[60",
-    "[6000",
-    "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/skeleton.lua", 28,
+    "if lc.mid_teleport(self) then",
+    "if true then",
+    "Makes TUNNEL believe it is already mid-teleport, so do_special returns false without setting ANI_TELE_OUT and handle_teleport never runs its teleport_ranged hop. The skeleton stays put and survives: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) and WalkerDiedByFinal(FAMILY_SKELETON) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_cleric_2_scen99[] = {
@@ -3643,10 +3643,10 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "packs/core/families/living-06-elemental.yaml", 10,
-    "[100",
-    "[10000",
-    "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/fire_elemental.lua", 16,
+    "if i ~= 0 or j ~= 0 then",
+    "if false then",
+    "Empties the elemental's lots-o-fireballs 3x3 sweep so none of the eight fireballs is released, while the MP refund and the aim save/restore still run. EventKindAtLeast(play_sound, 22), EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 4100, 4100) all fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_slime_1_scen99[] = {
@@ -3667,10 +3667,10 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
-    "packs/core/families/living-08-slime.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/slime.lua", 33,
+    "self:set_ani_type(C.ANI_SLIME_SPLIT)",
+    "self:set_ani_type(C.ANI_WALK)",
+    "Starts the SPLIT special on the walk animation instead of ANI_SLIME_SPLIT, so slime_on_ani_complete's ani_type guard rejects the completion and the blob never divides. WalkerFamilyCount(FAMILY_SLIME, 0, 0), WalkerFamilyCount(FAMILY_SMALL_SLIME, 2, 2) and the offspring HP pin all fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_small_slime_1_scen99[] = {
@@ -3726,10 +3726,10 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "packs/core/families/living-11-thief.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/thief.lua", 77,
+    "self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
+    "self:set_invisibility_left(0)",
+    "Discards CLOAK's invisibility grant at the cast site (the cloak roll is still drawn, only the total is thrown away), so the level-4 thief never gains cover and the team-1 soldier keeps engaging it. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3600, 3600) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
@@ -3748,10 +3748,10 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "packs/core/families/living-11-thief.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/thief.lua", 85,
+    "if lc.is_busy(self) then",
+    "if true then",
+    "Closes the busy gate on the TAUNT branch of taunt_or_charm, so thief slot 3 returns false before rolling any foe and before the 'Nyah Nyah!' line. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800) both fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_4_scen99[] = {
@@ -3770,10 +3770,10 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "packs/core/families/living-11-thief.yaml", 10,
-    "[75",
-    "[7500",
-    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/thief.lua", 175,
+    "if lc.is_busy(self) then",
+    "if true then",
+    "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_ghost_1_scen99[] = {
@@ -3792,10 +3792,10 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "packs/core/families/living-12-ghost.yaml", 10,
-    "[50",
-    "[5000",
-    "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/ghost.lua", 9,
+    "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
+    "local scare = nil",
+    "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_1_scen99[] = {
@@ -3813,10 +3813,10 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "packs/core/families/living-13-druid.yaml", 10,
-    "[110",
-    "[11000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/druid.lua", 16,
+    "local bolt = self:fire()",
+    "local bolt = nil",
+    "Suppresses the seed bolt PLANT TREE grows its tree from, so plant_tree takes its 'if not bolt' exit before the busy charge and before WEAP_TREE is summoned. EventKindAtLeast(play_sound, 15) fails."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_2_scen99[] = {
@@ -3834,10 +3834,10 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "packs/core/families/living-13-druid.yaml", 10,
-    "[110",
-    "[11000",
-    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/druid.lua", 42,
+    "local faerie = og.add_ob(\"living\", LIVING_FAERIE)",
+    "local faerie = nil",
+    "Suppresses SUMMON FAERIE's pet creation, so the body takes its 'if not faerie' exit with the bolt fired but never converted into a faerie. EventKindAtLeast(play_sound, 16) fails."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_3_scen99[] = {
@@ -3894,10 +3894,10 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "packs/core/families/living-14-orc.yaml", 10,
-    "[140",
-    "[14000",
-    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/orc.lua", 11,
+    "if lc.is_busy(self) then",
+    "if true then",
+    "Closes YELL's busy gate permanently, so orc slot 1 returns false before the per-foe stun rolls and before SOUND_ROAR. WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_orc_2_scen99[] = {
@@ -3936,10 +3936,10 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "packs/core/families/living-16-barbarian.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/barbarian.lua", 7,
+    "if self:busy() > 0 then",
+    "if true then",
+    "Closes HURL BOULDER's busy gate permanently, so do_special returns false before the shot is fired and before WEAP_BOULDER is created; no boulder ever rolls. EventKindAtLeast(play_sound, 15) fails."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_barbarian_2_scen99[] = {
@@ -3957,10 +3957,10 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "packs/core/families/living-16-barbarian.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/barbarian.lua", 56,
+    "if self:current_special() == 2 then",
+    "if false then",
+    "Drops the slot-2 sentinel that marks the thrown boulder as EXPLODING (skip_exit 5000 -> 0), so slot 2 throws a plain boulder. The boulder's flight and impact diverge from the master golden and the exact weapon_tracks comparison fails; this row's HP band (5000, 12000) is too wide to see the difference, so the trajectory check carries the teeth."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_2_scen99[] = {
@@ -3978,10 +3978,10 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "packs/core/families/living-17-archmage.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archmage.lua", 213,
+    "if foe_count == 0 then",
+    "if true then",
+    "Makes burst_or_chain report 'no foes in range' unconditionally, so HEARTBURST returns false before the MP pool is drained and before a single FX_EXPLOSION is summoned. The caster keeps the HP and MP the burst would have spent and leaves the (10000, 15000) cent band of WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_3_scen99[] = {
@@ -3997,10 +3997,10 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "packs/core/families/living-17-archmage.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archmage.lua", 412,
+    "local phantom = og.add_ob(\"living\", person)",
+    "local phantom = nil",
+    "Suppresses the illusion body SUMMON IMAGE conjures after its tier roll, so archmage slot 3 takes its 'if not phantom' exit and no Phantom joins the caster's team. WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 9200, 9200) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archmage_4_scen99[] = {
@@ -4024,10 +4024,10 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "packs/core/families/living-17-archmage.yaml", 10,
-    "[150",
-    "[15000",
-    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+    "packs/core/scripts/archmage.lua", 467,
+    "if foe_count < 1 then",
+    "if true then",
+    "Makes MIND CONTROL report 'no foes in range' unconditionally, so archmage slot 4 returns false before any foe is charmed and before the 'has controlled N men' notice. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000) both fail."
 };
 
 
