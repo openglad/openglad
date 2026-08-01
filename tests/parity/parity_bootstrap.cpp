@@ -1,8 +1,10 @@
 #include "parity_bootstrap.h"
 
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/packs.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +15,10 @@
 #ifndef OG_PARITY_WORKSPACE_ROOT
 #define OG_PARITY_WORKSPACE_ROOT "."
 #endif
+
+// Defined in src/resources/platform_io.cpp (and the headless twin); resolves
+// the directory the staged assets live in, next to the running binary.
+std::string get_asset_path();
 
 namespace og::parity {
 
@@ -115,6 +121,19 @@ BootstrapScope::BootstrapScope(const char* argv0)
         mounted_temp_ = true;
     if (og::resources::mount(scen_path_.c_str(),      "scen/", 1))
         mounted_scen_ = true;
+
+    // Class packs: all family behavior AND descriptor data live in pack Lua
+    // + YAML now, so a bootstrap that owns PhysFS (parity_runner_smoke) must
+    // mount packs/ and install them or the registries stay empty and no
+    // walker can spawn ("Order: 0, Family 0"). Same idempotent shape as
+    // og::test::mount_core_pack(): inside og_test_parity, io_init already
+    // installed the packs and this is a no-op.
+    if (og::script::pack_scripts().empty())
+    {
+        (void)og::resources::mount((get_asset_path() + "packs/").c_str(),
+                                   "packs/", 1);
+        og::resources::refresh_pack_scripts();
+    }
 
     // Install entity-service hooks so loaded walkers get their render /
     // entity-services wiring. `sdl_level_data_hooks()` is the SDL-side
