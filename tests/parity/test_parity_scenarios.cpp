@@ -385,6 +385,13 @@ OG_PARITY_TEST(treasure_life_gem_enemy_reject_scen99)
 OG_PARITY_TEST(treasure_magic_potion_overfill_scen99)
 OG_PARITY_TEST(treasure_key_team1_silent_scen99)
 OG_PARITY_TEST(treasure_exit_open_prompt_scen99)
+OG_PARITY_TEST(thief_charm_opponent_scen99)
+OG_PARITY_TEST(archmage_summon_elemental_scen99)
+OG_PARITY_TEST(mage_teleport_marker_scen99)
+OG_PARITY_TEST(archmage_teleport_marker_scen99)
+OG_PARITY_TEST(archmage_mind_control_team_flip_scen99)
+OG_PARITY_TEST(archmage_summon_image_phantom_scen99)
+OG_PARITY_TEST(mage_starburst_ring_scen99)
 
 #undef OG_PARITY_TEST
 
