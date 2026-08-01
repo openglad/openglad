@@ -392,6 +392,14 @@ OG_PARITY_TEST(archmage_teleport_marker_scen99)
 OG_PARITY_TEST(archmage_mind_control_team_flip_scen99)
 OG_PARITY_TEST(archmage_summon_image_phantom_scen99)
 OG_PARITY_TEST(mage_starburst_ring_scen99)
+OG_PARITY_TEST(soldier_whirlwind_ring_scen99)
+OG_PARITY_TEST(soldier_disarm_matched_levels_scen99)
+OG_PARITY_TEST(orc_yell_stun_hold_scen99)
+OG_PARITY_TEST(orc_eat_corpse_scen99)
+OG_PARITY_TEST(archer_fire_arrows_ring_scen99)
+OG_PARITY_TEST(skeleton_tunnel_displacement_scen99)
+OG_PARITY_TEST(druid_grow_tree_emission_scen99)
+OG_PARITY_TEST(barbarian_boulder_impact_scen99)
 
 #undef OG_PARITY_TEST
 

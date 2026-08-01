@@ -5794,6 +5794,406 @@ inline constexpr Mutation kMut_mage_starburst_ring_scen99 = {
 
 // --- Scenario table --------------------------------------------------------
 
+// --- specials-physical batch ------------------------------------------------
+// Eight rows covering the physical-class special bodies the corpus reached but
+// never observed: the soldier's whirlwind ring and its disarm roll, the orc's
+// yell-stun and corpse eat, the archer's fire-arrow volley, the skeleton's
+// tunnel hop, the druid's grown tree and the barbarian's non-exploding
+// boulder. Every row runs on a fresh arena (fresh_arena = true empties
+// scen1.fss), so the only entities are the SpawnSpec list plus the grid.
+//
+// Shared design facts (all four measured against these arenas, not assumed —
+// the first three contradict the obvious reading of the code):
+//   * A parity spawn DOES regenerate. statistics leaves heal_per_round_ at 0,
+//     but compute_regen_tick still adds +1 hp every max_heal_delay ticks once
+//     the 50-tick regen_delay armed by the last hit has run out. Every exact
+//     hp pin below is therefore taken inside that 50-tick window, or on a
+//     walker sitting at full hp where the regen clamps.
+//   * max_hitpoints is the family's derived_bonuses[0] regardless of
+//     stats_level: soldier 120, archer 90, elf 75, faerie 75, skeleton 60,
+//     druid 110, orc 140, barbarian 150.
+//   * MELEE damage does NOT scale with the striker's level. walker::attack
+//     takes get_base_damage(this), i.e. the living's own derived_bonuses[2]
+//     damage stat; only THROWN weapons pick up the (level+3)/4 * level factor
+//     in create_weapon. Raising a caster's stats_level to make it one-shot a
+//     melee target does nothing (measured: a level-8 and a level-20 orc both
+//     hit for 22).
+//   * A parity player walker starts at curdir == FACE_DOWN (4), not FACE_UP,
+//     so an unmoved caster faces and probes SOUTH.
+//   * A stationary player never auto-attacks: ob_pass_check collides only on
+//     the MOVING walker and statistics::hit_response returns early for
+//     ACT_CONTROL, so a caster with no movement input has busy == 0 and lands
+//     no melee. That is what makes the busy-gated specials castable.
+
+// SOLDIER slot-3 WHIRLWIND (soldier.lua whirlwind): eight queued spin steps,
+// then one attack() plus one radial s_force_command per foe inside
+// whirlwind_range_base + level * whirlwind_range_per_level. The existing
+// special_soldier_3_scen99 uses FAMILY_SOLDIER for caster AND foe, so its
+// ANY-match hp pin cannot say which soldier it matched and the ring itself is
+// unobserved.
+inline constexpr SpawnSpec kFamilySpawns_soldier_whirlwind_ring_scen99[] = {
+    // Three FAMILY_FAERIE foes on three axes, all at Manhattan 32 <= whirlwind
+    // range 32+7*2=46. Faerie is a family distinct from the caster, so the
+    // ANY-match hp/position predicates cannot alias onto the soldier, and a
+    // faerie's sprinkle is feeble enough (the caster ends on 114 of 120) that
+    // nothing but the whirlwind can move one or take 20 hp off it.
+    { FAMILY_FAERIE,  1, kOrderLiving, 152, 120, 0, 0 },          // east  — the shove target
+    { FAMILY_FAERIE,  1, kOrderLiving, 120, 152, 0, 0 },          // south
+    { FAMILY_FAERIE,  1, kOrderLiving,  88, 120, 0, 0 },          // west
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },  // caster LAST -> oblist head -> player
+};
+
+inline constexpr FactPredicate kFacts_soldier_whirlwind_ring_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 3, 3),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 5500, 5500,
+        "consequence: the ring strike lands one self:attack(foe) on every faerie inside range 46, and the east faerie ends on exactly 55 of its 75 hp. With the radius collapsed no faerie is touched at all and all three sit at 7500, so no faerie satisfies this pin"),
+    pred::WalkerPositionMoved(FAMILY_FAERIE, 176, 0,
+        "consequence: the east faerie is force_command(COMMAND_WALK, 8, +1, 0)'d off its (152,120) contact position and ends at x=176. The other two are shoved the other way (west faerie to x=64, south faerie stays at x=120), so this floor can only be met by the shoved east faerie; with no ring there is no shove and every faerie is at or west of 152"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11400, 11400,
+        "the caster only ever loses hp to faerie sprinkles here (it never moves before the cast, so it never collide-melees); 114 of 120 is the exact figure both arms produce"),
+};
+
+inline constexpr Mutation kMut_soldier_whirlwind_ring_scen99 = {
+    "packs/core/scripts/soldier.lua", 60,
+    "    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
+    "    self, 0)",
+    "Collapses whirlwind's og.foes_in_range radius to 0. The three faeries sit at Manhattan >= 16 (bodies can never interpenetrate), so the foe list is empty: no self:attack(foe) and no outward s_force_command. The faerie hp predicate fails (all three stay at 7500) and the faerie position predicate fails (nothing is shoved east)."
+};
+
+// SOLDIER slot-4 DISARM (soldier.lua disarm): busy-gated, forward-blocked
+// gated, then og.rand(self.level) >= og.rand(foe.level) LEFT-first per foe
+// inside disarm_range, a 6*(level - foe.level + 1) busy penalty on the loser,
+// SOUND_CHARGE and "Fighter Disarmed Enemy!". special_soldier_4_scen99 pairs a
+// level-10 caster with a level-1 foe, so the right-hand draw is constantly 0
+// and the recorded left-first adjudication is unfalsifiable; it also never
+// asserts the notification.
+inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_matched_scen99[] = {
+    // The foe sits touching to the SOUTH at y = 135, and it is a STATIONARY
+    // family on purpose. Three measured facts drive that choice:
+    //   * A parity-spawned player walker starts at curdir == FACE_DOWN (4),
+    //     not FACE_UP, so the frontal probe looks SOUTH.
+    //   * statistics::forward_blocked asks query_passable for the caster's own
+    //     16x16 box shifted CHECK_STEP_SIZE == 1 px along curdir, and
+    //     obmap::collide shrinks both boxes by 1 px per side. The caster's
+    //     resting box is y [121,135] and its probe box is y [122,136], so a
+    //     foe whose shrunk top edge is exactly 136 — i.e. ypos 135 — is clear
+    //     of the caster at rest yet blocks the 1 px probe. 136 is the only
+    //     ypos that satisfies both.
+    //   * A mobile foe does not hold that lane: a 10x10 ELF parked here drifts
+    //     12 px west by tick 20 and slides out of the caster's x footprint, so
+    //     s_forward_blocked() reads false and disarm returns before the roll
+    //     (verified by probe). FAMILY_TOWER1 is is_stationary, so it cannot
+    //     drift, and its derived_bonuses[2] damage is 0 so its two contact
+    //     swings cost the caster nothing — the row reads the special, not a
+    //     combat outcome.
+    // stats_level 3 (not 10) keeps BOTH rand draws live (og.rand(10) in 0..9
+    // vs og.rand(3) in 0..2), which is what the FLAGGED left-first
+    // adjudication needs in order to be falsifiable.
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0,  3,   0 },
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST; level 10 clears the slot-4 cycling gate ((4-1)*3+1), 600 mp covers special_costs[4]=150
+};
+
+inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: a completed disarm is the ONLY notification source in this arena (nothing dies, no keys, no exit) — 'Fighter Disarmed Enemy!' proves the body ran past the busy/forward_blocked gates and found a foe inside disarm_range"),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: exactly three sounds are emitted in this arena — two SOUND_CLANG from the tower's zero-damage melee at ticks 7 and 16, plus SOUND_CHARGE (id 9) at the tick-20 disarm. Collapsing disarm_range drops the run to two, so this exact count is a second tooth alongside the notification"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "structural pin: FAMILY_TOWER1's derived_bonuses[2] damage is 0, so the caster finishes untouched at 120/120 and the row's outcome cannot be confused with a combat result"),
+};
+
+inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
+    "packs/core/families/living-00-soldier.yaml", 52,
+    "disarm_range: 28",
+    "disarm_range: 0",
+    "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
+};
+
+// ORC slot-1 HOWL (orc.lua yell): radius scan, constitution derivation,
+// left-first stun roll and foe:add_frozen_stun. special_orc_1_scen99 asserts
+// only counts, a sound floor and a caster-hp figure — the victim's frozen
+// state is never observed. This row borrows enemy_freeze_mage_scen99's proven
+// shape: a stunned archer is pinned at its spawn, so a position floor at the
+// spawn reads as "held".
+inline constexpr SpawnSpec kFamilySpawns_orc_yell_stun_hold_scen99[] = {
+    // Archer target, same shape as kFamilySpawns_enemy_freeze_mage_scen99: an
+    // archer's position is a clean pin (it closes to firing range rather than
+    // charging) and its constitution is trunc(90/30) = 3 -> rand0(30).
+    { FAMILY_ARCHER, 1, kOrderLiving, 200, 120, 0, 0,  5,   0 },
+    // Caster LAST. Level 14 is the largest level whose stun roll
+    // 10 + rand0(140) - rand0(30) cannot exceed kFrozenStunStackCap (149 < 150),
+    // so the branch-only stun clamp never engages and the branch/master stun
+    // values agree exactly. og.combat.yell_radius(14) = 160+280 = 440 is capped
+    // to 420 branch-side, which is immaterial at 80px separation.
+    // 600 mp covers special_costs[1] = 25.
+    { FAMILY_ORC,    0, kOrderLiving, 120, 120, 0, 0, 14, 600 },
+};
+
+inline constexpr FactPredicate kFacts_orc_yell_stun_hold_scen99[] = {
+    pred::TickReached(50),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
+        "consequence: HOWL banks frozen_delay on the archer at tick 20; a frozen walker never acts, so it is still standing on its spawn (200,120) at tick 50. With no stun banked it steps west toward the orc and its xpos drops below 200 (same construction as enemy_freeze_mage_scen99)"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7400, 7400,
+        "consequence: EXACT pin at 74 of 140. The archer's pre-cast FIRE ARROWS volley is the orc's only damage source and the last of those bolts expires at tick 28; a stunned archer starts nothing new, so the figure is frozen from the cast to the tick-50 capture. Bank a zero stun and the archer keeps firing, which moves this pin. (Regen cannot reach it either: regen_delay is re-armed to 50 on every hit and the budget ends 22 ticks after the last one.)"),
+    pred::EventKindExactly(/*play_sound*/1, 9,
+        "consequence: nine sounds — the archer's pre-cast volley plus SOUND_ROAR on the completed yell. A yell that banks no stun leaves the archer firing for the remaining 30 ticks, so the count rises above nine"),
+};
+
+inline constexpr Mutation kMut_orc_yell_stun_hold_scen99 = {
+    "packs/core/scripts/orc.lua", 41,
+    "      foe:add_frozen_stun(stun)",
+    "      foe:add_frozen_stun(0)",
+    "Banks a zero stun. stun_total(raw, 0) returns raw unchanged, so the archer is never frozen: it acts from tick 20 on, steps west off its spawn (failing the archer position floor) and its level-5 arrows drop the orc below the caster hp pin. The radius scan, the two RNG draws and SOUND_ROAR all still run, so the flip isolates the freeze write itself."
+};
+
+// ORC slot-2 EAT CORPSE (orc.lua eat_corpse): the full-hp refusal, the nearest
+// bloodstain scan, the squared-distance reach gate, the heal, the int16 heal
+// marker, the notice and the corpse kill. special_orc_2_scen99 casts into an
+// arena with no bloodstain at all, so the whole body early-outs.
+// Two hard constraints shape this arena: distance_to_ob_center is SQUARED
+// euclidean, so `dist > 24` is a ~4.9px radius; and find_nearest_blood walks
+// fxlist only, while a SpawnSpec treasure lands in oblist — so the stain has
+// to come from a real in-run death.
+inline constexpr InputEvent kInputs_orc_eat_corpse_scen99[] = {
+    // Cycle to slot 2 (EAT CORPSE). orc special_names[2] = "EAT CORPSE" and the
+    // cycling gate needs (2-1)*3+1 = 4 <= stats.level.
+    {  5, 0, K_SPECIAL_SWITCH}, {  6, 0, K_NONE},
+    // ticks 6..39 idle: the touching elf melees the orc so hp < max_hp when the
+    // first eat is attempted, and the team-0 archer snipes it dead at tick 43,
+    // dropping the stain at (136,120). The player walker is stationary through
+    // all of this, so it never collide-melees and never queues a command.
+    // tick 40: hold K_RIGHT for the rest of the run, walking the orc east
+    // across the stain on a 3px lattice.
+    { 40, 0, K_RIGHT},
+    // Pulse K_SPECIAL every other tick from 46. A failed eat costs nothing
+    // (walker::special only debits magicpoints when the hook returns true), and
+    // sampled x positions are 6px apart while the eat window |dx| <= 4 is 9px
+    // wide, so the pass is guaranteed to be sampled.
+    { 46, 0, K_RIGHT | K_SPECIAL}, { 47, 0, K_RIGHT},
+    { 48, 0, K_RIGHT | K_SPECIAL}, { 49, 0, K_RIGHT},
+    { 50, 0, K_RIGHT | K_SPECIAL}, { 51, 0, K_RIGHT},
+    { 52, 0, K_RIGHT | K_SPECIAL}, { 53, 0, K_RIGHT},
+    { 54, 0, K_RIGHT | K_SPECIAL}, { 55, 0, K_RIGHT},
+    { 56, 0, K_RIGHT | K_SPECIAL}, { 57, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_orc_eat_corpse_scen99[] = {
+    // Team-0 sniper, parked south and out of the way. It exists solely to KILL
+    // the elf: melee damage is level-independent (see the batch header), so the
+    // orc's own 22-per-hit rock needs four swings and the elf's AI backs out of
+    // reach at low hp long before the fourth — measured, the elf survives 110
+    // ticks and no corpse is ever produced. A level-20 archer's ARROW does pick
+    // up create_weapon's (level+3)/4 * level factor and one-shots the elf at
+    // tick 43, dropping the stain on the orc's walking line at (136,120).
+    { FAMILY_ARCHER, 0, kOrderLiving, 120, 220, 0, 0, 20, 0 },
+    // The corpse source, spawned EXACTLY touching to the east (elf 136..152 vs
+    // orc 120..136 — adjacent, never interpenetrating, so the branch-only obmap
+    // interpenetration escape rule stays unreachable and the two arms cannot
+    // diverge there). Already standing on its foe, it melees the orc from tick
+    // 9, which is what puts the orc under max_hitpoints before the first eat
+    // attempt, and it never walks, so its stain lands where it stood.
+    { FAMILY_ELF, 1, kOrderLiving, 136, 120, 0, 0          },
+    // Caster LAST -> oblist head -> player. Level 8 clears the slot-2 cycling
+    // gate ((2-1)*3+1 = 4); 600 mp covers special_costs[2] = 20 (only a
+    // SUCCESSFUL eat is charged, so the failed pulses are free).
+    { FAMILY_ORC, 0, kOrderLiving, 120, 120, 0, 0, 8, 600 },
+};
+
+inline constexpr FactPredicate kFacts_orc_eat_corpse_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_ORC, 1),
+    pred::WalkerFamilyCount(FAMILY_ELF, 0, 0,
+        "the corpse source is sniped by the team-0 archer and reaped; its FAMILY_STAIN goes to fxlist, which is the only list find_nearest_blood walks"),
+    // negative_assertion: the elf must be DEAD for a bloodstain to exist at all — its absence from oblist is the corpse's provenance, not an incidental count.
+    pred::WalkerPositionMoved(FAMILY_ORC, 132, 0,
+        "consequence: the orc must actually walk east onto the stain for the squared-distance gate (dist > 24 == a 4.9px radius) to open"),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: 'Orc ate a corpse.' at tick 48 is the ONLY notification this arena produces — the elf's death emits none — so the floor proves the eat body ran past the full-hp refusal, the fxlist bloodstain scan and the squared-distance reach gate"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7900, 7900,
+        "consequence: EXACT pin at 79 of 140. The orc's damage stops when the elf dies at tick 43, and the tick-60 capture is inside the 50-tick regen_delay re-armed by that last hit, so the only thing that can still move hp is the eat itself: corpse.level * corpse_heal_per_level = 1*5. Zero the per-level heal and the arm lands at exactly 7400."),
+};
+
+inline constexpr Mutation kMut_orc_eat_corpse_scen99 = {
+    "packs/core/families/living-14-orc.yaml", 50,
+    "corpse_heal_per_level: 5",
+    "corpse_heal_per_level: 0",
+    "Zeroes the per-corpse-level heal. Every other step of eat_corpse still runs (find_nearest_blood, the range gate, do_heal_effects, the notice, corpse:death()) and no RNG draw changes, so the mutated dump is identical except the orc's final hp is exactly 5 lower — the exact orc hp pin flips."
+};
+
+// ARCHER slot-1 FIRE ARROWS (archer.lua fire_arrows): aim reset, magic refund,
+// COMMAND_SET_WEAPON(core:fire_arrow), eight COMMAND_QUICK_FIRE headings and
+// COMMAND_RESET_WEAPON. The only corpus row that pins FAMILY_FIRE_ARROW is
+// weapon_fire_arrow_emission_scen99, which uses slot 3 (exploding_shot), so
+// the slot-1 weapon swap and the queued ring are untested.
+inline constexpr SpawnSpec kFamilySpawns_archer_fire_arrows_ring_scen99[] = {
+    // One foe on each of the volley's two cardinal headings that matter, both
+    // inside the fire arrow's ~96px reach (stepsize 8*1.414 x lineofsight 12).
+    // Level-1 elves plink for 3 damage a rock, so the 90hp archer survives the
+    // whole budget while still producing a live two-sided engagement.
+    { FAMILY_ELF,    1, kOrderLiving, 190, 120, 0, 0          }, // east
+    { FAMILY_ELF,    1, kOrderLiving,  50, 120, 0, 0          }, // west
+    { FAMILY_ARCHER, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 }, // caster LAST; special_costs[1] = 20
+};
+
+inline constexpr FactPredicate kFacts_archer_fire_arrows_ring_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ELF, 2, 2),
+    pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
+        "consequence: slot 1 swaps the archer's weapon to core:fire_arrow for the eight queued QUICK_FIREs, so the ring is FAMILY_FIRE_ARROW and not the archer's default FAMILY_ARROW"),
+    pred::WeaponNetTravel(FAMILY_FIRE_ARROW, kWeaponPathStraight, 12542,
+        "trajectory: a QUICK_FIRE arrow flies one fixed heading for its whole life, so net == pathlen. The seq-0 bolt of the ring runs (110,137) -> (33,236) over ticks 25..36, a net 12542 centi-px on the down-left diagonal"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 6900, 6900,
+        "consequence: EXACT pin. One ring arrow reaches the west elf and takes it to 69 of 75; the east elf is untouched at 75, so only a landed fire arrow can satisfy this"),
+    pred::ScoreDelta(0, 7, 7,
+        "consequence: weapon hits award team-0 score (tempdamage + target level, walker_combat.cpp owner() branch). The single ring hit is worth 6 + level 1 = 7 and nothing else in the arena scores"),
+};
+
+inline constexpr Mutation kMut_archer_fire_arrows_ring_scen99 = {
+    "packs/core/scripts/archer.lua", 6,
+    "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:fire_arrow\"))",
+    "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:arrow\"))",
+    "Points the fire-arrow constant at core:arrow. The slot-1 COMMAND_SET_WEAPON then selects the archer's ordinary arrow, so no FAMILY_FIRE_ARROW ever enters weaplist or weapon_tracks and WeaponFamilyEmitted(FAMILY_FIRE_ARROW) fails. (The same constant feeds exploding_shot, so the flip is not slot-1-exclusive — acceptable for a staged-copy canary.)"
+};
+
+// SKELETON slot-1 TUNNEL (skeleton.lua do_special + handle_teleport): ANI_TELE_OUT,
+// then on animation completion walker::animate dispatches handle_teleport,
+// which sets ANI_TELE_IN and calls teleport_ranged(level * 18). The corpus's
+// only Special_Skeleton_1 row, special_skeleton_1_scen99, asserts
+// WalkerDiedByFinal(FAMILY_SKELETON) — it certifies the caster dying in melee,
+// the exact opposite of a completed self-teleport.
+inline constexpr SpawnSpec kFamilySpawns_skeleton_tunnel_scen99[] = {
+    // Lone caster, no foes at all (the same enemy-free construction
+    // effect_protection_emit_scen99 uses) so nothing but teleport_ranged can
+    // move the skeleton and nothing can damage it. Spawned at (64,144) — inside
+    // the open west band of the scen1 grid, with the tile-0..2 wall block to the
+    // west, so teleport_landing_clear rejects most westward rolls and the
+    // accepted destination biases east/south of the spawn.
+    // Level 10 -> tunnel radius 10*18 = 180px; 600 mp covers special_costs[1] = 10.
+    { FAMILY_SKELETON, 0, kOrderLiving, 64, 144, 0, 0, 10, 600 },
+};
+
+inline constexpr FactPredicate kFacts_skeleton_tunnel_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1,
+        "the caster SURVIVES its own special — the corpus's only skeleton-special row asserts the opposite"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SKELETON, 6000, 6000,
+        "nothing in the arena can damage the caster, so its hp is an exact structural pin"),
+    pred::WalkerPositionMoved(FAMILY_SKELETON, 172, 286,
+        "consequence: TUNNEL relocates the caster by teleport_ranged(level*18 = 180px) and it lands at exactly (172,286) — 108px east and 142px south of its (64,144) spawn. With no movement input and no foe in the arena, a position that far from the spawn can ONLY come from the completed TELE_OUT -> handle_teleport -> TELE_IN chain"),
+};
+
+inline constexpr Mutation kMut_skeleton_tunnel_scen99 = {
+    "packs/core/scripts/skeleton.lua", 12,
+    "  self:teleport_ranged(self.level * 18)",
+    "  self:teleport_ranged(self.level * 1)",
+    "Shrinks the tunnel radius from 180px to 10px. The animation chain still runs and the skeleton still hops, but it lands within 10px of (64,144) so the position floor read off the golden fails. Using *1 rather than *0 keeps rng.next(2*range) away from a zero argument."
+};
+
+// DRUID slot-1 GROW TREE (druid.lua plant_tree): busy bail, weapon_cost refund,
+// self:fire(), busy += fire_frequency*2, og.summon(core:tree) at the bolt's
+// position with ANI_GROW, then the bolt is killed. This is the ONLY producer of
+// FAMILY_TREE. weapon_tree_emission_scen99, the corpus's only FAMILY_TREE row,
+// direct-spawns the tree as kOrderWeapon and gates its emission predicate off
+// on both sides.
+inline constexpr SpawnSpec kFamilySpawns_druid_grow_tree_scen99[] = {
+    // Lone caster, no foes. plant_tree calls self:fire() directly (not
+    // fire_check), so no foe is needed, and an empty arena keeps the bolt's
+    // landing point — and therefore the tree's position — fully deterministic:
+    // lastx/lasty are 0, facing(0,0) == FACE_UP, so the bolt spawns at
+    // (120 + (16-8)/2, 120 - 8 - 1) = (124, 111).
+    // Level 10 + 300 mp: special_costs[1] = 15 and weapon_cost 4 (refunded).
+    { FAMILY_DRUID, 0, kOrderLiving, 120, 120, 0, 0, 10, 300 },
+};
+
+inline constexpr FactPredicate kFacts_druid_grow_tree_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 11000, 11000,
+        "nothing can damage the caster in this arena, so its hp is an exact structural pin"),
+    pred::WeaponFamilyEmitted(FAMILY_TREE,
+        "consequence: GROW TREE is the only producer of FAMILY_TREE; og.summon(self,\"weapon\",WEAP_TREE) puts a real tree in weaplist at the bolt's landing point, which is what the corpus's direct-spawn tree row could not observe"),
+    pred::WeaponNetTravel(FAMILY_TREE, kWeaponPathStationary, 200,
+        "trajectory: the grown tree is ACT_SIT with stepsize 0, so its whole track has pathlen 0 (2px of slack)"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "self:fire() emits the lightning bolt's fire_sound before the bolt is replaced by the tree"),
+};
+
+inline constexpr Mutation kMut_druid_grow_tree_scen99 = {
+    "packs/core/scripts/druid.lua", 6,
+    "local WEAP_TREE = assert(og.family_id(\"weapon\", \"core:tree\"))",
+    "local WEAP_TREE = assert(og.family_id(\"weapon\", \"core:blob\"))",
+    "Points the tree constant at core:blob. GROW TREE then plants a blob at the bolt's landing point: no FAMILY_TREE ever enters weaplist or weapon_tracks, so WeaponFamilyEmitted(FAMILY_TREE) fails, and the blob is a moving ACT_FIRE weapon so the STATIONARY class would not hold either."
+};
+
+// BARBARIAN slot-1 HURL BOULDER (barbarian.lua do_special): identical to slot 2
+// except the last line, `if self:current_special() == 2 then
+// boulder:set_skip_exit(5000) else boulder:set_skip_exit(0) end`. weap::death
+// shows skip_exit is the ONLY thing that separates the two slots and its sole
+// effect is spawning a FAMILY_EXPLOSION on the boulder's death, so the
+// discriminator has to be the missing blast. special_barbarian_1_scen99 asserts
+// only counts/sound/HP band and weapon_exploding_boulder_scen99 uses slot 2
+// with a cluster the boulder never reached.
+inline constexpr InputEvent kInputs_barbarian_boulder_impact_scen99[] = {
+    // The caster must FACE east before firing: with lastx/lasty at 0 the boulder
+    // would be hurled north (facing(0,0) == FACE_UP). Five ticks of K_RIGHT at
+    // stepsize 3 leaves the barbarian at x=135, still 41px clear of the nearest
+    // elf so no collide-melee fires.
+    {  1, 0, K_RIGHT}, {  6, 0, K_NONE},
+    // Slot 1 (HURL BOULDER) is current_special's default, no cycling needed.
+    { 20, 0, K_SPECIAL}, { 21, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_barbarian_boulder_impact_scen99[] = {
+    // Three level-1 elves in a line on the boulder's heading, pulled close enough
+    // that contact is certain well before the boulder's 9-tick life expires (the
+    // slot-2 row's 220/250/280 cluster outran its boulder). Elves are 75hp: they
+    // SURVIVE one ~28-damage plow-through but NOT plow-through plus a 60-damage
+    // blast, which is what gives the alive-count predicate teeth. Their level-1
+    // rocks do 3 damage a hit, harmless to a 150hp barbarian.
+    { FAMILY_ELF,       1, kOrderLiving, 176, 120, 0, 0          },
+    { FAMILY_ELF,       1, kOrderLiving, 200, 120, 0, 0          },
+    { FAMILY_ELF,       1, kOrderLiving, 224, 120, 0, 0          },
+    { FAMILY_BARBARIAN, 0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // caster LAST; level 5 -> boulder stepsize 10, special_costs[1] = 20
+};
+
+inline constexpr FactPredicate kFacts_barbarian_boulder_impact_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_BOULDER),
+    // NO WeaponSpeed / WeaponNetTravel here. The nearest elf has closed to
+    // ~15px by the tick-20 cast, so the boulder makes contact on its very
+    // first step and dump.weapon_tracks holds a single sample — both
+    // trajectory kinds would evaluate Indeterminate, which passes without
+    // asserting anything. Boulder flight speed is already pinned by
+    // weapon_boulder_emission_scen99, and every weapon_tracks sample in this
+    // row is byte-compared against the golden regardless.
+    pred::WalkerFamilyCount(FAMILY_ELF, 3, 3),
+    pred::WalkerAliveAtFinal(FAMILY_ELF, 3,
+        "consequence: skip_exit 0 means the slot-1 boulder simply dies where it lands; the elf it plows through survives on 46 of 75. The slot-2 sentinel detonates a damage*2 = 60 blast at that same death point, which finishes that elf"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 4600, 4600,
+        "consequence: EXACT pin on the plowed elf — 75 hp less the boulder's 29-damage hit. Under the explode sentinel that elf is dead instead, and the two untouched elves sit at 7500, so nothing satisfies the pin"),
+    pred::ScoreDelta(0, 30, 30,
+        "consequence: weapon hits award team-0 score (tempdamage + target level). The single plow-through is worth 29 + level 1 = 30 and nothing else in the arena scores; a blast plus its kill bonus pushes the total well past it"),
+};
+
+inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
+    "packs/core/scripts/barbarian.lua", 59,
+    "    boulder:set_skip_exit(0)",
+    "    boulder:set_skip_exit(5000)",
+    "Gives the slot-1 boulder the legacy 5000 explode-on-death sentinel, i.e. makes HURL BOULDER behave as EXPLODING BOULDER. weap::death then spawns a FAMILY_EXPLOSION with damage*2 = 60 at the boulder's death point, killing the already-plowed elf standing there: the elf alive-count drops below 3 and the blast's damage pushes score_per_team[0] past the ScoreDelta ceiling."
+};
+
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -7294,6 +7694,70 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Mage_2,
       kFacts_mage_starburst_ring_scen99, std::size(kFacts_mage_starburst_ring_scen99),
       kMut_mage_starburst_ring_scen99 },
+
+    { "soldier_whirlwind_ring_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_whirlwind_ring_scen99, std::size(kFamilySpawns_soldier_whirlwind_ring_scen99),
+      0, false, true, Exercises::Special_Soldier_3,
+      kFacts_soldier_whirlwind_ring_scen99, std::size(kFacts_soldier_whirlwind_ring_scen99),
+      kMut_soldier_whirlwind_ring_scen99 },
+
+    { "soldier_disarm_matched_levels_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_matched_scen99, std::size(kFamilySpawns_soldier_disarm_matched_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_matched_scen99, std::size(kFacts_soldier_disarm_matched_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "orc_yell_stun_hold_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 50,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_yell_stun_hold_scen99, std::size(kFamilySpawns_orc_yell_stun_hold_scen99),
+      0, false, true, Exercises::Special_Orc_1,
+      kFacts_orc_yell_stun_hold_scen99, std::size(kFacts_orc_yell_stun_hold_scen99),
+      kMut_orc_yell_stun_hold_scen99 },
+
+    { "orc_eat_corpse_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_orc_eat_corpse_scen99, std::size(kInputs_orc_eat_corpse_scen99), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_eat_corpse_scen99, std::size(kFamilySpawns_orc_eat_corpse_scen99),
+      0, false, true, Exercises::Special_Orc_2,
+      kFacts_orc_eat_corpse_scen99, std::size(kFacts_orc_eat_corpse_scen99),
+      kMut_orc_eat_corpse_scen99 },
+
+    { "archer_fire_arrows_ring_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_fire_arrows_ring_scen99, std::size(kFamilySpawns_archer_fire_arrows_ring_scen99),
+      0, false, true, Exercises::Special_Archer_1,
+      kFacts_archer_fire_arrows_ring_scen99, std::size(kFacts_archer_fire_arrows_ring_scen99),
+      kMut_archer_fire_arrows_ring_scen99 },
+
+    { "skeleton_tunnel_displacement_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_skeleton_tunnel_scen99, std::size(kFamilySpawns_skeleton_tunnel_scen99),
+      0, false, true, Exercises::Special_Skeleton_1,
+      kFacts_skeleton_tunnel_scen99, std::size(kFacts_skeleton_tunnel_scen99),
+      kMut_skeleton_tunnel_scen99 },
+
+    { "druid_grow_tree_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_grow_tree_scen99, std::size(kFamilySpawns_druid_grow_tree_scen99),
+      0, false, true, Exercises::Special_Druid_1,
+      kFacts_druid_grow_tree_scen99, std::size(kFacts_druid_grow_tree_scen99),
+      kMut_druid_grow_tree_scen99 },
+
+    { "barbarian_boulder_impact_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_barbarian_boulder_impact_scen99, std::size(kInputs_barbarian_boulder_impact_scen99), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_boulder_impact_scen99, std::size(kFamilySpawns_barbarian_boulder_impact_scen99),
+      0, false, true, Exercises::Special_Barbarian_1,
+      kFacts_barbarian_boulder_impact_scen99, std::size(kFacts_barbarian_boulder_impact_scen99),
+      kMut_barbarian_boulder_impact_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
