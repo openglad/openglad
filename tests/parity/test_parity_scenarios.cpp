@@ -425,6 +425,19 @@ OG_PARITY_TEST(weapon_circle_protection_follow_scen99)
 OG_PARITY_TEST(weapon_sit_notify_quiet_scen99)
 OG_PARITY_TEST(weapon_ranged_impact_hp_scen99)
 
+// corner-misc batch
+OG_PARITY_TEST(archer_hit_response_backpedal_scen99)
+OG_PARITY_TEST(orc_yell_zero_constitution_scen99)
+OG_PARITY_TEST(mage_freeze_time_offteam_scen99)
+OG_PARITY_TEST(beast_set_difficulty_invariant_scen99)
+OG_PARITY_TEST(thief_taunt_matched_levels_scen99)
+OG_PARITY_TEST(elf_mega_rocks_volley_scen99)
+OG_PARITY_TEST(fireelemental_starburst_ring_scen99)
+OG_PARITY_TEST(mage_heartburst_multitarget_scen99)
+OG_PARITY_TEST(soldier_charge_displacement_scen99)
+OG_PARITY_TEST(elf_rocks_pair_scen99)
+OG_PARITY_TEST(thief_ai_bomb_flee_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
