@@ -388,7 +388,7 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
 
     // Slot 3 has no entry and the table declares no `default`: the
     // dispatch is consumed as a successful no-op — no Lua ran, nothing
-    // changed. (This is the retired switch ladders' unmatched case.)
+    // changed. This is the specials-table contract for an unmatched slot.
     wisp->stats()->set_max_magicpoints(100.0f);
     wisp->stats()->set_magicpoints(60.0f);
     wisp->set_current_special(static_cast<char>(3));

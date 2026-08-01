@@ -10,7 +10,6 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/script/family_hooks.h>
-#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -23,7 +22,6 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <map>
 #include <string>
 #include <string_view>
@@ -390,30 +388,6 @@ void emulate_classic_screen_flow(GameWorld& world,
     screen_next_level = static_cast<short>(destination);
 }
 
-// OPENGLAD_LUA_INSTRUCTION_REPORT=<file>: append one "<scenario-id>\t<total>"
-// line per completed run, where <total> is the cumulative VM instruction
-// count the world-host budget hook observed — the pack-script replay at
-// WorldScripts construction plus every hook dispatch of the run. ScriptHost
-// switches itself to a per-instruction budget-hook cadence under the same
-// variable (see budget_check_cadence in src/gameplay/script/script_host.cpp),
-// so the totals are exact, and the sim is byte-identical either way — the
-// parity gate is run with and without the variable to prove it. Pure
-// read-only reporting: the state dump has already been captured when this
-// runs, nothing is written back into the sim, and with the variable unset it
-// returns before touching anything. scripts/refactor/instruction_budget.py
-// aggregates the raw lines into the committed baseline JSON;
-// scripts/refactor/probe.sh --budget-check gates candidates against it.
-void append_instruction_report(const ScenarioSpec& spec, GameWorld& world)
-{
-    const char* path = std::getenv("OPENGLAD_LUA_INSTRUCTION_REPORT");
-    if (path == nullptr || path[0] == '\0')
-        return;
-    const std::uint64_t total =
-        world.scripts().host().instructions_observed();
-    std::ofstream out(path, std::ios::app);
-    out << spec.id << '\t' << total << '\n';
-}
-
 } // namespace
 
 RunOutcome run_scenario(const ScenarioSpec& spec)
@@ -647,8 +621,6 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     for (const auto& ev : parity_events.events())
         out.coverage.event_kinds.insert(
             event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));
-
-    append_instruction_report(spec, world);
 
     return out;
 }

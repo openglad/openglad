@@ -46,7 +46,8 @@ float compute_base_damage(float base_damage, IRandom& rng)
     return d - sqrtd / 2.0f + static_cast<float>(rng.next(static_cast<std::uint32_t>(floorf(sqrtd))));
 }
 
-// FAERIE_FREEZE_TIME is 40 (from stats.h)
+// Faerie's fire freezes foes :)
+// FAERIE_FREEZE_TIME is 40 (from stats.h).
 static constexpr std::int32_t FREEZE_BASE_TIME = 40;
 
 std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constitution, IRandom& rng)
@@ -74,6 +75,7 @@ std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constituti
 HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRandom& rng)
 {
     std::int32_t base = magicpoints / 4 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(magicpoints / 4)));
+    // Get the cost first: the level bonus increases healing, not its price.
     std::int32_t cost = base / 2;
     // Add bonus healing from level
     std::int32_t amount = base + level * 5;
@@ -121,6 +123,12 @@ HpRegenResult compute_hp_regen_tick(float current_hp, float max_hp, float heal_p
 
 short compute_xp_from_attack(std::int32_t level_diff, float damage)
 {
+    // Whooo-ee! An interpolated (quintic) polynomial fitting
+    // {{0,30},{1,25},{2,15},{3,10},{4,5},{5,2.5},{6,1.25},{7,0.5},
+    //  {8,0.25},{9,-10}} for 20 damage done.
+    // The odd order matters: it rises toward infinity to the left and falls
+    // toward negative infinity to the right. The factor was tuned so level
+    // ups happen at a good rate.
     float x = static_cast<float>(level_diff);
     float poly = -0.00246795f*powf(x,5) + 0.013243f*powf(x,4)
                  + 0.223208f*powf(x,3) - 1.16091f*powf(x,2)

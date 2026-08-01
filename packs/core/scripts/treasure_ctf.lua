@@ -1,21 +1,20 @@
 -- core:flag + core:waypoint — CTF touch hooks (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
--- core:waypoint is fully live: control points are occupancy-driven (CTF
--- phase 5 owns them from ctf_run_tick), so a touch is genuinely a no-op
--- returning true (src/gameplay/ctf/ctf.cpp:1170-1176).
+-- core:waypoint is fully live: ctf_run_tick owns control points from their
+-- occupancy, so a touch is genuinely a no-op returning true.
 --
--- core:flag is one call: og.ctf_on_flag_touch(self, eater) wraps
--- og::sim::ctf_on_flag_touch (src/gameplay/ctf/ctf.cpp) exactly as the C++
--- hook did. The flag's whole body is CtfState machinery — team_active, the
--- per-team flag records, send_flag_home, capture counting and scoring — so
--- the rules stay in the CTF engine rather than being re-invented in Lua.
+-- core:flag delegates to og.ctf_on_flag_touch, the binding around
+-- og::sim::ctf_on_flag_touch. The flag's whole body is CtfState machinery —
+-- team_active, per-team flag records, send_flag_home, capture counting and
+-- scoring — so those rules remain centralized in the CTF engine.
 
 local function flag_on_eat(self, eater)
   return og.ctf_on_flag_touch(self, eater)
 end
 
 local function ctf_point_on_eat(self, eater)
-  -- Control points are occupancy-driven (phase 5); touching is a no-op.
+  -- Control points are occupancy-driven; touching is a no-op.
   return true
 end
 

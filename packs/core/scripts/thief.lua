@@ -1,4 +1,7 @@
 -- core:thief — bomb, cloak, taunt/charm, poison cloud (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
+-- The shareware-era source marked Drop Bomb "unregistered", while Cloak
+-- and Taunt were "Registered."
 
 local C = og.C
 local lc = og.use("living_common")
@@ -7,7 +10,7 @@ local FX_CLOUD = assert(og.family_id("fx", "core:cloud"))
 
 local function check_special_ai(self)
   if self:current_special() == 1 then
-    -- drop bomb (per-tick gate: gate-only ranges stay code, R-KEEP-4)
+    -- Drop-bomb AI uses this fixed per-tick range.
     local foe = self:foe()
     if foe then
       local distance = self:distance_to_ob(foe)
@@ -48,7 +51,7 @@ local function drop_bomb(self)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
   end
   bomb.damage = og.combat.bomb_damage(self.level)
-  bomb:set_floor(self:floor()) -- bomb armed on the thief's floor (A8)
+  bomb:set_floor(self:floor()) -- bomb is armed on the thief's floor
   bomb:setxy(self:xpos() + self:sizex() // 2
                - bomb:sizex() // 2,
              self:ypos() + self:sizey() // 2
@@ -92,6 +95,7 @@ local function taunt_or_charm(self)
       local foe_roll = og.rand(foe.level)
       if my_roll >= foe_roll then
         foe:set_foe(self)
+        -- "A hack, yeah": taunted foes also follow the thief as leader.
         foe:set_leader(self)
         if foe:act_type() ~= C.ACT_CONTROL then
           foe:s_force_command(C.COMMAND_FOLLOW,
@@ -121,10 +125,13 @@ local function taunt_or_charm(self)
       break
     end
     local target = foes[i]
+    -- The old charm_left <= 10 gate was disabled; real_team_num is the
+    -- remaining charm-history gate.
     if target:real_team_num() == 255
         and target:order() == C.ORDER_LIVING then
       local level_diff = self.level - target.level
       if level_diff < 0 or og.rand(20) == 0 then
+        -- A resisted charm gives the enemy a free attack.
         target:set_foe(self)
         target:attack(self)
         resisted = 1
@@ -136,10 +143,8 @@ local function taunt_or_charm(self)
         else
           target:set_foe(self:foe())
         end
-        -- og::combat::soften(base + per_diff*diff, kThiefCharmKnee=375,
-        -- kThiefCharmCeiling=490); §2.9: identity through diff 12. The
-        -- knee/ceiling stay code: they are engine constexprs
-        -- (combat_math.h), not pack data.
+        -- The soft-knee formula is identity through level diff 12. Its
+        -- knee and ceiling are engine combat policy, not pack tuning.
         target:set_charm_left(og.soften(
           t.charm_duration_base + level_diff * t.charm_duration_per_diff,
           375, 490))

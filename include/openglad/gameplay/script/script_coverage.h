@@ -9,8 +9,8 @@
 
 // Coverage recorder for pack Lua.
 //
-// Why this exists: after the class-pack conversion, family behavior IS the
-// Lua under packs/. The repo's gcovr gate measures src/ only, so it would
+// Family behavior lives in the Lua under packs/. The repo's gcovr gate
+// measures src/ only, so by itself it would
 // report green while thousands of lines of game logic went untested. This
 // records the two things a Lua coverage report needs —
 //

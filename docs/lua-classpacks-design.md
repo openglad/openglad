@@ -1,8 +1,9 @@
 # Lua Class Packs: Hotpluggable Families, Scripted Objects, and Level Scripting
 
-Status: implementation in progress on `feature/lua-classpacks`. All 21 living
-families plus the weapon/effect/treasure behaviors run as Lua in the core
-pack; the C++ callbacks are still present as a fallback (see §9a).
+OpenGlad's built-in family data and family-specific behavior ship through
+`packs/core/`, using the same YAML and Lua path as third-party packs. The
+engine provides registries, generic entity behavior, and script dispatch; it
+does not carry a second native implementation of the core families.
 
 This document is the **architecture and determinism** reference: how packs
 are built, loaded, identified and dispatched, and the rules any sim-facing
@@ -13,17 +14,20 @@ Companion documents, each in its own lane:
 | Document | Lane |
 |---|---|
 | [docs/modding/api-reference.md](modding/api-reference.md) | Symbol-level reference: every `og.*` function, walker/stats/guy method, constant and hook signature, plus a guided tour of the runnable example pack in `docs/modding/examples/emberwisp/`. |
+| [docs/lua-style.md](lua-style.md) | Naming, headers, comments, helper modules, and compatibility style for in-tree pack Lua. |
 | [.claude/skills/openglad-modding/SKILL.md](../.claude/skills/openglad-modding/SKILL.md) | The practical playbook: build, stage, test, and *prove* a mod dispatches. |
 | [AGENTS.md](../AGENTS.md) | Router for non-Claude agents. |
 
 ## 1. Goals
 
 - Character families (living/weapon/effect/treasure/generator) defined by
-  **packs**: directories or zips carrying YAML descriptors, Lua behavior
-  scripts, sprite PNGs, and animation tables. No native code in packs, ever.
-- The 21 built-in living families plus weapon/effect/treasure behaviors ship
+  **packs**: virtual directories carrying YAML descriptors, Lua behavior
+  scripts, sprite PNGs, and animation tables. A pack may be a host directory
+  or a subtree of a mounted campaign archive. No native code in packs, ever.
+- The built-in living, weapon, effect, treasure, and generator families ship
   as the **core pack**, built from `packs/core/` at build time and mounted
-  like builtin campaigns. The engine carries no compiled-in family behavior.
+  like built-in campaigns. The engine carries no compiled-in family-specific
+  behavior.
 - Campaigns may embed packs (`packs/` inside the campaign zip) that mount for
   that campaign only.
 - Levels may carry scripts: level-wide hooks and per-entity hooks.
@@ -51,8 +55,8 @@ resources/packs/               classpack.yaml reader, pack mount/enumerate,
 
 - Component rules hold: gameplay depends only on core (+og_lua, an external
   lib like GTest); resources parses YAML/zip (libyaml/libzip stay behind
-  resources IO); `check_vendor_leaks.sh` gains `lua.h|lauxlib.h|lualib.h|lua.hpp`
-  patterns, allowed only under `src/gameplay/script/`.
+  resources IO); `check_vendor_leaks.sh` permits Lua headers only under
+  `src/gameplay/script/`.
 - **VM ownership**: each `GameWorld` lazily owns a `WorldScripts` (a
   `ScriptHost` plus the registered-hook bitmasks). Server world and local
   mirror get separate VMs — the same isolation rule as the obmap. Dispatch
@@ -73,42 +77,32 @@ resources/packs/               classpack.yaml reader, pack mount/enumerate,
 
 Lua 5.4 integers are int64 and exact. Lua floats are C doubles. The sim uses
 C++ `float` in places (hitpoints, busy, damage). The rules below make every
-transliterated expression bit-identical to the C++ original.
+sim-facing expression preserve the engine's numeric semantics.
 
-**R1 — Integer division and modulo.** Never use `//`, `/`, or `%` on
-integers. Use `og.div(a,b)` / `og.mod(a,b)` (C semantics: truncate toward
-zero; div-by-zero raises a script error). Lua `//`/`%` floor instead of
-truncate and differ for negative operands.
-  - Stage-2 amendment: `scripts/refactor/shim_audit.py` may rewrite a
-    shimmed site to plain `//`/`%` when it proves dividend >= 0 and
-    divisor >= 1 from the curated engine ranges in
-    `scripts/refactor/lua_corpus.py` (`METHOD_RANGES`) — e.g. `s_level`
-    is 0..32767 because every engine write path (descriptor data,
-    `guy::upgrade_to_level`, difficulty scaling) keeps levels small and
-    non-negative.
-  - Scope of that proof — a documented limitation: those ranges are
-    engine-WRITE facts, not load-time guarantees. The v9+ save loader
-    assigns the raw on-disk int16 to `guy::level` unchecked
-    (`src/resources/save_data.cpp`), and the wire guy-record and
-    snapshot readers do the same (`net_transport.cpp`,
-    `world_snapshot.cpp`), so byte-crafted hostile data can present a
-    negative level at a rewritten site, where `//` floors while the
-    retired C++ truncated. Every peer runs the same Lua, so hostile
-    data cannot split peers or touch memory — the deviation exists only
-    against the retired C++ semantics (visible only to the parity
-    harness, whose scenarios are engine-generated). Robustness against
-    hostile pack/save data is the sandbox/save-validation layer's job
-    (the walker `ani_count` precedent), not per-site shims; note that
-    layer does not yet bound `guy::level` on load.
+**R1 — Integer division and modulo.** Use `og.div(a,b)` / `og.mod(a,b)` unless
+the operand ranges prove plain `//` / `%` equivalent. The helpers use C
+semantics (truncate toward zero; div-by-zero raises a script error), while
+Lua `//` / `%` use floor semantics and differ for negative operands. Never
+use `/` for integer division.
+
+The shipped core pack uses plain `//` or `%` only where audited
+engine-produced ranges make the Lua and C results identical. Those ranges
+are not load-time validation: save, wire, and snapshot readers can still
+admit a crafted negative level, for example, and Lua floor division then
+differs from the historic C truncation. Every peer still runs the same Lua,
+so this does not create a desync. New code keeps `og.div`/`og.mod` unless its
+intended input domain has an equally explicit proof.
 
 **R2 — Float arithmetic is per-op through bindings.** Every C++ float
 operation maps to exactly one call: `og.fadd(a,b)`, `og.fsub`, `og.fmul`,
 `og.fdiv` — each casts operands to `float`, performs the op in `float`, and
 returns the widened result. Chains keep per-op float rounding this way.
-  - Exception (allowed, for readability): a SINGLE `+`, `-`, or `*` whose
-    operands are floats and whose exact result fits a double is identical
-    either way; but when in doubt, use `og.f*`. Division is NEVER done in
-    Lua (double rounding).
+  - Exception (allowed, for readability): a SINGLE `+`, `-`, or `*` is safe
+    only when both operands already have the values C++ `float` would hold
+    and the exact result is representable as a C++ `float`. A common
+    sufficient case is integer-valued operands and result within float's
+    exact integer range (up to 2^24 in magnitude). Otherwise use `og.f*`.
+    Division is NEVER done in Lua (double rounding).
   - Float comparisons in Lua are safe (float→double widening is exact).
 
 **R3 — Narrowing writes go through typed helpers.** C++ stores into
@@ -128,9 +122,10 @@ answers the function, so those reads stay `self:busy()`; only the
 non-colliding names (`hp`, `max_hp`, `magicpoints`, `max_magicpoints`,
 `level`, `team`) read as values.
 
-**R4 — RNG only via `og.rand(n)`** (routes to `current_game->world->rng_`).
-Preserve the ORDER and COUNT of rand calls exactly when transliterating.
-`math.random` does not exist in the sandbox.
+**R4 — RNG only via `og.rand(n)` / `og.rand0(n)`** (routes to
+`current_game->world->rng_`). Preserve the ORDER and COUNT of rand calls
+exactly when translating behavior. `math.random` does not exist in the
+sandbox.
 
 `og.rand0(n)` is shorthand for the guarded form, with `IRandom::next`'s real
 contract: `n <= 0` answers 0 **without advancing the stream** (C++ `next(0)`
@@ -155,12 +150,11 @@ forbidden — they would escape snapshots and desync a peer that joins
 mid-level. Constants (resolved family bytes, geometry, lookup tables) are the
 one legitimate upvalue.
 
-R6 is enforced at two module boundaries: `og.use` exports are served as
-frozen read-only views (a lib module must be a pure table of functions and
-constants — chunk-level mutable state in a module is exactly the upvalue
-this rule bans), and a registered `specials` table is stored as a PRIVATE
-copy, so mutating the caller's table after registration cannot change
-dispatch any more than reassigning a registered function variable can.
+R6 gets mechanical support at two boundaries: `og.use` exports are served as
+frozen read-only views, and a registered `specials` table is stored as a
+PRIVATE copy. Those boundaries prevent caller-side table mutation from
+changing dispatch. They cannot detect mutable closure upvalues, so module
+authors must still keep chunk-level state immutable.
 
 There is no per-entity script storage today: derive state from the world on
 every dispatch instead. The world is the only durable place, and everything
@@ -178,10 +172,6 @@ scripts:
   name, a lifetime. `s_name() == "Adjutant"` is snapshot-safe; a Lua table
   keyed by entity id is not.
 
-`state_slots:` survives in some drafts as a *forward-compatibility* key — the
-YAML reader skips it like any other unknown key, and no binding reads it. Do
-not design around it yet.
-
 **R7 — Sandbox floor.** Not available: `io`, `os`, `package`/`require`,
 `load`/`loadstring`/`dofile`/`loadfile`, `collectgarbage`, coroutines,
 `debug`, `utf8`, `pairs`/`next` (R5), `string.dump`, `math.random`, float
@@ -195,15 +185,15 @@ sim-visible strings), all of `table`, an integer `math` subset (`floor`,
 sandbox root), and `print` (= `og.log`). The exact list is `kAllowedBase` /
 `kAllowedMath` in `src/gameplay/script/script_host.cpp`.
 
-Chunks are compiled **text-only** (`luaL_loadbufferx(..., "t")` at both
-`ScriptHost` compile sites): a precompiled binary chunk is a load error,
-exactly like a syntax error. That is the canonical Lua hardening — `lundump`
-does no consistency checking, so crafted bytecode is an arbitrary-code
-vector straight through the sandbox floor above — and it also protects the
-coverage gate: a stripped binary chunk has function spans but no line info,
-which would erase a pack file's line denominator while its function bar
-stayed satisfiable (P8-A; see `scripts/coverage/README.md`). Ship `.lua`
-text, never `luac` output.
+Chunks are compiled **text-only** (`luaL_loadbufferx(..., "t")` at every
+pack-script and module compile site): a precompiled binary chunk is a load
+error, exactly like a syntax error. That is the canonical Lua hardening —
+`lundump` does no consistency checking, so crafted bytecode is an
+arbitrary-code vector straight through the sandbox floor above — and it also
+protects the coverage gate: a stripped binary chunk has function spans but no
+line info, which would erase a pack file's line denominator while its
+function bar stayed satisfiable (see `scripts/coverage/README.md`). Ship
+`.lua` text, never `luac` output.
 
 **R8 — Budgets.** Per host entry: instruction budget (default 5M, via a
 `LUA_MASKCOUNT` hook armed on the OUTERMOST call only, so a nested dispatch
@@ -212,17 +202,15 @@ a per-VM memory cap (default 32 MiB, counting allocator). Blowing a budget
 raises a deterministic script error — a runaway loop is an error on every
 peer, not a hang.
 
-**R9 — Hook errors are deterministic non-events.** A hook that errors is
-treated as *absent for that dispatch*: same decision on every peer, so no
-divergence. The error is always traced (`script_error`) and recorded on the
-host (bounded and de-duplicated — see §6).
+**R9 — Hook errors stop that hook deterministically.** Every peer makes the
+same decision, but mutations completed before the error are not rolled back.
+No native family implementation retries the operation. The caller may still
+take its generic default path when the failed hook produces no result.
 
-The consequence that bites: while the C++ callbacks are still present (§9a),
-"absent" means the C++ callback runs next. **A hook must therefore fail
-before it mutates sim state, or not at all** — a partial script run followed
-by the full C++ callback double-executes side effects. Put the failure at
-branch entry. Once the callbacks are deleted, "absent" degrades to *nothing
-happening* instead, which is why script errors must stay loud.
+Validate error-prone preconditions before the first mutation whenever
+possible. Every hook failure traces under `script_error`, is stored on the
+host (bounded and de-duplicated; see §6), is logged at error level, and
+increments the process-wide hook-failure latch used by tests.
 
 **R10 — String hash seed is fixed** (`luai_makeseed` override) so any
 incidental hash-order exposure is at least identical across builds; R5 still
@@ -231,28 +219,24 @@ applies.
 ## 4. Pack format
 
 ```
-packs/<pack_id>/                  # a directory, or a zip mounted at this path
+packs/<pack_id>/                  # virtual directory; may live in a campaign archive
 ├── classpack.yaml                # descriptor data + animation sets
-├── families/<name>.yaml          # optional split descriptor files (Stage 4)
+├── families/<name>.yaml          # optional split descriptor files
 ├── lib/<name>.lua                # optional og.use modules
 ├── sprites/<name>.png            # optional pack-shipped art (indexed PNG)
 └── scripts/<file>.lua            # behavior hooks
 ```
 
-**Split layout (quality plan Stage 4).** A pack may carry its descriptor
-data in one `classpack.yaml`, in per-family `families/*.yaml` files, or
-both. The loader parses `classpack.yaml` first (when present), then every
-`families/*.yaml` in sorted filename order, into ONE pack — exactly as if
-the texts were concatenated. Each families file is an ordinary classpack
-document (usually `families:` with a single entry; `anims:` and header
-scalars are legal anywhere, last value wins). A later entry pinning an
-already-declared wire slot overwrites just the data fields it declares
-(the usual sparse-entry semantics) and — like any install — replaces that
-slot's `tuning:` map whole. One unusable file rejects the whole pack. The
-shipped core pack uses the split layout: a header-only `classpack.yaml`
-plus `families/<order>-<NN>-<slug>.yaml` (NN = the pinned wire id, so the
-sorted order reads in id order), with the hand-maintained `tuning:` blocks
-at the end of each entry.
+**Split layout.** A pack may carry its descriptor data in one
+`classpack.yaml`, in per-family `families/*.yaml` files, or both. The loader
+parses `classpack.yaml` first (when present), then every `families/*.yaml` in
+sorted filename order, into one pack. Each family file is an ordinary
+classpack document (usually `families:` with a single entry; `anims:` and
+header scalars are legal anywhere, and later header values win). A later
+entry pinning an already-declared wire slot overwrites only the data fields
+it declares and replaces that slot's `tuning:` map whole. One unusable file
+rejects the whole pack. The core pack uses a header-only `classpack.yaml`
+plus `families/<order>-<NN>-<slug>.yaml`, where NN is the pinned wire id.
 
 Three places a pack can live, all mounted into the same virtual `packs/`
 tree and all read the same way:
@@ -292,9 +276,9 @@ Fields, by order (names match the descriptor struct members):
 ```yaml
 families:
   living:
-    - id: core:soldier               # required; the namespace is decorative (§5)
+    - id: core:soldier               # required declared id; qualified ids are scoped (§5)
       wire_id: 0                     # integer 0..255, or `auto` (>= 21)
-      name: "SOLDIER"                # THE identity hooks resolve against (§5)
+      name: "SOLDIER"                # display name and bare-id fallback (§5)
       short_name: ~                  # nullable: picker label override
       base_stats: [12, 6, 12, 8, 9, 1]              # STR DEX CON INT ARMOR LVL
       derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]  # HP MP ATK RATK RNG DEF SPD ATKSPD
@@ -343,17 +327,20 @@ families:
       can_drop_floors: true
   effect:                            # `fx:` is accepted as an alias
     - id: core:expand
+      wire_id: 0
       name: "EXPAND"
       loops_animation: false
       creates_hit_effect: false
       init_bit_flags: []
   treasure:
     - id: core:stain
+      wire_id: 0
       name: "STAIN"
       init_ignore: true
       init_frame: -1
   generator:
     - id: core:tent
+      wire_id: 0
       name: "TENT"
       default_weapon: core:skeleton  # what it spawns
       has_lifetime: true
@@ -450,11 +437,13 @@ recompute a count a descriptor already supplied.
 
 ### What a pack family does NOT get
 
-Class-pack families claim registry ids at or above 21, which the historic
-`PIX(order, family)` addressing cannot represent, so the loader keeps them in
-a second block appended after the core one. That block is rebuilt from
-descriptors on every `reload_graphics()`, which is what lets an unmounted
-pack's family disappear cleanly.
+Automatically assigned class-pack families claim registry ids at or above
+21. Families in those slots cannot use the historic `PIX(order, family)`
+addressing, so the loader keeps their graphics in a second block appended
+after the core one. That block is rebuilt from descriptors on every
+`reload_graphics()`, which is what lets an unmounted pack's family disappear
+cleanly. A pack may instead pin an existing slot explicitly to patch or
+replace that family.
 
 The consequence: **for the four non-living orders, a pack family gets only
 what its descriptor holds — the sprite and, when it ships one, its animation
@@ -473,47 +462,49 @@ og.register_hooks("living", "mypack:warlock", {
 })
 ```
 
-Hook sets per order mirror the existing descriptor callbacks: living (14),
-weapon (`on_death`, `on_animate`, `on_hit_target`), effect (`on_act`,
-`on_death`), treasure (`on_eat`), generator (`customize_spawn`, which has no
-C++ counterpart — generators are pure script). Exact signatures are in
+Supported hook sets are: living (14), weapon (`on_death`, `on_animate`,
+`on_hit_target`), effect (`on_act`, `on_death`), treasure (`on_eat`), and
+generator (`customize_spawn`). Exact signatures are in
 [the API reference](modding/api-reference.md#hook-signatures).
 
 ## 5. Identity: string ids, wire bytes, palette
 
 - Runtime keeps int8 family bytes everywhere (walker, snapshots, saves,
   level entities) — zero hot-path cost, wire format shape unchanged.
-- Registries map string id ↔ byte per order. **Core pack ids are pinned** to
-  the legacy bytes (soldier=0 … tower1=20; likewise for the legacy
+- Registries resolve string ids to bytes per order. **Core pack ids are
+  pinned** to the legacy bytes (soldier=0 … tower1=20; likewise for the legacy
   weapon/effect/treasure/generator numeric ids), so existing levels, saves,
   goldens, and the wire stay byte-compatible.
 - Mod families get bytes assigned at mount: campaign-embedded packs declare
   `wire_id: auto` and receive deterministic ids (assignment order = pack id
-  lexicographic, then YAML order, first free byte from 21 up). Level files
-  (FSS v11) therefore encode mod families without format changes; the
-  campaign's own pack list IS the palette.
-- **String ids resolve by descriptor `name:`, not by namespace.**
-  `og::families::resolve_family_string_id` splits at the first `:`, discards
-  the prefix, lowercases the rest and maps spaces to underscores, then scans
-  the order's registry for a descriptor whose `name` normalizes to the same
-  thing. `mypack:soldier` and `core:soldier` are therefore the same family,
-  and the namespace is documentation rather than a scope. A mod family must
-  pick a `name:` no other mounted family uses — and must not omit it, since
-  a free living slot defaults to `BEAST`, which three core families already
-  answer to.
-- Where core registry names genuinely collide (golem / giant_skeleton /
-  tower1 are all `BEAST`, the slime trio all `SLIME`), the positional escape
-  `core:#<id>` addresses the exact byte. `family_string_id()` emits that form
-  automatically for every member of a collision group, which is why
-  `packs/core/classpack.yaml` carries ids like `core:#19`.
-- Saves: v10 adds an optional pack-provenance chunk (list of
-  `(pack_id, version, [family string ids in byte order])`) so a save with
-  modded characters can remap or reject cleanly if packs changed. Legacy v9
-  saves load unchanged (core ids are pinned).
-- Missing pack at load: entity families with no registered byte fall back to
-  a visible "unknown" descriptor (soldier body, warning glyph, name from the
-  provenance chunk) rather than crashing — same spirit as the ani_count
-  invariant.
+  lexicographic, then YAML order, first automatic byte from 21 up). Levels,
+  saves, and snapshots continue to store family bytes; the mounted pack set
+  determines what those bytes mean.
+- **A positional id is exact.** `#<byte>` or
+  `<any-namespace>:#<byte>` addresses that populated slot directly; the
+  namespace is ignored.
+- **A declared `id:` is authoritative.** For any non-positional string,
+  resolution first compares the complete normalized input against every
+  populated descriptor's declared id. A namespace, when present, is
+  therefore a real scope:
+  `alpha:warlock` and `beta:warlock` can name distinct families even when
+  both descriptors use the display `name: "WARLOCK"`.
+- **Display `name:` is a compatibility fallback.** If no declared id matches,
+  the resolver takes the part after the first `:` (or the whole bare string)
+  and returns the lowest populated slot whose display name matches. This is
+  why `soldier` resolves, and why `mypack:soldier` still reaches the core
+  soldier when no descriptor declared `mypack:soldier`. Do not use that
+  fallback as a scope check; register hooks and references with declared ids.
+- Matching is case-insensitive and treats spaces like underscores. A new
+  family should still declare a meaningful `name:` for display and bare-name
+  compatibility. Reusing a display name is legal, but its bare form is
+  ambiguous and resolves to the lowest byte.
+- The core pack explicitly declares positional ids for historic display-name
+  collisions such as the `BEAST` and `SLIME` groups.
+- There is no string-id provenance or remapping in the save, level, or
+  snapshot formats. A byte that belongs to a mod must be loaded with the
+  compatible pack set. Core ids remain safe across legacy data because the
+  core pack pins their historic bytes.
 
 ## 6. Dispatch
 
@@ -521,16 +512,15 @@ Sim call sites do not invoke descriptor function pointers directly. They go
 through the `og::script::hooks::*` helpers
 (`include/openglad/gameplay/script/family_hooks.h`), each of which:
 
-1. checks a per-`(order, family)` bitmask of registered hooks — a miss costs
-   one bit test and creates no VM, so a script-less sim is byte-identical;
-2. resolves the active `WorldScripts` (the current world's, or a shared UI
+1. resolves the active `WorldScripts` (the current world's, or a shared UI
    instance for picker-side hooks like `level_up` that run outside any world,
-   rebuilt whenever the pack set changes);
+   lazily built and rebuilt whenever the pack set changes);
+2. checks a per-`(order, family)` bitmask of registered hooks;
 3. looks the function up in the VM registry, pushes typed arguments, and
    pcalls it with the budget armed on the outermost entry;
-4. converts the result and applies R9 on error — and, during the transition,
-   falls through to the descriptor's C++ callback when the script hook is
-   absent or errored (§9a).
+4. converts the result and applies R9 on error. No native family behavior is
+   retried; a helper that reports no result leaves only the call site's
+   generic default path.
 
 Walker handles carry an entity id plus a raw pointer and a dispatch
 generation. Resolution prefers the world's id index; the raw pointer is only
@@ -554,16 +544,15 @@ dispatch-scoped.
   `dropped_log_line_count()`.
 
 **Duplicate hook registration warns; last registration wins.** Since scripts
-replay in pack-id then filename order, that ordering is deterministic — and
-it is the supported way to override a core family (a mod pack registering
-`core:soldier` replaces the core soldier's behavior). The warning names the
-order, family, hook and source location, and is recorded as a script error,
-so an accidental in-pack collision is diagnosable rather than silent.
+replay in pack-id then filename order, that ordering is deterministic. A mod
+pack that sorts after `core` can intentionally override a core hook by
+registering the same declared id, such as `core:soldier`. The warning names
+the order, family, hook and source location, and is recorded as a script
+error, so an accidental in-pack collision is diagnosable rather than silent.
 
 **Specials dispatch (the table form of `do_special`).** A living family may
 register `specials = { [1] = fn, [2] = fn, …, default = fn }` instead of a
 `do_special` function (one or the other per call — both is a load error).
-The dispatcher reproduces the retired switch ladders exactly:
 `self:current_special()` selects the entry; a missing index falls to
 `default`; a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, no Lua call, no budget armed, no stream touched.
@@ -618,96 +607,61 @@ cadence, and a generator `customize_spawn` to promote every third spawn.
 
 ## 8. Multiplayer pack transfer (protocol v10)
 
-- Lobby handshake gains a pack manifest exchange: `(pack_id, version,
-  sha256, size)` for every non-core pack the session needs (host's mounted
-  set for the selected campaign).
-- Client compares against local cache (`user_path/packs/cache/<sha256>.gladpack`
-  and installed packs); requests missing blobs; host streams chunks (32 KiB)
-  over the reliable transport with progress events surfaced in the lobby
-  (SDL lobby + text client lines).
-- Caps: 16 MiB per pack, 64 MiB per session; violations reject the join
-  with a reason string. Received packs mount read-only from cache and are
-  never auto-installed outside it.
-- `kNetworkProtocolVersion` 9 → 10 (the 5 literal wire-byte tests get
-  updated alongside).
+- The host announces a manifest for every mounted non-core pack needed by the
+  session. Each manifest carries the pack id and version plus every relative
+  file path, size, and FNV-1a content hash.
+- A client compares the manifest with an already mounted pack or a cache
+  directory at
+  `<user_path>/packs_cache/<pack_id>@<manifest-hash>/`. It requests a
+  missing or mismatched pack, receives sequential 32 KiB file chunks over
+  the reliable transport, verifies every file, persists the cache entry, and
+  mounts it for the session.
+- Limits are 16 packs and 512 files per manifest, 16 MiB per pack, and
+  64 MiB for the session. Unsafe ids or paths, malformed manifests,
+  out-of-order chunks, hash mismatches, and cap violations fail the transfer
+  with a reason.
+- Protocol v10 defines the manifest, request, file-chunk, and completion
+  messages. The built-in `core` pack is never transferred.
 
-## 9. Testing strategy
+## 9. Verification and coverage
 
-- **Unit**: ScriptVM sandbox (banned symbols absent, budgets trip
-  deterministically, og.div/og.mod/og.f*/og.i* cross-checked against C++
-  semantics over sign/edge cases), palette assignment, classpack.yaml
-  parsing, provenance chunk round-trip, transfer chunking over loopback.
-- **Parity**: og_test_parity stays green through every family conversion —
-  each family lands only when goldens still pass byte-identical. New parity
-  scenarios cover a Lua-only mod family and level scripting hooks.
-- **Integration**: picker lists pack families; save/load with mod
-  characters; MP transfer e2e (host with pack, vanilla joiner); curses/text
-  clients render mod families via descriptor glyphs.
-- **Canary**: mutation pins re-anchored where sim files shifted; teeth run
-  locally (`genuine toothless` must stay 0) — Lua family behavior gets its
-  own mutation pins (mutate a .lua constant in the core pack, expect flips).
+The core pack is runtime data, not an optional behavior overlay. `io_init`
+installs it and refuses to start if any required core family slot is
+unpopulated. All core descriptor data comes from the split YAML documents,
+and all family-specific behavior comes from pack Lua. Hook failures are
+therefore loud, and tests that dispatch core behavior assert a clean
+hook-failure latch rather than expecting another implementation to retry.
 
-## 9a. Retiring the C++ family implementations
+The verification layers cover different promises:
 
-The conversion deliberately kept both implementations alive: `hooks::*`
-tries the Lua hook first and falls back to the descriptor's C++ callback.
-That fallback is what made a 34-file conversion safe to land
-incrementally, but it is not the end state — "no assumptions about
-families left in the engine" means the C++ implementations go away.
+- **Unit tests** exercise the sandbox, budgets, arithmetic helpers,
+  descriptor parsing and installation, id resolution, hook dispatch, level
+  hooks, and pack transfer.
+- **Parity** requires byte-identical recorder output for the core scenarios,
+  both with the recorder off and armed. It proves only paths the scenario
+  corpus reaches, so uncovered behavior needs a focused unit or integration
+  test.
+- **Mutation pins** for family behavior and data target the shipped `.lua`
+  and YAML sources (engine-side pins stay in the C++ sim files). The pin-map
+  check must report no toothless mutation; changing a pinned behavior or
+  datum must flip its expected scenarios.
+- **Integration tests** cover mounted campaign packs, picker visibility,
+  save/load behavior, multiplayer transfer, and descriptor-driven
+  presentation.
 
-Retirement happens in two stages, each independently verifiable:
-
-**Stage A — behavior.** Null every behavior callback slot; keep the
-`describe_family_*` data functions. Parity passing after this is the
-decisive proof that Lua carries 100% of behavior, because there is no
-longer anything to fall back to.
-
-Two consequences to handle in the same change:
-
-- **A hook error stops being harmless.** With a C++ callback present, an
-  erroring hook silently degrades to the old behavior; without one it
-  degrades to *nothing happening*. Script errors must therefore become
-  loud: always traced, and under `TESTING` latched so a test cannot pass
-  while a hook is quietly failing.
-- **Mutation-canary pins anchored in `family_*.cpp` text** must move to
-  the `.lua` equivalents, or the canary silently loses its teeth
-  (`genuine toothless` must stay 0).
-
-**Stage B — data.** Delete the family `.cpp` files entirely; the five
-registries populate from `packs/core/classpack.yaml` alone. After this the
-engine contains no notion of "soldier" or "mage" at all — every family,
-core and mod, arrives through the same door.
-
-Stage B makes the core pack a hard runtime requirement. That is consistent
-with how the engine already treats its other required assets: `io_init`
-throws when the user path or the default campaign is missing. A missing or
-malformed core pack must fail the same way — one clear diagnostic, not a
-crash and not a silent half-populated registry.
-
-**Coverage caveat.** Parity only proves the paths its corpus exercises.
-Conversion work surfaced real gaps (CTF has no scenario at all; several
-`level_up`, on-death and heal paths are never reached). Those paths need
-differential tests — build a world from a fixed seed, run with pack
-scripts registered, then rebuild the identical world with
-`clear_pack_scripts()` and run again, asserting identical state — or new
-parity scenarios, *before* the corresponding C++ callback is deleted.
-
-**Pack Lua is now inside the coverage gate.** `scripts/coverage/` measures
+**Pack Lua is inside the coverage gate.** `scripts/coverage/` measures
 every pack script the engine can load, line-by-line and function-by-function,
 and merges the result with gcovr's `src/` numbers;
 `.github/workflows/coverage.yml` enforces one bar — 95 % line, 100 % function
-— on the C++ half alone, on the Lua half alone, AND on their union. Per half,
-deliberately: a union-only bar let the slack in one language absorb a
-shortfall in the other (with C++ near 96 %, a Lua half at 94.50 % still
-cleared a combined 95). See `scripts/coverage/README.md` for how each number
-is produced and why arming the recorder is a runtime switch rather than a
-compile flag. Gaps the gate surfaced are covered by
-`tests/unit/test_pack_lua_paths.cpp` (the cloud's overlap test, the cleric's
-whole kit, the archmage's response chain, the slime split), which is the place
-to add the next one.
+— on the C++ half alone, on the Lua half alone, and on their union. Separate
+floors prevent one language's surplus from hiding the other's shortfall. See
+`scripts/coverage/README.md` for how each number is produced and why arming
+the recorder is a runtime switch rather than a compile flag. Focused gaps are
+covered by `tests/unit/test_pack_lua_paths.cpp` (the cloud's overlap test, the
+cleric's whole kit, the archmage's response chain, the slime split), which is
+the place to add the next one.
 
-Three rules the gate depends on, because each one was a way to score coverage
-without having any:
+Three rules define the Lua metric:
 
 * **Every prototype is a function.** The denominator is the compiled prototype
   tree, not the set of registered hooks, so an uncalled local helper or
@@ -726,27 +680,8 @@ without having any:
   flee() end` on one line is a branch the metric cannot see. Writing it out
   costs nothing and makes the branch measurable.
 
-One consequence of the denominator's identity rules is intended behavior,
-not a bug: identity is the content hash, so while byte-identical copies
-collapse into one entry, a **byte-variant** copy of a shipped script (a CRLF
-re-encode, a whitespace edit, an abandoned fork of a pack file) is a SECOND
-denominator entry at 0 %. Nothing loads it,
-so the report names it in its never-loaded list and its prototypes are all
-misses — under the 100 % function bar, committing an unloadable variant
-fails the build until a test actually loads it or the variant is deleted.
-That is the gate doing its job: bytes that ship are bytes that get measured,
-and "almost identical to a measured file" is not measured.
-
-## 10. Rollout
-
-| # | Stage | State |
-|---|---|---|
-| 1 | `og_lua` + ScriptHost + sandbox/budget unit tests | done |
-| 2 | Pack reader + registries with string ids + core pack YAML (stats only) | done |
-| 3 | `og.*` binding layer + soldier converted (cookbook proven) | done |
-| 4 | Remaining families in waves, parity per wave | done — all 21 livings plus weapon/effect/treasure behaviors are Lua |
-| 5 | Generators scripted; UI sweep (glyph / radar / editor label from descriptors) | descriptor fields + `classpack.yaml` schema landed; consumer sweep in progress |
-| 6 | Level/entity scripting; campaign-embedded packs | done (showcase: the Ninefold Court, scen 605) |
-| 7 | MP transfer, protocol v10 | done |
-| 8 | Skills/docs; concept-playground showcase; media; PR | in progress |
-| 9 | Retire the C++ implementations (§9a, stages A and B) | not started |
+Coverage identity is the content hash. Byte-identical copies collapse into
+one entry, but a **byte-variant** copy of a shipped script (a CRLF re-encode,
+a whitespace edit, an abandoned fork of a pack file) is a second denominator
+entry at 0 %. The report names it in its never-loaded list, and its prototypes
+remain misses until a test loads those exact bytes or the variant is deleted.

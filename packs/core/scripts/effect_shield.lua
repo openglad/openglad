@@ -1,4 +1,5 @@
 -- core:magic_shield + core:boomerang — orbiting guard effects (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- The ORBIT_X/ORBIT_Y tables are pure constants (R6-clean: no sim state).
 
 local C = og.C
@@ -75,6 +76,9 @@ end
 -- ((drawcycle+4)/48 of the base circle) and the blade dies at drawcycle 254.
 local function boomerang_on_act(self)
   local owner = self:owner()
+  -- Zardus's 2002 fix: the >253 guard prevents the byte-sized drawcycle
+  -- wrapping a long-lived boomerang back onto its owner. It deliberately
+  -- caps the ability instead of widening that legacy counter.
   if not owner
       or owner:dead() ~= 0
       or self:drawcycle() > 253 then
@@ -89,7 +93,7 @@ local function boomerang_on_act(self)
   xd = og.fdiv(xd, 48)
   yd = og.fmul(yd, orbit_scale)
   yd = og.fdiv(yd, 48)
-  self:center_on(owner)
+  self:center_on(owner)  -- each arc starts at the owner; offsets do not accumulate
   -- worldx/worldy are C++ floats: per-op rounding.
   self:setworldxy(og.fadd(self:worldx(), xd), og.fadd(self:worldy(), yd))
 

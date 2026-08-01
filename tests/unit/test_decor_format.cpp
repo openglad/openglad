@@ -1,6 +1,6 @@
 /* .fss v11 — decor plane serialization (BASE + DECOR tile layering).
  *
- * Pins the Stage 0 format contract end-to-end through the production
+ * Pins the decor-plane format contract end-to-end through the production
  * writer/reader (og::data::save_level / load_level):
  *   - writer downgrade cascade: decor-free levels keep emitting v9 (or v10
  *     when multifloor/NPC-extras), BYTE-identical even when an all-zero decor

@@ -1,4 +1,5 @@
 -- core:druid — plant tree, summon faerie, reveal items, protection circle (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local lc = og.use("living_common")
@@ -7,7 +8,7 @@ local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
 local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
 
 local function plant_tree(self)
-  if lc.is_busy(self) then
+  if lc.is_busy(self) then  -- do not start the fire-and-replace sequence
     return false
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
@@ -44,7 +45,7 @@ local function summon_faerie(self)
   end
   faerie:set_owner(self)
   faerie.team = self.team
-  faerie:set_floor(bolt:floor())  -- faerie on the caster's floor (A8)
+  faerie:set_floor(bolt:floor())  -- faerie stays on the caster's floor
   faerie:setxy(bolt:xpos(), bolt:ypos())
   faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)
   bolt.dead = 1
@@ -79,8 +80,8 @@ local function protection_circle(self)
   for i = 1, #friends do
     local friend = friends[i]
     if friend ~= self then
-      -- Scan the world oblist for an existing circle owned by this
-      -- friend (same list and order the C++ walked).
+      -- Historic slow path: scan the world oblist for an existing circle
+      -- owned by this friend (same list and order the C++ walked).
       local existing = nil
       local obs = og.oblist()
       for j = 1, #obs do
@@ -117,6 +118,7 @@ local function protection_circle(self)
     end
   end
   if protected_count == 0 then
+    -- Everyone was okay; don't charge us.
     return false
   end
   local message

@@ -1,4 +1,5 @@
 -- core:beast (golem) — set_difficulty only (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- The descriptor .name is "BEAST"; "core:beast" resolves to FAMILY_GOLEM
 -- (id 18), the first BEAST-named family in registry scan order (giant
 -- skeleton and tower1 share the display name but later ids).

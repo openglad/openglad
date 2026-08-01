@@ -355,7 +355,7 @@ bool set_string_list(Cursor& c, const std::string& key,
     return true;
 }
 
-// --- tuning: map (quality plan Stage 1; read via og.tuning) -------------
+// --- tuning: map (read via og.tuning) -----------------------------------
 
 // Classifies one tuning scalar. Quoted scalars stay strings whatever they
 // spell; plain scalars try int64, then boolean, then double, then fall

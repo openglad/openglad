@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Combined C++ / Lua coverage report and gate for OpenGlad.
 
-Since the class-pack conversion, family behaviour lives in Lua under packs/.
-The repo's original gate ran gcovr over src/ only, which would go green while
+Family behaviour lives in Lua under packs/. A gate that runs gcovr over src/
+only would go green while
 the half of the codebase that actually decides what a soldier does went
 untested.  This script produces ONE report over BOTH languages, in lcov
 tracefile format (the lingua franca gcovr, lcov and genhtml all read), and

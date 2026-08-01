@@ -1,4 +1,5 @@
 -- core:skeleton — ranged self-teleport special (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local lc = og.use("living_common")
@@ -6,18 +7,15 @@ local lc = og.use("living_common")
 local function handle_teleport(self)
   self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
-  -- 18 px/level. Cast-cadence-hot: with no foe in range TUNNEL recasts at
-  -- MP-regen cadence for a whole run, so in the generator scenarios a
-  -- per-cast og.tuning read here regressed the tent instruction budget to
-  -- +11.1% vs the Stage-3 baseline. R-KEEP-4 code constant, exactly like
-  -- the ai.lua gate ranges (Stage 4 measured the same class: +23.8% on
-  -- bones).
+  -- With no nearby foe, TUNNEL can recast at every MP-regeneration interval;
+  -- keep its fixed 18 px/level range out of a per-cast tuning lookup.
   self:teleport_ranged(self.level * 18)
   return true
 end
 
 local function check_special_ai(self)
-  -- per-tick gate: the range stays code (R-KEEP-4); 5 * GRID_SIZE
+  -- Historical rule: tunnel only when "away from anybody."
+  -- This per-tick gate keeps its fixed five-grid range in code.
   local _, foe_count = og.find_foes_in_range("ob", 5 * 16, self)
   return foe_count < 1
 end

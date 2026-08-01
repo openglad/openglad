@@ -60,8 +60,8 @@ and regeneration keeps working:
     and a try_script_hook call site in a hooks:: wrapper.
 
 After adding any of the above:  python3 scripts/modding/gen_api_stubs.py
-Drift is caught by scripts/modding/check_api_stubs.py (cmake target
-api_stub_check — advisory until stage 5 of the quality plan).
+Drift is caught by scripts/modding/check_api_stubs.py (the enforced
+api_stub_check CMake target).
 
 Output is deterministic: fields are sorted within each class, section order
 is fixed, nothing depends on hashing or timestamps.
@@ -918,8 +918,8 @@ HEADER = """---@meta
 --
 --   python3 scripts/modding/gen_api_stubs.py
 --
--- Drift is caught by scripts/modding/check_api_stubs.py (cmake target
--- api_stub_check; advisory until quality-plan stage 5).
+-- Drift is caught by scripts/modding/check_api_stubs.py (the enforced
+-- api_stub_check CMake target).
 --
 -- This file is annotation-only apart from the final `og = {}` line. That
 -- is load-bearing, not style: it lives under a shipped-Lua root, so it is
@@ -974,7 +974,7 @@ def generate(repo_root: Path) -> str:
     out.append("-- the walker to have one). Handles compare by entity id and")
     out.append("-- are only valid within the dispatch that minted them.")
     out.append("--")
-    out.append("-- Property layer (kWalkerProperties, quality plan Stage 1):")
+    out.append("-- Property layer (kWalkerProperties):")
     out.append("-- names no method shadows read AND write as plain values")
     out.append("-- (self.hp); method-shadowed names keep reading as the")
     out.append("-- method (method-first __index) and are typed as the union")
@@ -1030,10 +1030,9 @@ def generate(repo_root: Path) -> str:
                        "og.register_hooks key 'specials'):")
             out.append("-- current_special() selects the entry, a missing "
                        "index falls to `default`,")
-            out.append("-- and a table with neither is a successful no-op — "
-                       "the retired switch")
-            out.append("-- ladders' exact contract. Entries return like "
-                       "do_special itself.")
+            out.append("-- and a table with neither is a successful no-op. "
+                       "Entries return")
+            out.append("-- like do_special itself.")
             out.append(f"---@class {cls[:-5]}Specials")
             out.append(f"---@field [integer] {branch_fun}")
             out.append(f"---@field default? {branch_fun}")

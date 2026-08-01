@@ -2712,7 +2712,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     if (!(mage_fd && og::test::has_do_special(*mage_fd) && druid_fd && og::test::has_do_special(*druid_fd)))
         return;
 
-    // Mage case 1 guard: busy/intelligence marker path (family_mage.cpp:121-130).
+    // Mage marker guard: reject a low-intelligence caster.
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
     ASSERT_TRUE(mage != nullptr) << "mage created";
     if (!mage)
@@ -2728,7 +2728,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
         mage->myguy->intelligence = 50;
     ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage marker should fail with int < 75";
 
-    // Mage case 5 heartburst success path (family_mage.cpp:260-289).
+    // Mage heartburst success path with nearby foes.
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
@@ -2744,7 +2744,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     ASSERT_TRUE(mage->busy() >= 5) << "heartburst should add busy delay";
     ASSERT_TRUE(mage->stats()->magicpoints() < mp_before) << "heartburst should consume magic";
 
-    // Druid protection refresh branch with existing circle (family_druid.cpp:147-176).
+    // Druid protection cast with an existing circle.
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);

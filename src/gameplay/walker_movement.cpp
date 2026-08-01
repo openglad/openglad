@@ -83,7 +83,6 @@ void walker::setworldxy(float x, float y)
 // WALK -- This function allows us to change facing when we walk.
 // This includes an automatic frame change. It also redraws the background
 // at the coords it used to occupy.
-// at the coords it used to occupy.
 // It calls the lower level function MOVE.
 bool walker::walk()
 {

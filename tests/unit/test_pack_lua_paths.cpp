@@ -8,8 +8,8 @@
 
 // Pack-Lua behaviour paths that no other test reaches (headless).
 //
-// Since the class-pack conversion, packs/core/scripts/*.lua IS the game
-// logic — a branch nothing exercises there is untested game behaviour, not
+// packs/core/scripts/*.lua is game logic: a branch nothing exercises there
+// is untested game behaviour, not
 // untested content. The Lua coverage recorder
 // (OPENGLAD_LUA_COVERAGE, scripts/coverage/) named the branches below as
 // never executed by the whole suite; each one is a rule a player can
@@ -270,11 +270,10 @@ TEST(PackLuaCloud, an_expired_cloud_dies_on_the_next_act)
 // deliberately so: it scans og.oblist() — the LIVING list — for a
 // FAMILY_CIRCLE_PROTECTION entity, but both creation paths
 // (og.summon / og.add_ob with Order::Weapon) file the circle in weaplist.
-// The C++ this was transliterated from had the identical mismatch
-// (family_druid.cpp walked world->oblist for a weapon), so the branch has
-// never run in this engine and the observable rule is that a re-cast
-// STACKS. That is pinned below: changing it would change the sim, and the
-// sim is parity-gated byte-for-byte.
+// The historic implementation had the same living-list/weapon mismatch, so
+// the branch has never run in this engine and the observable rule is that a
+// re-cast STACKS. That is pinned below: changing it would change the sim,
+// which is parity-gated byte-for-byte.
 TEST(PackLuaDruid, each_circle_of_protection_cast_shields_every_friend_in_range)
 {
     og::test::mount_core_pack();

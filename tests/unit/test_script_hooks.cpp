@@ -57,7 +57,7 @@ TEST_F(ScriptHooksTest, lua_hook_is_the_only_family_behavior)
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
     ASSERT_EQ(nullptr, fd->do_special)
-        << "stage A premise: the C++ callback is retired, Lua carries it all";
+        << "pack-installed family behavior must have no C++ callback";
 
     // No world context → dispatch goes through the shared UI instance.
     auto result = hooks::do_special(fd, nullptr);
@@ -101,17 +101,17 @@ TEST_F(ScriptHooksTest, unknown_hook_name_is_a_load_error)
 
 TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)
 {
-    // R9: a hook that errors behaves as absent for that dispatch. With the
-    // C++ callbacks retired (§9a) "absent" means NOTHING runs, so the
-    // failure has to be impossible to miss: traced, logged, and latched
-    // where a test can assert on it.
+    // R9: a hook that errors behaves as absent for that dispatch. Pack
+    // descriptors have no C++ fallback, so "absent" means NOTHING runs and
+    // the failure must be traced, logged, and latched for tests to assert.
     register_pack_script(
         {"test.pack", "erroring.lua",
          "og.register_hooks('living', 'core:soldier', "
          "{ on_death = function(self) error('boom') return true end })\n"});
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    ASSERT_EQ(nullptr, fd->on_death) << "stage A: no C++ fallback exists";
+    ASSERT_EQ(nullptr, fd->on_death)
+        << "pack-installed family behavior must have no C++ fallback";
 
     hooks::reset_hook_failures();
     ASSERT_EQ(0u, hooks::hook_failures().count);
@@ -182,7 +182,7 @@ TEST_F(ScriptHooksTest, order_alias_fx_and_effect_both_resolve)
 
 // ---------------------------------------------------------------------------
 // specials = { [1]=fn, ..., default=fn } — the do_special table form.
-// Contract (mirrors the retired switch ladders): current_special() selects,
+// Contract: current_special() selects,
 // a missing index falls to `default`, a table with neither is a successful
 // no-op, and the selected function's result converts exactly like a plain
 // do_special return.

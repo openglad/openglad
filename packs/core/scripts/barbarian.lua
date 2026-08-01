@@ -1,4 +1,5 @@
 -- core:barbarian — boulder-toss special (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
 
@@ -14,7 +15,7 @@ local function do_special(self)
   if not boulder then
     return false
   end
-  boulder:set_floor(shot:floor())  -- boulder rolls on the thrower's floor (A8)
+  boulder:set_floor(shot:floor())  -- boulder rolls on the thrower's floor
   boulder:center_on(shot)
   boulder:set_owner(self)
   boulder.level = self.level
@@ -49,6 +50,7 @@ local function do_special(self)
   elseif boulder:lastx() < 0 then
     boulder:set_lastx(-boulder:stepsize())
   end
+  -- Legacy sentinel: 5000 means "explode this boulder on impact."
   if self:current_special() == 2 then
     boulder:set_skip_exit(5000)
   else

@@ -7,7 +7,7 @@
  */
 #pragma once
 
-// Per-family tuning data (quality plan Stage 1, adopted by Stage 4).
+// Per-family tuning data supplied by class packs.
 //
 // A classpack.yaml family entry may carry a `tuning:` map of scalar
 // constants. The resources installer parses it and stores it here, keyed by

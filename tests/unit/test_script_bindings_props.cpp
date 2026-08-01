@@ -6,7 +6,7 @@
  * (at your option) any later version.
  */
 
-// Stage-1 quality bindings, entity side: the walker property layer
+// Entity-side pack bindings: the walker property layer
 // (__index/__newindex over the SAME registered accessors), the two fused
 // verbs — walker:heal_clamped and og.summon_configured — and og.tuning's
 // frozen per-family views.
@@ -20,9 +20,8 @@
 // so no future reordering can get that far again.
 //
 // The fused verbs pin the EXACT op sequences their doc comments promise
-// (orc.lua eat-corpse, soldier.lua boomerang): Stage 2 rewrites those
-// corpus sites onto these verbs, and byte-exact parity is only possible if
-// the sequence never drifts.
+// (orc.lua eat-corpse, soldier.lua boomerang); byte-exact parity depends on
+// those sequences never drifting.
 
 #include <gtest/gtest.h>
 

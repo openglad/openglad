@@ -1,4 +1,5 @@
 -- core:knife — returning-blade spawn on death (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The returning gate reads the knife OWNER's living-family descriptor:
 -- og.family_flag("living", owner:family(), "has_returning_weapon"). A nil
@@ -23,7 +24,7 @@ local function on_death(self)
     return true
   end
   blade:set_owner(self:owner())
-  -- return flight starts on the knife's floor (A8)
+  -- Return flight starts on the knife's floor.
   blade:set_floor(self:floor())
   blade:center_on(self)
   blade:set_lastx(self:lastx())

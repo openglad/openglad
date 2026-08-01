@@ -1,4 +1,5 @@
 -- core:archmage — teleport/marker, heartburst/chain, summons, mind control (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- rng order: hit_response rand(3)/rand(2); illusion tier rand(3/5/7/9);
 -- mind-control rand(20)/rand(8) + charm_duration draw.
 -- Unlike the Mage twin, marker notifications here are NOT gated on
@@ -21,8 +22,7 @@ local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
 
 local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
-  -- std::min(mp / 20.0f, (float)kShotDrainCap) — §2.12: binds only above
-  -- 1000 MP. The /20 is a single float division.
+  -- The drain cap binds only above 1000 MP; /20 is one float division.
   local extra = og.fdiv(self.magicpoints, 20)
   extra = og.min(extra, C.SHOT_DRAIN_CAP)
   -- magicpoints is a C++ float: per-op rounding.
@@ -40,7 +40,7 @@ local function on_act_living(self)
   else
     period = 40 - self.level
   end
-  -- og.mod kept: operand subtype not provable to the audit.
+  -- Keep C remainder semantics explicit for drawcycle.
   if og.mod(self:drawcycle(), period) == 0 then
     self:set_view_all(self:view_all() + 1)
   end
@@ -61,9 +61,11 @@ local function hit_response(self, foe)
 
   local threshold
   if self:has_guy() then
+    -- Player characters flee at 60% health.
     -- max_hp is a C++ float: per-op rounding.
     threshold = og.fdiv(og.fmul(3.0, self.max_hp), 5.0)
   else
+    -- Enemies are braver :> — they wait until 3/8 health.
     -- max_hp is a C++ float: per-op rounding.
     threshold = og.fdiv(og.fmul(3.0, self.max_hp), 8.0)
   end
@@ -92,6 +94,8 @@ local function hit_response(self, foe)
         end
       end
       if possible[2] then
+        -- The old source called the follow-up "then leave! :)", but never
+        -- switched to teleport: it repeats slot 2 as a normal heartburst.
         if og.rand(2) ~= 0 then
           self:set_shifter_down(1)
           self.current_special = 2
@@ -166,7 +170,7 @@ local function teleport(self)
     return false
   end
   marker:set_owner(self)
-  marker:set_floor(self:floor())  -- marker on the caster's floor (A8)
+  marker:set_floor(self:floor())  -- marker stays on the caster's floor
   marker:center_on(self)
   if self:has_guy() then
     marker.lifetime = self:g_intelligence() // 33
@@ -210,7 +214,7 @@ local function burst_or_chain(self)
   if self:shifter_down() == 0 then
     -- normal heartburst
     local pool = lc.mp_pool_damage(self, 2)
-    -- og.div kept: operand sign not provable to the audit.
+    -- Preserve C truncation if a malformed state produces a negative pool.
     pool = og.div(pool, foe_count)
     if self:has_guy() then
       self:g_set_total_shots(self:g_total_shots() + foe_count)
@@ -226,8 +230,8 @@ local function burst_or_chain(self)
       end
       burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
       burst.damage = pool
-      -- Burst materializes ON the acquired foe: take its floor (A8);
-      -- blast damage stays same-floor.
+      -- Burst materializes on the acquired foe; taking its floor keeps
+      -- blast damage on that floor.
       burst:set_floor(foe:floor())
       burst:center_on(foe)
       og.emit_sound(C.SOUND_EXPLODE)
@@ -243,6 +247,8 @@ local function burst_or_chain(self)
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 5.0)
   if self:has_guy() then
+    -- One cast is one shot even when the chain hits several foes, so the
+    -- old accuracy counter can get above 100% :)
     self:g_set_total_shots(self:g_total_shots() + 1)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
   end
@@ -250,7 +256,7 @@ local function burst_or_chain(self)
   if not bolt then
     return false
   end
-  -- §2.12: the initial bolt (and its MP charge) bind only above ~1280 MP.
+  -- The initial bolt and its MP charge cap only above roughly 1280 MP.
   local pool = lc.mp_pool_damage(self, 2)
   -- magicpoints is a C++ float: per-op rounding.
   self.magicpoints = og.fsub(self.magicpoints, pool)
@@ -259,8 +265,7 @@ local function burst_or_chain(self)
   for i = 1, #foes do
     local foe = foes[i]
     -- Chain lightning cannot arc through solid floors: only same-floor
-    -- foes are valid first strikes (A8; byte-identical on single-floor
-    -- levels).
+    -- foes are valid first strikes.
     if foe:floor() == self:floor() then
       local dist = self:distance_to_ob_center(foe)
       if best_dist > dist then
@@ -292,9 +297,8 @@ local function summon_image(self)
     if not elemental then
       return false
     end
-    -- Summon appears beside the caster, on the caster's floor (A8); must
-    -- precede the query_passable probes and setxy so both use the right
-    -- floor.
+    -- Set the caster's floor before placement probes and setxy so both use
+    -- the right floor.
     elemental:set_floor(self:floor())
     elemental:set_summoned(true)  -- ammunition: never a SAVE_ALL loss
     -- Placement scan: i outer, j inner, skip (0,0), and skip the rest of
@@ -323,6 +327,7 @@ local function summon_image(self)
       elemental.dead = 1
       return false
     end
+    -- Summoning takes lots of time :)
     -- busy is a C++ float: per-op rounding.
     self.busy = og.fadd(self:busy(), 15.0)
     return true
@@ -406,10 +411,10 @@ local function summon_image(self)
   if not phantom then
     return false
   end
-  -- Illusion appears beside the caster, on the caster's floor (A8).
+  -- Place the illusion beside the caster on the caster's floor.
   phantom:set_floor(self:floor())
   -- Named "Phantom" below, but conjured ammunition must never fail a
-  -- SAVE_ALL mission when it expires (Wave F2).
+  -- SAVE_ALL mission when it expires.
   phantom:set_summoned(true)
   local placed = false
   for i = -1, 1 do
@@ -440,6 +445,7 @@ local function summon_image(self)
     phantom.dead = 1
     return false
   end
+  -- Summoning takes lots of time :)
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 15.0)
   return true

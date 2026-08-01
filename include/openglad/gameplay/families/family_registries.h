@@ -73,8 +73,8 @@ int first_unpopulated_core_treasure_family_slot();
 int first_unpopulated_core_generator_family_slot();
 
 // Lay down all five registries' per-slot defaults. Call once at startup.
-// This installs NO families (design doc §9a stage B) — every descriptor,
-// core or mod, arrives from a mounted class pack via
+// This installs NO families: every descriptor, core or mod, arrives from a
+// mounted class pack via
 // og::resources::install_classpacks(). Until that runs, every
 // get_*_family_descriptor answers nullptr.
 inline void init_all_registries()

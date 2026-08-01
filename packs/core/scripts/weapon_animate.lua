@@ -1,4 +1,5 @@
 -- core:tree/blood/circle_protection/glow/sprinkle — on_animate; freeze hit (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- CALLER CONTRACT (weap::animate): a hook returning FALSE makes the caller
 -- run death(). tree/blood and glow always return true — glow calls death()
@@ -114,18 +115,15 @@ local function sprinkle_on_hit_target(self, target, owner)
   if target:has_guy() then
     con = target:g_constitution()
   end
-  -- Runaway-specials §2.6: the roll is ALWAYS drawn (RNG stream identical
-  -- to master at every level); only the SET below is gated. og.i16: the
-  -- C++ stored the roll in a short.
+  -- The roll is ALWAYS drawn; only the assignment below is gated, so refresh
+  -- policy cannot move the RNG stream. og.i16 matches the short result.
   local roll = og.i16(og.freeze_duration(owner.level, con))
-  -- §2.6b refresh gate: a high-level faerie may not re-SET a freeze that is
-  -- still running (mirrors the archmage charm_left<=10 gate). Level-gated
-  -- >= 21 because the L20 weapon_sprinkle_emission golden's soldier thaw
-  -- schedule must stay byte-identical.
+  -- At owner level 21+, do not replace a freeze still above 10 ticks. This
+  -- mirrors the charm refresh floor while leaving lower-level thaw cadence
+  -- unchanged.
   local refresh_gated = owner.level >= SPRINKLE_REFRESH_OWNER_LEVEL
       and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR
-  -- §3.3 thaw immunity: never re-freeze inside the negative immunity phase
-  -- (only the player-side drain writes it).
+  -- Never re-freeze inside the negative thaw-immunity phase.
   local thaw_immune = target:s_frozen_delay_raw() < 0
   if not refresh_gated and not thaw_immune then
     target:s_set_frozen_delay(roll)

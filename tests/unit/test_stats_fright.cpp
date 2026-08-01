@@ -1,5 +1,5 @@
-/* Unit rows for the runaway-specials WP-2 mechanism plumbing
- * (docs/runaway-effects-design.md §3 + §4):
+/* Unit coverage for the runaway-effect mechanisms
+ * (docs/runaway-effects-design.md §3 and §4):
  *   - command::forced flag (set ONLY by force_command)
  *   - statistics::force_fright merge semantics (§3.2)
  *   - statistics::clear_command_for_control_switch selective clear (§4)

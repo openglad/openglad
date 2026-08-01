@@ -49,6 +49,23 @@ jobs:
       - name: Install coverage tools
         run: python3 -m pip install gcovr
 
+      - name: Install pinned lua-language-server
+        env:
+          LUALS_VERSION: 3.18.1
+          LUALS_SHA256: 0c4a8a2b085df2e5cb56f075867eebe643c09d6fd3d998c70f9c3b7ab93f29dd
+        run: |
+          luals_archive="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
+          luals_dir="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}"
+          curl --fail --location --retry 3 \
+            --proto '=https' --tlsv1.2 \
+            --output "${luals_archive}" \
+            "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
+          echo "${LUALS_SHA256}  ${luals_archive}" | sha256sum --check -
+          mkdir -p "${luals_dir}"
+          tar -xzf "${luals_archive}" -C "${luals_dir}"
+          echo "${luals_dir}/bin" >> "${GITHUB_PATH}"
+          "${luals_dir}/bin/lua-language-server" --version
+
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-coverage
@@ -59,6 +76,15 @@ jobs:
 
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
+
+      - name: Enforce pack Lua quality gates
+        # coverage_report's CMake target depends on these checks, but this
+        # workflow deliberately invokes coverage_report.py directly below to
+        # retain its strict-C++ arguments and PR-summary outputs. Keep the
+        # checks explicit here so that direct invocation cannot bypass them.
+        run: |
+          cmake --build --preset ci-coverage \
+            --target check_luals api_stub_check check_lua_statement_lines_full
 
       - name: Reset pre-test coverage counters
         run: |

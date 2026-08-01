@@ -6,15 +6,14 @@
  * (at your option) any later version.
  */
 
-// og.* entity/world bindings. Every function here routes through the SAME
-// C++ member functions the native family code called, so a transliterated
-// hook produces the identical mutation/query sequence (design doc §6).
+// og.* entity/world bindings. Every function routes through the same C++
+// member functions as native simulation code, preserving the documented
+// mutation/query sequence (design doc §6).
 //
 // Type discipline (cookbook R2/R3): integer-typed fields push/pull
 // lua_Integer with the setter narrowing exactly as the C++ member type
 // does; float-typed fields push the exact double widening and setters cast
-// lua_Number → float (the transliteration feeds them og.f* results, which
-// are doubles carrying exact floats).
+// lua_Number → float (og.f* results are doubles carrying exact floats).
 
 #include "script_internal.h"
 
@@ -445,20 +444,17 @@ int m_do_heal_effects(lua_State* L)
     return 0;
 }
 
-// walker:heal_clamped(amount[, source]) — the self-heal cluster, fused
-// (quality plan Stage 1). Reproduces orc.lua eat-corpse in EXACTLY this op
-// sequence, which is the parity contract for Stage-2 adoption:
+// walker:heal_clamped(amount[, source]) — fused self-heal with fixed,
+// parity-sensitive ordering. Operation sequence:
 //   (1) s_set_hitpoints(og.fadd(s_hitpoints(), amount))   float add
 //   (2) do_heal_effects(source, self, og.i16(amount))     source may be nil
 //   (3) if s_hitpoints() > s_max_hitpoints():  clamp to max
-// `amount` is an integer (the transliterated sites pass level products):
+// `amount` is an integer (callers pass level products):
 // the heal-marker amount narrows through int16 exactly as og.i16 plus the
 // short parameter did, while the add receives the full value widened
-// number→float, matching the og.fadd operand path bit for bit. The one
-// caller-visible reordering Stage-2 adoption makes — orc's exp credit and
-// notification move AFTER the fused clamp — is observation-free for that
-// site: exp_from_action reads levels and the RNG stream only, and the
-// notice reads the display name, so neither sees hitpoints.
+// number→float, matching the og.fadd operand path bit for bit.
+// The clamp completes before the call returns; caller-side experience and
+// notification work therefore cannot observe an intermediate hitpoint value.
 int m_heal_clamped(lua_State* L)
 {
     walker* w = self_arg(L);
@@ -888,11 +884,9 @@ int og_summon(lua_State* L)
 }
 
 // og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=,
-// max_hp_from_hp=, damage_add=}) → handle | nil — the summon-then-setters
-// cluster, fused (quality plan Stage 1). Reproduces soldier.lua's boomerang
-// EXACTLY; the option applications run in THIS fixed order, which is the
-// parity contract for Stage-2 adoption (each mirrors the named binding's
-// cast chain):
+// max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in
+// fixed, parity-sensitive order. Each option uses the named binding's cast
+// chain:
 //   (1) ani_type    → set_ani_type(og.i8-style char narrowing)
 //   (2) lifetime    → set_lifetime(int32)
 //   (3) hp_add      → s_set_hitpoints(og.fadd(s_hitpoints(), hp_add))
@@ -1146,11 +1140,10 @@ int og_query_object_passable(lua_State* L)
 // og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain
 // genre for a TILE coordinate (the passable queries above all take pixels;
 // this one does not, because smoother::query_genre_x_y does not). Compare
-// against og.C.TYPE_*. weapon_family_door.cpp's
-// `mysmoother.query_genre_x_y(xpos()/GRID_SIZE, (ypos()/GRID_SIZE)-1)`
-// is the only sim caller that had to reach terrain by genre rather than by
-// passability. query_genre_x_y is total — out-of-range tiles report
-// TYPE_GRASS — so there is no nil case.
+// against og.C.TYPE_*. The core door's orientation check is the only sim
+// caller that reaches terrain by genre rather than by passability; see
+// packs/core/scripts/weapon_door.lua. query_genre_x_y is total —
+// out-of-range tiles report TYPE_GRASS — so there is no nil case.
 int og_query_genre(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1499,7 +1492,7 @@ int og_scare_radius(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
-// og.tuning — per-family tuning constants (quality plan Stage 1)
+// og.tuning — per-family tuning constants
 // ---------------------------------------------------------------------------
 
 // og.tuning(self) → the `tuning:` map self's family declared in
@@ -1600,10 +1593,9 @@ int ani_row_len(const signed char* seq)
 }
 
 // og.ani_frame(entity, row, index) → frame | nil.
-// The single-frame read `self->ani[row][index]` (effect_family_chain.cpp
-// does `if (self->ani) self->set_frame(self->ani[curdir()][0])`). nil means
-// the C++ `if (self->ani)` guard would have failed — or the row/index does
-// not exist — so the transliteration simply skips its set_frame. The
+// The single-frame read `self->ani[row][index]` used by
+// packs/core/scripts/effect_chain.lua. nil means the animation table, row, or
+// index does not exist, so the caller skips its set_frame. The
 // sentinel slot itself is addressable (index == length) so a legitimately
 // empty row reads back the same -1 the C++ would have handed set_frame.
 int og_ani_frame(lua_State* L)
@@ -1621,11 +1613,10 @@ int og_ani_frame(lua_State* L)
 }
 
 // og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to
-// (excluding) the -1 sentinel, for the row-walking form
-// (weapon_family_animate.cpp's `const signed char* seq = self->ani[i];` then
-// iterate to -1). nil covers every case where the C++ bails out early: no
-// table, row past ani_count, null row, missing sentinel. An empty table is a
-// present-but-zero-length sequence (the C++ `seq_len <= 0` stop).
+// (excluding) the -1 sentinel, for row-walking pack hooks such as
+// packs/core/scripts/weapon_animate.lua. nil covers every case where the
+// engine-side lookup stops early: no table, row past ani_count, null row, or
+// missing sentinel. An empty table is a present-but-zero-length sequence.
 int og_ani_row(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
@@ -1647,11 +1638,9 @@ int og_ani_row(lua_State* L)
 // Score / campaign progression / exit flow
 // ---------------------------------------------------------------------------
 
-// og.award_score(team, points) — the treasure families' score credit
-// (the file-local award_score in treasure_family_valuables.cpp): bump
+// og.award_score(team, points) — the treasure families' score credit: bump
 // GameWorld::m_score and emit ScoreChange with the same payload. Teams
-// outside the score table are silently ignored, exactly like the C++
-// is_valid_score_team() guard.
+// outside the score table are silently ignored by the score-table guard.
 int og_award_score(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1691,8 +1680,8 @@ int og_current_scenario(lua_State* L)
     return 1;
 }
 
-// og.set_withdraw_request(level) — the exit pad's withdraw latch
-// (treasure_family_navigation.cpp sets both fields together).
+// og.set_withdraw_request(level) — set both fields in the exit pad's
+// withdraw latch together.
 int og_set_withdraw_request(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1766,12 +1755,12 @@ int og_ctf_on_flag_touch(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
-// Deterministic arithmetic / branch helpers (Stage-1 quality bindings)
+// Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
 //
-// Stage 2 of the corpus refactor (docs/lua-quality-plan.md) replaces the
-// transliteration's rand-guard trios and if/else clamp ladders with these
-// calls. Each documents the exact C++ semantic it reproduces, and the
+// These calls give pack scripts one canonical implementation of guarded
+// random draws, min/max, clamping, and sign extraction. Each documents the
+// exact C++ semantic it reproduces, and the
 // branchy micro-logic lives here, where gcov measures every arm (a Lua
 // one-line guard is a single coverage point however many ways it can go).
 
@@ -1887,13 +1876,10 @@ int og_sign(lua_State* L)
 // (include/openglad/core/combat_math.h)
 // ---------------------------------------------------------------------------
 //
-// One entry per helper the pack corpus re-implements by hand today (the
-// yell_radius/stun_total locals in orc.lua, cleric.lua's glow_bonus, and
-// the og.soften compositions in cleric/druid/thief). Stage 2 deletes those
-// copies; until then both spell the same constexpr. The four flat
-// spellings that predate the namespace (og.scare_duration, og.scare_radius,
-// og.elemental_lifetime, og.image_lifetime) stay where the corpus calls
-// them; new combat_math.h surface lands here.
+// One entry per combat helper exposed to pack scripts. The four flat
+// spellings also used by the corpus (og.scare_duration, og.scare_radius,
+// og.elemental_lifetime, og.image_lifetime) remain available; new
+// combat_math.h surface belongs here.
 
 // og.combat.yell_radius(level) — combat_math.h yell_radius: legacy
 // 160 + 20*L px with a flat cap at kYellRadiusCap (420 = f(13)).
@@ -1998,7 +1984,7 @@ int m_add_frozen_stun(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
-// Walker property layer (quality plan Stage 1)
+// Walker property layer
 // ---------------------------------------------------------------------------
 //
 // `self.hp` / `self.busy = x` route through the SAME lua_CFunctions the
@@ -2017,30 +2003,28 @@ int m_add_frozen_stun(lua_State* L)
 // tidiness one. `self:busy()` is sugar for `self.busy(self)`: the lookup
 // cannot see whether a call follows, so a name that is both a method and a
 // property can serve only one of the two spellings — and the corpus (and
-// any third-party pack) already calls the method spelling everywhere, so
-// the method MUST keep winning or every `self:busy()` becomes "attempt to
-// call a number value" (found the hard way: cleric.lua:80 under a
-// property-first draft). Concretely:
+// any third-party pack) calls the method spelling, so the method MUST keep
+// winning or every `self:busy()` becomes "attempt to call a number value".
+// Concretely:
 //   * names with no method of the same name (hp, max_hp, magicpoints,
 //     max_magicpoints, level, team) read as values: `self.hp`;
 //   * names shadowed by a method (busy, dead, weapons_left, lifetime,
 //     damage, ani_type, current_special, foe, xpos, ypos) keep reading as
 //     the method — `self.busy` is a function, exactly what `self:busy()`
-//     resolves today. Their property READ becomes reachable if Stage 5
-//     ever retires the method name; nothing here needs to change.
+//     resolves. These names therefore expose property writes but not property
+//     reads while their methods exist.
 // Reads of unknown names still answer nil, unchanged for every existing
 // script.
 //
 // WRITES have no such conflict — nothing resolved methods through
 // assignment before (any write to a handle raised) — so EVERY writable
 // property works as a write, shadowed-read names included:
-// `self.busy = 5` runs m_set_busy today. An unknown-field write, a write
-// to a read-only property, and a write to a method name each raise a
-// distinct script error where the pre-property userdata rejected every
-// assignment with an opaque "attempt to index" message.
+// `self.busy = 5` runs m_set_busy. An unknown-field write, a write to a
+// read-only property, and a write to a method name each raise a distinct
+// script error.
 //
-// The s_*/method spellings stay as permanent functional aliases
-// (docs/lua-style.md S6); Stage 5 deprecates them in docs and stubs only.
+// The s_*/method spellings remain functional aliases; docs/lua-style.md S6
+// defines which spelling new pack code uses.
 
 struct WalkerProperty {
     const char* name;
@@ -2352,14 +2336,14 @@ const luaL_Reg kOgWorldFuncs[] = {
     // shape used elsewhere in this table.
     {"ctf_on_flag_touch", og_ctf_on_flag_touch},
     {"ctf_flag_touch", og_ctf_on_flag_touch},
-    // Deterministic arithmetic/branch helpers (Stage-1 quality bindings;
-    // definitions and exact-semantics contracts above).
+    // Deterministic arithmetic/branch helpers; definitions and
+    // exact-semantics contracts are above.
     {"rand0", og_rand0},
     {"max", og_max},
     {"min", og_min},
     {"clamp", og_clamp},
     {"sign", og_sign},
-    // Per-family tuning constants (Stage-1 quality bindings).
+    // Per-family tuning constants.
     {"tuning", og_tuning},
     {nullptr, nullptr},
 };

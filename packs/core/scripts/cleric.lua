@@ -1,4 +1,5 @@
 -- core:cleric — heal/mace, raise skeleton/ghost, turn undead, resurrect (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local lc = og.use("living_common")
@@ -26,6 +27,7 @@ local function do_turn_undead(self)
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false
   end
+  -- Returns -1 when there are no candidates, otherwise the number destroyed.
   local turned = self:turn_undead(
     t.turn_undead_range_per_level * self.level, self.level)
   if turned == -1 then
@@ -130,6 +132,7 @@ local function heal_or_mace(self)
   if not mace then
     return false
   end
+  -- The old code used ani_type = 1 only as a dummy non-zero value.
   mace:set_ani_type(1)
   -- spare MP funds the mace; the spare can be negative: og.div is C
   -- trunc, not Lua floor
@@ -141,6 +144,7 @@ local function heal_or_mace(self)
   -- damage is a C++ float: the quarter is a genuine float division
   mace:set_damage(og.fadd(mace:damage(), og.fdiv(spare_mp, 4.0)))
   -- magicpoints and busy are C++ floats: per-op rounding
+  -- "Remove those excess magic points :>" — the original mace surcharge.
   self.magicpoints = og.fsub(self.magicpoints, spare_mp)
   self:set_busy(og.fadd(self:busy(), 5.0))
   return true
@@ -163,7 +167,7 @@ local function raise_skeleton(self)
   alive.team = self.team
   alive.level = og.rand0(self.level) + 1
   alive:set_difficulty(alive.level)
-  alive:set_floor(blood:floor())  -- rise at the bloodstain's floor (A8)
+  alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
   alive:setxy(blood:xpos(), blood:ypos())
   alive:set_owner(self)
   blood:set_dead(1)
@@ -192,7 +196,7 @@ local function raise_ghost(self)
   alive.level = og.rand0(self.level) + 1
   alive:set_difficulty(alive.level)
   alive.team = self.team
-  alive:set_floor(blood:floor())  -- rise at the bloodstain's floor (A8)
+  alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
   alive:setxy(blood:xpos(), blood:ypos())
   alive:set_owner(self)
   blood:set_dead(1)
@@ -247,7 +251,7 @@ local function resurrect(self)
     alive:set_difficulty(alive.level)
     alive:set_owner(self)
   end
-  alive:set_floor(blood:floor())  -- return at the bloodstain's floor (A8)
+  alive:set_floor(blood:floor())  -- return at the bloodstain's floor
   alive:setxy(blood:xpos(), blood:ypos())
   blood:set_dead(1)
   if self:has_guy() then

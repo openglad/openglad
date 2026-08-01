@@ -42,13 +42,3 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
 3. **`make_site.py`** encodes each scene directory into a 2x-upscaled APNG
    (pure Python, zlib only) and writes the card page. Missing scenes are
    skipped, so partial captures still produce a reviewable site.
-
-## TODO
-
-- `net_host`/`net_joiner`: the harness that filmed a genuine networked
-  host+joiner session (both screens dumped at the same authoritative tick,
-  composed side by side) was lost with its throwaway worktree. Rebuild it
-  from the `host_and_join_*` e2e patterns in `tests/test_game_loop.cpp`;
-  `make_site.py` already composes and shows the card when
-  `anim/net_host` + `anim/net_joiner` exist.
-- GitHub Pages publishing of the generated site.

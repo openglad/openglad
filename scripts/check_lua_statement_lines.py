@@ -47,10 +47,10 @@ its own coverage point. The `x and A or B` ternary is two operators and must
 become an if/else — deliberately, because an if/else is measurable and the
 ternary is not.
 
-STYLE-CONTRACT RULES (docs/lua-style.md, enforced since quality-plan stage 5)
------------------------------------------------------------------------------
-Rules 1-6 protect the coverage grid. Rules 7-9 protect the Stage-2/3 cleanup
-from growing back (the corpus was de-noised once; these keep it de-noised):
+STYLE-CONTRACT RULES (docs/lua-style.md)
+---------------------------------------
+Rules 1-6 protect the coverage grid. Rules 7-9 enforce the pack-Lua style
+contract:
 
   7. the raw rand guard trio — `if n > 0 then r = og.rand(n) end` in any
      spelling (`0 < n`, `local r = ...`). `og.rand0(n)` IS that guard:
@@ -69,19 +69,19 @@ from growing back (the corpus was de-noised once; these keep it de-noised):
         wrappers (`local function level_up(self) / return lc.level_up(self)
         / end`) stay legal by design: S1 keeps registration tables reading
         as identity pairs.
-  9. legacy headers (S2): a shipped pack file (under packs/ or the example
-     packs in docs/modding/) opens with the one-line S2 header ending in
-     the cookbook pointer; the retired four-line boilerplate and dead
-     `-- transliterated from <file>.cpp` provenance comments are findings
-     anywhere they appear. Embedded R"LUA" chunks and .glad archive members
-     have no file header and are exempt from the line-1 shape.
+  9. headers and obsolete source paths (S2/S3): a shipped pack file (under
+     packs/ or the example packs in docs/modding/) opens with the one-line S2
+     header ending in the cookbook pointer; multi-line boilerplate and
+     obsolete `-- transliterated from <file>.cpp` source-path comments are
+     findings anywhere they appear. Signed authorship and historical comments
+     are permitted. Embedded R"LUA" chunks and .glad archive members have no
+     file header and are exempt from the line-1 shape.
 
 WHAT IS SCANNED
 ---------------
 Whatever scripts/lua_inventory.py calls shipped Lua — the same list the
 coverage denominator is built from, so a file cannot be game logic to one tool
-and invisible to the other. (It used to be two lists, and they disagreed.)
-That list has a deliberate boundary: .lua files under the shipped roots
+and invisible to the other. That list has a deliberate boundary: .lua files under the shipped roots
 (packs/, docs/) at any depth, .lua members of .glad campaign archives, and
 declared product-C++ literals. A .lua under tests/ or scripts/ is a fixture,
 not shipped logic — never in the denominator, never linted here (spot-check
@@ -133,7 +133,7 @@ from lua_inventory import LuaLexError, Token, tokenize  # noqa: E402,F401
 
 REPO = lua_inventory.REPO
 
-# ---- rule 7-9 machinery (style contract, quality-plan stage 5) -----------
+# ---- rule 7-9 machinery (style contract) ---------------------------------
 
 # Rule 8b: identical bodies at or above this many lines are duplication that
 # belongs in packs/<id>/lib/. Chosen one above the 3-line hook-key identity
@@ -160,7 +160,9 @@ S2_HEADER_RE = re.compile(
     r"^-- \S.*\(cookbook: docs/lua-classpacks-design\.md §3\)\.\s*$"
 )
 LEGACY_BOILERPLATE = "-- Cookbook (docs/lua-classpacks-design.md §3) applies"
-PROVENANCE_RE = re.compile(r"--.*\btransliterated from \S+\.(?:cpp|h)\b")
+OBSOLETE_SOURCE_PROVENANCE_RE = re.compile(
+    r"--.*\btransliterated from \S+\.(?:cpp|h)\b"
+)
 
 
 class LocalFn(NamedTuple):
@@ -355,7 +357,7 @@ def guard_trio_violations(tokens: List[Token], label: str) -> List[str]:
 
 
 def header_violations(source: str, label: str) -> List[str]:
-    """Rule 9 — S2 one-line header present, legacy header text absent."""
+    """Rule 9 — require S2 headers; reject boilerplate/deleted-source paths."""
     found: List[str] = []
     is_chunk = ':R"LUA"@' in label or "!" in label
     lines = source.splitlines()
@@ -370,14 +372,14 @@ def header_violations(source: str, label: str) -> List[str]:
     for number, line in enumerate(lines, start=1):
         if LEGACY_BOILERPLATE in line:
             found.append(
-                f"{label}:{number}: retired four-line boilerplate header — "
-                "the S2 one-line header replaced it (style contract S2)"
+                f"{label}:{number}: disallowed multi-line boilerplate header — "
+                "use the S2 one-line header (style contract S2)"
             )
-        if PROVENANCE_RE.search(line):
+        if OBSOLETE_SOURCE_PROVENANCE_RE.search(line):
             found.append(
-                f"{label}:{number}: dead provenance comment — the cited C++ "
-                "source was retired (design doc §9a); name the op sequence "
-                "the code reproduces instead (style contract S3)"
+                f"{label}:{number}: obsolete deleted-source provenance "
+                "comment — preserve authorship/history, but name the "
+                "reproduced operation sequence instead (style contract S3)"
             )
     return found
 
@@ -620,7 +622,8 @@ def main(argv: List[str]) -> int:
             "\nOne measurable decision per line, and the style contract "
             "(docs/lua-style.md) on top: anything sharing a line with "
             "something already covered shares its coverage point, and "
-            "de-noised patterns must not grow back. Split or fix them "
+            "every shipped source must satisfy the style rules. Split or fix "
+            "the offending code "
             "(see scripts/check_lua_statement_lines.py)."
         )
     if enumeration_problems or problems:

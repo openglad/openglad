@@ -1,4 +1,5 @@
 -- core lib: living_common — shared living-special preludes: busy gate, teleport guard/hook, post-cost MP pools (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 
@@ -43,7 +44,7 @@ function M.halve_mp_surcharge(self, slot)
 end
 
 -- Heartburst/chain damage pool: half the post-cost pool, bound by
--- C.MP_POOL_DAMAGE_CAP (§2.12: the cap binds only above ~1280 MP). The
+-- C.MP_POOL_DAMAGE_CAP (the cap binds only above ~1280 MP). The
 -- pool can be negative: og.div is C trunc, not Lua floor.
 function M.mp_pool_damage(self, slot)
   return og.min(og.div(spare_mp(self, slot), 2), C.MP_POOL_DAMAGE_CAP)

@@ -397,30 +397,33 @@ right-click no longer exists.
 
 ## Data-Driven Family System
 
-Character classes are defined via `FamilyDescriptor` structs in a central registry, replacing the old scattered hardcoded arrays and switch statements.
+Families are class-pack data. Mounted `classpack.yaml` and
+`families/*.yaml` documents populate the five runtime registries; pack Lua
+registers family-specific behavior. The built-in classes use this same path
+through `packs/core/`, so the engine has no separate compiled soldier, mage,
+weapon, effect, or treasure implementation.
 
-```cpp
-struct FamilyDescriptor {
-    int family_id;
-    const char* name;              // "SOLDIER", "ELF", etc.
-    const char* short_name;        // abbreviated picker label
-    std::int32_t base_stats[6];    // STR, DEX, CON, INT, ARMOR, LVL
-    std::int32_t hiring_cost;
-    float derived_bonuses[8];      // HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD
-    const char* pix_filename;      // sprite file ("monk.pix")
-    const char* description;       // multiline UI text
-    bool is_playable;
-    int playable_order;
-    // ... callback function pointers for specials, AI, death, etc.
-};
-```
+Descriptors retain the fields generic engine code needs: wire id, display
+names, stats, art and animation references, presentation data, flags, and
+per-family tuning. Simulation call sites dispatch behavior through
+`og::script::hooks`; pack-installed descriptors carry no native behavior
+callbacks.
 
-**Adding a new character class:** Create `family_foo.cpp` with a `FamilyDescriptor` and register it in `family_registry.cpp`. No parallel arrays or scattered switch statements to update.
+**Adding a new family:** create a class pack containing a descriptor, any Lua
+hooks it needs, and optional art. Pin an existing `wire_id` only when
+intentionally replacing that slot; otherwise use deterministic automatic
+assignment. Follow the schema and determinism rules in
+[`lua-classpacks-design.md`](lua-classpacks-design.md) and the complete API in
+[`modding/api-reference.md`](modding/api-reference.md).
 
 **Key files:**
-- `include/openglad/gameplay/families/family_descriptor.h` — `FamilyDescriptor` struct
-- `include/openglad/gameplay/families/family_registry.h` — registry lookup API
-- `src/gameplay/families/` — per-family descriptor files + registry
+- `packs/core/classpack.yaml`, `packs/core/families/`,
+  `packs/core/scripts/` — built-in pack data and behavior
+- `src/resources/classpack_yaml.cpp`, `src/resources/packs.cpp` — parse,
+  mount, and install class packs
+- `include/openglad/gameplay/families/` — descriptor and registry APIs
+- `include/openglad/gameplay/script/family_hooks.h`,
+  `src/gameplay/script/world_scripts.cpp` — Lua registration and dispatch
 
 ---
 

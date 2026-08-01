@@ -73,9 +73,9 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir,
     return true;
 }
 
-// Family DATA and family BEHAVIOR both live in the core class pack (design
-// doc §9a): the five registries start empty and are filled by
-// install_classpacks() from the mounted packs/ tree. A headless unit binary
+// Family data and behavior both live in the core class pack: the five
+// registries start empty and are filled by install_classpacks() from the
+// mounted packs/ tree. A headless unit binary
 // that skips io_init's asset mounts would otherwise run against registries
 // where every get_*_family_descriptor answers nullptr — no soldier, no
 // knife, no specials. Mount the shipped packs/ tree the same way io_init

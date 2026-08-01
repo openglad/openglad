@@ -719,8 +719,8 @@ namespace fs = std::filesystem;
 constexpr const char* kE2ePackId = "org.test.e2epack";
 constexpr const char* kE2eScript = "og.log('transferred pack loaded')\n";
 constexpr const char* kE2eYaml = "pack: org.test.e2epack\nversion: 1\n";
-// Split-layout descriptor file (quality plan Stage 4): families/*.yaml is
-// ordinary pack content, so it must ride the manifest and install — with
+// Split-layout descriptor file: families/*.yaml is ordinary pack content,
+// so it must ride the manifest and install — with
 // its tuning — on the receiving side exactly like a monolithic
 // classpack.yaml.
 constexpr const char* kE2eFamilyYaml =
@@ -876,8 +876,8 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
     EXPECT_EQ(std::string(kE2eScript),
               std::string(via_vfs.begin(), via_vfs.end()));
 
-    // The transferred families/ descriptor installed on the receiving
-    // side, tuning included (split layout, quality plan Stage 4).
+    // The transferred families/ descriptor installed on the receiving side,
+    // tuning included.
     const int warrior_id = og::families::resolve_family_string_id(
         Order::Living, "e2epack:warrior");
     ASSERT_GE(warrior_id, 0)

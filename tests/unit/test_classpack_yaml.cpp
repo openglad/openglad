@@ -8,13 +8,10 @@
 
 // classpack.yaml reader + family string-id tests (headless).
 //
-// Covers: typed parsing of every field kind (ints, floats, bools, string
+// Covers typed parsing of every field kind (ints, floats, bools, string
 // lists, nullable strings), strictness (bad YAML / bad numbers / missing
-// ids fail the pack), the canonical string-id round trip for all five
-// registries, the exporter↔reader round trip over the committed
-// packs/core/classpack.yaml, and — in the install section — that
-// installing YAML data overwrites descriptor data fields while PRESERVING
-// the C++ behavior callback pointers.
+// ids fail the pack), string-id resolution for all five registries, the
+// committed split-layout core pack, and descriptor installation semantics.
 
 #include <gtest/gtest.h>
 
@@ -342,27 +339,12 @@ TEST(ClasspackYaml, unknown_list_fields_on_treasure_and_generator_skipped)
 }
 
 // ---------------------------------------------------------------------------
-// Family string ids + vocabulary
+// Family string-id resolution + reader vocabulary
 // ---------------------------------------------------------------------------
 
-TEST(FamilyStringIds, canonical_ids_and_resolution)
+TEST(FamilyStringIds, resolution)
 {
     init_all_registries();
-
-    ASSERT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
-              "core:soldier");
-    ASSERT_EQ(og::families::family_string_id(Order::Living, FAMILY_BIG_ORC),
-              "core:orc_captain")
-        << "spaces in registry names map to underscores";
-    // Collision groups take the positional escape — every member.
-    ASSERT_EQ(og::families::family_string_id(Order::Living, FAMILY_SLIME),
-              "core:#8");
-    ASSERT_EQ(og::families::family_string_id(Order::Living,
-                                             FAMILY_GIANT_SKELETON),
-              "core:#19");
-    ASSERT_EQ(og::families::family_string_id(Order::Weapon, FAMILY_KNIFE),
-              "core:knife");
-    ASSERT_EQ(og::families::family_string_id(Order::Living, 255), "");
 
     ASSERT_EQ(og::families::resolve_family_string_id(Order::Living,
                                                      "core:soldier"),
@@ -377,42 +359,23 @@ TEST(FamilyStringIds, canonical_ids_and_resolution)
     ASSERT_EQ(og::families::resolve_family_string_id(Order::Living,
                                                      "core:no_such"),
               -1);
-
-    // Round trip: every registered family in every order.
-    const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure,
-                            Order::Generator, Order::FX};
-    for (Order order : orders) {
-        for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
-            const std::string sid =
-                og::families::family_string_id(order, id);
-            if (sid.empty())
-                continue; // free slot, not the end: pack ids sit above the pins
-            ASSERT_EQ(og::families::resolve_family_string_id(order,
-                                                             sid.c_str()),
-                      id)
-                << "round trip failed for order "
-                << static_cast<int>(order) << " id " << id << " (" << sid
-                << ")";
-        }
-    }
 }
 
-TEST(FamilyStringIds, vocabulary_round_trips)
+TEST(FamilyStringIds, reader_vocabulary)
 {
-    const FamilyAnimationType all_types[] = {
-        FamilyAnimationType::FAMILY_ANIM_STANDARD,
-        FamilyAnimationType::FAMILY_ANIM_MAGE,
-        FamilyAnimationType::FAMILY_ANIM_SKELETON,
-        FamilyAnimationType::FAMILY_ANIM_GIANT_SKELETON,
-        FamilyAnimationType::FAMILY_ANIM_SLIME,
-        FamilyAnimationType::FAMILY_ANIM_SMALL_SLIME,
-        FamilyAnimationType::FAMILY_ANIM_STATIC,
+    const std::pair<const char*, FamilyAnimationType> animation_types[] = {
+        {"standard", FamilyAnimationType::FAMILY_ANIM_STANDARD},
+        {"mage", FamilyAnimationType::FAMILY_ANIM_MAGE},
+        {"skeleton", FamilyAnimationType::FAMILY_ANIM_SKELETON},
+        {"giant_skeleton", FamilyAnimationType::FAMILY_ANIM_GIANT_SKELETON},
+        {"slime", FamilyAnimationType::FAMILY_ANIM_SLIME},
+        {"small_slime", FamilyAnimationType::FAMILY_ANIM_SMALL_SLIME},
+        {"static", FamilyAnimationType::FAMILY_ANIM_STATIC},
     };
-    for (FamilyAnimationType t : all_types) {
-        FamilyAnimationType back{};
-        ASSERT_TRUE(og::families::animation_type_from_name(
-            og::families::animation_type_name(t), back));
-        ASSERT_EQ(back, t);
+    for (const auto& [name, expected] : animation_types) {
+        FamilyAnimationType actual{};
+        ASSERT_TRUE(og::families::animation_type_from_name(name, actual));
+        ASSERT_EQ(actual, expected);
     }
     FamilyAnimationType unused{};
     ASSERT_FALSE(og::families::animation_type_from_name("moonwalk", unused));
@@ -420,27 +383,15 @@ TEST(FamilyStringIds, vocabulary_round_trips)
     ASSERT_EQ(og::families::bit_flag_from_name("FLYING"), BIT_FLYING);
     ASSERT_EQ(og::families::bit_flag_from_name("ETHEREAL"), BIT_ETHEREAL);
     ASSERT_EQ(og::families::bit_flag_from_name("SPELUNKING"), 0);
-
-    std::int32_t unknown = -1;
-    const auto names = og::families::bit_flag_names(
-        BIT_FLYING | BIT_ANIMATE | BIT_ETHEREAL, &unknown);
-    ASSERT_EQ(unknown, 0);
-    ASSERT_EQ(names.size(), 3u);
-    ASSERT_EQ(names[0], "FLYING");
-    ASSERT_EQ(names[1], "ANIMATE");
-    ASSERT_EQ(names[2], "ETHEREAL");
-
-    (void)og::families::bit_flag_names(BIT_LAST, &unknown);
-    ASSERT_EQ(unknown, BIT_LAST) << "unnamed bits must be reported";
 }
 
 // ---------------------------------------------------------------------------
-// Exporter ↔ reader round trip over the committed core pack
+// Reader coverage over the committed core pack
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// Parses the committed core pack in its shipped SPLIT layout (Stage 4): the
+// Parses the committed core pack in its shipped split layout: the
 // header-only classpack.yaml first, then every families/*.yaml in sorted
 // filename order, into ONE ClasspackData — the same concatenation contract
 // install_classpacks() applies. Every committed-core test goes through
@@ -788,21 +739,7 @@ TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
     EXPECT_STREQ(hexburst->name, "HEXBURST");
     EXPECT_TRUE(hexburst->loops_animation);
 
-    // (c) the canonical string id round trips through the mod slot.
-    const std::string living_sid =
-        og::families::family_string_id(Order::Living, living_id);
-    ASSERT_FALSE(living_sid.empty());
-    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
-                                                     living_sid.c_str()),
-              living_id);
-    const std::string effect_sid =
-        og::families::family_string_id(Order::FX, effect_id);
-    ASSERT_FALSE(effect_sid.empty());
-    EXPECT_EQ(og::families::resolve_family_string_id(Order::FX,
-                                                     effect_sid.c_str()),
-              effect_id);
-
-    // (d) exactly one slot per order changed; every id in between — and
+    // (c) exactly one slot per order changed; every id in between — and
     // every id above — still answers nullptr.
     const std::vector<bool> living_after =
         populated_map(get_family_descriptor);
@@ -856,14 +793,7 @@ TEST(ClasspackInstall, pinned_mod_id_resolves_across_a_gap)
                                                      "mod:lich"),
               40)
         << "the name scan must walk past the 21..39 gap";
-    const std::string sid = og::families::family_string_id(Order::Living, 40);
-    ASSERT_FALSE(sid.empty());
-    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
-                                                     sid.c_str()),
-              40);
-
-    // A gap slot has no string id and no positional escape.
-    EXPECT_EQ(og::families::family_string_id(Order::Living, 30), "");
+    // A gap slot has no positional escape.
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
                                                      "core:#30"),
               -1)
@@ -932,8 +862,6 @@ TEST(ClasspackInstall, reset_mod_slots_frees_pack_families_and_keeps_core)
         EXPECT_NE(get_family_descriptor(id), nullptr)
             << "core pin " << id << " must survive the reset";
     EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->name, "SOLDIER");
-    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
-              "core:soldier");
 }
 
 // ---------------------------------------------------------------------------
@@ -1034,9 +962,7 @@ private:
 }  // namespace
 
 // THE pluggability case: two independent packs that each ship a "WARLOCK".
-// Before declared ids these were the same family — resolution threw the
-// namespace away and matched on `name:` alone. Now each is addressable by
-// its own fully-qualified id.
+// The fully-qualified declared id keeps each one separately addressable.
 TEST(FamilyStringIds, two_packs_may_ship_the_same_family_name)
 {
     ModSlotGuard guard;
@@ -1071,13 +997,6 @@ TEST(FamilyStringIds, two_packs_may_ship_the_same_family_name)
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living,
                                                      "Alpha:Warlock"),
               alpha);
-
-    // Forward: a declared id is unique here, so neither family needs the
-    // positional escape even though their display names collide.
-    EXPECT_EQ(og::families::family_string_id(Order::Living, alpha),
-              "alpha:warlock");
-    EXPECT_EQ(og::families::family_string_id(Order::Living, beta),
-              "beta:warlock");
 
     // The documented fallbacks: a bare name, or a namespace nobody
     // declared, still resolve — to the lowest matching byte.
@@ -1128,9 +1047,6 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
         EXPECT_EQ(og::families::resolve_family_string_id(order, id.c_str()),
                   wire)
             << id << " must resolve to its pinned byte";
-        EXPECT_EQ(og::families::family_string_id(order, wire), id)
-            << "byte " << wire << " of order " << static_cast<int>(order)
-            << " must report the id the pack declared";
     }
     EXPECT_STREQ(get_family_descriptor(FAMILY_SOLDIER)->declared_id,
                  "core:soldier");
@@ -1162,20 +1078,14 @@ TEST(FamilyStringIds, a_mod_family_reusing_a_core_name_does_not_shadow_it)
         << "the core soldier is untouched";
     EXPECT_EQ(get_family_descriptor(30)->hiring_cost, 777);
 
-    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
-              "core:soldier");
-    EXPECT_EQ(og::families::family_string_id(Order::Living, 30),
-              "mod:soldier");
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "soldier"),
               FAMILY_SOLDIER)
         << "the bare name still means the core family (lowest byte)";
 }
 
-// Two slots that declare the SAME id are ambiguous, so both take the
-// positional escape — the same rule the BEAST/SLIME name collisions use,
-// which keeps family_string_id() a function whose result always resolves
-// back to the family it was asked about.
-TEST(FamilyStringIds, duplicate_declared_ids_take_the_positional_escape)
+// Two slots that declare the SAME id are ambiguous by name, but each remains
+// addressable through the positional escape.
+TEST(FamilyStringIds, duplicate_declared_ids_keep_positional_resolution)
 {
     ModSlotGuard guard;
 
@@ -1191,8 +1101,6 @@ TEST(FamilyStringIds, duplicate_declared_ids_take_the_positional_escape)
     }
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
 
-    EXPECT_EQ(og::families::family_string_id(Order::Living, 30), "dup:#30");
-    EXPECT_EQ(og::families::family_string_id(Order::Living, 31), "dup:#31");
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "dup:#30"),
               30);
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "dup:#31"),
@@ -1226,8 +1134,6 @@ TEST(ClasspackInstall, a_pack_may_override_a_core_family_in_place)
                                                      "core:soldier"),
               FAMILY_SOLDIER)
         << "the id an overriding pack keeps is the id that still resolves";
-    EXPECT_EQ(og::families::family_string_id(Order::Living, FAMILY_SOLDIER),
-              "core:soldier");
 }
 
 // ---------------------------------------------------------------------------
@@ -1852,7 +1758,7 @@ TEST(FamilyPresentation, glyph_utf8_round_trips)
 }
 
 // ---------------------------------------------------------------------------
-// tuning: maps (quality plan Stage 1 — read by scripts via og.tuning)
+// tuning: maps (read by scripts via og.tuning)
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -2181,7 +2087,7 @@ std::filesystem::path make_scratch_lib_pack()
 
 }  // namespace
 
-// One mount drives the whole Stage-1 resources contract: lib/*.lua (and
+// One mount drives the whole class-pack resources contract: lib/*.lua (and
 // only *.lua with content) registers under deterministic packs/<id>/lib/
 // chunk names, the pack's script og.use-binds the exports when the shared
 // VM rebuilds, classpack.yaml tuning reaches the gameplay store, the MP
@@ -2273,7 +2179,7 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
 }
 
 // ---------------------------------------------------------------------------
-// Split layout: packs/<id>/families/*.yaml (quality plan Stage 4)
+// Split layout: packs/<id>/families/*.yaml
 // ---------------------------------------------------------------------------
 
 namespace {

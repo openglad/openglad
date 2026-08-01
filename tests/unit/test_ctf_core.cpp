@@ -444,9 +444,9 @@ TEST(CtfCore, pickup_fires_through_obmap_collision)
     ASSERT_EQ(runner->entity_id(), fx.world().ctf.flags[1].carrier_entity_id);
 }
 
-// Stage A (design doc §9a) retires the FAMILY_FLAG on_eat C++ callback: the
-// whole flag-touch rule now reaches og::sim::ctf_on_flag_touch only through
-// core:flag's Lua hook. This pins that end-to-end — descriptor slot empty,
+// FAMILY_FLAG has no on_eat C++ callback: the whole flag-touch rule reaches
+// og::sim::ctf_on_flag_touch only through core:flag's Lua hook. This pins
+// that end-to-end — descriptor slot empty,
 // eater walked onto the flag through the production obmap collision, real
 // CTF side effect observed, and no hook error swallowed on the way.
 TEST(CtfCore, flag_touch_runs_entirely_through_the_pack_hook)
@@ -455,7 +455,7 @@ TEST(CtfCore, flag_touch_runs_entirely_through_the_pack_hook)
         get_treasure_family_descriptor(og::FAMILY_FLAG);
     ASSERT_NE(nullptr, tfd);
     ASSERT_EQ(nullptr, tfd->on_eat)
-        << "stage A: the flag's C++ on_eat must be retired";
+        << "core:flag behavior must have no C++ on_eat callback";
 
     CtfWorld fx;
     walker* flag1 = fx.spawn_flag(1, 544, 800);

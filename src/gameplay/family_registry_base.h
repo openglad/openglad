@@ -14,9 +14,9 @@
 // (classpack install).
 //
 // EVERY SLOT STARTS FREE. init() only lays down the order's defaults; nothing
-// is populated until a mounted class pack installs it (design doc §9a stage
-// B: the engine carries no family data of its own, core families arrive from
-// packs/core/classpack.yaml through exactly the same door as a mod's). A free
+// is populated until a mounted class pack installs it. The engine carries no
+// family data of its own: core families arrive from packs/core/classpack.yaml
+// through exactly the same door as a mod's. A free
 // slot is *never* visible through get() — it answers nullptr, exactly as an
 // out-of-range id did before the registries grew — so every "descriptor ==
 // nullptr means this family does not exist" check in the codebase keeps
@@ -24,8 +24,8 @@
 // the classpack installer needs the defaults-initialised descriptor to patch
 // and set() back.
 //
-// CORE_NUM is no longer "how many slots init() fills"; it is the span of wire
-// ids the engine's own constants name (FAMILY_SOLDIER..FAMILY_TOWER1 and the
+// CORE_NUM is the span of wire ids the engine's own constants name
+// (FAMILY_SOLDIER..FAMILY_TOWER1 and the
 // other orders' equivalents). Two things use it: reset_mod_slots(), which
 // frees only the ids above it, and first_unpopulated_core_slot(), the
 // startup check that turns "the core pack is missing or malformed" into one
@@ -52,7 +52,7 @@ public:
     // the defaults-initialised entries and does NOT populate anything: the
     // classpack installer copies the install slot, patches the declared
     // fields and sets it back, so a seeded field rides through the install
-    // untouched — the same mechanism that used to carry behavior callbacks.
+    // untouched.
     void init(DefaultsFn apply_defaults, SeedFn seed = nullptr) {
         if (initialized_)
             return;

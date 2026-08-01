@@ -14,8 +14,8 @@
 --
 --   python3 scripts/modding/gen_api_stubs.py
 --
--- Drift is caught by scripts/modding/check_api_stubs.py (cmake target
--- api_stub_check; advisory until quality-plan stage 5).
+-- Drift is caught by scripts/modding/check_api_stubs.py (the enforced
+-- api_stub_check CMake target).
 --
 -- This file is annotation-only apart from the final `og = {}` line. That
 -- is load-bearing, not style: it lives under a shipped-Lua root, so it is
@@ -39,7 +39,7 @@
 -- the walker to have one). Handles compare by entity id and
 -- are only valid within the dispatch that minted them.
 --
--- Property layer (kWalkerProperties, quality plan Stage 1):
+-- Property layer (kWalkerProperties):
 -- names no method shadows read AND write as plain values
 -- (self.hp); method-shadowed names keep reading as the
 -- method (method-first __index) and are typed as the union
@@ -106,7 +106,7 @@
 ---@field g_update_derived_stats fun(self: og.Walker, entity: og.Walker)
 ---@field g_upgrade_to_level fun(self: og.Walker, new_level: integer, arg3: any?)
 ---@field has_guy fun(self: og.Walker): boolean
----@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — the self-heal cluster, fused (quality plan Stage 1).
+---@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — fused self-heal with fixed, parity-sensitive ordering.
 ---@field hp number # read/write property over s_hitpoints/s_set_hitpoints (write-through, same narrowing)
 ---@field in_act fun(self: og.Walker): boolean
 ---@field invisibility_left fun(self: og.Walker): integer
@@ -264,8 +264,8 @@
 
 -- Table form of the do_special hook (the og.register_hooks key 'specials'):
 -- current_special() selects the entry, a missing index falls to `default`,
--- and a table with neither is a successful no-op — the retired switch
--- ladders' exact contract. Entries return like do_special itself.
+-- and a table with neither is a successful no-op. Entries return
+-- like do_special itself.
 ---@class og.LivingSpecials
 ---@field [integer] fun(self: og.Walker): boolean
 ---@field default? fun(self: og.Walker): boolean
@@ -458,10 +458,10 @@
 ---@field add_ob fun(order: og.OrderName, fam: integer, atstart: any): og.Walker?
 ---@field add_weap_ob fun(order: og.OrderName, fam: integer): og.Walker?
 ---@field ani_frame fun(entity: og.Walker, row: integer, index: integer): integer? # og.ani_frame(entity, row, index) → frame | nil.
----@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for the row-walking form (weapon_family_animate.cpp's...
+---@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for row-walking pack hooks such as packs/core/scripts/...
 ---@field apply_difficulty_scaling fun(lv: og.Walker, level: integer, arg3: number, arg4: number, arg5: number, arg6: number)
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
----@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit (the file-local award_score in treasure_family_valuables.cpp): bump GameWorld::m_score and...
+---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit: bump GameWorld::m_score and emit ScoreChange with the same payload.
 ---@field charm_duration fun(arg1: integer): integer
 ---@field check_special_ai_distance fun(lv: og.Walker, threshold: integer): boolean
 ---@field clamp fun(v: number, lo: number, hi: number): number # og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v, else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is 'integer').
@@ -481,7 +481,7 @@
 ---@field entity_display_name fun(entity: og.Walker, fallback: string?): string
 ---@field entity_id fun(entity: og.Walker): integer # og.entity_id(handle) → stable sim entity id (0 for untracked).
 ---@field exp_from_action fun(entity: og.Walker, target: og.Walker?, action_name: "attack"|"eat_corpse"|"heal"|"kill"|"protection"|"raise_ghost"|"raise_skeleton"|"resurrect"|"resurrect_penalty"|"turn_undead", value: integer): integer # og.exp_from_action(self, target_or_nil, action_name, value) — the walker-level exp_from_action wrapper the family code calls.
----@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision so that transliterated float expressions keep the C++ per-op rounding.
+---@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision so deterministic Lua arithmetic keeps the C++ per-operation rounding.
 ---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
 ---@field fdiv fun(a: number, b: number): number
@@ -528,11 +528,11 @@
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).
 ---@field set_palette fun(current_palette_id: integer)
----@field set_withdraw_request fun(withdraw_level: integer) # og.set_withdraw_request(level) — the exit pad's withdraw latch (treasure_family_navigation.cpp sets both fields together).
+---@field set_withdraw_request fun(withdraw_level: integer) # og.set_withdraw_request(level) — set both fields in the exit pad's withdraw latch together.
 ---@field sign fun(x: number): integer # og.sign(x) — the sign-extraction idiom the movement code spells `v /= abs(v)` behind a v != 0 guard, as a total function: -1, 0 or 1 as an INTEGER for any nu...
 ---@field soften fun(arg1: integer, arg2: integer, arg3: integer): integer
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
----@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — the summon-then-setters cluster, fu...
+---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).

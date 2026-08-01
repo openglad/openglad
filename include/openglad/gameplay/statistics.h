@@ -242,6 +242,7 @@ class command
 		// (fright/knockback/flee/shove); add_command leaves it false.
 		// Never serialized: snapshot apply clears the queue
 		// (world_snapshot.cpp) and no save/replay path persists commands
-		// (runaway-specials WP-2 audit), so the flag is wire/dump-free.
+		// (docs/runaway-effects-design.md §3.2), so the flag is
+		// wire/dump-free.
 		bool forced = false;
 };

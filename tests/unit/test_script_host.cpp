@@ -311,25 +311,6 @@ TEST(ScriptBudget, infinite_loop_trips_instruction_budget)
     EXPECT_EQ(2, *ok);
 }
 
-TEST(ScriptBudget, budget_hook_accumulates_observed_instructions)
-{
-    ScriptHost host;
-    EXPECT_EQ(0u, host.instructions_observed());
-    // ~500k VM instructions — far past the default 4096-instruction check
-    // cadence, so the budget hook fires and accumulates whatever cadence
-    // this process runs under (per-instruction when
-    // OPENGLAD_LUA_INSTRUCTION_REPORT is set, kBudgetCheckInterval quanta
-    // otherwise).
-    ASSERT_TRUE(host.run_chunk(
-        "spin_count", "local x = 0 for i = 1, 100000 do x = x + i end"));
-    const std::uint64_t after_loop = host.instructions_observed();
-    EXPECT_GT(after_loop, 0u);
-    // Cumulative and monotone across host entries.
-    auto ok = host.eval_integer("1 + 1");
-    ASSERT_TRUE(ok.has_value());
-    EXPECT_GE(host.instructions_observed(), after_loop);
-}
-
 TEST(ScriptBudget, allocation_cap_trips_deterministically)
 {
     ScriptLimits limits;
@@ -626,7 +607,7 @@ TEST_F(ScriptHostPackTest, distinct_hooks_for_one_family_are_not_a_duplicate)
 // Pack-Lua coverage recorder
 // ---------------------------------------------------------------------------
 //
-// Family behavior is Lua now, so the coverage gate has to measure Lua. These
+// Family behavior is Lua, so the coverage gate has to measure Lua. These
 // pin the recorder's two halves (executed lines, functions whose bodies
 // executed), its denominator oracle, and — the load-bearing one — that it is
 // completely inert until armed.
@@ -3049,9 +3030,9 @@ sys.exit(rc)
 // The shape assertions are the contract, not a snapshot: if a regeneration
 // ever emitted real function statements, every one would be a permanently
 // uncovered function record and the coverage gate would go red far from
-// the cause. Fail HERE instead, naming the rule. (Freshness is deliberately
-// NOT asserted — the api_stub_check cmake target owns drift; quality-plan
-// stage 5 promoted it to a coverage_report dependency.)
+// the cause. Fail HERE instead, naming the rule. Freshness is deliberately
+// NOT asserted: the api_stub_check CMake target owns drift and gates
+// coverage_report.
 
 TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
 {
@@ -3095,7 +3076,7 @@ TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
 }
 
 // ---------------------------------------------------------------------------
-// og.use — the pack lib module system (quality plan Stage 1)
+// og.use — the pack lib module system
 // ---------------------------------------------------------------------------
 // A pack ships shared helpers as packs/<id>/lib/<name>.lua; the resources
 // layer registers them here and every new VM loads each once — eagerly, in
@@ -3251,9 +3232,9 @@ TEST_F(PackLibTest, on_demand_load_inside_the_eager_pass_settles_once)
 
 // Exports are frozen: writes to fresh AND existing keys raise, # forwards
 // through to an array-shaped export, and the metatable is fenced. The
-// freeze is shallow BY DESIGN (a nested mutable table is an R6 violation
-// the Stage-5 lib lint owns) — pinned so a future "deep freeze" cannot
-// land silently and change what modules may do.
+// freeze is shallow BY DESIGN; R6 forbids nested mutable state, but the
+// freeze cannot detect mutable closure upvalues. This test prevents a future
+// "deep freeze" from silently changing what modules may do.
 TEST_F(PackLibTest, exports_are_frozen_shallow_views)
 {
     register_module("t.pack", "consts",

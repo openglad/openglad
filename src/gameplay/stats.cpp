@@ -262,8 +262,8 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	commands.front().commandcount = iterations;
 	// Externally-forced entry (fright/knockback/flee/shove). ONLY this
 	// injector sets the flag; add_command leaves it false. The flag is never
-	// serialized (WP-2 audit: snapshots clear queues on apply, saves/replays
-	// never persist commands).
+	// serialized: snapshots clear queues on apply, and saves/replays never
+	// persist commands.
 	commands.front().forced = true;
 }
 

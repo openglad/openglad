@@ -158,7 +158,7 @@ og.register_hooks("living", "core:orc", {
 })
 ```
 
-Dispatch reproduces the retired transliterated switch ladders exactly:
+Dispatch implements the slot semantics directly:
 `self:current_special()` selects the entry, a missing index falls to
 `default`, and a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
@@ -489,7 +489,7 @@ returns `nil`.
 
 **`og.tuning(self) → frozen table`** — the `tuning:` map self's family
 declared in `classpack.yaml`, for lifting balance constants out of behavior
-code (quality plan Stage 4 fills the core maps in):
+code:
 
 ```yaml
 families:
@@ -523,7 +523,7 @@ rows.
 
 | Function | Result |
 |---|---|
-| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` covers every case where the C++ `if (self->ani)` guard (or a bad row/index) would have bailed — so the transliteration simply skips its `set_frame`. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the same `-1` the C++ would have handed `set_frame`. |
+| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` covers every case where the C++ `if (self->ani)` guard (or a bad row/index) would have bailed, so the script simply skips its `set_frame`. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the same `-1` the C++ would have handed `set_frame`. |
 | `og.ani_row(entity, row)` | Array of the frames up to (excluding) the `-1` sentinel, or `nil`. An empty table means "present but zero-length" (the C++ `seq_len <= 0` stop); `nil` means no table, row past `ani_count`, a null row, or a missing sentinel. |
 
 Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
@@ -565,8 +565,8 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 ### Shared helpers
 
-These are the identical C++ family helpers, exposed so a transliteration does
-not have to re-derive them (and cannot get their RNG draws wrong).
+These engine helpers are exposed so pack code does not have to re-derive
+them or risk changing their RNG draws.
 
 | Function | Result |
 |---|---|
@@ -632,7 +632,7 @@ Rules, each of which is deterministic by construction:
   metatable is fenced. The freeze is shallow — which is not an invitation:
   lib modules must be PURE (tables of functions and constants, no
   chunk-level mutable state). That is cookbook R6 at the module boundary;
-  a lint enforces it at quality-plan Stage 5.
+  the shallow freeze cannot detect mutable closure upvalues.
 * **Pack-relative.** A chunk of pack P resolves P's modules only; the error
   for a missing module names the expected path
   (`packs/<id>/lib/<name>.lua`).
@@ -902,7 +902,7 @@ appear, each where its contract is the right one.
 
 | Pattern | Read |
 |---|---|
-| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside `packs/core/families/living-00-soldier.yaml` (the core pack uses the split per-family layout; the C++ `family_soldier.cpp` it was transliterated from is gone — see design doc §9a) |
+| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside `packs/core/families/living-00-soldier.yaml` (the core pack uses the split per-family layout; behavior dispatches through Lua) |
 | Specials table, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/scripts/orc.lua` beside `packs/core/families/living-14-orc.yaml` |
 | `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
 | Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
@@ -954,10 +954,10 @@ For porting C++-shaped behavior into pack Lua (new mods should just write
 the idiom the worked example shows; this list is for byte-exact ports).
 
 1. Map every C++ float operator to exactly one `og.f*` call; never chain in
-   Lua. Comparing floats directly is fine. Plain `+`/`-`/`*` is fine where
-   both operands are provably integer-valued and < 2^24 (exact in doubles);
-   division never is.
-2. Every integer `/` and `%` → `og.div` / `og.mod`.
+   Lua. Comparing floats directly is fine. Plain `+`/`-`/`*` is safe only
+   when the exact result is representable in C `float`; division never is.
+2. Map integer `/` and `%` to `og.div` / `og.mod` unless documented operand
+   ranges prove Lua floor division/remainder identical to C truncation.
 3. `(int32)someFloat` → `og.trunc`. Explicit narrowing casts → `og.i8`/
    `og.i16`/`og.u8` **only** where the C++ did more than a plain setter store
    (setters — and the properties routed through them — already narrow).

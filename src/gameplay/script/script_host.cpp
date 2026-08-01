@@ -50,31 +50,6 @@ void* capped_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 inline constexpr int kBudgetCheckInterval = 4096;
 
-// Budget-hook cadence: how many VM instructions run between LUA_MASKCOUNT
-// fires. The default checks every kBudgetCheckInterval instructions — cheap,
-// and all the budget itself needs. When OPENGLAD_LUA_INSTRUCTION_REPORT is
-// set (the parity harness's per-scenario instruction-total report; see
-// tests/parity/parity_runner.cpp), hosts count per instruction instead so
-// ScriptHost::instructions_observed() is exact rather than quantized to the
-// check interval (at the default cadence a host entry shorter than the
-// interval never fires the hook at all and observes as zero). Budget
-// SEMANTICS are unchanged either way: the budget still trips once
-// limits.instructions_per_call instructions are consumed — the fine cadence
-// merely removes the up-to-interval-minus-one overshoot slop — and hook
-// cadence is invisible to script code, so sims stay byte-identical
-// (og_test_parity is run with and without the variable to prove it).
-// Read once per process, like OPENGLAD_LUA_COVERAGE: a runtime switch keeps
-// the binary the parity gate exercises the binary that ships.
-int budget_check_cadence()
-{
-    static const int cadence = [] {
-        const char* report = std::getenv("OPENGLAD_LUA_INSTRUCTION_REPORT");
-        const bool exact = (report != nullptr && report[0] != '\0');
-        return exact ? 1 : kBudgetCheckInterval;
-    }();
-    return cadence;
-}
-
 // The Impl pointer rides in the lua extra space so the count hook can find
 // its budget without touching the registry.
 ScriptHost::Impl** extra_slot(lua_State* L)
@@ -85,9 +60,7 @@ ScriptHost::Impl** extra_slot(lua_State* L)
 void budget_hook(lua_State* L, lua_Debug* /*ar*/)
 {
     ScriptHost::Impl* impl = *extra_slot(L);
-    impl->instructions_observed +=
-        static_cast<std::uint64_t>(impl->budget_check_interval);
-    impl->instructions_remaining -= impl->budget_check_interval;
+    impl->instructions_remaining -= kBudgetCheckInterval;
     if (impl->instructions_remaining <= 0)
         luaL_error(L, "instruction budget exceeded");
 }
@@ -145,8 +118,8 @@ int og_mod(lua_State* L)
     return 1;
 }
 
-// Each og.f* performs exactly one operation in float precision so that
-// transliterated float expressions keep the C++ per-op rounding.
+// Each og.f* performs exactly one operation in float precision so deterministic
+// Lua arithmetic keeps the C++ per-operation rounding.
 int og_fadd(lua_State* L)
 {
     const float a = static_cast<float>(luaL_checknumber(L, 1));
@@ -451,13 +424,11 @@ bool ScriptHost::Impl::protected_call(const char* where, int nargs,
         // Disabled path is bit-identical to the pre-coverage code: same hook
         // function, same mask, same count. The recorder costs one load of a
         // global bool per host entry — not per instruction, not per line.
-        // (budget_check_interval is kBudgetCheckInterval unless the
-        // instruction-report cadence was selected at construction.)
         if (coverage::enabled())
             lua_sethook(L, budget_and_coverage_hook,
-                        LUA_MASKCOUNT | LUA_MASKLINE, budget_check_interval);
+                        LUA_MASKCOUNT | LUA_MASKLINE, kBudgetCheckInterval);
         else
-            lua_sethook(L, budget_hook, LUA_MASKCOUNT, budget_check_interval);
+            lua_sethook(L, budget_hook, LUA_MASKCOUNT, kBudgetCheckInterval);
     }
     entry_depth++;
     const int rc = lua_pcall(L, nargs, nresults, handler_pos);
@@ -482,7 +453,6 @@ bool ScriptHost::Impl::protected_call(const char* where, int nargs,
 ScriptHost::ScriptHost(ScriptLimits limits) : impl_(std::make_unique<Impl>())
 {
     impl_->limits = limits;
-    impl_->budget_check_interval = budget_check_cadence();
     impl_->alloc.cap = limits.memory_bytes;
     impl_->L = lua_newstate(capped_alloc, &impl_->alloc);
     if (impl_->L == nullptr)
@@ -665,11 +635,6 @@ void ScriptHost::clear_errors()
 std::size_t ScriptHost::memory_used() const
 {
     return impl_->alloc.used;
-}
-
-std::uint64_t ScriptHost::instructions_observed() const
-{
-    return impl_->instructions_observed;
 }
 
 std::size_t ScriptHost::memory_limit() const

@@ -1,4 +1,5 @@
 -- core:soldier — charge, boomerang, whirlwind, disarm (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local ai = og.use("ai")
@@ -21,6 +22,7 @@ local function throw_boomerang(self)
   -- og.summon_configured applies these keys in exactly the legacy order:
   -- ani_type, lifetime, hp_add, max_hp_from_hp, damage_add
   local boomerang = og.summon_configured(self, "fx", FX_BOOMERANG, {
+    -- The old code used ani_type = 1 only as a dummy non-zero value.
     ani_type = 1,
     lifetime = t.boomerang_lifetime_base
       + self.level * t.boomerang_lifetime_per_level,
@@ -104,7 +106,10 @@ local function on_fire_weapon(self, weapon)
   if self:order() ~= C.ORDER_LIVING then
     return true
   end
+  -- Jonathan Dearborn's 2013 fix keeps melee available while the returning
+  -- blade is away; only a ranged release consumes weapons_left.
   if self:weapons_left() <= 0 then
+    -- Give back the magic it cost, since we didn't throw it.
     -- magicpoints is a C++ float: per-op rounding
     self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
     weapon:set_dead(1)
@@ -133,7 +138,8 @@ og.register_hooks("living", "core:soldier", {
     [3] = whirlwind,
     [4] = disarm,
   },
-  check_special_ai = ai.foe_in_window(20, 75),  -- per-tick gate: R-KEEP-4
+  -- Historical charge window: about one to three grid squares.
+  check_special_ai = ai.foe_in_window(20, 75),  -- fixed per-tick AI gate
   on_fire_weapon = on_fire_weapon,
   on_create = on_create,
   set_difficulty = set_difficulty,

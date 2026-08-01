@@ -61,8 +61,8 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const ch
     return true;
 }
 
-// Family BEHAVIOR lives in the core class pack (design doc §9a): the
-// descriptors carry no C++ behavior callbacks any more, so a headless unit
+// Family behavior lives in the core class pack. Its descriptors carry no
+// C++ behavior callbacks, so a headless unit
 // binary that skips io_init's asset mounts would run a sim whose specials,
 // potions and effects all silently do nothing. Mount the shipped packs/ tree
 // the same way io_init does. Idempotent, and re-asserted after every test:

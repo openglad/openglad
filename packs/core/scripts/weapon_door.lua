@@ -1,4 +1,5 @@
 -- core:door — broken door hands its spot to the opening effect (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
@@ -11,7 +12,7 @@ local function on_death(self)
     return false
   end
   opened:set_ani_type(C.ANI_DOOR_OPEN)
-  opened:set_floor(self:floor())  -- opened door stays on its floor (A8)
+  opened:set_floor(self:floor())  -- opened door stays on its floor
   opened:setxy(self:xpos(), self:ypos())
   opened.level = self.level
   opened.team = self.team

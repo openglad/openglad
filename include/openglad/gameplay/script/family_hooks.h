@@ -10,19 +10,18 @@
 // Scripted family-hook dispatch. Call sites in the sim use the og::script::hooks
 // helpers below instead of invoking descriptor function pointers directly:
 // each helper tries the current world's registered Lua hook first, then the
-// descriptor's C++ callback, and returns nullopt when neither exists (caller
-// keeps its legacy default path). A Lua hook that ERRORS counts as absent
-// for that dispatch — so the C++ callback (when still present during the
-// conversion transition) runs next. Identical on every peer, but it means a
-// hook must fail BEFORE mutating sim state or not at all: a partial script
-// run followed by the full C++ callback double-executes side effects.
+// descriptor's optional C++ callback, and returns nullopt when neither exists
+// (the caller keeps its default path). A Lua hook that ERRORS counts as absent
+// for that dispatch, so an optional descriptor callback runs next. Identical
+// on every peer, but it means a hook must fail BEFORE mutating sim state or
+// not at all: a partial script run followed by a callback double-executes
+// side effects.
 // Script errors therefore belong at branch entry (design doc R9).
 //
-// Stage A (design doc §9a) retired the C++ callback of every converted
-// family: for those the Lua hook is the ONLY implementation, so an erroring
-// hook means nothing runs at all — hence the HookFailure latch below. Every
-// core family now has a Lua twin; the C++ branch survives only for mod
-// descriptors that ship a native callback and no script.
+// Pack-installed descriptors carry no C++ callbacks: their Lua hooks are the
+// only behavior implementation, so an erroring hook means nothing runs at
+// all. The HookFailure latch below makes that failure visible to tests and
+// operators.
 
 #include <openglad/core/order.h>
 
@@ -119,9 +118,9 @@ WorldScripts& active_world_scripts();
 
 namespace hooks {
 
-// Loud-failure latch (design doc §9a). The C++ family callbacks are retired:
-// a hook that errors no longer degrades to the old behavior, it degrades to
-// *nothing happening*. Every failed family-hook dispatch is therefore traced
+// Loud-failure latch for class-pack behavior. Pack-installed descriptors
+// carry no C++ callbacks, so a hook error means *nothing happens*. Every
+// failed family-hook dispatch is therefore traced
 // ("script_error"), logged at error level, and counted here — so a test
 // cannot pass while a hook is quietly failing. Assert
 // `hook_failures().count == 0`, or diff the count around the code under test.

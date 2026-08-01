@@ -1,11 +1,10 @@
-/* Runaway-specials WP-4: the silliness battery + switch-launder regressions
+/* Runaway-effect end-to-end and switch-launder regressions
  * (docs/runaway-effects-design.md §6.2 + §6.3).
  *
  * Headless scripted casters drive every §2 effect end-to-end through the REAL
  * production paths (walker::special -> family do_special, effect on_death,
  * weapon on_hit_target, sim_process_player_input, living::act) and assert the
- * §2 AFTER values exactly. The legacy BEFORE values are in comments — this
- * file is the evidence artifact for the PR description.
+ * current §2 values exactly.
  *
  * Determinism: the unit groups link the production component libraries
  * (compiled without TESTING), so the SimRandom override hook is compiled out
@@ -14,7 +13,7 @@
  * draw return exactly r for any bound > r, and leaves the post-draw state at
  * exactly (r << 16) — which doubles as a "one draw consumed" stream check.
  * Every production draw keeps its exact bound and call count while the test
- * picks each result. No test here touches sim behavior — WP-4 is tests only.
+ * picks each result.
  */
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
@@ -434,18 +433,19 @@ TEST(SillinessBattery, sprinkle_player_victim_immunity_gives_actable_windows)
 
 TEST(SillinessBattery, sprinkle_player_victim_sub_gate_cadence_residual)
 {
-    // HONEST RESIDUAL PIN #1 (flagged in the WP-4 report). §6.2.3's literal
-    // script — hits every 5 ticks — cannot show the immunity at all: the
-    // §2.6b refresh gate deliberately keeps the charm-mirrored 10-tick floor,
+    // Known limitation (§7): hits every 5 ticks cannot show the immunity at
+    // all. The §2.6b refresh gate deliberately keeps the charm-mirrored
+    // 10-tick floor,
     // so a sustained cadence at or below the window re-SETs the freeze while
-    // frozen_delay is in (0, 10] — BEFORE the 1->0 transition that arms the
+    // frozen_delay is in (0, 10], before the 1->0 transition that arms the
     // §3.3 immunity. The player relocks exactly like the AI variant. The
-    // immunity guarantee therefore applies per freeze cycle THAT REACHES
-    // THAW (any cadence longer than the gate window — previous test); under
+    // immunity guarantee therefore applies only to a freeze cycle that
+    // reaches thaw (any cadence longer than the gate window; see the previous
+    // test). Under
     // relentless sub-window cadence the stunlock persists by the gate's own
     // design. Pinned here so the shape is a documented decision, not a
-    // surprise; a fix would need an in-window player refusal (a sim change,
-    // out of WP-4 scope).
+    // surprise; a fix would need an in-window player refusal and therefore a
+    // deliberate simulation change.
     BatteryFixture fx;
     living* faerie = add_caster(fx, FAMILY_FAERIE, 30, 96, 80);
     faerie->set_team_num(1);
@@ -464,17 +464,15 @@ TEST(SillinessBattery, sprinkle_player_victim_sub_gate_cadence_residual)
 
 TEST(SillinessBattery, sprinkle_player_victim_even_span_residual)
 {
-    // HONEST RESIDUAL PIN #2 (flagged in the WP-4 report). A frozen
-    // player-controlled walker drains TWICE per tick — the player-side drain
-    // (sim_input_handler) plus the legacy living::act drain, both master
-    // behavior. Only the player drain writes the -12 immunity phase, so a
+    // Known limitation (§7): a frozen player-controlled walker drains twice
+    // per tick: the player-side drain (sim_input_handler) plus living::act's
+    // original drain. Only the player drain writes the -12 immunity phase, so a
     // freeze span with EVEN parity terminates at the living::act site
     // (1 -> 0, no immunity) and the next hit re-lands after only the cadence
     // gap. §3.3's ">= 12 actable ticks per cycle" holds for cycles the
     // player drain terminates (odd spans, first test); even spans get only
     // the short gap. Changing either drain site is a parity-visible sim
-    // change and is out of scope by §0 — this test pins the shipped shape so
-    // nobody "fixes" it silently.
+    // change; this test pins the shipped shape so nobody changes it silently.
     BatteryFixture fx;
     living* faerie = add_caster(fx, FAMILY_FAERIE, 30, 96, 80);
     faerie->set_team_num(1);
@@ -536,8 +534,8 @@ TEST(SillinessBattery, sprinkle_ai_victim_gate_window_and_escape)
     // Phase A: max rolls. BEFORE: SET rng(100) -> up to 99 on every hit.
     // AFTER: soften(99, 79, 110) = 91 — and re-freezes land only inside the
     // <= 10-tick gate window, where the 5-tick cadence still catches an AI
-    // victim (the accepted stunlock residual while rolls stay big; spec
-    // Risk 3 / §6.2.3).
+    // victim (the documented stunlock residual while rolls stay big;
+    // §2.6 and §7).
     for (int t = 1; t <= 400; ++t)
         tick(t, 99, actable_phase_a);
     ASSERT_EQ(5, actable_phase_a)
@@ -774,8 +772,8 @@ TEST(SillinessBattery, heartburst_pool_capped)
 }
 
 // ===========================================================================
-// Charm ceiling (§2.9) — thief charm end-to-end (archmage curve is pinned by
-// the WP-1 compute_charm_duration tables).
+// Charm ceiling (§2.9) — thief charm end-to-end (the archmage curve is
+// covered by the compute_charm_duration tables).
 // ===========================================================================
 
 TEST(SillinessBattery, thief_charm_ceiling_and_natural_expiry)

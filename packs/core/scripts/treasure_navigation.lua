@@ -1,4 +1,5 @@
 -- core:exit + core:teleporter — exit pad and warp pad on_eat (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The exit pad reads and writes campaign progression state through its own
 -- bindings:
@@ -50,6 +51,8 @@ local function exit_on_eat(self, eater)
   end
 
   local destination_level = self.level
+  -- buffers's 2004 SCEN_TYPE_CAN_EXIT exception survives under its current
+  -- name: flagged scenarios deliberately bypass the "foes left" gate.
   local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()
   local can_withdraw = og.level_completed(destination_level)
       and not og.level_completed(og.current_scenario())
@@ -113,7 +116,7 @@ local function teleporter_on_eat(self, eater)
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
-    flash:set_floor(self:floor())  -- flash at the departure pad (A8)
+    flash:set_floor(self:floor())  -- flash at the departure pad
     flash:center_on(self)
   end
   return true

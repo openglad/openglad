@@ -42,7 +42,7 @@ void clear_pack_scripts();
 unsigned pack_scripts_generation();
 
 // ---------------------------------------------------------------------------
-// Pack lib modules (og.use) — quality plan Stage 1
+// Pack lib modules (og.use)
 // ---------------------------------------------------------------------------
 //
 // A pack may ship shared helpers as packs/<id>/lib/<name>.lua. The resources
@@ -55,8 +55,9 @@ unsigned pack_scripts_generation();
 // must `return` their exports. og.use is pack-relative (a chunk of pack P
 // resolves P's modules only) and available only while a pack chunk loads —
 // bind modules to locals at load time. Lib modules must be PURE: one table
-// of functions and constants, no chunk-level mutable state (cookbook R6 at
-// the module boundary; the Stage-5 lint enforces it, docs/lua-style.md S4).
+// of functions and constants, no chunk-level mutable state (cookbook R6 and
+// docs/lua-style.md S4). The shallow export freeze cannot detect mutable
+// closure upvalues.
 
 struct PackLibModule {
     std::string pack_id;     // e.g. "org.openglad.core"

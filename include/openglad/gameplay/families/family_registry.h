@@ -25,9 +25,9 @@ struct FamilyDescriptor;
 // no pack has claimed — "nullptr means this family does not exist".
 const FamilyDescriptor* get_family_descriptor(int family_id);
 
-// Lays down the registry's per-slot defaults. Call once at startup; it no
-// longer installs any family (design doc §9a stage B), so a lookup before
-// the class packs are mounted answers nullptr.
+// Lays down the registry's per-slot defaults. Call once at startup; it
+// installs no family, so a lookup before the class packs are mounted answers
+// nullptr.
 void init_family_registry();
 
 // Overwrites one living-family slot (classpack install: copy the current

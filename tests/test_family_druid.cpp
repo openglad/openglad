@@ -21,7 +21,7 @@ TEST(FamilyDruid, descriptor_level_up_and_difficulty)
     ASSERT_TRUE(og::test::has_set_difficulty(desc));
     ASSERT_TRUE(og::test::has_level_up(desc));
     ASSERT_EQ(nullptr, desc.do_special)
-        << "stage A: no C++ behavior callback may survive";
+        << "pack-installed family behavior must have no C++ callback";
 
     og::test::ScopedHookFailureGuard guard;
 

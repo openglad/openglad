@@ -1,12 +1,11 @@
 -- core:elf — rock-spread specials (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
--- next_spread_multiplier: the legacy code picks its RNG source as
---   src = cosmetic_rng_override() != nullptr ? *cosmetic_rng_override() : rng
--- i.e. the parity harness's libc-rand cosmetic stream when installed
--- (mirroring master's dual-RNG-stream rock spread), else the gameplay RNG.
--- og.cosmetic_rand is exactly that selector, so the draw stays out of the
--- schema rng_state observable-hash under the harness — byte-clean in both
--- og_test_parity and branch-vs-master diff_dumps.py audits.
+-- Jonathan Dearborn added this spread in 2013 so stacked rocks separate
+-- visibly in flight.
+-- The original jitter came from libc rand, separate from gameplay RNG.
+-- og.cosmetic_rand selects that compatibility stream when installed and
+-- otherwise uses the deterministic gameplay stream.
 local function next_spread_multiplier()
   local spread_roll = og.cosmetic_rand(101)
   -- 0.8 + 0.4*roll/100 is a float chain: per-op rounding.
@@ -33,10 +32,9 @@ local function some_rocks(self)
   return true
 end
 
--- The three bouncing volleys (cases 2, 3, 4-and-default) share one shape,
--- parameterized over chunk-load constants (R6-safe closure). los_num spells
--- each legacy lineofsight multiplier as `* los_num // 2`; case 3's legacy
--- `* 2` is `* 4 // 2`, identical over Lua integers.
+-- The three bouncing volleys share one immutable shape. los_num spells each
+-- old line-of-sight multiplier as `* los_num // 2`; case 3's `* 2` is
+-- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
     -- magicpoints is a C++ float: per-op rounding.

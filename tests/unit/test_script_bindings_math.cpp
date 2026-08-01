@@ -6,13 +6,12 @@
  * (at your option) any later version.
  */
 
-// The Stage-1 quality bindings: og.rand0, og.max/min/clamp/sign, the
+// Deterministic pack bindings: og.rand0, og.max/min/clamp/sign, the
 // og.combat.* wrappers over core/combat_math.h, ob:add_frozen_stun, and
 // the og.C constants pack scripts used to hand-copy.
 //
-// Every binding here exists to DELETE a hand-written Lua re-implementation
-// in Stage 2, so each test pins the exact C++ semantic the binding claims
-// to reproduce — expected values are computed by the same constexpr
+// Each test pins the exact C++ semantic the binding exposes. Expected values
+// are computed by the same constexpr
 // helpers (or the same RNG member) the binding calls, never re-derived by
 // hand. If combat_math.h moves, these tests move with it and the bindings
 // cannot silently diverge.

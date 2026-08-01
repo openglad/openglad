@@ -46,15 +46,6 @@ struct ScriptHost::Impl {
     std::int64_t instructions_remaining = 0;
     int entry_depth = 0;
 
-    // Budget-hook cadence for this host (VM instructions between
-    // LUA_MASKCOUNT fires; set once at construction) and the cumulative
-    // instruction count those fires have observed over the host's life.
-    // The cadence is kBudgetCheckInterval unless
-    // OPENGLAD_LUA_INSTRUCTION_REPORT selected exact per-instruction
-    // observation (see budget_check_cadence in script_host.cpp).
-    int budget_check_interval = 0;
-    std::uint64_t instructions_observed = 0;
-
     ~Impl();
 
     // Push a fresh write-isolated environment table (reads fall through to

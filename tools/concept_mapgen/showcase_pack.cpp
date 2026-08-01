@@ -115,9 +115,9 @@ local function on_boss_death(ent)
   og.emit_sound(C.SOUND_MONEY)
 end
 
--- One judgment pulse. Each strike is an EXPLOSION fx built exactly like
--- the C++ bomb recipe (effect_family_bomb.cpp): zero hitpoints,
--- ANI_EXPLODE, stats level (level drives the blast radius), damage. The
+-- One judgment pulse. Each strike is an EXPLOSION fx built like the core
+-- bomb recipe in packs/core/scripts/effect_bomb.lua: zero hitpoints,
+-- ANI_EXPLODE, stats level (level drives the blast radius), and damage. The
 -- explosion animates for a few frames before its death deals the damage —
 -- that animation IS the telegraph. Team 3 is unused in this level, so the
 -- judgment burns every side alike (is_friendly holds for no one). og.rand

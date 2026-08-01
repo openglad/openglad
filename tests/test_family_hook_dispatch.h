@@ -7,13 +7,11 @@
  */
 #pragma once
 
-// Family-behavior dispatch for tests (design doc §9a, stage A).
+// Family-behavior dispatch for tests.
 //
-// The FamilyDescriptor behavior callbacks are retired: every converted
-// family's behavior lives only in the core class pack (packs/core/scripts/
-// *.lua). Tests that used to poke `desc.do_special(&self)` directly go
-// through og::script::hooks::* instead — which is strictly better, because
-// it is the door the sim itself uses.
+// FamilyDescriptor behavior callbacks are null for pack-installed families;
+// their behavior lives in class-pack Lua (packs/core/scripts/*.lua for core).
+// Tests go through og::script::hooks::*, the same dispatch door the sim uses.
 //
 // Unit binaries never run io_init, so they mount no packs and would see no
 // hooks at all. mount_core_pack() installs the shipped packs/ tree the same
@@ -47,8 +45,7 @@ inline void mount_core_pack()
     og::resources::refresh_pack_scripts();
 }
 
-// True when the family registered `hook` in Lua — the replacement for the
-// old `desc.do_special != nullptr` premise assertions.
+// True when the family registered `hook` in Lua.
 inline bool has_hook(const FamilyDescriptor& fd, og::script::FamilyHook hook)
 {
     mount_core_pack();
@@ -117,9 +114,9 @@ inline bool has_on_death(const FamilyDescriptor& fd)
 }
 
 // --- dispatch -------------------------------------------------------------
-// Each helper mirrors the sim's call: hook result, or the caller's legacy
-// default when no hook ran (which, post-retirement, means "the pack is
-// missing" — the has_* premises above catch that case loudly).
+// Each helper mirrors the sim's call: hook result, or the caller's default
+// when no hook ran. For a core family that means the pack is missing; the
+// has_* premises above catch that case loudly.
 
 inline bool do_special(const FamilyDescriptor& fd, walker* self)
 {

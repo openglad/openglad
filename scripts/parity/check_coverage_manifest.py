@@ -583,8 +583,8 @@ def default_check_main() -> int:
         for line in missing:
             sys.stderr.write(f"  - {line}\n")
         sys.stderr.write(
-            "Update tests/parity/coverage_targets.h and "
-            ".plan/parity-coverage-manifest.md, then re-run this check.\n"
+            "Update tests/parity/coverage_targets.h, then re-run this "
+            "check.\n"
         )
         return 1
 

@@ -387,8 +387,8 @@ void io_init(int argc, char* argv[])
     }
     // Scripts + family descriptor DATA both come from the mounted packs
     // (core pack = packs/core). refresh_pack_scripts rescans scripts AND
-    // installs classpack.yaml data — which is now the ONLY way any family
-    // reaches the registries (design doc §9a stage B).
+    // installs classpack.yaml data — the only way any family reaches the
+    // registries.
     og::resources::refresh_pack_scripts();
     // Hard runtime dependency, same footing as the user path and the default
     // campaign above: without packs/core there are no families at all.

@@ -144,10 +144,9 @@ TEST(FamilyRegistry, registry_bloodspot_flags)
 TEST(FamilyRegistry, registry_carries_no_cpp_behavior_callbacks)
 {
     init_family_registry();
-    // Stage A (design doc §9a): family BEHAVIOR is retired from C++ — it
-    // lives only in the core class pack. Every descriptor behavior slot is
-    // nullptr, for core families and mod families alike, so the engine has
-    // nothing family-specific left to fall back to.
+    // Family behavior lives in class-pack Lua. Every descriptor behavior
+    // slot is nullptr, for core and mod families alike, so the engine has no
+    // family-specific C++ fallback.
     for (int i = 0; i < NUM_FAMILIES; i++)
     {
         const FamilyDescriptor* d = get_family_descriptor(i);
@@ -232,13 +231,13 @@ TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
     EXPECT_FALSE(has(FAMILY_CLERIC, FamilyHook::LevelUp));
 }
 
-// --- stage B: the registries hold only what a class pack installed --------
+// --- registries hold only what a class pack installed ---------------------
 
 TEST(FamilyRegistry, core_span_is_fully_declared_by_the_mounted_packs)
 {
     og::test::mount_core_pack();
-    // Design doc §9a stage B: init_*_registry() installs nothing at all —
-    // every slot starts free and the core pack fills the core span. A gap
+    // init_*_registry() installs nothing: every slot starts free and the
+    // core pack fills the core span. A gap
     // here is the exact condition require_core_families_installed() refuses
     // to start on, so assert the same thing it does, per order.
     EXPECT_EQ(-1, first_unpopulated_core_family_slot()) << "living";

@@ -1,4 +1,5 @@
 -- core gold/silver bar, life gem, key — on_eat hooks (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The three scoring families bank through og.award_score(team, points) — the
 -- binding for the file-local award_score() helper, which adds to
@@ -32,8 +33,9 @@ local function silver_bar_on_eat(self, eater)
   return true
 end
 
--- life_gem_on_eat: a dead character's banked hitpoints, claimable only by
--- the gem's own team. The flash pops where the gem sat (its floor, A8).
+-- life_gem_on_eat: what the original called "get back some of lost man's
+-- xp" is a dead character's banked hitpoints, claimable only by the gem's
+-- own team. The flash pops where the gem sat, on the same floor.
 local function life_gem_on_eat(self, eater)
   if eater.team ~= self.team then
     return true  -- only our team can get these
@@ -44,7 +46,7 @@ local function life_gem_on_eat(self, eater)
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
-    flash:set_floor(self:floor())  -- flash where the gem sat (A8)
+    flash:set_floor(self:floor())  -- flash where the gem sat
     flash:center_on(self)
   end
   self.dead = 1

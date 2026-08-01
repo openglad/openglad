@@ -7,15 +7,9 @@
  */
 #pragma once
 
-// Reading a living family's descriptor from a test.
-//
-// Family data used to be compiled in: each family had a
-// describe_family_<name>() provider in src/gameplay/families/, and tests
-// called it directly. Design doc §9a stage B deleted those — every
-// descriptor, core or mod, now arrives from a mounted class pack through
-// og::resources::install_classpacks(). The registry lookup below is the
-// direct replacement; tests/unit/unit_main.cpp mounts the core pack before
-// the first test runs, so it is populated for every headless unit binary.
+// Read a living family's class-pack-installed descriptor from a test.
+// tests/unit/unit_main.cpp mounts the core pack before the first test runs,
+// so the registry is populated for every headless unit binary.
 
 #include <gtest/gtest.h>
 

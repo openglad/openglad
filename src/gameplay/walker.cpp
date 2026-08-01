@@ -718,7 +718,8 @@ void walker::set_weapon_heading(walker *weapon)
 
 }
 
-// Used by score_panel.cpp and glad.cpp via extern declaration.
+// To avoid problems with limited precision. Used by score_panel.cpp and
+// glad.cpp via extern declaration.
 bool float_eq(float a, float b)
 {
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));

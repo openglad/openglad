@@ -140,6 +140,7 @@ bool walker::special()
 		return 0;
 	}
 
+	// Do we have a stats object? If not, freak out and exit :)
 	if (!stats_)
 	{
 		Log("Special with no stats\n");
@@ -168,12 +169,9 @@ bool walker::special()
 		if (did_special)
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}
-	// Runaway-specials §3.1: bound the world's pending time-stop bank. The
-	// per-cast freeze formula (family_mage.cpp case 3) is untouched — only
-	// the ACCUMULATED bank is clamped post-cast, so every golden's single
-	// cast (max L13 = 163 <= 300) is the identity map, and chain-casting at
-	// the cap just wastes the 500 MP. Every do_special routes through here;
-	// the clamp is a no-op for non-freeze specials.
+	// Bound the world's accumulated time-stop bank after each special. The
+	// per-cast formula remains in packs/core/scripts/mage.lua; chain-casting
+	// at the cap spends the usual MP without extending the freeze.
 	if (current_game != nullptr && current_game->world != nullptr &&
 	    current_game->world->enemy_freeze > og::combat::kEnemyFreezeBankCap)
 	{

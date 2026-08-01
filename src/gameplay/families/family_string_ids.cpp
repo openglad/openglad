@@ -20,6 +20,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace og::families {
 
@@ -103,33 +104,6 @@ std::string normalize_family_name(const char* raw)
     return out;
 }
 
-// The id a slot answers to before ambiguity is considered: the pack-declared
-// id verbatim when there is one, else the legacy "core:<name>" derived from
-// the registry display name. Empty for a slot no family occupies.
-std::string candidate_string_id(Order order, int family_id)
-{
-    const char* declared = descriptor_declared_id(order, family_id);
-    if (declared != nullptr && declared[0] != '\0')
-        return declared;
-    const char* name = descriptor_name(order, family_id);
-    if (name == nullptr)
-        return {};
-    return "core:" + normalize_family_name(name);
-}
-
-// "<namespace>:#<id>" — the escape that addresses a family by its exact byte
-// when its candidate id is shared with another slot. The namespace is kept
-// for readability only; resolution ignores it for the '#' form.
-std::string positional_string_id(const std::string& candidate, int family_id)
-{
-    const std::size_t colon = candidate.find(':');
-    const std::string ns =
-        colon == std::string::npos ? std::string("core")
-                                   : normalize_family_name(
-                                         candidate.substr(0, colon).c_str());
-    return ns + ":#" + std::to_string(family_id);
-}
-
 struct BitFlagName {
     const char* name;
     std::int32_t value;
@@ -169,34 +143,6 @@ constexpr AnimationName kAnimationNames[] = {
 
 }  // namespace
 
-std::string family_string_id(Order order, int family_id)
-{
-    const std::string mine = candidate_string_id(order, family_id);
-    if (mine.empty())
-        return {};
-    const std::string key = normalize_family_name(mine.c_str());
-    // Positional escape when the candidate id is ambiguous: two core
-    // families sharing a display name (golem/giant_skeleton/tower1 all
-    // answer to BEAST, the slime trio to SLIME), or two packs pinning the
-    // same declared id into different slots. Every member of a collision
-    // group escapes, so the exported ids stay unique and resolve back to
-    // the exact family.
-    for (int other = 0; other < NUM_FAMILY_SLOTS; other++) {
-        if (other == family_id)
-            continue;
-        const std::string theirs = candidate_string_id(order, other);
-        if (theirs.empty()) {
-            // A free slot, not the end of the registry: class packs land
-            // above the core pins, so the scan must cover the whole byte
-            // range rather than stopping at the first gap.
-            continue;
-        }
-        if (normalize_family_name(theirs.c_str()) == key)
-            return positional_string_id(mine, family_id);
-    }
-    return mine;
-}
-
 int resolve_family_string_id(Order order, const char* family_str)
 {
     const char* colon = std::strchr(family_str, ':');
@@ -217,8 +163,8 @@ int resolve_family_string_id(Order order, const char* family_str)
     for (int id = 0; id < NUM_FAMILY_SLOTS; id++) {
         const char* declared = descriptor_declared_id(order, id);
         if (declared == nullptr || declared[0] == '\0') {
-            // Free slot, or a family no pack declared (a C++ core pin
-            // before the core pack installs over it) — pass 2 covers it.
+            // Free slot or a family without a declared id; pass 2 covers the
+            // latter through its display name.
             continue;
         }
         if (normalize_family_name(declared) == want_full)
@@ -242,15 +188,6 @@ int resolve_family_string_id(Order order, const char* family_str)
     return -1;
 }
 
-const char* animation_type_name(FamilyAnimationType type)
-{
-    for (const auto& entry : kAnimationNames) {
-        if (entry.type == type)
-            return entry.name;
-    }
-    return "standard";
-}
-
 bool animation_type_from_name(std::string_view name, FamilyAnimationType& out)
 {
     for (const auto& entry : kAnimationNames) {
@@ -269,22 +206,6 @@ std::int32_t bit_flag_from_name(std::string_view name)
             return entry.value;
     }
     return 0;
-}
-
-std::vector<std::string> bit_flag_names(std::int32_t flags,
-                                        std::int32_t* unknown_bits)
-{
-    std::vector<std::string> out;
-    std::int32_t remaining = flags;
-    for (const auto& entry : kBitFlagNames) {
-        if ((remaining & entry.value) != 0) {
-            out.emplace_back(entry.name);
-            remaining &= ~entry.value;
-        }
-    }
-    if (unknown_bits != nullptr)
-        *unknown_bits = remaining;
-    return out;
 }
 
 }  // namespace og::families

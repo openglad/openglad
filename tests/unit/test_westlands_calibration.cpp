@@ -101,8 +101,8 @@ struct CurvePin
 // a real crew that kites and heals, but the stand-in cannot). The F4
 // win/hold contract on 14 and 22 should be re-swept with
 // scripts/westlands_playtest.sh before the next balance pass.)
-// (Recalibrated 2026-07-13 for the runaway-specials fix
-// (docs/runaway-effects-design.md §5 WP-5): the all-level mechanism fixes
+// (Recalibrated 2026-07-13 for the runaway-effect safeguards
+// (docs/runaway-effects-design.md §5): the all-level mechanism fixes
 // — the ghost-scare fright MERGE (stacked scares collapse into one
 // bounded fright) and the orc-yell stun stack cap (150) — bind in-battle
 // on every ghost/orc level, so their chaotic 600-tick outcomes drift by a

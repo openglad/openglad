@@ -1,4 +1,5 @@
 -- core drumstick + five potions — on_eat hooks (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 

@@ -8,11 +8,9 @@ statement per line, one short-circuit per line, one `function` keyword per
 line; chunks compile text-only) are law underneath it and are not restated
 here. Where style and cookbook appear to conflict, the cookbook wins.
 
-This contract is a Stage-0 deliverable of the
-[quality plan](lua-quality-plan.md). S1–S3 bind immediately for new pack code
-and for the shipped corpus as Stage-2 batches touch it; S4–S6 reference
-Stage-1 machinery (`og.use`, `og.rand0`, the property layer) and bind as it
-lands. Until then the transliterated corpus is grandfathered.
+This contract binds all in-tree pack Lua. `og.use`, `og.rand0`, walker
+properties, fused verbs, and the arithmetic helpers described below are the
+current API, not future migration steps.
 
 ## S1 — Naming
 
@@ -32,23 +30,25 @@ geometry (`x`, `y` where the value is a coordinate) are fine.
 
 ## S2 — File headers
 
-One line, ending with the cookbook pointer:
+The functional header is one line, ending with the cookbook pointer:
 
 ```lua
 -- core:orc — yell stun, corpse eating (cookbook: docs/lua-classpacks-design.md §3).
 ```
 
 Name the family (or the file's scope, for multi-family files) and what its
-hooks actually do — text no other file's header could carry. The old
-four-line boilerplate header, identical across all 36 files, is deleted by
-Stage 2: the cookbook applies to every pack chunk whether or not the file
-says so. Files that intentionally register nothing (tower1.lua — every C++
-callback was null, and registering an empty hook table is a load error) keep
-the header plus the comment explaining why the chunk is empty.
+hooks actually do — text no other file's functional header could carry. A
+concise shared copyright/porting credit may accompany it; that signed
+heritage line is attribution, not boilerplate, and does not replace the
+file-specific header. Do not add generic explanatory preambles: the cookbook
+applies whether or not a file repeats it. Files that intentionally register
+nothing (for example, a descriptor-driven family with no family-specific
+hooks) keep the header plus a short explanation because registering an empty
+hook table is a load error.
 
 ## S3 — Comments
 
-Two kinds of comment are admissible:
+Three kinds of comment are admissible:
 
 1. **RNG-order records.** Eval-order adjudications (the `FLAGGED` convention:
    two draws in one C++ expression, stating which order parity chose), guard
@@ -59,78 +59,76 @@ Two kinds of comment are admissible:
 2. **Why-comments.** Why a kept shim is kept (S5), why a branch is spelled
    out for coverage measurability under the one-statement lint, why two
    statements cannot be reordered.
+3. **Heritage records.** Preserve concise authorship credits and distinctive
+   original comments that explain the game's behavior or design history. The
+   shared signed attribution is:
+   `-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.`
+   Keep established wording where it remains accurate; do not turn heritage
+   comments into file-path archaeology or a change log.
 
-Everything else goes. Provenance (`-- transliterated from family_orc.cpp`)
-cites C++ sources the §9a retirement deleted; narration restates the next
-line; both are noise. The C++ op sequence a shim chain reproduces
-(`-- one float division, then trunc`) is a legitimate why-comment while the
-chain survives; once a Stage-1 binding absorbs the sequence, the comment
-moves into the binding's C++ documentation and dies here.
+Obsolete source-path narration (`-- transliterated from family_orc.cpp`)
+cites deleted native sources, while line-by-line narration merely restates
+the code; both are noise. The native operation sequence a shim chain
+reproduces (`-- one float division, then trunc`) is a legitimate why-comment
+while the chain survives; once a binding absorbs the sequence, the comment
+belongs in the binding's C++ documentation instead.
 
 ## S4 — Helpers and modules
 
 - A helper used by one file is a `local function` in that file, above first
   use.
 - A helper used by two or more files goes in `packs/<id>/lib/<name>.lua`,
-  loaded with `og.use("<name>")` (Stage 1): resolved within the loading pack,
-  loaded once per VM in deterministic order at pack install, text-only,
-  budget-metered. Lib chunks export one table of pure functions and
-  constants; chunk-level mutable state is an R6 violation the lib lint
-  rejects at the boundary.
+  loaded with `og.use("<name>")`: resolved within the loading pack, loaded
+  once per VM before pack scripts in deterministic order, text-only, and
+  budget-metered. Lib chunks export one table of pure functions and constants;
+  chunk-level mutable state violates R6.
 - Never share helpers through the pack's global environment. Scripts load
   filename-lexicographically into one shared environment per pack, so a
   `_G`-published helper works only by a load-order accident the reader
   cannot see; `og.use` makes the dependency explicit.
-- Until `og.use` lands, duplication stays. Do not invent ad-hoc sharing.
 - New `lib/` files ride the MP pack-transfer manifest (protocol v10); a
-  layout change re-verifies the manifest and the pack-cache regeneration
-  tests (plan §2.7).
+  layout change must keep the manifest and pack-cache tests green.
 
 ## S5 — Arithmetic shims
 
-The cookbook decides where a shim is required; the Stage-2 audit tool decides
-where one can be dropped (operands provably integer-valued and < 2^24 for
-`og.f*`; both operands provably non-negative for `og.div`/`og.mod`) — by
-proof through the prober, never by eyeball. Style governs what remains:
+The cookbook decides where a shim is required. Drop one only when audited
+operand ranges prove the plain operation identical (float-representable
+inputs and result for a removed `og.f*`; C and Lua division/remainder
+semantics identical for a removed `og.div`/`og.mod`). Integer-valued inputs
+and result within 2^24 are a common sufficient float proof. Style governs
+what remains:
 
 - **A kept shim site carries a one-line why.**
   `-- busy is a C++ float: per-op rounding` or
-  `-- delta can be negative: C trunc, not Lua floor`. After the Stage-2
-  audit, a shim with no why is a lint finding (Stage 5).
+  `-- delta can be negative: C trunc, not Lua floor`.
 - **Never hand-inline an engine helper.** If the formula exists as a
-  `combat_math.h` constexpr, the fix is a binding (Stage 1), not a Lua copy
-  of it.
-- **Guard trios are dead once `og.rand0` lands.** `og.rand0(n)` is exactly
+  `combat_math.h` constexpr, use its binding rather than copying the formula
+  into Lua.
+- **Use `og.rand0` instead of guard trios.** `og.rand0(n)` is exactly
   `IRandom::next(0)` semantics: `n <= 0` returns 0 without advancing the
   stream. Keep plain `og.rand` where the bound is provably positive — its
   error on `n <= 0` is a loud tripwire worth having.
 - **Clamp ladders** (`if x < 0 then x = 0 end` chains, six-line min/max
-  if/else) become `og.max`/`og.min`/`og.clamp` once bound; the branch then
-  lives in C++, where gcov measures it.
+  if/else) use `og.max`/`og.min`/`og.clamp`.
 
-## S6 — Legacy `s_*` methods (deprecation policy)
+## S6 — Legacy `s_*` methods (compatibility policy)
 
 The flattened stats accessors (`s_hitpoints()`/`s_set_hitpoints()`, and
 getter-call parentheses generally) leak the 1995 struct layout into every
-expression. Once the Stage-1 property layer lands (`self.hp`, `self.level`,
-`self.busy`, … with the same narrowing-setter semantics, generated from the
-same registration table):
+expression. The property layer exposes `self.hp`, `self.level`, and the
+other documented properties with the same narrowing-setter semantics,
+generated from the same registration table:
 
 - New and refactored in-tree pack code uses properties. Fused verbs
   (`ob:add_frozen_stun(n)`, `self:heal_clamped(n, source)`) replace
   get→combine→set chains wherever a binding exists.
-- The `s_*` methods stay as functional aliases indefinitely: out-of-tree
-  packs keep working, and removing them would be a pack-format break nobody
-  has scheduled.
-- Stage 5 removes them from the docs, examples, and generated stubs (they
-  are marked deprecated there) and adds a lint flagging new `s_*` call sites
-  in the linted tree.
+- The `s_*` methods remain supported aliases so out-of-tree packs keep
+  working; removing them would be a pack-format compatibility break.
 
 ## Applying the contract
 
-Batches go through the Stage-0 prober: parity (recorder OFF and ARMED)
-188/188, the coverage report, and the pin-map check
-(`scripts/parity/check_mutation_pins.py`) before a batch is real. Pure
-renames are parity-neutral by construction; run parity anyway. A file a
-batch touches converts to this contract wholly — a half-converted file is
-harder to read than an unconverted one.
+Changes to the core pack go through parity with the recorder off and armed,
+the coverage report, and the pin-map check
+(`scripts/parity/check_mutation_pins.py`). Pure renames are parity-neutral by
+construction; run parity anyway. Every touched file must comply with the
+whole contract.

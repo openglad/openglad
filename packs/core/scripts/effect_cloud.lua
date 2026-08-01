@@ -1,4 +1,5 @@
 -- core:cloud — drifting, fading poison cloud (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The drift step is statistics::do_command() (src/gameplay/stats.cpp), reached
 -- from `self->stats()->do_command()` whenever the cloud already has a queued

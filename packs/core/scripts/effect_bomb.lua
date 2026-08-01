@@ -1,4 +1,5 @@
 -- core:bomb + core:explosion — the thief's bomb and its blast (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
@@ -8,6 +9,8 @@ local function compute_explosion_range(level, skip_exit)
   -- shim kept: narrows to int32 like the C++ destination.
   local range = og.i32(level * 4)
   if skip_exit > 0 then
+    -- The original called this "magical, ie mage": magical blasts collapse
+    -- to the 16-pixel minimum instead of keeping the caster's level range.
     range = 0
   end
   range = og.clamp(range, 16, 96)
@@ -29,7 +32,7 @@ local function bomb_on_death(self)
   blast.hp = 0
   blast.level = self:owner().level
   blast.ani_type = C.ANI_EXPLODE
-  blast:set_floor(self:floor())  -- detonate on the bomb's floor (A8)
+  blast:set_floor(self:floor())  -- detonate on the bomb's floor
   blast:center_on(self)
   blast.damage = self:damage()
   return true
@@ -57,7 +60,7 @@ local function explosion_on_death(self)
   for i = 1, #nearby do
     local w = nearby[i]
     -- An explosion never blasts through solid floors: only same-floor
-    -- walkers take damage (A8). find_in_range is deliberately floor-blind,
+    -- walkers take damage. find_in_range is deliberately floor-blind,
     -- so the damage loop filters instead.
     if w and w:dead() == 0
         and w:floor() == self:floor()

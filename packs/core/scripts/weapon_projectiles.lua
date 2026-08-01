@@ -1,4 +1,5 @@
 -- core:fire_arrow + core:boulder — explode on death when armed (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
@@ -20,7 +21,7 @@ local function explode_on_death(self)
   explosion.hp = 0
   explosion.level = self:owner().level
   explosion.ani_type = C.ANI_EXPLODE
-  explosion:set_floor(self:floor())  -- explode on the projectile's floor (A8)
+  explosion:set_floor(self:floor())  -- explode on the projectile's floor
   explosion:center_on(self)
   -- damage is a C++ float: per-op rounding.
   explosion.damage = og.fmul(self:damage(), 2.0)

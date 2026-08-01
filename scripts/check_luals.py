@@ -3,8 +3,7 @@
 
 WHAT THIS GATES
 ---------------
-Stage 5 of docs/lua-quality-plan.md promotes LuaLS from advisory to
-enforced: the workspace is checked with the generated og.* stubs
+The workspace is checked with the generated og.* stubs
 (docs/modding/og-api.d.lua + .luarc.json), and ANY diagnostic at or above
 the check level under an ENFORCED root fails the run:
 
@@ -33,8 +32,8 @@ into enforced/advisory by repository path.
 Wired as the cmake target `check_luals`, a dependency of coverage_report
 (the same gating point as the full statement-lint and the stub drift
 check), NOT an og_gameplay build dependency: per-build cost stays flat,
-and the binary comes from the dev shell (flake.nix), which CI's Linux
-lanes and probe.sh --full-coverage enter anyway.
+and the binary comes from the dev shell (flake.nix) or CI's pinned
+lua-language-server installation.
 
 Exit codes: 0 clean, 1 enforced findings (or a report the runner failed to
 produce), 2 the checker itself could not run.

@@ -20,7 +20,7 @@ inline walker* summon_entity(walker* summoner, Order order, std::int32_t family)
     if (!ob) return nullptr;
     ob->set_owner(summoner);
     ob->set_team_num(summoner->team_num());
-    // Children spawn on the summoner's floor (bug A8). set_floor must come
+    // Children spawn on the summoner's floor. set_floor must come
     // BEFORE center_on/setxy: the obmap re-buckets at the entity's current
     // floor on every position change.
     ob->set_floor(summoner->floor());

@@ -1435,8 +1435,8 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     living self;
 
-    // Quality-plan stage 4 moved family constants into og.tuning, which the
-    // hook resolves by the WALKER's own order/family — so the walker must BE
+    // The hook resolves og.tuning by the WALKER's own order/family, so the
+    // walker must BE
     // a cleric, exactly as the sim guarantees when this hook dispatches.
     self.set_order_family(Order::Living, FAMILY_CLERIC);
 
@@ -1737,8 +1737,8 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     caster->set_foe(nullptr);
     ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
 
-    // Quality-plan stage 4: the charm/taunt (thief) and heal-range (cleric)
-    // gates read og.tuning, which resolves by the CASTER's own family — a
+    // The charm/taunt (thief) and heal-range (cleric) gates read og.tuning,
+    // which resolves by the CASTER's own family — a
     // family hook only ever runs on a walker of that family in the sim, so
     // these checks need family-matching casters (the special-1 thief gate
     // above is a code-constant path and stays family-agnostic on purpose).

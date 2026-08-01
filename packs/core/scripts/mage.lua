@@ -1,4 +1,5 @@
 -- core:mage — teleport/marker, starburst, freeze time, wave, heartburst (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- rng: the mage's own hooks draw nothing directly.
 
 local C = og.C
@@ -26,6 +27,7 @@ local function hit_response(self, foe)
     -- shim kept: max_hp is a C++ float: per-op float rounding.
     threshold = og.fdiv(og.fmul(3.0, self.max_hp), 5.0)
   else
+    -- Enemy mages are "braver :>" than player characters: 3/8 vs 3/5 HP.
     -- shim kept: max_hp is a C++ float: per-op float rounding.
     threshold = og.fdiv(og.fmul(3.0, self.max_hp), 8.0)
   end
@@ -110,7 +112,7 @@ local function teleport(self)
     return false
   end
   marker:set_owner(self)
-  marker:set_floor(self:floor())  -- marker on the caster's floor (A8)
+  marker:set_floor(self:floor())  -- marker stays on the caster's floor
   marker:center_on(self)
   if self:has_guy() then
     marker.lifetime = self:g_intelligence() // 33
@@ -136,9 +138,8 @@ local function starburst(self)
   local saved_aim_y = og.trunc(self:lasty())
   local dmg_bonus = lc.spare_mp(self, self:current_special())
   if dmg_bonus > 0 then
-    -- §2.12: per-fireball add binds only above 660 MP; lineofsight
-    -- add/3 inherits the bound.
-    -- shim kept: positive here, but the audit's proof is site-local: C trunc.
+    -- The per-fireball cap binds only above 660 MP; lineofsight add/3
+    -- inherits that bound. Keep the original C truncation explicit.
     dmg_bonus = og.min(og.div(dmg_bonus, 15), STARBURST_ADD_CAP)
     -- shim kept: magicpoints is a C++ float: per-op float rounding.
     self.magicpoints = og.fsub(self.magicpoints, dmg_bonus)
@@ -156,7 +157,7 @@ local function starburst(self)
         if bolt then
           -- shim kept: damage is a C++ float: per-op float rounding.
           bolt:set_damage(og.fadd(bolt:damage(), dmg_bonus))
-          -- shim kept: bonus/3 stays C trunc (site-local audit proof gap).
+          -- bonus/3 keeps the original C truncation explicit.
           bolt:set_lineofsight(bolt:lineofsight() + og.div(dmg_bonus, 3))
           if bolt:lastx() ~= 0.0 then
             -- shim kept: lastx is a C++ float: per-op float rounding.
@@ -213,7 +214,7 @@ local function energy_wave(self)
   if not wave then
     return false
   end
-  wave:set_floor(bolt:floor())  -- wave rides the caster's floor (A8)
+  wave:set_floor(bolt:floor())  -- wave rides the caster's floor
   wave:center_on(bolt)
   wave:set_owner(self)
   wave.level = self.level
@@ -249,13 +250,14 @@ local function heartburst(self)
     end
     burst.damage = damage
     -- Heartburst bursts materialize ON each acquired foe, so they take
-    -- that target's floor (A8); the blast itself only damages same-floor
+    -- that target's floor; the blast itself only damages same-floor
     -- walkers (explosion_on_death floor filter).
     burst:set_floor(foe:floor())
     burst:center_on(foe)
     og.emit_sound(C.SOUND_EXPLODE)
     burst.ani_type = C.ANI_EXPLODE
     burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
+    -- The legacy dummy field says "don't hurt caster" here.
     burst:set_skip_exit(100)
     -- shim kept: magicpoints is a C++ float: per-op float rounding.
     self.magicpoints = og.fsub(self.magicpoints, damage)

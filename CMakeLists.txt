@@ -856,12 +856,11 @@ og_add_python_check_target(check_lua_statement_lines_full
 
 # lua-language-server --check over the workspace with the generated og.*
 # stubs (scripts/check_luals.py): zero diagnostics under packs/ and
-# docs/modding/. Promoted from advisory by quality-plan stage 5; gates
-# coverage_report (below, with api_stub_check), deliberately NOT an
-# og_gameplay build dependency — per-build cost stays flat, and the binary
-# comes from the dev shell (flake.nix). Like every check target here, a
-# machine without the tool gets a loud failure when the target is BUILT,
-# never a silent pass.
+# docs/modding/. It gates coverage_report (below, with api_stub_check), but is
+# deliberately NOT an og_gameplay build dependency — per-build cost stays
+# flat, and the binary comes from the dev shell (flake.nix). Like every check
+# target here, a machine without the tool gets a loud failure when the target
+# is BUILT, never a silent pass.
 find_program(OG_LUALS_EXECUTABLE lua-language-server)
 if(Python3_Interpreter_FOUND AND OG_LUALS_EXECUTABLE)
     add_custom_target(check_luals
@@ -1474,10 +1473,8 @@ if(NOT EMSCRIPTEN)
     # copy_directory alone never removes files that were deleted or renamed in
     # the repo, and binaries resolve assets exe-adjacent (get_asset_path), so a
     # stale staged file silently contaminates every gate that runs a build-tree
-    # binary — a leftover packs/core/lib/*.lua once shifted every
-    # instruction-budget scenario by a constant on a git-clean tree.
-    # instruction_budget.py additionally refuses to measure against a staged
-    # tree that differs from the repo (see scripts/refactor/README.md).
+    # binary. Mirroring makes the build-tree asset set match the repository
+    # even after files are deleted or renamed.
     #
     # The rm is emitted PER DIRECTORY and only when that directory's staged
     # location is not the repository copy itself. `rm -rf X && copy X X` is
@@ -1699,29 +1696,6 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(concept_mapgen)
-
-    # --- pack_export (class-pack descriptor exporter) ---
-    # SDL-free tool that emits packs/core/classpack.yaml from the compiled-in
-    # family registries (docs/lua-classpacks-design.md §4). Not part of the
-    # default build; rerun whenever descriptor data changes in C++.
-    add_executable(pack_export EXCLUDE_FROM_ALL
-        ${CMAKE_SOURCE_DIR}/tools/pack_export/main.cpp
-        ${SRC_DIR}/platform/text/platform_headless.cpp
-        ${SRC_DIR}/platform/text/walker_headless.cpp
-        ${SRC_DIR}/interface/input/input_state.cpp
-        ${SRC_DIR}/platform/game_context.cpp
-        ${SRC_DIR}/interface/session_state.cpp
-        ${SRC_DIR}/interface/level_runtime_data.cpp
-        ${SRC_DIR}/interface/platform_bridge.cpp
-    )
-    configure_openglad_library(pack_export)
-    target_link_libraries(pack_export PRIVATE
-        og_core
-        og_gameplay
-        og_resources
-        m
-        pthread
-    )
 
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
     # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
@@ -3514,7 +3488,7 @@ endif()
 # --------------------------------------------------------------------------
 # Combined C++ + Lua coverage gate
 # --------------------------------------------------------------------------
-# Family behaviour is Lua now (packs/**/scripts/*.lua), so a gate that
+# Family behaviour is Lua (packs/**/scripts/*.lua), so a gate that
 # measures src/ alone measures the shrinking half of the codebase and would
 # report green while thousands of lines of game logic went untested. These
 # targets produce ONE report across both languages:
@@ -3602,8 +3576,8 @@ if(BUILD_TESTING)
     # or undeclared shipped-Lua candidate must fail THIS target loudly,
     # naming the repository-side path, instead of breaking every ninja build.
     add_dependencies(coverage_report check_lua_statement_lines_full)
-    # Quality-plan stage 5 promotion: lua-language-server --check over the
-    # workspace gates the same target (the check_luals comment near its
+    # lua-language-server --check over the workspace gates the same target
+    # (the check_luals comment near its
     # definition explains why it is NOT an og_gameplay build dep — per-build
     # cost stays flat). api_stub_check joins below, after its definition.
     add_dependencies(coverage_report check_luals)
@@ -3615,11 +3589,11 @@ endif()
 # docs/modding/og-api.d.lua is GENERATED from the binding registration
 # tables by scripts/modding/gen_api_stubs.py; this target regenerates and
 # byte-compares, and its red output names the regeneration command.
-# Promoted by quality-plan stage 5 from advisory to a coverage_report
-# dependency (below, beside check_luals and the full statement lint) —
-# still deliberately NOT a build dependency of og_gameplay, so per-build
-# cost stays flat. Stale stubs would also mislead check_luals and rule 8
-# of the statement lint, which both read the committed file. Run alone:
+# This is a coverage_report dependency (below, beside check_luals and the
+# full statement lint), but deliberately NOT a build dependency of
+# og_gameplay, so per-build cost stays flat. Stale stubs would also mislead
+# check_luals and rule 8 of the statement lint, which both read the committed
+# file. Run alone:
 #
 #   cmake --build <build> --target api_stub_check
 #
@@ -3647,10 +3621,10 @@ else()
     )
 endif()
 
-# Quality-plan stage 5 promotion: stub drift gates coverage_report (the
-# target exists only under BUILD_TESTING; check_luals is wired beside the
-# full statement lint at the coverage_report definition above). Kept out of
-# og_gameplay's dependencies on purpose — per-build cost stays flat.
+# Stub drift gates coverage_report (the target exists only under
+# BUILD_TESTING; check_luals is wired beside the full statement lint at the
+# coverage_report definition above). It stays out of og_gameplay's
+# dependencies so per-build cost stays flat.
 if(BUILD_TESTING)
     add_dependencies(coverage_report api_stub_check)
 endif()

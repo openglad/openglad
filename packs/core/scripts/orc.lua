@@ -1,4 +1,6 @@
 -- core:orc — yell stun, corpse eating (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
+-- The shareware-era source labelled the Orc its "registered monster."
 
 local C = og.C
 local lc = og.use("living_common")
@@ -86,15 +88,14 @@ local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 12, 3, 12, 4, 1)
 end
 
--- promotion_new_level (orc_promotion_level) is descriptor data, not one of
--- the registrable living hooks — it stays on the C++ descriptor.
+-- Orc promotion is descriptor data, not a registrable living hook.
 
 og.register_hooks("living", "core:orc", {
   specials = {
     [1] = yell,
     default = eat_corpse,
   },
-  check_special_ai = ai.foe_within(130),  -- per-tick gate: R-KEEP-4
+  check_special_ai = ai.foe_within(130),  -- fixed per-tick AI range
   set_difficulty = set_difficulty,
   level_up = level_up,
 })

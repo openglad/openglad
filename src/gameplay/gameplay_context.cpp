@@ -109,8 +109,10 @@ public:
             return;
         }
 
-        // Straightness bias target: the explicit goal point when one is set,
-        // otherwise the owner's foe (the classic chase path).
+        // Straightness-bias target: the explicit goal point when one is set,
+        // otherwise the owner's foe (the classic chase path). The
+        // cross-product below penalizes moving away from a straight line to
+        // this target.
         const int target_x = owner_->has_goal
             ? owner_->goal_x
             : owner_->active_walker->foe()->xpos();
@@ -203,6 +205,8 @@ public:
                                               static_cast<short>(adj_y), f)
                              .size() > 0)
                 {
+                    // TODO: Make doors impassable without a key.
+                    // TODO: Add an adjacent edge to a teleporter's far side.
                     cost.cost = 10;
                 }
                 else

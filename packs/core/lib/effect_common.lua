@@ -1,11 +1,12 @@
 -- core lib: effect_common — shared effect geometry: the C++ hits() box-overlap test (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local M = {}
 
 -- The free function hits() from src/gameplay/effect.cpp — an axis-aligned
--- box overlap test on shorts. Pure arithmetic, so it is transliterated
--- rather than bound; og.i16 reproduces the `static_cast<short>` on each
--- sum's (unreachable in practice, but exact) wrap.
+-- box overlap test on shorts. Pure arithmetic lives here without a binding;
+-- og.i16 reproduces the `static_cast<short>` on each sum's (unreachable in
+-- practice, but exact) wrap.
 function M.hits(x, y, xsize, ysize, x2, y2, xsize2, ysize2)
   -- shim kept (all four og.i16 sums): short edges, per the note above.
   local x2right = og.i16(x2 + xsize2)

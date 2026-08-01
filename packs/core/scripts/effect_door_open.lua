@@ -1,4 +1,5 @@
 -- core:door_open — hands the opened-door sprite to a fresh effect (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
@@ -12,12 +13,14 @@ local function on_act(self)
     return false  -- let default animate() handle it
   end
 
+  -- The original comment called this "the amusing part": the final copy goes
+  -- on the non-acting FX list, so it cannot continuously respawn itself.
   local opened = og.add_fx_ob("fx", FX_DOOR_OPEN)
   if not opened then
     return true  -- handled (nothing to spawn)
   end
   opened:set_ani_type(C.ANI_WALK)
-  opened:set_floor(self:floor())  -- opened door stays on its floor (A8)
+  opened:set_floor(self:floor())  -- opened door stays on its floor
   opened:setworldxy(self:worldx(), self:worldy())
   opened.level = self.level
   opened.team = self.team

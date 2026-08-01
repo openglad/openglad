@@ -1,4 +1,5 @@
 -- core:rock — bouncing rock reflects off whichever axis is open (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 -- rock_on_death: a bouncing rock (do_bounce set by the elf special) that
 -- died against a barrier un-deads itself and reflects off whichever axis

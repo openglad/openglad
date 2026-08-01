@@ -55,8 +55,8 @@ struct VmState {
     int entity_hooks_ref = -1;    // table: entity_id → { kind → fn }
     std::uint32_t level_hook_kinds = 0;  // bitmask of registered kinds
     bool has_entity_hooks = false;
-    // og.use module system (quality plan Stage 1). lib_exports holds the
-    // frozen export of every loaded module ("<pack>/<name>" keys);
+    // og.use module system. lib_exports holds the frozen export of every
+    // loaded module ("<pack>/<name>" keys);
     // lib_status tracks in-flight/broken loads ("loading" detects cycles,
     // "failed" makes later og.use calls error deterministically instead of
     // re-running a broken chunk).

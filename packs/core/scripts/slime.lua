@@ -1,4 +1,5 @@
 -- core:#8/#9/#10 (slime trio) — split on death/ani-complete, grow specials (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- All three living descriptors share the registry name "SLIME", so the
 -- numeric escapes are mandatory (api-reference: "core:#<id>").
 
@@ -49,7 +50,7 @@ local function split_on_death(self, offspring_family)
   if not child then
     return true
   end
-  child:set_floor(self:floor())  -- split child stays on our floor (A8)
+  child:set_floor(self:floor())  -- split child stays on our floor
   child.team = self.team
   child.level = self.level
   child:set_difficulty(self.level)
@@ -90,7 +91,7 @@ local function slime_on_ani_complete(self)
   if not child then
     return true
   end
-  child:set_floor(self:floor())  -- split child stays on our floor (A8)
+  child:set_floor(self:floor())  -- split child stays on our floor
   child:setxy(self:xpos() + 12, self:ypos() - 12)
   self:transfer_stats(child)
   local exp_needed = 1000 * self.level  -- uint32 cast as above
@@ -98,6 +99,7 @@ local function slime_on_ani_complete(self)
     exp_needed = exp_needed + 4294967296
   end
   if child:has_guy() and child:g_exp() < exp_needed then
+    -- The second character cannot be "sustained" at this experience.
     child:clear_myguy()
     child:s_set_name("SLIME")
     child.level = calculate_level(self:g_exp() // 2)
@@ -128,7 +130,7 @@ local function grow_into(self, grown_family)
   if self:spaces_clear() > 7 then
     self:transform_to("living", grown_family)
   else
-    -- FLAGGED (cookbook checklist #4): the C++ passes TWO rng_.next(3)
+    -- FLAGGED RNG-order record: the C++ passes TWO rng_.next(3)
     -- draws as arguments of one set_command() call, so the draw order is
     -- unspecified. Parity adjudicated RIGHT-first at THIS site (the y-draw
     -- happens before the x-draw): left-first diverged

@@ -216,9 +216,9 @@
             lcov
             # Pack-Lua editor/CI tooling: reads the generated og.* stubs
             # (docs/modding/og-api.d.lua) through the repo-root .luarc.json.
-            # ENFORCED (quality-plan stage 5): scripts/check_luals.py, the
-            # cmake target check_luals, gates coverage_report — zero
-            # diagnostics under packs/ and docs/modding/.
+            # scripts/check_luals.py and the check_luals CMake target gate
+            # coverage_report: zero diagnostics under packs/ and
+            # docs/modding/.
             lua-language-server
             ninja
             ncurses

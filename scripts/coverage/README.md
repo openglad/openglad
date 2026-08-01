@@ -1,7 +1,7 @@
 # Combined C++ + Lua coverage
 
-Since the class-pack conversion, family behaviour is Lua: `src/gameplay/families`
-is a few hundred lines of plumbing and `packs/**/scripts/*.lua` is the game.
+Family behavior lives in Lua: `src/gameplay/families` is a few hundred lines
+of plumbing and `packs/**/scripts/*.lua` carries the game logic.
 A gate that measures `src/` alone measures the shrinking half of the codebase
 and would report green while thousands of lines of live game logic went
 untested. Everything here exists to put both languages behind one bar.
@@ -79,14 +79,6 @@ difference is part of the claim:
   does not claim it is done. (Re-measure on a clean gcov build: an
   incremental build dir's stale records can crash gcovr at the wider
   scope.)
-
-An earlier revision here said "one never-called C++ function fails the
-build". Scoped to `src/` TUs that is what the bar enforces; as an unscoped
-sentence it was false, and the header-function numbers above are the measure
-of how false. (Its origin was real: the last never-entered functions inside
-the `src/` scope were eight orphaned `describe_weapon_*()` providers in
-`src/gameplay/families/weapon_family_{animate,door,wave}.cpp`, deleted with
-that stage of the classpack conversion.)
 
 These conditions fail the gate without being a percentage at all, because
 each is a way for a half to look measured while measuring nothing:

@@ -1,4 +1,5 @@
 -- core:chain — homing chain-lightning bolt; forks on strike (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The frame poke `self->set_frame(self->ani[curdir()][0])` reads the walker's
 -- animation table through og.ani_frame(entity, row, index); nil covers every
@@ -35,7 +36,7 @@ local function on_act(self)
     blast.level = self.level
     blast.damage = self:damage()
     blast.ani_type = C.ANI_EXPLODE
-    blast:set_floor(self:floor())  -- strike on the bolt's floor (A8)
+    blast:set_floor(self:floor())  -- strike on the bolt's floor
     blast:center_on(self)
     leader:set_skip_exit(leader:skip_exit() + 3)
     og.emit_sound(C.SOUND_EXPLODE)
@@ -52,6 +53,8 @@ local function on_act(self)
       foes, foe_count = og.find_foes_in_range(
         "ob", t.fork_range_base + self.level * t.fork_range_per_level, self)
     end
+    -- The old "are our offspring powerful enough at 1/2 our power?" gate:
+    -- weak descendants stop reproducing instead of extending the chain.
     if foe_count ~= 0 and fork_damage > t.fork_min_damage then
       -- One draw: the fork budget rolls off the owner's level.
       local forks_left = og.rand0(self:owner().level) + 1
@@ -61,7 +64,7 @@ local function on_act(self)
           break
         end
         -- Chain lightning must not arc through solid floors: skip foes on
-        -- other floors (A8; all-floor-0 on legacy levels so single-floor
+        -- other floors (all-floor-0 on legacy levels, so single-floor
         -- behavior is byte-identical).
         if w:floor() == self:floor() then
           if w ~= self:leader() and w:skip_exit() < 1 then
@@ -75,7 +78,7 @@ local function on_act(self)
             bolt:s_set_bit_flags(C.BIT_MAGICAL, 1)
             bolt.damage = fork_damage
             bolt.team = self.team
-            bolt:set_floor(self:floor())  -- seek on our floor (A8)
+            bolt:set_floor(self:floor())  -- seek on our floor
             bolt:center_on(self)
           end
           forks_left = forks_left - 1

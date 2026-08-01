@@ -1,4 +1,5 @@
 -- core:knife_back — thrown blade walks back to its owner, probing hits (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local WEAP_KNIFE = assert(og.family_id("weapon", "core:knife"))
@@ -37,7 +38,7 @@ local function on_act(self)
     probe:set_owner(owner)
     probe.team = self.team
     probe:set_death_called(1)  -- the probe must not spawn its own knife_back
-    probe:set_floor(self:floor())  -- collision probe on our floor (A8)
+    probe:set_floor(self:floor())  -- collision probe on our floor
     probe:setworldxy(self:worldx(), self:worldy())
     -- xd/yd may be the float stepsize: the probe point sums in C float.
     -- query_object_passable draws (obmap miss roll), and attack draws too.
