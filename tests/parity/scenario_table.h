@@ -6194,6 +6194,257 @@ inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
 };
 
 
+// --- slime-death-generators batch -----------------------------------------
+
+// magic_damage_slime_scen99: one FIRE ELEMENTAL STARBURST puts the SAME
+// core:meteor (BIT_MAGICAL) onto a FAMILY_SLIME to the east and a
+// FAMILY_SOLDIER to the south. walker_combat.cpp:291 multiplies the
+// damage by the TARGET family's magic_damage_modifier (2 on
+// living-08-slime.yaml, 1 on living-00-soldier.yaml), so the two HP
+// predicates below are a direct differential readout of that descriptor
+// field: the slime loses 24 of 150 and the soldier 10 of 120 off the same
+// volley.
+//
+// The 64px stand-off is load-bearing, NOT decorative. walker::fire's
+// melee branch (src/gameplay/walker.cpp:577) calls attack() on the LIVING
+// when the new weapon spawns onto an impassable tile, so `this` is the
+// elemental and `stats_->query_bit_flags(BIT_MAGICAL)` reads the
+// ELEMENTAL's flags — the meteor's MAGICAL bit never reaches the modifier
+// and the whole descriptor field goes untested. Only a projectile that
+// actually flies reaches attack() with `this` == the meteor. An arena with
+// the targets adjacent to the caster measured IDENTICAL hitpoints at
+// modifier 1, 2 and 10.
+//
+// The slime carries magicpoints 1 against special_cost[1] == 30 so
+// living::check_special refuses its AI SPLIT: an un-doctored AI slime
+// animation-splits into two SMALL_SLIMEs around tick 25 and takes the
+// measured family off the board. With the split blocked both hitpoint
+// readings are flat from tick 20 through tick 50.
+inline constexpr InputEvent kInputs_magic_damage_slime[] = {
+    {  5, 0, K_SPECIAL },
+    { 25, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_magic_damage_slime_scen99[] = {
+    { FAMILY_SLIME,         1, kOrderLiving, 184, 120, 0, 0, 1, 1 },        // 2x magic target, 64px east — far enough that the meteor flies instead of resolving as the caster's melee; magicpoints 1 blocks the AI SPLIT
+    { FAMILY_SOLDIER,       1, kOrderLiving, 120, 184, 0, 0 },              // 1x magic control, 64px south
+    { FAMILY_FIREELEMENTAL, 0, kOrderLiving, 120, 120, FAMILY_METEOR, 0 },  // player caster LAST so find_player_walker binds the oblist head to it
+};
+
+inline constexpr FactPredicate kFacts_magic_damage_slime_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_SLIME, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SLIME, 1),
+    pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 0, 0),
+    // negative_assertion: the 40-tick budget must leave the doubled-damage slime alive, so slime.lua's on_death split never runs and no MEDIUM_SLIME offspring may exist on either arm.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SLIME, 12500, 12700,
+        "consequence: the eastern meteor is doubled by living-08-slime.yaml's magic_damage_modifier: 2 and takes 24 of the slime's 150; at modifier 1 it takes about half that and the slime lands above this band"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10900, 11100,
+        "control: the southern meteor is the SAME weapon at modifier 1.0 and takes 10 of the soldier's 120 — the untouched half of the differential, so the slime's larger loss can only be the descriptor"),
+    pred::EventKindAtLeast(/*play_sound*/1, 8,
+        "consequence: STARBURST emits one core:meteor fire_sound per direction (8) on top of the collide-fire traffic"),
+};
+
+inline constexpr Mutation kMut_magic_damage_slime_scen99 = {
+    "packs/core/families/living-08-slime.yaml", 21,
+    "      magic_damage_modifier: 2",
+    "      magic_damage_modifier: 1",
+    "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged."
+};
+
+// slime_death_split_scen99: the FAMILY_SLIME is the PLAYER-team walker so it
+// is ACT_CONTROL and can never enter ACT_RANDOM -> living::check_special ->
+// ANI_SLIME_SPLIT. The only route to offspring is therefore slime.lua's
+// on_death (split_on_death), which is the hook under test. A level-3 team-1
+// SOLDIER executioner kills it inside the budget; the budget then stops
+// BEFORE the MEDIUM_SLIME offspring itself dies, so exactly one split has
+// happened at dump time. Swept from the capture: the parent dies between
+// ticks 60 and 70, the offspring between 100 and 110, and a transient
+// team-0 FAMILY_KNIFE_BACK is in oblist at tick 90 — tick 80 is the clean
+// middle of that window.
+inline constexpr SpawnSpec kFamilySpawns_slime_death_split_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 100, 120, 0, 0, 3, 0 }, // level-3 executioner, 4px west of the slime (same gap effect_combat_arena uses)
+    { FAMILY_SLIME,   0, kOrderLiving, 120, 120, 0, 0 },       // player-bound victim LAST (32x32 sprite -> occupies 120..152)
+};
+
+inline constexpr FactPredicate kFacts_slime_death_split_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerDiedByFinal(FAMILY_SLIME),
+    pred::WalkerFamilyCount(FAMILY_SLIME, 0, 0),
+    // negative_assertion: the parent SLIME dies and is reaped out of oblist; split_on_death replaces it with the offspring rather than leaving a live parent behind.
+    pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 0, 0),
+    // negative_assertion: core:#8's on_death yields the NEXT size down (MEDIUM_SLIME); any SMALL_SLIME here means the wrong offspring family was created.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7100, 7300,
+        "consequence: the offspring inherits the parent's level and takes set_difficulty(1) (110 base + 11 = 121 max), then eats the executioner's remaining swings down to 72"),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+};
+
+inline constexpr Mutation kMut_slime_death_split_scen99 = {
+    "packs/core/scripts/slime.lua", 73,
+    "  return split_on_death(self, LIVING_MEDIUM_SLIME)",
+    "  return split_on_death(self, LIVING_SMALL_SLIME)",
+    "Repoints core:#8's on_death offspring one size too far down. The dying big slime yields a SMALL_SLIME instead of a MEDIUM_SLIME, so WalkerFamilyCount(FAMILY_MEDIUM_SLIME,1,1) collapses to 0 and the FAMILY_SMALL_SLIME negative assertion rises to 1."
+};
+
+// elemental_death_starburst_scen99: the FAMILY_FIREELEMENTAL is the ONLY
+// team-1 walker, so the tick it dies GameWorld::tick's completion check sees
+// level_done == 2 and returns above the dead-entity sweep
+// (game_world.cpp:1917) — from that tick on nothing is reaped, so the eight
+// meteors fire_elemental.lua's on_death emits stay in weaplist and are
+// directly observable via WeaponFamilyEmitted. Two team-0 SOLDIER bystanders
+// stand north and south of the elemental as starburst victims (the meteors
+// only hit NON-friendly walkers, so the victims must be on the killer's
+// team, not the elemental's). The player BIG_ORC is spawned LAST so
+// find_player_walker binds the oblist head to it.
+inline constexpr InputEvent kInputs_elemental_death_starburst[] = {
+    {  1, 0, K_RIGHT },   // face east onto the elemental before the fire hold
+    {  4, 0, K_NONE },
+    {  5, 0, K_FIRE },
+    { 60, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_elemental_death_starburst_scen99[] = {
+    { FAMILY_FIREELEMENTAL, 1, kOrderLiving, 140, 120, FAMILY_METEOR, 0 }, // victim; default_weapon spelled out as the spawn-side evidence for WeaponFamilyEmitted(FAMILY_METEOR)
+    { FAMILY_SOLDIER,       0, kOrderLiving, 140,  96, 0, 0 },             // bystander north — starburst victim
+    { FAMILY_SOLDIER,       0, kOrderLiving, 140, 144, 0, 0 },             // bystander south — starburst victim
+    { FAMILY_BIG_ORC,       0, kOrderLiving, 120, 120, 0, 0 },             // player executioner LAST, flush against the elemental's west edge
+};
+
+inline constexpr FactPredicate kFacts_elemental_death_starburst_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerDiedByFinal(FAMILY_FIREELEMENTAL),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0),
+    pred::WeaponFamilyEmitted(FAMILY_METEOR,
+        "semantic content: on_death's re-entrant special() puts eight core:meteor weapons into weaplist on the elemental's death tick and the world freezes that same tick, so all eight are still in dump.weapons[] at the final tick. NOT the discriminator — WeaponFamilyEmitted also accepts weapon_tracks, and the elemental's mid-life AI starburst leaves METEOR tracks that survive the mutation. The teeth are the three predicates below"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 8200,
+        "consequence: the northern bystander is the one standing in the parting volley and ends on 81 of 120. Remove the volley and it walks away on 110 while its twin sits on 66, so no soldier lands in this band"),
+    pred::WalkerAliveAtFinal(FAMILY_BIG_ORC, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9600, 9800,
+        "consequence: the executioner is inside its own victim's death radius and eats a parting meteor too, finishing on 97 of 180; with on_death's special() gone it finishes on 153"),
+    pred::EventKindAtLeast(/*play_sound*/1, 28,
+        "consequence: the parting volley adds one core:meteor fire_sound per direction on top of the melee traffic — 31 with the volley, 23 without it"),
+};
+
+inline constexpr Mutation kMut_elemental_death_starburst_scen99 = {
+    "packs/core/scripts/fire_elemental.lua", 33,
+    "  self:special()",
+    "  local _ = self",
+    "Removes the parting volley from core:elemental's on_death while leaving the dead=0 / magicpoint refund / dead=1 dance intact. No meteor is created on the death tick, so the frozen weaplist holds none and WeaponFamilyEmitted(FAMILY_METEOR) fails; the bystander soldiers also keep their HP and leave the soldier band empty."
+};
+
+// ai_slime_split_scen99: a LONE team-1 FAMILY_SLIME with no walker anywhere
+// else in the arena. find_near_foe/find_far_foe return nothing, so
+// living::act's ACT_RANDOM never arms the 300-tick COMMAND_SEARCH that
+// starves the special roll in every other slime row — the 1-in-5 roll gets a
+// fresh chance every tick and drives living::check_special ->
+// slime_check_special_ai -> slime_do_special -> ANI_SLIME_SPLIT ->
+// slime_on_ani_complete. player_team stays 0 with no team-0 walker, so
+// claim_control binds nothing and the slime is pure AI.
+inline constexpr SpawnSpec kFamilySpawns_ai_slime_split_scen99[] = {
+    { FAMILY_SLIME, 1, kOrderLiving, 300, 300, 0, 0 }, // level 1 -> rng.next((1+2)/3)+1 == 1 == SPLIT, deterministically
+};
+
+inline constexpr FactPredicate kFacts_ai_slime_split_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_SLIME, 0, 0),
+    // negative_assertion: the AI cast consumes the caster — slime_on_ani_complete transform_to's it into a SMALL_SLIME — so no FAMILY_SLIME may survive; a surviving parent means check_special never authorised the cast.
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 2, 2),
+    pred::WalkerAliveAtFinal(FAMILY_SMALL_SLIME, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 15000, 15000,
+        "consequence: transform_to and transfer_stats carry the parent SLIME's 150 hitpoints across to BOTH halves rather than resetting them to the SMALL_SLIME family base of 80; the empty arena leaves that value untouched to the final tick"),
+};
+
+inline constexpr Mutation kMut_ai_slime_split_scen99 = {
+    "packs/core/scripts/slime.lua", 42,
+    "  return og.living_count() < C.MAXOBS",
+    "  return false",
+    "Makes core:#8's check_special_ai always deny. living::check_special returns false, ACT_RANDOM never reaches special(), the parent FAMILY_SLIME survives intact and no SMALL_SLIME offspring exists — flipping WalkerFamilyCount(FAMILY_SLIME,0,0), WalkerFamilyCount(FAMILY_SMALL_SLIME,2,2) and WalkerOfTeamAlive(1,2,2) together."
+};
+
+// slime_grow_blocked_scen99: grow_into's ELSE branch. spaces_clear() needs
+// ALL EIGHT ±sizex/±sizey probes passable (> 7, walker.cpp:4408) and each
+// probe is a full box-overlap query through obmap::query_list, so one
+// stationary neighbour is enough to deny the transform. The blocker is a
+// team-0 FAMILY_TOWER1: living-20-beast.yaml is is_stationary (derived
+// stepsize 0) so it cannot drift out of the probe box, and being on the
+// caster's own team it never fights. The small slime is spawned LAST so
+// find_player_walker binds the oblist head to it, not to the tower.
+inline constexpr SpawnSpec kFamilySpawns_slime_grow_blocked_scen99[] = {
+    { FAMILY_TOWER1,      0, kOrderLiving, 136, 116, 0, 0 },         // stationary friendly blocker; overlaps the caster's three eastern probe boxes
+    { FAMILY_SMALL_SLIME, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 }, // player caster LAST (12x12 sprite; 600 MP clears special_cost[1] == 30)
+};
+
+inline constexpr FactPredicate kFacts_slime_grow_blocked_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SMALL_SLIME, 1),
+    pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 0, 0),
+    // negative_assertion: with a neighbour inside the probe box grow_into MUST refuse the transform, so no MEDIUM_SLIME may exist; one appearing means the spaces_clear gate stopped gating.
+    pred::WalkerPositionMoved(FAMILY_SMALL_SLIME, 102, 102,
+        "consequence: the refused grow forces a two-draw COMMAND_WALK (og.rand(3) y-first, then x) of 10 steps; the caster walks north-west off its (120,120) spawn and stops on (102,102), so this bound is the exact landing tile"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 8000, 8000),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+};
+
+inline constexpr Mutation kMut_slime_grow_blocked_scen99 = {
+    "packs/core/scripts/slime.lua", 134,
+    "  if self:spaces_clear() > 7 then",
+    "  if true then",
+    "Removes grow_into's room-to-grow gate. The cornered caster transforms anyway: FAMILY_SMALL_SLIME drops to 0, the FAMILY_MEDIUM_SLIME negative assertion rises to 1, and the forced random walk (and its two og.rand(3) draws) never happens so the position predicate loses its walker too."
+};
+
+// generator_owner_cascade_scen99: the tent keeps owner on its spawns
+// (generator-00-tent.yaml clear_owner: false) and gives them a lifetime, so
+// living::act kills the whole escort the moment the tent dies
+// (openglad-master/src/living.cpp:56-71). The player BIG_ORC starts 180px
+// SOUTH of the tent — far outside knife range, so its collide-fire against
+// approaching skeletons cannot clip the tent — and only marches north into
+// it at tick 220, by which time the escort has arrived and started hurting
+// it. Swept from the capture: the tent dies on tick 288 (four
+// FAMILY_EXPLOSION appear), and the skeleton dies on tick 289 still holding
+// the 14 hitpoints the orc left it — that one-tick gap IS the owner cascade.
+// The 310-tick budget is death + ~20 so the explosions have expired and
+// team 1 holds nothing alive. Marching later does not work: without the
+// escort dead the orc is down to 18 hp by tick 300 and dead by 350.
+//
+// NOTE (differs from the design's reasoning, not its outcome): the reap
+// never runs in this arena at all. A generator is not a Living, so
+// level_done == 2 from tick 1, parity_runner latches world.end
+// immediately, and every corpse — HIT effects included — persists from the
+// first tick rather than only from the tent's death.
+inline constexpr InputEvent kInputs_generator_owner_cascade[] = {
+    { 220, 0, K_UP | K_FIRE }, // march north into the tent and grind it down
+    { 400, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_generator_owner_cascade_scen99[] = {
+    { FAMILY_TENT,    1, kOrderGenerator, 140, 120, 0, 0, 2,  0 }, // stats_level 2 -> ~1 skeleton / 120 ticks, escort levels 1-2
+    { FAMILY_BIG_ORC, 0, kOrderLiving,    140, 300, 0, 0, 10, 0 }, // player demolisher LAST; level 10 scales knife damage without touching base HP
+};
+
+inline constexpr FactPredicate kFacts_generator_owner_cascade_scen99[] = {
+    pred::TickReached(310),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: the tent's level-2 cadence puts exactly one skeleton on the field before the demolisher arrives, and the corpse is still in oblist at the final tick because the sweep is frozen"),
+    pred::WalkerAliveAtFinal(FAMILY_BIG_ORC, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 9100, 9300,
+        "consequence: the owner-linked escort is free to fight, and it grinds the demolisher from 180 down to 92 before the tent falls; with clear_owner flipped the escort dies on its own first act, never lands a hit, and the orc finishes at its full 18000 cents"),
+    pred::EventKindAtLeast(/*play_sound*/1, 6,
+        "consequence: escort combat plus the tent's four death explosions"),
+};
+
+inline constexpr Mutation kMut_generator_owner_cascade_scen99 = {
+    "packs/core/families/generator-00-tent.yaml", 10,
+    "      clear_owner: false",
+    "      clear_owner: true",
+    "Gives core:tent the TOWER/TREEHOUSE owner policy while it still declares has_lifetime. walker.cpp:649 then nulls each skeleton's owner at spawn, so living::act's lifetime branch (`if (!owner || owner->dead)`) kills every skeleton on its very first act: the escort never fights, the demolisher finishes at full 18000-cent HP above the WalkerHpRangeAtFinalTick bound, and the frozen-sweep skeleton corpse count moves off its band."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -7758,6 +8009,55 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Barbarian_1,
       kFacts_barbarian_boulder_impact_scen99, std::size(kFacts_barbarian_boulder_impact_scen99),
       kMut_barbarian_boulder_impact_scen99 },
+
+    // slime-death-generators batch
+    { "magic_damage_slime_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_magic_damage_slime, std::size(kInputs_magic_damage_slime), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_magic_damage_slime_scen99, std::size(kFamilySpawns_magic_damage_slime_scen99),
+      0, false, true, Exercises::Special_FireElemental_1,
+      kFacts_magic_damage_slime_scen99, std::size(kFacts_magic_damage_slime_scen99),
+      kMut_magic_damage_slime_scen99 },
+
+    { "slime_death_split_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_slime_death_split_scen99, std::size(kFamilySpawns_slime_death_split_scen99),
+      0, false, true, Exercises::None,
+      kFacts_slime_death_split_scen99, std::size(kFacts_slime_death_split_scen99),
+      kMut_slime_death_split_scen99 },
+
+    { "elemental_death_starburst_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elemental_death_starburst, std::size(kInputs_elemental_death_starburst), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elemental_death_starburst_scen99, std::size(kFamilySpawns_elemental_death_starburst_scen99),
+      0, false, true, Exercises::Special_FireElemental_1,
+      kFacts_elemental_death_starburst_scen99, std::size(kFacts_elemental_death_starburst_scen99),
+      kMut_elemental_death_starburst_scen99 },
+
+    { "ai_slime_split_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_ai_slime_split_scen99, std::size(kFamilySpawns_ai_slime_split_scen99),
+      0, false, true, Exercises::Special_Slime_1,
+      kFacts_ai_slime_split_scen99, std::size(kFacts_ai_slime_split_scen99),
+      kMut_ai_slime_split_scen99 },
+
+    { "slime_grow_blocked_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_slime_grow_blocked_scen99, std::size(kFamilySpawns_slime_grow_blocked_scen99),
+      0, false, true, Exercises::Special_SmallSlime_1,
+      kFacts_slime_grow_blocked_scen99, std::size(kFacts_slime_grow_blocked_scen99),
+      kMut_slime_grow_blocked_scen99 },
+
+    { "generator_owner_cascade_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_generator_owner_cascade, std::size(kInputs_generator_owner_cascade), 310,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_owner_cascade_scen99, std::size(kFamilySpawns_generator_owner_cascade_scen99),
+      0, false, true, Exercises::None,
+      kFacts_generator_owner_cascade_scen99, std::size(kFacts_generator_owner_cascade_scen99),
+      kMut_generator_owner_cascade_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

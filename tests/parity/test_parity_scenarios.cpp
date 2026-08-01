@@ -400,6 +400,12 @@ OG_PARITY_TEST(archer_fire_arrows_ring_scen99)
 OG_PARITY_TEST(skeleton_tunnel_displacement_scen99)
 OG_PARITY_TEST(druid_grow_tree_emission_scen99)
 OG_PARITY_TEST(barbarian_boulder_impact_scen99)
+OG_PARITY_TEST(magic_damage_slime_scen99)
+OG_PARITY_TEST(slime_death_split_scen99)
+OG_PARITY_TEST(elemental_death_starburst_scen99)
+OG_PARITY_TEST(ai_slime_split_scen99)
+OG_PARITY_TEST(slime_grow_blocked_scen99)
+OG_PARITY_TEST(generator_owner_cascade_scen99)
 
 #undef OG_PARITY_TEST
 
