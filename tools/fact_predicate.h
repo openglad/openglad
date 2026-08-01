@@ -51,6 +51,12 @@ enum class FactKind : std::uint8_t
     EventKindAtLeast,                // arg0 = kind ordinal, arg1 = min
     EventKindExactly,                // arg0 = kind ordinal, arg1 = exact count
     WeaponFamilyEmitted,             // arg0 = family — searches dump.weapons[] ONLY
+    // Cardinality analogue of WeaponFamilyEmitted: how MANY entries of
+    // `arg0` the weaplist holds at the final tick. dump.weapons[] carries
+    // only entities still in weaplist, and the world reaps a dead weapon
+    // at the next tick boundary, so this counts LIVE circles/projectiles.
+    // Searches dump.weapons[] ONLY — never effects[] — like the kind above.
+    WeaponFamilyCount,               // arg0 = family, arg1 = min, arg2 = max
     // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
     // arg0 = family id, arg1 = Order ordinal (kOrderLiving / kOrderTreasure
     // / kOrderGenerator / kOrderWeapon / kOrderFX). The evaluator renders
@@ -245,6 +251,15 @@ inline constexpr FactPredicate EventKindExactly(std::int32_t kind_ordinal, std::
 inline constexpr FactPredicate WeaponFamilyEmitted(std::int32_t family, std::string_view label = {}) noexcept
 {
     return {FactKind::WeaponFamilyEmitted, family, 0, 0, 0, 0, label};
+}
+// How many `family` entries the weaplist holds at the final tick, bounded
+// to [mn, mx]. Distinguishes "one shield, refreshed" from "two shields,
+// stacked" — a thing WeaponFamilyEmitted cannot see. The companion mirrors
+// the declaration so the shared table compiles; it never evaluates it.
+inline constexpr FactPredicate WeaponFamilyCount(std::int32_t family, std::int32_t mn, std::int32_t mx,
+                                                 std::string_view label = {}) noexcept
+{
+    return {FactKind::WeaponFamilyCount, family, mn, mx, 0, 0, label};
 }
 // Representative per-tick speed of `family`'s projectile (MAX consecutive-
 // tick step) must lie in [min_centi, max_centi] centi-pixels/tick. Computed
