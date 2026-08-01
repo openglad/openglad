@@ -6463,8 +6463,11 @@ inline constexpr Mutation kMut_effect_explosion_range_scen99 = {
 // blast never reaches it. This row also carries the SHOVE: the explosion's 24x24
 // box and the thief's 16x13 box give the owner sign(dx)=sign(dy)=+1, so
 // s_force_command(COMMAND_WALK, shove, +1, +1) moves the otherwise-motionless
-// player caster -- the only fact-observable consequence left in the owner branch
-// (its damage is refused by is_friendly).
+// player caster. The owner branch's quarter-tier damage LANDS too -- the
+// golden's 75->55 thief hp is entirely its own bomb (all tower arrows do 0
+// through armor): is_friendly answers 0 for a dead CALLER and an explosion is
+// set_dead before death() runs, so the friendly refusal never engages for a
+// blast. True since the 2002 import; gdb-verified at HEAD.
 inline constexpr SpawnSpec kFamilySpawns_effect_bomb_bystander_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 222, 196, 0, 0 },           // stationary team-1 bystander at Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194); inside the level-5 reach 15+20 = 35 with 7px to spare
     { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // player-controlled bomb owner LAST; level 5 -> bomb_damage 90 (identical on master) and range clamp(20,16,96) = 20
