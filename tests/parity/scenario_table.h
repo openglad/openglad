@@ -6540,7 +6540,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
     // so a play_sound floor separates "blast never fired" from "blast too small".
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3200, 3400,
-        "structural: the owner tier is a refused attack, so the caster's 33 of 75 is entirely TOWER1 arrow fire across the 71-tick fuse -- a drift here means the fuse or the arrow cadence moved"),
+        "structural: the caster's 33 of 75 is its OWN blast -- fdiv(165,4) through compute_base_damage's 38..43 window -- and nothing else, because the TOWER1 at Manhattan 45 never fires a shot (the golden's first event is the tick-70 SOUND_EXPLODE); a drift here means the fuse or the owner tier moved"),
 };
 
 inline constexpr Mutation kMut_effect_explosion_range_scen99 = {
@@ -7647,6 +7647,73 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
     "    local flee_dy = og.rand(3) - 1",
     "    local flee_dy = flee_dx; flee_dx = og.rand(3) - 1",
     "Transposes the two flee draws so the FIRST value lands on dy and the SECOND on dx - exactly the RIGHT-first adjudication the parity port rejected. Stream consumption is unchanged (both bounds are 3), so the only effect is the flee vector: the bomber survives to the dump tick, the level never completes and no soldier reaches (146,166)."
+};
+
+// effect_explosion_ally_tier_scen99: the blast's ALLY tier. explosion_on_death
+// (packs/core/scripts/effect_bomb.lua:82-87, master effect.cpp:690-700) halves the
+// damage for a walker the owner is friendly to. Nothing in the corpus reaches that
+// arm -- every other blast row blasts foes only, so the whole `elseif` is
+// unexercised. effect_bomb_bystander_scen99 already pins the FULL tier and, in the
+// same golden, the OWNER quarter tier.
+//
+// The arena is that row's arena with one property changed: the stationary TOWER1
+// stays on its exact tile (222,196) and switches to the caster's team. Everything
+// else -- the level-5 thief at (200,200), bomb_damage 90, the tick-20 press, the
+// 100-tick budget -- is identical, so the two goldens are a controlled pair and the
+// divisor is read off the difference: the team-1 tower loses 91 of 130 there, the
+// team-0 tower loses exactly 45 here.
+//
+// The distant team-1 TOWER1 at (400,400) is scaffolding, not a control. It is far
+// outside the blast (Manhattan 380 against a reach of 35) and outside every firing
+// gate, and it exists only so the arena still has a live enemy: with no team-1
+// walker at all the level completes on the first tick and buries the dump in
+// end_game events. An in-blast foe cannot serve as an in-row full-tier control --
+// measured: a second TOWER1 at the mirrored (170,196) makes the pair trade arrow
+// fire, and the team-1 tower is chipped to ~67 hp before the fuse ends and dies to
+// the blast, so its "full tier" reading is arrow damage plus blast damage.
+//
+// The half tier is reachable at all only because the friendly refusal never
+// engages. The `elseif self:owner():dead() == 0 and self:owner():is_friendly(w)`
+// guard asks the LIVING owner, so the tier is selected correctly; the attack that
+// follows is issued by the EXPLOSION, and walker::attack's `is_friendly(target)`
+// refusal answers 0 for a dead caller (src/gameplay/walker.cpp:2234) while an
+// explosion is set_dead before death() runs. So the halved damage lands. True
+// since the 2002 import; gdb-verified at HEAD.
+inline constexpr SpawnSpec kFamilySpawns_effect_explosion_ally_tier_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },           // distant team-1 tower: keeps the level from completing, Manhattan 380 from the blast and out of everything's reach, so it never fires and is never touched
+    { FAMILY_TOWER1, 0, kOrderLiving, 222, 196, 0, 0 },           // ALLY half-tier victim on effect_bomb_bystander_scen99's exact tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside the level-5 reach 15+20 = 35
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // player-controlled bomb owner LAST (spawns prepend and find_player_walker binds the first team-0 Living in oblist); level 5 -> bomb_damage 90 and range clamp(20,16,96) = 20
+};
+
+inline constexpr FactPredicate kFacts_effect_explosion_ally_tier_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 2, 2),
+    // FLIPPING PREDICATE. compute_base_damage turns the halved 45 into
+    // 45 - sqrt(45)/2 + rand(6) = 41..46 and the roll lands on exactly 45.
+    // kMut_effect_explosion_ally_tier_scen99 widens the divisor to 8, which
+    // moves the ally to exactly 120 hp; the far tower is at its full 130, so no
+    // walker of the family is left inside this window.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500,
+        "consequence: the team-0 TOWER1 takes the ally arm of explosion_on_death -- fdiv(90,2) rolled to 45 -- and finishes on exactly 8500 cents of 13000, against the 3900 the SAME TILE reads in effect_bomb_bystander_scen99 with the tower on team 1; dividing by 8 instead leaves it on 12000 and no TOWER1 sits in this window"),
+    // Anchor: the far tower proves the blast is bounded. It is enumerated by
+    // nothing, shoved by nothing and shot by nothing on either arm, so it holds
+    // its full 13000 cents under every mutation of the tier divisors.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "anchor: the team-1 TOWER1 parked at Manhattan 380 is outside the 35px reach and outside every firing gate, so it ends untouched at 13000 cents -- a drift here means the blast reach or the AI acquisition moved, not the tier"),
+    // The owner's quarter tier keeps the thief alive, which the ally arm's
+    // `self:owner():dead() == 0` guard requires: a dead owner would send the
+    // allied victim down the full-damage else branch and erase this tier.
+    pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5200, 5200,
+        "structural: no shooter exists in this arena, so the caster's 52 of 75 is entirely its own blast -- fdiv(90,4) through compute_base_damage's 20..23 window, rolled to 23 -- and a live owner is what keeps the ally arm reachable at resolution time"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+
+inline constexpr Mutation kMut_effect_explosion_ally_tier_scen99 = {
+    "packs/core/scripts/effect_bomb.lua", 85,
+    "        self.damage = og.fdiv(full_damage, 2.0)",
+    "        self.damage = og.fdiv(full_damage, 8.0)",
+    "Widens the ally divisor from the half tier to an eighth. The blast still fires, still emits SOUND_EXPLODE, still shoves and still lands the quarter tier on its owner (the caster stays on 5200 cents), so only the allied victim moves: the team-0 TOWER1 finishes on 12000 cents instead of 8500 and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500) has no walker left in its window."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -9495,6 +9562,15 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Thief_1,
       kFacts_thief_ai_bomb_flee_scen99, std::size(kFacts_thief_ai_bomb_flee_scen99),
       kMut_thief_ai_bomb_flee_scen99 },
+
+    { "effect_explosion_ally_tier_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_explosion_ally_tier_scen99, std::size(kFamilySpawns_effect_explosion_ally_tier_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_explosion_ally_tier_scen99, std::size(kFacts_effect_explosion_ally_tier_scen99),
+      kMut_effect_explosion_ally_tier_scen99,
+      "explosion damage tiers: this row carries the ALLY half tier (team-0 TOWER1 on 222,196 loses 45 of 130); the OWNER quarter tier and the FULL tier are pinned by effect_bomb_bystander_scen99 on the identical arena (thief 75 -> 55, team-1 TOWER1 on the same 222,196 loses 91 of 130)" },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
