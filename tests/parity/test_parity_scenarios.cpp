@@ -367,6 +367,14 @@ OG_PARITY_TEST(level_withdraw_scen99)
 OG_PARITY_TEST(midcombat_partial_hp_scen99)
 OG_PARITY_TEST(consumable_inventory_state_scen99)
 
+// Cleric heal / raise / turn-undead / resurrect scenarios.
+OG_PARITY_TEST(special_cleric_heal_ally_scen99)
+OG_PARITY_TEST(cleric_raise_skeleton_scen99)
+OG_PARITY_TEST(cleric_raise_ghost_scen99)
+OG_PARITY_TEST(cleric_turn_undead_scen99)
+OG_PARITY_TEST(cleric_resurrect_friendly_scen99)
+OG_PARITY_TEST(undead_no_corpse_raise_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

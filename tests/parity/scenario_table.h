@@ -4834,6 +4834,253 @@ inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
     "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it."
 };
 
+// --- Phase 10: cleric heal / raise / turn-undead / resurrect scenarios ------
+//
+// Group-wide engine facts these six arenas depend on:
+//   * GameWorld::find_nearest_blood caps at SQUARED distance 800, i.e. a
+//     bloodstain is only findable within ~28 px euclidean of the caster. The
+//     per-special raise_skeleton_range (60) / raise_ghost_range (30) /
+//     resurrect_range (30) are MANHATTAN and are the second gate. Every corpse
+//     arena below places the stain 15-24 px from the cleric; do not "fix" the
+//     spawn coordinates.
+//   * cleric.lua's on_shoved hook does set_current_special(1) + special(), so
+//     anything that touches the caster between the K_SPECIAL_SWITCH cycle and
+//     the K_SPECIAL press silently reverts it to slot 1 (HEAL). Nothing may be
+//     in contact with the cleric across that window.
+//   * SpawnSpec order is load-bearing in all four multi-walker arenas: the
+//     same positions with a different order produce a different fight.
+
+// --- special_cleric_heal_ally_scen99 ---------------------------------------
+// Slot-1 HEAL (no Shift). Spawn order is load-bearing: the team-1 FAERIE first,
+// the team-0 BIG_ORC ally second, the CLERIC LAST so find_player_walker binds it.
+// By tick 60 the ally has traded blows with the faerie and sits 29 px from the
+// caster -- inside tuning.heal_range 60 -- while nothing is in contact with the
+// cleric, so the K_SPECIAL press is not swallowed by an on_shoved reset.
+// The heal has no max_hitpoints clamp (master walker.cpp:2618), so the ally ends
+// FAR above its 180 max: that is the discriminator.
+inline constexpr InputEvent kInputs_special_cleric_heal_ally[] = {
+    { 60, 0, K_SPECIAL }, { 61, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_special_cleric_heal_ally_scen99[] = {
+    { FAMILY_FAERIE,  1, kOrderLiving, 136, 120, 0, 0 },          // hostile foil; keeps the ally wounded and the level running
+    { FAMILY_BIG_ORC, 0, kOrderLiving, 152, 120, 0, 0 },          // team-0 ally: the heal target (unique family -> unambiguous HP predicate)
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 4, 600 },  // caster LAST -> oblist head -> player-controlled
+};
+inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::LevelDoneEquals(0),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerAliveAtFinal(FAMILY_BIG_ORC, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 41200, 41400,
+        "consequence: cleric slot-1 HEAL adds mp/4 + rand(mp/4) + 5*level to the in-range team-0 ally with NO max_hitpoints clamp, so the 180-max big orc finishes at 413 HP (41300 cents), 2.3x its own cap; collapsing heal_range makes find_friends_in_range return friend_count<=1, heal_or_mace returns false, and the ally keeps its wounded 172 HP (17200) -- far below this floor. The 200-cent window is the one-regen-tick spread between the branch dump (41300) and a companion recapture (41200), not an RNG band: the heal draw itself is fixed by the 0x42 seed."),
+    pred::EventKindAtLeast(/*play_sound*/1, 14,
+        "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
+};
+inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
+    "packs/core/families/living-05-cleric.yaml", 44,
+    "        heal_range: 60",
+    "        heal_range: 1",
+    "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count<=1 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
+};
+
+// --- cleric_raise_skeleton_scen99 ------------------------------------------
+// Corpse rig shared with cleric_raise_ghost_scen99 and undead_no_corpse_raise_scen99.
+// The team-0 BIG_ORC ally kills the team-1 FAERIE wedged between it and the caster;
+// walker::death -> generate_bloodspot drops a FAMILY_STAIN at (135,128), i.e.
+// squared-distance 289 from the cleric (find_nearest_blood's ceiling is 800) and
+// Manhattan 23 (raise_skeleton_range is 60). With the faerie dead the ally has no foe
+// and wanders off, so nothing is in contact with the cleric when the slot-2 cast lands
+// -- required, because the cleric's on_shoved hook resets current_special to 1.
+// The K_SPECIAL_SWITCH is deliberately LATE (tick 90, after the melee is over) for the
+// same reason.
+inline constexpr InputEvent kInputs_cleric_raise_late_slot2[] = {
+    {  90, 0, K_SPECIAL_SWITCH }, {  91, 0, K_NONE },
+    { 110, 0, K_SPECIAL },        { 111, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_cleric_raise_skeleton_scen99[] = {
+    { FAMILY_BIG_ORC, 0, kOrderLiving, 152, 120, 0, 0 },           // team-0 executioner
+    { FAMILY_FAERIE,  1, kOrderLiving, 136, 120, 0, 0 },           // victim: dies at (135,128), beside the caster
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST; level 10 clears the slot-2 cycle gate, 600 MP covers cost 20
+};
+inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
+    pred::TickReached(130),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: the victim faerie is reaped from oblist once dead; its absence is what proves the raised undead came from the bloodstain and not from the victim entry itself.
+    pred::LevelDoneEquals(2),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: slot-2 RAISE UNDEAD summons one LIVING_SKELETON onto the bloodstain the dead faerie left; with the corpse gate closed no skeleton is created at all and the count drops to 0"),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
+        "consequence: cleric + executioner + raised skeleton = 3 alive on team 0; without the raise it is 2"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 11600, 11800,
+        "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
+};
+inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
+    "packs/core/families/living-05-cleric.yaml", 52,
+    "        raise_skeleton_range: 60",
+    "        raise_skeleton_range: 1",
+    "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
+};
+
+// --- cleric_raise_ghost_scen99 ---------------------------------------------
+// Same corpse rig as cleric_raise_skeleton_scen99 (stain at (135,128), Manhattan 23 from
+// the caster) but cycled one slot further. raise_ghost_range is only 30, so the 23-px
+// stain clears it by 7 px; that is exactly the margin kMut removes.
+inline constexpr InputEvent kInputs_cleric_raise_late_slot3[] = {
+    {  90, 0, K_SPECIAL_SWITCH }, {  91, 0, K_NONE },
+    {  93, 0, K_SPECIAL_SWITCH }, {  94, 0, K_NONE },
+    { 110, 0, K_SPECIAL },        { 111, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_cleric_raise_ghost_scen99[] = {
+    { FAMILY_BIG_ORC, 0, kOrderLiving, 152, 120, 0, 0 },
+    { FAMILY_FAERIE,  1, kOrderLiving, 136, 120, 0, 0 },
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // level 10 clears the slot-3 gate ((3-1)*3+1 = 7); MP 600 covers cost 50
+};
+inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
+    pred::TickReached(130),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: the victim faerie is reaped once dead; its absence is what proves the ghost came from the bloodstain rather than from a surviving victim entry.
+    pred::LevelDoneEquals(2),
+    pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1,
+        "consequence: slot-3 RAISE GHOST summons one LIVING_GHOST onto the dead faerie's bloodstain; closing the 30-px corpse gate produces no ghost at all"),
+    pred::WalkerAliveAtFinal(FAMILY_GHOST, 1,
+        "consequence: og.combat.ghost_raise_lifetime(10) = soften(550, 670, 925) = 550 ticks, so the summon is still alive at the 130-tick dump; shortening the lifetime kills it before the dump"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
+        "consequence: cleric + executioner + raised ghost = 3 alive on team 0; without the raise it is 2"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 11600, 11800,
+        "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
+};
+inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
+    "packs/core/families/living-05-cleric.yaml", 53,
+    "        raise_ghost_range: 30",
+    "        raise_ghost_range: 1",
+    "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
+};
+
+// --- cleric_turn_undead_scen99 ---------------------------------------------
+// Shift alternate of cleric slot 2 -> do_turn_undead. Two team-1 skeletons are parked
+// 28 px away on the two axes: inside turn_undead's 4*level = 40-px reach at level 10,
+// but NOT in contact with the caster (16-px sprite boxes do not overlap), so nothing
+// shoves the cleric and the K_SPECIAL_SWITCH at tick 5 survives to the Shift+K_SPECIAL
+// at tick 20. turn_undead's kill roll is random(range*40)=random(1600) vs
+// random(level*10)=random(10), i.e. overwhelming. walker_specials.cpp:321 selects the
+// victims through the PR's is_undead descriptor flag where master hard-coded
+// `case FAMILY_SKELETON / FAMILY_GHOST`, so this row is what pins the new field.
+// The 60-tick budget is short enough that melee cannot explain the kills -- the control
+// run leaves both skeletons at full HP and the cleric far lower.
+inline constexpr InputEvent kInputs_cleric_turn_undead[] = {
+    {  5, 0, K_SPECIAL_SWITCH },     {  6, 0, K_NONE },
+    { 20, 0, K_SPECIAL | K_SHIFT },  { 21, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_cleric_turn_undead_scen99[] = {
+    { FAMILY_SKELETON, 1, kOrderLiving, 148, 120, 0, 0 },
+    { FAMILY_SKELETON, 1, kOrderLiving, 120, 148, 0, 0 },
+    { FAMILY_CLERIC,   0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+};
+inline constexpr FactPredicate kFacts_cleric_turn_undead_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 2, 2),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON,
+        "consequence: do_turn_undead destroys every is_undead foe inside 4*level px; clearing the skeleton's is_undead descriptor makes walker::turn_undead skip them and both survive at full 60/60"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0,
+        "consequence: team 1 is wiped by the turn, not by melee -- without the turn both skeletons are still alive at tick 60"),
+    pred::LevelDoneEquals(2,
+        "consequence: turning both undead ends the level; the un-turned control run finishes with level_done 0"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 10700, 10900,
+        "consequence: the caster ends at 108/120 (10800 cents) because the skeletons stop hitting it the moment they are turned; leave them alive and they grind it to 67/120 (6700), far below this floor"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+};
+inline constexpr Mutation kMut_cleric_turn_undead_scen99 = {
+    "packs/core/families/living-04-skeleton.yaml", 24,
+    "      is_undead: true",
+    "      is_undead: false",
+    "Clears the descriptor flag walker::turn_undead (walker_specials.cpp:321) tests to pick victims, so neither skeleton is destroyed. Both stay alive at 60/60 and keep meleeing the caster down to 67/120: WalkerDiedByFinal, WalkerOfTeamAlive(1,0,0), LevelDoneEquals(2) and the cleric HP floor all fail."
+};
+
+// --- cleric_resurrect_friendly_scen99 --------------------------------------
+// Slot-4 RESURRECT, FRIENDLY branch. player_team is 1: the caster and the victim share
+// team 1 so is_friendly(blood) is true and resurrect takes the add_ob(old_family) /
+// transfer_stats / hp = max_hp/2 arm instead of the hostile summon-a-ghost arm.
+// The team-0 BIG_ORC grinds the team-1 SOLDIER down and kills it at ~tick 130 at
+// (112,131) -- squared distance 185 from the caster (find_nearest_blood ceiling 800) and
+// Manhattan 19 (resurrect_range 30). The orc then stalls at (132,120), 12 px clear of the
+// cleric's sprite box, so it never shoves the caster: critical, because the cleric's
+// on_shoved hook would reset current_special from 4 back to 1 and silently turn the cast
+// into a no-op HEAL. Casting at tick 141 is ~10 ticks after the death and 12 ticks before
+// the dump; casts anywhere in 135..160 give the same resurrected soldier.
+inline constexpr InputEvent kInputs_cleric_resurrect_friendly[] = {
+    {   5, 0, K_SPECIAL_SWITCH }, {   6, 0, K_NONE },
+    {   8, 0, K_SPECIAL_SWITCH }, {   9, 0, K_NONE },
+    {  11, 0, K_SPECIAL_SWITCH }, {  12, 0, K_NONE },
+    { 141, 0, K_SPECIAL },        { 142, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_cleric_resurrect_friendly_scen99[] = {
+    { FAMILY_BIG_ORC, 0, kOrderLiving, 144, 120, 0, 0 },           // team-0 executioner (hostile to the player team)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 128, 120, 0, 0 },           // friendly victim: dies at (112,131), leaves a team-1 stain
+    { FAMILY_CLERIC,  1, kOrderLiving, 104, 120, 0, 0, 10, 600 },  // caster LAST; level 10 clears the slot-4 gate ((4-1)*3+1 = 10), MP 600 covers cost 150
+};
+inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
+    pred::TickReached(153),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::LevelDoneEquals(0),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1,
+        "consequence: the friendly RESURRECT branch rebuilds the dead ally from the bloodstain's old_family stamp, so a live FAMILY_SOLDIER re-enters oblist; without the resurrect the arena holds no live soldier at all"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6000, 6200,
+        "consequence: the friendly branch sets alive.hp = max_hp/2, i.e. 60 of 120, and one regen tick lands before the dump for a final 61 (6100 cents); quartering that divisor puts the revived soldier at 31 HP (3100), far below this floor"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2,
+        "consequence: caster + resurrected ally = 2 alive on the player team; without the resurrect only the caster survives"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 9000, 9200,
+        "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 91/120 (9100 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (9100) and a companion recapture (9000)."),
+};
+inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
+    "packs/core/scripts/cleric.lua", 229,
+    "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
+    "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
+    "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
+};
+
+// --- undead_no_corpse_raise_scen99 -----------------------------------------
+// Negative twin of cleric_raise_skeleton_scen99: same caster, same executioner, same
+// slot-2 cast (kInputs_cleric_raise_late_slot2), only the victim family changes
+// (FAERIE -> SKELETON). walker::death skips generate_bloodspot for is-undead families,
+// so no FAMILY_STAIN ever enters fxlist and nearby_corpse returns nil even though the
+// victim died 15 px from the caster (squared distance 225, well inside
+// find_nearest_blood's 800 ceiling and raise_skeleton_range's 60) -- i.e. the raise
+// fails for the descriptor reason and not for a geometry reason, which is what makes
+// the leaves_bloodspot flip a real flip.
+// Spawn order puts the SKELETON first here: that ordering is what makes it die IN PLACE
+// at (135,120); with the ally first it flees and dies 32 px away, out of raise range,
+// and the mutation would no longer flip. Do not reorder.
+inline constexpr SpawnSpec kFamilySpawns_undead_no_corpse_raise_scen99[] = {
+    { FAMILY_SKELETON, 1, kOrderLiving, 136, 120, 0, 0 },          // undead victim: dies in place at (135,120), leaves NO bloodspot
+    { FAMILY_BIG_ORC,  0, kOrderLiving, 152, 120, 0, 0 },          // team-0 executioner
+    { FAMILY_CLERIC,   0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST
+};
+inline constexpr FactPredicate kFacts_undead_no_corpse_raise_scen99[] = {
+    pred::TickReached(130),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    pred::LevelDoneEquals(2),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON,
+        "negative_assertion: the undead victim leaves no bloodspot, so the slot-2 RAISE UNDEAD finds nothing and no LIVING skeleton exists at the dump -- only the victim's corpse entry; giving the skeleton leaves_bloodspot makes the raise succeed and an ALIVE skeleton appears, failing this predicate"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "negative_assertion: team 0 holds only the caster and the executioner; a successful raise would add a third"),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "negative_assertion: exactly one FAMILY_SKELETON entry (the dead victim) is in oblist; a successful raise makes it two"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 11600, 11800,
+        "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
+};
+inline constexpr Mutation kMut_undead_no_corpse_raise_scen99 = {
+    "packs/core/families/living-04-skeleton.yaml", 20,
+    "      leaves_bloodspot: false",
+    "      leaves_bloodspot: true",
+    "Makes the undead victim drop a FAMILY_STAIN at its (135,120) death spot -- 15 px from the caster, inside both find_nearest_blood's squared-800 ceiling and raise_skeleton_range 60. The slot-2 cast now succeeds and a live team-0 FAMILY_SKELETON is summoned: WalkerDiedByFinal fails, WalkerOfTeamAlive(0,2,2) sees 3, and WalkerFamilyCount(FAMILY_SKELETON,1,1) sees 2."
+};
+
 // --- Z-axis / multi-floor arenas (branch-internal Invariant) ---------------
 //
 // GRID_SIZE is 16, so pixel 112 == tile 7. A FAMILY_SOLDIER sprite is well
@@ -6208,6 +6455,54 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_consumable_inventory_state_scen99, std::size(kFacts_consumable_inventory_state_scen99),
       kMut_consumable_inventory_state_scen99 },
+
+    { "special_cleric_heal_ally_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_special_cleric_heal_ally, std::size(kInputs_special_cleric_heal_ally), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_cleric_heal_ally_scen99, std::size(kFamilySpawns_special_cleric_heal_ally_scen99),
+      0, false, true, Exercises::Special_Cleric_1,
+      kFacts_special_cleric_heal_ally_scen99, std::size(kFacts_special_cleric_heal_ally_scen99),
+      kMut_special_cleric_heal_ally_scen99 },
+
+    { "cleric_raise_skeleton_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_skeleton_scen99, std::size(kFamilySpawns_cleric_raise_skeleton_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_raise_skeleton_scen99, std::size(kFacts_cleric_raise_skeleton_scen99),
+      kMut_cleric_raise_skeleton_scen99 },
+
+    { "cleric_raise_ghost_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot3, std::size(kInputs_cleric_raise_late_slot3), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_ghost_scen99, std::size(kFamilySpawns_cleric_raise_ghost_scen99),
+      0, false, true, Exercises::Special_Cleric_3,
+      kFacts_cleric_raise_ghost_scen99, std::size(kFacts_cleric_raise_ghost_scen99),
+      kMut_cleric_raise_ghost_scen99 },
+
+    { "cleric_turn_undead_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_turn_undead, std::size(kInputs_cleric_turn_undead), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_turn_undead_scen99, std::size(kFamilySpawns_cleric_turn_undead_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_turn_undead_scen99, std::size(kFacts_cleric_turn_undead_scen99),
+      kMut_cleric_turn_undead_scen99 },
+
+    { "cleric_resurrect_friendly_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_resurrect_friendly, std::size(kInputs_cleric_resurrect_friendly), 153,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_resurrect_friendly_scen99, std::size(kFamilySpawns_cleric_resurrect_friendly_scen99),
+      1, false, true, Exercises::Special_Cleric_4,
+      kFacts_cleric_resurrect_friendly_scen99, std::size(kFacts_cleric_resurrect_friendly_scen99),
+      kMut_cleric_resurrect_friendly_scen99 },
+
+    { "undead_no_corpse_raise_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_undead_no_corpse_raise_scen99, std::size(kFamilySpawns_undead_no_corpse_raise_scen99),
+      0, false, true, Exercises::None,
+      kFacts_undead_no_corpse_raise_scen99, std::size(kFacts_undead_no_corpse_raise_scen99),
+      kMut_undead_no_corpse_raise_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
