@@ -106,16 +106,20 @@ struct FamilyDescriptor {
     const char* name;                          // "SOLDIER", "ELF", etc.
     const char* short_name;                    // abbreviated picker label (nullptr = use name)
 
+    // Base stats from guy.cpp statlist[]
     // Attribute scores a fresh recruit starts with, and the base the picker
     // prices training deltas against. Indexed by StatAxis.
     std::int32_t base_stats[StatAxis::Count];
 
+    // Hiring cost from guy.cpp costlist[]
     // Gold to hire one.
     std::int32_t hiring_cost;
 
+    // Derived bonuses from guy.cpp derived_bonuses[]
     // What one of these is in the field (see CombatBases).
     CombatBases combat;
 
+    // Stat upgrade costs from guy.cpp statcosts[]
     // Gold per training point on each axis. Indexed by StatAxis; the Level
     // entry is vestigial (levels are priced by the exp curve).
     std::int32_t stat_costs[StatAxis::Count];
