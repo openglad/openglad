@@ -268,6 +268,10 @@
 -- like do_special itself.
 ---@class og.LivingSpecials
 ---@field [integer] fun(self: og.Walker): boolean
+-- String keys are the schema-v2 special ids declared
+-- in the family YAML; registration resolves them to
+-- slot ints (unknown or colliding keys are load errors).
+---@field [string] fun(self: og.Walker): boolean
 ---@field default? fun(self: og.Walker): boolean
 
 -- Hook table for og.register_hooks(order = "living").
