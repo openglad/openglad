@@ -280,18 +280,46 @@ families:
       wire_id: 0                     # integer 0..255, or `auto` (>= 21)
       name: "SOLDIER"                # display name and bare-id fallback (§5)
       short_name: ~                  # nullable: picker label override
-      base_stats: [12, 6, 12, 8, 9, 1]              # STR DEX CON INT ARMOR LVL
-      derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]  # HP MP ATK RATK RNG DEF SPD ATKSPD
-      stat_costs: [6, 10, 6, 25, 50, 200]           # STR DEX CON INT ARMOR LVL
-      special_costs: [5000, 25, 100, 120, 150, 5000]  # index 0 unused
-      hiring_cost: 250
-      weapon_cost: 2
+      stats:                         # attribute scores; all six required
+        strength: 12
+        dexterity: 6
+        constitution: 12
+        intelligence: 8
+        armor: 9
+        level: 1                     # starting level
+      combat:                        # field numbers; all five required
+        hp: 120
+        melee_damage: 20
+        stepsize: 4                  # px per step
+        fire_delay: 6                # busy ticks AFTER each attack; lower is
+                                     # faster (Lua: self:fire_frequency())
+        fire_mp_cost: 2              # MAGIC POINTS per ranged shot
+      costs:                         # gold, and only gold
+        hire: 250
+        train:                       # per-point price on each stats axis;
+          strength: 6                #   an omitted axis is 0
+          dexterity: 10
+          constitution: 6
+          intelligence: 25
+          armor: 50
+          level: 200                 # vestigial (see below)
+      specials:                      # up to five, in slot order
+        - id: charge                 # the key a script's specials table uses
+          name: "CHARGE"             # the HUD string
+          mp_cost: 25
+        - id: boomerang
+          name: "BOOMERANG"
+          mp_cost: 100
+        - id: whirlwind
+          name: "WHIRLWIND"
+          mp_cost: 120
+        - id: disarm
+          name: "DISARM"
+          mp_cost: 150
       default_weapon: core:knife     # resolved through the weapon registry
       init_bit_flags: []             # names minus the BIT_ prefix: FLYING, ...
       init_ani_type: 0
-      init_max_magicpoints: 0
-      special_names: ["NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      init_max_magicpoints: 0        # 0 = the usual 10 + INT*3
       leaves_bloodspot: true
       magic_damage_modifier: 1
       is_stationary: false
@@ -348,6 +376,58 @@ families:
       clear_owner: false
       editor_label: "TENT"           # level-editor palette caption
 ```
+
+### The living blocks: `stats` / `combat` / `costs` / `specials`
+
+Those four blocks are the only place the "undeclared changes nothing" rule
+is tightened, and the reason is the same in each case: the honest default
+would be a gameplay trap.
+
+- **Every member of `stats:` and `combat:` is required** when the block
+  appears. A missing `armor:` would install a 0-armor class, and nothing
+  in the game would say so.
+- **`costs.hire` is required; every `costs.train` axis is optional** (an
+  omitted axis prices at 0, which is what an unpriced axis has always
+  shipped). `costs.train.level` is vestigial — levels are priced by the
+  exp curve and nothing reads the entry — but the core files ship 200 and
+  it is honoured, so a pack restating a core family must restate it too or
+  price the axis at 0. New packs should omit it.
+- **`costs:` is gold and `combat:` is magic points.** `fire_mp_cost` is
+  what a ranged shot spends from the caster's MP; it lives beside
+  `fire_delay` and not among the prices, because the two currencies must
+  never share the word "cost".
+- **An unknown key INSIDE one of the blocks warns and is dropped**, while
+  an unknown key at entry level stays silent. Forward compatibility is
+  about a future engine adding a section; inside `combat:` the realistic
+  unknown key is `step_size`, and swallowing that installs a default
+  nobody wrote.
+- **`combat.mp`, `combat.ranged_damage`, `combat.range` and
+  `combat.defense` are refused by name.** They were columns of the old
+  positional array that never had a reader. Max MP is `10 + INT*3` (or
+  `init_max_magicpoints`), a ranged attack's damage belongs to the weapon
+  family, reach is `ai_line_of_sight`, and armor is `stats.armor`.
+
+`specials:` is a list of up to five entries and its ORDER is the slot:
+entry *i* is slot *i+1*, which the player can select from level
+`(N-1)*3+1` — so slot 5 unlocks at 13. An entry may name its own `slot: N`
+to leave a hole; slots must strictly increase. Absent slots are disabled
+("NONE", cost 5000), and a family with no specials writes `specials: []`.
+Each entry takes:
+
+| key | |
+|---|---|
+| `id` | required, `[a-z0-9_]+`, unique in the family — the script-side key |
+| `name` | required, the HUD string |
+| `mp_cost` | required, magic points per cast |
+| `alternate: {name: ...}` | optional; shown while Shift is held |
+| `slot: N` | optional, 2..5, to skip a hole |
+
+The `id` is what makes the YAML and the Lua reference each other by name:
+`og.register_hooks` accepts it as a `specials` table key and resolves it to
+the slot once, at registration (§6). An alternate is DISPLAY only and
+shares the special's `mp_cost` — the behavior fork is the handler reading
+`self:shifter_down()`, so an `mp_cost` under `alternate:` is recognized and
+warned about rather than silently believed.
 
 ### Art, animation, and presentation (all five orders)
 
@@ -451,7 +531,8 @@ table.** Hitpoints, act type, stepsize, damage and line of sight for
 weapons/effects/treasures/generators come from the loader's `EntityDef`
 table, which pins core ids only, so a mod weapon starts at zero for all of
 them and has to set what it needs on the entity after spawning it. Living
-families have no such gap: their loader stats come from `derived_bonuses`.
+families have no such gap: their loader stats come from the `combat:`
+block.
 
 Scripts register behavior:
 
@@ -551,19 +632,33 @@ the order, family, hook and source location, and is recorded as a script
 error, so an accidental in-pack collision is diagnosable rather than silent.
 
 **Specials dispatch (the table form of `do_special`).** A living family may
-register `specials = { [1] = fn, [2] = fn, …, default = fn }` instead of a
+register `specials = { charge = fn, …, default = fn }` instead of a
 `do_special` function (one or the other per call — both is a load error).
-`self:current_special()` selects the entry; a missing index falls to
+`self:current_special()` selects the entry; a missing slot falls to
 `default`; a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, no Lua call, no budget armed, no stream touched.
-Keys are integers 1..255 or `default`, every value a function, an empty
-table is a load error, and the table occupies the `do_special` hook slot,
-so collision reporting and last-wins behave like any named hook. Around
-either form the engine contract is unchanged (`walker_specials.cpp`): the
-caller gates on `magicpoints() >= special_cost(current_special)` BEFORE
-dispatch and deducts that cost only after a `true` answer — so `false`
-means "did not fire, charge nothing", and the no-op fall-through, answering
-`true`, is charged like the ladders' unmatched case always was.
+Every value is a function, an empty table is a load error, and the table
+occupies the `do_special` hook slot, so collision reporting and last-wins
+behave like any named hook.
+
+A key is an integer 1..255, the string `default`, or one of the `id`s the
+family's `specials:` list declares (§4). The id form is resolved to its
+slot ONCE, at registration, and stored in the same int-keyed private copy
+the integer form produces, so nothing about the cast path differs — but the
+data and the behavior now reference each other by name. Reordering the YAML
+list cannot silently re-bind a handler; a key naming no declared id is a
+load error listing the ids that exist; and an id and an integer resolving
+to the same slot is a load error rather than a coin toss.
+
+Around either form the engine contract is unchanged
+(`walker_specials.cpp`): the caller gates on `magicpoints() >=
+special_cost(current_special)` BEFORE dispatch and deducts that cost only
+after a `true` answer — so `false` means "did not fire, charge nothing",
+and the no-op fall-through, answering `true`, is charged like the ladders'
+unmatched case always was. That last case is the one real trap in the
+mechanism, so every VM build now sweeps the living families and warns for
+each castable slot the final table handles neither directly nor through
+`default`, naming the special and the MP a cast would waste.
 
 ## 7. Level and entity scripting
 

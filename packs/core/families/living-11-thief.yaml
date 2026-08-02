@@ -5,18 +5,46 @@ families:
       wire_id: 11
       name: "THIEF"
       short_name: ~
-      base_stats: [9, 12, 12, 10, 5, 1]
-      hiring_cost: 400
-      derived_bonuses: [75, 0, 12, 0, 0, 0, 5, 5]
-      stat_costs: [15, 6, 9, 10, 50, 200]
-      special_costs: [5000, 35, 125, 100, 150, 5000]
-      weapon_cost: 1
+      stats:
+        strength: 9
+        dexterity: 12
+        constitution: 12
+        intelligence: 10
+        armor: 5
+        level: 1
+      combat:
+        hp: 75
+        melee_damage: 12
+        stepsize: 5
+        fire_delay: 5
+        fire_mp_cost: 1
+      costs:
+        hire: 400
+        train:
+          strength: 15
+          dexterity: 6
+          constitution: 9
+          intelligence: 10
+          armor: 50
+          level: 200
+      specials:
+        - id: drop_bomb
+          name: "DROP BOMB"
+          mp_cost: 35
+        - id: cloak
+          name: "CLOAK"
+          mp_cost: 125
+        - id: taunt_enemy
+          name: "TAUNT ENEMY"
+          mp_cost: 100
+          alternate: {name: "CHARM OPPONENT"}
+        - id: poison_cloud
+          name: "POISON CLOUD"
+          mp_cost: 150
       default_weapon: core:knife
       init_bit_flags: []
       init_ani_type: 0
       init_max_magicpoints: 0
-      special_names: ["NONE", "DROP BOMB", "CLOAK", "TAUNT ENEMY", "POISON CLOUD", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "CHARM OPPONENT", "NONE", "NONE"]
       leaves_bloodspot: true
       magic_damage_modifier: 1
       is_stationary: false

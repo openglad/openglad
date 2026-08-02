@@ -151,25 +151,40 @@ A living family with more than a trivial special registers the table form of
 ```lua
 og.register_hooks("living", "core:orc", {
   specials = {
-    [1] = yell,             -- current_special() == 1
-    default = eat_corpse,   -- every other value
+    howl = yell,            -- the id living-14-orc.yaml declares for slot 1
+    default = eat_corpse,   -- every other slot
   },
   ...
 })
 ```
 
 Dispatch implements the slot semantics directly:
-`self:current_special()` selects the entry, a missing index falls to
+`self:current_special()` selects the entry, a missing slot falls to
 `default`, and a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
 touched). Each entry has the plain `do_special` signature: `(self) → bool`,
 `false` = the special did not fire.
 
+**Keying by id.** A key may be the special's declared `id` from the family's
+`specials:` list instead of its slot integer. `og.register_hooks` resolves
+the id to the slot once, at registration, and stores the same int-keyed
+table it always did — the cast path is unchanged. What changes is that the
+two files now name each other: reordering the YAML list cannot silently
+re-bind a handler, and a misspelling on either side is a load error naming
+the ids the family does declare. The shipped core scripts key by id.
+
+Which slot an id is, and when a player can reach it, is the list order:
+entry *i* of `specials:` is slot *i+1*, selectable from level `(N-1)*3+1`.
+
 Rules:
 
 - Living orders only; keys are integers `1..255` (`current_special` is a
-  char-wide slot index) or the string `"default"`; every value must be a
-  function; an empty table is a load error.
+  char-wide slot index), a declared special id, or the string `"default"`;
+  every value must be a function; an empty table is a load error.
+- An id and an integer that name the SAME slot in one table is a load error
+  — the table says two things about one special and nothing can choose.
+- An id key against a family whose descriptor declares none (a pack still
+  on the pre-v2 schema) is a load error that says so.
 - The engine stores a **private copy** at registration — mutating the
   caller's table afterwards cannot change dispatch (R6 at the registration
   boundary).
@@ -179,10 +194,20 @@ Rules:
 
 **The cost contract around either form** (`walker_specials.cpp`): the engine
 gates the dispatch on `magicpoints >= special_cost(current_special)` (the
-descriptor's `special_costs` entry) *before* calling the hook, and deducts
-that cost only after the hook answers `true`. So `false` means "did not
-fire, charge nothing", and specials that price themselves (a pool vent, a
-scaling drain) do their own extra deduction inside the entry.
+slot's `mp_cost` in the family's `specials:` list) *before* calling the
+hook, and deducts that cost only after the hook answers `true`. So `false`
+means "did not fire, charge nothing", and specials that price themselves (a
+pool vent, a scaling drain) do their own extra deduction inside the entry.
+
+A castable slot with neither a handler nor a `default` still charges — that
+is the defined unmatched-slot behavior and it has not changed. It is no
+longer silent: every VM build sweeps the families and warns, naming the
+special and what the wasted cast would cost.
+
+**Alternates.** A special may declare `alternate: {name: ...}`, which is a
+DISPLAY name shown while Shift is held. There is no separate cost and no
+engine dispatch for it: the handler forks on `self:shifter_down()` and
+spends the same `mp_cost`.
 
 ### Duplicate registration: last one wins
 
@@ -769,13 +794,32 @@ families:
     - id: example:emberwisp
       wire_id: auto                       # next free id >= 21, deterministic
       name: "EMBERWISP"                   # THE identity hooks resolve against
-      base_stats: [8, 14, 7, 16, 4, 1]    # STR DEX CON INT ARMOR LVL
-      derived_bonuses: [70, 40, 11, 0, 0, 0, 5, 9]
-      #                 HP  MP ATK RATK RNG DEF SPD ATKSPD
+      stats:                              # all six required
+        strength: 8
+        dexterity: 14
+        constitution: 7
+        intelligence: 16
+        armor: 4
+        level: 1                          # starting level
+      combat:                             # all five required
+        hp: 70
+        melee_damage: 11
+        stepsize: 5                       # px per step
+        fire_delay: 9                     # busy ticks AFTER an attack;
+                                          # lower is faster
+        fire_mp_cost: 2                   # MP per ranged shot
+      costs:                              # gold only
+        hire: 400
+        train: {strength: 30, dexterity: 8, constitution: 30,
+                intelligence: 8, armor: 60}
+      specials:                           # order = slot; slot N at level
+        - id: flare_burst                 # (N-1)*3+1
+          name: "FLARE BURST"             # HUD string
+          mp_cost: 5                      # engine-gated, engine-deducted
       init_bit_flags: [FLYING, FORESTWALK]
       default_weapon: core:fireball       # via the weapon registry
-      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
-      special_costs: [5000, 5, 5000, 5000, 5000, 5000]   # MP; engine-gated
+      init_max_magicpoints: 40            # the live max-MP knob (the usual
+                                          # maximum is 10 + INT*3)
       leaves_bloodspot: false
       magic_damage_modifier: 0.5
       death_message: "EMBERWISP GUTTERS OUT"
@@ -882,11 +926,12 @@ end
 og.register_hooks("living", "example:emberwisp", {
   on_create = on_create,
   on_fire_weapon = on_fire_weapon,
-  -- The specials table replaces a hand-written current_special() ladder:
-  -- [n] runs for special n, `default` (absent here) catches the rest, and
-  -- a table with neither entry makes that cast a successful no-op.
+  -- The specials table replaces a hand-written current_special() ladder.
+  -- The key is the `id` the YAML declares for the slot; `default` (absent
+  -- here) catches the rest, and a table with neither entry makes that cast
+  -- a successful no-op.
   specials = {
-    [1] = flare_burst,
+    flare_burst = flare_burst,
   },
 })
 ```
@@ -946,7 +991,7 @@ literal.
   `EntityDef` table, which pins core ids only; a mod weapon therefore starts
   at zero for all of them and must set what it needs on the entity after
   spawning it. Living families do not have this gap — their loader stats
-  come from `derived_bonuses`.
+  come from the descriptor's `combat:` block.
 
 ## Transliteration checklist
 

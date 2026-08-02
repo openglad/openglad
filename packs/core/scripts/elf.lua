@@ -62,12 +62,12 @@ end
 og.register_hooks("living", "core:elf", {
   specials = {
     -- some rocks (normal)
-    [1] = some_rocks,
+    rocks = some_rocks,
     -- more rocks, and bouncing
     -- we get 50% longer, too!
-    [2] = bounce_volley(3, 2, 3),
+    bouncing_rocks = bounce_volley(3, 2, 3),
     -- get double distance
-    [3] = bounce_volley(4, 3, 4),
+    lots_of_rocks = bounce_volley(4, 3, 4),
     -- we get 150% longer, too!
     default = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot
   },

@@ -151,9 +151,9 @@ end
 
 og.register_hooks("living", "core:druid", {
   specials = {
-    [1] = plant_tree,
-    [2] = summon_faerie,
-    [3] = reveal_items,
+    grow_tree = plant_tree,
+    summon_faerie = summon_faerie,
+    reveal = reveal_items,
     default = protection_circle,  -- case 4 and every unmapped slot
   },
   set_difficulty = set_difficulty,

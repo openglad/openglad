@@ -193,9 +193,9 @@ end
 
 og.register_hooks("living", "core:thief", {
   specials = {
-    [1] = drop_bomb,
-    [2] = cloak,
-    [3] = taunt_or_charm,
+    drop_bomb = drop_bomb,
+    cloak = cloak,
+    taunt_enemy = taunt_or_charm,
     default = poison_cloud,  -- case 4 and every unmapped slot
   },
   check_special_ai = check_special_ai,

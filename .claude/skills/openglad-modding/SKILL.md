@@ -29,6 +29,50 @@ pair), `packs/core/scripts/orc.lua`
 (the Ninefold Court's `court.lua` — level hooks, per-entity hooks, generator
 `customize_spawn`).
 
+## Descriptor schema, in one screen
+
+A living entry's numbers live in four named blocks. Everything else on the
+entry (`sprite`, `animation`, flags, `tuning:`, presentation) is a flat key
+— see design doc §4 for the full list, and copy a real file rather than
+typing one.
+
+```yaml
+families:
+  living:
+    - id: mypack:warlock       # required; qualified ids are scoped
+      wire_id: auto            # 0..255, or `auto` (>= 21)
+      name: "WARLOCK"
+      stats: {strength: 6, dexterity: 8, constitution: 6,
+              intelligence: 15, armor: 5, level: 1}    # all six REQUIRED
+      combat: {hp: 90, melee_damage: 8, stepsize: 3,
+               fire_delay: 6, fire_mp_cost: 4}         # all five REQUIRED
+      costs:                                           # GOLD only
+        hire: 400
+        train: {strength: 20, intelligence: 6}         # omitted axis = 0
+      specials:                # order = slot; slot N usable at level (N-1)*3+1
+        - id: hex              # the key your script's specials table uses
+          name: "HEX"          # HUD string
+          mp_cost: 20          # MAGIC POINTS
+          alternate: {name: "GREATER HEX"}   # display only, same mp_cost
+```
+
+The rules worth knowing before your first parse error:
+
+- A missing member of `stats:`/`combat:`, or `costs:` without `hire`, is
+  fatal. There is no honest default for armor or hitpoints.
+- An unknown key INSIDE a block warns and is dropped; an unknown key at
+  entry level is silently skipped (forward compatibility). `step_size` in
+  `combat:` is a typo, not a future engine's key.
+- `combat.mp`, `combat.ranged_damage`, `combat.range`, `combat.defense` are
+  refused by name: max MP is `10 + INT*3` or `init_max_magicpoints`, ranged
+  damage belongs to the weapon family, reach is `ai_line_of_sight`, armor
+  is `stats.armor`.
+- Up to five specials; `specials: []` for a family with none. Absent slots
+  are disabled ("NONE"/5000). `costs.train.level` is vestigial — nothing
+  reads it — but the core files ship 200, so an override must restate it.
+- `scripts/migrate_classpack_v2.py` converts a pack still on the old
+  positional arrays (`base_stats`, `derived_bonuses`, `special_costs`, …).
+
 ## Pack anatomy
 
 ```
@@ -87,10 +131,13 @@ one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
   - *`og.tuning(self)`*: the family's `tuning:` YAML map as a frozen table.
     Balance constants belong there, not inline in behavior code. Key access
     only; absent keys answer nil; no iteration.
-  - *`specials` table*: `specials = { [1]=fn, ..., default=fn }` in
-    `og.register_hooks` instead of a `current_special()` elseif ladder.
-    Missing index → `default`; neither → successful no-op (`true`, no Lua
-    call). The engine gates on `special_costs[current_special]` MP before
+  - *`specials` table*: `specials = { charge=fn, ..., default=fn }` in
+    `og.register_hooks` instead of a `current_special()` elseif ladder. The
+    key is the `id` the family's `specials:` list declares for that slot
+    (slot integers `1..255` stay legal); a key that names no declared id is
+    a load error listing the ids that exist. Missing slot → `default`;
+    neither → successful no-op (`true`, no Lua call) that STILL charges,
+    and now warns at load. The engine gates on the slot's `mp_cost` before
     dispatch and deducts it only on a `true` answer.
   - *`og.use("name")`*: binds `packs/<id>/lib/<name>.lua` (own pack only),
     at chunk load time only, frozen pure exports. A helper used by 2+ files
@@ -134,7 +181,7 @@ one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
 
 ```bash
 cmake --build --preset ci-test --target stage_runtime_assets  # after .lua/.yaml edits
-./build/ci-test/og_test_parity            # 188/188 required for core changes
+./build/ci-test/og_test_parity            # 256/256 required for core changes
 ./build/ci-test/og_unit_script --gtest_brief=1
 ./build/ci-test/og_unit_families --gtest_brief=1
 OPENGLAD_CONFIG_DIR=$(mktemp -d) ./build/ci-test/og_unit_data --gtest_brief=1
@@ -221,8 +268,9 @@ short-circuiting them changes the stream even if nothing else differs.
 4. `scripts/<name>.lua`: `og.register_hooks("living", "<pack>:<name>", {...})`
    — start from the emberwisp script's shape (properties, `og.tuning`,
    a `specials` table). Balance constants go in the family's `tuning:`
-   block, not inline; specials also need `special_names`/`special_costs`
-   in the descriptor (the engine gates and charges the MP cost).
+   block, not inline; every special the script handles must also be an
+   entry in the descriptor's `specials:` list, and the script keys its
+   handler by that entry's `id` (the engine gates and charges `mp_cost`).
 5. Stage, then run the game or `openglad_text`. A `playable: true` family
    appears in the hire menu.
 

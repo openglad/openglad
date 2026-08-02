@@ -528,10 +528,10 @@ end
 
 og.register_hooks("living", "core:archmage", {
   specials = {
-    [1] = teleport,
-    [2] = burst_or_chain,
-    [3] = summon_image,
-    [4] = mind_control,
+    teleport = teleport,
+    heartburst = burst_or_chain,
+    summon_image = summon_image,
+    mind_control = mind_control,
   },
   hit_response = hit_response,
   level_up = level_up,

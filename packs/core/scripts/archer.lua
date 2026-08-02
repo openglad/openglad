@@ -88,8 +88,8 @@ end
 
 og.register_hooks("living", "core:archer", {
   specials = {
-    [1] = fire_arrows,
-    [2] = flurry,
+    fire_arrows = fire_arrows,
+    barrage = flurry,
     default = exploding_shot,  -- cases 3, 4, and every unmapped slot
   },
   -- about 6 squares

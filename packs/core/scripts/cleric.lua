@@ -302,9 +302,9 @@ end
 
 og.register_hooks("living", "core:cleric", {
   specials = {
-    [1] = heal_or_mace,
-    [2] = raise_skeleton,
-    [3] = raise_ghost,
+    heal = heal_or_mace,
+    raise_undead = raise_skeleton,
+    raise_ghost = raise_ghost,
     default = resurrect,  -- case 4 and every unmapped slot
   },
   check_special_ai = check_special_ai,

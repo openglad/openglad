@@ -96,7 +96,7 @@ end
 
 og.register_hooks("living", "core:orc", {
   specials = {
-    [1] = yell,
+    howl = yell,
     default = eat_corpse,
   },
   check_special_ai = ai.foe_within(130),  -- fixed per-tick AI range

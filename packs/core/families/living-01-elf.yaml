@@ -5,18 +5,45 @@ families:
       wire_id: 1
       name: "ELF"
       short_name: ~
-      base_stats: [5, 14, 5, 12, 8, 1]
-      hiring_cost: 150
-      derived_bonuses: [75, 0, 12, 0, 0, 0, 4, 5]
-      stat_costs: [25, 6, 12, 8, 50, 200]
-      special_costs: [5000, 10, 20, 30, 40, 5000]
-      weapon_cost: 1
+      stats:
+        strength: 5
+        dexterity: 14
+        constitution: 5
+        intelligence: 12
+        armor: 8
+        level: 1
+      combat:
+        hp: 75
+        melee_damage: 12
+        stepsize: 4
+        fire_delay: 5
+        fire_mp_cost: 1
+      costs:
+        hire: 150
+        train:
+          strength: 25
+          dexterity: 6
+          constitution: 12
+          intelligence: 8
+          armor: 50
+          level: 200
+      specials:
+        - id: rocks
+          name: "ROCKS"
+          mp_cost: 10
+        - id: bouncing_rocks
+          name: "BOUNCING ROCKS"
+          mp_cost: 20
+        - id: lots_of_rocks
+          name: "LOTS OF ROCKS"
+          mp_cost: 30
+        - id: mega_rocks
+          name: "MEGA ROCKS"
+          mp_cost: 40
       default_weapon: core:rock
       init_bit_flags: [FORESTWALK]
       init_ani_type: 0
       init_max_magicpoints: 0
-      special_names: ["NONE", "ROCKS", "BOUNCING ROCKS", "LOTS OF ROCKS", "MEGA ROCKS", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: true
       magic_damage_modifier: 1
       is_stationary: false

@@ -5,18 +5,36 @@ families:
       wire_id: 12
       name: "GHOST"
       short_name: ~
-      base_stats: [6, 12, 18, 10, 15, 1]
-      hiring_cost: 600
-      derived_bonuses: [50, 0, 12, 0, 0, 0, 4, 7]
-      stat_costs: [16, 16, 16, 16, 45, 200]
-      special_costs: [5000, 30, 5000, 5000, 5000, 5000]
-      weapon_cost: 0
+      stats:
+        strength: 6
+        dexterity: 12
+        constitution: 18
+        intelligence: 10
+        armor: 15
+        level: 1
+      combat:
+        hp: 50
+        melee_damage: 12
+        stepsize: 4
+        fire_delay: 7
+        fire_mp_cost: 0
+      costs:
+        hire: 600
+        train:
+          strength: 16
+          dexterity: 16
+          constitution: 16
+          intelligence: 16
+          armor: 45
+          level: 200
+      specials:
+        - id: scare
+          name: "SCARE"
+          mp_cost: 30
       default_weapon: core:knife
       init_bit_flags: [FLYING, ANIMATE, NO_RANGED, ETHEREAL]
       init_ani_type: 0
       init_max_magicpoints: 0
-      special_names: ["NONE", "SCARE", "NONE", "NONE", "NONE", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: false
       magic_damage_modifier: 1
       is_stationary: false

@@ -44,10 +44,12 @@ modern surface in ~60 lines:
   `burn_floor`, `burst_range`, `stun_base`, `stun_per_level`) lives in
   `classpack.yaml` and is read back with `og.tuning(self)`, a frozen
   read-only table. Rebalancing the wisp is a YAML edit.
-- **A `specials` table** — `specials = { [1] = flare_burst }` replaces a
-  hand-written `current_special()` ladder. A slot with no entry and no
-  `default` is a successful no-op; answering `false` from the entry means
-  "did not fire" and skips the descriptor's special MP cost.
+- **A `specials` table** — `specials = { flare_burst = flare_burst }`
+  replaces a hand-written `current_special()` ladder. The key is the `id`
+  the YAML declares for that slot, so the two files name each other and a
+  typo is a load error rather than a handler that never runs. A slot with
+  no entry and no `default` is a successful no-op; answering `false` from
+  the entry means "did not fire" and skips the special's `mp_cost`.
 - **`og.rand` vs `og.rand0`** — the create-time roll has a positive
   literal bound, so it uses plain `og.rand` (its `n <= 0` error is a
   tripwire); the per-foe stun roll's bound is tuning-driven and may be

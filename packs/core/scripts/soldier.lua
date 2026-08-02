@@ -137,10 +137,10 @@ end
 
 og.register_hooks("living", "core:soldier", {
   specials = {
-    [1] = charge,
-    [2] = throw_boomerang,
-    [3] = whirlwind,
-    [4] = disarm,
+    charge = charge,
+    boomerang = throw_boomerang,
+    whirlwind = whirlwind,
+    disarm = disarm,
   },
   -- Historical charge window: about one to three grid squares.
   check_special_ai = ai.foe_in_window(20, 75),  -- fixed per-tick AI gate

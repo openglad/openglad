@@ -59,23 +59,59 @@ families:
       wire_id: auto
       name: "EMBERWISP"
       short_name: "WISP"
-      base_stats: [8, 14, 7, 16, 4, 1]
-      hiring_cost: 400
-      # HP MP ATK RATK RNG DEF SPD ATKSPD — the loader reads hitpoints,
-      # damage, stepsize and fire frequency straight out of this list.
-      derived_bonuses: [70, 40, 11, 0, 0, 0, 5, 9]
-      stat_costs: [30, 8, 30, 8, 60, 200]
-      # MP cost per special slot (slot 0 is "no special"). The engine
-      # gates do_special on magicpoints >= cost and deducts the cost only
-      # after the hook answers true; 5000 marks a slot as unavailable.
-      special_costs: [5000, 5, 5000, 5000, 5000, 5000]
-      weapon_cost: 2
+      # Attribute scores a fresh recruit starts with. The picker prices
+      # hiring and training as deltas from these, at the per-point prices
+      # in costs.train below. Every member is required: there is no honest
+      # default for armor, so leaving it out is a parse error rather than
+      # a silently 0-armor class.
+      stats:
+        strength: 8
+        dexterity: 14
+        constitution: 7
+        intelligence: 16
+        armor: 4
+        level: 1             # starting level; leave it at 1
+      # What a spawned wisp is in the field. The loader stamps these
+      # straight onto the walker.
+      combat:
+        hp: 70               # base hitpoints
+        melee_damage: 11
+        stepsize: 5          # px per step (movement speed)
+        fire_delay: 9        # busy ticks added AFTER each attack, so lower
+                             # is faster (the Lua accessor kept its older
+                             # name: self:fire_frequency())
+        fire_mp_cost: 2      # MAGIC POINTS per ranged shot; a wisp below
+                             # this cannot fire at all. Gold lives in
+                             # costs: — nothing in combat: is money.
+      # Gold, picker-side, and nothing else. train: is the price of one
+      # point on each stats axis.
+      costs:
+        hire: 400
+        train:
+          strength: 30
+          dexterity: 8
+          constitution: 30
+          intelligence: 8
+          armor: 60
+          level: 200         # vestigial: levels are priced by the exp
+                             # curve and nothing reads this. New packs may
+                             # omit it; an omitted axis is 0.
+      # Up to five, in slot order: the first entry is slot 1, usable at
+      # level (N-1)*3+1. `id` is the key your script registers the handler
+      # under — a typo on either side is a load error naming the ids that
+      # do exist, so reordering this list can never silently re-bind a
+      # handler. The engine refuses the cast below mp_cost and deducts it
+      # only after the handler answers true.
+      specials:
+        - id: flare_burst
+          name: "FLARE BURST"
+          mp_cost: 5
       default_weapon: core:fireball
       init_bit_flags: [FLYING, FORESTWALK]
       init_ani_type: 0
+      # The wisp's ember pool. This is the live max-MP knob; the usual
+      # maximum is 10 + INT*3, and there is no combat: member for it.
       init_max_magicpoints: 40
-      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: false
       magic_damage_modifier: 0.5
       is_stationary: false

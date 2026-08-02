@@ -620,16 +620,35 @@ TEST_F(SpecialsByIdTest, an_id_and_its_slot_number_together_are_a_load_error)
 
 TEST_F(SpecialsDispatchTest, an_id_key_on_a_family_that_declares_none_says_so)
 {
-    // The shipped core pack is still on the array schema, so its families
-    // declare no ids at all; the error has to say that rather than list an
-    // empty set.
+    // core:faerie has no castable slot and so declares no id; the error has
+    // to say that rather than list an empty set.
     register_chunk(
-        "og.register_hooks('living', 'core:soldier', {\n"
-        "  specials = { charge = function(self) return true end },\n"
+        "og.register_hooks('living', 'core:faerie', {\n"
+        "  specials = { flutter = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
     const std::string& msg = vm_errors().front().message;
     EXPECT_NE(std::string::npos, msg.find("declares no special ids")) << msg;
+}
+
+TEST_F(SpecialsDispatchTest, the_shipped_core_pack_declares_its_special_ids)
+{
+    // The join the migrated corpus depends on: soldier.lua keys its four
+    // handlers by the ids living-00-soldier.yaml declares, and a slot
+    // integer for the same slot is the collision the engine refuses.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { charge = function(self) return true end },\n"
+        "})\n");
+    ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_STREQ("charge", fd->special_ids[1]);
+    EXPECT_STREQ("boomerang", fd->special_ids[2]);
+    EXPECT_STREQ("whirlwind", fd->special_ids[3]);
+    EXPECT_STREQ("disarm", fd->special_ids[4]);
+    EXPECT_EQ(nullptr, fd->special_ids[0]);
+    EXPECT_EQ(nullptr, fd->special_ids[5]);
 }
 
 TEST_F(SpecialsByIdTest, castable_slot_with_no_handler_warns_after_load)

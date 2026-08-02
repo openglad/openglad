@@ -5,18 +5,48 @@ families:
       wire_id: 5
       name: "CLERIC"
       short_name: ~
-      base_stats: [6, 7, 6, 14, 7, 1]
-      hiring_cost: 400
-      derived_bonuses: [120, 0, 12, 0, 0, 0, 2, 7.5]
-      stat_costs: [15, 15, 9, 6, 50, 200]
-      special_costs: [5000, 2, 20, 50, 150, 5000]
-      weapon_cost: 8
+      stats:
+        strength: 6
+        dexterity: 7
+        constitution: 6
+        intelligence: 14
+        armor: 7
+        level: 1
+      combat:
+        hp: 120
+        melee_damage: 12
+        stepsize: 2
+        fire_delay: 7.5
+        fire_mp_cost: 8
+      costs:
+        hire: 400
+        train:
+          strength: 15
+          dexterity: 15
+          constitution: 9
+          intelligence: 6
+          armor: 50
+          level: 200
+      specials:
+        - id: heal
+          name: "HEAL"
+          mp_cost: 2
+          alternate: {name: "MYSTIC MACE"}
+        - id: raise_undead
+          name: "RAISE UNDEAD"
+          mp_cost: 20
+          alternate: {name: "TURN UNDEAD"}
+        - id: raise_ghost
+          name: "RAISE GHOST"
+          mp_cost: 50
+          alternate: {name: "TURN UNDEAD"}
+        - id: resurrect
+          name: "RESURRECT"
+          mp_cost: 150
       default_weapon: core:glow
       init_bit_flags: []
       init_ani_type: 0
       init_max_magicpoints: 0
-      special_names: ["NONE", "HEAL", "RAISE UNDEAD", "RAISE GHOST", "RESURRECT", "NONE"]
-      alternate_names: ["NONE", "MYSTIC MACE", "TURN UNDEAD", "TURN UNDEAD", "NONE", "NONE"]
       leaves_bloodspot: true
       magic_damage_modifier: 1
       is_stationary: false

@@ -450,23 +450,56 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
     ASSERT_EQ(e.id, "core:soldier");
     ASSERT_EQ(e.wire_id, "0");
     ASSERT_EQ(*e.name, fd->name);
-    for (int i = 0; i < 6; i++)
-        ASSERT_EQ((*e.base_stats)[static_cast<std::size_t>(i)],
-                  fd->base_stats[i]);
-    ASSERT_EQ((*e.derived_bonuses)[0], fd->combat.hp);
-    ASSERT_EQ((*e.derived_bonuses)[2], fd->combat.melee_damage);
-    ASSERT_EQ((*e.derived_bonuses)[6], fd->combat.stepsize);
-    ASSERT_EQ((*e.derived_bonuses)[7], fd->combat.fire_delay);
-    ASSERT_EQ(e.hiring_cost.value_or(-1), fd->hiring_cost);
+    ASSERT_TRUE(e.stats.has_value());
+    ASSERT_EQ(e.stats->strength, fd->base_stats[StatAxis::Strength]);
+    ASSERT_EQ(e.stats->dexterity, fd->base_stats[StatAxis::Dexterity]);
+    ASSERT_EQ(e.stats->constitution, fd->base_stats[StatAxis::Constitution]);
+    ASSERT_EQ(e.stats->intelligence, fd->base_stats[StatAxis::Intelligence]);
+    ASSERT_EQ(e.stats->armor, fd->base_stats[StatAxis::Armor]);
+    ASSERT_EQ(e.stats->level, fd->base_stats[StatAxis::Level]);
+    ASSERT_TRUE(e.combat.has_value());
+    ASSERT_EQ(e.combat->hp, fd->combat.hp);
+    ASSERT_EQ(e.combat->melee_damage, fd->combat.melee_damage);
+    ASSERT_EQ(e.combat->stepsize, fd->combat.stepsize);
+    ASSERT_EQ(e.combat->fire_delay, fd->combat.fire_delay);
+    ASSERT_EQ(e.combat->fire_mp_cost, fd->combat.fire_mp_cost);
+    ASSERT_TRUE(e.costs.has_value());
+    ASSERT_EQ(e.costs->hire, fd->hiring_cost);
+    ASSERT_TRUE(e.costs->train.has_value());
+    ASSERT_EQ(e.costs->train->strength, fd->stat_costs[StatAxis::Strength]);
+    ASSERT_EQ(e.costs->train->armor, fd->stat_costs[StatAxis::Armor]);
+    // The specials list is slot-ordered and its ids are what soldier.lua
+    // keys its handlers by; the disabled slots it omits are the registry
+    // defaults (index 0 is the engine artifact, index 5 is unused here).
+    ASSERT_TRUE(e.specials.has_value());
+    ASSERT_EQ(e.specials->size(), 4u);
+    for (const og::data::ClasspackSpecialEntry& s : *e.specials) {
+        ASSERT_STREQ(s.name.c_str(), fd->special_names[s.slot]);
+        ASSERT_EQ(s.mp_cost, fd->special_cost[s.slot]);
+        ASSERT_STREQ(s.id.c_str(), fd->special_ids[s.slot]);
+    }
+    ASSERT_EQ((*e.specials)[0].id, "charge");
+    ASSERT_EQ((*e.specials)[0].slot, 1);
+    ASSERT_EQ((*e.specials)[3].id, "disarm");
+    ASSERT_EQ((*e.specials)[3].slot, 4);
     ASSERT_EQ(e.default_weapon.value_or(""), "core:knife");
     ASSERT_EQ(e.description.value, fd->description);
     ASSERT_EQ(e.names->size(),
               static_cast<std::size_t>(fd->name_pool_size));
     ASSERT_EQ(e.animation.value_or(""), "standard");
 
-    // Every living entry's wire_id is the pinned legacy byte.
-    for (std::size_t i = 0; i < data.living.size(); i++)
+    // Every living entry's wire_id is the pinned legacy byte, and every one
+    // of them speaks schema v2 — a file left on the positional arrays would
+    // parse, install and quietly keep working, so the corpus says so here.
+    for (std::size_t i = 0; i < data.living.size(); i++) {
         ASSERT_EQ(data.living[i].wire_id, std::to_string(i));
+        ASSERT_TRUE(data.living[i].stats.has_value()) << data.living[i].id;
+        ASSERT_TRUE(data.living[i].combat.has_value()) << data.living[i].id;
+        ASSERT_TRUE(data.living[i].costs.has_value()) << data.living[i].id;
+        ASSERT_TRUE(data.living[i].specials.has_value()) << data.living[i].id;
+        ASSERT_FALSE(data.living[i].base_stats.has_value())
+            << data.living[i].id << " still ships v1 base_stats";
+    }
 }
 
 // ---------------------------------------------------------------------------

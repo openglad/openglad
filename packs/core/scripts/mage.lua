@@ -277,10 +277,10 @@ end
 
 og.register_hooks("living", "core:mage", {
   specials = {
-    [1] = teleport,
-    [2] = starburst,
-    [3] = freeze_time,
-    [4] = energy_wave,
+    teleport = teleport,
+    warp_space = starburst,
+    freeze_time = freeze_time,
+    energy_wave = energy_wave,
     default = heartburst,  -- case 5 and every unmapped slot
   },
   check_special_ai = check_special_ai,

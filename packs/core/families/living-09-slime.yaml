@@ -5,18 +5,36 @@ families:
       wire_id: 9
       name: "SLIME"
       short_name: ~
-      base_stats: [18, 2, 18, 7, 6, 1]
-      hiring_cost: 700
-      derived_bonuses: [80, 0, 12, 0, 0, 0, 2, 12]
-      stat_costs: [20, 20, 8, 14, 50, 200]
-      special_costs: [5000, 30, 5000, 5000, 5000, 5000]
-      weapon_cost: 0
+      stats:
+        strength: 18
+        dexterity: 2
+        constitution: 18
+        intelligence: 7
+        armor: 6
+        level: 1
+      combat:
+        hp: 80
+        melee_damage: 12
+        stepsize: 2
+        fire_delay: 12
+        fire_mp_cost: 0
+      costs:
+        hire: 700
+        train:
+          strength: 20
+          dexterity: 20
+          constitution: 8
+          intelligence: 14
+          armor: 50
+          level: 200
+      specials:
+        - id: grow
+          name: "GROW"
+          mp_cost: 30
       default_weapon: core:blob
       init_bit_flags: [ANIMATE, NO_RANGED]
       init_ani_type: 0
       init_max_magicpoints: 50
-      special_names: ["NONE", "GROW", "NONE", "NONE", "NONE", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: true
       magic_damage_modifier: 2
       is_stationary: false
