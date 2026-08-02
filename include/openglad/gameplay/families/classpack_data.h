@@ -1,0 +1,305 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+#pragma once
+
+// The class-pack INTERCHANGE structs: one pack's family descriptor data in
+// plain structs with OWNED std::string storage, independent of whatever
+// text produced it.
+//
+// Two front ends fill these — the classpack.yaml reader
+// (resources/classpack_yaml.h) and the Lua declaration pass
+// (gameplay/script/family_decl.h, `og.family`) — and exactly one back end
+// consumes them: install_pack_families() in src/resources/packs.cpp. That
+// is deliberate. Identical structs in, one installer, identical registry
+// bytes out — which is what makes "the Lua front end installs what the YAML
+// front end installed" a marshaling proof rather than a hope.
+//
+// They live under gameplay rather than resources because the declaration
+// pass runs a Lua VM, and Lua headers may only be included from
+// src/gameplay/script/ (check_vendor_leaks.sh); gameplay cannot see
+// resources headers, so the shared vocabulary has to sit on the gameplay
+// side of the boundary.
+//
+// Every field is optional-by-presence: the registry installer overwrites
+// only the fields a pack actually declares, so a sparse mod entry inherits
+// the rest of the current descriptor. Free-text fields that can carry an
+// explicit null (YAML `~`, Lua `og.NIL`) — e.g. short_name, promotes_to —
+// use NullableString so "absent", "null", and "value" stay
+// distinguishable.
+
+#include <openglad/core/order.h>
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace og::data {
+
+// A string field that distinguishes absent / explicit null (~) / value.
+struct NullableString {
+    bool present = false;
+    bool is_null = false;    // meaningful only when present
+    std::string value;       // meaningful only when present && !is_null
+};
+
+// The presentation block every order shares (docs/lua-classpacks-design.md
+// §4). Absent sub-keys leave the descriptor's current values alone.
+//   glyph:            one UTF-8 codepoint, the terminal client's shape
+//   glyph_ascii:      single-byte fallback for non-Unicode terminals
+//   glyph_color:      default|black|red|green|yellow|blue|magenta|cyan|
+//                     white|team ("team" = paint with the entity's team)
+//   glyph_bold:       bright attribute
+//   glyph_transparent: draw nothing (the curses Glyph::skip flag)
+//   radar_color:      palette index, or "team" / "none"
+//   radar_jitter:     rng(N) span added to radar_color (0 = no rng call)
+struct ClasspackPresentation {
+    std::optional<std::string> glyph;        // UTF-8, exactly one codepoint
+    std::optional<std::string> glyph_ascii;  // exactly one byte
+    std::optional<std::string> glyph_color;
+    std::optional<bool> glyph_bold;
+    std::optional<bool> glyph_transparent;
+    std::optional<std::int32_t> radar_color;  // sentinels already folded in
+    std::optional<std::int32_t> radar_jitter;
+};
+
+// One scalar value of a family entry's `tuning:` map. The kind preserves
+// the author's YAML spelling — plain `5` is Integer, `5.0` Number, `true`
+// Boolean; anything QUOTED is String even when it looks numeric, and an
+// unparseable plain scalar is a plain-style string. Scripts read the map
+// through `og.tuning(self)` as a frozen table, so the Integer/Number split
+// decides nothing here beyond which Lua number subtype the value carries.
+struct ClasspackTuningValue {
+    enum class Kind : std::uint8_t { Integer, Number, Boolean, String };
+    Kind kind = Kind::Integer;
+    std::int64_t integer = 0;  // Kind::Integer
+    double number = 0.0;       // Kind::Number
+    bool boolean = false;      // Kind::Boolean
+    std::string string;        // Kind::String
+};
+
+// One key/value pair of a `tuning:` map, in YAML order.
+struct ClasspackTuningPair {
+    std::string key;
+    ClasspackTuningValue value;
+};
+
+// One row of an `anims:` frame set. `is_null` is the YAML `~` row, which
+// becomes a nullptr entry in the built table (the legacy anislime table has
+// eight of them).
+struct ClasspackAnimRow {
+    bool is_null = false;
+    std::vector<std::int32_t> frames;  // sprite frame indices, 0..127
+};
+
+// One named set under `anims:`. `rows` is the optional total row count; when
+// it exceeds the declared rows the declared rows repeat cyclically, so
+// `rows: 16` over a single row reproduces the legacy 16x-same-row tables.
+struct ClasspackAnimSet {
+    std::string name;
+    std::optional<std::int32_t> rows;
+    std::vector<ClasspackAnimRow> frames;
+};
+
+// --- schema v2 living blocks -------------------------------------------
+//
+// v2 replaced the six positional arrays of a living entry with named
+// blocks. The old spellings (base_stats, derived_bonuses, stat_costs,
+// special_costs, special_names, alternate_names, hiring_cost, weapon_cost)
+// are gone from the parser, but not into the unknown-key hole: each is
+// still recognized by name and fails the pack with the block it became
+// and a pointer at scripts/migrate_classpack_v2.py.
+
+// `stats:` — the attribute scores a recruit starts with, and the base the
+// picker prices training deltas against. Every member is required when the
+// block appears: defaulting one silently would ship, say, a 0-armor class.
+struct ClasspackStatsBlock {
+    std::int32_t strength = 0;
+    std::int32_t dexterity = 0;
+    std::int32_t constitution = 0;
+    std::int32_t intelligence = 0;
+    std::int32_t armor = 0;
+    std::int32_t level = 0;   // starting level (1 for every core family)
+};
+
+// `combat:` — what one of these is in the field. All members required,
+// same argument as stats:. fire_delay is busy ticks added after each
+// attack (lower = faster); fire_mp_cost is MAGIC POINTS per ranged shot.
+struct ClasspackCombatBlock {
+    float hp = 0.0f;
+    float melee_damage = 0.0f;
+    float stepsize = 0.0f;
+    float fire_delay = 0.0f;
+    std::int32_t fire_mp_cost = 0;
+};
+
+// `costs.train:` — gold per training point on each axis. Axes are
+// optional here: an omitted axis is 0, which is what v1 shipped for an
+// unpriced one. `level` is vestigial (levels are priced by the exp curve)
+// and kept only so migrated packs install the bytes v1 did.
+struct ClasspackTrainCosts {
+    std::int32_t strength = 0;
+    std::int32_t dexterity = 0;
+    std::int32_t constitution = 0;
+    std::int32_t intelligence = 0;
+    std::int32_t armor = 0;
+    std::int32_t level = 0;
+};
+
+// `costs:` — gold, and only gold. `hire` is required.
+struct ClasspackCostsBlock {
+    std::int32_t hire = 0;
+    std::optional<ClasspackTrainCosts> train;
+};
+
+// The highest special slot a family has. Slot 0 is an engine artifact the
+// loader zeroes and v2 does not spell; the reachable slots are 1..5, the
+// fifth becoming selectable at level 13. (== FD_NUM_SPECIALS - 1, checked
+// where the two meet in the installer.)
+inline constexpr int kMaxSpecialSlot = 5;
+
+// One entry of a `specials:` list. List order gives slots 1..5; an entry
+// may name its own `slot:` to leave a hole, and slots must strictly
+// increase. `id` is the key a pack script's specials table uses for the
+// slot.
+struct ClasspackSpecialEntry {
+    std::string id;                // required, [a-z0-9_]+, unique per family
+    std::string name;              // required, the HUD string
+    std::int32_t mp_cost = 0;      // required
+    std::optional<std::string> alternate_name;  // alternate: {name: ...}
+    std::int32_t slot = 0;         // 1..5, resolved from order or `slot:`
+};
+
+// One entry under families.living. YAML keys per design doc §4; field
+// names match the keys, values mirror FamilyDescriptor's data fields.
+struct ClasspackLivingEntry {
+    std::string id;                        // required ("core:soldier")
+    std::string wire_id;                   // "0".."255", "auto", or "" = absent (auto)
+    std::optional<std::string> name;
+    NullableString short_name;
+    // schema v2 blocks
+    std::optional<ClasspackStatsBlock> stats;
+    std::optional<ClasspackCombatBlock> combat;
+    std::optional<ClasspackCostsBlock> costs;
+    std::optional<std::vector<ClasspackSpecialEntry>> specials;
+    std::optional<std::string> default_weapon;   // weapon family string id
+    std::optional<std::vector<std::string>> init_bit_flags;    // BIT_* names
+    std::optional<std::int32_t> init_ani_type;
+    std::optional<float> init_max_magicpoints;
+    std::optional<bool> leaves_bloodspot;
+    std::optional<float> magic_damage_modifier;
+    std::optional<bool> is_stationary;
+    std::optional<bool> has_returning_weapon;
+    std::optional<bool> is_undead;
+    NullableString promotes_to;            // living family string id or ~
+    std::optional<std::int32_t> promotion_level_req;
+    NullableString death_message;
+    NullableString sprite;                 // pix filename or pack-relative path
+    std::optional<std::string> animation;  // built-in name or an anims: set
+    std::optional<std::int32_t> ai_line_of_sight;
+    NullableString description;
+    std::optional<std::vector<std::string>> names;  // random-name pool
+    std::optional<bool> playable;
+    std::optional<std::int32_t> playable_order;
+    ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+};
+
+// One entry under families.weapon (WeaponFamilyDescriptor data fields).
+struct ClasspackWeaponEntry {
+    std::string id;
+    std::string wire_id;
+    std::optional<std::string> name;
+    std::optional<std::int32_t> fire_sound;
+    std::optional<bool> skip_sit_notify;
+    std::optional<bool> is_auto_attackable;
+    std::optional<std::vector<std::string>> init_bit_flags;
+    std::optional<std::int32_t> init_lifetime;
+    std::optional<std::int32_t> init_ani_type;
+    std::optional<float> vz;               // WeaponFamilyDescriptor.init_vz
+    std::optional<float> gravity;
+    std::optional<std::int32_t> sizez;     // WeaponFamilyDescriptor.init_sizez
+    std::optional<bool> can_drop_floors;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+};
+
+// One entry under families.effect (EffectFamilyDescriptor data fields).
+struct ClasspackEffectEntry {
+    std::string id;
+    std::string wire_id;
+    std::optional<std::string> name;
+    std::optional<bool> loops_animation;
+    std::optional<bool> creates_hit_effect;
+    std::optional<std::vector<std::string>> init_bit_flags;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+};
+
+// One entry under families.treasure (TreasureFamilyDescriptor data fields).
+struct ClasspackTreasureEntry {
+    std::string id;
+    std::string wire_id;
+    std::optional<std::string> name;
+    std::optional<bool> init_ignore;
+    std::optional<std::int32_t> init_frame;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+};
+
+// One entry under families.generator (GeneratorFamilyDescriptor data
+// fields). default_weapon names the LIVING family the generator produces.
+struct ClasspackGeneratorEntry {
+    std::string id;
+    std::string wire_id;
+    std::optional<std::string> name;
+    std::optional<std::string> default_weapon;  // living family string id
+    std::optional<bool> has_lifetime;
+    std::optional<std::int32_t> spawn_ani_type;
+    std::optional<bool> clear_owner;
+    NullableString sprite;
+    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> editor_label;  // level-editor palette caption
+    ClasspackPresentation presentation;
+    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+};
+
+// One family the Lua declaration pass produced, by order and declared id.
+//
+// Provenance the YAML front end never claims. Two rules read it: a castable
+// special that nothing handles is a WARNING for a YAML family and a pack
+// ERROR for an og.family one (v3 rule V3), and diagnostics name the pack
+// that declared the slot. It rides in the parsed data rather than a side
+// channel because the parse is memoized on exact bytes — a side channel
+// would be empty on every memo hit, which is most installs.
+struct ClasspackLuaDeclaration {
+    ::Order order = ::Order::Living;
+    std::string id;   // the entry's declared `id`, e.g. "core:soldier"
+};
+
+struct ClasspackData {
+    std::string pack;      // `pack:` header (informative; mount dir is the id)
+    std::string version;
+    std::string title;
+    std::string authors;
+    std::vector<ClasspackLivingEntry> living;
+    std::vector<ClasspackWeaponEntry> weapons;
+    std::vector<ClasspackEffectEntry> effects;
+    std::vector<ClasspackTreasureEntry> treasures;
+    std::vector<ClasspackGeneratorEntry> generators;
+    std::vector<ClasspackAnimSet> anims;  // `anims:` section, YAML order
+    std::vector<ClasspackLuaDeclaration> lua_declarations;
+};
+
+}  // namespace og::data

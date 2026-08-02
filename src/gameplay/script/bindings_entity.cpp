@@ -2501,7 +2501,71 @@ const NamedConst kConstants[] = {
     {"MAXOBS", MAXOBS},
 };
 
+// ---------------------------------------------------------------------------
+// The load-time fence
+// ---------------------------------------------------------------------------
+//
+// The world API is DISPATCH-time only. A pack chunk's top level runs while
+// the VM is being built — during the declaration pass, and again in every
+// bind replay — and a world call there is never what the author meant: it
+// asks the world a question at a moment the answer is either unavailable or,
+// worse, available on ONE peer.
+//
+// og.rand is the case that proves it. It used to fail at chunk load by
+// accident, because current_game is null while the boot-time VM is built;
+// but GameWorld::scripts() rebuilds a VM at the first dispatch after a mount
+// change, with a live world, and a top-level og.rand there would have
+// SUCCEEDED and pulled the sim's stream out from under the other peers. The
+// fence makes "no world at chunk-load time" a property of load time rather
+// than of which VM happens to have no world.
+//
+// Deliberately NOT fenced: og.max/min/clamp/sign (pure branch helpers over
+// their arguments — a pack may reasonably fold a constant with them at load
+// time), og.div/mod/f*/i*/trunc/log (the sandbox arithmetic, which never
+// reached the world), and og.combat.* (draw-free formulas). Everything else
+// in the world table either needs a live world or a dispatch-scoped handle,
+// so fencing it costs a correct pack nothing.
+constexpr const char* kUnfencedWorldFuncs[] = {"max", "min", "clamp", "sign"};
+
+bool is_unfenced(const char* name)
+{
+    for (const char* n : kUnfencedWorldFuncs) {
+        if (std::strcmp(n, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+// upvalue 1: the real binding (a light C function), 2: the VmState,
+// 3: its og.* name. Calling the inner function DIRECTLY (rather than through
+// lua_call) keeps the Lua stack frame identical, so argument indices,
+// luaL_where levels and error positions are exactly what they were before
+// the fence existed.
+int load_fenced_call(lua_State* L)
+{
+    const auto* st =
+        static_cast<VmState*>(lua_touserdata(L, lua_upvalueindex(2)));
+    if (st != nullptr && st->loading) {
+        return luaL_error(
+            L,
+            "og.%s: the world API is dispatch-time only — a pack chunk's top "
+            "level runs before there is a world to ask (bind hooks here and "
+            "call it from them)",
+            lua_tostring(L, lua_upvalueindex(3)));
+    }
+    return lua_tocfunction(L, lua_upvalueindex(1))(L);
+}
+
 }  // namespace
+
+void fence_world_entry(lua_State* L, VmState* st, const char* name)
+{
+    lua_getfield(L, -1, name);
+    lua_pushlightuserdata(L, st);
+    lua_pushstring(L, name);
+    lua_pushcclosure(L, load_fenced_call, 3);
+    lua_setfield(L, -2, name);
+}
 
 void install_entity_bindings(lua_State* L, VmState* st)
 {
@@ -2548,10 +2612,27 @@ void install_entity_bindings(lua_State* L, VmState* st)
     lua_pop(L, 1);
 }
 
-void install_entity_bindings_into_og(lua_State* L)
+void install_entity_bindings_into_og(lua_State* L, VmState* st)
 {
     // Expects the og table at the top of the stack.
     luaL_setfuncs(L, kOgWorldFuncs, 0);
+    for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
+        if (is_unfenced(r->name))
+            continue;
+        // Two spellings of one entry point (og.ctf_flag_touch /
+        // og.ctf_on_flag_touch) must stay the SAME Lua value: a pack may
+        // compare them, and a test does. Wrapping each row independently
+        // would hand out two closures that behave alike and compare unequal,
+        // so an alias copies the wrapper its twin already got.
+        const luaL_Reg* twin = kOgWorldFuncs;
+        for (; twin != r && twin->func != r->func; twin++) {}
+        if (twin != r) {
+            lua_getfield(L, -1, twin->name);
+            lua_setfield(L, -2, r->name);
+            continue;
+        }
+        fence_world_entry(L, st, r->name);
+    }
     lua_newtable(L);
     luaL_setfuncs(L, kOgCombatFuncs, 0);
     lua_setfield(L, -2, "combat");

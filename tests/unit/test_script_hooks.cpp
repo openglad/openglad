@@ -98,8 +98,10 @@ TEST_F(ScriptHooksTest, unknown_hook_name_is_a_load_error)
          "{ do_speshul = function() return true end })\n"});
     WorldScripts& ws = active_world_scripts();
     ASSERT_FALSE(ws.host().errors().empty());
-    EXPECT_NE(std::string::npos,
-              ws.host().errors().front().message.find("no valid hooks"));
+    const std::string& message = ws.host().errors().front().message;
+    EXPECT_NE(std::string::npos, message.find("has no hook 'do_speshul'"));
+    // The other half of a strict-key rule: the name the author meant.
+    EXPECT_NE(std::string::npos, message.find("did you mean 'do_special'"));
 }
 
 TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)

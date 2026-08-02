@@ -18,6 +18,7 @@
 #include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
@@ -64,6 +65,7 @@ int refresh_pack_scripts()
     g_pack_install_stats.refreshes++;
     og::script::clear_pack_scripts();
     og::script::clear_pack_lib_modules();
+    og::script::clear_pack_family_chunks();
     const int scripts = register_mounted_pack_scripts();
     // Mount changes can add/remove classpack.yaml data too (campaign-
     // embedded packs); reinstall keeps registries in step with scripts.
@@ -75,6 +77,7 @@ int register_mounted_pack_scripts()
 {
     int registered = 0;
     int modules = 0;
+    int families = 0;
     // Sorted enumeration keeps the replay order identical on every peer.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {
@@ -105,6 +108,33 @@ int register_mounted_pack_scripts()
                 {pack_id, file.substr(0, file.size() - 4), vpath,
                  std::move(source)});
             modules++;
+        }
+        // families/ next: the og.family declarations. Same enumeration and
+        // the same coverage inventory as every other pack chunk — a family
+        // file is pack Lua, and the declaration pass is one of the two
+        // contexts it runs in. Registered separately from scripts/ because
+        // the declaration pass evaluates families/ and ONLY families/, which
+        // is what makes "og.family is legal only here" mechanical.
+        const std::string families_lua_dir = "packs/" + pack_id + "/families";
+        for (const std::string& file :
+             og::io::physfs_enumerate_files_sorted(families_lua_dir)) {
+            if (!file.ends_with(".lua"))
+                continue;
+            const std::string vpath = families_lua_dir + "/" + file;
+            std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
+            if (bytes.empty()) {
+                LogWarn("class pack family chunk unreadable: {}\n", vpath);
+                continue;
+            }
+            std::string source(reinterpret_cast<const char*>(bytes.data()),
+                               bytes.size());
+            if (og::script::coverage::enabled()) {
+                og::script::coverage::declare_pack_source(
+                    vpath, source, og::io::physfs_real_dir(vpath));
+            }
+            og::script::register_pack_family_chunk(
+                {pack_id, vpath, std::move(source)});
+            families++;
         }
         const std::string scripts_dir = "packs/" + pack_id + "/scripts";
         for (const std::string& file :
@@ -145,6 +175,8 @@ int register_mounted_pack_scripts()
         Log("Registered {} class pack script(s)\n", registered);
     if (modules > 0)
         Log("Registered {} class pack lib module(s)\n", modules);
+    if (families > 0)
+        Log("Registered {} class pack family chunk(s)\n", families);
     return registered;
 }
 
@@ -1049,6 +1081,11 @@ int install_classpacks()
     // reinstalled from every mounted pack's classpack data.
     reset_all_registry_mod_slots();
     og::script::clear_all_family_tuning();
+    // The Lua front end's two side tables follow the same all-or-nothing
+    // rebuild: which packs failed to declare, and which registry slots a
+    // declaration owns. Both describe the pass about to run.
+    og::script::clear_failed_pack_declarations();
+    og::script::clear_lua_declared_families();
     g_pack_install_stats.installs++;
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
@@ -1112,8 +1149,20 @@ int install_classpacks()
                                             bytes.data()),
                                         bytes.size())});
         }
+        // The Lua front end's inputs, already read into the chunk registries
+        // by register_mounted_pack_scripts: this pack's families/*.lua (the
+        // og.family declarations) and its lib/*.lua (which og.use pulls into
+        // the declaration, so a module edit really can change what a family
+        // declares). Framed into the same signature, so one memo covers
+        // both front ends and a hit still means the same bytes.
+        std::vector<const og::script::PackScript*> family_chunks;
+        for (const og::script::PackScript& c :
+             og::script::pack_family_chunks()) {
+            if (c.pack_id == pack_id)
+                family_chunks.push_back(&c);
+        }
         auto& memo = parsed_pack_memo();
-        if (rejected || docs.empty()) {
+        if (rejected || (docs.empty() && family_chunks.empty())) {
             // No classpack data at all (scripts-only) is fine. Either way
             // this pack has no valid parse to remember.
             memo.erase(pack_id);
@@ -1125,6 +1174,23 @@ int install_classpacks()
             signature += std::to_string(doc.text.size());
             signature += '\n';
             signature += doc.text;
+        }
+        for (const og::script::PackLibModule& m :
+             og::script::pack_lib_modules()) {
+            if (m.pack_id != pack_id)
+                continue;
+            signature += m.chunk_name;
+            signature += '\n';
+            signature += std::to_string(m.source.size());
+            signature += '\n';
+            signature += m.source;
+        }
+        for (const og::script::PackScript* c : family_chunks) {
+            signature += c->chunk_name;
+            signature += '\n';
+            signature += std::to_string(c->source.size());
+            signature += '\n';
+            signature += c->source;
         }
 
         // PARSE phase, memoized on the exact bytes just read.
@@ -1152,6 +1218,18 @@ int install_classpacks()
                 memo.erase(pack_id);
                 continue;
             }
+            // The Lua front end, into the SAME structs, after the YAML: a
+            // pack may ship either (during the migration, both), and the
+            // installer never learns which produced an entry.
+            const og::script::DeclareResult declared =
+                og::script::declare_pack_families(pack_id, *parsed);
+            if (!declared.ok) {
+                LogWarn("class pack '{}' rejected: {}\n", pack_id,
+                        declared.error);
+                og::script::note_failed_pack_declaration(pack_id);
+                memo.erase(pack_id);
+                continue;
+            }
             // Move into the process-lifetime store BEFORE installing:
             // descriptors borrow the stored strings.
             stored = parsed.get();
@@ -1163,6 +1241,21 @@ int install_classpacks()
         // just reset, and every entry is reinstalled in the same order with
         // the same wire-id counter.
         installed += install_pack_families(*stored, autos);
+        // Which registry slots this pack declared in LUA. The rules that
+        // hold a Lua declaration to a higher standard than a YAML one read
+        // it back after the bind pass — an unhandled castable special is a
+        // warning for a slot some other front end filled and a pack error
+        // for one an og.family wrote (format spec V3). Resolved here because
+        // the family byte only exists after the install: a declared id is
+        // all the declaration itself can name.
+        for (const og::data::ClasspackLuaDeclaration& decl :
+             stored->lua_declarations) {
+            const int family_id = og::families::resolve_family_string_id(
+                decl.order, decl.id.c_str());
+            if (family_id >= 0)
+                og::script::note_lua_declared_family(decl.order, family_id,
+                                                     pack_id);
+        }
         packs_seen++;
     }
     if (packs_seen > 0)
