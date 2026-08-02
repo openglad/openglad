@@ -95,6 +95,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 
 	clear_keyboard();
 
+	// Do the loop until person hits escape
 	while (!query_input_continue())
 	{
 		YIELD_SLEEP(10);
@@ -116,6 +117,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// scrolling one page down
 		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
 #ifdef TESTING
 		    || s_help_test_page_down.load(std::memory_order_acquire)
@@ -129,6 +131,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 				templines = linesdown + (DISPLAY_LINES * 7);
 				if (templines > bottomrow)
 					templines = bottomrow;
+				// we actually moved down
 				if (linesdown != templines)
 				{
 					linesdown = templines;
@@ -152,6 +155,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// scrolling one page up
 		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
 #ifdef TESTING
 		    || s_help_test_page_up.load(std::memory_order_acquire)
@@ -169,8 +173,10 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// did we scroll, etc.?
 		if (changed)
 		{
+			// which TEXT line are we at?
 			templines = linesdown/8;
 			scr->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                 HELPTEXT_LEFT+box_width, HELPTEXT_TOP+107, 3, 1);

@@ -169,6 +169,7 @@ public:
     // fx--explosions, etc.
     EntityList fxlist;
     EntityList weaplist;
+    // Keep a list of dead guys so weapons can still have valid owners
     EntityList dead_list;
 
     // Spatial data. floors_[0] is represented by the legacy single

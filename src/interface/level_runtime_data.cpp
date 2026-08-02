@@ -546,6 +546,7 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless,
 
     if (!headless)
     {
+        // Load map data from a pixie format
         load_map_data(level_visuals().pixdata);
         load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)

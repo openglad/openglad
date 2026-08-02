@@ -31,6 +31,7 @@ LevelRender::~LevelRender() = default;
 
 void LevelRender::init_tiles(PixieData pixdata[])
 {
+    // Initialize a pixie for each background piece
     for (int i = 0; i < PIX_MAX; i++)
         impl_->back[i] = std::make_unique<pixieN>(pixdata[i], 0);
 

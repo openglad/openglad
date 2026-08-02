@@ -295,6 +295,7 @@ void glad_init(bool preserve_frame_timing,
     }
 #endif
 
+    // This will update the 'control' so the screen centers on our guy
     current_screen->continuous_input();
 
     current_screen->redraw();

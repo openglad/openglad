@@ -56,6 +56,7 @@ struct DialogBounds {
     int w, h, leftside, rightside;
 };
 
+// Get the max dimensions needed to display it
 DialogBounds compute_dialog_bounds(const char* title, const std::list<std::string>& lines)
 {
     int w = static_cast<int>(strlen(title)) * 9;
@@ -177,6 +178,7 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
 
     text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
+    // Break message into lines
     std::list<std::string> ls = explode(message, '\n');
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
@@ -197,9 +199,11 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     int retvalue = 0;
     while (retvalue == 0)
     {
+        // Input - leftmouse will poll events via query_mouse()
         if(leftmouse(buttons))
             retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
+        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(og::runtime::current_session->keystates_[KEYSTATE_y])

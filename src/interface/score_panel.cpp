@@ -617,6 +617,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
 #ifdef USE_TOUCH_INPUT
+                // Alternate special name (if not "NONE")
                 if (s->alternate_name[fam][spc] != "NONE")
                 {
                     message = std::format("ALT: {}", s->alternate_name[fam][spc]);

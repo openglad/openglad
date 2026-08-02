@@ -234,6 +234,7 @@ class command
 {
 	public:
 		command();
+		// command to execute
 		std::int32_t commandtype;
 		// # times to execute command
 		std::int32_t commandcount;

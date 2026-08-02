@@ -132,8 +132,10 @@ struct SessionState {
     // Picker state (Batch 8) — moved from picker.cpp globals.
     static constexpr int kNumFamilies = 14;  // == NUM_FAMILIES from constants.h
     std::int32_t current_difficulty_ = 1;
+    // Used to label new hires, like "SOLDIER5"
     std::array<std::int32_t, kNumFamilies> numbought_ = {};
     std::unique_ptr<::guy> current_guy_;
+    // guy type we're looking at
     std::int32_t current_type_ = 0;
     short current_team_num_ = 0;
     ::vbutton* localbuttons_ = nullptr;

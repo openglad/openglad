@@ -1029,6 +1029,7 @@ void screen::init_common(short howmany, bool has_display)
 		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
+    // Init the sound data
     soundp = create_soundob(false);
     if (!cfg.is_on("sound", "sound")) {
         soundp->set_sound(1);
@@ -1040,6 +1041,7 @@ void screen::init_common(short howmany, bool has_display)
 	}
 
 	init_all_registries();
+	// Let's set the special names for all walkers ..
 	for (i=0; i < NUM_FAMILIES; i++)
 	{
 		auto* fd = get_family_descriptor(i);

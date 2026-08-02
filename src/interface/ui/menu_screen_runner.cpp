@@ -415,6 +415,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
+        // Zardus: PORT: fade from black
         scr->fadeblack(1);
         grab_mouse();
     }

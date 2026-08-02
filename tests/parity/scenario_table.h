@@ -1129,7 +1129,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 1677,
+    "src/gameplay/game_world.cpp", 1680,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result."
@@ -1157,7 +1157,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1675,
+    "src/gameplay/game_world.cpp", 1678,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "Uses a static-counter level_done assignment so successive run_scenario() captures differ. The value flows into the snapshot and breaks dual-capture byte equality, flipping the Invariant determinism check."
@@ -2664,7 +2664,7 @@ inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_expand_emission = {
-    "packs/core/scripts/effect_door_open.lua", 37,
+    "packs/core/scripts/effect_door_open.lua", 45,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
     "Neuters core:door_open's on_act hook exactly as a null C++ callback used to: returning false means \"not handled\", which is what the dispatcher assumes when no hook is registered, so effect::act runs the plain animate path. The hand-off that spawns the persistent opened-door FX never happens, so EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) flips 1->0 as the original effect animates out and nothing replaces it."
@@ -3042,7 +3042,7 @@ inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_door_open_emission = {
-    "packs/core/scripts/effect_door_open.lua", 37,
+    "packs/core/scripts/effect_door_open.lua", 45,
     "  on_act = on_act,",
     "  on_act = function() return false end,",
     "Neuters core:door_open's on_act hook (false = \"not handled\", the no-registered-hook path), so the opened door is never handed off to a fresh persistent effect and the door_open FX count flips."
@@ -3231,7 +3231,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1773,
+    "src/gameplay/game_world.cpp", 1776,
     "level_done = 0;",
     "level_done = 2;",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto.)"

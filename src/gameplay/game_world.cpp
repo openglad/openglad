@@ -693,6 +693,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     if (ob->stats()->query_bit_flags(BIT_ETHEREAL))
         return true;
 
+    // Zardus: PORT: Does the grid exist?
     if (!fg.valid())
         return false;
 
@@ -710,6 +711,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     if ((yover % GRID_SIZE) == 0)
         xtray = 0;
 
+    // Check grid squares by simulated grid coords.
     const std::int32_t xtarg = (xover / GRID_SIZE) + xtrax;
     const std::int32_t ytarg = (yover / GRID_SIZE) + xtray;
 
@@ -1200,6 +1202,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         return nullptr;
     }
 
+    // Set our 'default' foe to NULL
     walker* endfoe = nullptr;
     std::int32_t distance = 10000;
     ob->stats()->set_last_distance(10000);

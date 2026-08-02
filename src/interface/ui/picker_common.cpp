@@ -320,6 +320,7 @@ int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_n
     recruit->teamnum = static_cast<short>(team_num);
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        // found an empty slot
         if (!save.team_list[i]) {
             save.team_list[i] = std::move(recruit);
             save.team_size++;
@@ -372,6 +373,7 @@ DerivedStats compute_derived_stats(const guy& g,
     ds.atk = base_damage + g.get_damage_bonus();
     ds.def = g.get_armor_bonus();
     ds.spd = base_stepsize + g.get_speed_bonus();
+    // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
     float freq = base_fire_freq - g.get_fire_frequency_bonus();
     if (freq < 1.0f)
         freq = 1.0f;
