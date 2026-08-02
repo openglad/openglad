@@ -60,9 +60,10 @@ og.register_hooks("living", "example:emberwisp", {
   -- The specials table replaces a hand-written current_special() ladder.
   -- The key is the `id` classpack.yaml declares for the slot; the engine
   -- resolves it to the slot number once, at registration, so a misspelling
-  -- on either side is a load error naming the ids that do exist. Slot
-  -- integers and `default` (absent here) stay legal, and a slot with
-  -- neither entry nor default makes that cast a successful no-op.
+  -- on either side is a load error naming the ids that do exist. A bare
+  -- slot number is refused. `default` (absent here) catches every other
+  -- slot, and a slot with neither entry nor default makes that cast a
+  -- successful no-op.
   specials = {
     flare_burst = flare_burst,
   },

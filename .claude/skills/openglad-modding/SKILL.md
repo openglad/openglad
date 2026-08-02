@@ -135,9 +135,10 @@ one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
     only; absent keys answer nil; no iteration.
   - *`specials` table*: `specials = { charge=fn, ..., default=fn }` in
     `og.register_hooks` instead of a `current_special()` elseif ladder. The
-    key is the `id` the family's `specials:` list declares for that slot
-    (slot integers `1..255` stay legal); a key that names no declared id is
-    a load error listing the ids that exist. Missing slot → `default`;
+    key is the `id` the family's `specials:` list declares for that slot,
+    or `default` — nothing else. A key that names no declared id, and a
+    bare slot number like `[1]`, are both load errors listing the ids that
+    exist. Missing slot → `default`;
     neither → successful no-op (`true`, no Lua call) that STILL charges,
     and now warns at load. The engine gates on the slot's `mp_cost` before
     dispatch and deducts it only on a `true` answer.

@@ -165,24 +165,33 @@ no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
 touched). Each entry has the plain `do_special` signature: `(self) → bool`,
 `false` = the special did not fire.
 
-**Keying by id.** A key may be the special's declared `id` from the family's
-`specials:` list instead of its slot integer. `og.register_hooks` resolves
-the id to the slot once, at registration, and stores the same int-keyed
-table it always did — the cast path is unchanged. What changes is that the
-two files now name each other: reordering the YAML list cannot silently
-re-bind a handler, and a misspelling on either side is a load error naming
-the ids the family does declare. The shipped core scripts key by id.
+**Keys are declared ids.** A key is the special's declared `id` from the
+family's `specials:` list. `og.register_hooks` resolves the id to the slot
+once, at registration, and stores an int-keyed table — the cast path never
+sees the id. What the id buys is that the two files name each other:
+reordering the YAML list cannot silently re-bind a handler, and a
+misspelling on either side is a load error naming the ids the family does
+declare.
 
 Which slot an id is, and when a player can reach it, is the list order:
 entry *i* of `specials:` is slot *i+1*, selectable from level `(N-1)*3+1`.
 
 Rules:
 
-- Living orders only; keys are integers `1..255` (`current_special` is a
-  char-wide slot index), a declared special id, or the string `"default"`;
-  every value must be a function; an empty table is a load error.
-- An id and an integer that name the SAME slot in one table is a load error
-  — the table says two things about one special and nothing can choose.
+- Living orders only; keys are a declared special id or the string
+  `"default"`; every value must be a function; an empty table is a load
+  error.
+- A slot number for a key is a load error, listing the ids the family
+  declares:
+
+  ```
+  og.register_hooks: 'specials' key [1] is a slot number; specials keys are
+  the family's declared special ids, or 'default' (living family
+  'core:soldier', declared ids: charge, boomerang, whirlwind, disarm)
+  ```
+
+  A position bound a handler to whatever slot the YAML list happened to put
+  there, which is the failure the ids exist to prevent.
 - An id key against a family whose descriptor declares no special ids at
   all (an entry with no `specials:` list) is a load error that says so.
 - The engine stores a **private copy** at registration — mutating the

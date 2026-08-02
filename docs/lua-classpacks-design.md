@@ -432,11 +432,11 @@ Each entry takes:
 | `slot: N` | optional, 2..5, to skip a hole |
 
 The `id` is what makes the YAML and the Lua reference each other by name:
-`og.register_hooks` accepts it as a `specials` table key and resolves it to
-the slot once, at registration (§6). An alternate is DISPLAY only and
-shares the special's `mp_cost` — the behavior fork is the handler reading
-`self:shifter_down()`, so an `mp_cost` under `alternate:` is recognized and
-warned about rather than silently believed.
+it is the only key a `specials` table may use for a slot, and
+`og.register_hooks` resolves it once, at registration (§6). An alternate is
+DISPLAY only and shares the special's `mp_cost` — the behavior fork is the
+handler reading `self:shifter_down()`, so an `mp_cost` under `alternate:`
+is recognized and warned about rather than silently believed.
 
 ### Art, animation, and presentation (all five orders)
 
@@ -650,14 +650,17 @@ Every value is a function, an empty table is a load error, and the table
 occupies the `do_special` hook slot, so collision reporting and last-wins
 behave like any named hook.
 
-A key is an integer 1..255, the string `default`, or one of the `id`s the
-family's `specials:` list declares (§4). The id form is resolved to its
-slot ONCE, at registration, and stored in the same int-keyed private copy
-the integer form produces, so nothing about the cast path differs — but the
-data and the behavior now reference each other by name. Reordering the YAML
-list cannot silently re-bind a handler; a key naming no declared id is a
-load error listing the ids that exist; and an id and an integer resolving
-to the same slot is a load error rather than a coin toss.
+A key is the string `default` or one of the `id`s the family's `specials:`
+list declares (§4). The id is resolved to its slot ONCE, at registration,
+and stored in an int-keyed private copy, so the cast path never sees it —
+what it buys is that the data and the behavior reference each other by
+name. Reordering the YAML list cannot silently re-bind a handler, and a key
+naming no declared id is a load error listing the ids that exist.
+
+A slot number for a key is refused outright — the same load error, naming
+the key and the ids that would have worked. Slot numbers were the original
+spelling and they bound a handler to a position in the list; nothing in the
+tree keys that way any more.
 
 Around either form the engine contract is unchanged
 (`walker_specials.cpp`): the caller gates on `magicpoints() >=

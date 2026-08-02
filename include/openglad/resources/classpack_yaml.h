@@ -149,8 +149,8 @@ inline constexpr int kMaxSpecialSlot = 5;
 
 // One entry of a `specials:` list. List order gives slots 1..5; an entry
 // may name its own `slot:` to leave a hole, and slots must strictly
-// increase. `id` is the key a pack script's specials table may use in
-// place of the slot integer.
+// increase. `id` is the key a pack script's specials table uses for the
+// slot.
 struct ClasspackSpecialEntry {
     std::string id;                // required, [a-z0-9_]+, unique per family
     std::string name;              // required, the HUD string

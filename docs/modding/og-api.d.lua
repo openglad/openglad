@@ -267,10 +267,10 @@
 -- and a table with neither is a successful no-op. Entries return
 -- like do_special itself.
 ---@class og.LivingSpecials
----@field [integer] fun(self: og.Walker): boolean
--- String keys are the schema-v2 special ids declared
--- in the family YAML; registration resolves them to
--- slot ints (unknown or colliding keys are load errors).
+-- Keys are the special ids declared in the family
+-- YAML; registration resolves them to slot ints
+-- (an unknown id, or a bare slot number, is a load
+-- error).
 ---@field [string] fun(self: og.Walker): boolean
 ---@field default? fun(self: og.Walker): boolean
 
