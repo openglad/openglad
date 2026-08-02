@@ -279,6 +279,7 @@ std::list<std::string> list_campaigns()
         size_t pos = e->rfind(".glad");
         if(pos == std::string::npos)
         {
+            // Not a campaign package
             e = ls.erase(e);
             continue;
         }
@@ -303,6 +304,7 @@ std::list<int> list_levels()
         size_t pos = e->rfind(".fss");
         if(pos == std::string::npos)
         {
+            // Not a scen file
             e = ls.erase(e);
             continue;
         }
@@ -436,6 +438,7 @@ void cleanup_unpacked_campaign()
 // Level/campaign deletion
 // ---------------------------------------------------------------------------
 
+// Delete this level from the mounted campaign
 void delete_level(int id)
 {
     std::string campaign = get_mounted_campaign();

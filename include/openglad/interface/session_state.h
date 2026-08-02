@@ -45,8 +45,11 @@ struct SessionState {
     int raw_key_ = 0;
     std::string raw_text_input_;
     short key_press_event_ = 0;
+    // used to signal text input
     short text_input_event_ = 0;
+    // for scrolling up and down text popups
     short scroll_amount_ = 0;
+    // Done with text popups, etc.
     bool input_continue_ = false;
     const bool* keystates_ = nullptr;  // SDL3 SDL_GetKeyboardState buffer
     // == NUM_KEYS from input.h (16 wire-visible actions + the client-side
@@ -55,12 +58,14 @@ struct SessionState {
     int player_keys_[4][kNumKeys] = {};
 
     // Viewport state (Batch 4) — moved from input.cpp globals.
+    // In window coords
     float viewport_offset_x_ = 0;
     float viewport_offset_y_ = 0;
     float window_w_ = 320;
     float window_h_ = 200;
     float viewport_w_ = 320;
     float viewport_h_ = 200;
+    // Out of 1.0f, percent of total screen dimension that is cut off.  10% (0.10f) is recommended on OUYA.
     float overscan_percentage_ = 0.0f;
 
     // UI button state (Batch 5) — moved from button.cpp global.

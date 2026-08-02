@@ -29,6 +29,7 @@ local function calculate_level(experience)
   return result - 1
 end
 
+-- Big slime splits to two small slimes
 local function slime_do_special(self)
   self:set_ani_type(C.ANI_SLIME_SPLIT)
   self:set_cycle(0)
@@ -131,6 +132,7 @@ end
 -- small_slime_do_special / medium_slime_do_special share this body in the
 -- C++ too: grow into the next size up when there is room.
 local function grow_into(self, grown_family)
+  -- room to grow?
   if self:spaces_clear() > 7 then
     self:transform_to("living", grown_family)
   else

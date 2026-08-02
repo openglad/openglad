@@ -85,6 +85,7 @@ local function heal_or_mace(self)
           amount = amount - mp_i
           cost = cost - mp_i
         end
+        -- Didn't heal any for this guy
         if amount <= 0 or cost <= 0 then
           break
         end
@@ -120,6 +121,7 @@ local function heal_or_mace(self)
     return false
   end
   if self:has_guy() and self:g_intelligence() < t.mace_int_req then
+    -- only players get this
     if self:user() ~= -1 then
       og.emit_notification(string.format(
         "%d Int required for Mystic Mace!", t.mace_int_req))
@@ -231,6 +233,7 @@ local function resurrect(self)
     local half = og.i16(og.trunc(og.fdiv(alive.max_hp, 2.0)))
     self:do_heal_effects(self, alive, half)
     alive.team = blood.team
+    -- take some EXP away as penalty if we're a player
     if self:has_guy() then
       -- C++ stores the short return into an unsigned short (modular).
       local exp_loss =

@@ -348,6 +348,8 @@ bool walker::walk(float x, float y)
         }
 
         // Here we check if the move is valid
+        // Normally we would check if the object at this grid point
+        //    is passable (I cheated for now)
         if (current_game->world->query_passable(xpos() + x, ypos() + y, this))
         {
             // Control object does complete redraw anyway

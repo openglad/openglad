@@ -202,6 +202,7 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(float, stepsize, og::dirty::BIT_STEPSIZE);
 		// used for elven forestwalk
 		OG_WALKER_DIRTY_FIELD(float, normal_stepsize, og::dirty::BIT_NORMAL_STEPSIZE);
+		// Current direction facing
 		OG_WALKER_DIRTY_FIELD(signed char, curdir, og::dirty::BIT_CURDIR);
 		// Proposed direction facing
 		OG_WALKER_DIRTY_FIELD(char, enddir, og::dirty::BIT_ENDDIR);
@@ -238,11 +239,13 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(short, skip_exit, og::dirty::BIT_SKIP_EXIT);
 		OG_WALKER_DIRTY_FIELD(unsigned char, outline, og::dirty::BIT_OUTLINE);
 		OG_WALKER_DIRTY_FIELD(bool, hurt_flash, og::dirty::BIT_HURT_FLASH);
+		// how much life summoned guys have ..
 		OG_WALKER_DIRTY_FIELD(std::int32_t, lifetime, og::dirty::BIT_LIFETIME);
 		// These two are used for
 		// speed potions, etc.
 		OG_WALKER_DIRTY_FIELD(float, speed_bonus, og::dirty::BIT_SPEED_BONUS);
 		OG_WALKER_DIRTY_FIELD(std::int32_t, speed_bonus_left, og::dirty::BIT_SPEED_BONUS_LEFT);
+		// If we're still being charmed
 		OG_WALKER_DIRTY_FIELD(short, charm_left, og::dirty::BIT_CHARM_LEFT);
 		// for fighter's blades
 		OG_WALKER_DIRTY_FIELD(short, weapons_left, og::dirty::BIT_WEAPONS_LEFT);

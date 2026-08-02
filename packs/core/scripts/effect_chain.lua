@@ -110,6 +110,7 @@ local function on_act(self)
     elseif leader:ypos() < self:ypos() then
       yd = og.max(leader:ypos() - self:ypos(), -self:stepsize())
     end
+    -- Set our facing?
     -- shim kept: facing() takes ints; xd/yd are floats: C truncation.
     self:set_curdir(self:facing(og.trunc(xd), og.trunc(yd)))
     local frame = og.ani_frame(self, self:curdir(), 0)

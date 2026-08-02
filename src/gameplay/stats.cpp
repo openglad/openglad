@@ -241,6 +241,7 @@ void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
 void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
                                Sint32 info1, Sint32 info2)
 {
+	// Add command to start of list
 	commands.emplace_front();
 
 	if (whatcommand == COMMAND_WALK)

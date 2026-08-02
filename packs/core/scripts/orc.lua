@@ -54,6 +54,7 @@ local function eat_corpse(self)
   end
   local t = og.tuning(self)
   local corpse = og.find_nearest_blood(self)
+  -- no blood, so do nothing
   if not corpse then
     return false
   end

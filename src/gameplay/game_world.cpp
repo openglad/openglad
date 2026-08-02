@@ -584,6 +584,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     if (!entity_factory)
         return nullptr;
 
+    // Create the walker
     auto w = entity_factory(order, family);
     if (!w)
         return nullptr;
@@ -1446,9 +1447,11 @@ void GameWorld::resize_grid(int width, int height)
         return PIX_GRASS1;
     };
 
+    // Create new grid
     const int size = width * height;
     auto new_grid = std::make_unique<unsigned char[]>(size);
 
+    // Copy the map data
     for (int i = 0; i < width; i++)
     {
         for (int j = 0; j < height; j++)
@@ -1460,6 +1463,7 @@ void GameWorld::resize_grid(int width, int height)
         }
     }
 
+    // Delete the old, use the new
     grid.free();
     grid.data = std::move(new_grid);
     grid.frames = 1;
@@ -1471,6 +1475,7 @@ void GameWorld::resize_grid(int width, int height)
 
     mysmoother.set_target(grid);
 
+    // Delete objects that fell off the map
     const int x = 0;
     const int y = 0;
     const int w = grid.w * GRID_SIZE;

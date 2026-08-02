@@ -158,6 +158,7 @@ void handle_key_event(const void* native_event)
 
     switch (event.type)
     {
+    // Key pressed or released:
     case SDL_EVENT_KEY_DOWN:
         #ifdef USE_TOUCH_INPUT
         // Back button faking Escape key

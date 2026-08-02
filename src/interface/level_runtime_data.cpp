@@ -818,6 +818,7 @@ bool LevelRuntimeData::load()
 
     wire_world_entity_services(world_, this, hooks_);
 
+    // Build up the file name (scen#.fss)
     std::string thefile = std::format("scen{}.fss", world().id);
 
     og::data::LevelFileMetadata loaded_metadata;
@@ -852,6 +853,7 @@ bool LevelRuntimeData::load()
     if (!headless_)
     {
         level_visuals().renderer_.reset();
+        // Delete old tiles
         for (int i = 0; i < PIX_MAX; i++)
             level_visuals().pixdata[i].free();
         for (int i = 0; i < DECOR_MAX; i++)

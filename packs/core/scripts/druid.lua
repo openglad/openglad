@@ -115,7 +115,9 @@ local function protection_circle(self)
         existing.hp = og.fadd(existing.hp, fresh.hp)
         fresh.dead = 1
         protected_count = protected_count + 1
+        -- TODO: Should we show healing numbers here?
       end
+      -- Get experience either way
       if self:has_guy() then
         self:g_set_exp(self:g_exp() +
                        og.exp_from_action(self, friend, "protection", 0))

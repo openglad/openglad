@@ -537,6 +537,7 @@ void loader::reload_graphics()
 		                   animation_for_type(fd->animation_type));
 		lineofsight[idx] = fd->ai_line_of_sight;
 		hitpoints[idx] = fd->derived_bonuses[0];
+		// Strength of melee attack
 		damage[idx] = fd->derived_bonuses[2];
 		stepsizes[idx] = fd->derived_bonuses[6];
 		fire_frequency[idx] = fd->derived_bonuses[7];

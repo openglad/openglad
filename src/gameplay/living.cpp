@@ -60,6 +60,8 @@ living::living()
 	set_lifetime(0);
 }
 
+// Zardus: PORT: this tries to delte its parent class (I think), and g++ doesn't
+// seem to like chicken and egg problems: walker::~walker();
 living::~living()
 {}
 
@@ -70,6 +72,7 @@ bool living::act()
 	// the stack with large values (e.g., mage freeze-time on many allies).
 	if (bonus_rounds() > 50)
 		set_bonus_rounds(50);
+	// we get extra rounds to act this cycle
 	if (bonus_rounds() > 0 && !dead())
 	{
 		set_bonus_rounds(static_cast<short>(bonus_rounds() - 1));

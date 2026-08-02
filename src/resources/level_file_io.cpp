@@ -128,6 +128,32 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                      LevelFileMetadata& metadata, LevelFileIoError& err,
                      bool require_valid_grid)
 {
+    // Format of a scenario object list file version 6/7 is:
+    // 3-byte header: 'FSS'
+    // 1-byte version #
+    // ----- (above is already determined by now)
+    // 8-byte string = grid name to load
+    // 30-byte scenario title (ver 6+)
+    // 1-byte char = scenario type, default is 0
+    // 2-bytes par-value, v.8+
+    // 2-bytes time limit for bonus points, v9+
+    // 2-bytes (short) = total objects to follow
+    // List of n objects, each of 7-bytes of form:
+    // 1-byte ORDER
+    // 1-byte FAMILY
+    // 2-byte short xpos
+    // 2-byte short ypos
+    // 1-byte TEAM
+    // 1-byte facing
+    // 1-byte command
+    // 1-byte level // 2 bytes in version 7+
+    // 12-bytes name
+    // ---
+    // 10 bytes reserved
+    // 1-byte # of lines of text to load
+    // List of n lines of text, each of form:
+    // 1-byte character width of line
+    // m bytes == characters on this line
     short currentx = 0;
     short currenty = 0;
     unsigned char temporder = 0;
@@ -389,6 +415,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         loaded_floor_count = (fc < 1) ? 1 : static_cast<short>(fc);
     }
 
+    // Now read the grid file...
     const std::string gridpix = ensure_png_extension(newgrid.data());
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())

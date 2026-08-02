@@ -50,6 +50,7 @@ local function hit_response(self, foe)
     self.busy = 0
     self:special()
   else
+    -- we're hit by a new enemy
     if self:foe() ~= foe then
       self:set_foe(foe)
       foe:set_foe(self)
@@ -152,6 +153,7 @@ local function starburst(self)
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
+  -- Now face each direction and fire ..
   for i = -1, 1 do
     for j = -1, 1 do
       if i ~= 0 or j ~= 0 then
@@ -175,6 +177,7 @@ local function starburst(self)
       end
     end
   end
+  -- Restore old facing
   self:set_lastx(saved_aim_x)
   self:set_lasty(saved_aim_y)
   return true

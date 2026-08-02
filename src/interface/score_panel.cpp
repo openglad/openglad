@@ -454,13 +454,16 @@ short new_score_panel(screen* s, short /*do_it*/)
         // a == players check would hide the HUD for every non-host client.
         if (control && !control->dead() && control->user() != -1)
         {
+            // Get the button-drawing info ..
             draw_button = s->viewob[players]->prefs[PREF_OVERLAY];
             if (draw_button)
                 text_color = DARK_BLUE;
             else
                 text_color = YELLOW;
 
+            // Get current number of foes
             tempfoes = remaining_foes(s, control);
+            // Get current number of team-members
             tempallies = remaining_team(s, control->team_num());
 
             // family()/current_special() may be attacker-controlled on a
@@ -476,6 +479,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             if (spc < 0 || spc >= NUM_SPECIALS)
                 spc = 0;
 
+            // Display name or type, upper left
             if (control->myguy)
                 tempname = control->myguy->name;
             else if (!control->stats()->name.empty())
@@ -490,6 +494,7 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             mytext.write_xy(lm+3, tm+4, message.c_str(), text_color, 1);
 
+            // HP/MP bars; dependent on user settings
             switch (s->viewob[players]->prefs[PREF_LIFE])
             {
                 case PREF_LIFE_TEXT: // display numeric values only
@@ -537,12 +542,15 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             if (s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
             {
+                // Score, bottom left corner
                 int special_offset = -24;
 #ifdef USE_TOUCH_INPUT
+                // Upper left instead
                 int bm = tm + 54;
                 special_offset = 0;
 #endif
 
+                // Draw box, if needed
                 if (draw_button)
                     s->draw_button(lm+1, bm-26, lm+98, bm-2, 1, 1);
 
@@ -554,6 +562,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     continue;
                 }
 
+                // Get our score ..
                 const unsigned char team_num = control->team_num();
                 myscore = s->world_.m_score[team_num];
                 if (scorecountup[team_num] > myscore)
@@ -568,6 +577,7 @@ short new_score_panel(screen* s, short /*do_it*/)
 
                 // above should count up the score towards the current amount
                 int special_y = bm + special_offset;
+                // Don't show score and XP (clutter) when in a small viewport
                 if (s->numviews > 2 && !(s->numviews == 3 && players == 0))
                 {
                     special_y = bm - 8;
@@ -577,6 +587,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     message = std::format("SC: {}", scorecountup[team_num]);
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
+                    // Level or exp, 2nd bottom left
                     if (control->myguy)
                         message = std::format("XP: {}", control->myguy->exp);
                     else
@@ -619,6 +630,7 @@ short new_score_panel(screen* s, short /*do_it*/)
 #endif
             }
 
+            // Number of allies, upper right
             if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
             {
                 // B5: split pending (dormant delayed-spawn) hostiles out of
@@ -664,6 +676,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 #endif
 
+                // Number of foes, 2nd upper right
                 if (show_wave)
                     message = std::format("FOES: {} (+{})",
                                           awake_foes, wave_foes);
@@ -748,6 +761,7 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
     s->fastbox(left+58, top+5, 1, 1, 0, 1);
     s->fastbox(left+2, top+6, somelength-4, 1, 0, 1);
 
+    // Draw the box ..
     s->fastbox(left+2, top+1, somelength-4, 1, somecolor, 1);
     s->fastbox(left+1, top+2, somelength-2, 3, somecolor, 1);
     s->fastbox(left+2, top+5, somelength-4, 1, somecolor, 1);

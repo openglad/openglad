@@ -9,6 +9,7 @@ families:
       is_auto_attackable: false
       init_bit_flags: [FLYING, IMMORTAL, NO_COLLIDE, PHANTOM]
       init_lifetime: 0
+      # anything non-zero
       init_ani_type: 5
       vz: 0
       gravity: 0

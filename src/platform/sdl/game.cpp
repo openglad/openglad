@@ -73,6 +73,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 
     if (filename != nullptr && filename[0] != '\0')
     {
+        // First load the team list ..
         const SaveDataIoError load_error =
             screenp->save_data.load_with_error(filename);
         if (load_error != SaveDataIoError::None)

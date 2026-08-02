@@ -89,6 +89,7 @@ local function disarm(self)
       -- busy is a C++ float: per-op rounding
       foe:set_busy(og.fadd(foe:busy(), 6 * (self.level - foe.level + 1)))
     end
+    -- disarmed at least one guy
     found = 1
   end
 
@@ -121,6 +122,7 @@ local function on_fire_weapon(self, weapon)
   return true
 end
 
+-- Fighters: limited weapons
 local function on_create(self)
   if self:order() == C.ORDER_LIVING then
     self:set_weapons_left((self.level + 1) // 2)

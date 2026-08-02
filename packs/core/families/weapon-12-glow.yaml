@@ -1,6 +1,7 @@
 # core:glow — split from classpack.yaml (families load in sorted filename order)
 families:
   weapon:
+    # cleric's shield glad
     - id: core:glow
       wire_id: 12
       name: "GLOW"

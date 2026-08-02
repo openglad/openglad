@@ -295,6 +295,7 @@ local function summon_image(self)
       return false
     end
     lc.halve_mp_surcharge(self, 3)
+    -- First make the guy we'd summon, at least physically
     local elemental = og.add_ob("living", LIVING_ELEMENTAL)
     if not elemental then
       return false
@@ -385,6 +386,7 @@ local function summon_image(self)
     else  -- C++ default (unreachable)
       person = LIVING_ARCHER
     end
+  -- our maximum possible, insert before if needed
   else
     local tier_roll = og.rand(9)
     if tier_roll == 0 then
@@ -409,6 +411,7 @@ local function summon_image(self)
       person = LIVING_ARCHER
     end
   end
+  -- Now make the guy we'd summon, at least physically
   local phantom = og.add_ob("living", person)
   if not phantom then
     return false

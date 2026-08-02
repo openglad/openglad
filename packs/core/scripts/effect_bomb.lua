@@ -69,10 +69,13 @@ local function explosion_on_death(self)
         and w:order() ~= C.ORDER_FX
         and (self:skip_exit() == 0
              or w ~= self:owner()) then
+      --shove the target
       local dx = og.sign(w:xpos() - self:xpos())
       local dy = og.sign(w:ypos() - self:ypos())
+      -- Set the distance to 'shove' by explosion
       local shove = og.min(2 + self:owner().level // 15, 8)
       w:s_force_command(C.COMMAND_WALK, shove, dx, dy)
+      -- Damage (attack) the object
       if w == self:owner() then
         local full_damage = self:damage()
         -- shim kept: damage is a C++ float: the quarter cut rounds through float.

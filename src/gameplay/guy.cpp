@@ -260,6 +260,7 @@ guy::guy(int whatfamily)
         constitution = static_cast<short>(fd->base_stats[2]);
         intelligence = static_cast<short>(fd->base_stats[3]);
         armor = static_cast<short>(fd->base_stats[4]);
+        // should always be 1...
         level = static_cast<short>(fd->base_stats[5]);
         name = fd->name;
 	}
@@ -473,6 +474,7 @@ void guy::update_derived_stats(walker* w)
         current_game->world->set_entity_derived_stats(w, Order::Living, temp_guy->family);
     
     
+    // Set hitpoints based on stats:
     w->stats()->set_max_hitpoints(w->stats()->max_hitpoints() + temp_guy->get_hp_bonus());
     w->stats()->set_hitpoints(w->stats()->max_hitpoints());
     

@@ -16,6 +16,7 @@
  */
 #pragma once
 
+// Definition of GUY class
 #include <cstdint>
 #include <memory>
 #include <string>

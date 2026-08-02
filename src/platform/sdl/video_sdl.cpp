@@ -96,6 +96,7 @@ std::unique_ptr<Screen> E_Screen;
 
 static void video_init_palettes(sdl_video& v)
 {
+	// Load our palettes ..
 	load_and_set_palette("our.pal", v.ourpalette);
 	load_palette("our.pal", v.redpalette);
 
