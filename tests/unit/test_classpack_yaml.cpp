@@ -66,18 +66,36 @@ families:
       wire_id: auto
       name: "WARLOCK"
       short_name: ~
-      base_stats: [12, 6, 12, 8, 9, 1]
-      hiring_cost: 250
-      derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]
-      stat_costs: [6, 10, 6, 25, 50, 200]
-      special_costs: [5000, 25, 100, 120, 150, 5000]
-      weapon_cost: 2
+      stats:
+        strength: 12
+        dexterity: 6
+        constitution: 12
+        intelligence: 8
+        armor: 9
+        level: 1
+      combat:
+        hp: 120
+        melee_damage: 20
+        stepsize: 4
+        fire_delay: 6
+        fire_mp_cost: 2
+      costs:
+        hire: 250
+        train:
+          strength: 6
+          dexterity: 10
+          constitution: 6
+          intelligence: 25
+          armor: 50
+          level: 200
+      specials:
+        - id: charge
+          name: CHARGE
+          mp_cost: 25
       default_weapon: core:knife
       init_bit_flags: [FLYING, ETHEREAL]
       init_ani_type: 0
       init_max_magicpoints: 50.5
-      special_names: ["NONE", "CHARGE", "NONE", "NONE", "NONE", "NONE"]
-      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
       leaves_bloodspot: true
       magic_damage_modifier: 0.5
       is_stationary: false
@@ -94,6 +112,15 @@ families:
       playable: true
       playable_order: 3
 )";
+
+// costs: with a hire price and no training table — the smallest declaration
+// that gives an entry one value worth checking after an install.
+og::data::ClasspackCostsBlock hire_only(std::int32_t gold)
+{
+    og::data::ClasspackCostsBlock costs;
+    costs.hire = gold;
+    return costs;
+}
 
 } // namespace
 
@@ -119,17 +146,16 @@ TEST(ClasspackYaml, parse_full_living_entry)
     ASSERT_EQ(*e.name, "WARLOCK");
     ASSERT_TRUE(e.short_name.present);
     ASSERT_TRUE(e.short_name.is_null);
-    ASSERT_TRUE(e.base_stats.has_value());
-    ASSERT_EQ(e.base_stats->size(), 6u);
-    ASSERT_EQ((*e.base_stats)[0], 12);
-    ASSERT_EQ((*e.base_stats)[5], 1);
-    ASSERT_EQ(e.hiring_cost.value_or(-1), 250);
-    ASSERT_TRUE(e.derived_bonuses.has_value());
-    ASSERT_EQ(e.derived_bonuses->size(), 8u);
-    ASSERT_EQ((*e.derived_bonuses)[0], 120.0f);
-    ASSERT_EQ(e.stat_costs->at(1), 10);
-    ASSERT_EQ(e.special_costs->at(0), 5000);
-    ASSERT_EQ(e.weapon_cost.value_or(-1), 2);
+    ASSERT_TRUE(e.stats.has_value());
+    ASSERT_EQ(e.stats->strength, 12);
+    ASSERT_EQ(e.stats->level, 1);
+    ASSERT_TRUE(e.combat.has_value());
+    ASSERT_EQ(e.combat->hp, 120.0f);
+    ASSERT_EQ(e.combat->fire_mp_cost, 2);
+    ASSERT_TRUE(e.costs.has_value());
+    ASSERT_EQ(e.costs->hire, 250);
+    ASSERT_TRUE(e.costs->train.has_value());
+    ASSERT_EQ(e.costs->train->dexterity, 10);
     ASSERT_EQ(e.default_weapon.value_or(""), "core:knife");
     ASSERT_TRUE(e.init_bit_flags.has_value());
     ASSERT_EQ(e.init_bit_flags->size(), 2u);
@@ -137,7 +163,9 @@ TEST(ClasspackYaml, parse_full_living_entry)
     ASSERT_EQ((*e.init_bit_flags)[1], "ETHEREAL");
     ASSERT_EQ(e.init_ani_type.value_or(-1), 0);
     ASSERT_EQ(e.init_max_magicpoints.value_or(-1.0f), 50.5f);
-    ASSERT_EQ(e.special_names->at(1), "CHARGE");
+    ASSERT_TRUE(e.specials.has_value());
+    ASSERT_EQ(e.specials->size(), 1u);
+    ASSERT_EQ((*e.specials)[0].name, "CHARGE");
     ASSERT_EQ(e.leaves_bloodspot.value_or(false), true);
     ASSERT_EQ(e.magic_damage_modifier.value_or(-1.0f), 0.5f);
     ASSERT_EQ(e.is_stationary.value_or(true), false);
@@ -167,16 +195,19 @@ TEST(ClasspackYaml, absent_fields_stay_absent)
 {
     ClasspackData data;
     ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: x:sparse\n      hiring_cost: 9\n",
+        "families:\n  living:\n    - id: x:sparse\n"
+        "      costs:\n        hire: 9\n",
         data, "sparse"));
     ASSERT_EQ(data.living.size(), 1u);
     const auto& e = data.living[0];
     ASSERT_EQ(e.id, "x:sparse");
     ASSERT_TRUE(e.wire_id.empty());
-    ASSERT_EQ(e.hiring_cost.value_or(-1), 9);
+    ASSERT_TRUE(e.costs.has_value());
+    ASSERT_EQ(e.costs->hire, 9);
+    ASSERT_FALSE(e.costs->train.has_value());
     ASSERT_FALSE(e.name.has_value());
     ASSERT_FALSE(e.short_name.present);
-    ASSERT_FALSE(e.base_stats.has_value());
+    ASSERT_FALSE(e.stats.has_value());
     ASSERT_FALSE(e.promotes_to.present);
     ASSERT_FALSE(e.description.present);
     ASSERT_FALSE(e.names.has_value());
@@ -270,8 +301,8 @@ TEST(ClasspackYaml, parse_errors_fail_pack)
 
     ClasspackData b;
     ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: x:y\n      hiring_cost: soon\n", b,
-        "bad-int"));
+        "families:\n  living:\n    - id: x:y\n      ai_line_of_sight: soon\n",
+        b, "bad-int"));
 
     ClasspackData c;
     ASSERT_FALSE(parse_classpack_yaml(
@@ -302,12 +333,12 @@ TEST(ClasspackYaml, unknown_keys_and_sections_skipped)
         "      future_field: whatever\n"
         "      state_slots: 2\n"
         "      script: scripts/one.lua\n"
-        "      hiring_cost: 5\n",
+        "      costs:\n        hire: 5\n",
         data, "forward"));
     ASSERT_EQ(data.pack, "p");
     ASSERT_EQ(data.living.size(), 1u);
     ASSERT_EQ(data.living[0].id, "p:one");
-    ASSERT_EQ(data.living[0].hiring_cost.value_or(-1), 5);
+    ASSERT_EQ(data.living[0].costs->hire, 5);
 }
 
 TEST(ClasspackYaml, unknown_list_fields_on_treasure_and_generator_skipped)
@@ -489,16 +520,15 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
     ASSERT_EQ(e.animation.value_or(""), "standard");
 
     // Every living entry's wire_id is the pinned legacy byte, and every one
-    // of them speaks schema v2 — a file left on the positional arrays would
-    // parse, install and quietly keep working, so the corpus says so here.
+    // of them declares all four blocks. A family that omitted one would
+    // install whatever the registry slot happened to hold, which for a mod
+    // slot is nothing at all.
     for (std::size_t i = 0; i < data.living.size(); i++) {
         ASSERT_EQ(data.living[i].wire_id, std::to_string(i));
         ASSERT_TRUE(data.living[i].stats.has_value()) << data.living[i].id;
         ASSERT_TRUE(data.living[i].combat.has_value()) << data.living[i].id;
         ASSERT_TRUE(data.living[i].costs.has_value()) << data.living[i].id;
         ASSERT_TRUE(data.living[i].specials.has_value()) << data.living[i].id;
-        ASSERT_FALSE(data.living[i].base_stats.has_value())
-            << data.living[i].id << " still ships v1 base_stats";
     }
 }
 
@@ -516,7 +546,7 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     og::data::ClasspackLivingEntry e;
     e.id = "test:soldier_override";
     e.wire_id = "0"; // pins the soldier slot
-    e.base_stats = std::vector<std::int32_t>{99, 6, 12, 8, 9, 1};
+    e.stats = og::data::ClasspackStatsBlock{99, 6, 12, 8, 9, 1};
     e.death_message.present = true;
     e.death_message.value = "SOLDIER TESTED";
     e.names = std::vector<std::string>{"Alpha", "Beta"};
@@ -533,7 +563,6 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_STREQ(after->name_pool[0], "Alpha");
     ASSERT_STREQ(after->name_pool[1], "Beta");
     // ...undeclared data fields keep their current values...
-    ASSERT_EQ(after->base_stats[1], before.base_stats[1]);
     ASSERT_EQ(after->hiring_cost, before.hiring_cost);
     ASSERT_STREQ(after->name, "SOLDIER");
     ASSERT_EQ(after->description, before.description)
@@ -621,7 +650,7 @@ TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
         "      wire_id: 1\n"
         "      default_weapon: test:no_such_weapon\n"
         "      animation: moonwalk\n"
-        "      hiring_cost: 7\n",
+        "      costs: {hire: 7}\n",
         data, "install-yaml"));
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
 
@@ -706,7 +735,7 @@ TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
         e.id = "mod:warlock";
         e.wire_id = "auto";
         e.name = "WARLOCK";
-        e.hiring_cost = 250;
+        e.costs = hire_only(250);
         e.default_weapon = "core:knife";
         e.death_message.present = true;
         e.death_message.value = "WARLOCK UNDONE";
@@ -810,7 +839,7 @@ TEST(ClasspackInstall, pinned_mod_id_resolves_across_a_gap)
     e.id = "mod:lich";
     e.wire_id = "40";  // deliberate gap: 21..39 stay free
     e.name = "LICH";
-    e.hiring_cost = 900;
+    e.costs = hire_only(900);
     data.living.push_back(std::move(e));
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
 
@@ -845,7 +874,7 @@ TEST(ClasspackInstall, wire_ids_outside_the_byte_range_are_skipped)
         og::data::ClasspackLivingEntry e;
         e.id = std::string("mod:bad_") + bad;
         e.wire_id = bad;
-        e.hiring_cost = 1;
+        e.costs = hire_only(1);
         data.living.push_back(std::move(e));
     }
     {
@@ -916,7 +945,7 @@ og::data::ClasspackData one_living(const char* pack, const char* id,
     e.id = id;
     e.wire_id = wire_id;
     e.name = name;
-    e.hiring_cost = hiring_cost;
+    e.costs = hire_only(hiring_cost);
     data.living.push_back(std::move(e));
     return data;
 }
@@ -1130,7 +1159,7 @@ TEST(FamilyStringIds, duplicate_declared_ids_keep_positional_resolution)
         e.id = "dup:twin";  // same declared id, different slot
         e.wire_id = "31";
         e.name = "SECOND TWIN";
-        e.hiring_cost = 2;
+        e.costs = hire_only(2);
         data.living.push_back(std::move(e));
     }
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
@@ -2258,7 +2287,7 @@ std::filesystem::path make_scratch_split_pack(bool header_family,
         "    - id: splitpack:alpha\n"
         "      wire_id: 30\n"
         "      name: \"ALPHA\"\n"
-        "      hiring_cost: 111\n"
+        "      costs: {hire: 111}\n"
         "      tuning: {split_key: 7}\n");
     put(root / "families" / "bb.yaml",
         broken_family_file
@@ -2267,7 +2296,7 @@ std::filesystem::path make_scratch_split_pack(bool header_family,
               "  living:\n"
               "    - id: splitpack:alpha\n"
               "      wire_id: 30\n"
-              "      hiring_cost: 222\n"
+              "      costs: {hire: 222}\n"
               "      tuning: {split_key: 9}\n");
     put(root / "families" / "notes.txt", "not yaml; must be ignored\n");
     return root;
@@ -2304,7 +2333,7 @@ private:
 // families/ entries install; the two families/ files parse in sorted
 // filename order into one pack, so bb.yaml's sparse re-declaration of
 // aa.yaml's WIRE slot overwrites exactly the data field it declares
-// (hiring_cost) while undeclared fields (name) keep aa.yaml's values —
+// (costs.hire) while undeclared fields (name) keep aa.yaml's values —
 // and the tuning map follows the install-always-replaces rule (bb.yaml's
 // map wins whole). notes.txt and the directory named *.yaml are skipped.
 TEST(ClasspackSplitLayout, families_dir_installs_like_a_monolith)

@@ -16,8 +16,8 @@
 //   * YAML that is structurally wrong in a way libyaml accepts locally but
 //     the reader does not expect (a mapping where a scalar belongs, an
 //     alias, a truncated stream inside a node being skipped),
-//   * declared values that are the wrong TYPE for the field (a float list
-//     item that is not a number, a null inside a string list),
+//   * declared values that are the wrong TYPE for the field (a combat:
+//     member that is not a number, a null inside a string list),
 //   * declarations that are well-formed but ask for more than the engine
 //     has (a wire id past a registry's capacity, hundreds of auto ids).
 //
@@ -43,6 +43,7 @@
 #include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/packs.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,6 +75,15 @@ void expect_rejected(const char* yaml, const char* label)
     ClasspackData data;
     EXPECT_FALSE(parse_classpack_yaml(yaml, data, label))
         << "expected rejection: " << label;
+}
+
+// A costs: block with a hire price and nothing else — enough to give a
+// programmatically built entry one field to check after an install.
+og::data::ClasspackCostsBlock hire_only(std::int32_t gold)
+{
+    og::data::ClasspackCostsBlock costs;
+    costs.hire = gold;
+    return costs;
 }
 
 }  // namespace
@@ -119,12 +129,12 @@ TEST(ClasspackYamlErrors, empty_and_skipped_sections_are_tolerated)
         "    later: {shape: mapping}\n"
         "  living:\n"
         "    - id: p:one\n"
-        "      hiring_cost: 7\n",
+        "      costs: {hire: 7}\n",
         data, "tolerated"));
     EXPECT_TRUE(data.weapons.empty());
     EXPECT_TRUE(data.effects.empty());
     ASSERT_EQ(data.living.size(), 1u);
-    EXPECT_EQ(data.living[0].hiring_cost.value_or(-1), 7);
+    EXPECT_EQ(data.living[0].costs->hire, 7);
 }
 
 TEST(ClasspackYamlErrors, aliases_and_nested_mappings_on_a_field_are_skipped)
@@ -140,13 +150,13 @@ TEST(ClasspackYamlErrors, aliases_and_nested_mappings_on_a_field_are_skipped)
         "    - id: p:one\n"
         "      mystery: {a: 1, b: [2, 3]}\n"
         "      echo: *anchor\n"
-        "      hiring_cost: 9\n"
+        "      costs: {hire: 9}\n"
         "    - id: p:two\n"
-        "      hiring_cost: 11\n",
+        "      costs: {hire: 11}\n",
         data, "alias"));
     ASSERT_EQ(data.living.size(), 2u);
-    EXPECT_EQ(data.living[0].hiring_cost.value_or(-1), 9);
-    EXPECT_EQ(data.living[1].hiring_cost.value_or(-1), 11);
+    EXPECT_EQ(data.living[0].costs->hire, 9);
+    EXPECT_EQ(data.living[1].costs->hire, 11);
 }
 
 TEST(ClasspackYamlErrors, a_truncated_stream_inside_a_skipped_node_rejects)
@@ -166,16 +176,16 @@ TEST(ClasspackYamlErrors, a_truncated_stream_inside_a_skipped_node_rejects)
 
 TEST(ClasspackYamlErrors, wrong_typed_values_reject_the_pack)
 {
-    // Scalar field given a composite.
-    expect_rejected("families:\n  living:\n    - id: p:one\n"
-                    "      base_stats: [1, 2, x, 4, 5, 6]\n",
-                    "bad-int-list");
-    expect_rejected("families:\n  living:\n    - id: p:one\n"
-                    "      base_stats: [1, 2, ~, 4, 5, 6]\n",
-                    "null-in-int-list");
     expect_rejected("families:\n  living:\n    - id: p:one\n"
                     "      init_max_magicpoints: not-a-number\n",
                     "bad-float");
+    expect_rejected("families:\n  living:\n    - id: p:one\n"
+                    "      costs: {hire: soon}\n",
+                    "bad-int-in-a-block");
+    expect_rejected("families:\n  living:\n    - id: p:one\n"
+                    "      specials:\n"
+                    "        - {id: a, name: A, mp_cost: plenty}\n",
+                    "bad-int-in-a-special");
     expect_rejected("families:\n  living:\n    - id: p:one\n"
                     "      names: [Alpha, ~, Gamma]\n",
                     "null-in-string-list");
@@ -185,15 +195,26 @@ TEST(ClasspackYamlErrors, wrong_typed_values_reject_the_pack)
                     "composite-in-list");
 }
 
-TEST(ClasspackYamlErrors, bad_float_lists_reject_the_pack)
+TEST(ClasspackYamlErrors, bad_numbers_in_the_combat_block_reject_the_pack)
 {
-    // derived_bonuses is the float list every living family carries.
-    expect_rejected("families:\n  living:\n    - id: p:one\n"
-                    "      derived_bonuses: [1.0, banana, 0, 0, 0, 0, 0, 0]\n",
-                    "bad-float-list");
-    expect_rejected("families:\n  living:\n    - id: p:one\n"
-                    "      derived_bonuses: [1.0, ~, 0, 0, 0, 0, 0, 0]\n",
-                    "null-in-float-list");
+    // combat: holds the four floats the derived_bonuses list used to. A
+    // member that is not a number is fatal, and so is an explicit null:
+    // `~` means "not declared" everywhere in this reader, which for a
+    // required member is the missing-key error.
+    const char* head = "families:\n  living:\n    - id: p:one\n"
+                       "      combat:\n";
+    expect_rejected((std::string(head) +
+                     "        hp: banana\n        melee_damage: 20\n"
+                     "        stepsize: 4\n        fire_delay: 6\n"
+                     "        fire_mp_cost: 2\n")
+                        .c_str(),
+                    "bad-float-member");
+    expect_rejected((std::string(head) +
+                     "        hp: 120\n        melee_damage: 20\n"
+                     "        stepsize: ~\n        fire_delay: 6\n"
+                     "        fire_mp_cost: 2\n")
+                        .c_str(),
+                    "nulled-float-member");
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +280,7 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
         {
             og::data::ClasspackLivingEntry e;
             e.id = "mod:bulk_living" + suffix;
-            e.hiring_cost = 1;
+            e.costs = hire_only(1);
             data.living.push_back(std::move(e));
         }
         {
@@ -338,7 +359,7 @@ TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
     og::data::ClasspackLivingEntry e;
     e.id = "mod:bad_flags";
     e.wire_id = std::to_string(FAMILY_GHOST);
-    e.hiring_cost = 77;
+    e.costs = hire_only(77);
     // FLYING is real and would fold if the loop folded partially.
     e.init_bit_flags =
         std::vector<std::string>{"FLYING", "NOT_A_REAL_FLAG"};
@@ -369,7 +390,7 @@ TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
     og::data::ClasspackLivingEntry e;
     e.id.clear();      // no id declared
     e.wire_id = "0";   // but pinned onto the soldier slot
-    e.hiring_cost = 4242;
+    e.costs = hire_only(4242);
     data.living.push_back(std::move(e));
 
     EXPECT_EQ(og::resources::install_classpack_data(std::move(data)), 1);

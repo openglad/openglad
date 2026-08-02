@@ -92,10 +92,12 @@ struct ClasspackAnimSet {
 
 // --- schema v2 living blocks -------------------------------------------
 //
-// v2 replaces the six positional arrays of a living entry with named
-// blocks. The engine reads both spellings for now (a single entry must
-// pick one — mixing them is a parse error), and every v2 value lands in
-// exactly the descriptor field its v1 column did.
+// v2 replaced the six positional arrays of a living entry with named
+// blocks. The old spellings (base_stats, derived_bonuses, stat_costs,
+// special_costs, special_names, alternate_names, hiring_cost, weapon_cost)
+// are gone from the parser, but not into the unknown-key hole: each is
+// still recognized by name and fails the pack with the block it became
+// and a pointer at scripts/migrate_classpack_v2.py.
 
 // `stats:` — the attribute scores a recruit starts with, and the base the
 // picker prices training deltas against. Every member is required when the
@@ -169,20 +171,10 @@ struct ClasspackLivingEntry {
     std::optional<ClasspackCombatBlock> combat;
     std::optional<ClasspackCostsBlock> costs;
     std::optional<std::vector<ClasspackSpecialEntry>> specials;
-    // schema v1 positional arrays (still accepted; an entry may not mix
-    // the two spellings)
-    std::optional<std::vector<std::int32_t>> base_stats;       // 6
-    std::optional<std::int32_t> hiring_cost;
-    std::optional<std::vector<float>> derived_bonuses;         // 8
-    std::optional<std::vector<std::int32_t>> stat_costs;       // 6
-    std::optional<std::vector<std::int32_t>> special_costs;    // 6
-    std::optional<std::int32_t> weapon_cost;
     std::optional<std::string> default_weapon;   // weapon family string id
     std::optional<std::vector<std::string>> init_bit_flags;    // BIT_* names
     std::optional<std::int32_t> init_ani_type;
     std::optional<float> init_max_magicpoints;
-    std::optional<std::vector<std::string>> special_names;     // 6
-    std::optional<std::vector<std::string>> alternate_names;   // 6
     std::optional<bool> leaves_bloodspot;
     std::optional<float> magic_damage_modifier;
     std::optional<bool> is_stationary;
@@ -290,8 +282,9 @@ struct ClasspackData {
 // mistakes a modder can actually make:
 //   * a member that stats: or combat: leaves out, a costs: without hire, a
 //     special without id/name/mp_cost, an out-of-order slot, a duplicate
-//     id, or one of the four dead derived axes (mp/ranged_damage/range/
-//     defense) fails the pack with a message saying what to write instead;
+//     id, one of the four dead derived axes (mp/ranged_damage/range/
+//     defense), or a retired schema-v1 key fails the pack with a message
+//     saying what to write instead;
 //   * an unrecognized key INSIDE one of those blocks warns and is dropped,
 //     rather than vanishing the way an unknown entry-level key does.
 bool parse_classpack_yaml(std::string_view text, ClasspackData& out,

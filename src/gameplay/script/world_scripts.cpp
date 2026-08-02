@@ -688,8 +688,9 @@ int special_slot_for_id(const FamilyDescriptor* fd, const char* id)
 }
 
 // The ids the family does declare — the other half of an unknown-key
-// error. A family whose descriptor names none (an unmigrated pack, say)
-// says so, which is the answer to "why doesn't my key resolve".
+// error. A family whose descriptor names none (an entry with no
+// `specials:` list, say) says so, which is the answer to "why doesn't my
+// key resolve".
 std::string declared_special_ids(const FamilyDescriptor* fd)
 {
     std::string list;

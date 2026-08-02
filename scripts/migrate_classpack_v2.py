@@ -21,6 +21,11 @@ scalars; v2 keeps them in named blocks (docs/lua-classpacks-design.md §4):
 This script performs that rewrite mechanically, and re-anchors the parity
 mutation pins that named the lines it moved.
 
+The engine no longer reads the v1 spellings: each of the eight keys is
+refused by name with a line saying where its value moved, so an unmigrated
+pack fails to load rather than installing a family of registry defaults.
+This script is what that error points at.
+
 WHY IT IS A SCRIPT AND NOT A HAND EDIT
 --------------------------------------
 21 near-identical files times ~40 scalars each is the exact shape that

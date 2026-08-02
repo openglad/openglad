@@ -406,6 +406,15 @@ would be a gameplay trap.
   positional array that never had a reader. Max MP is `10 + INT*3` (or
   `init_max_magicpoints`), a ranged attack's damage belongs to the weapon
   family, reach is `ai_line_of_sight`, and armor is `stats.armor`.
+- **The keys the blocks replaced are refused by name too**, in any shape,
+  with a line saying where the value moved: `base_stats` → `stats:`,
+  `derived_bonuses` → `combat:`, `stat_costs` → `costs.train`,
+  `hiring_cost` → `costs.hire`, `weapon_cost` → `combat.fire_mp_cost`,
+  and `special_costs` / `special_names` / `alternate_names` → the
+  `specials:` list. Silence there would be the worst outcome the schema
+  can produce — an unknown key is skipped, so an unmigrated file would
+  install a family with no attributes and no diagnosis. Run
+  `scripts/migrate_classpack_v2.py` on a pack that still spells them.
 
 `specials:` is a list of up to five entries and its ORDER is the slot:
 entry *i* is slot *i+1*, which the player can select from level

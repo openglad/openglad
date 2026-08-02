@@ -183,8 +183,8 @@ Rules:
   every value must be a function; an empty table is a load error.
 - An id and an integer that name the SAME slot in one table is a load error
   — the table says two things about one special and nothing can choose.
-- An id key against a family whose descriptor declares none (a pack still
-  on the pre-v2 schema) is a load error that says so.
+- An id key against a family whose descriptor declares no special ids at
+  all (an entry with no `specials:` list) is a load error that says so.
 - The engine stores a **private copy** at registration — mutating the
   caller's table afterwards cannot change dispatch (R6 at the registration
   boundary).

@@ -705,9 +705,9 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
         d.name = e.name->c_str();
     if (e.short_name.present)
         d.short_name = nullable_cstr(e.short_name);
-    // --- schema v2 blocks ------------------------------------------------
-    // Each lands in exactly the descriptor field its v1 column did, so a
-    // migrated entry installs the same bytes the array spelling installed.
+    // --- the named blocks -------------------------------------------------
+    // Each lands in exactly the descriptor field its schema v1 column did,
+    // so a migrated entry installs the bytes the array spelling installed.
     if (e.stats) {
         d.base_stats[StatAxis::Strength] = e.stats->strength;
         d.base_stats[StatAxis::Dexterity] = e.stats->dexterity;
@@ -738,39 +738,6 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
     }
     if (e.specials)
         install_specials(*e.specials, d);
-    // --- schema v1 positional arrays -------------------------------------
-    if (e.base_stats) {
-        const std::size_t n = std::min<std::size_t>(StatAxis::Count,
-                                                    e.base_stats->size());
-        for (std::size_t i = 0; i < n; i++)
-            d.base_stats[i] = (*e.base_stats)[i];
-    }
-    if (e.hiring_cost)
-        d.hiring_cost = *e.hiring_cost;
-    if (e.derived_bonuses) {
-        // The v1 column order: HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD.
-        // Only four ever had a reader; the rest are read past and dropped.
-        const std::vector<float>& db = *e.derived_bonuses;
-        if (db.size() > 0) d.combat.hp = db[0];
-        if (db.size() > 2) d.combat.melee_damage = db[2];
-        if (db.size() > 6) d.combat.stepsize = db[6];
-        if (db.size() > 7) d.combat.fire_delay = db[7];
-    }
-    if (e.stat_costs) {
-        const std::size_t n = std::min<std::size_t>(StatAxis::Count,
-                                                    e.stat_costs->size());
-        for (std::size_t i = 0; i < n; i++)
-            d.stat_costs[i] = (*e.stat_costs)[i];
-    }
-    if (e.special_costs) {
-        const std::size_t n = std::min<std::size_t>(
-            FD_NUM_SPECIALS, e.special_costs->size());
-        for (std::size_t i = 0; i < n; i++)
-            d.special_cost[i] =
-                static_cast<unsigned short>((*e.special_costs)[i]);
-    }
-    if (e.weapon_cost)
-        d.combat.fire_mp_cost = static_cast<short>(*e.weapon_cost);
     if (e.default_weapon) {
         const int weapon = resolve_ref(Order::Weapon, *e.default_weapon,
                                        "default_weapon", e.id, wire_ids);
@@ -786,22 +753,6 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
         d.init_ani_type = static_cast<char>(*e.init_ani_type);
     if (e.init_max_magicpoints)
         d.init_max_magicpoints = *e.init_max_magicpoints;
-    if (e.special_names) {
-        const std::size_t n = std::min<std::size_t>(
-            FD_NUM_SPECIALS, e.special_names->size());
-        for (std::size_t i = 0; i < n; i++) {
-            d.special_names[i] = (*e.special_names)[i].c_str();
-            // v1 names a slot without naming an id: whatever id the slot
-            // carried belonged to a different special.
-            d.special_ids[i] = nullptr;
-        }
-    }
-    if (e.alternate_names) {
-        const std::size_t n = std::min<std::size_t>(
-            FD_NUM_SPECIALS, e.alternate_names->size());
-        for (std::size_t i = 0; i < n; i++)
-            d.alternate_names[i] = (*e.alternate_names)[i].c_str();
-    }
     if (e.leaves_bloodspot)
         d.leaves_bloodspot = *e.leaves_bloodspot;
     if (e.magic_damage_modifier)

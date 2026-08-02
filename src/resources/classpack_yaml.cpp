@@ -315,42 +315,9 @@ bool set_presentation_field(Cursor& c, const std::string& key,
 }
 
 // --- typed list setters ------------------------------------------------
-
-bool set_int_list(Cursor& c, const std::string& key,
-                  const std::vector<Scalar>& items,
-                  std::optional<std::vector<std::int32_t>>& out)
-{
-    std::vector<std::int32_t> values;
-    values.reserve(items.size());
-    for (const Scalar& item : items) {
-        const auto parsed = parse_int_strict(item.text);
-        if (item.null || !parsed) {
-            c.error("bad integer in list '" + key + "': " + item.text);
-            return false;
-        }
-        values.push_back(*parsed);
-    }
-    out = std::move(values);
-    return true;
-}
-
-bool set_float_list(Cursor& c, const std::string& key,
-                    const std::vector<Scalar>& items,
-                    std::optional<std::vector<float>>& out)
-{
-    std::vector<float> values;
-    values.reserve(items.size());
-    for (const Scalar& item : items) {
-        float value = 0.0f;
-        if (item.null || !parse_float_strict(item.text, value)) {
-            c.error("bad number in list '" + key + "': " + item.text);
-            return false;
-        }
-        values.push_back(value);
-    }
-    out = std::move(values);
-    return true;
-}
+//
+// Only string lists survive: `init_bit_flags` and `names`. The numeric
+// lists went with the schema v1 positional arrays.
 
 bool set_string_list(Cursor& c, const std::string& key,
                      const std::vector<Scalar>& items,
@@ -966,18 +933,47 @@ const char* v2_block_shape(const std::string& key)
     return nullptr;
 }
 
-// True when the entry declares any of the six positional arrays (or the
-// two loose scalars) v2 replaced.
-bool declares_schema_v1(const ClasspackLivingEntry& e)
+// The eight keys schema v2 retired, and what each one became.
+//
+// They are recognized rather than forgotten, because the alternative is
+// the worst outcome the schema can produce: an unknown key is skipped in
+// silence for forward compatibility, so a v1 file read by a v2 parser
+// would install a family of registry defaults — no attributes, no
+// hitpoints, no specials — and say nothing at all. A named refusal costs
+// one table and turns that into a sentence the author can act on.
+const char* retired_v1_key(const std::string& key)
 {
-    return e.base_stats || e.hiring_cost || e.derived_bonuses ||
-           e.stat_costs || e.special_costs || e.weapon_cost ||
-           e.special_names || e.alternate_names;
+    if (key == "base_stats")
+        return "stats: {strength, dexterity, constitution, intelligence, "
+               "armor, level}";
+    if (key == "hiring_cost")
+        return "costs.hire";
+    if (key == "derived_bonuses")
+        return "combat: {hp, melee_damage, stepsize, fire_delay} — its MP, "
+               "ranged-damage, range and defense columns never had a reader "
+               "and are gone";
+    if (key == "stat_costs")
+        return "costs.train: {strength, ..., level}, one gold price per "
+               "training point";
+    if (key == "weapon_cost")
+        return "combat.fire_mp_cost — it is magic points per shot, not gold";
+    if (key == "special_costs")
+        return "the mp_cost of each specials: entry";
+    if (key == "special_names")
+        return "the name of each specials: entry";
+    if (key == "alternate_names")
+        return "alternate: {name: ...} on the specials: entry it belongs to";
+    return nullptr;
 }
 
-bool declares_schema_v2(const ClasspackLivingEntry& e)
+// The one line a v1 pack gets. It names the key, where the value moved,
+// and the tool that does the rewrite; the pack itself is rejected whole,
+// through the same path any other unusable value takes.
+void fail_retired_v1_key(Cursor& c, const std::string& where,
+                         const std::string& key, const char* became)
 {
-    return e.stats || e.combat || e.costs || e.specials;
+    c.error(where + " " + key + " is a schema v1 key: it became " + became +
+            " — run scripts/migrate_classpack_v2.py");
 }
 
 bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
@@ -990,6 +986,10 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
     const bool ok = parse_entry_fields(
         c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
+            if (const char* became = retired_v1_key(key)) {
+                fail_retired_v1_key(c, entry_where(), key, became);
+                return false;
+            }
             if (key == "id") {
                 if (!v.null)
                     e.id = v.text;
@@ -1000,10 +1000,6 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
                 set_string(v, e.name);
             else if (key == "short_name")
                 set_nullable(v, e.short_name);
-            else if (key == "hiring_cost")
-                return set_int(c, key, v, e.hiring_cost);
-            else if (key == "weapon_cost")
-                return set_int(c, key, v, e.weapon_cost);
             else if (key == "default_weapon")
                 set_string(v, e.default_weapon);
             else if (key == "init_ani_type")
@@ -1052,25 +1048,19 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
             return true;
         },
         [&](const std::string& key, const std::vector<Scalar>& items) {
-            if (key == "base_stats")
-                return set_int_list(c, key, items, e.base_stats);
-            if (key == "derived_bonuses")
-                return set_float_list(c, key, items, e.derived_bonuses);
-            if (key == "stat_costs")
-                return set_int_list(c, key, items, e.stat_costs);
-            if (key == "special_costs")
-                return set_int_list(c, key, items, e.special_costs);
             if (key == "init_bit_flags")
                 return set_string_list(c, key, items, e.init_bit_flags);
-            if (key == "special_names")
-                return set_string_list(c, key, items, e.special_names);
-            if (key == "alternate_names")
-                return set_string_list(c, key, items, e.alternate_names);
             if (key == "names")
                 return set_string_list(c, key, items, e.names);
             return true;
         },
         [&](const std::string& key, yaml_event_type_t type) {
+            // The v1 arrays are refused whatever shape they arrive in, so
+            // they never reach the list handler above.
+            if (const char* became = retired_v1_key(key)) {
+                fail_retired_v1_key(c, entry_where(), key, became);
+                return KeyResult::Failed;
+            }
             const char* shape = v2_block_shape(key);
             if (shape == nullptr)
                 return KeyResult::Unknown;
@@ -1104,21 +1094,7 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
             }
             return KeyResult::Taken;
         });
-    if (!ok)
-        return false;
-    // Half-migrated entries are the one thing dual-accept must not swallow:
-    // with both spellings present, which one wins is a coin toss the author
-    // never sees. Fatal, like any other unusable value.
-    if (declares_schema_v1(e) && declares_schema_v2(e)) {
-        c.error(entry_where() +
-                ": mixes the old positional keys (base_stats, "
-                "derived_bonuses, stat_costs, special_costs, special_names, "
-                "alternate_names, hiring_cost, weapon_cost) with the named "
-                "blocks that replaced them (stats, combat, costs, specials) "
-                "— convert the whole entry");
-        return false;
-    }
-    return true;
+    return ok;
 }
 
 bool parse_weapon_entry(Cursor& c, ClasspackWeaponEntry& e)

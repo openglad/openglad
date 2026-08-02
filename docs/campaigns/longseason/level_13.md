@@ -76,7 +76,7 @@ Curve position: crew level 6 — the autumn act's close.
 | drover | SOLDIER | 5 | no | (21,3) | no | no |
 | drover | SOLDIER | 5 | no | (33,5) — clear of both cart footprints | no | no |
 
-GOLEM notes: huge HP pool (base_stats +270 HP bonus, no specials, boulder
+GOLEM notes: huge HP pool (combat.hp +270, no specials, boulder
 default weapon) — the wagon IS the pile of ore; it "throws its load" when
 pressed. Slow and tanky by family, which is exactly a wagon. It does not
 need to reach the exit (AI never exits): the WIN is the crew reaching

@@ -70,8 +70,10 @@ The rules worth knowing before your first parse error:
 - Up to five specials; `specials: []` for a family with none. Absent slots
   are disabled ("NONE"/5000). `costs.train.level` is vestigial — nothing
   reads it — but the core files ship 200, so an override must restate it.
-- `scripts/migrate_classpack_v2.py` converts a pack still on the old
-  positional arrays (`base_stats`, `derived_bonuses`, `special_costs`, …).
+- The old positional keys (`base_stats`, `derived_bonuses`, `stat_costs`,
+  `special_costs`, `special_names`, `alternate_names`, `hiring_cost`,
+  `weapon_cost`) are refused by name — the error says where each value
+  moved. `scripts/migrate_classpack_v2.py` does the rewrite.
 
 ## Pack anatomy
 
