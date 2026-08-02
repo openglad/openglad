@@ -4824,7 +4824,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.yaml", 44,
+    "packs/core/families/living-05-cleric.yaml", 74,
     "        heal_range: 60",
     "        heal_range: 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count<=1 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -4864,7 +4864,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.yaml", 52,
+    "packs/core/families/living-05-cleric.yaml", 82,
     "        raise_skeleton_range: 60",
     "        raise_skeleton_range: 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -4900,7 +4900,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.yaml", 53,
+    "packs/core/families/living-05-cleric.yaml", 83,
     "        raise_ghost_range: 30",
     "        raise_ghost_range: 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -4941,7 +4941,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_scen99 = {
-    "packs/core/families/living-04-skeleton.yaml", 24,
+    "packs/core/families/living-04-skeleton.yaml", 42,
     "      is_undead: true",
     "      is_undead: false",
     "Clears the descriptor flag walker::turn_undead (walker_specials.cpp:321) tests to pick victims, so neither skeleton is destroyed. Both stay alive at 60/60 and keep meleeing the caster down to 67/120: WalkerDiedByFinal, WalkerOfTeamAlive(1,0,0), LevelDoneEquals(2) and the cleric HP floor all fail."
@@ -5021,7 +5021,7 @@ inline constexpr FactPredicate kFacts_undead_no_corpse_raise_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_undead_no_corpse_raise_scen99 = {
-    "packs/core/families/living-04-skeleton.yaml", 20,
+    "packs/core/families/living-04-skeleton.yaml", 38,
     "      leaves_bloodspot: false",
     "      leaves_bloodspot: true",
     "Makes the undead victim drop a FAMILY_STAIN at its (135,120) death spot -- 15 px from the caster, inside both find_nearest_blood's squared-800 ceiling and raise_skeleton_range 60. The slot-2 cast now succeeds and a live team-0 FAMILY_SKELETON is summoned: WalkerDiedByFinal fails, WalkerOfTeamAlive(0,2,2) sees 3, and WalkerFamilyCount(FAMILY_SKELETON,1,1) sees 2."
@@ -5805,7 +5805,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
-    "packs/core/families/living-00-soldier.yaml", 52,
+    "packs/core/families/living-00-soldier.yaml", 79,
     "disarm_range: 28",
     "disarm_range: 0",
     "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
@@ -5919,7 +5919,7 @@ inline constexpr FactPredicate kFacts_orc_eat_corpse_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_eat_corpse_scen99 = {
-    "packs/core/families/living-14-orc.yaml", 50,
+    "packs/core/families/living-14-orc.yaml", 71,
     "corpse_heal_per_level: 5",
     "corpse_heal_per_level: 0",
     "Zeroes the per-corpse-level heal. Every other step of eat_corpse still runs (find_nearest_blood, the range gate, do_heal_effects, the notice, corpse:death()) and no RNG draw changes, so the mutated dump is identical except the orc's final hp is exactly 5 lower — the exact orc hp pin flips."
@@ -6143,7 +6143,7 @@ inline constexpr FactPredicate kFacts_magic_damage_slime_scen99[] = {
 };
 
 inline constexpr Mutation kMut_magic_damage_slime_scen99 = {
-    "packs/core/families/living-08-slime.yaml", 21,
+    "packs/core/families/living-08-slime.yaml", 39,
     "      magic_damage_modifier: 2",
     "      magic_damage_modifier: 1",
     "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged."
@@ -7272,7 +7272,7 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 50,
+    "packs/core/families/living-03-mage.yaml", 81,
     "        bonus_rounds_per_level: 2",
     "        bonus_rounds_per_level: 0",
     "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
@@ -7441,7 +7441,7 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-03-mage.yaml", 53,
+    "packs/core/families/living-03-mage.yaml", 84,
     "        heartburst_range_base: 80",
     "        heartburst_range_base: 0",
     "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 8 -> 4, and the surviving orc finishes on 14000 cents instead of 5600."
