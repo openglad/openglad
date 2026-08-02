@@ -20,6 +20,7 @@
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
 #include <openglad/server/headless_tick_interval.h>
@@ -266,6 +267,9 @@ int main(int argc, char* argv[])
         Log("headless_server_listening host={} port={}\n", args.host, args.port);
 
         og::sim::LobbyServer lobby_server(transport);
+        // Offer this host's mounted non-core class packs for automatic
+        // transfer to joiners (protocol v10).
+        lobby_server.set_hosted_packs(og::resources::build_transferable_packs());
         while (!g_shutdown_requested.load(std::memory_order_acquire))
         {
             lobby_server.poll_incoming_messages();

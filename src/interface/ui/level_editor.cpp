@@ -25,6 +25,8 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/smooth.h>
@@ -3145,6 +3147,11 @@ walker* LevelEditorData::get_object(int x, int y)
 
 std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[])
 {
+    // NUM_FAMILIES bound: `livings` (and the treasure/weapon caption arrays
+    // the caller passes) are NUM_FAMILIES-long, so a pack family at a higher
+    // id has no slot to read. Widening this is a change to the editor's
+    // palette arrays, not to the label lookup, and belongs with the editor's
+    // own mod-palette work.
     if(family < 0 || family >= NUM_FAMILIES)
         return "UNKNOWN";
 
@@ -3152,14 +3159,12 @@ std::string get_editor_family_label(Order order, Sint32 family, std::span<const 
         return livings[static_cast<std::size_t>(family)];
     if (order == Order::Generator)
     {
-        switch (family)
-        {
-            case FAMILY_TENT: return "TENT";
-            case FAMILY_TOWER: return "MAGE TOWER";
-            case FAMILY_BONES: return "BONEPILE";
-            case FAMILY_TREEHOUSE: return "TREEHOUSE";
-            default: return "GENERATOR";
-        }
+        // The palette caption rides on the descriptor (editor_label), so a
+        // class pack's generator names itself. An unregistered generator gets
+        // the struct's default, which is the old `default:` branch.
+        const GeneratorFamilyDescriptor* gd =
+            get_generator_family_descriptor(family);
+        return gd ? gd->editor_label : GeneratorFamilyDescriptor{}.editor_label;
     }
     if (order == Order::Special)
         return "START TILE";
@@ -3762,6 +3767,7 @@ Sint32 level_editor()
 
 
 		// Scroll the screen (panning)
+		// Zardus: ADD: added scrolling by keyboard
 		#ifndef OUYA
 		eds().pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
 		eds().pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
@@ -4182,6 +4188,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
         }
 	}
 
+    // Also check the fx list ..
     for(auto& uptr : data->world().fxlist)
 	{
 	    walker* w = uptr.get();
@@ -4196,6 +4203,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
         }
 	}
 
+    // Also check the weapons list ..
     for(auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();

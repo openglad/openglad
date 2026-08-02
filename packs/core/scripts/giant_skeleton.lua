@@ -1,0 +1,8 @@
+-- core:#19 (giant skeleton) — no hooks (cookbook: docs/lua-classpacks-design.md §3).
+-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
+-- The original death switch spared only ghost/skeleton/tower1 a bloodspot;
+-- the descriptor extraction classed this family with those undead, and
+-- leaves_bloodspot: false carries that as descriptor data.
+-- The family is otherwise descriptor-driven: og.register_hooks with an
+-- empty hook table is a load error, and registering a hook here would add
+-- behavior it never had. Deliberately a no-op chunk.

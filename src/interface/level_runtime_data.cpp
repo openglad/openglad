@@ -141,6 +141,14 @@ static void wire_world_entity_services(GameWorld* world,
     if (world == nullptr || level == nullptr)
         return;
 
+    // Scenario titles are read by the resources layer, which gameplay may not
+    // depend on; install the provider seam here (before the platform hook
+    // branch, so every wiring path gets it) so sim-side code — notably the
+    // exit pad's og.scenario_title binding — can reach it.
+    world->scenario_title_provider = [](const char* filename) {
+        return get_scenario_title(filename);
+    };
+
     if (hooks != nullptr && hooks->wire_world_entity_services != nullptr)
     {
         hooks->wire_world_entity_services(world, level);
@@ -538,6 +546,7 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless,
 
     if (!headless)
     {
+        // Load map data from a pixie format
         load_map_data(level_visuals().pixdata);
         load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)
@@ -810,6 +819,7 @@ bool LevelRuntimeData::load()
 
     wire_world_entity_services(world_, this, hooks_);
 
+    // Build up the file name (scen#.fss)
     std::string thefile = std::format("scen{}.fss", world().id);
 
     og::data::LevelFileMetadata loaded_metadata;
@@ -844,6 +854,7 @@ bool LevelRuntimeData::load()
     if (!headless_)
     {
         level_visuals().renderer_.reset();
+        // Delete old tiles
         for (int i = 0; i < PIX_MAX; i++)
             level_visuals().pixdata[i].free();
         for (int i = 0; i < DECOR_MAX; i++)

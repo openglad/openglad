@@ -578,6 +578,52 @@ TEST(CursesNetwork, roster_reflects_two_players)
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
 }
 
+// A joining terminal client must not claim readiness while a class-pack
+// transfer is still in flight — the start gate would otherwise open on a
+// machine missing the very Lua the deterministic sim runs (the same contract
+// PickerNetworkClient.join_ready_is_refused_while_a_pack_transfer_is_pending
+// pins for the SDL client). The server announces a pack this machine does
+// not have and never serves a chunk, so the joiner requests it, surfaces the
+// transfer's progress through its status log, and stays mid-transfer.
+TEST(CursesNetwork, join_ready_refused_while_pack_transfer_pending)
+{
+    SaveData join_save;
+    init_team_save(join_save, 1, FAMILY_ELF, "PackJoiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto join_client = server->create_client_transport();
+
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(nullptr, join_lobby);
+
+    // Announce a pack this machine does not have, then never serve a single
+    // chunk: the client requests it and stays mid-transfer.
+    auto manifest = std::make_shared<og::sim::PackManifestMessage>();
+    manifest->pack_index = 0;
+    manifest->pack_count = 1;
+    manifest->pack_id = "org.test.neverserved";
+    manifest->version = "1";
+    manifest->files.push_back(
+        og::sim::PackManifestFileEntry{.path = "scripts/ghost.lua",
+                                       .size_bytes = 64u,
+                                       .hash64 = 0x0123456789abcdefull});
+    server->send_pack_manifest(join_client->local_peer_id(), manifest);
+
+    // One poll pumps the manifest into the transfer client (the in-process
+    // pair delivers synchronously), which logs "Receiving pack ... (0%)".
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    join_lobby->poll(term, clock);
+
+    EXPECT_FALSE(join_lobby->set_ready(true))
+        << "readiness must not be claimable while a pack is still arriving";
+    EXPECT_FALSE(join_lobby->local_ready());
+    EXPECT_TRUE(status_contains(*join_lobby, "Waiting for pack transfer"))
+        << "the refused ready keeps the transfer status on screen";
+}
+
 TEST(CursesNetwork,
      join_game_start_assembly_matches_host_with_private_slot_and_id_collisions)
 {

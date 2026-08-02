@@ -37,10 +37,12 @@ void handle_cheat_keys(walker*& control, short mynum,
 		og::runtime::current_session->changedteam_[mynum] = 0;
 	if (pi.was_pressed(InputAction::SwitchChar) && !og::runtime::current_session->changedteam_[mynum])
 	{
+		// to debounce keys
 		og::runtime::current_session->changedteam_[mynum] = 1;
 
 		walker* result = nullptr;
 		control->set_user(-1);
+		// hope this works
 		control->set_act_type(ACT_RANDOM);
 
 		short oldteam = game_screen->save_data.my_team;
@@ -72,6 +74,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 		control->set_act_type(ACT_CONTROL);
 	}
 
+	// Testing effect object ..
+	// kill living bad guys
 	if (query_key_event(KEYCODE_F12, native_event))
 	{
 		for (auto& uptr : game_screen->world().oblist)
@@ -101,6 +105,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		set_palette(game_screen->bluepalette);
 	}
 
+	// generate magic shield
 	if (query_key_event(KEYCODE_F2, native_event))
 	{
 		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
@@ -111,6 +116,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		newob->set_lifetime(200);
 	}
 
+	// ability to fly
 	if (query_key_event(KEYCODE_f, native_event))
 	{
 		if (control->stats()->query_bit_flags(BIT_FLYING))
@@ -119,6 +125,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 			control->stats()->set_bit_flags(BIT_FLYING, 1);
 	}
 
+	// give controller lots of hitpoints
 	if (query_key_event(KEYCODE_h, native_event))
 	{
 		control->stats()->set_hitpoints(control->stats()->hitpoints() + 100);
@@ -133,15 +140,18 @@ void handle_cheat_keys(walker*& control, short mynum,
 			control->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
 	}
 
+	// give controller lots of magicpoints
 	if (query_key_event(KEYCODE_m, native_event))
 		control->stats()->set_magicpoints(control->stats()->magicpoints() + 150);
 
+	// give us faster speed ..
 	if (query_key_event(KEYCODE_s, native_event))
 	{
 		control->set_speed_bonus_left(control->speed_bonus_left() + 20);
 		control->set_speed_bonus(control->normal_stepsize());
 	}
 
+	// transform to new shape
 	if (query_key_event(KEYCODE_t, native_event))
 	{
 		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family())) + 1) % NUM_FAMILIES;

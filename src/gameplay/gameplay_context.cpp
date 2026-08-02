@@ -109,8 +109,10 @@ public:
             return;
         }
 
-        // Straightness bias target: the explicit goal point when one is set,
-        // otherwise the owner's foe (the classic chase path).
+        // Straightness-bias target: the explicit goal point when one is set,
+        // otherwise the owner's foe (the classic chase path). The
+        // cross-product below penalizes moving away from a straight line to
+        // this target.
         const int target_x = owner_->has_goal
             ? owner_->goal_x
             : owner_->active_walker->foe()->xpos();
@@ -141,6 +143,7 @@ public:
                 cost.state = MAKE_STATE(adj_x, adj_y, f);
                 cost.cost = 0;
 
+                // Any terrain in the way?  This checks boundaries too.
                 if (!current_game->world->query_grid_passable(
                         static_cast<float>(adj_x),
                         static_cast<float>(adj_y),
@@ -198,15 +201,19 @@ public:
                     if (!flanks_open)
                         continue;
                 }
+                // Any moving objects in the way?
                 if (current_game->world->myobmap
                              ->obmap_get_list(static_cast<short>(adj_x),
                                               static_cast<short>(adj_y), f)
                              .size() > 0)
                 {
+                    // TODO: Make doors impassable without a key.
+                    // TODO: Add an adjacent edge to a teleporter's far side.
                     cost.cost = 10;
                 }
                 else
                 {
+                    // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
                     cost.cost = (i == 0 || j == 0) ? 1.0f : kDiagonalStepCost;
                 }
 
@@ -286,6 +293,7 @@ void GameplayPathfindingState::solve_for(walker* owner,
     if (!impl_ || owner == nullptr || owner->foe() == nullptr)
         return;
 
+    // Set the walker that the path is being generated for
     impl_->owner.active_walker = owner;
     impl_->owner.has_goal = false;
     // solve() resets its own per-search state while retaining scratch capacity.

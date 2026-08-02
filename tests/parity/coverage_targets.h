@@ -4,12 +4,11 @@
 // Single source of truth used by:
 //   * tests/parity/test_parity_coverage_gate.cpp — runtime subset check
 //   * scripts/parity/check_coverage_manifest.py  — pre-build static check
-//   * .plan/parity-coverage-manifest.md          — long-form contract
 //
 // Adding a `FAMILY_*` to `include/openglad/core/constants.h` or an
 // `EventKind` to `include/openglad/gameplay/event.h` without updating
-// this header (and the manifest) trips the static check; adding an
-// entry here without a covering scenario trips the runtime gate.
+// this header trips the static check; adding an entry here without a
+// covering scenario trips the runtime gate.
 
 #pragma once
 

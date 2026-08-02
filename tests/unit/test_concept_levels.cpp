@@ -1,12 +1,16 @@
 // Shipped Concept Playground campaign validation. The five Z-axis demo
-// levels (600-604 in builtin/org.openglad.concept.glad) are loaded through
-// the production campaign-mount path and pinned against the authoring
-// invariants tools/concept_mapgen promises: floor counts and grid geometry,
-// the single start marker, the seeded foes, briefing budgets, the exit that
-// chains the tour onward (604 loops home to 600), aligned Z-stair pairs on
-// the boundaries that have them, and every authored entity standing on
-// ground its own footprint can occupy. This test is the regression pin for
-// the committed package.
+// levels (600-604 in builtin/org.openglad.concept.glad) plus the scripted
+// boss arena "The Ninefold Court" (605) are loaded through the production
+// campaign-mount path and pinned against the authoring invariants
+// tools/concept_mapgen promises: floor counts and grid geometry, the start
+// markers, the seeded foes and pillar generators, briefing budgets, the
+// exit chain (600→…→604→605, with the court looping home to 600), aligned
+// Z-stair pairs on the boundaries that have them, and every authored
+// entity standing on ground its own footprint can occupy. The court's
+// embedded pack (packs/org.openglad.concept.showcase/scripts/court.lua
+// inside the .glad) is additionally pinned end to end: registered on
+// mount, and its ward/judgment/victory phases driven through real sim
+// ticks. This test is the regression pin for the committed package.
 //
 // The six epic multifloor war stories that used to ship here as levels
 // 605-610 moved to builtin/org.openglad.westlands.glad
@@ -19,6 +23,9 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -33,6 +40,7 @@
 #include "test_gameplay_context_scope.h"
 
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -137,21 +145,24 @@ struct ShippedDemoLevel
     int floors;
     int grid_w;
     int grid_h;
-    int start_markers; // the single player start of each demo
-    int team1_livings; // the seeded foes
-    int exits;         // the exit that chains the tour onward
+    int start_markers;    // the demos deploy one start; the court a full crew
+    int team1_livings;    // the seeded foes
+    int team1_generators; // the court's four warding pillars
+    int exits;            // the exit that chains the tour onward
     // 601/603 traverse their floors by falling, so they carry no stair pair.
     bool stairs_every_boundary;
 };
 
 // The authored rosters (tools/concept_mapgen/main.cpp). Every pin is exact:
-// the demos are tiny, deliberate teaching levels.
+// the demos are tiny, deliberate teaching levels, and the court is the
+// level-scripting showcase.
 constexpr ShippedDemoLevel kDemoLevels[] = {
-    {600, "Stairs", 2, 24, 18, 1, 1, 1, true},
-    {601, "Mind the Gap", 2, 28, 18, 1, 1, 1, false},
-    {602, "Glasshouse", 2, 22, 16, 1, 1, 1, true},
-    {603, "Drop Zone", 2, 22, 16, 1, 1, 1, false},
-    {604, "Arc Range", 2, 30, 16, 1, 2, 1, true},
+    {600, "Stairs", 2, 24, 18, 1, 1, 0, 1, true},
+    {601, "Mind the Gap", 2, 28, 18, 1, 1, 0, 1, false},
+    {602, "Glasshouse", 2, 22, 16, 1, 1, 0, 1, true},
+    {603, "Drop Zone", 2, 22, 16, 1, 1, 0, 1, false},
+    {604, "Arc Range", 2, 30, 16, 1, 2, 0, 1, true},
+    {605, "The Ninefold Court", 1, 30, 22, 8, 1, 4, 1, false},
 };
 
 // SCENARIO INFORMATION dialog budget: at most 33 characters per line.
@@ -185,6 +196,7 @@ TEST_F(ConceptCampaignTest, demo_levels_round_trip_the_authored_structure)
         }
 
         int livings[MAX_TEAM + 1] = {};
+        int generators[MAX_TEAM + 1] = {};
         int starts = 0;
         for (const auto& uptr : world.oblist)
         {
@@ -194,13 +206,17 @@ TEST_F(ConceptCampaignTest, demo_levels_round_trip_the_authored_structure)
             const int team = ob->team_num() & 7;
             if (ob->query_order() == Order::Living)
                 ++livings[team];
+            else if (ob->query_order() == Order::Generator)
+                ++generators[team];
             else if (ob->query_order() == Order::Special &&
                      ob->family() == FAMILY_RESERVED_TEAM && team == 0)
                 ++starts;
         }
-        EXPECT_EQ(expected.start_markers, starts) << "the player start";
-        EXPECT_EQ(0, livings[0]) << "no placed team-0 livings in the demos";
+        EXPECT_EQ(expected.start_markers, starts) << "the player starts";
+        EXPECT_EQ(0, livings[0]) << "no placed team-0 livings in the tour";
         EXPECT_EQ(expected.team1_livings, livings[1]) << "the seeded foes";
+        EXPECT_EQ(expected.team1_generators, generators[1])
+            << "the court's warding pillars";
 
         int exits = 0;
         for (const auto& uptr : world.fxlist)
@@ -216,27 +232,35 @@ TEST_F(ConceptCampaignTest, demo_levels_round_trip_the_authored_structure)
     }
 }
 
-// The tour's last stop loops home: 604's exit names 600 as its destination,
-// keeping the demo chain inside the demo set now that the epic war stories
-// live in the Westlands campaign.
-TEST_F(ConceptCampaignTest, arc_range_exit_loops_home_to_stairs)
+// The tour's tail: Arc Range chains into the scripted showcase (604 → 605),
+// and The Ninefold Court loops home to Stairs (605 → 600), keeping the
+// whole chain inside the package.
+TEST_F(ConceptCampaignTest, tour_tail_chains_through_the_court_and_home)
 {
-    LoadedConceptLevel fx(604);
-    ASSERT_TRUE(fx.loaded);
-    walker* exit_ob = nullptr;
-    for (const auto& uptr : fx.world().fxlist)
+    const struct { int id; int destination; const char* why; } hops[] = {
+        {604, 605, "Arc Range hands the tour to the court"},
+        {605, 600, "the court loops home to Stairs"},
+    };
+    for (const auto& hop : hops)
     {
-        walker* ob = uptr.get();
-        if (ob != nullptr && ob->query_order() == Order::Treasure &&
-            ob->family() == FAMILY_EXIT)
+        SCOPED_TRACE("scen" + std::to_string(hop.id));
+        LoadedConceptLevel fx(hop.id);
+        ASSERT_TRUE(fx.loaded);
+        walker* exit_ob = nullptr;
+        for (const auto& uptr : fx.world().fxlist)
         {
-            exit_ob = ob;
-            break;
+            walker* ob = uptr.get();
+            if (ob != nullptr && ob->query_order() == Order::Treasure &&
+                ob->family() == FAMILY_EXIT)
+            {
+                exit_ob = ob;
+                break;
+            }
         }
+        ASSERT_NE(nullptr, exit_ob) << "the level ships one exit";
+        EXPECT_EQ(hop.destination, static_cast<int>(exit_ob->stats()->level()))
+            << hop.why;
     }
-    ASSERT_NE(nullptr, exit_ob) << "Arc Range ships one exit";
-    EXPECT_EQ(600, static_cast<int>(exit_ob->stats()->level()))
-        << "the demo tour restarts at Stairs";
 }
 
 TEST_F(ConceptCampaignTest, demo_levels_have_stairs_on_flagged_boundaries)
@@ -314,4 +338,230 @@ TEST_F(ConceptCampaignTest, demo_level_entities_stand_on_passable_ground)
         for (const auto& uptr : world.fxlist)
             check_footing(uptr.get());
     }
+}
+
+// ---------------------------------------------------------------------------
+// The Ninefold Court's embedded level script (the scripting showcase).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr const char* kShowcasePackId = "org.openglad.concept.showcase";
+
+std::vector<std::string> drain_notifications(og::sim::SimEventLog& events)
+{
+    std::vector<std::string> out;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification)
+            out.push_back(ev.text);
+    return out;
+}
+
+bool contains_text(const std::vector<std::string>& lines, const char* needle)
+{
+    for (const std::string& line : lines)
+        if (line.find(needle) != std::string::npos)
+            return true;
+    return false;
+}
+
+} // namespace
+
+// The .glad carries packs/org.openglad.concept.showcase/scripts/court.lua;
+// campaign packs follow campaign mounts (test_campaign_packs.cpp pins the
+// mechanism, this pins the shipped payload).
+TEST_F(ConceptCampaignTest, court_embedded_pack_registers_on_mount)
+{
+    bool registered = false;
+    for (const auto& script : og::script::pack_scripts())
+        if (script.pack_id == kShowcasePackId)
+            registered = true;
+    EXPECT_TRUE(registered)
+        << "mounting the concept campaign must register the embedded "
+           "showcase pack's court.lua";
+}
+
+// Drives the court's whole scripted arc through real sim ticks: the ward
+// stamped and announced at load, the pillar ledger, the ward failing with
+// the last pillar, the ninefold judgment pulse on the 300-tick anchor, and
+// the per-entity victory hook on the Magistrate's death. The engine's own
+// win logic is untouched by the script, so this is pure decoration — but
+// it is decoration the package promises, end to end.
+TEST_F(ConceptCampaignTest, court_script_runs_the_ninefold_fight)
+{
+    LoadedConceptLevel fx(605);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+
+    walker* boss = nullptr;
+    std::vector<walker*> pillars;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr)
+            continue;
+        if (ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_ARCHMAGE)
+            boss = ob;
+        else if (ob->query_order() == Order::Generator)
+            pillars.push_back(ob);
+        else if (ob->query_order() == Order::Special &&
+                 ob->family() == FAMILY_RESERVED_TEAM)
+        {
+            // Production never ticks with live start markers (the crew
+            // deploy consumes them); mirror that here.
+            ob->set_dead(1);
+        }
+    }
+    ASSERT_NE(nullptr, boss) << "the Magistrate holds the bench";
+    ASSERT_EQ(4u, pillars.size()) << "four warding pillars";
+    EXPECT_EQ("Magistrate", boss->stats()->name) << "named boss round-trips";
+    EXPECT_EQ(ACT_GUARD, boss->act_type()) << "he sits the bench";
+    EXPECT_TRUE(boss->guard_hold_post()) << "hold-post keeps him on the dais";
+    EXPECT_FALSE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "the ward is script-stamped, not level data";
+
+    // Tick 1: on_load stamps the ward and announces the gimmick.
+    world.tick();
+    std::vector<std::string> lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "wards hold"))
+        << "on_load announces the gimmick";
+    EXPECT_TRUE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "the Magistrate is warded while pillars stand";
+
+    // One pillar falls. Generator deaths dispatch on_entity_death, so the
+    // announcement lands during death() itself -- no tick has to elapse and
+    // the script keeps no pillar ledger of its own.
+    pillars[0]->set_dead(1);
+    pillars[0]->death();
+    lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "A pillar falls: 3 wards remain."))
+        << "pillar fall is event-driven, not polled";
+    EXPECT_TRUE(boss->stats()->query_bit_flags(BIT_INVINCIBLE));
+
+    // The rest fall: the ward breaks on the last one, again immediately.
+    for (std::size_t i = 1; i < pillars.size(); ++i)
+    {
+        pillars[i]->set_dead(1);
+        pillars[i]->death();
+    }
+    lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "The wards fail"))
+        << "last pillar drops the ward";
+    EXPECT_FALSE(boss->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "the Magistrate stands exposed";
+    world.tick();
+
+    // Let the pillar-death explosions burn out, then discard their events.
+    while (world.level_tick_count() < 30u)
+        world.tick();
+    (void)fx.events.drain();
+
+    // The judgment phase: a ninefold ring on the 300-tick anchor. The
+    // explosions deal their damage on animation end, so give the pulse a
+    // short settle window and count the DamageTile events it leaves.
+    while (world.level_tick_count() < 300u)
+        world.tick();
+    lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "The Court passes judgment!"))
+        << "the pulse announces itself on the 300-tick anchor";
+    for (int settle = 0; settle < 40; ++settle)
+        world.tick();
+    int strikes = 0;
+    for (const og::sim::Event& ev : fx.events.drain())
+        if (ev.kind == og::sim::EventKind::DamageTile)
+            ++strikes;
+    EXPECT_EQ(9, strikes) << "the Court judges ninefold: eight ring "
+                             "strikes and the center";
+
+    // The Magistrate falls: the per-entity on_death hook (consumed on
+    // fire) plays the victory beat.
+    boss->set_dead(1);
+    boss->death();
+    lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "The Magistrate falls!"))
+        << "victory fanfare";
+    EXPECT_TRUE(contains_text(lines, "The Ninefold Court is broken."))
+        << "victory notification";
+
+    // The whole arc must have run without a single script error.
+    for (const og::script::ScriptError& err :
+         world.scripts().host().errors())
+        ADD_FAILURE() << "script error at " << err.where << ": "
+                      << err.message;
+}
+
+// The court's fourth scripted rule, and the one the fight test above never
+// reaches because it breaks the pillars before they can work: every third
+// generator spawn is promoted to an Adjutant through the generator
+// `customize_spawn` hook. "Every third" is derived from the spawn's sim
+// entity id (cookbook R6 forbids a mutable counter in a family hook), so the
+// promotion is deterministic and identical on every peer.
+//
+// This drives it the way the game does — real ticks, real generator fire —
+// rather than calling the hook by hand, because what is worth pinning is that
+// the pillars' spawns arrive already promoted.
+TEST_F(ConceptCampaignTest, court_pillars_promote_every_third_spawn)
+{
+    LoadedConceptLevel fx(605);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        // Production never ticks with live start markers.
+        if (ob != nullptr && ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM)
+            ob->set_dead(1);
+    }
+
+    // Let the pillars work. Generators fire on their own cadence, so this
+    // runs until the first promotion lands rather than guessing a tick count.
+    walker* adjutant = nullptr;
+    int spawns = 0;
+    for (unsigned t = 0; t < 900u && adjutant == nullptr; ++t)
+    {
+        world.tick();
+        spawns = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->dead() != 0 ||
+                ob->query_order() != Order::Living || ob->team_num() == 0)
+                continue;
+            if (ob->family() == FAMILY_ARCHMAGE)
+                continue;  // the Magistrate is authored, not spawned
+            ++spawns;
+            if (ob->stats()->name == std::string("Adjutant"))
+                adjutant = ob;
+        }
+    }
+    ASSERT_GT(spawns, 0) << "the pillars must actually raise something";
+    ASSERT_NE(nullptr, adjutant)
+        << "no spawn was promoted in 900 ticks: customize_spawn never fired, "
+           "or the derived every-third rule stopped selecting anything";
+
+    // The writ of office: extra rank, a speed bonus, a hardier body healed to
+    // its new maximum, and a heavier blow.
+    EXPECT_GE(adjutant->stats()->level(), 4)
+        << "promotion adds three levels to the generator's own roll (>=1)";
+    EXPECT_GT(adjutant->stepsize(), 0.0f);
+    EXPECT_FLOAT_EQ(adjutant->stats()->max_hitpoints(),
+                    adjutant->stats()->hitpoints())
+        << "the promotion heals to the new maximum, so it is visible";
+
+    // Striking one from the rolls is announced — the other half of the level
+    // death hook, which only an Adjutant can reach.
+    (void)fx.events.drain();
+    adjutant->set_dead(1);
+    adjutant->death();
+    const std::vector<std::string> lines = drain_notifications(fx.events);
+    EXPECT_TRUE(contains_text(lines, "An Adjutant is struck from the rolls."))
+        << "the level death hook recognises its own promotions by name";
+
+    for (const og::script::ScriptError& err :
+         world.scripts().host().errors())
+        ADD_FAILURE() << "script error at " << err.where << ": "
+                      << err.message;
 }

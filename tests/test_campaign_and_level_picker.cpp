@@ -76,21 +76,99 @@ std::string unique_test_campaign_id(std::string_view stem)
         std::to_string(nonce) + "." +
         std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
 }
+
+// Release handshake for hold_q_key_for_picker: the test flips this after
+// pick_campaign returns, so the injector holds 'q' across every input-loop
+// poll instead of guessing a wall-clock window.
+std::atomic<bool> g_picker_q_release{false};
 } // namespace
 
+// Defined below; declared here so the injector can handshake on them.
+bool wait_for_campaign_picker_counter(
+    std::uint64_t (*counter)(), std::uint64_t baseline);
+bool wait_for_campaign_picker_event_consumed(Uint32 event_type);
+
+// Holds 'q' down for pick_campaign's input loop. The picker's entry setup
+// (campaign enumeration — every entry mount reinstalls the class packs)
+// takes arbitrarily long under instrumented builds, so a fixed-width hold
+// started at thread creation can be fully released before the loop's first
+// keystate poll, leaving the loop waiting forever (the ASan/coverage
+// og_test_menu_ui 420 s timeouts). Handshake on both edges instead:
+//
+//   PRESS only once the loop marks itself entered (counter handshake).
+//   RELEASE only once the press is provably consumed: two marker events
+//   pushed one-at-a-time through the queue the picker pumps. Marker 1 is
+//   drained by an input pump that the press write happens-before (queue
+//   handoff), so that pump's iteration reads 'q' held; marker 2 is only
+//   pushed after marker 1 is gone, so its drain proves a LATER pump — one
+//   the loop can only reach after that q-read. Releasing any earlier races
+//   the read (the original bug); releasing only after pick_campaign returns
+//   instead burns wait_for_key_release's whole 5 s poll limit, because the
+//   picker's quit path polls this same shared array for the release.
+//
+// The re-press backstop covers the one unprovable interleaving (a marker
+// swallowed by the tail of an in-flight pump): if pick_campaign has not
+// returned shortly after the release, the loop must still be polling, so a
+// second held press is consumed on its next iteration and the picker's own
+// release-wait poll limit bounds the exit.
 static int hold_q_key_for_picker(void* data)
 {
     og::runtime::ensure_thread_session();
-    (void)data;
+    const auto* entered_baseline = static_cast<const std::uint64_t*>(data);
+    if (!wait_for_campaign_picker_counter(
+            campaign_picker_testing_entered_count, *entered_baseline))
+        return 1; // waiter timed out and already aborted the picker
     int numkeys = 0;
     bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
     SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
-    if (sc >= 0 && sc < numkeys)
+    if (!(sc >= 0 && sc < numkeys))
     {
-        keys[sc] = true;
-        SDL_Delay(120);
-        keys[sc] = false;
+        campaign_picker_testing_abort();
+        return 2;
     }
+    keys[sc] = true;
+    for (int marker = 0; marker < 2; ++marker)
+    {
+        SDL_Event event{};
+        event.type = SDL_EVENT_USER;
+        if (!SDL_PushEvent(&event))
+        {
+            // Queue rejected the marker: abort so pick_campaign still
+            // returns and the test reds with a diagnosis, never a hang.
+            campaign_picker_testing_abort();
+            keys[sc] = false;
+            return 3;
+        }
+        if (!wait_for_campaign_picker_event_consumed(SDL_EVENT_USER))
+        {
+            // No pump drained the marker for 5 s: the picker is wedged. The
+            // consumed-waiter already aborted it; fail with a diagnosis.
+            keys[sc] = false;
+            return 3;
+        }
+    }
+    keys[sc] = false;
+
+    const Uint64 released_at = SDL_GetTicks();
+    bool re_pressed = false;
+    while (!g_picker_q_release.load(std::memory_order_acquire))
+    {
+        const Uint64 waited = SDL_GetTicks() - released_at;
+        if (!re_pressed && waited >= 2000)
+        {
+            keys[sc] = true; // backstop: press again and hold
+            re_pressed = true;
+        }
+        if (waited >= 10000)
+        {
+            campaign_picker_testing_abort();
+            keys[sc] = false;
+            return 4;
+        }
+        SDL_Delay(1);
+    }
+    if (re_pressed)
+        keys[sc] = false;
     return 0;
 }
 
@@ -634,11 +712,14 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
     WorldEndGuard end_guard(end);
     end = 0;
 
-    ScopedSdlThread thread(
-        SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr));
+    g_picker_q_release.store(false, std::memory_order_release);
+    std::uint64_t entered_baseline = campaign_picker_testing_entered_count();
+    ScopedSdlThread thread(SDL_CreateThread(
+        hold_q_key_for_picker, "picker_q_hold", &entered_baseline));
     ASSERT_TRUE(thread.valid()) << "failed to create picker q-hold thread";
 
     CampaignResult out = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
+    g_picker_q_release.store(true, std::memory_order_release);
 
     const int thread_result = thread.join();
 

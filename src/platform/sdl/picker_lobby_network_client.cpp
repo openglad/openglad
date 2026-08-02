@@ -2,6 +2,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/gameplay/pack_transfer.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/screen.h>
@@ -14,6 +15,7 @@
 #include <openglad/platform/picker_lobby_network_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/pack_transfer_io.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -1959,6 +1961,47 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
             break;
         }
 
+        // Class-pack transfer (protocol v10): the joiner receives these on
+        // the same raw lobby transport and feeds them to PackTransferClient.
+        case og::sim::kPackManifestMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_pack_manifest_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::PackManifest;
+            typed_message.pack_manifest =
+                std::make_shared<og::sim::PackManifestMessage>(*decoded);
+            break;
+        }
+
+        case og::sim::kPackFileChunkMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_pack_file_chunk_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::PackFileChunk;
+            typed_message.pack_file_chunk =
+                std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
+            break;
+        }
+
+        case og::sim::kPackTransferDoneMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_pack_transfer_done_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::PackTransferDone;
+            typed_message.pack_transfer_done =
+                std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
+            break;
+        }
+
         default:
             continue;
         }
@@ -2377,6 +2420,7 @@ public:
             std::move(transports));
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
+        sync_hosted_packs(*save, /*force=*/true);
 
         og::ui::detail::send_lobby_message(
             *local_client_transport_,
@@ -2970,6 +3014,22 @@ private:
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
             og::ui::detail::make_settings_message(*save));
+        // A campaign switch can change the campaign-embedded pack set;
+        // re-offer it so joiners get the new manifests (protocol v10).
+        sync_hosted_packs(*save, /*force=*/false);
+    }
+
+    // Offer this machine's mounted non-core packs for transfer. Rebuilding
+    // hashes every pack file, so only do it when the mounted campaign (the
+    // one lobby-time source of pack-set changes) actually changed.
+    void sync_hosted_packs(const SaveData& save, bool force)
+    {
+        if (server_ == nullptr)
+            return;
+        if (!force && save.current_campaign == hosted_packs_campaign_)
+            return;
+        hosted_packs_campaign_ = save.current_campaign;
+        server_->set_hosted_packs(og::resources::build_transferable_packs());
     }
 
     void send_join_from_save()
@@ -3146,6 +3206,9 @@ private:
     std::string relay_room_code_;
     std::string relay_status_message_;
     std::string direct_status_message_;
+    // Campaign whose pack set was last offered to the LobbyServer; guards
+    // sync_hosted_packs against re-hashing every settings echo.
+    std::string hosted_packs_campaign_;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -3217,6 +3280,17 @@ public:
                     relay_room_code_));
         }
 
+        // Class-pack transfer (protocol v10): compare the host's manifests
+        // against local content, pull what is missing, and mount it before
+        // ready-up. Progress surfaces through status_lines_ and the log.
+        og::sim::PackTransferClient::Callbacks pack_callbacks =
+            og::resources::make_pack_transfer_client_callbacks();
+        pack_callbacks.log_status = [](const std::string& text) {
+            Log("{}\n", text);
+        };
+        pack_client_ = std::make_unique<og::sim::PackTransferClient>(
+            std::move(pack_callbacks));
+
         transport_->accept_connections();
         join_message_sent_ = false;
         settings_dirty_ = true;
@@ -3229,6 +3303,7 @@ public:
         pending_game_start_config_.reset();
         state_.reset();
         status_lines_.clear();
+        pack_client_.reset();
         transport_.reset();
         direct_url_.clear();
         relay_room_code_.clear();
@@ -3286,6 +3361,10 @@ public:
             join_message_sent_ = false;
             join_confirmation_pending_ = false;
             pending_join_request_id_ = 0;
+            // In-flight transfers cannot finish on a dead link; the server
+            // re-announces its manifests on reconnect.
+            if (pack_client_)
+                pack_client_->reset();
             // A pending start request can never resolve on a dead connection
             // (neither the StartGame handoff nor the denial echo will arrive);
             // release it so go_menu's wait loop gives up instead of spinning
@@ -3677,6 +3756,10 @@ public:
         case og::sim::TransportLinkState::Connecting:
             return "Status: connecting";
         case og::sim::TransportLinkState::Connected:
+            // The link is fine but the session's packs could not be
+            // installed; the reason came from PackTransferClient.
+            if (pack_client_ && pack_client_->failed())
+                return pack_client_->status_text();
             return std::nullopt;
         case og::sim::TransportLinkState::Failed:
             return "Status: connection failed";
@@ -3759,6 +3842,24 @@ public:
     {
         if (!transport_ || transport_->connected_peers().empty())
             return false;
+
+        if (ready && pack_client_)
+        {
+            // Packs mount before play: readiness waits for in-flight
+            // transfers (bounded — the status line keeps showing progress on
+            // a rejected click) and a failed transfer refuses ready outright,
+            // which keeps the host's start gate (MachinesNotReady) closed.
+            if (pack_client_->busy())
+            {
+                (void)og::ui::detail::wait_for_authoritative_lobby_value(
+                    [this] { poll_and_apply(); },
+                    [this] {
+                        return !pack_client_->busy() || pack_client_->failed();
+                    });
+            }
+            if (pack_client_->busy() || pack_client_->failed())
+                return false;
+        }
 
         if (ready &&
             (awaiting_round_ready_reset_ || join_confirmation_pending_))
@@ -4152,6 +4253,12 @@ private:
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
+        if (pack_client_ && transport_ &&
+            pack_client_->handle_message(*transport_, server_peer_id_,
+                                         message))
+        {
+            return;
+        }
         switch (message.kind)
         {
         case og::sim::TypedReceivedMessageKind::LobbyState:
@@ -4382,6 +4489,14 @@ private:
             }
         }
         status_lines_.push_back(status_text);
+        if (pack_client_)
+        {
+            // "Receiving pack X (N%)" while transferring, the failure
+            // reason after a refused transfer, empty otherwise.
+            const std::string pack_status = pack_client_->status_text();
+            if (!pack_status.empty())
+                status_lines_.push_back(pack_status);
+        }
         if (state_.has_value())
         {
             status_lines_.push_back(
@@ -4396,6 +4511,9 @@ private:
     std::string direct_url_;
     std::string relay_room_code_;
     std::shared_ptr<og::sim::ITransport> transport_;
+    // Class-pack transfer collector (protocol v10); lives for one join
+    // connection, fed by handle_typed_message.
+    std::unique_ptr<og::sim::PackTransferClient> pack_client_;
     og::sim::PeerId server_peer_id_ = 1;
     // True once the relay's announced room host has been adopted as the
     // authoritative server binding; later room-host migrations must not move

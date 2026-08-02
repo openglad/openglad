@@ -1,0 +1,25 @@
+# core:hammer — split from classpack.yaml (families load in sorted filename order)
+families:
+  weapon:
+    - id: core:hammer
+      wire_id: 17
+      name: "HAMMER"
+      fire_sound: 10
+      skip_sit_notify: false
+      is_auto_attackable: false
+      init_bit_flags: []
+      init_lifetime: 0
+      init_ani_type: 0
+      vz: 0
+      gravity: 0
+      sizez: 0
+      can_drop_floors: false
+      sprite: ~
+      animation: ~
+      glyph: "*"
+      glyph_ascii: "*"
+      glyph_color: white
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

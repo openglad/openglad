@@ -234,14 +234,18 @@ class command
 {
 	public:
 		command();
+		// command to execute
 		std::int32_t commandtype;
+		// # times to execute command
 		std::int32_t commandcount;
+		// parameters to command
 		std::int32_t com1;
 		std::int32_t com2;
 		// True only for entries injected via statistics::force_command
 		// (fright/knockback/flee/shove); add_command leaves it false.
 		// Never serialized: snapshot apply clears the queue
 		// (world_snapshot.cpp) and no save/replay path persists commands
-		// (runaway-specials WP-2 audit), so the flag is wire/dump-free.
+		// (docs/runaway-effects-design.md §3.2), so the flag is
+		// wire/dump-free.
 		bool forced = false;
 };

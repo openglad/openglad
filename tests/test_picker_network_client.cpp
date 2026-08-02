@@ -254,9 +254,17 @@ int scripted_poll_adapter(SDL_Event* out)
     return scripted_poll(g_script, out);
 }
 
+// Ceiling for "the other thread should get there shortly", not a latency
+// assertion: the loop polls every 5ms and returns the moment the predicate
+// holds, so a generous ceiling costs a passing test nothing and only bounds
+// how long a genuinely stuck one takes to report. ctest runs this suite at
+// --jobs 24 alongside 27 other integration binaries, where a 3s ceiling was
+// tight enough to flake under load; 15s stays well inside the group's 180s
+// ctest TIMEOUT. Raising it cannot mask a real break — the predicate still
+// has to become true.
 template <typename Predicate>
 bool wait_until(Predicate&& predicate,
-                std::chrono::milliseconds timeout = 3s)
+                std::chrono::milliseconds timeout = 15s)
 {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline)
@@ -875,7 +883,7 @@ poll_lobby_messages(og::sim::ITransport& transport)
 }
 
 bool wait_until_host_owns_room(og::sim::RelayWebSocketTransport& transport,
-                               std::chrono::milliseconds timeout = 3s)
+                               std::chrono::milliseconds timeout = 15s)
 {
     return wait_until(
         [&] {
@@ -1171,7 +1179,7 @@ public:
 
     [[nodiscard]] bool wait_for_room_list_request_after(
         std::size_t previous_request_count,
-        std::chrono::milliseconds timeout = 5s)
+        std::chrono::milliseconds timeout = 15s)
     {
         std::unique_lock<std::mutex> lock(mutex_);
         return room_list_condition_.wait_for(lock, timeout, [&] {
@@ -9068,4 +9076,72 @@ TEST(PickerNetworkClient,
     host_client->shutdown();
     cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
+}
+
+// A joiner must not be able to claim readiness while a class-pack transfer is
+// still in flight: the host's start gate would otherwise open on a machine
+// that is missing the very Lua the deterministic sim runs, and the two peers
+// would diverge on the first tick. set_ready waits a bounded time for the
+// transfer to settle and then refuses the click instead of lying.
+TEST(PickerNetworkClient, join_ready_is_refused_while_a_pack_transfer_is_pending)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Pack Joiner");
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    ASSERT_NE(nullptr, join_client);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            return true;
+        }
+        return false;
+    })) << "the join client should connect and announce itself";
+
+    // Announce a pack this machine does not have, then never serve a single
+    // chunk: the client requests it and stays mid-transfer.
+    auto manifest = std::make_shared<og::sim::PackManifestMessage>();
+    manifest->pack_index = 0;
+    manifest->pack_count = 1;
+    manifest->pack_id = "org.test.neverserved";
+    manifest->version = "1";
+    manifest->files.push_back(
+        og::sim::PackManifestFileEntry{.path = "scripts/ghost.lua",
+                                       .size_bytes = 64u,
+                                       .hash64 = 0x0123456789abcdefull});
+    server_transport->send_pack_manifest(join_peer_id, manifest);
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_prefix(
+            join_client->status_lines(),
+            "Receiving pack org.test.neverserved");
+    })) << "the announced pack should start transferring";
+
+    EXPECT_FALSE(join_client->set_ready(true))
+        << "readiness must not be claimable while a pack is still arriving";
+    EXPECT_FALSE(join_client->local_ready());
+    EXPECT_TRUE(status_lines_contain_prefix(
+        join_client->status_lines(), "Receiving pack org.test.neverserved"))
+        << "the refused click keeps the progress line on screen";
+
+    join_client->shutdown();
 }

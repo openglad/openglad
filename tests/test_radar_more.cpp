@@ -6,12 +6,18 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/colors.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
+#include <openglad/core/family_presentation.h>
+#include <openglad/core/irandom.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -546,4 +552,189 @@ TEST_F(RadarMore, zstair_tiles_bake_pinned_radar_colors)
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
     vs->editor_floor_override_ = saved_override;
+}
+
+
+// --- descriptor-driven treasure blips -------------------------------------
+//
+// The radar's per-family colour switch is gone: every treasure blip reads
+// og::RadarBlip off its family descriptor, so a class-pack treasure lights up
+// the minimap with no engine change. Two invariants the switch also carried
+// and these tests pin, because the radar draws from the GAME rng and its call
+// count is part of that stream:
+//   * a family with no colour draws nothing AND rolls nothing;
+//   * jitter == 0 makes no rng call at all.
+
+namespace
+{
+// Neutralises every draw (always 0) while counting how many were made.
+class CountingRandom final : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        calls++;
+        last_max = max_exclusive;
+        return 0;
+    }
+    int calls = 0;
+    std::uint32_t last_max = 0;
+};
+
+// Palette index the radar actually painted at a grid cell.
+int blip_index_at(const radar& r, int grid_x, int grid_y)
+{
+    int index = 0;
+    og::runtime::current_session->myscreen_->get_pixel(
+        r.xloc + grid_x - r.radarx, r.yloc + grid_y - r.radary, &index);
+    return index;
+}
+} // namespace
+
+TEST_F(RadarMore, treasure_blips_and_rng_draws_come_from_the_descriptor)
+{
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1); // bakes COLOR_WHITE everywhere
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(0);
+    control->set_view_all(1); // treasure sight: loot blips are gated on this
+
+    struct Placed { walker* ob; int gx; int gy; };
+    auto place = [&](std::int32_t family, int gx, int gy) {
+        walker* ob = d.add_fx_ob(Order::Treasure, family);
+        EXPECT_NE(nullptr, ob) << "family " << family;
+        if (ob != nullptr) {
+            ob->setxy(GRID_SIZE * gx, GRID_SIZE * gy);
+            ob->set_dead(0);
+        }
+        return Placed{ob, gx, gy};
+    };
+    const Placed gold = place(FAMILY_GOLD_BAR, 6, 6);
+    const Placed exit_ob = place(FAMILY_EXIT, 8, 8);
+    const Placed gem = place(FAMILY_LIFE_GEM, 10, 10);
+    ASSERT_NE(nullptr, gold.ob);
+    ASSERT_NE(nullptr, exit_ob.ob);
+    ASSERT_NE(nullptr, gem.ob);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    ASSERT_EQ(0, r.radarx);
+    ASSERT_EQ(0, r.radary);
+
+    // --- with treasure sight ------------------------------------------
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(3, counter.calls)
+        << "one flicker roll for the followed control, one for the gold bar "
+           "(jitter 5), one for the exit (jitter 7) — the life gem has no "
+           "colour and must roll nothing";
+    EXPECT_EQ(COLOR_YELLOW, blip_index_at(r, gold.gx, gold.gy))
+        << "gold bar blips at its descriptor colour";
+    EXPECT_EQ(COLOR_CYAN, blip_index_at(r, exit_ob.gx, exit_ob.gy))
+        << "exit blips at its descriptor colour";
+    // The baked-terrain reference: an empty cell of the same snow fill. (The
+    // palette holds several identical whites, so compare against what the
+    // radar actually painted rather than the COLOR_WHITE index.)
+    const int bare_terrain = blip_index_at(r, 20, 20);
+    EXPECT_EQ(bare_terrain, blip_index_at(r, gem.gx, gem.gy))
+        << "a colourless family leaves the baked terrain alone";
+
+    // --- without treasure sight ---------------------------------------
+    control->set_view_all(0);
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(2, counter.calls)
+        << "the loot roll disappears with treasure sight; the exit still "
+           "flickers because navigation markers ignore view_all";
+    EXPECT_EQ(bare_terrain, blip_index_at(r, gold.gx, gold.gy))
+        << "loot needs treasure sight";
+    EXPECT_EQ(COLOR_CYAN, blip_index_at(r, exit_ob.gx, exit_ob.gy))
+        << "the exit is a landmark every player sees";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+// Patch a descriptor the way a class-pack install does and the blip follows:
+// the engine has no idea the speed potion "should" light up the minimap — the
+// core pack simply ships it colourless.
+TEST_F(RadarMore, a_pack_can_give_any_treasure_family_a_radar_blip)
+{
+    const TreasureFamilyDescriptor* original =
+        get_treasure_family_descriptor(FAMILY_SPEED_POTION);
+    ASSERT_NE(nullptr, original);
+    const TreasureFamilyDescriptor saved = *original;
+    ASSERT_EQ(og::kRadarColorNone, saved.radar.color)
+        << "the core speed potion draws no blip";
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_view_all(1);
+    walker* potion = d.add_fx_ob(Order::Treasure, FAMILY_SPEED_POTION);
+    ASSERT_NE(nullptr, potion);
+    potion->setxy(GRID_SIZE * 7, GRID_SIZE * 7);
+    potion->set_dead(0);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    const int unblipped = blip_index_at(r, 7, 7);
+    const int bare_terrain = blip_index_at(r, 20, 20);
+    const int calls_before = counter.calls;
+
+    TreasureFamilyDescriptor patched = saved;
+    patched.radar = og::RadarBlip{COLOR_PURPLE, 0}; // static: rolls nothing
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_SPEED_POTION, patched));
+    counter.calls = 0;
+    ASSERT_EQ(1, r.draw(&d));
+    const int blipped = blip_index_at(r, 7, 7);
+    const int calls_after = counter.calls;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_SPEED_POTION, saved));
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+
+    EXPECT_EQ(bare_terrain, unblipped) << "core speed potion: no blip";
+    EXPECT_EQ(COLOR_PURPLE, blipped) << "the pack's colour, straight through";
+    EXPECT_EQ(calls_before, calls_after)
+        << "jitter 0 must not add an rng draw";
 }

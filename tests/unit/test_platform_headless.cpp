@@ -1,6 +1,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input_state.h>
 #include <openglad/interface/level_render.h>
@@ -368,6 +371,104 @@ TEST(PlatformHeadless, io_init_installs_callable_headless_platform_bridge)
 
     (void)load_settings();
     (void)save_settings();
+
+    std::filesystem::remove_all(config_dir, ec);
+}
+
+namespace {
+
+// io_init runs its body only on a FRESH PhysFS: PHYSFS_init returns 0 when
+// PhysFS is already up, and io_init bails out on that. The unit main
+// initialises one filesystem for the whole binary, so a test that wants the
+// real io_init path has to hand it a clean slate — and put the harness's
+// filesystem, mounted-campaign bookkeeping and pack-script registry back
+// exactly as they were, or every later test in the binary inherits the
+// wreckage.
+class FreshFilesystemForIoInit {
+public:
+    FreshFilesystemForIoInit()
+        : user_path_(get_user_path())
+        , campaign_(get_mounted_campaign())
+        , scripts_(og::script::pack_scripts())
+    {
+        (void)og::resources::deinit();
+        set_mounted_campaign_for_testing("");
+        og::script::clear_pack_scripts();
+    }
+
+    // Runs AFTER the caller's EnvGuard has restored OPENGLAD_CONFIG_DIR
+    // (reverse declaration order), so get_user_path() is the harness path
+    // again by the time the campaign is remounted.
+    ~FreshFilesystemForIoInit()
+    {
+        (void)og::resources::deinit();
+        set_mounted_campaign_for_testing("");
+        (void)og::resources::init("og_unit_headless_platform");
+        (void)og::resources::set_write_dir(user_path_);
+        (void)og::resources::mount(user_path_.c_str(), nullptr, 1);
+        if (!campaign_.empty())
+            (void)mount_campaign_package_with_error(campaign_);
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+    }
+
+private:
+    std::string user_path_;
+    std::string campaign_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+}  // namespace
+
+// Headless clients run the same deterministic sim as the SDL client, so
+// io_init must leave the process with the class-pack behavior SCRIPTS
+// registered — not just the classpack.yaml descriptor data. The moment a
+// family's behavior lives only in pack Lua, openglad_text / openglad_server
+// / openglad_curses would otherwise silently run with no behavior at all.
+TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
+{
+    FreshFilesystemForIoInit filesystem_guard;
+    ASSERT_TRUE(og::script::pack_scripts().empty());
+
+    EnvGuard config_guard("OPENGLAD_CONFIG_DIR");
+    const std::filesystem::path config_dir =
+        std::filesystem::temp_directory_path() / "openglad-headless-packs";
+    std::error_code ec;
+    std::filesystem::remove_all(config_dir, ec);
+    std::filesystem::create_directories(config_dir, ec);
+    setenv("OPENGLAD_CONFIG_DIR", config_dir.string().c_str(), 1);
+
+    char arg0[] = "og_unit_headless_platform";
+    char* argv[] = {arg0, nullptr};
+    io_init(1, argv);
+
+    const std::vector<og::script::PackScript>& scripts = og::script::pack_scripts();
+    EXPECT_FALSE(scripts.empty())
+        << "headless io_init must register the mounted packs' behavior scripts";
+
+    bool has_core_pack = false;
+    bool has_core_soldier = false;
+    for (const og::script::PackScript& script : scripts) {
+        if (script.pack_id != "core")
+            continue;
+        has_core_pack = true;
+        EXPECT_FALSE(script.source.empty())
+            << "registered script has no source: " << script.chunk_name;
+        if (script.chunk_name == "packs/core/scripts/soldier.lua")
+            has_core_soldier = true;
+    }
+    EXPECT_TRUE(has_core_pack)
+        << "the shipped core pack must be registered by headless io_init";
+    EXPECT_TRUE(has_core_soldier)
+        << "core pack scripts must be readable through the headless packs mount";
+
+    // refresh_pack_scripts also does what the old install_classpacks() call
+    // did; the descriptor registries must still come out populated.
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    EXPECT_STREQ("SOLDIER", soldier->name)
+        << "headless io_init must still install classpack.yaml descriptor data";
 
     std::filesystem::remove_all(config_dir, ec);
 }

@@ -206,6 +206,8 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             if (c == KEYCODE_RETURN)
             {
                 #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
+                // FIXME: SDL does not have keyboard customization, so we can't make newlines with RETURN.
+                // I need to either modify SDL or add click/touch text navigation.
                 done = true;  // Some soft keyboards might disappear anyhow if you press return...
                 break;
                 #else

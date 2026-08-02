@@ -74,6 +74,7 @@ walker* sim_cycle_next_character(
 
     if (!reverse)
     {
+        // Get where we are in the list
         auto mine = std::find_if(oblist.begin(), oblist.end(), is_current);
         if (mine == oblist.end())
             return nullptr;
@@ -171,9 +172,11 @@ SimInputResult sim_process_player_input(
         debounce.changedchar = 0;
     else if (!debounce.changedchar && !pi.is_held(InputAction::Cheat))
     {
+        // KEY_SHIFTER will go backward
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
+        // Unset our control
         if (control->user() == player_num)
         {
             control->restore_act_type();
@@ -227,6 +230,8 @@ SimInputResult sim_process_player_input(
     }
 
     // --- yo_delay tick ---
+    // Make sure we haven't yelled recently (this is here because it is
+    // guaranteed to run exactly once each frame)
     if (control->yo_delay() > 0)
         control->set_yo_delay(control->yo_delay() - 1);
 
@@ -244,6 +249,7 @@ SimInputResult sim_process_player_input(
                 (!w->leader()))
             {
                 w->set_leader(control);
+                // Remove any current foe ..
                 w->set_foe(nullptr);
                 w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
             }
@@ -282,6 +288,7 @@ SimInputResult sim_process_player_input(
                         (w->act_type() != ACT_CONTROL) &&
                         (w->team_num() == control->team_num()))
                     {
+                        // Set to normal operation
                         w->set_action(0);
                     }
                 }
@@ -305,6 +312,7 @@ SimInputResult sim_process_player_input(
     if (control->ani_type() != ANI_WALK)
         control->animate();
 
+    // if we changed control characters
     if (control != oldcontrol)
         control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
 
@@ -317,6 +325,7 @@ SimInputResult sim_process_player_input(
     }
 
     // --- Movement and actions ---
+    // Make sure we're not performing some queued action ..
     if (control->stats()->commands.empty())
     {
         #ifndef USE_TOUCH_INPUT
@@ -336,6 +345,7 @@ SimInputResult sim_process_player_input(
         if (pi.was_pressed(InputAction::Fire))
             control->init_fire();
 
+        // Holding Special key for rapid use (MP cost naturally rate-limits)
         if (pi.is_held(InputAction::Special))
             control->special();
 

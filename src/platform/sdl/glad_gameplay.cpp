@@ -295,6 +295,7 @@ void glad_init(bool preserve_frame_timing,
     }
 #endif
 
+    // This will update the 'control' so the screen centers on our guy
     current_screen->continuous_input();
 
     current_screen->redraw();
@@ -370,6 +371,7 @@ void glad_main(Sint32 playermode)
         og::runtime::clear_local_transport_shadow(
             *og::runtime::current_game_session);
     clear_keyboard();
+    // Delete all of our current information and abort ..
     current_screen->world().delete_objects();
 #endif
 }
@@ -378,6 +380,7 @@ void glad_main(Sint32 playermode)
 // This screen* overload delegates to it for backward compatibility.
 short remaining_foes(LevelRuntimeData& level, walker* myguy);
 
+// remaining_foes returns # of livings left not friendly to myguy
 short remaining_foes(screen* s, walker* myguy)
 {
     return remaining_foes(s->level_runtime_data(), myguy);

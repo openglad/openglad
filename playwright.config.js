@@ -1,6 +1,17 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
 
+// Playwright ships its own Chromium, but refuses to install it on some hosts
+// (`Playwright does not support chromium on ubuntu26.04-x64`). The nix dev
+// shell provides a chromium, so honour an explicit executable when one is
+// given and otherwise fall back to Playwright's managed browser. Set
+// OG_CHROMIUM_PATH (the dev shell exports it automatically).
+const chromiumPath = process.env.OG_CHROMIUM_PATH || undefined;
+const chromiumLaunch = (extraArgs = []) => ({
+  ...(chromiumPath ? { executablePath: chromiumPath } : {}),
+  args: extraArgs,
+});
+
 module.exports = defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
@@ -26,9 +37,7 @@ module.exports = defineConfig({
       use: {
         browserName: 'chromium',
         // WebGL support in headless Chromium
-        launchOptions: {
-          args: ['--use-gl=angle', '--use-angle=swiftshader'],
-        },
+        launchOptions: chromiumLaunch(['--use-gl=angle', '--use-angle=swiftshader']),
       },
     },
     {
@@ -44,6 +53,7 @@ module.exports = defineConfig({
         ...devices['iPhone 15 landscape'],
         browserName: 'chromium',
         launchOptions: {
+          ...(chromiumPath ? { executablePath: chromiumPath } : {}),
           args: [
             '--use-gl=angle',
             '--use-angle=swiftshader',
@@ -64,6 +74,7 @@ module.exports = defineConfig({
         ...devices['iPhone 15'],
         browserName: 'chromium',
         launchOptions: {
+          ...(chromiumPath ? { executablePath: chromiumPath } : {}),
           args: [
             '--use-gl=angle',
             '--use-angle=swiftshader',

@@ -73,6 +73,8 @@ bool help_testing_force_scroll_text()
 
 // Shared scrolling text viewer used by read_scenario and read_campaign_intro.
 // GetLine(int index) should return a std::string for the given line index.
+// Note: this code has been redone to work in 'scanlines,'
+//       so that the text scrolls by pixels rather than lines.
 template <typename GetLine>
 static short scroll_text_view(screen* scr, int num_lines, int box_width,
     const char* title, Sint32 buf_x, Sint32 buf_y, Sint32 buf_w, Sint32 buf_h,
@@ -93,6 +95,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 
 	clear_keyboard();
 
+	// Do the loop until person hits escape
 	while (!query_input_continue())
 	{
 		YIELD_SLEEP(10);
@@ -114,6 +117,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// scrolling one page down
 		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
 #ifdef TESTING
 		    || s_help_test_page_down.load(std::memory_order_acquire)
@@ -127,6 +131,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 				templines = linesdown + (DISPLAY_LINES * 7);
 				if (templines > bottomrow)
 					templines = bottomrow;
+				// we actually moved down
 				if (linesdown != templines)
 				{
 					linesdown = templines;
@@ -150,6 +155,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// scrolling one page up
 		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
 #ifdef TESTING
 		    || s_help_test_page_up.load(std::memory_order_acquire)
@@ -167,8 +173,10 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
+		// did we scroll, etc.?
 		if (changed)
 		{
+			// which TEXT line are we at?
 			templines = linesdown/8;
 			scr->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                 HELPTEXT_LEFT+box_width, HELPTEXT_TOP+107, 3, 1);
@@ -180,6 +188,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 					                line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
 			}
 
+			// Draw a bounding box (top and bottom edges) ..
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
 			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP-2);
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
@@ -231,6 +240,9 @@ short read_campaign_intro(screen *s)
 
 
 // OgFile-based overloads (used by tests and headless builds)
+// This function reads one text line from file infile,
+// stopping at length (length), or when encountering an
+// end-of-line character ..
 std::string read_one_line(og::io::OgFile& infile, short length)
 {
     char temp;
@@ -245,6 +257,8 @@ std::string read_one_line(og::io::OgFile& infile, short length)
     return newline;
 }
 
+// This function fills the array with the help file text ..
+// It returns the # of lines successfully filled ..
 short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile)
 {
     short i;

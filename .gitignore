@@ -5,6 +5,12 @@
 *.dll
 obj/
 /build/
+# FetchContent dependency sources from an in-source configure. Ignored rather
+# than left to a machine-local .git/info/exclude because the Lua coverage
+# denominator is "every Lua the repository contains" — and sdl3-src ships an
+# example .lua that would otherwise land in the gate on some checkouts and
+# not others.
+/_deps/
 /build-native/
 /build-test/
 /build-coverage/

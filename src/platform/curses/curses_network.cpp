@@ -29,6 +29,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
@@ -40,6 +41,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/gameplay/pack_transfer.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
@@ -54,6 +56,7 @@
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/win_shares.h>
@@ -568,6 +571,38 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
             typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
             typed_message.lobby_state =
                 std::make_shared<og::sim::LobbyState>(*decoded);
+            break;
+        }
+        // Class-pack transfer (protocol v10): joiner-bound stream.
+        case og::sim::kPackManifestMessageType: {
+            const auto decoded =
+                og::sim::deserialize_pack_manifest_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind = og::sim::TypedReceivedMessageKind::PackManifest;
+            typed_message.pack_manifest =
+                std::make_shared<og::sim::PackManifestMessage>(*decoded);
+            break;
+        }
+        case og::sim::kPackFileChunkMessageType: {
+            const auto decoded =
+                og::sim::deserialize_pack_file_chunk_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind = og::sim::TypedReceivedMessageKind::PackFileChunk;
+            typed_message.pack_file_chunk =
+                std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
+            break;
+        }
+        case og::sim::kPackTransferDoneMessageType: {
+            const auto decoded =
+                og::sim::deserialize_pack_transfer_done_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::PackTransferDone;
+            typed_message.pack_transfer_done =
+                std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
             break;
         }
         default:
@@ -1251,6 +1286,8 @@ public:
             std::move(transports));
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
+        // Offer this host's mounted non-core class packs (protocol v10).
+        server_->set_hosted_packs(og::resources::build_transferable_packs());
 
         // Seed the host's own settings + join over the loopback client transport.
         send_lobby_message(*host_client_transport_,
@@ -1282,8 +1319,22 @@ public:
         transport_->accept_connections();
         server_peer_id_ = 1;
         join_sent_ = false;
+        make_pack_client();
         pump_once();
         return true;
+    }
+
+    // Class-pack transfer (protocol v10): joiners pull missing packs before
+    // ready-up. Progress and failures surface as Log lines (text-mode UI).
+    void make_pack_client()
+    {
+        og::sim::PackTransferClient::Callbacks callbacks =
+            og::resources::make_pack_transfer_client_callbacks();
+        callbacks.log_status = [](const std::string& text) {
+            Log("{}\n", text);
+        };
+        pack_client_ = std::make_unique<og::sim::PackTransferClient>(
+            std::move(callbacks));
     }
 
     // --- TEST hook: drive the whole flow over an injected in-process server ----
@@ -1295,6 +1346,7 @@ public:
         host_client_transport_ = std::move(host_client_transport);
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
+        server_->set_hosted_packs(og::resources::build_transferable_packs());
 
         send_lobby_message(*host_client_transport_,
                            host_client_transport_->local_peer_id(),
@@ -1311,6 +1363,7 @@ public:
         transport_ = std::move(transport);
         server_peer_id_ = server_peer_id;
         join_sent_ = false;
+        make_pack_client();
         pump_once();
     }
 
@@ -1658,6 +1711,19 @@ public:
         if (client_link == nullptr)
             return false;
 
+        if (ready && pack_client_) {
+            // Packs mount before play: give in-flight chunks one pump, then
+            // refuse ready while a transfer is incomplete or failed. The
+            // caller simply retries once the Log shows the pack installed.
+            pump_once();
+            if (pack_client_->busy() || pack_client_->failed()) {
+                team_status_ = pack_client_->failed()
+                    ? pack_client_->status_text()
+                    : "Waiting for pack transfer";
+                return false;
+            }
+        }
+
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyReadyMessage{
             .player_index = local_player_index(),
@@ -1792,6 +1858,11 @@ private:
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
+        if (pack_client_ && transport_ &&
+            pack_client_->handle_message(*transport_, server_peer_id_,
+                                         message)) {
+            return;
+        }
         switch (message.kind) {
         case og::sim::TypedReceivedMessageKind::LobbyState:
             if (message.lobby_state) {
@@ -1961,6 +2032,7 @@ private:
         relay_.reset();
         host_client_transport_.reset();
         loopback_server_.reset();
+        pack_client_.reset();
         transport_.reset();
         start_negotiated_ = false;
         session_built_failed_ = false;
@@ -1997,6 +2069,8 @@ private:
     std::shared_ptr<og::sim::ITransport> transport_;
     og::sim::PeerId server_peer_id_ = 1;
     bool join_sent_ = false;
+    // Class-pack transfer collector (protocol v10), joiner role only.
+    std::unique_ptr<og::sim::PackTransferClient> pack_client_;
 
     std::optional<og::sim::LobbyState> state_;
     bool start_negotiated_ = false;

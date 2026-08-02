@@ -1302,6 +1302,7 @@ void viewscreen::display_text()
 
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
+		// Display text if there's any there ..
 		if (textcycles[i] > 0 &&
 		    !textlist[i].empty() &&
 		    current_tick <= text_expire_ticks[i])
@@ -1388,6 +1389,7 @@ short viewscreen::input(const void* native_event)
 		clear_keyboard();
 	}
 
+	// Before here, all keys should check for !KEY_CHEAT
 	// --- Cheat keys (sim mutations handled in runtime layer) ---
 	handle_cheat_keys(controlob, mynum, native_event, pi, active_screen());
 

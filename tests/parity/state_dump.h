@@ -3,8 +3,8 @@
 // Captures a deterministic, canonical JSON snapshot of an og::sim::GameWorld
 // suitable for byte-comparison against a master-side companion dump. The
 // emitter sorts keys lexicographically, formats floats with "%.6f", and
-// normalises negative zero. See .plan/parity-harness-design.md for the
-// complete schema specification.
+// normalises negative zero. scripts/parity/validate_schema.py asserts the
+// promised shape.
 
 #pragma once
 
@@ -98,9 +98,9 @@ struct StateDump
     std::vector<WalkerEntry>   walkers;
     std::vector<EffectEntry>   effects;
     std::vector<EventEntry>    events;
-    // Phase 02 redo additions to schema v1. The serialiser emits these as
-    // top-level keys in sorted order; v1 readers tolerate unknown keys per
-    // .plan/parity-harness-design.md (forward-compatible rule).
+    // Later additions to schema v1. The serialiser emits these as
+    // top-level keys in sorted order; v1 readers tolerate unknown keys
+    // (the schema's forward-compatible rule).
     std::int32_t               level_done       = 0; // world.level_done
     std::uint32_t              level_tick_count = 0; // world.level_tick_count()
     // Phase 01 (semantic-parity contract) additions. Producer not yet

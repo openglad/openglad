@@ -1,4 +1,4 @@
-/* BASE + DECOR tile layering — Stage 0 foundation mechanics (headless).
+/* BASE + DECOR tile-layer mechanics (headless).
  *
  * Direct sim pins for the decor plane (core/decordefs.h + GameWorld storage):
  *   - registry id/passability/concealment contract (persisted bytes: frozen),

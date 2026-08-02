@@ -873,6 +873,7 @@ bool isKeyboardEvent(const void* native_event)
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return false;
+    // does not handle key up events
     return (event.type == og::input_native::EventType::KeyDown);
 }
 
@@ -881,6 +882,7 @@ bool isJoystickEvent(const void* native_event)
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return false;
+    // does not handle button up, hats, or balls
     return (event.type == og::input_native::EventType::JoyAxisMotion
             || event.type == og::input_native::EventType::JoyHatMotion
             || event.type == og::input_native::EventType::JoyButtonDown);

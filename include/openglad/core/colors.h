@@ -16,6 +16,7 @@
  */
 #pragma once
 
+inline constexpr int COLOR_GREY = 23;   // == legacy GREY in interface/base.h
 inline constexpr int COLOR_WHITE = 31;
 
 inline constexpr int COLOR_RED = 40;

@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 struct GeneratorFamilyDescriptor {
     int family_id;
     const char* name;
@@ -14,4 +16,19 @@ struct GeneratorFamilyDescriptor {
     bool has_lifetime;        // true for TENT/BONES
     char spawn_ani_type;      // ANI_TELE_IN for TOWER
     bool clear_owner;         // true for TOWER/TREEHOUSE
+
+    // Pack-shipped art + motion (see FamilyDescriptor for the contract).
+    const char* pix_filename = nullptr;
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
+
+    // Presentation data; defaults are the legacy `default:` branches.
+    // editor_label is the level editor's palette caption ("MAGE TOWER").
+    og::FamilyGlyph glyph{U'#', '#', og::GlyphColor::Default, false, false};
+    og::RadarBlip radar{};
+    const char* editor_label = "GENERATOR";
+
+    // Pack-declared fully-qualified id ("core:tent"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
 };

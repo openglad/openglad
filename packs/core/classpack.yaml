@@ -1,0 +1,19 @@
+# Core class-pack header (docs/lua-classpacks-design.md §4).
+#
+# The 73 family descriptor entries live one-per-file under families/
+# (<order>-<NN>-<slug>.yaml, NN = the pinned wire id). The loader parses
+# this header first, then every families/*.yaml in sorted filename order,
+# into one pack (src/resources/packs.cpp install_classpacks). Descriptor
+# fields and `tuning:` blocks are authoritative here; edit the family files
+# directly. Scripts read each family's tuning values through og.tuning.
+#
+# The core pack ships no `anims:` section: every core family uses a
+# built-in animation table (animation: standard|mage|skeleton|
+# giant_skeleton|slime|small_slime|static for livings, the gloader
+# EntityDef row for the other orders). A mod pack declares its own
+# frame sets under a top-level `anims:` mapping and names them from a
+# family's `animation:` key — see docs/lua-classpacks-design.md §4.
+pack: core
+version: 1
+title: "OpenGlad Core Families"
+authors: "FSGames / the OpenGlad project"

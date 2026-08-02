@@ -83,7 +83,6 @@ void walker::setworldxy(float x, float y)
 // WALK -- This function allows us to change facing when we walk.
 // This includes an automatic frame change. It also redraws the background
 // at the coords it used to occupy.
-// at the coords it used to occupy.
 // It calls the lower level function MOVE.
 bool walker::walk()
 {
@@ -349,6 +348,8 @@ bool walker::walk(float x, float y)
         }
 
         // Here we check if the move is valid
+        // Normally we would check if the object at this grid point
+        //    is passable (I cheated for now)
         if (current_game->world->query_passable(xpos() + x, ypos() + y, this))
         {
             // Control object does complete redraw anyway

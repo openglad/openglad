@@ -216,6 +216,7 @@ GameFrameResult run_game_tick(screen& s,
     if (s.world().end)
         return finish_done(st);
 
+    // Now cycle palette ..
     if (s.cyclemode)
         s.do_cycle(st.currentcycle++, st.cycletime);
 

@@ -79,6 +79,7 @@ void obmap_debug_draw(obmap& map, screen* scr)
 
         if (!unset)
         {
+            // Draw the rect
             const Sint32 x = static_cast<Sint32>(obmap::unhash(static_cast<short>(r.x))) - offsetx;
             const Sint32 y = static_cast<Sint32>(obmap::unhash(static_cast<short>(r.y))) - offsety;
             const Sint32 bw = static_cast<Sint32>(obmap::unhash(static_cast<short>(r.w)));

@@ -47,6 +47,33 @@ static inline Order sanitize_order(Order order)
     return order;
 }
 
+// --- loader table addressing ----------------------------------------------
+// The parallel tables below (graphics, animations, hitpoints, ...) are one
+// entry per order x family. Core families keep the historic
+// PIX(order, family) layout — stride NUM_FAMILIES, dense, indices 0..146 —
+// because callers outside this file index the loader's public vectors with
+// PIX() directly (the CTF entries, the render bridge, the level editor).
+// Class-pack families claim ids >= NUM_FAMILIES, which PIX() cannot address
+// (PIX(Living, 21) == PIX(Weapon, 0)), so they live in a second contiguous
+// block appended after the core block. Growing the tables therefore cannot
+// move a single core entry.
+static constexpr int kCoreLoaderSlots = SIZE_ORDERS * SIZE_FAMILIES;
+static constexpr int kModFamiliesPerOrder = NUM_FAMILY_SLOTS - NUM_FAMILIES;
+static constexpr int kTotalLoaderSlots =
+    kCoreLoaderSlots + SIZE_ORDERS * kModFamiliesPerOrder;
+
+// Table index for one order/family pair, or -1 when the family byte is
+// outside the registries' capacity. `order` must already be sanitized.
+static int loader_slot(Order order, int family)
+{
+    if (family < 0 || family >= NUM_FAMILY_SLOTS)
+        return -1;
+    if (family < NUM_FAMILIES)
+        return PIX(order, family);
+    return kCoreLoaderSlots + static_cast<int>(order) * kModFamiliesPerOrder +
+           (family - NUM_FAMILIES);
+}
+
 // These are for monsters and us
 static constexpr std::array<signed char, 5> bit1 = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
 static constexpr std::array<signed char, 5> bit2 = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
@@ -389,6 +416,51 @@ static int anim_table_count(const signed char * const * t)
     return 0;
 }
 
+// Points one loader slot at a family's animation table.
+//
+// A class pack ships its own table (owned by the process-lifetime classpack
+// store) together with an explicit row count, and that count is the
+// authoritative one: anim_table_count() recognizes only the built-in tables
+// and answers 0 for anything else, while animation_counts feeds
+// walker::ani_count — where 0 means "legacy direct indexing, bounds checks
+// OFF". Deriving a pack table's count would therefore silently disable the
+// guard that keeps a snapshot- or save-supplied ani_type/curdir from
+// indexing past the end of a short table. A non-null table with a
+// non-positive count is treated as no table at all, for the same reason.
+static void set_animation_slot(loader& l, int idx,
+                               const signed char * const * pack_table,
+                               int pack_rows,
+                               const signed char * const * builtin_table)
+{
+	if (pack_table != nullptr && pack_rows > 0)
+	{
+		l.animations[idx] = pack_table;
+		l.animation_counts[idx] = pack_rows;
+		return;
+	}
+	l.animations[idx] = builtin_table;
+	l.animation_counts[idx] = anim_table_count(builtin_table);
+}
+
+// Installs one pack-claimed slot of a non-living order. The four non-living
+// descriptors carry no gameplay stats — hitpoints, act_type, stepsize and
+// damage live in the EntityDef table below, which pins the core ids only —
+// so a pack family gets exactly what its descriptor holds: the sprite and,
+// when it ships one, its own animation table.
+template <typename Descriptor>
+static void install_pack_entity(loader& l, Order order, int family,
+                                const Descriptor* d)
+{
+	if (d == nullptr)
+		return;
+	const int idx = loader_slot(order, family);
+	if (idx < 0)
+		return;
+	if (d->pix_filename)
+		l.graphics[idx] = read_pixie_file(d->pix_filename);
+	set_animation_slot(l, idx, d->anim_table, d->anim_row_count, nullptr);
+}
+
 PixieData data_copy(const PixieData& d)
 {
     PixieData result;
@@ -409,15 +481,15 @@ PixieData data_copy(const PixieData& d)
 
 
 loader::loader(EntityFactory entity_factory)
-    : graphics(SIZE_ORDERS*SIZE_FAMILIES),
-      animations(SIZE_ORDERS*SIZE_FAMILIES, nullptr),
-      animation_counts(SIZE_ORDERS*SIZE_FAMILIES, 0),
-      stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
-      lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
-      hitpoints(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
-      act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
-      damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
-      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
+    : graphics(kTotalLoaderSlots),
+      animations(kTotalLoaderSlots, nullptr),
+      animation_counts(kTotalLoaderSlots, 0),
+      stepsizes(kTotalLoaderSlots, 0.0f),
+      lineofsight(kTotalLoaderSlots, 0),
+      hitpoints(kTotalLoaderSlots, 0.0f),
+      act_types(kTotalLoaderSlots, static_cast<char>(ACT_RANDOM)),
+      damage(kTotalLoaderSlots, 0.0f),
+      fire_frequency(kTotalLoaderSlots, 0.0f),
       entity_factory_(std::move(entity_factory))
 {
 	if (!entity_factory_.report_error)
@@ -434,20 +506,41 @@ void loader::reload_graphics()
 {
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
-	// Livings — all data driven from family descriptors
-	for (int i = 0; i < NUM_FAMILIES; i++)
+	// Pack slots are entirely descriptor-driven, so a reload rebuilds them
+	// from nothing: unmounting a pack frees its registry slot, and the
+	// loader must not keep a family alive after that. (Core slots are never
+	// cleared — every core entry is unconditionally rewritten below.)
+	for (int i = kCoreLoaderSlots; i < kTotalLoaderSlots; i++)
+	{
+		graphics[i].free();
+		animations[i] = nullptr;
+		animation_counts[i] = 0;
+		act_types[i] = static_cast<char>(ACT_RANDOM);
+		stepsizes[i] = 0.0f;
+		lineofsight[i] = 0;
+		damage[i] = 0.0f;
+		fire_frequency[i] = 0.0f;
+	}
+
+	// Livings — all data driven from family descriptors. The scan covers the
+	// pack ids too: get_family_descriptor answers nullptr for every free mod
+	// slot, so a family appears here only once a class pack has claimed it.
+	for (int i = 0; i < NUM_FAMILY_SLOTS; i++)
 	{
 		const auto* fd = get_family_descriptor(i);
 		if (!fd || !fd->pix_filename)
 			continue;
-		graphics[PIX(Order::Living, i)] = read_pixie_file(fd->pix_filename);
-		act_types[PIX(Order::Living, i)] = ACT_RANDOM;
-		animations[PIX(Order::Living, i)] = animation_for_type(fd->animation_type);
-		lineofsight[PIX(Order::Living, i)] = fd->ai_line_of_sight;
-		hitpoints[PIX(Order::Living, i)] = fd->derived_bonuses[0];
-		damage[PIX(Order::Living, i)] = fd->derived_bonuses[2];
-		stepsizes[PIX(Order::Living, i)] = fd->derived_bonuses[6];
-		fire_frequency[PIX(Order::Living, i)] = fd->derived_bonuses[7];
+		const int idx = loader_slot(Order::Living, i);
+		graphics[idx] = read_pixie_file(fd->pix_filename);
+		act_types[idx] = ACT_RANDOM;
+		set_animation_slot(*this, idx, fd->anim_table, fd->anim_row_count,
+		                   animation_for_type(fd->animation_type));
+		lineofsight[idx] = fd->ai_line_of_sight;
+		hitpoints[idx] = fd->derived_bonuses[0];
+		// Strength of melee attack
+		damage[idx] = fd->derived_bonuses[2];
+		stepsizes[idx] = fd->derived_bonuses[6];
+		fire_frequency[idx] = fd->derived_bonuses[7];
 	}
 
 	// Table-driven entity initialization for non-Living entities
@@ -459,6 +552,7 @@ void loader::reload_graphics()
 
 	// clang-format off
 	static const EntityDef defs[] = {
+		// The los column acts as a weapon's range (pixel range == lineofsight * stepsize)
 		// Weapon entities (BLOOD pix handled separately for gore toggle)
 		//                                                       hp  act         anim           step los  dmg freq
 		{Order::Weapon, FAMILY_KNIFE,             "knife.png",    6, ACT_FIRE, anikni.data(),          5,  7,  6, 0},
@@ -561,10 +655,30 @@ void loader::reload_graphics()
 
 	register_ctf_loader_entries(*this);
 
+	// Pack-claimed families of the four non-living orders. Their core ids all
+	// come from the EntityDef table above; ids >= NUM_FAMILIES exist only
+	// while a class pack is mounted.
+	for (int i = NUM_FAMILIES; i < NUM_FAMILY_SLOTS; i++)
+	{
+		install_pack_entity(*this, Order::Weapon, i,
+		                    get_weapon_family_descriptor(i));
+		install_pack_entity(*this, Order::FX, i,
+		                    get_effect_family_descriptor(i));
+		install_pack_entity(*this, Order::Treasure, i,
+		                    get_treasure_family_descriptor(i));
+		install_pack_entity(*this, Order::Generator, i,
+		                    get_generator_family_descriptor(i));
+	}
+
 	// Record each animation table's length (parallel to `animations`) so animate()
-	// can bound index math against short per-family tables.
+	// can bound index math against short per-family tables. Slots that already
+	// carry a count are left alone: a class pack's table is not in
+	// anim_table_count()'s registry of built-ins, so recomputing here would
+	// overwrite the pack's explicit row count with 0 — and ani_count == 0
+	// turns the animate() bounds checks off.
 	for (std::size_t i = 0; i < animations.size(); i++)
-		animation_counts[i] = anim_table_count(animations[i]);
+		if (animation_counts[i] == 0)
+			animation_counts[i] = anim_table_count(animations[i]);
 }
 
 loader::~loader(void)
@@ -583,10 +697,11 @@ loader::~loader(void)
 const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 {
     order = sanitize_order(order);
-    if (family < 0 || family >= NUM_FAMILIES)
-        family = 0;
+    int idx = loader_slot(order, family);
+    if (idx < 0)
+        idx = PIX(order, 0);  // legacy clamp for an out-of-capacity byte
 
-    const PixieData& pix = graphics[PIX(order, family)];
+    const PixieData& pix = graphics[idx];
     if (!pix.valid())
         return nullptr;
     return &pix;
@@ -595,14 +710,15 @@ const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
     order = sanitize_order(order);
-	if(family < 0 || family >= NUM_FAMILIES)
-		family = 0;
+	int idx = loader_slot(order, family);
+	if (idx < 0)
+		idx = PIX(order, 0);
 
-	w->set_stepsize(stepsizes[PIX(order, family)]);
+	w->set_stepsize(stepsizes[idx]);
 	w->set_normal_stepsize(w->stepsize());
-	w->set_lineofsight(lineofsight[PIX(order, family)]);
-	w->set_damage(damage[PIX(order, family)]);
-	w->set_fire_frequency(fire_frequency[PIX(order, family)]);
+	w->set_lineofsight(lineofsight[idx]);
+	w->set_damage(damage[idx]);
+	w->set_fire_frequency(fire_frequency[idx]);
 }
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
@@ -611,13 +727,19 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	std::unique_ptr<walker> ob;
     order = sanitize_order(order);
 
-	if(family < 0 || family >= NUM_FAMILIES)
+	int idx = loader_slot(order, family);
+	// Keep the legacy "bad living family" fallback to soldier; others clamp
+	// to 0. A pack id whose slot is empty — no pack mounted, or a pack that
+	// ships no sprite for it — takes the same fallback, so a stale save or
+	// level byte still yields an entity instead of a null.
+	if ((idx < 0 || !graphics[idx].valid()) &&
+	    (family < 0 || family >= NUM_FAMILIES))
 	{
-		// Keep the legacy "bad living family" fallback to soldier; others clamp to 0.
 		family = (order == Order::Living) ? FAMILY_SOLDIER : 0;
+		idx = PIX(order, family);
 	}
 
-	if (!graphics[PIX(order, family)].valid())
+	if (!graphics[idx].valid())
 	{
 	    std::string buf = std::format("No valid graphics for walker!\nOrder: {}, Family {}\nPlease report this to the developer!", static_cast<int>(order), static_cast<int>(family));
 		entity_factory_.report_error(buf);
@@ -625,7 +747,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	}
 
 	// Render component wiring is callback-driven by the platform layer.
-	const auto& pix = graphics[PIX(order, family)];
+	const auto& pix = graphics[idx];
 
 	if (order == Order::Living)
 		ob = std::make_unique<living>();
@@ -666,13 +788,17 @@ walker  *loader::set_walker(walker *ob,
 	short i;
     order = sanitize_order(order);
 
-	if(family < 0 || family >= NUM_FAMILIES)
+	int idx = loader_slot(order, family);
+	if (idx < 0)
+	{
 		family = 0;
+		idx = PIX(order, family);
+	}
 
 	ob->set_order_family(order, static_cast<char>(family));
-	ob->set_act_type(act_types[PIX(order, family)]);
-	ob->ani = animations[PIX(order, family)];
-	ob->ani_count = animation_counts[PIX(order, family)];
+	ob->set_act_type(act_types[idx]);
+	ob->ani = animations[idx];
+	ob->ani_count = animation_counts[idx];
 
 	set_derived_stats(ob, order, family);
 

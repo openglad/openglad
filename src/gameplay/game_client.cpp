@@ -267,6 +267,60 @@ ClientPollResult poll_client_messages(
                 break;
             }
 
+            case og::sim::kPackManifestMessageType:
+            {
+                // Pack transfers are handled by the lobby-phase picker
+                // clients; chunks that trail into the gameplay stream are
+                // legal traffic the dispatcher ignores — never grounds for
+                // disconnecting the server.
+                const auto decoded =
+                    og::sim::deserialize_pack_manifest_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PackManifest;
+                typed_message.pack_manifest =
+                    std::make_shared<og::sim::PackManifestMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kPackFileChunkMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_pack_file_chunk_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PackFileChunk;
+                typed_message.pack_file_chunk =
+                    std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kPackTransferDoneMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_pack_transfer_done_message(
+                        message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PackTransferDone;
+                typed_message.pack_transfer_done =
+                    std::make_shared<og::sim::PackTransferDoneMessage>(
+                        *decoded);
+                break;
+            }
+
             default:
                 result.malformed_server_message = true;
                 break;
@@ -1173,6 +1227,12 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
         case TypedReceivedMessageKind::ExitPromptResponse:
         case TypedReceivedMessageKind::PauseResponse:
         case TypedReceivedMessageKind::SnapshotHashCheck:
+        // Pack transfers complete during the lobby phase; the gameplay
+        // client ignores stragglers.
+        case TypedReceivedMessageKind::PackManifest:
+        case TypedReceivedMessageKind::PackRequest:
+        case TypedReceivedMessageKind::PackFileChunk:
+        case TypedReceivedMessageKind::PackTransferDone:
         case TypedReceivedMessageKind::Malformed:
             break;
         }

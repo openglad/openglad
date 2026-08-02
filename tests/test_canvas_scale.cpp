@@ -81,12 +81,31 @@ void query_texture_dims(SDL_Texture* tex, int* w, int* h)
     *h = tex->h;
 }
 
+// Ends the editor's private loop once it has actually completed the
+// transaction the test is about to assert on: one World present that went
+// through the smart scaler AND composited the crisp authoring-UI overlay.
+//
+// This replaced a flat SDL_Delay(300), and it is not a raised threshold. The
+// sleep was a bet that one full map+chrome transaction fits in 300 ms of wall
+// clock, which is a deadline on the MACHINE, not on the code — so the test
+// answered "was this box busy?" rather than "did the editor filter its map?".
+// It duly went red on the ASan lane (instrumented = slower) while every other
+// lane stayed green. Waiting on the event keeps the assertions exactly as
+// strict: if the editor never completes such a present, this burns the whole
+// ceiling, the loop still ends, and the same ASSERT_NE below still fires.
+// What is gone is a slow machine's vote.
+constexpr int kEditorPresentWaitMs = 10000;
+
 int stop_editor_after_render(void*)
 {
     og::runtime::ensure_thread_session();
-    // The editor paints immediately on entry. Leave enough time for at least
-    // one complete map + chrome transaction before ending its private loop.
-    SDL_Delay(300);
+    // The editor paints immediately on entry; unstarved the wait is one
+    // poll. The ceiling is a backstop, never a schedule.
+    for (int waited = 0; waited < kEditorPresentWaitMs; waited += 5) {
+        if (trace_contains("world_present", "smart=1 ui=1"))
+            break;
+        SDL_Delay(5);
+    }
     og::runtime::current_session->myscreen_->world().end = 1;
     return 0;
 }
@@ -1248,6 +1267,9 @@ TEST(CanvasScale, level_editor_filters_map_but_keeps_controls_on_crisp_overlay)
     E_Screen->set_active_canvas(CanvasTarget::World);
     s->world().end = 0;
 
+    // The stopper waits for a world_present trace, so an earlier test's
+    // presents must not be able to satisfy it (this binary shuffles).
+    trace_clear();
     SDL_Thread* stopper = SDL_CreateThread(
         stop_editor_after_render, "editor_overlay_stopper", nullptr);
     ASSERT_NE(nullptr, stopper);

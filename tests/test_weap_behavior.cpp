@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <cstdlib>
+#include "test_family_hook_dispatch.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -350,8 +351,8 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     auto* rock = static_cast<weap*>(rock_w);
 
     const WeaponFamilyDescriptor* rock_desc = get_weapon_family_descriptor(FAMILY_ROCK);
-    ASSERT_TRUE(rock_desc != nullptr && rock_desc->on_death != nullptr) << "rock descriptor callback exists";
-    if (!(rock_desc && rock_desc->on_death))
+    ASSERT_TRUE(rock_desc != nullptr && og::test::has_on_death(*rock_desc)) << "rock descriptor callback exists";
+    if (!(rock_desc && og::test::has_on_death(*rock_desc)))
     {
         og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
         return;
@@ -366,13 +367,13 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     // Guard: do_bounce disabled.
     rock->set_dead(1);
     rock->set_do_bounce(0);
-    ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should short-circuit when do_bounce=0";
+    ASSERT_TRUE(!og::test::on_death(*rock_desc, rock)) << "rock on_death should short-circuit when do_bounce=0";
 
     // First probe passable => no bounce, die normally.
     rock->set_do_bounce(1);
     rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
-    ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should return false when forward tile is passable";
+    ASSERT_TRUE(!og::test::on_death(*rock_desc, rock)) << "rock on_death should return false when forward tile is passable";
     ASSERT_EQ(1, (int)rock->dead()) << "forward-passable path should leave rock dead";
 
     // First blocked, second passable => bounce down-left (flip X only).
@@ -382,7 +383,7 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
-    ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce down-left";
+    ASSERT_TRUE(og::test::on_death(*rock_desc, rock)) << "rock on_death should bounce down-left";
     ASSERT_EQ(-GRID_SIZE, (int)rock->lastx()) << "down-left bounce should invert X velocity";
     ASSERT_EQ(GRID_SIZE, (int)rock->lasty()) << "down-left bounce should preserve Y velocity";
 
@@ -394,7 +395,7 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
-    ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce up-right";
+    ASSERT_TRUE(og::test::on_death(*rock_desc, rock)) << "rock on_death should bounce up-right";
     ASSERT_EQ(GRID_SIZE, (int)rock->lastx()) << "up-right bounce should preserve X velocity";
     ASSERT_EQ(-GRID_SIZE, (int)rock->lasty()) << "up-right bounce should invert Y velocity";
 
@@ -407,7 +408,7 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
-    ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce up-left";
+    ASSERT_TRUE(og::test::on_death(*rock_desc, rock)) << "rock on_death should bounce up-left";
     ASSERT_EQ(-GRID_SIZE, (int)rock->lastx()) << "up-left bounce should invert X velocity";
     ASSERT_EQ(-GRID_SIZE, (int)rock->lasty()) << "up-left bounce should invert Y velocity";
 
@@ -420,7 +421,7 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
-    ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should fail when all bounce probes are blocked";
+    ASSERT_TRUE(!og::test::on_death(*rock_desc, rock)) << "rock on_death should fail when all bounce probes are blocked";
     ASSERT_EQ(1, (int)rock->dead()) << "all-blocked path should leave rock dead";
 
     og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
@@ -526,20 +527,20 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
 
     // SPRINKLE callback: non-living target no-op; living target with null myguy uses con=0.
     const WeaponFamilyDescriptor* sprinkle_desc = get_weapon_family_descriptor(FAMILY_SPRINKLE);
-    ASSERT_TRUE(sprinkle_desc != nullptr && sprinkle_desc->on_hit_target != nullptr) << "sprinkle descriptor callback exists";
+    ASSERT_TRUE(sprinkle_desc != nullptr && og::test::has_on_hit_target(*sprinkle_desc)) << "sprinkle descriptor callback exists";
     walker* non_living_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN);
     walker* living_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SLIME);
     ASSERT_TRUE(non_living_target != nullptr && living_target != nullptr) << "sprinkle targets created";
-    if (sprinkle_desc && sprinkle_desc->on_hit_target && non_living_target && living_target)
+    if (sprinkle_desc && og::test::has_on_hit_target(*sprinkle_desc) && non_living_target && living_target)
     {
         short before_non_living = non_living_target->stats()->frozen_delay();
-        ASSERT_TRUE(sprinkle_desc->on_hit_target(tree_w, non_living_target, owner.get())) << "sprinkle hit callback should return true for non-living targets";
+        ASSERT_TRUE(og::test::on_hit_target(*sprinkle_desc, tree_w, non_living_target, owner.get())) << "sprinkle hit callback should return true for non-living targets";
         ASSERT_EQ((int)before_non_living, (int)non_living_target->stats()->frozen_delay()) << "sprinkle should not change frozen_delay for non-living targets";
 
         living_target->myguy = nullptr;
         living_target->stats()->set_frozen_delay(0);
         owner->stats()->set_level(6);
-        ASSERT_TRUE(sprinkle_desc->on_hit_target(tree_w, living_target, owner.get())) << "sprinkle hit callback should return true for living targets";
+        ASSERT_TRUE(og::test::on_hit_target(*sprinkle_desc, tree_w, living_target, owner.get())) << "sprinkle hit callback should return true for living targets";
         ASSERT_TRUE(living_target->stats()->frozen_delay() >= 0) << "sprinkle should set a deterministic frozen_delay for living targets";
     }
 

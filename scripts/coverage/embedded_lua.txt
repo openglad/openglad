@@ -1,0 +1,50 @@
+# Which PRODUCT C++ files carry shipped embedded Lua.
+#
+# Not all Lua in this repository is a .lua file. The showcase pack — a whole
+# scripted boss arena — exists only as a C++ raw string literal that gets
+# written into a generated .glad, so the coverage denominator has to be able
+# to see Lua embedded in C++. That used to work by convention: the delimiter
+# R"LUA( declared "these bytes are pack Lua", and nothing checked.
+#
+# Convention leaked in both directions, and both were demonstrated:
+#
+#   * R"MODLUA( ... )MODLUA" in a .cpp shipped a family's dispatch and left
+#     the inventory unchanged at 38 sources — no denominator, no error, no
+#     warning. So did R"LUA( in a .ipp, because that suffix was not on the
+#     scanner's list.
+#   * The inverse produced FALSE failures: a test fixture that innocently
+#     reached for R"LUA( entered the denominator as shipped game logic at 0%
+#     and pulled the gate down for a reason no reader could see.
+#
+# So the declaration is explicit and two-sided now, and scripts/
+# lua_inventory.py enforces it by construction, not convention: EVERY raw
+# string literal, under ANY delimiter, in the product directories (src/,
+# tools/, include/, across every suffix a C++ compiler might be handed) is
+# classified on every run. A literal that could compile as Lua AND references
+# the pack API (og. / register_hooks) must be accounted for here, or the
+# inventory hard-fails naming the file and line.
+#
+#   shipped <path>   the file's R"LUA( ... )LUA" literals ARE pack Lua: they
+#                    go into the coverage denominator and are linted by
+#                    scripts/check_lua_statement_lines.py.
+#
+# `shipped` is the ONLY disposition. There used to be a second one —
+# `fixture <path>`, "this product file's Lua-looking strings are test-only,
+# skip them" — and it is now FORBIDDEN: one such line was the only lever
+# that could hide live product Lua from the denominator, a single reviewable
+# word doing the exact job this file exists to prevent. The line is still
+# parsed so it can be rejected loudly (naming this rule) rather than
+# silently ignored. Product literals are `shipped`, full stop; a test-only
+# literal belongs in tests/, which is exempt by construction.
+#
+# The boundary: only src/, tools/ and include/ can be declared at all.
+# tests/ (and scripts/, docs/, ...) raw strings are exempt from declaration
+# and NEVER enter the shipped denominator — a string that does not ship
+# cannot carry shipped logic, and the moment a test MOUNTS Lua at runtime
+# the report's content-hash poison pills own it instead (recorded pack bytes
+# that are not repository content hard-fail the gate). A line naming a
+# non-product path, a file that no longer exists, or a file whose literals
+# are gone is itself a failure, so a stale entry cannot sit here silencing a
+# path somebody later re-creates.
+
+shipped tools/concept_mapgen/showcase_pack.cpp

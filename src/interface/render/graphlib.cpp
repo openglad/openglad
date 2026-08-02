@@ -84,6 +84,7 @@ static PixieData make_glass_tile()
 void load_map_data(PixieData* whereto)
 {
 	// load the pixie graphics data into memory
+	// shorto memory, you know the !tallo kind
 	whereto[0] = read_pixie_file("16tile.png");             //done
 	whereto[PIX_GRASS1] = read_pixie_file("16grass1.png");  //done
 	whereto[PIX_WATER1] = read_pixie_file("16water1.png");  //done

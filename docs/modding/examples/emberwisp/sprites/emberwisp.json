@@ -1,0 +1,17 @@
+{
+  "frames": {
+    "emberwisp 0.aseprite": { "frame": { "x": 0, "y": 0,   "w": 16, "h": 16 } },
+    "emberwisp 1.aseprite": { "frame": { "x": 0, "y": 16,  "w": 16, "h": 16 } },
+    "emberwisp 2.aseprite": { "frame": { "x": 0, "y": 32,  "w": 16, "h": 16 } },
+    "emberwisp 3.aseprite": { "frame": { "x": 0, "y": 48,  "w": 16, "h": 16 } },
+    "emberwisp 4.aseprite": { "frame": { "x": 0, "y": 64,  "w": 16, "h": 16 } },
+    "emberwisp 5.aseprite": { "frame": { "x": 0, "y": 80,  "w": 16, "h": 16 } },
+    "emberwisp 6.aseprite": { "frame": { "x": 0, "y": 96,  "w": 16, "h": 16 } },
+    "emberwisp 7.aseprite": { "frame": { "x": 0, "y": 112, "w": 16, "h": 16 } }
+  },
+  "meta": {
+    "app": "hand-written for the OpenGlad Ember Wisp example pack",
+    "format": "Hash",
+    "size": { "w": 16, "h": 128 }
+  }
+}

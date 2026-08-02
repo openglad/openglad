@@ -108,6 +108,7 @@ const char* family_name_copy(short family);
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+// Flag to signal that game should start (for state machine)
 bool g_start_game_requested = false;
 
 bool picker_replace_lobby_client(

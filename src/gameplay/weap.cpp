@@ -21,6 +21,7 @@
 #include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/statistics.h>
@@ -166,8 +167,7 @@ bool weap::death()
 	set_death_called(1);
 
 	const auto* wfd = get_weapon_family_descriptor(family());
-	if (wfd && wfd->on_death)
-		wfd->on_death(this);
+	og::script::hooks::weapon_on_death(wfd, this);
 
 	return 1;
 
@@ -185,9 +185,9 @@ bool weap::animate()
 	//  }
 
 	const auto* wfd = get_weapon_family_descriptor(family());
-	if (wfd && wfd->on_animate)
+	if (auto hook_result = og::script::hooks::weapon_on_animate(wfd, this))
 	{
-		if (!wfd->on_animate(this))
+		if (!*hook_result)
 			return death();
 	}
 	else

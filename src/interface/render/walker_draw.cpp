@@ -173,6 +173,7 @@ std::size_t DamageNumberRenderContext::state_count() const noexcept
 
 static bool float_eq(float a, float b)
 {
+    // Avoid exact comparison problems caused by limited float precision.
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
 }
 

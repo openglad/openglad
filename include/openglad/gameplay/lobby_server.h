@@ -2,6 +2,7 @@
 
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/pack_transfer.h>
 
 #include <cstdint>
 #include <optional>
@@ -89,9 +90,24 @@ public:
     [[nodiscard]] LobbySaveDataEquivalent build_save_data_equivalent() const;
     [[nodiscard]] std::vector<LobbyPlayerBinding> build_player_bindings() const;
 
+    // Adopt the session's transferable class packs (protocol v10, design
+    // §8). The platform layer builds the set from its mounted packs
+    // (og::resources::build_transferable_packs); the lobby announces the
+    // manifests to every connected peer — including retroactively when the
+    // set changes — and serves PackRequest streams during the lobby phase.
+    // Never called ⇒ peers receive the explicit empty announcement on
+    // connect and skip the transfer phase entirely.
+    void set_hosted_packs(std::vector<HostedPack> packs);
+    [[nodiscard]] const PackTransferHost& pack_host() const noexcept
+    {
+        return pack_host_;
+    }
+
 private:
     void synchronize_transport_peers(
-        const std::vector<std::pair<PeerId, LobbyMessage>>& messages);
+        const std::vector<std::pair<PeerId, LobbyMessage>>& messages,
+        const std::vector<std::pair<PeerId, PackRequestMessage>>&
+            pack_requests);
     void apply_transport_disconnects();
     struct ConnectedPeerState {
         std::uint64_t connection_order = 0;
@@ -165,6 +181,7 @@ private:
     LobbyMachineId next_machine_id_ = 1;
     bool start_game_requested_ = false;
     bool lobby_locked_ = false;
+    PackTransferHost pack_host_;
 };
 
 } // namespace og::sim

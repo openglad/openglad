@@ -26,6 +26,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
@@ -592,8 +593,7 @@ walker  * walker::fire()
 				if (order() == Order::Living)
 				{
 					const auto* fd = get_family_descriptor(family());
-					if (fd && fd->on_melee_hit)
-						fd->on_melee_hit(this, weapon->collide_ob());
+					og::script::hooks::on_melee_hit(fd, this, weapon->collide_ob());
 				}
 			}
 			if (myguy)
@@ -615,9 +615,9 @@ walker  * walker::fire()
 		if (order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			if (fd && fd->on_fire_weapon)
+			if (auto hook_result = og::script::hooks::on_fire_weapon(fd, this, weapon))
 			{
-				if (!fd->on_fire_weapon(this, weapon))
+				if (!*hook_result)
 					return nullptr;
 			}
 		}
@@ -649,6 +649,10 @@ walker  * walker::fire()
 				if (gfd->clear_owner)
 					weapon->set_owner(nullptr);
 			}
+			// Scripted generators post-process the configured spawn
+			// (inert unless a pack registered customize_spawn).
+			og::script::hooks::generator_customize_spawn(family(), this,
+			                                             weapon);
 		}
 		// Living-family() weapon modifications handled by on_fire_weapon above
 		return weapon;
@@ -714,7 +718,8 @@ void walker::set_weapon_heading(walker *weapon)
 
 }
 
-// Used by score_panel.cpp and glad.cpp via extern declaration.
+// To avoid problems with limited precision. Used by score_panel.cpp and
+// glad.cpp via extern declaration.
 bool float_eq(float a, float b)
 {
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
@@ -1068,7 +1073,7 @@ bool walker::animate()
 		if (ani_type() == ANI_TELE_OUT && order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			if (fd && fd->handle_teleport && fd->handle_teleport(this))
+			if (og::script::hooks::handle_teleport(fd, this).value_or(false))
 				return 1;
 			// Default: no teleport handler, just stop
 			set_ani_type(ANI_WALK);
@@ -1078,7 +1083,7 @@ bool walker::animate()
 		if (order() == Order::Living)
 		{
 			const auto* fd2 = get_family_descriptor(family());
-			if (fd2 && fd2->on_ani_complete && fd2->on_ani_complete(this))
+			if (og::script::hooks::on_ani_complete(fd2, this).value_or(false))
 				return 1;
 		}
 
@@ -1191,8 +1196,7 @@ walker  *walker::create_weapon()
 	if (order() == Order::Living)
 	{
 		const auto* fd = get_family_descriptor(family());
-		if (fd && fd->customize_weapon)
-			fd->customize_weapon(this, weapon);
+		og::script::hooks::customize_weapon(fd, this, weapon);
 	}
 	return weapon;
 }
@@ -1729,9 +1733,9 @@ bool walker::death()
 			}
 			{
 				auto* fd = get_family_descriptor(family());
-				if (fd && fd->on_death)
+				if (og::script::hooks::on_death(fd, this).has_value())
 				{
-					fd->on_death(this);
+					// Scripted or family-specific death handling ran.
 				}
 				else if (fd && !fd->leaves_bloodspot)
 				{
@@ -1741,6 +1745,9 @@ bool walker::death()
 				{
 					generate_bloodspot();
 				}
+				// Level-script per-entity / level-wide death hooks (inert
+				// without registered level scripts).
+				og::script::hooks::level_entity_death(this);
 			}  // end of family() dispatch
 			break;  // end of order() livings case
 		case Order::Generator:  // go up in flames :>
@@ -1758,6 +1765,11 @@ bool walker::death()
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
 			}
+			// Generators are the canonical scripted "object": a level script
+			// must be able to react to a tent/tower/pillar falling, exactly
+			// as it reacts to a living death. Emitted after the death FX so
+			// the hook observes the same world a living-death hook would.
+			og::script::hooks::level_entity_death(this);
 			break;
 		case Order::FX:
 			//case Order::Treasure:

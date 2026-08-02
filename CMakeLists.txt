@@ -1,5 +1,34 @@
 cmake_minimum_required(VERSION 3.25)
 project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
+
+# In-source builds are refused, before a single file is generated.
+#
+# `cmake -S . -B .` makes the build tree the WORKING tree, and from there any
+# target that owns its output directory owns tracked sources instead. That is
+# not hypothetical here: stage_runtime_assets MIRRORS builtin/ cfg/ pix/
+# sound/ packs/ into the build tree, and mirroring deletes the destination
+# before it copies — in-source that reads `rm -rf <srcdir>/packs` followed by
+# a copy of packs/ onto itself, i.e. unrecoverable loss of committed assets
+# from a plain `ninja`. Every preset in CMakePresets.json builds out of tree;
+# this guard is for the hand-typed invocation that does not.
+#
+# Real paths, so a symlinked or `.`-suffixed spelling of the same directory
+# cannot slip past the comparison.
+file(REAL_PATH "${CMAKE_SOURCE_DIR}" OG_SOURCE_DIR_REAL)
+file(REAL_PATH "${CMAKE_BINARY_DIR}" OG_BINARY_DIR_REAL)
+if(OG_SOURCE_DIR_REAL STREQUAL OG_BINARY_DIR_REAL)
+    message(FATAL_ERROR
+        "OpenGlad refuses in-source builds: the build directory is the source "
+        "directory (${OG_SOURCE_DIR_REAL}).\n"
+        "Targets here mirror runtime asset directories into the build tree, "
+        "which deletes the destination first — in-source that would delete "
+        "the repository's own builtin/, cfg/, pix/, sound/ and packs/.\n"
+        "Build out of tree instead, e.g.:\n"
+        "    cmake --preset ci-test && cmake --build --preset ci-test\n"
+        "Then remove the CMakeCache.txt and CMakeFiles/ this attempt left in "
+        "the source directory.")
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CheckCXXSourceCompiles)
@@ -49,6 +78,11 @@ option(OPENGLAD_FETCH_PHYSFS "Fetch PhysFS from upstream when no package target 
 option(OPENGLAD_FETCH_LODEPNG "Fetch lodepng from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_IXWEBSOCKET "Fetch IXWebSocket from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_SDL3 "Fetch SDL3 from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+# Lua is ALWAYS vendored (independent of OPENGLAD_FETCH_DEPS): the scripting
+# VM must be the pinned version compiled as C++ on every platform — a system
+# Lua (C linkage, longjmp error unwinding) would break binding-layer RAII and
+# cross-peer determinism. Offline builds pre-populate FETCHCONTENT_SOURCE_DIR_LUA.
+option(OPENGLAD_FETCH_LUA "Fetch Lua from upstream (always vendored; no system fallback)" ON)
 option(OPENGLAD_USE_PACKAGED_IXWEBSOCKET "Prefer an installed IXWebSocket package over fetching the pinned upstream commit" ON)
 set(OPENGLAD_ZLIB_GIT_REPOSITORY "https://github.com/madler/zlib.git" CACHE STRING "zlib upstream repository")
 set(OPENGLAD_ZLIB_GIT_TAG "v1.3.2" CACHE STRING "zlib upstream tag/commit to use when fetching")
@@ -64,6 +98,8 @@ set(OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY "https://github.com/machinezone/IXWebSoc
 set(OPENGLAD_IXWEBSOCKET_GIT_TAG "64fae7676bd8fe31f7cb4bcde7a6841892dad65e" CACHE STRING "IXWebSocket upstream commit to use when fetching")
 set(OPENGLAD_SDL3_GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git" CACHE STRING "SDL3 upstream repository")
 set(OPENGLAD_SDL3_GIT_TAG "release-3.4.8" CACHE STRING "SDL3 upstream tag/commit to use when fetching")
+set(OPENGLAD_LUA_GIT_REPOSITORY "https://github.com/lua/lua.git" CACHE STRING "Lua upstream repository")
+set(OPENGLAD_LUA_GIT_TAG "v5.4.8" CACHE STRING "Lua upstream tag/commit to use when fetching")
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -72,6 +108,28 @@ set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABL
 if(ENABLE_COVERAGE AND NOT BUILD_TESTING)
     set(BUILD_TESTING ON CACHE BOOL "Build the test suite" FORCE)
 endif()
+
+# Coverage instrumentation measures whatever function/line set the compiler
+# emits, so the compile flags must pin the optimization level rather than
+# inherit it. Some toolchains inject an -O when the command line carries none
+# (nixpkgs' cc-wrapper appends -O2 as part of its fortify hardening, so this
+# repo's "Debug -g" coverage build silently became -O2 there), and at -O2 GCC
+# inlines small internal functions out of existence: no standalone body means
+# no gcov function record, and the local function denominator measured 4438
+# where CI's plain -O0 gcc measured 4993 — with the missing records exactly
+# the fully-inlined helpers and lambdas. An explicit -O0 outranks any
+# injected default on every driver, so every environment measures the same
+# code. Keep -O0 next to --coverage everywhere instrumentation is added; see
+# scripts/coverage/README.md ("Optimization level") for the full story.
+#
+# Known cosmetic residue under that same wrapper: it also injects
+# -D_FORTIFY_SOURCE=3 AFTER the user flags (unlike its -O2, which precedes
+# them), so no -U/-D here can override it, and once -O0 wins glibc's
+# features.h prints "#warning _FORTIFY_SOURCE requires compiling with
+# optimization" per TU. That warning is truthful noise: fortify is inert
+# without __OPTIMIZE__, so the measured code is unaffected. Environments
+# that inject neither flag (CI's stock gcc) build warning-free.
+set(OG_COVERAGE_COMPILE_OPTIONS --coverage -O0)
 
 if(ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
@@ -151,9 +209,20 @@ if(NOT EMSCRIPTEN)
     )
 endif()
 
+# Deterministic Lua scripting VM (class packs / level scripts). Shared by the
+# SDL game, the component libraries, and the headless clients.
+set(OG_SCRIPT_SOURCES
+    ${SRC_DIR}/gameplay/script/script_host.cpp
+    ${SRC_DIR}/gameplay/script/script_coverage.cpp
+    ${SRC_DIR}/gameplay/script/pack_scripts.cpp
+    ${SRC_DIR}/gameplay/script/world_scripts.cpp
+    ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+)
+
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
+    ${OG_SCRIPT_SOURCES}
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/core/frame_pacing.cpp
     ${SRC_DIR}/core/frame_rate_config.cpp
@@ -172,45 +241,10 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
-    ${SRC_DIR}/gameplay/families/family_archer.cpp
-    ${SRC_DIR}/gameplay/families/family_archmage.cpp
-    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
-    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_cleric.cpp
-    ${SRC_DIR}/gameplay/families/family_druid.cpp
-    ${SRC_DIR}/gameplay/families/family_elf.cpp
-    ${SRC_DIR}/gameplay/families/family_faerie.cpp
-    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
-    ${SRC_DIR}/gameplay/families/family_ghost.cpp
-    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_golem.cpp
-    ${SRC_DIR}/gameplay/families/family_mage.cpp
-    ${SRC_DIR}/gameplay/families/family_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_slime.cpp
-    ${SRC_DIR}/gameplay/families/family_soldier.cpp
-    ${SRC_DIR}/gameplay/families/family_thief.cpp
-    ${SRC_DIR}/gameplay/families/family_tower1.cpp
+    ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/interface/guy_create.cpp
@@ -270,6 +304,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
 		    ${SRC_DIR}/resources/campaign_yaml.cpp
+		    ${SRC_DIR}/resources/classpack_yaml.cpp
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
@@ -287,6 +322,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
+    ${SRC_DIR}/resources/packs.cpp
+    ${SRC_DIR}/resources/pack_transfer_io.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -305,6 +342,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/pack_transfer.cpp
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
@@ -353,12 +391,14 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/pack_transfer.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
 )
 
 set(OG_DATA_SOURCES
+    ${SRC_DIR}/resources/classpack_yaml.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
@@ -373,50 +413,17 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/resources/company.cpp
+    ${SRC_DIR}/resources/packs.cpp
+    ${SRC_DIR}/resources/pack_transfer_io.cpp
 )
 
 set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
-    ${SRC_DIR}/gameplay/families/family_archer.cpp
-    ${SRC_DIR}/gameplay/families/family_archmage.cpp
-    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
-    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_cleric.cpp
-    ${SRC_DIR}/gameplay/families/family_druid.cpp
-    ${SRC_DIR}/gameplay/families/family_elf.cpp
-    ${SRC_DIR}/gameplay/families/family_faerie.cpp
-    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
-    ${SRC_DIR}/gameplay/families/family_ghost.cpp
-    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_golem.cpp
-    ${SRC_DIR}/gameplay/families/family_mage.cpp
-    ${SRC_DIR}/gameplay/families/family_orc.cpp
-    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
-    ${SRC_DIR}/gameplay/families/family_slime.cpp
-    ${SRC_DIR}/gameplay/families/family_soldier.cpp
-    ${SRC_DIR}/gameplay/families/family_thief.cpp
-    ${SRC_DIR}/gameplay/families/family_tower1.cpp
+    ${SRC_DIR}/gameplay/families/family_string_ids.cpp
     ${SRC_DIR}/gameplay/weapon_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
-    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
     ${SRC_DIR}/gameplay/effect_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
-    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
     ${SRC_DIR}/gameplay/treasure_family_registry.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/gameplay/guy.cpp
     ${SRC_DIR}/gameplay/living.cpp
@@ -532,6 +539,7 @@ set(OG_PLATFORM_SOURCES
 set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${OG_SIM_SOURCES}
     ${OG_ENTITIES_SOURCES}
+    ${OG_SCRIPT_SOURCES}
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/astar.cpp
@@ -642,7 +650,7 @@ function(configure_openglad_library target)
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE --coverage)
+        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(${target} PRIVATE --coverage)
     endif()
 endfunction()
@@ -652,7 +660,7 @@ function(configure_component_library target include_root)
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE --coverage)
+        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(${target} PRIVATE --coverage)
     endif()
 endfunction()
@@ -731,6 +739,155 @@ add_custom_target(check_render_no_sim_writes
     COMMENT "Checking render layer does not write synced entity state"
     VERBATIM
 )
+
+# --------------------------------------------------------------------------
+# Python-driven repo checks: resolve the interpreter at configure time.
+#
+# These targets used to spell the interpreter as a bare `python3` resolved
+# from PATH at build time. MSYS2/mingw64 has no `python3` name, so on the
+# Windows CI runner the og_gameplay build dependency below died with "no such
+# file or directory" before compiling anything. find_package resolves a
+# concrete interpreter path once, at configure time (consulting the registry
+# on Windows), and every Python-running target below uses that path.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+# The pack-Lua lint's file list is DEFINED over `git ls-files` — see
+# scripts/lua_inventory.py, which refuses to fall back to a directory walk by
+# design — so the per-build lint dependency additionally needs git.
+find_package(Git QUIET)
+
+# Hand every Python check target the git find_package just resolved. The
+# scripts must not trust PATH alone: on the Windows CI runner the MSYS2
+# shell running this configure sees git through POSIX-style PATH entries,
+# while FindPython3 above resolves a NATIVE (registry) interpreter — and a
+# native process spawned at BUILD time cannot turn the bare name "git" back
+# into anything (WinError 2 mid-build, right after this configure's
+# find_package(Git) and FetchContent clones succeeded in the same shell).
+# Passing the resolved path through the environment closes the gap for all
+# four Python-running targets at once; a script invoked by hand still falls
+# back to PATH, and a machine with no git anywhere still gets the scripts'
+# own clear refusal (lua_inventory.git_executable) instead of a traceback.
+set(OG_PY_GIT_ENV "")
+if(GIT_EXECUTABLE)
+    set(OG_PY_GIT_ENV
+        ${CMAKE_COMMAND} -E env "OG_GIT_EXECUTABLE=${GIT_EXECUTABLE}")
+endif()
+
+if(NOT Python3_Interpreter_FOUND)
+    message(STATUS
+        "No Python 3 interpreter found - skipping the per-build repo-check "
+        "dependencies (og_gameplay -> check_lua_statement_lines, "
+        "og_test_parity -> check_mutation_pins) in this build tree ONLY. "
+        "The authoritative full lint still gates coverage_report (which "
+        "hard-requires the interpreter and will fail loudly if invoked "
+        "here), and CI's Linux lanes run all of these checks.")
+elseif(NOT GIT_FOUND)
+    message(STATUS
+        "No git found - skipping the per-build pack-Lua lint dependency "
+        "(og_gameplay -> check_lua_statement_lines) in this build tree "
+        "ONLY: its file list is defined over `git ls-files`. The "
+        "authoritative full lint still gates coverage_report, and CI's "
+        "Linux lanes run it with git present.")
+endif()
+
+# Defines <name> to run ${Python3_EXECUTABLE} <args...> when an interpreter
+# exists. When none does, the target still EXISTS — a documented target name
+# must never silently vanish or turn into a no-op — but building it fails
+# loudly, saying what is missing, so "did not run" can never read as
+# "passed" on a machine without Python.
+function(og_add_python_check_target name comment)
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(${name}
+            COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE} ${ARGN}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    else()
+        add_custom_target(${name}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "${name}: this check needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+            COMMAND ${CMAKE_COMMAND} -E false
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    endif()
+endfunction()
+
+# Mutation-canary pins name a file, a LINE and the exact text to replace. Any
+# insertion earlier in a pinned file silently shifts them off their anchor, and
+# a pin that no longer matches mutates nothing — the canary then reports a
+# clean run for a scenario it is no longer guarding. Cheap to check, invisible
+# if you do not.
+og_add_python_check_target(check_mutation_pins
+    "Checking mutation-canary pins still anchor"
+    ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
+)
+
+# Pack Lua: one measurable decision per line. Line coverage counts LINES, so
+# anything sharing a line with something already covered shares its coverage
+# point and new untested logic can be folded on at zero cost — a second
+# statement (`if low then flee() end`), a second `function` (two prototypes on
+# one line), or a second `and`/`or` (a whole extra condition). See the script
+# header; the list it lints is scripts/lua_inventory.py, the same one the
+# coverage denominator is built from.
+#
+# Two targets, one list, split by duty:
+#   check_lua_statement_lines       --tracked-only. The per-build dependency
+#       of og_gameplay: fast, stable, and junk-immune — a scratch or
+#       half-written untracked .lua on a developer machine must not break
+#       every ninja invocation.
+#   check_lua_statement_lines_full  the whole inventory — untracked files
+#       included, .glad archive members, embedded C++ literals. Gates
+#       coverage_report, where an untracked shipped-Lua candidate MUST fail
+#       loudly by its repository path: that is how un-`git add`-ed game logic
+#       is caught before it is committed. (CI checkouts have no untracked
+#       files, so the tracked-only build lint already covers everything
+#       there.)
+og_add_python_check_target(check_lua_statement_lines
+    "Checking pack Lua holds one statement per line (tracked files)"
+    ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
+    --tracked-only
+)
+og_add_python_check_target(check_lua_statement_lines_full
+    "Checking pack Lua holds one statement per line (full inventory)"
+    ${CMAKE_SOURCE_DIR}/scripts/check_lua_statement_lines.py
+)
+
+# lua-language-server --check over the workspace with the generated og.*
+# stubs (scripts/check_luals.py): zero diagnostics under packs/ and
+# docs/modding/. It gates coverage_report (below, with api_stub_check), but is
+# deliberately NOT an og_gameplay build dependency — per-build cost stays
+# flat, and the binary comes from the dev shell (flake.nix). Like every check
+# target here, a machine without the tool gets a loud failure when the target
+# is BUILT, never a silent pass.
+find_program(OG_LUALS_EXECUTABLE lua-language-server)
+if(Python3_Interpreter_FOUND AND OG_LUALS_EXECUTABLE)
+    add_custom_target(check_luals
+        COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/check_luals.py
+                --luals-exe ${OG_LUALS_EXECUTABLE}
+                --log-dir ${CMAKE_BINARY_DIR}/luals-check
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking pack Lua types with lua-language-server (og.* stubs)"
+        USES_TERMINAL
+        VERBATIM
+    )
+else()
+    if(NOT OG_LUALS_EXECUTABLE)
+        set(OG_LUALS_MISSING "lua-language-server (the dev shell in flake.nix provides it)")
+    else()
+        set(OG_LUALS_MISSING "a Python 3 interpreter")
+    endif()
+    add_custom_target(check_luals
+        COMMAND ${CMAKE_COMMAND} -E echo
+                "check_luals: this check needs ${OG_LUALS_MISSING} and none was found at configure time. Install it and reconfigure."
+        COMMAND ${CMAKE_COMMAND} -E false
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking pack Lua types with lua-language-server (og.* stubs)"
+        VERBATIM
+    )
+endif()
 
 # --------------------------------------------------------------------------
 # External dependency targets
@@ -1012,6 +1169,71 @@ else()
     message(FATAL_ERROR "lodepng was not found. Enable OPENGLAD_FETCH_LODEPNG or provide a package.")
 endif()
 
+# --- Lua 5.4 (deterministic scripting VM for class packs) ---
+# Always vendored at a pinned tag: the VM must behave identically on every
+# platform and peer, so a system Lua (different version/patches) is never
+# acceptable. Compiled as C++ so Lua errors unwind as exceptions (RAII-safe
+# in the binding layer; the web build already compiles with -fexceptions).
+if(OPENGLAD_FETCH_LUA)
+    FetchContent_Declare(lua
+        GIT_REPOSITORY ${OPENGLAD_LUA_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_LUA_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(lua)
+    FetchContent_GetProperties(lua)
+    set(OG_LUA_SOURCES
+        ${lua_SOURCE_DIR}/lapi.c
+        ${lua_SOURCE_DIR}/lauxlib.c
+        ${lua_SOURCE_DIR}/lbaselib.c
+        ${lua_SOURCE_DIR}/lcode.c
+        ${lua_SOURCE_DIR}/lcorolib.c
+        ${lua_SOURCE_DIR}/lctype.c
+        ${lua_SOURCE_DIR}/ldblib.c
+        ${lua_SOURCE_DIR}/ldebug.c
+        ${lua_SOURCE_DIR}/ldo.c
+        ${lua_SOURCE_DIR}/ldump.c
+        ${lua_SOURCE_DIR}/lfunc.c
+        ${lua_SOURCE_DIR}/lgc.c
+        ${lua_SOURCE_DIR}/llex.c
+        ${lua_SOURCE_DIR}/lmathlib.c
+        ${lua_SOURCE_DIR}/lmem.c
+        ${lua_SOURCE_DIR}/lobject.c
+        ${lua_SOURCE_DIR}/lopcodes.c
+        ${lua_SOURCE_DIR}/loslib.c
+        ${lua_SOURCE_DIR}/lparser.c
+        ${lua_SOURCE_DIR}/lstate.c
+        ${lua_SOURCE_DIR}/lstring.c
+        ${lua_SOURCE_DIR}/lstrlib.c
+        ${lua_SOURCE_DIR}/ltable.c
+        ${lua_SOURCE_DIR}/ltablib.c
+        ${lua_SOURCE_DIR}/ltm.c
+        ${lua_SOURCE_DIR}/lundump.c
+        ${lua_SOURCE_DIR}/lutf8lib.c
+        ${lua_SOURCE_DIR}/lvm.c
+        ${lua_SOURCE_DIR}/lzio.c
+        ${lua_SOURCE_DIR}/linit.c
+        ${lua_SOURCE_DIR}/liolib.c
+        ${lua_SOURCE_DIR}/loadlib.c
+    )
+    add_library(og_lua STATIC ${OG_LUA_SOURCES})
+    configure_openglad_external_target(og_lua)
+    set_source_files_properties(${OG_LUA_SOURCES} PROPERTIES LANGUAGE CXX)
+    target_include_directories(og_lua PUBLIC
+        $<BUILD_INTERFACE:${lua_SOURCE_DIR}>
+    )
+    # Fixed string-hash seed: table/string behavior must not vary per run or
+    # per platform (class packs are part of the deterministic sim). Lua 5.4.8
+    # guards its whole address-mixing default with #if !defined(luai_makeseed),
+    # so this macro replaces it outright. Function-style macros cannot go
+    # through COMPILE_DEFINITIONS (CMake drops them), hence the raw -D.
+    target_compile_options(og_lua PRIVATE "-Dluai_makeseed(L)=0x9e3779b9u")
+    message(STATUS "OpenGlad: using fetched Lua ${OPENGLAD_LUA_GIT_TAG}")
+else()
+    message(FATAL_ERROR "Lua is required. Enable OPENGLAD_FETCH_LUA (Lua is always vendored; system copies are not supported).")
+endif()
+
 if(NOT EMSCRIPTEN)
     set(OG_NATIVE_SDL_AVAILABLE OFF)
     set(OG_NATIVE_SDL_REQUESTED ON)
@@ -1133,6 +1355,7 @@ set(OG_IO_EXTERNAL_LIBS
     og_ext_physfs
     og_ext_libzip
     og_ext_lodepng
+    og_lua
 )
 
 
@@ -1152,7 +1375,22 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
-    target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib)
+    target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib PRIVATE og_lua)
+    # og_gameplay is what runs pack Lua, and every build builds it, so this is
+    # where the one-statement-per-line rule gets enforced: a branch folded
+    # onto an already-covered line is invisible to the coverage gate, so it
+    # has to be caught at build time instead. The dependency needs both a
+    # Python 3 interpreter and git (the lint's file list is `git ls-files`;
+    # OG_PY_GIT_ENV hands the script the configure-time git, which is what
+    # lets this run on the MSYS2/mingw64 CI runner — registry-native Python
+    # there cannot resolve the bare name "git" from the msys2 PATH). A
+    # machine genuinely lacking either tool still builds the game, and the
+    # authoritative full lint keeps running where the coverage gate runs
+    # (the coverage_report target locally, the Linux coverage lane in CI,
+    # plus this same tracked-only lint on every Linux CI build).
+    if(Python3_Interpreter_FOUND AND GIT_FOUND)
+        add_dependencies(og_gameplay check_lua_statement_lines)
+    endif()
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
@@ -1230,11 +1468,40 @@ if(NOT EMSCRIPTEN)
     endif()
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
+    #
+    # MIRROR semantics: each staged directory is deleted before the copy.
+    # copy_directory alone never removes files that were deleted or renamed in
+    # the repo, and binaries resolve assets exe-adjacent (get_asset_path), so a
+    # stale staged file silently contaminates every gate that runs a build-tree
+    # binary. Mirroring makes the build-tree asset set match the repository
+    # even after files are deleted or renamed.
+    #
+    # The rm is emitted PER DIRECTORY and only when that directory's staged
+    # location is not the repository copy itself. `rm -rf X && copy X X` is
+    # not a mirror, it is a delete: copy_directory fails on the source it was
+    # just handed the corpse of, and the tracked files are gone. The
+    # in-source-build guard at the top of this file already refuses the way
+    # that happens in practice; this is the belt that holds if the guard is
+    # ever bypassed or a staged path is otherwise aimed at its own source.
+    set(OG_RUNTIME_ASSET_DIRS builtin cfg pix sound packs)
+    set(OG_STAGE_ASSET_COMMANDS "")
+    foreach(og_asset_dir IN LISTS OG_RUNTIME_ASSET_DIRS)
+        if("${OG_SOURCE_DIR_REAL}/${og_asset_dir}" STREQUAL
+           "${OG_BINARY_DIR_REAL}/${og_asset_dir}")
+            list(APPEND OG_STAGE_ASSET_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E echo
+                    "stage_runtime_assets: ${og_asset_dir}/ already IS the staged copy -- skipping, because mirroring it would delete it")
+            continue()
+        endif()
+        list(APPEND OG_STAGE_ASSET_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E rm -rf
+                ${CMAKE_BINARY_DIR}/${og_asset_dir}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/${og_asset_dir}
+                ${CMAKE_BINARY_DIR}/${og_asset_dir})
+    endforeach()
     add_custom_target(stage_runtime_assets
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/builtin ${CMAKE_BINARY_DIR}/builtin
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
+        ${OG_STAGE_ASSET_COMMANDS}
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )
@@ -1296,6 +1563,8 @@ if(NOT EMSCRIPTEN)
         ${OG_DATA_SOURCES}
         # entities
         ${OG_ENTITIES_SOURCES}
+        # scripting VM
+        ${OG_SCRIPT_SOURCES}
         # input (SDL-free data structs only)
         ${SRC_DIR}/interface/input/input_state.cpp
         # io (shared SDL-free helpers + PhysFS/zip/yaml)
@@ -1361,7 +1630,7 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(openglad_text PRIVATE --coverage)
+        target_compile_options(openglad_text PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
         target_link_options(openglad_text PRIVATE --coverage)
     endif()
     add_runtime_assets_dependency(openglad_text)
@@ -1409,6 +1678,7 @@ if(NOT EMSCRIPTEN)
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/showcase_pack.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
@@ -1639,6 +1909,7 @@ if(NOT EMSCRIPTEN)
         og_ext_libzip
         og_ext_physfs
         og_ext_ixwebsocket
+        og_lua
         openglad
         EXPORT OpenGladTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -2542,7 +2813,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # here because pulling in project_sanitizers transitively slows
         # og_test_view's tick budget enough to time out at 180s on CI.
         if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(scenario_facts_dump PRIVATE --coverage)
+            target_compile_options(scenario_facts_dump PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
             target_link_options(scenario_facts_dump PRIVATE --coverage)
         endif()
         add_custom_command(
@@ -2558,6 +2829,15 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
         )
         add_dependencies(og_test_parity scenario_facts_generated)
+        # Building the parity harness also re-validates the canary pins, so
+        # pin rot surfaces on the next build rather than as a quietly
+        # toothless canary run weeks later. (Interpreter-gated like the
+        # og_gameplay lint dependency: a machine without Python 3 still
+        # builds the harness, and every Linux dev/CI build keeps
+        # validating the pins.)
+        if(Python3_Interpreter_FOUND)
+            add_dependencies(og_test_parity check_mutation_pins)
+        endif()
 
         # Standalone smoke runner — Phase 02 verifier and the launcher
         # extended in Phase 07 to enumerate scenarios via --list.
@@ -2600,6 +2880,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
@@ -2650,6 +2932,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_lua_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
@@ -2657,6 +2940,23 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
         )
+
+        og_add_unit_group(og_unit_script FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_math.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_props.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
+        )
+        # The P8-A tests forge REAL stripped Lua bytecode through the C API
+        # (string.dump is sandbox-stripped, so the attack artifact has to be
+        # generated in the test) and prove the engine and the report refuse
+        # it. og_lua is already in this binary's link closure via og_game;
+        # naming it here only propagates its include directory to the test
+        # sources. tests/ sits outside the src/ vendor-leak boundary
+        # (scripts/check_vendor_leaks.sh), so the include is legal there.
+        target_link_libraries(og_unit_script PRIVATE og_lua)
 
         og_add_unit_group(og_unit_entity FILES
             ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp
@@ -2671,12 +2971,15 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         og_add_unit_group(og_unit_data FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_yaml.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_errors.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_packs.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
@@ -3185,6 +3488,150 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 endif()
 
 # --------------------------------------------------------------------------
+# Combined C++ + Lua coverage gate
+# --------------------------------------------------------------------------
+# Family behaviour is Lua (packs/**/scripts/*.lua), so a gate that
+# measures src/ alone measures the shrinking half of the codebase and would
+# report green while thousands of lines of game logic went untested. These
+# targets produce ONE report across both languages:
+#
+#   cmake --build <build> --target coverage_run     # collect (re-runs ctest)
+#   cmake --build <build> --target coverage_report  # merge + gate
+#
+# coverage_run arms the in-process pack-Lua recorder through
+# OPENGLAD_LUA_COVERAGE and re-runs the suite. coverage_report takes the
+# DENOMINATOR from scripts/lua_inventory.py — a static enumeration of the
+# repository's Lua, so it does not depend on which tests ran and a source no
+# test loads counts as 0% rather than vanishing — measures it with
+# og_lua_lines, attributes the dumps' hits back to it by content hash, and in
+# an ENABLE_COVERAGE build folds in gcovr's src/ tracefile. It writes lcov
+# tracefiles (lua.info / cpp.info / combined.info) and fails below threshold.
+if(BUILD_TESTING)
+    # Executable-line oracle: asks Lua which lines of a source can hold a
+    # breakpoint. Deliberately linked against Lua ALONE rather than
+    # og_gameplay — linking the instrumented game would make this tool's own
+    # execution write .gcda files and inflate the very C++ numbers it is
+    # being used to report.
+    add_executable(og_lua_lines
+        ${CMAKE_SOURCE_DIR}/scripts/coverage/lua_lines_main.cpp
+        ${SRC_DIR}/gameplay/script/script_coverage.cpp
+    )
+    target_include_directories(og_lua_lines PRIVATE
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+    )
+    target_compile_features(og_lua_lines PRIVATE cxx_std_20)
+    target_link_libraries(og_lua_lines PRIVATE og_lua)
+
+    set(OG_COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
+    set(OG_LUA_RAW_DIR ${OG_COVERAGE_DIR}/lua-raw)
+
+    add_custom_target(coverage_run
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${OG_LUA_RAW_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${OG_LUA_RAW_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env OPENGLAD_LUA_COVERAGE=${OG_LUA_RAW_DIR}
+                ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
+                --output-on-failure --no-tests=error
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running the suite with the pack-Lua coverage recorder armed"
+        USES_TERMINAL
+        VERBATIM
+    )
+
+    set(OG_COVERAGE_CPP_ARGS "")
+    if(ENABLE_COVERAGE)
+        set(OG_COVERAGE_CPP_ARGS --cpp-build-dir ${CMAKE_BINARY_DIR})
+    endif()
+
+    # The coverage gate HARD-requires the interpreter: unlike the per-build
+    # lint dependency (skippable so a pythonless machine still builds the
+    # game), a coverage_report invocation with no Python 3 must fail loudly
+    # rather than let "did not run" read as "passed".
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(coverage_report
+            COMMAND ${OG_PY_GIT_ENV} ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage_report.py
+                    --repo-root ${CMAKE_SOURCE_DIR}
+                    --lua-raw-dir ${OG_LUA_RAW_DIR}
+                    --lines-tool $<TARGET_FILE:og_lua_lines>
+                    --output-dir ${OG_COVERAGE_DIR}
+                    ${OG_COVERAGE_CPP_ARGS}
+            DEPENDS og_lua_lines
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
+            USES_TERMINAL
+            VERBATIM
+        )
+    else()
+        add_custom_target(coverage_report
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "coverage_report: the coverage gate needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+            COMMAND ${CMAKE_COMMAND} -E false
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Merging C++ and pack-Lua coverage and enforcing the gate"
+            USES_TERMINAL
+            VERBATIM
+        )
+    endif()
+    # The gate path lints the FULL inventory — untracked files, .glad archive
+    # members, embedded literals — which the per-build lint deliberately does
+    # not (see the check_lua_statement_lines comment near the target). A junk
+    # or undeclared shipped-Lua candidate must fail THIS target loudly,
+    # naming the repository-side path, instead of breaking every ninja build.
+    add_dependencies(coverage_report check_lua_statement_lines_full)
+    # lua-language-server --check over the workspace gates the same target
+    # (the check_luals comment near its
+    # definition explains why it is NOT an og_gameplay build dep — per-build
+    # cost stays flat). api_stub_check joins below, after its definition.
+    add_dependencies(coverage_report check_luals)
+endif()
+
+# --------------------------------------------------------------------------
+# Modding API stubs drift check (enforced at the coverage gate)
+# --------------------------------------------------------------------------
+# docs/modding/og-api.d.lua is GENERATED from the binding registration
+# tables by scripts/modding/gen_api_stubs.py; this target regenerates and
+# byte-compares, and its red output names the regeneration command.
+# This is a coverage_report dependency (below, beside check_luals and the
+# full statement lint), but deliberately NOT a build dependency of
+# og_gameplay, so per-build cost stays flat. Stale stubs would also mislead
+# check_luals and rule 8 of the statement lint, which both read the committed
+# file. Run alone:
+#
+#   cmake --build <build> --target api_stub_check
+#
+# Like coverage_report, an explicit invocation without Python 3 must fail
+# loudly rather than let "did not run" read as "passed".
+if(Python3_Interpreter_FOUND)
+    add_custom_target(api_stub_check
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/modding/check_api_stubs.py
+                --repo-root ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking docs/modding/og-api.d.lua against the binding registration tables"
+        USES_TERMINAL
+        VERBATIM
+    )
+else()
+    add_custom_target(api_stub_check
+        COMMAND ${CMAKE_COMMAND} -E echo
+                "api_stub_check: needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+        COMMAND ${CMAKE_COMMAND} -E false
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking docs/modding/og-api.d.lua against the binding registration tables"
+        USES_TERMINAL
+        VERBATIM
+    )
+endif()
+
+# Stub drift gates coverage_report (the target exists only under
+# BUILD_TESTING; check_luals is wired beside the full statement lint at the
+# coverage_report definition above). It stays out of og_gameplay's
+# dependencies so per-build cost stays flat.
+if(BUILD_TESTING)
+    add_dependencies(coverage_report api_stub_check)
+endif()
+
+# --------------------------------------------------------------------------
 # Fuzz targets (libFuzzer / clang)
 # --------------------------------------------------------------------------
 
@@ -3283,6 +3730,7 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/packs@/packs"
     )
 
     set_target_properties(play PROPERTIES

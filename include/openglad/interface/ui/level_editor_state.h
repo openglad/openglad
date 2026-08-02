@@ -28,7 +28,9 @@ struct LevelEditorState {
     bool decor_mode{false};
 
     // Mouse state
+    // For released button
     int mouse_up_button{0};
+    // Deltas for motion
     int mouse_motion_x{0}, mouse_motion_y{0};
     int mouse_last_x{0}, mouse_last_y{0};
 

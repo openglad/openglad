@@ -1,0 +1,63 @@
+# The recorder processes a full collection run must produce dumps from.
+#
+# scripts/coverage/coverage_report.py requires the SET of P records across
+# the run's *.luacov dumps to equal this list. Losing a process is invisible
+# in a percentage — it reads as slightly lower coverage, and with slack above
+# the bar as nothing at all (dropping 51 of 61 dumps was an audit's cheapest
+# attack) — so the population is checked structurally, not numerically.
+# Set equality, deliberately: a rerun of a flaky binary adds dumps, never
+# names, while a binary that stops reporting (or a new one nobody listed)
+# fails the run in a diff a reviewer reads.
+#
+# Regenerate after adding or removing a test binary:
+#   grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
+og_test_basecamp
+og_test_ctf
+og_test_curses
+og_test_effects
+og_test_external
+og_test_families
+og_test_game_core
+og_test_guy
+og_test_input
+og_test_io
+og_test_level
+og_test_living
+og_test_mass_coverage
+og_test_menu_engine
+og_test_menu_ui
+og_test_parity
+og_test_picker
+og_test_picker_network
+og_test_rendering
+og_test_runtime_bootstrap_lifecycle
+og_test_screen
+og_test_sdl_video_lifecycle
+og_test_smooth
+og_test_snapshot_benchmark
+og_test_snapshot_safety
+og_test_stats
+og_test_tower_run
+og_test_view
+og_test_walker_combat
+og_test_walker_core
+og_test_walker_move
+og_unit_core
+og_unit_ctf
+og_unit_data
+og_unit_emscripten_transport
+og_unit_entity
+og_unit_families
+og_unit_headless_platform
+og_unit_mapgen
+og_unit_script
+og_unit_server
+og_unit_sim
+og_unit_tower_calibration
+og_unit_tower_gen
+og_unit_tower_progression
+openglad
+openglad_curses
+openglad_demo
+openglad_server
+openglad_text

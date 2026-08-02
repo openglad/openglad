@@ -13,6 +13,7 @@
  * (at your option) any later version.
  */
 
+#include <openglad/resources/packs.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -214,6 +215,9 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     // A lookup that ran before this package existed memoized the raw-id
     // fallback; the successful mount proves the package is readable now.
     og::data::forget_campaign_display_title(id);
+    // Campaign zips may embed class packs (packs/<id>/ merged into the
+    // virtual tree by this mount): rescan the pack-script set.
+    og::resources::refresh_pack_scripts();
     return CampaignPackageIoError::None;
 }
 
@@ -235,6 +239,8 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
         return CampaignPackageIoError::UnmountFailed;
     }
     mounted_campaign_state().clear();
+    // Drop any campaign-embedded pack scripts that just left the tree.
+    og::resources::refresh_pack_scripts();
     return CampaignPackageIoError::None;
 }
 
@@ -273,6 +279,7 @@ std::list<std::string> list_campaigns()
         size_t pos = e->rfind(".glad");
         if(pos == std::string::npos)
         {
+            // Not a campaign package
             e = ls.erase(e);
             continue;
         }
@@ -297,6 +304,7 @@ std::list<int> list_levels()
         size_t pos = e->rfind(".fss");
         if(pos == std::string::npos)
         {
+            // Not a scen file
             e = ls.erase(e);
             continue;
         }
@@ -430,6 +438,7 @@ void cleanup_unpacked_campaign()
 // Level/campaign deletion
 // ---------------------------------------------------------------------------
 
+// Delete this level from the mounted campaign
 void delete_level(int id)
 {
     std::string campaign = get_mounted_campaign();

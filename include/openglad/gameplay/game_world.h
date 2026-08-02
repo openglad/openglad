@@ -36,6 +36,7 @@ class SaveData;
 class cfg_store;
 struct GameplayContext;
 namespace og::sim { class SimEventLog; }
+namespace og::script { class WorldScripts; }
 
 namespace og::sim {
 
@@ -148,6 +149,11 @@ public:
     GameWorld(const GameWorld&) = delete;
     GameWorld& operator=(const GameWorld&) = delete;
     GameWorld(GameWorld&&) = delete;
+
+    // Per-world scripting VM (class-pack hooks / level scripts). Lazily
+    // created on first use; separate instances per world keep server and
+    // mirror script state isolated (same rule as obmap).
+    og::script::WorldScripts& scripts();
     GameWorld& operator=(GameWorld&&) = delete;
 
     // Level metadata
@@ -160,8 +166,10 @@ public:
 
     int living_count = 0;
     EntityList oblist;
+    // fx--explosions, etc.
     EntityList fxlist;
     EntityList weaplist;
+    // Keep a list of dead guys so weapons can still have valid owners
     EntityList dead_list;
 
     // Spatial data. floors_[0] is represented by the legacy single
@@ -378,7 +386,9 @@ public:
     bool completion_events_emitted = false;
     short next_level = -1;
     short ending = 0;
+    // stops enemies from acting
     std::int32_t enemy_freeze = 0;
+    // 'moderate' speed setting
     signed char timer_wait = 6;
     char end = 0;
     bool retry = false;
@@ -434,6 +444,13 @@ public:
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
+    // Scenario-title lookup seam. The reader lives in the resources component
+    // (og::data::load_scenario_title) and gameplay may not depend on resources
+    // (docs/ARCHITECTURE.md), so the owning layer installs the provider
+    // when it wires the world's entity services — same injection pattern as
+    // entity_factory above. Unset means "no title reader available": callers
+    // get the same "none" a failed read returns.
+    std::function<std::string(const char*)> scenario_title_provider;
     bool applying_snapshot_ = false;
 
 private:
@@ -462,6 +479,7 @@ private:
     SaveData* gameplay_save_ = nullptr;
     og::sim::SimEventLog* gameplay_sim_events_ = nullptr;
     cfg_store* gameplay_config_ = nullptr;
+    std::unique_ptr<og::script::WorldScripts> scripts_;
 };
 
 // Floor-awareness HUD label. Empty => call sites draw NOTHING (single-floor

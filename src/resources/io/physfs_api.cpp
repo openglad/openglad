@@ -67,4 +67,18 @@ std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
     return out;
 }
 
+bool physfs_is_directory(const std::string& path)
+{
+    PHYSFS_Stat stat;
+    if (PHYSFS_stat(path.c_str(), &stat) == 0)
+        return false;
+    return stat.filetype == PHYSFS_FILETYPE_DIRECTORY;
+}
+
+std::string physfs_real_dir(const std::string& path)
+{
+    const char* dir = PHYSFS_getRealDir(path.c_str());
+    return (dir != nullptr) ? std::string(dir) : std::string();
+}
+
 } // namespace og::io

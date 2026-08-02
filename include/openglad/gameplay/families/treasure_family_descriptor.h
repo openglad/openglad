@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 class treasure;
 class walker;
 
@@ -15,5 +17,19 @@ struct TreasureFamilyDescriptor {
     const char* name;
     bool init_ignore;         // true for STAIN
     short init_frame;         // -1 = no override
+
+    // Pack-shipped art + motion (see FamilyDescriptor for the contract).
+    const char* pix_filename = nullptr;
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
+
+    // Presentation data; defaults are the legacy `default:` branches.
+    og::FamilyGlyph glyph{U'$', '$', og::GlyphColor::Yellow, false, false};
+    og::RadarBlip radar{};
+
+    // Pack-declared fully-qualified id ("core:gold"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
+
     bool (*on_eat)(treasure* self, walker* eater);
 };

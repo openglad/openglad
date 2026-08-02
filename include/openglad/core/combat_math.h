@@ -82,7 +82,12 @@ struct HpRegenResult {
 // XP from killing a target (equivalent to dealing 20 damage worth of XP).
 [[nodiscard]] short compute_xp_from_kill(std::int32_t level_diff);
 
-// XP action types for compute_xp_from_action.
+// XP action types for compute_xp_from_action. The payload keeps the original
+// gameplay meanings: Attack value is damage dealt, Heal value is hitpoints
+// healed, and TurnUndead value is the number turned. The target is the new
+// skeleton/ghost, revived character, protected friend, or eaten remains for
+// the corresponding action; target_level matters to attack/kill,
+// ResurrectPenalty, and EatCorpse.
 enum class ExpAction {
     Attack, Kill, Heal, TurnUndead,
     RaiseSkeleton, RaiseGhost, Resurrect, ResurrectPenalty,
@@ -231,8 +236,8 @@ inline constexpr int kSkeletonLifeCeiling = 900;
 inline constexpr int kGhostRaiseLifeKnee = 670;
 inline constexpr int kGhostRaiseLifeCeiling = 925;
 
-// 12. MP-pool damage caps (draw-free min() wraps at the cast sites; golden
-//     spawn-MP values sit far below every bind point — WP-3 audits margins).
+// 12. MP-pool damage caps (draw-free min() wraps at the cast sites; covered
+//     spawn-MP values sit far below every bind point; see design §2.12).
 // Heartburst pool / chain-lightning initial bolt (MP-cost)/2: binds only
 // above ~1280-1300 MP.
 inline constexpr int kMpPoolDamageCap = 600;
@@ -337,4 +342,3 @@ inline constexpr int kShotDrainCap = 50;
 }
 
 } // namespace og::combat
-

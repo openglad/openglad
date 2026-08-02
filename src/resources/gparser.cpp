@@ -35,6 +35,7 @@
 
 #include <yaml.h>
 
+// TODO: Move overscan setting and toInt() to this file.
 int toInt(const std::string& s);
 
 

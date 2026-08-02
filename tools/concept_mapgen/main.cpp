@@ -3,12 +3,16 @@
  * Produces builtin/org.openglad.concept.glad: five small multi-floor scenarios
  * that show off the Z-axis feature (levels 600-604 — stacked floors joined by
  * Z-stairs, "air" holes you fall through, see-through "glass" floors, and
- * projectile arcs). The six epic multifloor war stories that once shipped here
- * as levels 605-610 moved to the "War of the Westlands" story campaign
+ * projectile arcs) plus one scripted boss arena, "The Ninefold Court" (605),
+ * that shows off Lua level scripting: its fight logic ships INSIDE the .glad
+ * as the embedded pack packs/org.openglad.concept.showcase/scripts/court.lua
+ * (showcase_pack.cpp). The six epic multifloor war stories that once shipped
+ * here as levels 605-610 moved to the "War of the Westlands" story campaign
  * (tools/westlands_mapgen, builtin/org.openglad.westlands.glad). SDL-free;
  * reuses the headless platform glue, mirrors tools/ctf_mapgen. Builds the v10
  * multi-floor scenario format (docs/z-axis-design.md), zips a campaign
- * package, mounts it, and self-checks every level by reloading it.
+ * package, mounts it, and self-checks every level by reloading it (the court
+ * additionally runs one sim tick to prove the embedded script dispatches).
  *
  * Usage: concept_mapgen [output.glad]   (default: builtin/org.openglad.concept.glad)
  *
@@ -28,6 +32,10 @@
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -38,6 +46,8 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
+
+#include "showcase_pack.h"
 
 #include <algorithm>
 #include <atomic>
@@ -329,14 +339,106 @@ void build_arc_range()
     place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 1, 4, 8);        // player start (floor 1)
     place(w, Order::Living, FAMILY_ARCHER, 1, 1, 26, 8);    // foe across the arena
     place(w, Order::Living, FAMILY_SKELETON, 1, 0, 15, 8);  // foe under the pit
-    // The tour's last stop loops home to 600 so the exit stays within the
-    // demo set (the war stories that used to follow live in the Westlands
-    // campaign now).
+    // The demo tour ends at the scripted showcase: Arc Range chains into
+    // The Ninefold Court (605), which loops home to 600.
     walker* arc_exit = place(w, Order::Treasure, FAMILY_EXIT, 0, 1, 26, 3);
     if (arc_exit != nullptr)
-        arc_exit->stats()->set_level(600);
+        arc_exit->stats()->set_level(605);
     save_level_files(w, 604, "Arc Range",
                      {"Watch thrown weapons arc — and", "drop through the pit below."});
+}
+
+// 605 THE NINEFOLD COURT: the Lua level-scripting showcase. A walled cobble
+// court on a single floor; four corner pillar generators (the four colleges:
+// tent, tower, bones, treehouse) ward the Magistrate — a named, hold-post
+// archmage on the north bench. The fight logic ships in the campaign's
+// EMBEDDED pack (packs/org.openglad.concept.showcase/scripts/court.lua,
+// written into the staging dir by write_showcase_pack): the boss is
+// invincible while any pillar stands, the wards fail when the last one
+// falls, ninefold judgment rings pulse after that, and every 3rd generator
+// spawn is promoted to an Adjutant. Impossible as pure level data.
+void build_ninefold_court()
+{
+    LevelRuntimeData level(605, true, &headless_level_data_hooks());
+    init_world(level, 1, 30, 22);
+    GameWorld& w = level.world();
+
+    // The court: a one-tile wall ring around a cobbled floor, a two-tile
+    // south gate, and a carpeted bench (dais) at the north end. A grass
+    // apron surrounds the walls; the whole grid is autotiled below.
+    paint_rect(w.grid, 2, 2, 27, 19, PIX_WALL2);      // the wall ring
+    paint_rect(w.grid, 3, 3, 26, 18, PIX_COBBLE_1);   // the court floor
+    paint_rect(w.grid, 14, 19, 15, 19, PIX_COBBLE_1); // the south gate
+    paint_rect(w.grid, 12, 3, 17, 5, PIX_CARPET_M);   // the bench dais
+
+    // The Magistrate: ACT_GUARD + hold-post (npc_flags bit 1) keeps him ON
+    // the bench raining spells instead of hunting at first sight (guard
+    // wake policy); the ward itself is stamped by the pack script at load.
+    walker* boss = place(w, Order::Living, FAMILY_ARCHMAGE, 1, 0, 14, 4);
+    if (boss != nullptr)
+    {
+        boss->stats()->set_level(8);
+        boss->stats()->name = "Magistrate"; // 10 chars: fits the 11-char field
+        boss->set_act_type(ACT_GUARD);
+        boss->set_guard_hold_post(true);
+    }
+
+    // The four pillars, one college per corner. Level 2 keeps the trickle
+    // of level 1-2 spawns steady but self-throttling (act_generate scales
+    // its threshold with the live population).
+    const struct { int family; int tx; int ty; } pillars[] = {
+        {FAMILY_TENT, 5, 5},        // NW: the college of bone-raisers
+        {FAMILY_TOWER, 23, 5},      // NE: the college of mages
+        {FAMILY_BONES, 5, 15},      // SW: the college of haunts
+        {FAMILY_TREEHOUSE, 23, 15}, // SE: the college of wardens
+    };
+    for (const auto& p : pillars)
+    {
+        walker* gen = place(w, Order::Generator, p.family, 1, 0, p.tx, p.ty);
+        if (gen != nullptr)
+            gen->stats()->set_level(2);
+    }
+
+    // The petitioners' floor: eight start markers (lead first) south of
+    // center, inside the walls, clear of every pillar's spawn apron.
+    const struct { int tx; int ty; } starts[] = {
+        {14, 15},                                    // the lead, front-center
+        {12, 15}, {16, 15}, {10, 15}, {18, 15},
+        {12, 17}, {14, 17}, {16, 17},
+    };
+    for (const auto& s : starts)
+        place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 0, s.tx, s.ty);
+
+    // The exit waits OUTSIDE the south gate on the apron: the tour's loop
+    // home to 600. An exit-bearing level never auto-ends, so the standard
+    // finish is judge the court, then walk out the way you came in.
+    walker* court_exit = place(w, Order::Treasure, FAMILY_EXIT, 0, 0, 14, 20);
+    if (court_exit != nullptr)
+        court_exit->stats()->set_level(600);
+
+    // Set dressing: braziers flank the bench's back row, torches line the
+    // north and south walls (skipping the gate), and old verdicts molder
+    // by the necromantic colleges. Braziers/torches block ground movement,
+    // so every one sits on a wall tile or the dais back row, off all fight
+    // lanes; the bones are non-blocking ambience.
+    paint_decor(w, 0, 12, 3, DECOR_BRAZIER);
+    paint_decor(w, 0, 17, 3, DECOR_BRAZIER);
+    for (int tx : {6, 10, 14, 18, 22})
+        paint_decor(w, 0, tx, 2, DECOR_TORCH1);
+    for (int tx : {6, 10, 18, 22}) // the gate columns stay bare
+        paint_decor(w, 0, tx, 19, DECOR_TORCH1);
+    paint_decor(w, 0, 7, 6, DECOR_BONES);
+    paint_decor(w, 0, 7, 16, DECOR_BONES);
+
+    // Bake the autotiling (wall edges, cobble variants, carpet border) the
+    // way westlands_mapgen does. Only the court smooths: the five demos are
+    // plain fields, so their bytes cannot shift.
+    w.mysmoother.smooth();
+
+    save_level_files(w, 605, "The Ninefold Court",
+                     {"The Court's wards hold while its",
+                      "pillars stand. Fell all four,",
+                      "then judge the Magistrate."});
 }
 
 void write_campaign_yaml(const std::string& path)
@@ -354,9 +456,9 @@ void write_campaign_yaml(const std::string& path)
         << "    A sampler of the Z-axis: stacked\n"
         << "    floors and stairs, air holes you\n"
         << "    fall through, see-through glass\n"
-        << "    floors, and arcing projectiles —\n"
-        << "    five small demos, one concept\n"
-        << "    each, looping back to the start.\n";
+        << "    floors, arcing projectiles — and\n"
+        << "    a Lua-scripted boss court whose\n"
+        << "    warded Magistrate ends the tour.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }
@@ -579,6 +681,74 @@ void self_check_level(const ExpectedLevel& ex)
         check_footing(uptr.get());
 }
 
+// The Ninefold Court's embedded pack must actually dispatch, not merely
+// ride along in the zip. With the produced campaign mounted, the pack
+// script registry must carry the showcase pack (campaign packs follow
+// mounts), and one sim tick of the court must run court.lua's on_load:
+// gimmick notification emitted, ward stamped on the Magistrate, and zero
+// recorded script errors. This catches Lua syntax slips, hook-name typos,
+// and dispatch wiring at generation time.
+void self_check_court_script()
+{
+    bool registered = false;
+    for (const og::script::PackScript& ps : og::script::pack_scripts())
+        if (ps.pack_id == showcase_pack_id())
+            registered = true;
+    if (!registered)
+    {
+        fail("self-check: showcase pack script not registered on mount");
+        return;
+    }
+
+    LevelRuntimeData level(605, true, &headless_level_data_hooks());
+    SaveData save;
+    og::sim::SimEventLog events;
+    FixedRandom script_rng{0};
+    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                          &script_rng, &cfg);
+    GameplayContext script_ctx;
+    script_ctx.world = &level.world();
+    script_ctx.save = &save;
+    script_ctx.sim_events = &events;
+    script_ctx.config = &cfg;
+    GameplayContext* prev = current_game;
+    current_game = &script_ctx;
+
+    if (!level.load())
+    {
+        fail("self-check: scen605 failed to load for the script check");
+        current_game = prev;
+        return;
+    }
+    level.world().tick();
+
+    bool wards_announced = false;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("wards hold") != std::string::npos)
+            wards_announced = true;
+    if (!wards_announced)
+        fail("self-check: court on_load did not announce the ward gimmick");
+
+    walker* boss = nullptr;
+    for (const auto& uptr : level.world().oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_ARCHMAGE)
+            boss = ob;
+    }
+    if (boss == nullptr || !boss->stats()->query_bit_flags(BIT_INVINCIBLE))
+        fail("self-check: the Magistrate is not warded after on_load");
+
+    for (const og::script::ScriptError& err :
+         level.world().scripts().host().errors())
+        fail(std::format("self-check: script error at {}: {}", err.where,
+                         err.message));
+
+    current_game = prev;
+}
+
 } // namespace
 } // namespace conceptgen
 
@@ -633,12 +803,15 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
+    if (!write_showcase_pack(user + "temp/"))
+        fail("failed to write the embedded showcase pack into the staging dir");
 
     build_stairs();
     build_mind_the_gap();
     build_glasshouse();
     build_drop_zone();
     build_arc_range();
+    build_ninefold_court();
 
     const std::string glad_path = user + "campaigns/org.openglad.concept.glad";
     std::remove(glad_path.c_str());
@@ -662,9 +835,12 @@ int main(int argc, char* argv[])
                 {602, 2, "Glasshouse", 1, 0, 0, 1, 0, 0, 0, 0, 0, true},
                 {603, 2, "Drop Zone", 1, 0, 0, 1, 0, 0, 0, 0, 0, false},
                 {604, 2, "Arc Range", 1, 0, 0, 2, 0, 0, 0, 0, 0, true},
+                {605, 1, "The Ninefold Court", 8, 0, 0, 1, 4, 0, 0, 0, 0,
+                 false},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e);
+            self_check_court_script();
             (void)unmount_campaign_package_with_error("org.openglad.concept");
         }
     }

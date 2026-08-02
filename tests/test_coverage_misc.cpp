@@ -6,6 +6,8 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/family_descriptor.h>
+
+#include "test_family_lookup.h"
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
@@ -32,6 +34,7 @@
 #include <openglad/interface/input_state.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include "test_gameplay_context_scope.h"
+#include "test_family_hook_dispatch.h"
 
 // --- From test_coverage_r17.cpp ---
 namespace detail_coverage_r17 {
@@ -169,7 +172,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
 
     self->set_current_special(1);
     self->set_shifter_down(1);
-    ASSERT_TRUE(!mage->do_special(self));
+    ASSERT_TRUE(!og::test::do_special(*mage, self));
 
     self->myguy->intelligence = 90;
     walker* marker = add_fx(fx, FAMILY_MARKER, 66, 64);
@@ -179,14 +182,14 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->set_busy(0);
     self->set_current_special(1);
     self->set_shifter_down(1);
-    ASSERT_TRUE(mage->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*mage, self));
 
     self->set_busy(0);
     self->set_current_special(2);
     self->set_shifter_down(0);
     self->set_lastx(1.0f);
     self->set_lasty(0.0f);
-    ASSERT_TRUE(mage->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*mage, self));
 
     living* foe = add_living(fx, FAMILY_ORC, 1, 96, 64);
     ASSERT_TRUE(foe != nullptr);
@@ -194,7 +197,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->stats()->set_level(5);
     self->set_foe(nullptr);
     foe->set_foe(nullptr);
-    mage->hit_response(self->stats(), foe);
+    og::test::hit_response(*mage, self->stats(), foe);
     ASSERT_TRUE(self->foe() == foe);
     ASSERT_TRUE(foe->foe() == self);
 
@@ -202,7 +205,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     add_living(fx, FAMILY_ORC, 1, 104, 64);
     add_living(fx, FAMILY_ORC, 1, 108, 64);
     self->set_current_special(1);
-    ASSERT_TRUE(mage->check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, self));
 }
 
 TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
@@ -224,7 +227,7 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
     self->set_current_special(1);
     self->set_lastx(1.0f);
     self->set_lasty(0.0f);
-    ASSERT_TRUE(druid->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*druid, self));
 
     walker* existing = fx.level.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr);
@@ -234,14 +237,14 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
 
     self->set_busy(0);
     self->set_current_special(4);
-    ASSERT_TRUE(druid->do_special(self));
+    ASSERT_TRUE(og::test::do_special(*druid, self));
 
     self->set_busy(0);
     self->set_current_special(2);
     self->setxy(0, 0);
     self->set_lastx(-1.0f);
     self->set_lasty(0.0f);
-    (void)druid->do_special(self);
+    (void)og::test::do_special(*druid, self);
 }
 
 TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
@@ -366,7 +369,6 @@ TEST(CoverageMisc, coverage_r17_save_data_reset_defaults)
 } // namespace detail_coverage_r17
 
 // --- From test_coverage_r18.cpp ---
-const FamilyDescriptor& describe_family_cleric();
 
 namespace detail_coverage_r18 {
 namespace {
@@ -750,7 +752,7 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
 
 TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
@@ -758,7 +760,7 @@ TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
     self.set_current_special(1);
     self.stats()->set_max_magicpoints(100.0f);
     self.stats()->set_magicpoints(1.0f);
-    ASSERT_TRUE(!desc.check_special_ai(&self));
+    ASSERT_TRUE(!og::test::check_special_ai(desc, &self));
 }
 
 TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
@@ -1061,7 +1063,7 @@ void assign_short_ani(walker* w)
 TEST(CoverageMisc, coverage_r19_family_cleric_check_special_true_paths)
 {
     R19Fixture fx;
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
 
     living* self = add_living(fx, FAMILY_CLERIC, 0, 64, 64);
     living* ally = add_living(fx, FAMILY_SOLDIER, 0, 70, 64);
@@ -1071,12 +1073,12 @@ TEST(CoverageMisc, coverage_r19_family_cleric_check_special_true_paths)
     self->stats()->set_max_magicpoints(100.0f);
     self->stats()->set_magicpoints(80.0f);
     self->set_shifter_down(1);
-    ASSERT_TRUE(desc.check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, self));
     ASSERT_TRUE(self->shifter_down() == 0);
 
     ally->setxy(300, 300);
     self->set_shifter_down(0);
-    ASSERT_TRUE(desc.check_special_ai(self));
+    ASSERT_TRUE(og::test::check_special_ai(desc, self));
     ASSERT_TRUE(self->shifter_down() == 1);
 }
 
@@ -1137,8 +1139,6 @@ TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
 } // namespace detail_coverage_r19
 
 // --- From test_coverage_r20.cpp ---
-const FamilyDescriptor& describe_family_mage();
-const FamilyDescriptor& describe_family_druid();
 
 namespace detail_coverage_r20 {
 namespace {
@@ -1432,8 +1432,13 @@ TEST(CoverageMisc, coverage_r20_smooth_dark_grass_specific_branches)
 
 TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
 {
-    const FamilyDescriptor& desc = describe_family_cleric();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     living self;
+
+    // The hook resolves og.tuning by the WALKER's own order/family, so the
+    // walker must BE
+    // a cleric, exactly as the sim guarantees when this hook dispatches.
+    self.set_order_family(Order::Living, FAMILY_CLERIC);
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     self.set_user(0);
@@ -1441,33 +1446,33 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
     self.set_current_special(1);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 40;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_current_special(2);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 30;
     const float old_busy2 = self.busy();
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
     ASSERT_TRUE(self.busy() > old_busy2);
 
     self.set_current_special(3);
     self.set_shifter_down(1);
     self.set_busy(0.0f);
     self.myguy->intelligence = 30;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 }
 
 TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
 {
-    const FamilyDescriptor& desc = describe_family_mage();
+    const FamilyDescriptor& desc = describe_family(FAMILY_MAGE);
     living self;
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
@@ -1475,26 +1480,26 @@ TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
 
     self.set_current_special(1);
     self.set_ani_type(ANI_TELE_OUT);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_ani_type(ANI_WALK);
     self.set_shifter_down(1);
     self.set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_busy(0.0f);
     self.myguy->intelligence = 40;
-    ASSERT_TRUE(!desc.do_special(&self));
+    ASSERT_TRUE(!og::test::do_special(desc, &self));
 
     self.set_shifter_down(0);
     self.set_ani_type(ANI_WALK);
-    ASSERT_TRUE(desc.do_special(&self));
+    ASSERT_TRUE(og::test::do_special(desc, &self));
     ASSERT_TRUE(self.ani_type() == ANI_TELE_OUT);
 }
 
 TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
 {
-    const FamilyDescriptor& desc = describe_family_druid();
+    const FamilyDescriptor& desc = describe_family(FAMILY_DRUID);
     R20Fixture fx;
 
     living* self = add_living(fx, FAMILY_DRUID, 0, 64, 64);
@@ -1502,15 +1507,15 @@ TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
 
     self->set_current_special(4);
     self->set_busy(0.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 
     self->set_current_special(1);
     self->set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 
     self->set_current_special(2);
     self->set_busy(1.0f);
-    ASSERT_TRUE(!desc.do_special(self));
+    ASSERT_TRUE(!og::test::do_special(desc, self));
 }
 } // namespace detail_coverage_r20
 
@@ -1695,17 +1700,17 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
 
     guy g_mage(FAMILY_MAGE);
     const short old_int = g_mage.intelligence;
-    mage->level_up(&g_mage, 2);
+    og::test::level_up(*mage, &g_mage, 2);
     ASSERT_TRUE(g_mage.intelligence > old_int);
 
     guy g_druid(FAMILY_DRUID);
     const short old_dex = g_druid.dexterity;
-    druid->level_up(&g_druid, 2);
+    og::test::level_up(*druid, &g_druid, 2);
     ASSERT_TRUE(g_druid.dexterity > old_dex);
 
     living self;
     const float hp0 = self.stats()->max_hitpoints();
-    soldier->set_difficulty(&self, 3);
+    og::test::set_difficulty(*soldier, &self, 3);
     ASSERT_TRUE(self.stats()->max_hitpoints() > hp0);
 
     FinalR16Fixture fx2;
@@ -1713,32 +1718,42 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     ASSERT_TRUE(caster != nullptr);
 
     caster->set_current_special(1);
-    ASSERT_TRUE(mage->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, caster));
 
     add_living(fx2, FAMILY_ORC, 1, 74, 64);
     add_living(fx2, FAMILY_ORC, 1, 84, 64);
-    ASSERT_TRUE(!mage->check_special_ai(caster));
+    ASSERT_TRUE(!og::test::check_special_ai(*mage, caster));
 
     add_living(fx2, FAMILY_ORC, 1, 94, 64);
     add_living(fx2, FAMILY_ORC, 1, 104, 64);
-    ASSERT_TRUE(mage->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*mage, caster));
 
     caster->set_foe(add_living(fx2, FAMILY_ORC, 1, 114, 64));
-    ASSERT_TRUE(soldier->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*soldier, caster));
     caster->foe()->setxy(66, 64);
-    ASSERT_TRUE(!soldier->check_special_ai(caster));
+    ASSERT_TRUE(!og::test::check_special_ai(*soldier, caster));
 
     caster->set_current_special(1);
     caster->set_foe(nullptr);
-    ASSERT_TRUE(thief->check_special_ai(caster));
+    ASSERT_TRUE(og::test::check_special_ai(*thief, caster));
 
-    caster->set_current_special(3);
-    caster->set_shifter_down(1);
-    ASSERT_TRUE(thief->check_special_ai(caster));
+    // The charm/taunt (thief) and heal-range (cleric) gates read og.tuning,
+    // which resolves by the CASTER's own family — a
+    // family hook only ever runs on a walker of that family in the sim, so
+    // these checks need family-matching casters (the special-1 thief gate
+    // above is a code-constant path and stays family-agnostic on purpose).
+    living* thief_caster = add_living(fx2, FAMILY_THIEF, 0, 70, 64);
+    ASSERT_TRUE(thief_caster != nullptr);
+    thief_caster->set_current_special(3);
+    thief_caster->set_shifter_down(1);
+    ASSERT_TRUE(og::test::check_special_ai(*thief, thief_caster));
 
-    caster->set_current_special(1);
-    caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
-    ASSERT_TRUE(cleric->check_special_ai(caster));
+    living* cleric_caster = add_living(fx2, FAMILY_CLERIC, 0, 64, 70);
+    ASSERT_TRUE(cleric_caster != nullptr);
+    cleric_caster->set_current_special(1);
+    cleric_caster->stats()->set_magicpoints(
+        cleric_caster->stats()->max_magicpoints());
+    ASSERT_TRUE(og::test::check_special_ai(*cleric, cleric_caster));
 }
 
 TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)

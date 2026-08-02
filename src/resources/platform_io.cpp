@@ -23,6 +23,8 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
+#include <openglad/resources/packs.h>
+#include <openglad/gameplay/family_registry.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/core/pixdefs.h>
 #include <cstring>
@@ -376,6 +378,21 @@ void io_init(int argc, char* argv[])
     {
         LogWarn("Failed to mount default cfg path (may be bundled in campaign)\n");
     }
+
+    // Class packs: default packs ship next to pix/cfg; user-installed packs
+    // live in user_path/packs (already reachable through the user mount).
+    if(!og::resources::mount((get_asset_path() + "packs/").c_str(), "packs/", 1))
+    {
+        LogWarn("Failed to mount default packs path\n");
+    }
+    // Scripts + family descriptor DATA both come from the mounted packs
+    // (core pack = packs/core). refresh_pack_scripts rescans scripts AND
+    // installs classpack.yaml data — the only way any family reaches the
+    // registries.
+    og::resources::refresh_pack_scripts();
+    // Hard runtime dependency, same footing as the user path and the default
+    // campaign above: without packs/core there are no families at all.
+    require_core_families_installed("io_init");
 }
 
 void io_exit()

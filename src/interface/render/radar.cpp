@@ -22,6 +22,9 @@
 #include <openglad/core/colors.h>
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
+#include <openglad/core/family_presentation.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -296,6 +299,14 @@ short radar::draw(LevelRuntimeData* data)
 		        continue;
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
+			// Treasures normally live in fxlist (blipped from their
+			// descriptors further down). The two families below are the ones
+			// levels park in the oblist, and they blip a FIXED COLOR_FIRE
+			// here rather than their descriptor colour — an "is this entity
+			// worth a blip in the object list" rule with no colour to read,
+			// so there is nothing on RadarBlip to drive it with. Widening it
+			// to every oblist treasure would light up loot the player has not
+			// earned treasure sight for.
 			if ((oborder == Order::Living || oborder == Order::Weapon
 			            || (oborder == Order::Treasure && (ob->family() == FAMILY_LIFE_GEM))
 			            || (oborder == Order::Treasure && (ob->family() == FAMILY_EXIT))
@@ -385,40 +396,45 @@ short radar::draw(LevelRuntimeData* data)
 			do_show = 0; // don't show, by default
 			if (oborder == Order::Treasure)
 			{
-				if (can_see)
+				// Blip colour and flicker span come from the family
+				// descriptor (og::RadarBlip), so a class pack's treasure
+				// lights up the minimap with no engine change. Two rules the
+				// legacy switch encoded and the draw path must keep:
+				//   * jitter == 0 means "make NO rng call" — this render path
+				//     draws from the game rng, so its call count is part of
+				//     the stream and may not move.
+				//   * a family with no colour draws nothing (and rolls
+				//     nothing).
+				const TreasureFamilyDescriptor* td =
+					get_treasure_family_descriptor(obfamily);
+				const og::RadarBlip blip = td ? td->radar : og::RadarBlip{};
+				const bool has_blip =
+					blip.color > 0 || blip.color == og::kRadarColorTeam;
+				// The one family fact left here: WHICH treasures ignore
+				// view_all. The descriptor schema carries no "always visible"
+				// bit, and the split is a gameplay rule rather than a look —
+				// navigation markers and CTF objectives are landmarks every
+				// player can see, everything else is loot that needs treasure
+				// sight. A pack family follows the loot rule.
+				const bool ignores_view_all =
+					obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER
+					|| obfamily == og::FAMILY_FLAG
+					|| obfamily == og::FAMILY_CTF_POINT;
+				if (has_blip && (can_see || ignores_view_all))
 				{
-					switch (obfamily)
-					{
-						case FAMILY_GOLD_BAR:
-							do_show = static_cast<short>(YELLOW + rng(5));
-							break;
-						case FAMILY_SILVER_BAR:
-							do_show = static_cast<short>(GREY + rng(5));
-							break;
-						case FAMILY_DRUMSTICK:
-							do_show = static_cast<short>(COLOR_BROWN + rng(2));
-							break;
-						case FAMILY_MAGIC_POTION:
-						case FAMILY_INVIS_POTION:
-						case FAMILY_INVULNERABLE_POTION:
-						case FAMILY_FLIGHT_POTION:
-							do_show = static_cast<short>(COLOR_BLUE + rng(5));
-							break;
-						default:
-							do_show = 0;
-							break;
-					}
-					}
-					if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
-						do_show = static_cast<short>(static_cast<Uint32>(LIGHT_BLUE) + rng(7));
-					// CTF flags and control points always flicker in their
-					// team's (owner's) color ramp, like exits.
-					if (obfamily == og::FAMILY_FLAG || obfamily == og::FAMILY_CTF_POINT)
-						do_show = static_cast<short>(static_cast<Uint32>(ob->query_team_color()) + rng(7));
+					const Uint32 base =
+						(blip.color == og::kRadarColorTeam)
+							? static_cast<Uint32>(ob->query_team_color())
+							: static_cast<Uint32>(blip.color);
+					do_show = static_cast<short>(
+						blip.jitter > 0
+							? base + rng(static_cast<Uint32>(blip.jitter))
+							: base);
 				}
-				if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
-				                static_cast<short>((ob->ypos()+1)/GRID_SIZE),
-				                radarx, radary) )
+			}
+			if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
+			                static_cast<short>((ob->ypos()+1)/GRID_SIZE),
+			                radarx, radary) )
 				do_show = 0;
 			if (do_show)
 			{

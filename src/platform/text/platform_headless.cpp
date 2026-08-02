@@ -347,6 +347,8 @@ void load_decor_data(PixieData*)
 // Headless lifecycle (mirrors SDL io_init/io_exit/sync_filesystem)
 // ---------------------------------------------------------------------------
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/packs.h>
+#include <openglad/gameplay/family_registry.h>
 
 void io_init(int argc, char* argv[])
 {
@@ -399,6 +401,21 @@ void io_init(int argc, char* argv[])
     og::resources::mount((asset_path + "pix/").c_str(), "pix/", 1);
     og::resources::mount((asset_path + "sound/").c_str(), "sound/", 1);
     og::resources::mount((asset_path + "cfg/").c_str(), "cfg/", 1);
+
+    // Class packs: default packs ship next to pix/cfg; user-installed packs
+    // live in user_path/packs (already reachable through the user mount).
+    if (!og::resources::mount((asset_path + "packs/").c_str(), "packs/", 1)) {
+        LogWarn("io_init(headless): Failed to mount default packs path\n");
+    }
+    // Same call as the SDL io_init, deliberately: refresh_pack_scripts
+    // registers the pack behavior SCRIPTS *and* installs classpack.yaml
+    // family descriptor DATA — the only path by which any family, core or
+    // mod, reaches the registries. Headless clients (openglad_text,
+    // openglad_server, openglad_curses) run the identical sim, so both
+    // halves must be wired the same way or the two paths drift the moment
+    // a family's behavior lives only in Lua.
+    og::resources::refresh_pack_scripts();
+    require_core_families_installed("io_init(headless)");
 
     Log("io_init(headless): done\n");
 }

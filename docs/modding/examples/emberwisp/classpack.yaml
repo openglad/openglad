@@ -1,0 +1,124 @@
+# Ember Wisp — a worked example of a class pack that ships its OWN art and
+# its OWN motion, so nothing about it is borrowed from the core families.
+#
+# This pack is deliberately NOT under packs/, because everything under
+# packs/ is mounted at startup and would push a new family into the picker,
+# the registries and the wire ids of the shipped game. Mount it explicitly
+# to try it:
+#
+#   og::resources::mount("docs/modding/examples/emberwisp",
+#                        "packs/emberwisp/", 1);
+#   og::resources::refresh_pack_scripts();
+#
+# The mount point fixes the pack id ("emberwisp", the directory name under
+# packs/) and it is what makes the `sprite:` path below resolve — sprite
+# paths are virtual-filesystem paths, not pack-relative ones, so they start
+# at packs/<pack id>/.
+pack: org.openglad.example.emberwisp
+version: 1
+title: "Ember Wisp"
+authors: "the OpenGlad project"
+
+# Pack-defined animation tables. A row is looked up as
+# `anim_table[ani_type * 8 + curdir]`, i.e. 8 facings per ani_type; the
+# frames in a row are indices into the sprite's frame stack and playback
+# ends at the end of the row. `rows: 16` gives this family two ani_types:
+# 0 = ANI_WALK, 1 = ANI_ATTACK.
+#
+# The wisp has no directional art, so all eight facings of an ani_type
+# share the same frame list — but each row is still written out, because
+# rows are expanded CYCLICALLY when fewer are declared than `rows` asks
+# for (two declared rows over `rows: 16` would alternate walk/attack per
+# facing, not fill eight of each).
+anims:
+  emberwisp_motion:
+    rows: 16
+    frames:
+      - [0, 1, 2, 3, 2, 1]   # ani_type 0 (walk), facing 0
+      - [0, 1, 2, 3, 2, 1]   #                    facing 1
+      - [0, 1, 2, 3, 2, 1]   #                    facing 2
+      - [0, 1, 2, 3, 2, 1]   #                    facing 3
+      - [0, 1, 2, 3, 2, 1]   #                    facing 4
+      - [0, 1, 2, 3, 2, 1]   #                    facing 5
+      - [0, 1, 2, 3, 2, 1]   #                    facing 6
+      - [0, 1, 2, 3, 2, 1]   #                    facing 7
+      - [4, 5, 6, 7]         # ani_type 1 (attack), facing 0
+      - [4, 5, 6, 7]         #                      facing 1
+      - [4, 5, 6, 7]         #                      facing 2
+      - [4, 5, 6, 7]         #                      facing 3
+      - [4, 5, 6, 7]         #                      facing 4
+      - [4, 5, 6, 7]         #                      facing 5
+      - [4, 5, 6, 7]         #                      facing 6
+      - [4, 5, 6, 7]         #                      facing 7
+
+families:
+  living:
+    - id: example:emberwisp
+      # `auto` takes the next free id above the core pins (>= 21) in a
+      # deterministic order, so every peer agrees on the wire byte.
+      wire_id: auto
+      name: "EMBERWISP"
+      short_name: "WISP"
+      base_stats: [8, 14, 7, 16, 4, 1]
+      hiring_cost: 400
+      # HP MP ATK RATK RNG DEF SPD ATKSPD — the loader reads hitpoints,
+      # damage, stepsize and fire frequency straight out of this list.
+      derived_bonuses: [70, 40, 11, 0, 0, 0, 5, 9]
+      stat_costs: [30, 8, 30, 8, 60, 200]
+      # MP cost per special slot (slot 0 is "no special"). The engine
+      # gates do_special on magicpoints >= cost and deducts the cost only
+      # after the hook answers true; 5000 marks a slot as unavailable.
+      special_costs: [5000, 5, 5000, 5000, 5000, 5000]
+      weapon_cost: 2
+      default_weapon: core:fireball
+      init_bit_flags: [FLYING, FORESTWALK]
+      init_ani_type: 0
+      init_max_magicpoints: 40
+      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
+      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      leaves_bloodspot: false
+      magic_damage_modifier: 0.5
+      is_stationary: false
+      has_returning_weapon: false
+      is_undead: false
+      promotes_to: ~
+      promotion_level_req: 0
+      death_message: "EMBERWISP GUTTERS OUT"
+      # A virtual-filesystem path under this pack's mount point. Core art
+      # keeps using bare names ("footman.png"), which resolve under pix/.
+      sprite: packs/emberwisp/sprites/emberwisp.png
+      # Names the set declared above instead of one of the seven built-in
+      # tables (standard|mage|skeleton|giant_skeleton|slime|small_slime|
+      # static). Built-in names stay reserved and win, so a pack cannot
+      # shadow them by accident.
+      animation: emberwisp_motion
+      ai_line_of_sight: 9
+      description: |
+        A knot of live coal that never learned to go out.
+        Drifts over anything, burns what it touches, and
+        keeps almost nothing in reserve.
+      names: ["Cinder", "Sparkfall", "Emberling", "Guttering", "Coalheart"]
+      playable: true
+      playable_order: 90
+      # Presentation for the character-cell clients and the radar.
+      glyph: "✦"
+      glyph_ascii: "*"
+      glyph_color: yellow
+      glyph_bold: true
+      glyph_transparent: false
+      radar_color: 228
+      radar_jitter: 3
+      # Balance constants the behavior script reads back with
+      # og.tuning(self) — a frozen, read-only table. Unquoted integers
+      # arrive as Lua integers, decimals as floats, quoted values as
+      # strings. Rebalancing the wisp is a YAML edit, not a code edit.
+      tuning:
+        # on_fire_weapon: shots below this ember reserve are blocked.
+        flare_cost: 6.0
+        # FLARE BURST (special 1): vents ember above burn_floor, stunning
+        # foes within burst_range px for stun_base + rand0(level *
+        # stun_per_level) each.
+        burn_floor: 10
+        burst_range: 80
+        stun_base: 4
+        stun_per_level: 8

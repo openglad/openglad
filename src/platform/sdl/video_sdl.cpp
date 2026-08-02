@@ -96,9 +96,11 @@ std::unique_ptr<Screen> E_Screen;
 
 static void video_init_palettes(sdl_video& v)
 {
+	// Load our palettes ..
 	load_and_set_palette("our.pal", v.ourpalette);
 	load_palette("our.pal", v.redpalette);
 
+	// Create the red-shifted palette
 	for (Sint32 i = 32; i < 256; i++)
 	{
 		v.redpalette[i*3+1] /= 2;

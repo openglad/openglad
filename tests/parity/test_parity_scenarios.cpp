@@ -62,6 +62,22 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
         const std::string actual2 = og::parity::canonical_serialize(again.dump);
         EXPECT_EQ(actual, actual2)
             << "branch-internal dumper is non-deterministic for " << spec.id;
+
+        // A branch-internal row has no golden, but its branch-side
+        // predicates are still contracts — without this they sit compiled
+        // and unevaluated, and the row's discriminating mutation flips
+        // nothing (treasure_exit_open_prompt_scen99 shipped exactly that
+        // way: mutation applied, test green).
+        if (spec.expected_facts != nullptr && spec.fact_count > 0)
+        {
+            const og::parity::FactEvalResult branch =
+                og::parity::evaluate_facts(og::parity::FactSide::Branch,
+                                           spec.expected_facts,
+                                           spec.fact_count, outcome.dump);
+            EXPECT_TRUE(branch.ok)
+                << "branch-internal facts failed for " << spec.id << ": "
+                << branch.message;
+        }
         return;
     }
 
@@ -367,6 +383,79 @@ OG_PARITY_TEST(level_withdraw_scen99)
 OG_PARITY_TEST(midcombat_partial_hp_scen99)
 OG_PARITY_TEST(consumable_inventory_state_scen99)
 
+// Cleric heal / raise / turn-undead / resurrect scenarios.
+OG_PARITY_TEST(special_cleric_heal_ally_scen99)
+OG_PARITY_TEST(cleric_raise_skeleton_scen99)
+OG_PARITY_TEST(cleric_raise_ghost_scen99)
+OG_PARITY_TEST(cleric_turn_undead_scen99)
+OG_PARITY_TEST(cleric_resurrect_friendly_scen99)
+OG_PARITY_TEST(undead_no_corpse_raise_scen99)
+
+// Treasure guard-arm and consequence scenarios.
+OG_PARITY_TEST(treasure_flight_effect_scen99)
+OG_PARITY_TEST(treasure_invis_effect_scen99)
+OG_PARITY_TEST(treasure_flight_potion_flier_noconsume_scen99)
+OG_PARITY_TEST(treasure_drumstick_fullhp_noconsume_scen99)
+OG_PARITY_TEST(treasure_gold_bar_team_reject_scen99)
+OG_PARITY_TEST(treasure_life_gem_enemy_reject_scen99)
+OG_PARITY_TEST(treasure_magic_potion_overfill_scen99)
+OG_PARITY_TEST(treasure_key_team1_silent_scen99)
+OG_PARITY_TEST(treasure_exit_open_prompt_scen99)
+OG_PARITY_TEST(thief_charm_opponent_scen99)
+OG_PARITY_TEST(archmage_summon_elemental_scen99)
+OG_PARITY_TEST(mage_teleport_marker_scen99)
+OG_PARITY_TEST(archmage_teleport_marker_scen99)
+OG_PARITY_TEST(archmage_mind_control_team_flip_scen99)
+OG_PARITY_TEST(archmage_summon_image_phantom_scen99)
+OG_PARITY_TEST(mage_starburst_ring_scen99)
+OG_PARITY_TEST(soldier_whirlwind_ring_scen99)
+OG_PARITY_TEST(soldier_disarm_matched_levels_scen99)
+OG_PARITY_TEST(orc_yell_stun_hold_scen99)
+OG_PARITY_TEST(orc_eat_corpse_scen99)
+OG_PARITY_TEST(archer_fire_arrows_ring_scen99)
+OG_PARITY_TEST(skeleton_tunnel_displacement_scen99)
+OG_PARITY_TEST(druid_grow_tree_emission_scen99)
+OG_PARITY_TEST(barbarian_boulder_impact_scen99)
+OG_PARITY_TEST(magic_damage_slime_scen99)
+OG_PARITY_TEST(slime_death_split_scen99)
+OG_PARITY_TEST(elemental_death_starburst_scen99)
+OG_PARITY_TEST(ai_slime_split_scen99)
+OG_PARITY_TEST(slime_grow_blocked_scen99)
+OG_PARITY_TEST(generator_owner_cascade_scen99)
+OG_PARITY_TEST(effect_cloud_poison_scen99)
+OG_PARITY_TEST(effect_explosion_range_scen99)
+OG_PARITY_TEST(effect_bomb_bystander_scen99)
+OG_PARITY_TEST(effect_explosion_ally_tier_scen99)
+OG_PARITY_TEST(effect_shield_absorb_scen99)
+OG_PARITY_TEST(effect_boomerang_contact_scen99)
+OG_PARITY_TEST(effect_boomerang_drawcycle_cap_scen99)
+OG_PARITY_TEST(effect_chain_fork_scen99)
+OG_PARITY_TEST(effect_knife_back_catch_scen99)
+OG_PARITY_TEST(effect_ghost_scare_moving_caster_scen99)
+OG_PARITY_TEST(weapon_boulder_explode_damage_scen99)
+OG_PARITY_TEST(weapon_door_unlock_chain_scen99)
+OG_PARITY_TEST(weapon_rock_bounce_edge_scen99)
+OG_PARITY_TEST(weapon_wave_promote_wave2_scen99)
+OG_PARITY_TEST(weapon_sprinkle_freeze_scen99)
+OG_PARITY_TEST(weapon_fire_arrow_explode_damage_scen99)
+OG_PARITY_TEST(weapon_circle_protection_follow_scen99)
+OG_PARITY_TEST(weapon_sit_notify_quiet_scen99)
+OG_PARITY_TEST(weapon_ranged_impact_hp_scen99)
+
+// corner-misc batch
+OG_PARITY_TEST(archer_hit_response_backpedal_scen99)
+OG_PARITY_TEST(orc_yell_zero_constitution_scen99)
+OG_PARITY_TEST(mage_freeze_time_offteam_scen99)
+OG_PARITY_TEST(beast_set_difficulty_invariant_scen99)
+OG_PARITY_TEST(thief_taunt_matched_levels_scen99)
+OG_PARITY_TEST(elf_mega_rocks_volley_scen99)
+OG_PARITY_TEST(fireelemental_starburst_ring_scen99)
+OG_PARITY_TEST(mage_heartburst_multitarget_scen99)
+OG_PARITY_TEST(soldier_charge_displacement_scen99)
+OG_PARITY_TEST(elf_rocks_pair_scen99)
+OG_PARITY_TEST(thief_ai_bomb_flee_scen99)
+OG_PARITY_TEST(druid_protection_refresh_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
@@ -476,6 +565,34 @@ TEST(Parity, z_multifloor_walker_floor_transitions)
         pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
         fall2_out.dump).ok)
         << "z_fall_two_story: soldier unexpectedly took no fall damage";
+}
+
+// Branch-internal Invariant rows skip fact evaluation in run_one_scenario --
+// that path only re-runs the dumper and asserts determinism, because there is
+// no master golden to evaluate the other side against. Their expected_facts[]
+// therefore need a hand-written assertion, exactly as the z-axis rows above
+// get one. treasure_exit_open_prompt_scen99 is Invariant because the companion
+// records RequestExitConfirmation only inside its withdraw block and its exit
+// arm calls endgame() from inside eat_me, so no comparable master dump exists;
+// the branch behaviour is still worth pinning, and without this test its
+// mutation (treasure_navigation.lua:65 `if can_exit_now then` -> `if false
+// then`) has nothing to flip in the suite.
+TEST(Parity, treasure_exit_open_prompt_facts)
+{
+    const og::parity::ScenarioSpec* spec =
+        find_scenario("treasure_exit_open_prompt_scen99");
+    ASSERT_NE(spec, nullptr)
+        << "treasure_exit_open_prompt_scen99 missing from kScenarios";
+    ASSERT_NE(spec->expected_facts, nullptr);
+    ASSERT_GT(spec->fact_count, 0u);
+
+    const auto outcome = og::parity::run_scenario(*spec);
+    const og::parity::FactEvalResult facts =
+        og::parity::evaluate_facts(og::parity::FactSide::Branch,
+                                   spec->expected_facts, spec->fact_count,
+                                   outcome.dump);
+    EXPECT_TRUE(facts.ok)
+        << "treasure_exit_open_prompt_scen99 facts failed: " << facts.message;
 }
 
 // Phase 01 new gtests --------------------------------------------------------

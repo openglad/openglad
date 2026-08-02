@@ -50,6 +50,33 @@ FAMILIES = {
     20: "FAMILY_TOWER1",
 }
 
+# Weapon-order namespace; must match state_dump.cpp::kWeaponFamilies.
+# Weapon predicates resolve arg0 here, NOT through FAMILIES: the two
+# namespaces overlap (id 16 is FAMILY_BARBARIAN as a living and
+# FAMILY_CIRCLE_PROTECTION as a weapon).
+WEAPON_FAMILIES = {
+    0:  "FAMILY_KNIFE",
+    1:  "FAMILY_ROCK",
+    2:  "FAMILY_ARROW",
+    3:  "FAMILY_FIREBALL",
+    4:  "FAMILY_TREE",
+    5:  "FAMILY_METEOR",
+    6:  "FAMILY_SPRINKLE",
+    7:  "FAMILY_BONE",
+    8:  "FAMILY_BLOOD",
+    9:  "FAMILY_BLOB",
+    10: "FAMILY_FIRE_ARROW",
+    11: "FAMILY_LIGHTNING",
+    12: "FAMILY_GLOW",
+    13: "FAMILY_WAVE",
+    14: "FAMILY_WAVE2",
+    15: "FAMILY_WAVE3",
+    16: "FAMILY_CIRCLE_PROTECTION",
+    17: "FAMILY_HAMMER",
+    18: "FAMILY_DOOR",
+    19: "FAMILY_BOULDER",
+}
+
 EVENT_KINDS = [
     "none", "play_sound", "notification", "set_palette",
     "request_redraw", "end_game", "set_end",
@@ -59,6 +86,10 @@ EVENT_KINDS = [
 
 def family_symbol(i: int) -> str:
     return FAMILIES.get(i, f"FAMILY_UNKNOWN_{i}")
+
+
+def weapon_symbol(i: int) -> str:
+    return WEAPON_FAMILIES.get(i, f"FAMILY_UNKNOWN_WEAPON_{i}")
 
 
 def evaluate_one(p: dict, dump: dict) -> tuple[bool, str]:
@@ -144,8 +175,12 @@ def evaluate_one(p: dict, dump: dict) -> tuple[bool, str]:
         n = sum(1 for e in events if e["kind"] == name)
         return (n == a1, f"events({name})={n} need={a1}")
     if kind == "WeaponFamilyEmitted":
-        sym = family_symbol(a0)
+        sym = weapon_symbol(a0)
         return (any(w["family"] == sym for w in weapons), f"no weapon {sym}")
+    if kind == "WeaponFamilyCount":
+        sym = weapon_symbol(a0)
+        n = sum(1 for w in weapons if w["family"] == sym)
+        return (a1 <= n <= a2, f"weapons({sym})={n} need in [{a1},{a2}]")
     return (False, f"unknown kind {kind}")
 
 

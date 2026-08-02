@@ -40,6 +40,7 @@ std::uint32_t calculate_exp(std::int32_t level);
 // Legacy global used by entity code (living.cpp, walker.cpp) via
 // extern std::int32_t difficulty_level[].  Centralised here so both
 // the SDL and headless clients share a single definition.
+// Difficulty settings .. in percent, so 100 == normal
 extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = {50, 100, 200};
 
 namespace og::ui {
@@ -190,93 +191,6 @@ std::uint32_t calculate_sell_value(const guy& member)
 
 namespace {
 
-#define GET_RAND_ELEM(array) (array[std::rand() % (sizeof(array) / sizeof(array[0]))])
-
-const char* archer_names[] = {
-    "Robin", "Green Arrow",
-    "Legolas",
-    "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"
-};
-
-const char* cleric_names[] = {
-    "Tuck",
-    "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"
-};
-
-const char* druid_names[] = {
-    "Roland",
-    "Merlin",
-    "Hippy", "Green Thumb", "Treefall", "Rain"
-};
-
-const char* elf_names[] = {
-    "Legolas", "Took", "Elrond",
-    "Tanis",
-    "Acorn", "Lightfoot", "Treewee"
-};
-
-const char* mage_names[] = {
-    "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando",
-    "Raistlin", "Fizban", "Mordenkainen",
-    "Merlin",
-    "Harry",
-    "Manannan", "Mordack",
-    "Jace"
-};
-
-const char* soldier_names[] = {
-    "Lothar",
-    "Arthur", "Uther",
-    "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector",
-    "Tom", "Bigfoot"
-};
-
-const char* thief_names[] = {
-    "Shinobi",
-    "Dismas",
-    "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"
-};
-
-const char* orc_names[] = {
-    "Grom",
-    "Thrull",
-    "Vernix", "Lanugo",
-    "Grok", "Horde", "Grog", "Krosh"
-};
-
-const char* barbarian_names[] = {
-    "Thor",
-    "Conan",
-    "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus",
-    "Titan"
-};
-
-const char* elemental_names[] = {
-    "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"
-};
-
-const char* skeleton_names[] = {
-    "Drybones",
-    "Blackbeard",
-    "Boney", "Femur", "Patella", "Humerus", "Scapula"
-};
-
-const char* slime_names[] = {
-    "Grimer",
-    "Goop", "Slurp", "Glopp", "Sludge", "Blob"
-};
-
-const char* faerie_names[] = {
-    "Tink",
-    "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"
-};
-
-const char* ghost_names[] = {
-    "Casper",
-    "Slimer",
-    "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"
-};
-
 bool has_name_in_save(const char* name, const SaveData& save)
 {
     for (int i = 0; i < save.team_size && i < MAX_TEAM_SIZE; i++) {
@@ -288,32 +202,24 @@ bool has_name_in_save(const char* name, const SaveData& save)
 
 } // anonymous namespace
 
+// Recruit names come from the family descriptor's pool (`names:` in
+// classpack.yaml), so a class pack's family names its own recruits with no
+// engine change. Families that deliberately share a pool — archmage with
+// mage, the orc captain with the orcs, all three slimes — do so by shipping
+// the same list, which is how the switch this replaced behaved.
+//
+// A family with no pool of its own borrows the soldier pool, the fallback the
+// old `default:` branch used; the core pack leaves the three unhireable
+// families (golem, giant skeleton, tower) poolless on purpose.
 const char* get_random_name(unsigned char family)
 {
-    switch (family) {
-    case FAMILY_ARCHER:        return GET_RAND_ELEM(archer_names);
-    case FAMILY_CLERIC:        return GET_RAND_ELEM(cleric_names);
-    case FAMILY_DRUID:         return GET_RAND_ELEM(druid_names);
-    case FAMILY_ELF:           return GET_RAND_ELEM(elf_names);
-    case FAMILY_MAGE:          return GET_RAND_ELEM(mage_names);
-    case FAMILY_SOLDIER:       return GET_RAND_ELEM(soldier_names);
-    case FAMILY_THIEF:         return GET_RAND_ELEM(thief_names);
-    case FAMILY_ARCHMAGE:      return GET_RAND_ELEM(mage_names);
-    case FAMILY_ORC:           return GET_RAND_ELEM(orc_names);
-    case FAMILY_BIG_ORC:       return GET_RAND_ELEM(orc_names);
-    case FAMILY_BARBARIAN:     return GET_RAND_ELEM(barbarian_names);
-    case FAMILY_FIREELEMENTAL: return GET_RAND_ELEM(elemental_names);
-    case FAMILY_SKELETON:      return GET_RAND_ELEM(skeleton_names);
-    case FAMILY_SLIME:
-    case FAMILY_MEDIUM_SLIME:
-    case FAMILY_SMALL_SLIME:   return GET_RAND_ELEM(slime_names);
-    case FAMILY_FAERIE:        return GET_RAND_ELEM(faerie_names);
-    case FAMILY_GHOST:         return GET_RAND_ELEM(ghost_names);
-    default:                   return GET_RAND_ELEM(soldier_names);
-    }
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    if (fd == nullptr || fd->name_pool == nullptr || fd->name_pool_size <= 0)
+        fd = get_family_descriptor(FAMILY_SOLDIER);
+    if (fd == nullptr || fd->name_pool == nullptr || fd->name_pool_size <= 0)
+        return "Nameless";  // no pool at all: not reachable with a core pack
+    return fd->name_pool[std::rand() % fd->name_pool_size];
 }
-
-#undef GET_RAND_ELEM
 
 std::string get_unique_name(unsigned char family, const SaveData& save)
 {
@@ -414,6 +320,7 @@ int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_n
     recruit->teamnum = static_cast<short>(team_num);
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        // found an empty slot
         if (!save.team_list[i]) {
             save.team_list[i] = std::move(recruit);
             save.team_size++;
@@ -466,6 +373,7 @@ DerivedStats compute_derived_stats(const guy& g,
     ds.atk = base_damage + g.get_damage_bonus();
     ds.def = g.get_armor_bonus();
     ds.spd = base_stepsize + g.get_speed_bonus();
+    // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
     float freq = base_fire_freq - g.get_fire_frequency_bonus();
     if (freq < 1.0f)
         freq = 1.0f;
@@ -2019,6 +1927,7 @@ int HireSession::hire()
 
     int newfamily = recruit_->family;
     recruit_->teamnum = static_cast<short>(team_num_);
+    // Ensure we have the right exp for our level
     recruit_->exp = calculate_exp(recruit_->level);
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {

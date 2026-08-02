@@ -64,10 +64,22 @@ inline constexpr int FAMILY_ARCHMAGE = 17;
 inline constexpr int FAMILY_GOLEM = 18;
 inline constexpr int FAMILY_GIANT_SKELETON = 19;
 inline constexpr int FAMILY_TOWER1 = 20;
+// # of families; make sure to change the SIZE_FAMILIES in gloader.cpp as well
+// (or your code will act weird)
 inline constexpr int NUM_FAMILIES = 21;
 
 constexpr int PIX(int a, int b) { return NUM_FAMILIES * a + b; }
 constexpr int PIX(Order a, int b) { return NUM_FAMILIES * static_cast<int>(a) + b; }
+
+// Family registry capacity, per order. A family id travels the wire, save
+// files and level files as a single byte, so 256 slots is the hard ceiling
+// for any order. The low ids are pinned to the core pack (NUM_FAMILIES for
+// livings, the per-order core counts for the other four registries) and
+// every id above the core count is a free slot a class pack can claim with
+// `wire_id: auto`. Free slots stay UNPOPULATED — the getters keep returning
+// nullptr for them, so "descriptor == nullptr means this family does not
+// exist" holds exactly as before.
+inline constexpr int NUM_FAMILY_SLOTS = 256;
 
 //Weapon families
 inline constexpr int FAMILY_KNIFE = 0;
@@ -118,12 +130,18 @@ inline constexpr int FAMILY_EXPAND = 0;
 inline constexpr int FAMILY_GHOST_SCARE = 1;
 inline constexpr int FAMILY_BOMB = 2;
 inline constexpr int FAMILY_EXPLOSION = 3;
+// Used for teleporter effects
 inline constexpr int FAMILY_FLASH = 4;
+// revolving protective shield
 inline constexpr int FAMILY_MAGIC_SHIELD = 5;
 inline constexpr int FAMILY_KNIFE_BACK  = 6;
+// Circling boomerang
 inline constexpr int FAMILY_BOOMERANG  = 7;
+// purple poison cloud
 inline constexpr int FAMILY_CLOUD = 8;
+// Marker for Mages Teleport
 inline constexpr int FAMILY_MARKER = 9;
+// 'Chain lightning' effect
 inline constexpr int FAMILY_CHAIN = 10;
 inline constexpr int FAMILY_DOOR_OPEN = 11;
 inline constexpr int FAMILY_HIT = 12;
@@ -154,8 +172,10 @@ inline constexpr int COMMAND_FIRE = 2;
 inline constexpr int COMMAND_RANDOM_WALK = 3;
 inline constexpr int COMMAND_DIE = 4;
 inline constexpr int COMMAND_FOLLOW = 5;
+// Rush your enemy!
 inline constexpr int COMMAND_RUSH = 6;
 inline constexpr int COMMAND_MULTIDO = 7;
+// Fires with no busy or animation
 inline constexpr int COMMAND_QUICK_FIRE = 8;
 inline constexpr int COMMAND_SET_WEAPON = 9;
 inline constexpr int COMMAND_RESET_WEAPON = 10;
@@ -164,6 +184,7 @@ inline constexpr int COMMAND_ATTACK = 12;
 inline constexpr int COMMAND_RIGHT_WALK = 13;
 inline constexpr int COMMAND_UNCHARM = 14;
 inline constexpr int COMMAND_GOTO = 15;
+// used to calculate time between heals
 inline constexpr std::int32_t REGEN = 4000;
 
 // Rendering/display mode constants
@@ -178,9 +199,11 @@ inline constexpr int SHIFT_LEFT         = 2;
 inline constexpr int SHIFT_RIGHT        = 3;
 inline constexpr int SHIFT_RIGHT_RANDOM = 4;
 inline constexpr int SHIFT_RANDOM       = 5;
+// courtroom style
 inline constexpr int SHIFT_BLOCKY       = 6;
 
 // Scenario type flags
+// make these go by power of 2, 1,2,4,8
 inline constexpr char SCEN_TYPE_CAN_EXIT = 1;
 inline constexpr char SCEN_TYPE_GEN_EXIT = 2;
 inline constexpr char SCEN_TYPE_SAVE_ALL = 4;

@@ -64,6 +64,8 @@ PRESET     = os.environ.get("OG_PARITY_CANARY_PRESET", "ci-test")
 BUILD_DIR  = REPO_ROOT / "build" / PRESET
 PARITY_BIN = BUILD_DIR / "og_test_parity"
 SMOKE_BIN  = BUILD_DIR / "parity_runner_smoke"
+# Declares the applied pin to check_mutation_pins.py; see rebuild_targets().
+MUTATION_IN_FLIGHT_ENV = "OPENGLAD_MUTATION_IN_FLIGHT"
 
 
 # Defer the lint-script import until repo-root sys.path is set up.
@@ -118,13 +120,29 @@ def match_glob(pattern: str, ids: list[str]) -> list[str]:
     return hits
 
 
-def rebuild_targets() -> bool:
+def rebuild_targets(in_flight: dict | None = None) -> bool:
+    """Rebuild the canary's targets, declaring any mutation now applied.
+
+    check_mutation_pins.py is a build dependency of og_test_parity, so it
+    runs here. On a shared anchor — several pins on one line — the mutated
+    line matches neither side of the siblings' substitutions, and without a
+    declaration the check reds and takes the rebuild (and the canary) with
+    it. `in_flight` is the pin that was just applied, spelled exactly as the
+    table spells it; the check recognises that one state and nothing else.
+    """
     targets = ["og_test_parity"]
     if SMOKE_BIN.exists() or shutil.which("ninja"):
         targets.append("parity_runner_smoke")
+    env = dict(os.environ)
+    if in_flight is None:
+        env.pop(MUTATION_IN_FLIGHT_ENV, None)
+    else:
+        env[MUTATION_IN_FLIGHT_ENV] = json.dumps(
+            {"file": in_flight["file"], "line": int(in_flight["line"]),
+             "from": in_flight["from"], "to": in_flight["to"]})
     res = subprocess.run(
         ["cmake", "--build", "--preset", PRESET, "--target", *targets],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     if res.returncode != 0:
         sys.stderr.write(res.stdout + res.stderr)
@@ -290,7 +308,7 @@ def main() -> int:
             continue
 
         try:
-            if not rebuild_targets():
+            if not rebuild_targets(in_flight=mut):
                 zero_flip_log.append(f"{sid}: rebuild failed after mutation")
                 continue
             post_verdict, post_log = run_gtest(sid)

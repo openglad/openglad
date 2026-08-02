@@ -238,13 +238,23 @@ TEST(LobbyServer, poll_registers_connected_transport_peers)
     transport.set_connected_peers({11u});
     server.poll_incoming_messages();
 
-    ASSERT_EQ(1u, transport.sent_messages().size());
+    // v10 handshake: the initial LobbyState is followed by the class-pack
+    // manifest announcement (the explicit empty manifest when no packs are
+    // hosted).
+    ASSERT_EQ(2u, transport.sent_messages().size());
     EXPECT_EQ(11u, transport.sent_messages().front().peer_id);
     og::sim::LobbyState echoed =
         decode_lobby_state(transport.sent_messages().front());
     echoed.local_seat_ids.clear();
     echoed.local_peer_is_host = false;
     EXPECT_EQ(server.state(), echoed);
+
+    EXPECT_EQ(11u, transport.sent_messages()[1].peer_id);
+    const std::optional<og::sim::PackManifestMessage> manifest =
+        og::sim::deserialize_pack_manifest_message(
+            transport.sent_messages()[1].data);
+    ASSERT_TRUE(manifest.has_value());
+    EXPECT_EQ(0u, manifest->pack_count);
 }
 
 TEST(LobbyServer, poll_disconnects_removed_transport_peers)
@@ -3561,7 +3571,12 @@ TEST(LobbyServer, blank_multiseat_rejoin_and_reconnect_preserve_identity)
     transport.clear_sent_messages();
     server.connect_client(11u);
     EXPECT_EQ(before_reconnect, server.state());
-    ASSERT_EQ(1u, transport.sent_messages().size());
+    // v10: the reconnect echo is the LobbyState plus the (empty) class-pack
+    // manifest announcement.
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    ASSERT_TRUE(og::sim::deserialize_pack_manifest_message(
+                    transport.sent_messages()[1].data)
+                    .has_value());
     const og::sim::LobbyState reconnect_echo =
         decode_lobby_state(transport.sent_messages().front());
     EXPECT_EQ((std::vector<og::sim::LobbySeatId>{

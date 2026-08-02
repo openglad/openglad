@@ -128,6 +128,32 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                      LevelFileMetadata& metadata, LevelFileIoError& err,
                      bool require_valid_grid)
 {
+    // Format of a scenario object list file version 6/7 is:
+    // 3-byte header: 'FSS'
+    // 1-byte version #
+    // ----- (above is already determined by now)
+    // 8-byte string = grid name to load
+    // 30-byte scenario title (ver 6+)
+    // 1-byte char = scenario type, default is 0
+    // 2-bytes par-value, v.8+
+    // 2-bytes time limit for bonus points, v9+
+    // 2-bytes (short) = total objects to follow
+    // List of n objects, each of 7-bytes of form:
+    // 1-byte ORDER
+    // 1-byte FAMILY
+    // 2-byte short xpos
+    // 2-byte short ypos
+    // 1-byte TEAM
+    // 1-byte facing
+    // 1-byte command
+    // 1-byte level // 2 bytes in version 7+
+    // 12-bytes name
+    // ---
+    // 10 bytes reserved
+    // 1-byte # of lines of text to load
+    // List of n lines of text, each of form:
+    // 1-byte character width of line
+    // m bytes == characters on this line
     short currentx = 0;
     short currenty = 0;
     unsigned char temporder = 0;
@@ -158,6 +184,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }                                                                       \
     } while (0)
 
+    // Get grid file to load
     READ_OR_FAIL(newgrid.data(), 8, 1);
     newgrid[8] = '\0';
     // Zardus: FIX: make sure they're lowercased
@@ -172,6 +199,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         return false;
     }
 
+    // Get scenario title, if it exists
     if (version >= 6)
     {
         READ_OR_FAIL(scentitle.data(), 30, 1);
@@ -183,6 +211,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         world.title = "New Level";
     }
 
+    // Get the scenario type information
     if (version >= 5)
     {
         READ_OR_FAIL(&new_scen_type, 1, 1);
@@ -202,6 +231,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         READ_OR_FAIL(&temp_time_limit, 2, 1);
     world.time_bonus_limit = temp_time_limit;
 
+    // Determine number of objects to load ...
     READ_OR_FAIL(&listsize, 2, 1);
     if (listsize < 0 || listsize > kMaxScenarioObjects)
     {
@@ -210,6 +240,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         return false;
     }
 
+    // Now read in the objects one at a time
     for (short i = 0; i < listsize; ++i)
     {
         READ_OR_FAIL(&temporder, 1, 1);
@@ -345,6 +376,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
     metadata.description.clear();
     if (version >= 3)
     {
+        // Now get the lines of text to read ..
         READ_OR_FAIL(&numlines, 1, 1);
         for (short i = 0; i < numlines; ++i)
         {
@@ -389,6 +421,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         loaded_floor_count = (fc < 1) ? 1 : static_cast<short>(fc);
     }
 
+    // Now read the grid file...
     const std::string gridpix = ensure_png_extension(newgrid.data());
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())
@@ -411,6 +444,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
     {
         world.mysmoother.set_target(world.grid);
 
+        // Fix up doors, etc.
         for (auto& uptr : world.weaplist)
         {
             walker* w = uptr.get();
@@ -536,6 +570,7 @@ bool load_level(const std::string& path,
         return false;
     }
 
+    // Zardus: much much better this way
     auto infile = og::io::og_open_read("scen/", path.c_str());
     if (!infile)
     {
@@ -696,26 +731,32 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     if (!write_field(header.data(), 3, 1) || !write_field(&temp_version, 1, 1))
         return false;
 
+    // Write name of current grid...
     fill_fixed_field(temp_grid.data(), 8, metadata.grid_file, "grid_file");
     if (!write_field(temp_grid.data(), 8, 1))
         return false;
 
+    // Write the scenario title, if it exists
     fill_fixed_field(scentitle.data(), 30, world.title, "title");
     if (!write_field(scentitle.data(), 30, 1))
         return false;
 
+    // Write the scenario type info
     char temp_scen_type = world.type;
     if (!write_field(&temp_scen_type, 1, 1))
         return false;
 
+    // Write our par value (version 8+)
     short temp_par = world.par_value;
     if (!write_field(&temp_par, 2, 1))
         return false;
 
+    // Write the time limit (version 9+)
     short temp_time_limit = world.time_bonus_limit;
     if (!write_field(&temp_time_limit, 2, 1))
         return false;
 
+    // Determine size of object list ...
     const size_t total_objects =
         world.oblist.size() + world.fxlist.size() + world.weaplist.size();
     const size_t serialized_objects =
@@ -916,6 +957,7 @@ bool save_level(GameWorld& world,
     if (!save_level_scenario_file(world, scenario_path, metadata, out_error))
         return false;
 
+    // Save map (grid) file
     if (!save_grid_file(metadata.grid_file.c_str(), world.grid))
     {
         set_error(out_error, LevelFileIoError::OpenWriteFailed);
@@ -1244,6 +1286,7 @@ LevelFileIoError load_scenario_title_with_error(const char* filename,
     if (!is_safe_virtual_basename(filename, 64))
         return LevelFileIoError::OpenReadFailed;
 
+    // Zardus: first get the file from scen/
     std::string tempfile = std::string(filename) + ".fss";
     auto infile = og::io::og_open_read("scen/", tempfile.c_str());
     if (!infile)
@@ -1254,16 +1297,20 @@ LevelFileIoError load_scenario_title_with_error(const char* filename,
     std::array<char, 8> gridname = {};
     std::array<char, 31> buffer = {};
 
+    // Are we a scenario file?
     if (!rw_read_exact_or_log(*infile, header.data(), 1, 3))
         return LevelFileIoError::ParseFailed;
     if (std::string(header.data(), 3) != "FSS")
         return LevelFileIoError::InvalidHeader;
+    // Check the version number
     if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
         return LevelFileIoError::ParseFailed;
     if (versionnumber < 6)
         return LevelFileIoError::UnsupportedVersion;
+    // Discard the grid name ...
     if (!rw_read_exact_or_log(*infile, gridname.data(), 1, 8))
         return LevelFileIoError::ParseFailed;
+    // Return the title, 30 bytes
     if (!rw_read_exact_or_log(*infile, buffer.data(), 1, 30))
         return LevelFileIoError::ParseFailed;
     out_title = std::string(buffer.data());

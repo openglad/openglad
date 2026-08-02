@@ -19,6 +19,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/combat_math.h>
@@ -133,12 +134,14 @@ bool walker::special()
 
 	TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
+	// Are we somehow dead already?
 	if (dead())
 	{
 		Log("Dead guy doing special!\n");
 		return 0;
 	}
 
+	// Do we have a stats object? If not, freak out and exit :)
 	if (!stats_)
 	{
 		Log("Special with no stats\n");
@@ -152,27 +155,25 @@ bool walker::special()
 			special_index = 1;
 		}
 
+	// Do we have enough for our special ability?
 	if (stats_->magicpoints() < stats_->special_cost(special_index))
 		return 0;
 
 	if (query_order() != Order::Living)
 		return 0;
 
-	// Dispatch via family descriptor callback
+	// Dispatch via scripted hook or family descriptor callback
 	auto* fd = get_family_descriptor(family());
 	bool did_special = false;
-	if (fd && fd->do_special)
+	if (auto hook_result = og::script::hooks::do_special(fd, this))
 	{
-		did_special = fd->do_special(this);
+		did_special = *hook_result;
 		if (did_special)
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}
-	// Runaway-specials §3.1: bound the world's pending time-stop bank. The
-	// per-cast freeze formula (family_mage.cpp case 3) is untouched — only
-	// the ACCUMULATED bank is clamped post-cast, so every golden's single
-	// cast (max L13 = 163 <= 300) is the identity map, and chain-casting at
-	// the cap just wastes the 500 MP. Every do_special routes through here;
-	// the clamp is a no-op for non-freeze specials.
+	// Bound the world's accumulated time-stop bank after each special. The
+	// per-cast formula remains in packs/core/scripts/mage.lua; chain-casting
+	// at the cap spends the usual MP without extending the freeze.
 	if (current_game != nullptr && current_game->world != nullptr &&
 	    current_game->world->enemy_freeze > og::combat::kEnemyFreezeBankCap)
 	{

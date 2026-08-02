@@ -64,6 +64,7 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_GRASS_LIGHT_LEFT] = TYPE_GRASS_LIGHT;
 	table[PIX_GRASS_LIGHT_LEFT_TOP] = TYPE_GRASS_LIGHT;
 
+	// all the carpets ..
 	table[PIX_CARPET_LL] = TYPE_CARPET;
 	table[PIX_CARPET_L] = TYPE_CARPET;
 	table[PIX_CARPET_B] = TYPE_CARPET;
@@ -82,6 +83,7 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_CARPET_SMALL_RIGHT] = TYPE_CARPET;
 	table[PIX_CARPET_SMALL_TINY] = TYPE_CARPET;
 
+	// these are various walls ..
 	table[PIX_H_WALL1] = TYPE_WALL;
 	table[PIX_WALL_LL] = TYPE_WALL;
 	table[PIX_WALL2] = TYPE_WALL;

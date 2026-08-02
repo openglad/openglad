@@ -168,6 +168,10 @@ bool lobby_messages_include_peer(
 
 struct LobbyPollResult {
     std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>> messages;
+    // Class-pack transfer requests (protocol v10) share the lobby-phase
+    // transport; the lobby routes them to its PackTransferHost.
+    std::vector<std::pair<og::sim::PeerId, og::sim::PackRequestMessage>>
+        pack_requests;
     std::vector<og::sim::PeerId> malformed_peer_ids;
 };
 
@@ -184,6 +188,14 @@ poll_lobby_messages(og::sim::ITransport& transport)
             {
                 if (typed_message.peer_id != 0)
                     result.malformed_peer_ids.push_back(typed_message.peer_id);
+                continue;
+            }
+            if (typed_message.kind ==
+                    og::sim::TypedReceivedMessageKind::PackRequest &&
+                typed_message.pack_request)
+            {
+                result.pack_requests.emplace_back(typed_message.peer_id,
+                                                  *typed_message.pack_request);
                 continue;
             }
             if (typed_message.kind != og::sim::TypedReceivedMessageKind::LobbyMessage ||
@@ -205,6 +217,19 @@ poll_lobby_messages(og::sim::ITransport& transport)
         {
             if (message.peer_id != 0)
                 result.malformed_peer_ids.push_back(message.peer_id);
+            continue;
+        }
+        if (envelope.message_type == og::sim::kPackRequestMessageType)
+        {
+            const auto decoded =
+                og::sim::deserialize_pack_request_message(message.data);
+            if (!decoded.has_value())
+            {
+                if (message.peer_id != 0)
+                    result.malformed_peer_ids.push_back(message.peer_id);
+                continue;
+            }
+            result.pack_requests.emplace_back(message.peer_id, *decoded);
             continue;
         }
         if (envelope.message_type != og::sim::kLobbyMessageType)
@@ -347,6 +372,17 @@ void LobbyServer::unlock_for_new_round() noexcept
         process_lobby_message(peer_id, message);
 }
 
+void LobbyServer::set_hosted_packs(std::vector<HostedPack> packs)
+{
+    (void)pack_host_.set_packs(std::move(packs));
+    // Retroactive announcement: peers that connected before the platform
+    // layer supplied (or changed) the pack set must still see the manifests
+    // before ready-up. A manifest with pack_index 0 starts a fresh client
+    // generation, so re-announcing the same set is idempotent.
+    for (const PeerId peer_id : connected_transport_peers_)
+        pack_host_.announce_to(transport_, peer_id);
+}
+
 bool LobbyServer::start_allowed(PeerId requester,
                                 StartDenialReason& reason) const noexcept
 {
@@ -426,12 +462,17 @@ void LobbyServer::connect_client(PeerId peer_id)
         host_peer_id_ = peer_id;
 
     send_state(peer_id);
+    // Lobby handshake (protocol v10): announce the session's class-pack
+    // manifests alongside the initial state, so a joiner can compare,
+    // request, and mount missing packs before ready-up.
+    pack_host_.announce_to(transport_, peer_id);
 }
 
 void LobbyServer::disconnect_client(PeerId peer_id)
 {
     erase_peer_id_sorted(connected_transport_peers_, peer_id);
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
+    pack_host_.forget_peer(peer_id);
     std::erase_if(pending_locked_joins_,
                   [peer_id](const auto& pending) {
                       return pending.first == peer_id;
@@ -1185,9 +1226,29 @@ void LobbyServer::poll_incoming_messages()
     apply_transport_disconnects();
 
     const LobbyPollResult poll_result = poll_lobby_messages(transport_);
-    synchronize_transport_peers(poll_result.messages);
+    synchronize_transport_peers(poll_result.messages,
+                                poll_result.pack_requests);
     for (const PeerId peer_id : poll_result.malformed_peer_ids)
         disconnect_client(peer_id);
+    for (const auto& [peer_id, request] : poll_result.pack_requests)
+    {
+        // Serve only peers that are still connected right now: a request
+        // from a vanished peer would stream chunks into a dead link (and the
+        // in-process transport treats an unknown destination as an error).
+        if (std::binary_search(poll_result.malformed_peer_ids.begin(),
+                               poll_result.malformed_peer_ids.end(),
+                               peer_id) ||
+            std::binary_search(pending_transport_disconnects_.begin(),
+                               pending_transport_disconnects_.end(),
+                               peer_id) ||
+            !std::binary_search(connected_transport_peers_.begin(),
+                                connected_transport_peers_.end(),
+                                peer_id))
+        {
+            continue;
+        }
+        pack_host_.handle_request(transport_, peer_id, request);
+    }
     for (const auto& [peer_id, message] : poll_result.messages)
     {
         if (std::binary_search(poll_result.malformed_peer_ids.begin(),
@@ -1212,7 +1273,8 @@ void LobbyServer::poll_incoming_messages()
 }
 
 void LobbyServer::synchronize_transport_peers(
-    const std::vector<std::pair<PeerId, LobbyMessage>>& messages)
+    const std::vector<std::pair<PeerId, LobbyMessage>>& messages,
+    const std::vector<std::pair<PeerId, PackRequestMessage>>& pack_requests)
 {
     const std::vector<PeerId> current_peers = transport_.connected_peers();
 
@@ -1235,6 +1297,10 @@ void LobbyServer::synchronize_transport_peers(
 
     connected_transport_peers_ = current_peers;
 
+    // A vanished peer's queued LOBBY messages still get processed (deferred
+    // disconnect); its queued pack requests do not — serving a dead peer is
+    // pointless, so poll_incoming_messages drops them instead.
+    (void)pack_requests;
     for (const PeerId peer_id : removed_peers)
     {
         if (lobby_messages_include_peer(messages, peer_id))

@@ -18,6 +18,7 @@
 #include <openglad/core/constants.h>
 
 #include <gtest/gtest.h>
+#include "test_family_hook_dispatch.h"
 
 namespace {
 
@@ -82,8 +83,8 @@ TEST(ZAxisFxFloor, bomb_detonation_spawns_explosion_on_bomb_floor)
 
     const auto* fd = get_effect_family_descriptor(FAMILY_BOMB);
     ASSERT_NE(fd, nullptr);
-    ASSERT_NE(fd->on_death, nullptr);
-    ASSERT_TRUE(fd->on_death(static_cast<effect*>(bomb)));
+    ASSERT_TRUE(og::test::has_on_death(*fd));
+    ASSERT_TRUE(og::test::on_death(*fd, static_cast<effect*>(bomb)));
 
     walker* boom = find_fx(w, FAMILY_EXPLOSION);
     ASSERT_NE(boom, nullptr) << "detonation must spawn a FAMILY_EXPLOSION";
@@ -129,8 +130,8 @@ TEST(ZAxisFxFloor, explosion_damage_never_crosses_floors)
 
     const auto* fd = get_effect_family_descriptor(FAMILY_EXPLOSION);
     ASSERT_NE(fd, nullptr);
-    ASSERT_NE(fd->on_death, nullptr);
-    fd->on_death(static_cast<effect*>(boom));
+    ASSERT_TRUE(og::test::has_on_death(*fd));
+    og::test::on_death(*fd, static_cast<effect*>(boom));
 
     EXPECT_LT(same_floor->stats()->hitpoints(), same_hp)
         << "a same-floor victim inside the blast radius must take damage";

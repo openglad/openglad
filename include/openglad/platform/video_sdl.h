@@ -223,6 +223,7 @@ public:
 
     bool save_screenshot() override;
 
+    // Fading code: (thanks Erik!)
     void FadeBetween24(SDL_Surface* surface, const Uint8* from, const Uint8* to, int amount);
     int FadeBetween(SDL_Surface* old_surface, SDL_Surface* new_surface, SDL_Surface* dest_surface);
     void fade_between24(void* surface, const Uint8* from, const Uint8* to, int amount) override;
@@ -240,8 +241,10 @@ public:
 
     int fadeDuration;
 
+    // our standard glad palette
     std::array<unsigned char, 768> ourpalette{};
     std::array<unsigned char, 768> redpalette{};
+    // for special effects like time-freeze
     std::array<unsigned char, 768> bluepalette{};
     std::array<unsigned char, 768> dospalette{};
 
@@ -250,6 +253,7 @@ public:
         std::vector<unsigned char>(static_cast<std::size_t>(kUiCanvasW) *
                                        static_cast<std::size_t>(kUiCanvasH),
                                    0);
+    // color cycling on or off
     short cyclemode = 0;
 
     //buffers: screen vars

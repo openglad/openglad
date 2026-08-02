@@ -9,6 +9,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -19,6 +20,7 @@
 
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <string>
@@ -189,6 +191,15 @@ bool is_classic_display_text_notification(std::string_view text)
     if (text.rfind(time_left_prefix, 0) == 0)
         return true;
 
+    // Master's off-team FREEZE TIME arm (walker.cpp:2984-3000) announces the
+    // grant through viewob[0]->set_display_text(), which the master recorder
+    // never sees -- only screen::do_notify writes a Notification. The branch
+    // emits it as a real sim Notification, so it is dropped here for the same
+    // reason as the "TIME LEFT: " countdown above.
+    constexpr std::string_view time_frozen_prefix = "TIME IS FROZEN!";
+    if (text.rfind(time_frozen_prefix, 0) == 0)
+        return true;
+
     return false;
 }
 
@@ -226,6 +237,13 @@ void append_events_for_tick(og::sim::SimEventLog& dst,
             continue;
         og::sim::Event normalized = ev;
         if (normalized.kind == og::sim::EventKind::DamageTile)
+            continue;
+        // The only sim-side RequestRedraw emitter is mage.lua:200 (the
+        // off-team FREEZE TIME arm), standing in for master's bare
+        // redraw()/refresh() pair, which the master recorder cannot observe.
+        // Drop it for the same reason DamageTile is dropped. Coverage for the
+        // kind is registered explicitly on the level_done == 2 path below.
+        if (normalized.kind == og::sim::EventKind::RequestRedraw)
             continue;
         if (normalized.kind == og::sim::EventKind::ScoreChange &&
             normalized.a < score_delta.size())

@@ -1,0 +1,41 @@
+# core:ghost — split from classpack.yaml (families load in sorted filename order)
+families:
+  living:
+    - id: core:ghost
+      wire_id: 12
+      name: "GHOST"
+      short_name: ~
+      base_stats: [6, 12, 18, 10, 15, 1]
+      hiring_cost: 600
+      derived_bonuses: [50, 0, 12, 0, 0, 0, 4, 7]
+      stat_costs: [16, 16, 16, 16, 45, 200]
+      special_costs: [5000, 30, 5000, 5000, 5000, 5000]
+      weapon_cost: 0
+      default_weapon: core:knife
+      init_bit_flags: [FLYING, ANIMATE, NO_RANGED, ETHEREAL]
+      init_ani_type: 0
+      init_max_magicpoints: 0
+      special_names: ["NONE", "SCARE", "NONE", "NONE", "NONE", "NONE"]
+      alternate_names: ["NONE", "NONE", "NONE", "NONE", "NONE", "NONE"]
+      leaves_bloodspot: false
+      magic_damage_modifier: 1
+      is_stationary: false
+      has_returning_weapon: false
+      is_undead: true
+      promotes_to: ~
+      promotion_level_req: 0
+      death_message: "GHOST VANISHED"
+      sprite: "ghost.png"
+      animation: standard
+      ai_line_of_sight: 12
+      description: "Ghosts can pass through   \nwalls, trees, and anything\nelse that gets in the way.\nTheir chilling touch can  \nbring death quickly at    \nclose range.              \n\nSpecial: Scare"
+      names: ["Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"]
+      playable: true
+      playable_order: 14
+      glyph: "g"
+      glyph_ascii: "g"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

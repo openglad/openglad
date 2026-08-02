@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 #include <cstdint>
 
 inline constexpr int FD_NUM_SPECIALS = 6;
@@ -101,7 +103,7 @@ struct FamilyDescriptor {
 
     const char* death_message;                 // "SOLDIER SLAIN", etc. (fallback: "SOMEONE DIED")
 
-    // Behavioral callbacks (nullptr = use legacy switch / default behavior)
+    // Optional behavior callbacks (nullptr = use the caller's default path)
     bool (*do_special)(walker* self);
     bool (*check_special_ai)(living* self);
     void (*hit_response)(statistics* stats, walker* who);
@@ -109,7 +111,7 @@ struct FamilyDescriptor {
     void (*level_up)(guy* self, std::int32_t level_diff);
     bool (*on_death)(walker* self);            // return true = handled
 
-    // Step 3 callbacks: remaining per-family behavioral dispatch
+    // Additional per-family behavior callbacks
     void (*on_act_living)(living* self);            // periodic effects during act()
     void (*on_shoved)(walker* self);                // called when shoved by an ally
     bool (*on_fire_weapon)(walker* self, walker* weapon); // before firing; false = block
@@ -119,15 +121,43 @@ struct FamilyDescriptor {
     bool (*on_ani_complete)(walker* self);    // animation end; true = handled
     void (*on_melee_hit)(walker* self, walker* target);    // called after successful melee attack
 
-    // Graphics / loader data (replaces hardcoded gloader.cpp arrays)
-    const char* pix_filename;          // "monk.png", "footman.png", etc.
-    FamilyAnimationType animation_type;  // FamilyAnimationType enum
+    // Graphics / loader data
+    const char* pix_filename;          // "monk.png" or a pack-relative path
+    FamilyAnimationType animation_type;  // built-in table (see anim_table)
     int ai_line_of_sight;              // AI's understanding of ranged attack range
 
-    // UI / picker data (replaces hardcoded switch statements)
+    // Pack-shipped animation table. nullptr = use animation_type's built-in
+    // gloader table; otherwise this is a `anim_row_count`-long array of row
+    // pointers, each row a -1-terminated frame list, owned by the classpack
+    // store for the life of the process. anim_row_count is authoritative for
+    // walker::ani_count (which bounds the animate() index math against
+    // snapshot-controlled ani_type/curdir), so it is NEVER 0 when anim_table
+    // is non-null.
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
+
+    // UI / picker data
     const char* description;           // multiline class description for team builder
     const char* const* name_pool;      // array of random names
     int name_pool_size;                // count of names in pool
     bool is_playable;                  // appears in hire menu
     int playable_order;                // sort order in hire menu (lower = earlier)
+
+    // Presentation data.
+    // The defaults are the legacy `default:` branches, so an undeclared mod
+    // family renders exactly like an unknown family always did.
+    og::FamilyGlyph glyph{U'?', '?', og::GlyphColor::Default, false, false};
+    og::RadarBlip radar{};             // livings blip in their team colour
+
+    // Fully-qualified id the declaring pack gave this family — the YAML
+    // `id:` value, e.g. "core:soldier" or "mypack:warlock". This is the
+    // name resolution matches FIRST, so two packs may ship families with
+    // the same `name:` and stay distinguishable
+    // (og::families::resolve_family_string_id).
+    // nullptr = no pack declared this slot; resolution then falls back to
+    // `name`.
+    // Borrowed, never owned: the installer points this at a string in the
+    // process-lifetime ClasspackStore (src/resources/packs.cpp), exactly
+    // like `name` and the other const char* fields.
+    const char* declared_id = nullptr;
 };

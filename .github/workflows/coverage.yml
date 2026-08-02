@@ -49,6 +49,23 @@ jobs:
       - name: Install coverage tools
         run: python3 -m pip install gcovr
 
+      - name: Install pinned lua-language-server
+        env:
+          LUALS_VERSION: 3.18.1
+          LUALS_SHA256: 0c4a8a2b085df2e5cb56f075867eebe643c09d6fd3d998c70f9c3b7ab93f29dd
+        run: |
+          luals_archive="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
+          luals_dir="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}"
+          curl --fail --location --retry 3 \
+            --proto '=https' --tlsv1.2 \
+            --output "${luals_archive}" \
+            "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
+          echo "${LUALS_SHA256}  ${luals_archive}" | sha256sum --check -
+          mkdir -p "${luals_dir}"
+          tar -xzf "${luals_archive}" -C "${luals_dir}"
+          echo "${luals_dir}/bin" >> "${GITHUB_PATH}"
+          "${luals_dir}/bin/lua-language-server" --version
+
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-coverage
@@ -60,6 +77,15 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
+      - name: Enforce pack Lua quality gates
+        # coverage_report's CMake target depends on these checks, but this
+        # workflow deliberately invokes coverage_report.py directly below to
+        # retain its strict-C++ arguments and PR-summary outputs. Keep the
+        # checks explicit here so that direct invocation cannot bypass them.
+        run: |
+          cmake --build --preset ci-coverage \
+            --target check_luals api_stub_check check_lua_statement_lines_full
+
       - name: Reset pre-test coverage counters
         run: |
           find build/ci-coverage -type f -name '*.gcda' -delete
@@ -70,16 +96,75 @@ jobs:
           fi
 
       - name: Run tests with coverage
+        # A failure of THIS step means tests failed. Collection sanity has its
+        # own step below, and the threshold gate its own further down, so the
+        # job summary always names the right culprit.
+        #
         # CTest continues to enforce the RUN_SERIAL, RESOURCE_LOCK, and
         # PROCESSORS properties registered in CMakeLists.txt. Those processor
         # reservations are calibrated for four-slot GitHub runners, so keep the
         # parallel level at min(nproc, 4) on larger or smaller hosts.
+        #
+        # OPENGLAD_LUA_COVERAGE arms the in-process pack-Lua line/function
+        # recorder for this one pass, so the SAME run produces both halves of
+        # the gate: gcov .gcda for src/ and *.luacov dumps for packs/. The
+        # recorder is a runtime switch, never a compile flag — the binary the
+        # deterministic-sim tests exercise here has to be the binary that
+        # ships (og_test_parity passes 188/188 armed and disarmed).
+        #
+        # --repeat until-pass:3 deliberately matches test.yml: both lanes must
+        # agree on what "the suite passes" means, or a flake that retries
+        # green there reds only here and masquerades as a coverage problem.
+        # Retrying inside the COLLECTION run is sound for coverage
+        # specifically because both denominators are static — Lua's comes
+        # from scripts/lua_inventory.py and C++'s from the .gcno set this
+        # fresh build emitted, neither from which tests ran — so a rerun can
+        # only ADD numerator evidence of executions that really happened:
+        # libgcov merges counters into .gcda across process exits, and every
+        # recorder process writes its own uniquely-named *.luacov dump that
+        # the report merges additively; its process-population check is
+        # set-equality on names precisely so "rerunning a flaky binary adds
+        # dumps but no names" (scripts/coverage/README.md). Corollary: a
+        # local single pass can read slightly LOWER than a CI run that
+        # retried a flake — judge local work by its before/after delta. A
+        # test that fails all three attempts still fails this step. Budget:
+        # the whole job measured ~24 min WITH one 420 s timeout burned; a
+        # hard-hanging test costs at most two further attempts (+14 min)
+        # under until-pass:3, far inside the 90 min job cap.
         run: |
           parallel_jobs="$(nproc)"
           if (( parallel_jobs > 4 )); then
             parallel_jobs=4
           fi
-          ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --no-tests=error
+          rm -rf build/ci-coverage/coverage/lua-raw
+          mkdir -p build/ci-coverage/coverage/lua-raw
+          OPENGLAD_LUA_COVERAGE="$PWD/build/ci-coverage/coverage/lua-raw" \
+            ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --repeat until-pass:3 --no-tests=error
+
+      - name: Assert coverage counters were collected
+        # The inverse of the pre-test reset above, and deliberately a separate
+        # step: a red here reads as "collection produced nothing", never as a
+        # test failure (previous step) or a threshold failure (the gate
+        # below). It must sit AFTER the (possibly retried) test run and
+        # BEFORE the gate: prove the run really produced counters for BOTH
+        # halves. A gcov build that wrote no .gcda "measured" an empty C++
+        # half, and an unarmed recorder an empty Lua half — the report
+        # hard-errors on both, but the step that owns collection should say
+        # so first and plainly. (The report additionally checks WHICH
+        # recorder processes contributed, against
+        # scripts/coverage/recorder_processes.txt.)
+        run: |
+          gcda_count=$(find build/ci-coverage -type f -name '*.gcda' | wc -l)
+          lua_dump_count=$(find build/ci-coverage/coverage/lua-raw -type f -name '*.luacov' | wc -l)
+          echo "collected ${gcda_count} .gcda file(s) and ${lua_dump_count} .luacov dump(s)"
+          if (( gcda_count == 0 )); then
+            echo "ctest ran but produced no .gcda coverage counters" >&2
+            exit 1
+          fi
+          if (( lua_dump_count == 0 )); then
+            echo "ctest ran but produced no pack-Lua coverage dumps" >&2
+            exit 1
+          fi
 
       - name: Typecheck relay worker
         working-directory: relay
@@ -91,12 +176,45 @@ jobs:
 
       - name: Generate coverage reports and enforce thresholds
         id: coverage_metrics
+        # THE SAME bar for BOTH languages — each half alone AND the union.
+        # Family behaviour is Lua now (packs/**/scripts/*.lua is thousands of
+        # lines of live game logic against a few hundred of C++ plumbing in
+        # src/gameplay/families), so a gate that measured src/ alone would
+        # report green while the half of the codebase that decides what a
+        # soldier does went untested. And a single union-only bar was
+        # gameable from either side: with C++ at ~96%, a Lua half at 94.50%
+        # still cleared a combined 95. scripts/coverage/coverage_report.py
+        # takes the Lua denominator from scripts/lua_inventory.py — a purely
+        # static enumeration of the repository's Lua, identical no matter
+        # which tests ran — attributes the recorder's dumps to it by content
+        # hash, per recording process, merges gcovr's src/ tracefile, and
+        # gates on C++ alone, Lua alone, and the union.
+        #
+        # The report also fails on conditions that are not a percentage: a
+        # recorded pack script whose bytes are not repository content, a
+        # hit bound to a source its own dump never declared (every hit
+        # carries the digest of the generation that was executing), a
+        # declared sidecar that does not hash to its declared digest, an
+        # absent or empty set of dumps, a REQUESTED C++ half that measured
+        # nothing, a recorder process population that differs from the
+        # committed manifest (scripts/coverage/recorder_processes.txt), a
+        # runtime_only_lua.txt digest no run observes any more, a tracked
+        # src/ TU absent from the gcov data and not in
+        # scripts/coverage/cpp_excluded.txt, and a numerator that lands off
+        # the static grid. Each of those is a way for a half to look
+        # measured while measuring nothing, so none of them is a warning.
+        #
+        # --strict-cpp: this job configures the build directory from scratch,
+        # so there is no such thing as a legitimately stale gcov record here;
+        # ANY record the tree cannot account for is an error rather than the
+        # incremental-build warning developers get locally.
         run: |
           LINE_THRESHOLD=95
           FUNCTION_THRESHOLD=100
 
           mkdir -p build/ci-coverage/coverage
-          set +e
+          # HTML detail for the C++ half stays in the uploaded artifact; the
+          # gate itself is the combined report below.
           python3 -m gcovr \
             --root . \
             --filter src/ \
@@ -104,50 +222,43 @@ jobs:
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --html-details build/ci-coverage/coverage/coverage.html \
             --txt build/ci-coverage/coverage/coverage-summary.txt \
-            --json-summary build/ci-coverage/coverage/coverage-summary.json \
-            --fail-under-line "${LINE_THRESHOLD}" \
-            --fail-under-function "${FUNCTION_THRESHOLD}" \
-            build/ci-coverage
-          gcovr_status=$?
+            build/ci-coverage || true
+
+          set +e
+          python3 scripts/coverage/coverage_report.py \
+            --repo-root . \
+            --lua-raw-dir build/ci-coverage/coverage/lua-raw \
+            --lines-tool build/ci-coverage/og_lua_lines \
+            --cpp-build-dir build/ci-coverage \
+            --output-dir build/ci-coverage/coverage \
+            --line-threshold "${LINE_THRESHOLD}" \
+            --function-threshold "${FUNCTION_THRESHOLD}" \
+            --strict-cpp
+          gate_status=$?
           set -e
 
-          cat build/ci-coverage/coverage/coverage-summary.txt
-
           read -r line_covered line_total function_covered function_total \
-            line_pct function_pct < <(python3 - <<'PY'
+            line_pct function_pct line_status function_status \
+            < <(python3 - <<'PY'
           import json
-          with open("build/ci-coverage/coverage/coverage-summary.json", "r", encoding="utf-8") as f:
+          with open("build/ci-coverage/coverage/summary.json", "r", encoding="utf-8") as f:
               s = json.load(f)
-          line_covered = s["line_covered"]
-          line_total = s["line_total"]
-          function_covered = s["function_covered"]
-          function_total = s["function_total"]
-          line_pct = 100.0 * line_covered / line_total if line_total else 100.0
-          function_pct = 100.0 * function_covered / function_total if function_total else 100.0
+          c = s["combined"]
+          line_covered = c["lines_hit"]
+          line_total = c["lines_found"]
+          function_covered = c["functions_hit"]
+          function_total = c["functions_found"]
+          line_pct = 100.0 * line_covered / line_total if line_total else 0.0
+          function_pct = 100.0 * function_covered / function_total if function_total else 0.0
           print(line_covered, line_total, function_covered, function_total,
-                f"{line_pct:.3f}", f"{function_pct:.3f}")
+                f"{line_pct:.3f}", f"{function_pct:.3f}",
+                s["line_status"], s["function_status"])
           PY
           )
 
-          line_status="FAIL"
-          function_status="FAIL"
-          exact_gate_status=0
-          # gcovr rounds its percentage before applying fail-under. Enforce the
-          # requested ratios against integer counts so 94.96% cannot pass as 95%.
-          if (( line_total > 0 &&
-                line_covered * 100 >= LINE_THRESHOLD * line_total )); then
-            line_status="PASS"
-          else
-            exact_gate_status=1
-          fi
-          # The requested function gate is literal: every measured function
-          # must execute, independent of percentage formatting or rounding.
-          if (( function_total > 0 && function_covered == function_total )); then
-            function_status="PASS"
-          else
-            exact_gate_status=1
-          fi
-
+          # The gate itself lives in coverage_report.py (exact integer
+          # comparison, so 94.96% cannot round into 95). These are the
+          # numbers it reported, re-read for the PR comment.
           {
             echo "line_pct=$line_pct"
             echo "function_pct=$function_pct"
@@ -158,19 +269,36 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           {
-            echo "## Coverage Summary"
+            echo "## Coverage Summary (C++ and pack Lua)"
             echo
             echo "| Metric | Coverage | Threshold | Status |"
             echo "|---|---:|---:|---|"
             echo "| Line | ${line_pct}% (${line_covered}/${line_total}) | ${LINE_THRESHOLD}% | ${line_status} |"
             echo "| Function | ${function_pct}% (${function_covered}/${function_total}) | ${FUNCTION_THRESHOLD}% | ${function_status} |"
             echo
+            echo '```'
+            python3 - <<'PY'
+          import json
+          with open("build/ci-coverage/coverage/summary.json", "r", encoding="utf-8") as f:
+              s = json.load(f)
+          gate = s.get("gate", {})
+          for label, key in (("C++ (src/)", "cpp"), ("Lua (packs/)", "lua"),
+                             ("COMBINED", "combined")):
+              t = s[key]
+              lp = 100.0 * t["lines_hit"] / t["lines_found"] if t["lines_found"] else 0.0
+              fp = 100.0 * t["functions_hit"] / t["functions_found"] if t["functions_found"] else 0.0
+              v = gate.get(key, {})
+              verdict = f'  line {v.get("line", "?"):<4} function {v.get("function", "?")}'
+              print(f'{label:<14}{t["lines_hit"]:>7}/{t["lines_found"]:<7}{lp:>7.2f}%'
+                    f'{t["functions_hit"]:>7}/{t["functions_found"]:<7}{fp:>7.2f}%{verdict}')
+          print("(the bar applies to each half alone AND to the union)")
+          PY
+            echo '```'
+            echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if (( gcovr_status != 0 || exact_gate_status != 0 )); then
-            exit 1
-          fi
+          exit $gate_status
 
       - name: Comment coverage on pull request
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -204,7 +332,7 @@ jobs:
 
             const body = [
               marker,
-              '## Coverage Summary',
+              '## Coverage Summary (C++ `src/` + pack Lua `packs/`)',
               '',
               '| Metric | Coverage | Threshold | Status |',
               '|---|---:|---:|---|',

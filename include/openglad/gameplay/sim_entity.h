@@ -257,14 +257,21 @@ private:
     short sizey_ = 0;
     short floor_ = 0;   // stacked floor index (0 == ground / single-floor)
     short sizez_ = 0;   // cylinder height; 0 == full/unbounded sentinel
+    // Zardus: FIX: lets make these unsigned so that real_team_num doesn't
+    // wrap around from 255 to -1 :-)
     unsigned char team_num_ = 0;
+    // to show nothing's changed
     unsigned char real_team_num_ = 255;
+    // are we being used by anyone?
     signed char user_ = -1;
     short dead_ = 0;
+    // if death has already been called
     short death_called_ = 0;
     short invulnerable_left_ = 0;
     short invisibility_left_ = 0;
+    // for bonus flight ..
     short flight_left_ = 0;
+    // used if an object has extra rounds this cycle
     short bonus_rounds_ = 0;
     Order order_ = Order::Living;
     char family_ = 0;

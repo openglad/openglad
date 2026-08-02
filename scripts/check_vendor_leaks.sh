@@ -4,7 +4,7 @@
 # include filesystem/archive dependency headers directly.
 set -euo pipefail
 
-VENDOR_PATTERNS='(physfs\.h|physfsrwops\.h|physfs_internal\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|zlib\.h|zconf\.h)'
+VENDOR_PATTERNS='(physfs\.h|physfsrwops\.h|physfs_internal\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|zlib\.h|zconf\.h|lua\.h|lauxlib\.h|lualib\.h|lua\.hpp|luaconf\.h)'
 VENDOR_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${VENDOR_PATTERNS}[>\"]"
 
 status=0
@@ -15,12 +15,22 @@ if grep -rn --include='*.h' -E "${VENDOR_INCLUDE_REGEX}" include/openglad/ 2>/de
     status=1
 fi
 
+# 1b. Lua headers may only be included by the scripting VM implementation
+LUA_VENDOR='(lua\.h|lauxlib\.h|lualib\.h|lua\.hpp|luaconf\.h)'
+LUA_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${LUA_VENDOR}[>\"]"
+if grep -rn --include='*.cpp' --include='*.h' -E "${LUA_INCLUDE_REGEX}" src/ \
+    | grep -v 'src/gameplay/script/' 2>/dev/null; then
+    echo "ERROR: Lua headers found outside src/gameplay/script/" >&2
+    status=1
+fi
+
 # 2. Only resources IO implementation may include filesystem/archive dependency headers
 FS_VENDOR='(physfs\.h|physfsrwops\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|zlib\.h|zconf\.h)'
 FS_VENDOR_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${FS_VENDOR}[>\"]"
 if grep -rn --include='*.cpp' --include='*.h' -E "${FS_VENDOR_INCLUDE_REGEX}" src/ \
     | grep -v 'src/resources/io/' \
     | grep -v 'src/resources/campaign_yaml.cpp' \
+    | grep -v 'src/resources/classpack_yaml.cpp' \
     | grep -v 'src/resources/gparser.cpp' \
     | grep -v 'src/resources/platform_io.cpp' \
     | grep -v 'src/platform/sdl/physfs_rwops_bridge.cpp' 2>/dev/null; then

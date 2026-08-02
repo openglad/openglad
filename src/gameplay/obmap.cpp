@@ -106,12 +106,15 @@ short obmap::query_list(walker  *ob, short x, short y)
 
 short obmap::remove(walker  *ob)  // This goes in walker's destructor
 {
+    // Find all of the instances of the object and remove them from the map
+    // Some of this is redundant, but its worth avoiding segfaults, IMO :-)
     if (!ob)
         return 0;
 
     // Fast path only: removal is driven by walker_to_pos bookkeeping.
     // Do not scan the entire pos_to_walker map in production; that can turn
     // legitimate gameplay/test loops into O(N^2) behavior.
+    // Get the list of positions that the walker occupies
     auto e = walker_to_pos.find(ob);
     if (e == walker_to_pos.end())
     {
@@ -160,6 +163,7 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
             pos_to_walker.erase(g);
     }
 
+    // Erase the walker from the walker map too
     walker_to_pos.erase(e);
     return 1;
 }

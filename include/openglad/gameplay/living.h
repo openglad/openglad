@@ -32,6 +32,7 @@ class living : public walker
 		living(living&&) = delete;
 		living& operator=(living&&) = delete;
 		bool           act() override;
+		// determine if we should do special ..
 		bool           check_special() override;
 		bool           collide(walker  *ob) override;
 		bool           do_action(); // perform overriding action

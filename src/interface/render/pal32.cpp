@@ -84,6 +84,7 @@ short save_palette(std::span<const unsigned char> /*whatpalette*/)
 //
 // load_palette
 // Loads palette from file FILENAME into NEWPALETTE
+// note this code duplicates part of load and set, and could probly be combined somehow
 //
 short load_palette(const char * /*filename*/, std::span<unsigned char> newpalette)
 {

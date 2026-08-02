@@ -16,33 +16,15 @@
  */
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/family_registries.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
 #include "family_registry_base.h"
 
-// Forward declarations of family descriptor providers
-const FamilyDescriptor& describe_family_golem();
-const FamilyDescriptor& describe_family_giant_skeleton();
-const FamilyDescriptor& describe_family_tower1();
-const FamilyDescriptor& describe_family_big_orc();
-const FamilyDescriptor& describe_family_ghost();
-const FamilyDescriptor& describe_family_skeleton();
-const FamilyDescriptor& describe_family_fire_elemental();
-const FamilyDescriptor& describe_family_faerie();
-const FamilyDescriptor& describe_family_soldier();
-const FamilyDescriptor& describe_family_elf();
-const FamilyDescriptor& describe_family_archer();
-const FamilyDescriptor& describe_family_mage();
-const FamilyDescriptor& describe_family_cleric();
-const FamilyDescriptor& describe_family_slime();
-const FamilyDescriptor& describe_family_small_slime();
-const FamilyDescriptor& describe_family_medium_slime();
-const FamilyDescriptor& describe_family_thief();
-const FamilyDescriptor& describe_family_druid();
-const FamilyDescriptor& describe_family_orc();
-const FamilyDescriptor& describe_family_barbarian();
-const FamilyDescriptor& describe_family_archmage();
+#include <format>
+#include <stdexcept>
+#include <string>
 
 static FamilyRegistryBase<FamilyDescriptor, NUM_FAMILIES> s_registry;
 
@@ -60,34 +42,37 @@ static void apply_defaults(FamilyDescriptor& d)
     d.ai_line_of_sight = 7;
 }
 
-static void populate(FamilyDescriptor* e)
+// --- the one field classpack.yaml cannot declare yet ----------------------
+//
+// Everything else on a core family arrives from packs/core/classpack.yaml.
+// `promotion_new_level` is the exception: it is a formula, and the pack
+// format has no way to spell one. Until it grows a declarative equivalent
+// (a `promotion_level_step` key, which needs the YAML reader and the
+// installer to carry it), these two live on as seeds — written into the
+// still-FREE slots before any pack installs, and preserved through the
+// install because the installer copies the slot it is patching.
+//
+// This is the whole of the engine's remaining family knowledge. Deleting it
+// without a replacement would silently promote every mage to level 1.
+static short mage_promotion_level(int old_level)
 {
-    e[FAMILY_SOLDIER] = describe_family_soldier();
-    e[FAMILY_ELF] = describe_family_elf();
-    e[FAMILY_ARCHER] = describe_family_archer();
-    e[FAMILY_MAGE] = describe_family_mage();
-    e[FAMILY_SKELETON] = describe_family_skeleton();
-    e[FAMILY_CLERIC] = describe_family_cleric();
-    e[FAMILY_FIREELEMENTAL] = describe_family_fire_elemental();
-    e[FAMILY_FAERIE] = describe_family_faerie();
-    e[FAMILY_SLIME] = describe_family_slime();
-    e[FAMILY_SMALL_SLIME] = describe_family_small_slime();
-    e[FAMILY_MEDIUM_SLIME] = describe_family_medium_slime();
-    e[FAMILY_THIEF] = describe_family_thief();
-    e[FAMILY_GHOST] = describe_family_ghost();
-    e[FAMILY_DRUID] = describe_family_druid();
-    e[FAMILY_ORC] = describe_family_orc();
-    e[FAMILY_BIG_ORC] = describe_family_big_orc();
-    e[FAMILY_BARBARIAN] = describe_family_barbarian();
-    e[FAMILY_ARCHMAGE] = describe_family_archmage();
-    e[FAMILY_GOLEM] = describe_family_golem();
-    e[FAMILY_GIANT_SKELETON] = describe_family_giant_skeleton();
-    e[FAMILY_TOWER1] = describe_family_tower1();
+    return static_cast<short>((old_level - 6) / 2 + 1);
+}
+
+static short orc_promotion_level([[maybe_unused]] int old_level)
+{
+    return 1;
+}
+
+static void seed_promotion_formulas(FamilyDescriptor* e)
+{
+    e[FAMILY_MAGE].promotion_new_level = mage_promotion_level;
+    e[FAMILY_ORC].promotion_new_level = orc_promotion_level;
 }
 
 void init_family_registry()
 {
-    s_registry.init(apply_defaults, populate);
+    s_registry.init(apply_defaults, seed_promotion_formulas);
 }
 
 const FamilyDescriptor* get_family_descriptor(int family_id)
@@ -95,4 +80,59 @@ const FamilyDescriptor* get_family_descriptor(int family_id)
     if (!s_registry.is_initialized())
         init_family_registry();
     return s_registry.get(family_id);
+}
+
+bool set_family_descriptor(int family_id, const FamilyDescriptor& d)
+{
+    if (!s_registry.is_initialized())
+        init_family_registry();
+    return s_registry.set(family_id, d);
+}
+
+const FamilyDescriptor* get_family_descriptor_install_slot(int family_id)
+{
+    if (!s_registry.is_initialized())
+        init_family_registry();
+    return s_registry.install_slot(family_id);
+}
+
+void reset_family_registry_mod_slots()
+{
+    if (!s_registry.is_initialized())
+        init_family_registry();
+    s_registry.reset_mod_slots();
+}
+
+int first_unpopulated_core_family_slot()
+{
+    if (!s_registry.is_initialized())
+        init_family_registry();
+    return s_registry.first_unpopulated_core_slot();
+}
+
+void require_core_families_installed(const char* context)
+{
+    struct OrderCheck {
+        const char* order;
+        int (*first_gap)();
+    };
+    static const OrderCheck kChecks[] = {
+        {"living", first_unpopulated_core_family_slot},
+        {"weapon", first_unpopulated_core_weapon_family_slot},
+        {"effect", first_unpopulated_core_effect_family_slot},
+        {"treasure", first_unpopulated_core_treasure_family_slot},
+        {"generator", first_unpopulated_core_generator_family_slot},
+    };
+    for (const OrderCheck& check : kChecks) {
+        const int gap = check.first_gap();
+        if (gap < 0)
+            continue;
+        const std::string msg = std::format(
+            "Fatal: {}: no mounted class pack declares {} family {} — the "
+            "core class pack (packs/core/classpack.yaml) is missing or "
+            "malformed",
+            context, check.order, gap);
+        LogError("{}\n", msg);
+        throw std::runtime_error(msg);
+    }
 }

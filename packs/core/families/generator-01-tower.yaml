@@ -1,0 +1,20 @@
+# core:tower — split from classpack.yaml (families load in sorted filename order)
+families:
+  generator:
+    - id: core:tower
+      wire_id: 1
+      name: "TOWER"
+      default_weapon: core:mage
+      has_lifetime: false
+      spawn_ani_type: 3
+      clear_owner: true
+      sprite: ~
+      animation: ~
+      editor_label: "MAGE TOWER"
+      glyph: "T"
+      glyph_ascii: "T"
+      glyph_color: default
+      glyph_bold: false
+      glyph_transparent: false
+      radar_color: none
+      radar_jitter: 0

@@ -12,6 +12,8 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -118,6 +120,24 @@ GameWorld::GameWorld(std::uint32_t seed)
       rng_(seed)
 {
     mysmoother.set_rng(&rng_);
+}
+
+og::script::WorldScripts& GameWorld::scripts()
+{
+    // Rebuild when the mounted pack set changed (campaign packs mount after
+    // world creation; tests remount freely). Rebuild timing is the first
+    // dispatch after the change — identical on every peer given identical
+    // mount sequencing, so this stays deterministic. The build generation
+    // covers scripts AND og.use lib modules (pack_scripts_build_generation);
+    // comparing against the script counter alone would mismatch forever
+    // once a lib mutation happened and rebuild the VM on every dispatch.
+    if (scripts_ != nullptr &&
+        scripts_->built_generation() !=
+            og::script::pack_scripts_build_generation())
+        scripts_.reset();
+    if (scripts_ == nullptr)
+        scripts_ = std::make_unique<og::script::WorldScripts>();
+    return *scripts_;
 }
 
 GameWorld::~GameWorld()
@@ -564,6 +584,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     if (!entity_factory)
         return nullptr;
 
+    // Create the walker
     auto w = entity_factory(order, family);
     if (!w)
         return nullptr;
@@ -589,7 +610,14 @@ walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
     if (order == Order::Weapon)
         return add_to_list(order, family, weaplist, false, atstart);
 
-    return add_to_list(order, family, oblist, order == Order::Living, atstart);
+    walker* added =
+        add_to_list(order, family, oblist, order == Order::Living, atstart);
+    // Level-script on_entity_spawn: sim-authored livings/generators only
+    // (snapshot/replay insertion paths bypass add_ob and stay silent).
+    if (added != nullptr &&
+        (order == Order::Living || order == Order::Generator))
+        og::script::hooks::level_entity_spawn(added);
+    return added;
 }
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
@@ -606,6 +634,7 @@ short GameWorld::remove_ob(walker* ob)
 {
     auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
 
+    // most common case
     auto& weapons = weaplist.raw_mutable();
     auto e = std::find_if(weapons.begin(), weapons.end(), pred);
     if (e != weapons.end())
@@ -660,9 +689,11 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
         return false;
 
+    // Are we ethereal?
     if (ob->stats()->query_bit_flags(BIT_ETHEREAL))
         return true;
 
+    // Zardus: PORT: Does the grid exist?
     if (!fg.valid())
         return false;
 
@@ -674,11 +705,13 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     const bool has_decor =
         dec.valid() && dec.w == fg.w && dec.h == fg.h;
 
+    // Check if our butt hangs over shorto next grid square
     if ((xover % GRID_SIZE) == 0)
         xtrax = 0;
     if ((yover % GRID_SIZE) == 0)
         xtray = 0;
 
+    // Check grid squares by simulated grid coords.
     const std::int32_t xtarg = (xover / GRID_SIZE) + xtrax;
     const std::int32_t ytarg = (yover / GRID_SIZE) + xtray;
 
@@ -766,6 +799,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                 case PIX_PATH_3:
                 case PIX_PATH_4:
                     break;
+                // trees are usually bad, but we can fly over them
                 case PIX_TREE_M1:
                 case PIX_TREE_ML:
                 case PIX_TREE_MR:
@@ -786,6 +820,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                         break;
                     return false;
 
+                // walls bad, but we can "ethereal" through them by default
                 case PIX_H_WALL1:
                 case PIX_WALL2:
                 case PIX_WALL3:
@@ -1145,10 +1180,13 @@ walker* GameWorld::find_near_foe(walker* ob)
             }
         }
 
+        // change whether we do x or y in each for loop
         ++xchange;
         if ((xchange % 2) == 0)
         {
+            // reverse direction around the search every other for
             resolution = static_cast<short>(-resolution);
+            // increase the search width every other for
             ++spread;
         }
     }
@@ -1164,6 +1202,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         return nullptr;
     }
 
+    // Set our 'default' foe to NULL
     walker* endfoe = nullptr;
     std::int32_t distance = 10000;
     ob->stats()->set_last_distance(10000);
@@ -1194,6 +1233,7 @@ walker* GameWorld::find_far_foe(walker* ob)
     return endfoe;
 }
 
+// This can be slow, so don't call it much
 walker* GameWorld::find_nearest_blood(walker* who)
 {
     if (!who)
@@ -1410,9 +1450,11 @@ void GameWorld::resize_grid(int width, int height)
         return PIX_GRASS1;
     };
 
+    // Create new grid
     const int size = width * height;
     auto new_grid = std::make_unique<unsigned char[]>(size);
 
+    // Copy the map data
     for (int i = 0; i < width; i++)
     {
         for (int j = 0; j < height; j++)
@@ -1424,6 +1466,7 @@ void GameWorld::resize_grid(int width, int height)
         }
     }
 
+    // Delete the old, use the new
     grid.free();
     grid.data = std::move(new_grid);
     grid.frames = 1;
@@ -1435,6 +1478,7 @@ void GameWorld::resize_grid(int width, int height)
 
     mysmoother.set_target(grid);
 
+    // Delete objects that fell off the map
     const int x = 0;
     const int y = 0;
     const int w = grid.w * GRID_SIZE;
@@ -1639,6 +1683,10 @@ void GameWorld::tick()
     {
         last_level_id_ = id;
         level_tick_count_ = 0;
+        // Level-script on_load: fires on each peer's first tick of a level
+        // (fresh start or mid-level join alike — scripts derive state from
+        // the world, not from "how long the level existed elsewhere").
+        og::script::hooks::level_load(this);
     }
     level_tick_count_++;
 
@@ -1658,6 +1706,9 @@ void GameWorld::tick()
         og::sim::classic_respawn_flush_pending(*this);
         return;
     }
+
+    // Level-script on_tick: fixed pre-act point, after the timeout guard.
+    og::script::hooks::level_tick(this);
 
     if (enemy_freeze)
         enemy_freeze--;
@@ -1714,6 +1765,7 @@ void GameWorld::tick()
         {
             if (ob && !ob->dead())
             {
+                // Zardus: while acting, in_act is set
                 ob->set_in_act(true);
                 ob->act();
                 ob->set_in_act(false);
@@ -1722,6 +1774,7 @@ void GameWorld::tick()
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                         level_done = 0;
+                    // Testing .. trying to FORCE foes :)
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
                         ob->set_foe(find_far_foe(ob));
                 }
@@ -1788,6 +1841,7 @@ void GameWorld::tick()
             if (ob->query_order() == Order::Treasure &&
                 ob->family() == FAMILY_EXIT && level_done != 0)
             {
+                // 0 => foes, 1 => no foes but exit, 2 => no foes or exit
                 level_done = 1;
             }
         }

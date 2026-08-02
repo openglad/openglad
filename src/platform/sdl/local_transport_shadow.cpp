@@ -683,7 +683,10 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
         return false;
     }
 
+    // Go to the exit's level
     gameplay_screen.save_data.scen_num = static_cast<short>(destination_level);
+    // Autosave because we escaped to a new level
+    // Save with the new current level
     if (!save_shadow_save_data(gameplay_screen, "withdraw", slot))
         return false;
 

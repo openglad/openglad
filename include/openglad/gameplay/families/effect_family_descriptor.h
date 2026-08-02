@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/core/family_presentation.h>
+
 #include <cstdint>
 
 class walker;
@@ -18,6 +20,19 @@ struct EffectFamilyDescriptor {
     bool loops_animation;     // true = loop cycle; false = one-shot
     bool creates_hit_effect;  // true = creates hit animation on damage (like weapons do)
     std::int32_t init_bit_flags;    // BIT_ flags set on creation in gloader
+
+    // Pack-shipped art + motion (see FamilyDescriptor for the contract).
+    const char* pix_filename = nullptr;
+    const signed char* const* anim_table = nullptr;
+    int anim_row_count = 0;
+
+    // Presentation data; defaults are the legacy `default:` branches.
+    og::FamilyGlyph glyph{U'*', '*', og::GlyphColor::White, false, false};
+    og::RadarBlip radar{};
+
+    // Pack-declared fully-qualified id ("core:bomb"); see FamilyDescriptor
+    // for the contract (borrowed from the ClasspackStore, nullptr = none).
+    const char* declared_id = nullptr;
 
     bool (*on_act)(effect* self);
     bool (*on_death)(effect* self);

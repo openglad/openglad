@@ -29,6 +29,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
@@ -240,6 +241,7 @@ void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
 void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
                                Sint32 info1, Sint32 info2)
 {
+	// Add command to start of list
 	commands.emplace_front();
 
 	if (whatcommand == COMMAND_WALK)
@@ -261,8 +263,8 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	commands.front().commandcount = iterations;
 	// Externally-forced entry (fright/knockback/flee/shove). ONLY this
 	// injector sets the flag; add_command leaves it false. The flag is never
-	// serialized (WP-2 audit: snapshots clear queues on apply, saves/replays
-	// never persist commands).
+	// serialized: snapshots clear queues on apply, and saves/replays never
+	// persist commands.
 	commands.front().forced = true;
 }
 
@@ -661,11 +663,8 @@ void statistics::hit_response(walker  *who)
 		foe = who;
 
 	auto* fd = get_family_descriptor(myfamily);
-	if (fd && fd->hit_response)
-	{
-		fd->hit_response(this, foe);
+	if (og::script::hooks::hit_response(fd, this, foe))
 		return;
-	}
 
 	// Default: attack our attacker
 	if (controller_->check_special() && !rng(3) )
@@ -1297,6 +1296,7 @@ bool statistics::walk_to_foe()
 			}
 			else // our foe has moved; we need a new one
 			{
+				// Zardus: PORT: needs to check for commandlist
 				if (!commands.empty())
 					commands.front().commandcount = 0;
 			}
@@ -1339,6 +1339,7 @@ bool statistics::walk_to_foe()
 	// Are we really really close? Stop searching, then :)  But never abandon a
 	// cross-floor chase on 2D proximity — the foe is on another floor and we
 	// still need to reach the Z-stair and climb.
+	// Zardus: lets check if commandlist exists, too
 	if (!cross_floor && tempdistance < 30 && !commands.empty())
 	{
 		commands.front().commandcount = 0;

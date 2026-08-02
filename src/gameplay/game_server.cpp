@@ -614,6 +614,26 @@ ServerPollResult poll_server_messages(
                 break;
             }
 
+            case og::sim::kPackRequestMessageType:
+            {
+                // Pack transfers are a lobby-phase concern (LobbyServer). A
+                // stale request that slips into the gameplay stream is
+                // legal traffic and simply ignored by the dispatcher — it
+                // must not count as a malformed peer.
+                const auto decoded =
+                    og::sim::deserialize_pack_request_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PackRequest;
+                typed_message.pack_request =
+                    std::make_shared<og::sim::PackRequestMessage>(*decoded);
+                break;
+            }
+
             default:
                 malformed_peers.insert(message.peer_id);
                 continue;
@@ -1998,6 +2018,12 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::InitialSetup:
         case TypedReceivedMessageKind::ExitPromptBroadcast:
         case TypedReceivedMessageKind::ControlChange:
+        // Pack transfers belong to the lobby phase (LobbyServer); the
+        // gameplay server ignores stragglers.
+        case TypedReceivedMessageKind::PackManifest:
+        case TypedReceivedMessageKind::PackRequest:
+        case TypedReceivedMessageKind::PackFileChunk:
+        case TypedReceivedMessageKind::PackTransferDone:
             break;
         }
     }

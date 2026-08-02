@@ -20,6 +20,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/effect_family_descriptor.h>
@@ -345,8 +346,7 @@ bool walker::attack(walker  *target)
         }
         //special effects
         const auto* wfd = get_weapon_family_descriptor(family());
-        if (wfd && wfd->on_hit_target)
-            wfd->on_hit_target(this, target, owner());
+        og::script::hooks::weapon_on_hit_target(wfd, this, target, owner());
 
     }
 

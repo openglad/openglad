@@ -3,8 +3,8 @@
 
 Usage: validate_schema.py DUMP.json [DUMP.json ...]
 
-Reads each dump and asserts the shape promised by schema v1 in
-`.plan/parity-harness-design.md`:
+Reads each dump and asserts the shape promised by schema v1
+(emitted by tests/parity/state_dump.h):
 
 - top-level keys: effects, events, level_done, level_tick_count, rng_state,
   schema_version, score_per_team, tick, walkers, weapons (lexicographically

@@ -676,19 +676,27 @@ private:
 // On return, *fatal is true only for footprint violations (malformed
 // "footprint" object or w/h outside [1,255]) — the caller must reject the
 // sprite instead of taking the usual malformed-sidecar single-frame fallback.
+//
+// `prefix` is the search prefix that actually opened the PNG ("pix/" for
+// core art, "" for a sprite named by full virtual path — a class pack's
+// packs/<id>/sprites/<name>.png). The sidecar is resolved with that same
+// prefix and no other, so a sprite's frame metadata always comes from
+// beside the sprite: a file under pix/ can never shadow a pack's own
+// sidecar (pix/ is user-mountable through the sprite_sheet setting), and a
+// pack's sidecar can never be applied to core art.
 static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
+                                                      const char* prefix,
                                                       bool* fatal)
 {
     using namespace og::io;
     *fatal = false;
-    const std::string rel = sidecar_path_for(filename);
-    auto infile = og_open_read("pix/", rel.c_str());
-    if (!infile) infile = og_open_read(rel.c_str());
+    const std::string rel = std::string(prefix) + sidecar_path_for(filename);
+    auto infile = og_open_read(rel.c_str());
     if (!infile) return std::nullopt; // absent — silent
 
     auto warn = [&](const char* why) {
-        LogWarn("malformed Aseprite sidecar pix/{}: {}\n", rel, why);
-        TRACE("io", "malformed Aseprite sidecar pix/%s: %s", rel.c_str(), why);
+        LogWarn("malformed Aseprite sidecar {}: {}\n", rel, why);
+        TRACE("io", "malformed Aseprite sidecar %s: %s", rel.c_str(), why);
     };
 
     infile->seek(0, 2);
@@ -714,9 +722,9 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
     JsonReader reader(text);
     if (!reader.parse(meta)) {
         if (meta.footprint_malformed) {
-            LogError("Invalid \"footprint\" in sprite sidecar pix/{}: {}\n",
+            LogError("Invalid \"footprint\" in sprite sidecar {}: {}\n",
                      rel, reader.why());
-            TRACE("io", "invalid footprint in sidecar pix/%s: %s",
+            TRACE("io", "invalid footprint in sidecar %s: %s",
                   rel.c_str(), reader.why());
             *fatal = true;
             return std::nullopt;
@@ -753,9 +761,9 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
         if (meta.foot_w < 1 || meta.foot_h < 1
             || static_cast<unsigned>(meta.foot_w) > kMaxPixieDimension
             || static_cast<unsigned>(meta.foot_h) > kMaxPixieDimension) {
-            LogError("Sprite footprint out of range [1,255] for pix/{}: "
+            LogError("Sprite footprint out of range [1,255] for {}: "
                      "{}x{}\n", rel, meta.foot_w, meta.foot_h);
-            TRACE("io", "footprint out of range in sidecar pix/%s: %dx%d",
+            TRACE("io", "footprint out of range in sidecar %s: %dx%d",
                   rel.c_str(), meta.foot_w, meta.foot_h);
             *fatal = true;
             return std::nullopt;
@@ -771,32 +779,42 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
 // ---------------------------------------------------------------------------
 // Reads a PNG sprite file via lodepng. Each pixel value is a palette index.
 // Frame metadata comes from a per-PNG Aseprite "Hash"-format JSON sidecar
-// (pix/<basename>.json); single-frame sprites have no sidecar.
+// (<basename>.json beside the PNG); single-frame sprites have no sidecar.
+//
+// Two search prefixes, in order: "pix/" (core art passes a bare filename)
+// and then the name as given (a class pack passes a full virtual path such
+// as packs/<id>/sprites/<name>.png). Whichever one opens the PNG is the one
+// the sidecar lookup uses too — see load_aseprite_sidecar.
 
 PixieData read_pixie_file(const char* filename)
 {
     using namespace og::io;
     PixieData result;
 
-    auto infile = og_open_read("pix/", filename);
-    if (!infile)
-        infile = og_open_read(filename);
+    const char* prefix = "pix/";
+    auto infile = og_open_read(prefix, filename);
     if (!infile) {
-        LogError("Cannot open sprite file: pix/{}\n", filename);
+        prefix = "";
+        infile = og_open_read(filename);
+    }
+    if (!infile) {
+        LogError("Cannot open sprite file: {} (searched pix/ and the raw "
+                 "path)\n", filename);
         return result;
     }
+    const std::string path = std::string(prefix) + filename;
 
     // Read entire file into memory for lodepng
     infile->seek(0, 2); // SEEK_END
     auto file_size = infile->tell();
     infile->seek(0, 0); // SEEK_SET
     if (file_size <= 0) {
-        LogError("Empty sprite file: pix/{}\n", filename);
+        LogError("Empty sprite file: {}\n", path);
         return result;
     }
     if (file_size > kMaxSpritePngBytes) {
-        LogError("Sprite PNG is too large: pix/{} ({} bytes)\n",
-                 filename, static_cast<long long>(file_size));
+        LogError("Sprite PNG is too large: {} ({} bytes)\n",
+                 path, static_cast<long long>(file_size));
         return result;
     }
 
@@ -804,7 +822,7 @@ PixieData read_pixie_file(const char* filename)
     auto file_data = std::make_unique<unsigned char[]>(png_size);
     if (infile->read(file_data.get(), 1, png_size) != png_size)
     {
-        LogError("Failed to read sprite file: pix/{}\n", filename);
+        LogError("Failed to read sprite file: {}\n", path);
         return result;
     }
 
@@ -815,7 +833,7 @@ PixieData read_pixie_file(const char* filename)
     const unsigned inspect_err =
         lodepng_inspect(&png_w, &png_h, &state, file_data.get(), png_size);
     if (inspect_err != 0) {
-        LogError("Failed to inspect PNG: pix/{}: {}\n", filename,
+        LogError("Failed to inspect PNG: {}: {}\n", path,
                  lodepng_error_text(inspect_err));
         return result;
     }
@@ -823,8 +841,8 @@ PixieData read_pixie_file(const char* filename)
         static_cast<std::uint64_t>(png_w) * static_cast<std::uint64_t>(png_h);
     if (png_w > kMaxPixieDimension || png_h > kMaxPixieStackedHeight ||
         pixel_count > kMaxPixiePixels) {
-        LogError("Sprite PNG dimensions too large: pix/{} ({}x{})\n",
-                 filename, png_w, png_h);
+        LogError("Sprite PNG dimensions too large: {} ({}x{})\n",
+                 path, png_w, png_h);
         return result;
     }
 
@@ -832,20 +850,20 @@ PixieData read_pixie_file(const char* filename)
     const unsigned decode_err = lodepng::decode(
         pixels, png_w, png_h, state, file_data.get(), png_size);
     if (decode_err != 0) {
-        LogError("Failed to decode PNG: pix/{}: {}\n", filename, lodepng_error_text(decode_err));
+        LogError("Failed to decode PNG: {}: {}\n", path, lodepng_error_text(decode_err));
         return result;
     }
 
     const auto colortype = state.info_png.color.colortype;
     const auto bitdepth = state.info_png.color.bitdepth;
     if (colortype != LCT_PALETTE || bitdepth != 8) {
-        LogError("Sprite PNG must be indexed 8-bit: pix/{}\n", filename);
+        LogError("Sprite PNG must be indexed 8-bit: {}\n", path);
         return result;
     }
 
     if (state.info_png.color.palettesize != 256) {
-        LogError("Sprite PNG palette must have 256 entries: pix/{} (got {})\n",
-                 filename, static_cast<unsigned>(state.info_png.color.palettesize));
+        LogError("Sprite PNG palette must have 256 entries: {} (got {})\n",
+                 path, static_cast<unsigned>(state.info_png.color.palettesize));
         return result;
     }
     const unsigned char* pal = state.info_png.color.palette;
@@ -856,16 +874,16 @@ PixieData read_pixie_file(const char* filename)
             const unsigned stored = pal[i * 4 + c];
             const int diff = static_cast<int>(stored) - static_cast<int>(expected8);
             if (diff < -1 || diff > 1) {
-                LogError("Sprite PNG palette mismatch at entry {} channel {}: pix/{} "
+                LogError("Sprite PNG palette mismatch at entry {} channel {}: {} "
                          "(stored {}, expected {})\n",
-                         i, c, filename, stored, expected8);
+                         i, c, path, stored, expected8);
                 return result;
             }
         }
     }
 
     if (pixels.size() != static_cast<std::size_t>(png_w) * static_cast<std::size_t>(png_h)) {
-        LogError("Unexpected indexed PNG size for pix/{}\n", filename);
+        LogError("Unexpected indexed PNG size for {}\n", path);
         return result;
     }
 
@@ -876,26 +894,25 @@ PixieData read_pixie_file(const char* filename)
     int foot_w = 0;
     int foot_h = 0;
     bool sidecar_fatal = false;
-    if (auto info = load_aseprite_sidecar(filename, &sidecar_fatal)) {
+    if (auto info = load_aseprite_sidecar(filename, prefix, &sidecar_fatal)) {
         frames = info->frames;
         frame_h = info->frame_h;
         foot_w = info->foot_w;
         foot_h = info->foot_h;
     } else if (sidecar_fatal) {
-        LogError("Rejecting sprite pix/{}: invalid sidecar footprint\n",
-                 filename);
+        LogError("Rejecting sprite {}: invalid sidecar footprint\n", path);
         return result;
     }
 
     if (png_w > 255 || frame_h > 255 || frames > 255) {
-        LogError("Sprite dimensions too large for PixieData: pix/{}\n", filename);
+        LogError("Sprite dimensions too large for PixieData: {}\n", path);
         return result;
     }
 
     const auto expected_h = static_cast<unsigned>(frame_h) * static_cast<unsigned>(frames);
     if (expected_h != png_h) {
-        LogError("Sprite sidecar mismatch for pix/{}: expected total height {}, got {}\n",
-                 filename, expected_h, png_h);
+        LogError("Sprite sidecar mismatch for {}: expected total height {}, got {}\n",
+                 path, expected_h, png_h);
         return result;
     }
 

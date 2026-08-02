@@ -252,7 +252,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x09, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0a, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -919,7 +919,7 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         return bytes;
     };
 
-    const std::array<std::pair<std::uint8_t, std::uint16_t>, 18> cases = {
+    const std::array<std::pair<std::uint8_t, std::uint16_t>, 22> cases = {
         std::pair{og::sim::kSnapshotMessageType, 1u},
         std::pair{og::sim::kDeltaSnapshotMessageType, 1u},
         std::pair{og::sim::kInputMessageType, 1u},
@@ -938,6 +938,10 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         std::pair{og::sim::kPauseResponseMessageType, 0u},
         std::pair{og::sim::kControlChangeMessageType, 1u},
         std::pair{og::sim::kSnapshotHashCheckMessageType, 1u},
+        std::pair{og::sim::kPackManifestMessageType, 1u},
+        std::pair{og::sim::kPackRequestMessageType, 1u},
+        std::pair{og::sim::kPackFileChunkMessageType, 1u},
+        std::pair{og::sim::kPackTransferDoneMessageType, 1u},
     };
 
     for (const auto& [message_type, payload_length] : cases)
@@ -968,8 +972,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x09, 0x01, 0x17, 0x00,
-            0x09, 0x09, 0x03,
+            0x0a, 0x01, 0x17, 0x00,
+            0x0a, 0x0a, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
