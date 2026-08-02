@@ -261,7 +261,7 @@ bool cell_equivalent(GameWorld& old_world, GameWorld& new_world,
 
 // The door-frame orientation predicate, applied at load
 // (level_file_io.cpp read_level_body) and at runtime death
-// (packs/core/scripts/weapon_door.lua) — one audit covers both.
+// (packs/core/lib/weapon_door.lua) — one audit covers both.
 bool door_frame_wall_above(GameWorld& world, walker* door)
 {
     return world.mysmoother.query_genre_x_y(

@@ -44,10 +44,16 @@ namespace {
 constexpr const char* kPackCampaignId = "org.test.packcarrier";
 constexpr const char* kEmbeddedScript = "og.log('embedded pack loaded')\n";
 
+// A pack's Lua, wherever the mount filed it: behavior scripts under
+// scripts/ and family declarations under families/ are two registries and
+// a pack may ship either.
 bool script_registered(const char* pack_id)
 {
     for (const auto& s : og::script::pack_scripts())
         if (s.pack_id == pack_id)
+            return true;
+    for (const auto& c : og::script::pack_family_chunks())
+        if (c.pack_id == pack_id)
             return true;
     return false;
 }

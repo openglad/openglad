@@ -1,0 +1,25 @@
+-- core:fireball — the weapon declaration (cookbook: docs/lua-classpacks-design.md §3).
+
+og.family("weapon", {
+  id = "core:fireball",
+  wire_id = 3,
+  name = "FIREBALL",
+  fire_sound = 3,
+  skip_sit_notify = false,
+  is_auto_attackable = false,
+  flags = { "MAGICAL" },
+  init_lifetime = 0,
+  init_ani_type = 0,
+  vz = 0,
+  gravity = 0,
+  sizez = 0,
+  can_drop_floors = false,
+  sprite = og.NIL,
+  glyph = "*",
+  glyph_ascii = "*",
+  glyph_color = "red",
+  glyph_bold = true,
+  glyph_transparent = false,
+  radar_color = "none",
+  radar_jitter = 0,
+})

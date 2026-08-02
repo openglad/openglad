@@ -16,6 +16,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -40,8 +41,15 @@ protected:
     {
         init_all_registries();
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
-    void TearDown() override { clear_pack_scripts(); }
+    void TearDown() override
+    {
+        clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
+    }
 };
 
 }  // namespace
@@ -218,11 +226,15 @@ protected:
         previous_ = current_game;
         current_game = &context;
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
 
     ~SpecialsDispatchTest() override
     {
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
         current_game = previous_;
     }
 
@@ -747,11 +759,15 @@ protected:
         previous_ = current_game;
         current_game = &context;
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
 
     ~ScriptBindingTest() override
     {
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
         current_game = previous_;
     }
 

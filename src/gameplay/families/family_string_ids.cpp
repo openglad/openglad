@@ -109,7 +109,7 @@ struct BitFlagName {
     std::int32_t value;
 };
 
-// classpack.yaml init_bit_flags vocabulary (statistics.h BIT_* constants).
+// The declaration's `flags` vocabulary (statistics.h BIT_* constants).
 constexpr BitFlagName kBitFlagNames[] = {
     {"FLYING", BIT_FLYING},
     {"SWIMMING", BIT_SWIMMING},

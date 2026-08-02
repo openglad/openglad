@@ -43,8 +43,9 @@ scored only against source declarations (S records) in that same dump, keyed
 by (chunk name, sha256 of the source). When the key was the chunk name alone,
 merged across dumps last-writer-wins, one process's hits could be scored
 against a source a DIFFERENT process declared under the same name: a dump
-declaring a 2-line stub for packs/core/scripts/archmage.lua while recording
-hits on the real file's uncovered lines took archmage from 362/382 to 382/382
+declaring a 2-line stub for packs/core/families/living-17-archmage.lua while
+recording hits on the real file's uncovered lines took archmage from 362/382 to
+382/382
 without a line of it running. Now those hits bind to the stub's digest, the
 stub's bytes are not repository content, and the run stops.
 

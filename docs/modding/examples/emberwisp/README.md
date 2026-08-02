@@ -2,12 +2,11 @@
 
 A minimal but complete mod pack. Nothing in it is inherited from a core
 family: it ships its own sprite sheet, its own animation table, its own
-descriptor data and its own behavior script.
+descriptor data and its own behavior.
 
 ```
 emberwisp/
-├── classpack.yaml            one living family, wire_id: auto
-├── scripts/emberwisp.lua     behavior hooks
+├── families/emberwisp.lua    one living family: data, hooks, its special
 └── sprites/
     ├── emberwisp.png         16x16, 8 frames, indexed to the engine palette
     └── emberwisp.json        Aseprite "Hash" sidecar describing the frames
@@ -22,16 +21,16 @@ game. Mount it explicitly instead:
 
 ```cpp
 og::resources::mount("docs/modding/examples/emberwisp", "packs/emberwisp/", 1);
-og::resources::refresh_pack_scripts();   // rescans scripts + reinstalls YAML
+og::resources::refresh_pack_scripts();   // re-evaluates and reinstalls
 loader.reload_graphics();                // picks up the pack's sprites
 ```
 
 The mount point decides the pack id — `emberwisp`, the directory name under
-`packs/` — and it is what makes the `sprite:` path resolve.
+`packs/` — and it is what makes the `sprite` path resolve.
 
-## What the script demonstrates
+## What the declaration demonstrates
 
-`scripts/emberwisp.lua` is written in the current pack idiom
+`families/emberwisp.lua` is written in the current pack idiom
 ([docs/lua-style.md](../../../lua-style.md)) and exercises most of the
 modern surface in ~60 lines:
 
@@ -40,16 +39,15 @@ modern surface in ~60 lines:
   `self.busy = ...` assign through the same narrowing setters as the
   method spellings. (`busy` is also a method name, so its *read* stays
   `self:busy()` — reads resolve method-first.)
-- **A `tuning:` block** — every balance constant (`flare_cost`,
-  `burn_floor`, `burst_range`, `stun_base`, `stun_per_level`) lives in
-  `classpack.yaml` and is read back with `og.tuning(self)`, a frozen
-  read-only table. Rebalancing the wisp is a YAML edit.
-- **A `specials` table** — `specials = { flare_burst = flare_burst }`
-  replaces a hand-written `current_special()` ladder. The key is the `id`
-  the YAML declares for that slot, so the two files name each other and a
-  typo is a load error rather than a handler that never runs. A slot with
-  no entry and no `default` is a successful no-op; answering `false` from
-  the entry means "did not fire" and skips the special's `mp_cost`.
+- **A `tuning` block** — every balance constant (`flare_cost`,
+  `burn_floor`, `burst_range`, `stun_base`, `stun_per_level`) sits a screen
+  above the function that reads it, and comes back through
+  `og.tuning(self)` as a frozen read-only table.
+- **A special that carries its own handler** — the entry declares
+  `id`, `name`, `mp_cost` and `cast = flare_burst` together, so the cost
+  and the code it charges for cannot drift apart. A declared slot that is
+  castable with nothing to run is a pack error; answering `false` from the
+  handler means "did not fire" and skips the `mp_cost`.
 - **`og.rand` vs `og.rand0`** — the create-time roll has a positive
   literal bound, so it uses plain `og.rand` (its `n <= 0` error is a
   tripwire); the per-foe stun roll's bound is tuning-driven and may be
@@ -60,14 +58,14 @@ modern surface in ~60 lines:
   `og.clamp` sanity-bounds the modder-supplied `burst_range`.
 
 It deliberately does NOT use `og.use`: that mechanism is for helpers
-shared by two or more files, and a one-script pack keeps helpers as
+shared by two or more files, and a one-family pack keeps helpers as
 `local function`s (style rule S4). See `packs/core/lib/` for real
 modules.
 
 ## The three things worth copying
 
-**Sprite paths are virtual-filesystem paths.** `sprite: packs/emberwisp/
-sprites/emberwisp.png` is looked up as-is. Core art passes bare names
+**Sprite paths are virtual-filesystem paths.** `sprite =
+"packs/emberwisp/sprites/emberwisp.png"` is looked up as-is. Core art passes bare names
 (`footman.png`), which resolve under `pix/`; a pack passes the full path
 starting at its mount point. The frame sidecar is resolved next to the PNG
 that actually opened, so a pack's `.json` sits beside its `.png`.
@@ -77,10 +75,10 @@ single-frame sprite. `meta.size` must equal `frame w` x `frame h * frame
 count` or the sprite is rejected — that cross-check is what catches a
 sidecar drifting away from its art.
 
-**Animation rows are `ani_type * 8 + curdir`.** `rows: 16` gives a family
+**Animation rows are `ani_type * 8 + curdir`.** `rows = 16` gives a family
 two ani_types over eight facings: 0 = walk, 1 = attack. Declaring fewer
-rows than `rows:` asks for repeats them *cyclically*, so two declared rows
-over `rows: 16` alternate walk/attack per facing rather than filling eight
+rows than `rows` asks for repeats them *cyclically*, so two declared rows
+over `rows = 16` alternate walk/attack per facing rather than filling eight
 of each. Write every row out unless the cycle is what you want.
 
 The row count is also load-bearing beyond looks: it becomes

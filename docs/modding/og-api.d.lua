@@ -471,7 +471,7 @@
 ---@field add_ob fun(order: og.OrderName, fam: integer, atstart: any): og.Walker?
 ---@field add_weap_ob fun(order: og.OrderName, fam: integer): og.Walker?
 ---@field ani_frame fun(entity: og.Walker, row: integer, index: integer): integer? # og.ani_frame(entity, row, index) → frame | nil.
----@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for row-walking pack hooks such as packs/core/scripts/...
+---@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for row-walking pack hooks such as packs/core/lib/weap...
 ---@field anims fun(name: string, arg2: table)
 ---@field apply_difficulty_scaling fun(lv: og.Walker, level: integer, arg3: number, arg4: number, arg5: number, arg6: number)
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
@@ -550,7 +550,7 @@
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
 ---@field trunc fun(x: number): integer
----@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
+---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
 ---@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
 ---@field world_can_exit_whenever fun(): boolean

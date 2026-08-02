@@ -1142,7 +1142,7 @@ int og_query_object_passable(lua_State* L)
 // this one does not, because smoother::query_genre_x_y does not). Compare
 // against og.C.TYPE_*. The core door's orientation check is the only sim
 // caller that reaches terrain by genre rather than by passability; see
-// packs/core/scripts/weapon_door.lua. query_genre_x_y is total —
+// packs/core/lib/weapon_door.lua. query_genre_x_y is total —
 // out-of-range tiles report TYPE_GRASS — so there is no nil case.
 int og_query_genre(lua_State* L)
 {
@@ -1495,14 +1495,14 @@ int og_scare_radius(lua_State* L)
 // og.tuning — per-family tuning constants
 // ---------------------------------------------------------------------------
 
-// og.tuning(self) → the `tuning:` map self's family declared in
-// classpack.yaml, as a frozen read-only table — key access only; writes
+// og.tuning(self) → the `tuning` map self's family declared, as a frozen
+// read-only table — key access only; writes
 // raise; no iteration is provided (and none is needed, so the no-pairs rule
 // never comes up). A family that declared nothing gets an EMPTY frozen
 // table, so `og.tuning(self).some_key` is nil rather than an error and a
 // script can carry defaults. Tuning is load-time pack content exactly like
-// the rest of the descriptor: it rides multiplayer transfer inside
-// classpack.yaml and never appears in a snapshot. Views are cached per VM
+// the rest of the descriptor: it rides multiplayer transfer inside the
+// declaration and never appears in a snapshot. Views are cached per VM
 // per (order, family) and rebuilt when a pack reinstall bumps the store's
 // generation — a world VM built before a remount keeps serving the values
 // its scripts were loaded against, matching how the scripts themselves
@@ -1594,7 +1594,7 @@ int ani_row_len(const signed char* seq)
 
 // og.ani_frame(entity, row, index) → frame | nil.
 // The single-frame read `self->ani[row][index]` used by
-// packs/core/scripts/effect_chain.lua. nil means the animation table, row, or
+// packs/core/lib/effect_chain.lua. nil means the animation table, row, or
 // index does not exist, so the caller skips its set_frame. The
 // sentinel slot itself is addressable (index == length) so a legitimately
 // empty row reads back the same -1 the C++ would have handed set_frame.
@@ -1614,7 +1614,7 @@ int og_ani_frame(lua_State* L)
 
 // og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to
 // (excluding) the -1 sentinel, for row-walking pack hooks such as
-// packs/core/scripts/weapon_animate.lua. nil covers every case where the
+// packs/core/lib/weapon_animate.lua. nil covers every case where the
 // engine-side lookup stops early: no table, row past ani_count, null row, or
 // missing sentinel. An empty table is a present-but-zero-length sequence.
 int og_ani_row(lua_State* L)

@@ -270,7 +270,8 @@ recording would close it, and that is deliberately not built yet.
 hook for the instruction budget. When the recorder is armed it installs the
 same budget hook with `LUA_MASKLINE` folded into the mask, and the hook
 records `(chunk, currentline)` on line events. Chunk names are the paths the
-resources layer loads packs under (`packs/core/scripts/soldier.lua`), so they
+resources layer loads packs under
+(`packs/core/families/living-00-soldier.lua`), so they
 are already repo-relative and drop straight into an lcov `SF:` record.
 
 Arming is a **runtime** decision — set `OPENGLAD_LUA_COVERAGE` to an **absolute
@@ -413,7 +414,8 @@ A dump's hits are scored only against the declarations in that same dump,
 keyed by `(chunk, sha256)`. While declarations merged across dumps under the
 chunk name alone — one shared slot, last writer wins — one process's hits
 could be scored against bytes a *different* process declared under the same
-name: a dump declaring a two-line stub as `packs/core/scripts/archmage.lua`
+name: a dump declaring a two-line stub as
+`packs/core/families/living-17-archmage.lua`
 while recording hits on the real file's uncovered lines took archmage from
 362/382 to 382/382 without a line of it running. Hits now bind to the digest
 their own process declared; the stub's digest is not repository content, and

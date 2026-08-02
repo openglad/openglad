@@ -24,6 +24,7 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/effect_family_descriptor.h>
 #include <openglad/gameplay/generator_family_descriptor.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -422,11 +423,12 @@ TEST(FamilyStringIds, reader_vocabulary)
 
 namespace {
 
-// Parses the committed core pack in its shipped split layout: the
-// header-only classpack.yaml first, then every families/*.yaml in sorted
-// filename order, into ONE ClasspackData — the same concatenation contract
-// install_classpacks() applies. Every committed-core test goes through
-// this, so the tests read the pack the way the loader does.
+// Loads the committed core pack the way the loader does: every
+// families/*.lua in sorted filename order, evaluated by the declaration
+// pass into ONE ClasspackData. Core ships no classpack.yaml and no
+// descriptor YAML any more — the header is og.pack in families/00-pack.lua
+// — so this reads the Lua front end only. Every committed-core test goes
+// through it.
 void load_committed_core_pack(ClasspackData& data)
 {
     const auto read_all = [](const std::filesystem::path& p) {
@@ -435,26 +437,28 @@ void load_committed_core_pack(ClasspackData& data)
         buffer << in.rdbuf();
         return buffer.str();
     };
-    ASSERT_TRUE(std::filesystem::exists("packs/core/classpack.yaml"))
-        << "packs/core/classpack.yaml missing (run from the repo root)";
-    ASSERT_TRUE(parse_classpack_yaml(read_all("packs/core/classpack.yaml"),
-                                     data, "packs/core"));
-    ASSERT_TRUE(data.living.empty())
-        << "core classpack.yaml is the header only; families live in "
-           "families/*.yaml";
-    std::vector<std::filesystem::path> family_files;
+    ASSERT_FALSE(std::filesystem::exists("packs/core/classpack.yaml"))
+        << "core is v3: the pack header is og.pack in families/00-pack.lua";
+    std::vector<std::filesystem::path> family_chunks;
     for (const auto& entry :
          std::filesystem::directory_iterator("packs/core/families"))
     {
-        if (entry.path().extension() == ".yaml")
-            family_files.push_back(entry.path());
+        ASSERT_NE(entry.path().extension(), ".yaml")
+            << entry.path() << ": families are Lua in v3";
+        if (entry.path().extension() == ".lua")
+            family_chunks.push_back(entry.path());
     }
-    std::sort(family_files.begin(), family_files.end());
-    ASSERT_EQ(family_files.size(), 73u);
-    for (const std::filesystem::path& p : family_files)
-        ASSERT_TRUE(parse_classpack_yaml(read_all(p), data,
-                                         p.string().c_str()))
-            << p;
+    std::sort(family_chunks.begin(), family_chunks.end());
+    // 71 declaration files (the slime trio shares one) plus the header.
+    ASSERT_EQ(family_chunks.size(), 72u);
+    for (const std::filesystem::path& p : family_chunks) {
+        og::script::register_pack_family_chunk(
+            {"core", "packs/core/families/" + p.filename().string(),
+             read_all(p)});
+    }
+    const og::script::DeclareResult declared =
+        og::script::declare_pack_families("core", data);
+    ASSERT_TRUE(declared.ok) << declared.error;
 }
 
 }  // namespace
@@ -465,7 +469,11 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
     load_committed_core_pack(data);
     if (::testing::Test::HasFatalFailure())
         return;
+    // The og.pack header, which is all families/00-pack.lua declares.
     ASSERT_EQ(data.pack, "core");
+    ASSERT_EQ(data.version, "1");
+    ASSERT_EQ(data.title, "OpenGlad Core Families");
+    ASSERT_EQ(data.authors, "FSGames / the OpenGlad project");
     ASSERT_EQ(data.living.size(), static_cast<std::size_t>(NUM_FAMILIES));
     ASSERT_EQ(data.weapons.size(), 20u);
     ASSERT_EQ(data.effects.size(), 13u);
@@ -1079,7 +1087,7 @@ TEST(FamilyStringIds, two_packs_may_ship_the_same_family_name)
 // With the real core pack installed, EVERY id it declares — all 73 across
 // the five orders, positional escapes included — must resolve to the byte
 // the pack pinned. This is what every `og.family_id(order, "core:...")` in
-// packs/core/scripts/*.lua depends on.
+// packs/core/families/*.lua depends on.
 TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
 {
     ModSlotGuard mods;

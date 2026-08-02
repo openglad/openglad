@@ -85,7 +85,7 @@ The level-driven wrappers produce these values at levels 1, 5, 10, 13, 14,
 ### 2.1 Mage freeze time
 
 The player-team branch in
-[`mage.lua`](../packs/core/scripts/mage.lua) adds
+[`living-03-mage.lua`](../packs/core/families/living-03-mage.lua) adds
 `freeze_base + freeze_per_level * level`, currently `20 + 11L`, to the
 world's pending `enemy_freeze` bank. The per-cast formula is unchanged. The
 engine clamps the accumulated bank to 300 after living-special dispatch, so a
@@ -96,7 +96,7 @@ The non-player branch still grants `min(5 + 2L, 50)` bonus rounds to allies.
 
 ### 2.2 Ghost scare duration
 
-[`effect_ghost_scare.lua`](../packs/core/scripts/effect_ghost_scare.lua)
+[`effect_ghost_scare.lua`](../packs/core/lib/effect_ghost_scare.lua)
 computes `soften(25L, 325, 375)`. For player characters, the existing
 constitution draw is subtracted afterward. Repeated scares use the fright
 merge in §3.2, so their queue time does not sum.
@@ -108,7 +108,7 @@ The scare radius is `min(50 + 10L, 250)` pixels. It is unchanged through level
 
 ### 2.4 Orc yell stun
 
-[`orc.lua`](../packs/core/scripts/orc.lua) keeps both original draws:
+[`living-14-orc.lua`](../packs/core/families/living-14-orc.lua) keeps both original draws:
 
 ```text
 add = max(0, 10 + rand0(10L) - rand0(10 * constitution))
@@ -135,7 +135,7 @@ roll mappings are `79 -> 79`, `99 -> 91`, and `139 -> 99`.
 
 #### 2.6b Refresh gate
 
-[`weapon_animate.lua`](../packs/core/scripts/weapon_animate.lua) always
+[`weapon_animate.lua`](../packs/core/lib/weapon_animate.lua) always
 performs the duration draw. At owner level 21 or higher, it refuses to replace
 a freeze while the victim still has more than 10 visible ticks remaining.
 The gate is disabled through level 20 to preserve the weapon-hit identity
@@ -157,7 +157,7 @@ negative phase.
 
 ### 2.7 Thief bomb damage
 
-[`thief.lua`](../packs/core/scripts/thief.lua) uses
+[`living-11-thief.lua`](../packs/core/families/living-11-thief.lua) uses
 `soften(15(L + 1), 210, 300)`. Damage is unchanged through level 13. Bomb
 blast radius remains clamped to 16–96 pixels, and each blast still prepends
 its own knockback of `min(2 + owner_level / 15, 8)` ticks. Multiple bombs

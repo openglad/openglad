@@ -10,7 +10,8 @@
 // Family-behavior dispatch for tests.
 //
 // FamilyDescriptor behavior callbacks are null for pack-installed families;
-// their behavior lives in class-pack Lua (packs/core/scripts/*.lua for core).
+// their behavior lives in class-pack Lua (packs/core/families/*.lua and the
+// lib/ modules they use, for core).
 // Tests go through og::script::hooks::*, the same dispatch door the sim uses.
 //
 // Unit binaries never run io_init, so they mount no packs and would see no
