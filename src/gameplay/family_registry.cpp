@@ -31,10 +31,10 @@ static FamilyRegistryBase<FamilyDescriptor, NUM_FAMILIES> s_registry;
 static void apply_defaults(FamilyDescriptor& d)
 {
     d.name = "BEAST";
-    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_cost[j] = 5000;
-    d.weapon_cost = 1;
-    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_names[j] = "NONE";
-    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.alternate_names[j] = "NONE";
+    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_cost[j] = kSpecialCostDisabled;
+    d.combat.fire_mp_cost = 1;
+    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_names[j] = kSpecialNameNone;
+    for (int j = 0; j < FD_NUM_SPECIALS; j++) d.alternate_names[j] = kSpecialNameNone;
     d.leaves_bloodspot = true;
     d.magic_damage_modifier = 1.0f;
     d.promotes_to = -1;

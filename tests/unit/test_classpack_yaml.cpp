@@ -453,9 +453,10 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
     for (int i = 0; i < 6; i++)
         ASSERT_EQ((*e.base_stats)[static_cast<std::size_t>(i)],
                   fd->base_stats[i]);
-    for (int i = 0; i < 8; i++)
-        ASSERT_EQ((*e.derived_bonuses)[static_cast<std::size_t>(i)],
-                  fd->derived_bonuses[i]);
+    ASSERT_EQ((*e.derived_bonuses)[0], fd->combat.hp);
+    ASSERT_EQ((*e.derived_bonuses)[2], fd->combat.melee_damage);
+    ASSERT_EQ((*e.derived_bonuses)[6], fd->combat.stepsize);
+    ASSERT_EQ((*e.derived_bonuses)[7], fd->combat.fire_delay);
     ASSERT_EQ(e.hiring_cost.value_or(-1), fd->hiring_cost);
     ASSERT_EQ(e.default_weapon.value_or(""), "core:knife");
     ASSERT_EQ(e.description.value, fd->description);

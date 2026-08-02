@@ -36,7 +36,9 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 namespace og::script {
 
@@ -657,6 +659,52 @@ void report_duplicate_hook(lua_State* L, VmState* st, const char* order_str,
     st->owner->host().impl().record_error(where.c_str(), message.c_str());
 }
 
+// --- specials table keys ------------------------------------------------
+//
+// A specials table may key an entry by slot integer or by the special's
+// declared id ("charge"). The id form is resolved to its slot HERE, once,
+// at registration: what gets stored and dispatched is the same int-keyed
+// private table either way, so the cast path is untouched.
+
+// One validated entry of a caller's specials table.
+struct SpecialsKey {
+    lua_Integer slot;
+    bool by_id;        // spelled as the declared id rather than the slot
+    std::string text;  // how the caller spelled it, for diagnostics
+};
+
+// The slot a declared special id names, or -1 when the family declares no
+// such id.
+int special_slot_for_id(const FamilyDescriptor* fd, const char* id)
+{
+    if (fd == nullptr)
+        return -1;
+    for (int slot = 0; slot < FD_NUM_SPECIALS; slot++) {
+        if (fd->special_ids[slot] != nullptr &&
+            std::strcmp(fd->special_ids[slot], id) == 0)
+            return slot;
+    }
+    return -1;
+}
+
+// The ids the family does declare — the other half of an unknown-key
+// error. A family whose descriptor names none (an unmigrated pack, say)
+// says so, which is the answer to "why doesn't my key resolve".
+std::string declared_special_ids(const FamilyDescriptor* fd)
+{
+    std::string list;
+    for (int slot = 0; fd != nullptr && slot < FD_NUM_SPECIALS; slot++) {
+        if (fd->special_ids[slot] == nullptr)
+            continue;
+        if (!list.empty())
+            list += ", ";
+        list += fd->special_ids[slot];
+    }
+    if (list.empty())
+        return "none — this family declares no special ids";
+    return list;
+}
+
 int og_register_hooks(lua_State* L)
 {
     const char* order_str = luaL_checkstring(L, 1);
@@ -744,32 +792,48 @@ int og_register_hooks(lua_State* L)
                 L, "og.register_hooks: register 'do_special' or 'specials' "
                    "for a family, not both in one call");
         // Validate every entry before storing anything. Keys are integers
-        // 1..255 (current_special is a char-wide slot index) or the string
-        // "default"; every value is a function. lua_next order cannot
-        // matter here: any invalid entry raises the same load error.
-        lua_Integer max_index = 0;
+        // 1..255 (current_special is a char-wide slot index), a declared
+        // special id, or the string "default"; every value is a function.
+        // lua_next order cannot matter here: any invalid entry raises the
+        // same load error, and the resolved keys are sorted before the
+        // collision check so its message reads the same every run.
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        std::vector<SpecialsKey> keys;
         int entry_count = 0;
         bool has_default = false;
         lua_pushnil(L);
         while (lua_next(L, spec_idx) != 0) {
-            bool key_ok = false;
             if (lua_isinteger(L, -2)) {
                 const lua_Integer k = lua_tointeger(L, -2);
-                if (k >= 1 && k <= 255) {
-                    key_ok = true;
-                    if (k > max_index)
-                        max_index = k;
-                }
+                if (k < 1 || k > 255)
+                    return luaL_error(
+                        L, "og.register_hooks: 'specials' keys must be "
+                           "integers 1..255, a declared special id, or "
+                           "'default'");
+                keys.push_back({k, false, std::to_string(k)});
             } else if (lua_type(L, -2) == LUA_TSTRING) {
                 // Safe during traversal: the key already IS a string.
-                key_ok = (std::strcmp(lua_tostring(L, -2), "default") == 0);
-                if (key_ok)
+                const std::string key = lua_tostring(L, -2);
+                if (key == "default") {
                     has_default = true;
-            }
-            if (!key_ok)
+                } else {
+                    const int slot = special_slot_for_id(fd, key.c_str());
+                    if (slot < 0)
+                        return luaL_error(
+                            L,
+                            "og.register_hooks: 'specials' key '%s' names no "
+                            "special of living family '%s' (declared ids: "
+                            "%s)",
+                            key.c_str(), family_str,
+                            declared_special_ids(fd).c_str());
+                    keys.push_back({slot, true, key});
+                }
+            } else {
                 return luaL_error(
                     L, "og.register_hooks: 'specials' keys must be "
-                       "integers 1..255 or 'default'");
+                       "integers 1..255, a declared special id, or "
+                       "'default'");
+            }
             if (!lua_isfunction(L, -1))
                 return luaL_error(
                     L, "og.register_hooks: 'specials' entries must be "
@@ -781,22 +845,39 @@ int og_register_hooks(lua_State* L)
             return luaL_error(
                 L, "og.register_hooks: 'specials' table is empty "
                    "(register at least one entry or a default)");
+        // Two keys for one slot: the table says two different things about
+        // one special and nothing here can pick between them.
+        std::sort(keys.begin(), keys.end(),
+                  [](const SpecialsKey& a, const SpecialsKey& b) {
+                      return std::tie(a.slot, a.text) <
+                             std::tie(b.slot, b.text);
+                  });
+        for (std::size_t i = 1; i < keys.size(); i++) {
+            if (keys[i].slot != keys[i - 1].slot)
+                continue;
+            return luaL_error(
+                L,
+                "og.register_hooks: 'specials' keys '%s' and '%s' both name "
+                "slot %d of '%s'",
+                keys[i - 1].text.c_str(), keys[i].text.c_str(),
+                static_cast<int>(keys[i].slot), family_str);
+        }
         // Store a PRIVATE copy: mutating the caller's table after
         // registration must not be able to change dispatch — the
         // registered contract is as immutable as a registered function
         // value (R6 at the registration boundary).
-        lua_createtable(L, static_cast<int>(max_index), has_default ? 1 : 0);
-        for (lua_Integer k = 1; k <= max_index; k++) {
-            lua_rawgeti(L, spec_idx, k);
-            if (lua_isnil(L, -1)) {
-                lua_pop(L, 1);
-                continue;
-            }
+        lua_createtable(L, static_cast<int>(keys.size()),
+                        has_default ? 1 : 0);
+        for (const SpecialsKey& k : keys) {
+            if (k.by_id)
+                lua_getfield(L, spec_idx, k.text.c_str());
+            else
+                lua_rawgeti(L, spec_idx, k.slot);
             if (coverage::enabled())
                 coverage_declare_hook(
                     L, std::string(order_str) + "/" + family_str +
-                           "/do_special[" + std::to_string(k) + "]");
-            lua_rawseti(L, -2, k);
+                           "/do_special[" + std::to_string(k.slot) + "]");
+            lua_rawseti(L, -2, k.slot);
         }
         if (has_default) {
             lua_getfield(L, spec_idx, "default");
@@ -966,6 +1047,63 @@ int og_family_id(lua_State* L)
     return 1;
 }
 
+// Says so when a family can cast a special that nothing will handle.
+//
+// A specials table with no entry for the cast slot and no `default` is a
+// SUCCESSFUL no-op that still spends the MP (begin_special's
+// no_special_handler path, then walker::special deducts). That contract
+// stands — this only stops it being silent. Run once per VM, after every
+// pack chunk has registered, so the table it reads is the final one.
+void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st.hooks_ref);
+    for (int family_id = 0; family_id < NUM_FAMILY_SLOTS; family_id++) {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        lua_rawgeti(L, -1, hook_table_key(Order::Living, family_id));
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            continue;
+        }
+        lua_rawgeti(L, -1, static_cast<lua_Integer>(FamilyHook::DoSpecial));
+        // Only the table form can fall through: a plain do_special function
+        // is asked about every slot and answers for itself.
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            continue;
+        }
+        lua_pushstring(L, "default");
+        lua_rawget(L, -2);
+        const bool has_default = lua_isfunction(L, -1);
+        lua_pop(L, 1);
+        if (has_default) {
+            lua_pop(L, 2);
+            continue;  // a default answers for every slot
+        }
+        for (int slot = 1; slot < FD_NUM_SPECIALS; slot++) {
+            const char* name = fd->special_names[slot];
+            if (name == nullptr || std::strcmp(name, kSpecialNameNone) == 0)
+                continue;
+            if (fd->special_cost[slot] >= kSpecialCostDisabled)
+                continue;
+            lua_rawgeti(L, -1, slot);
+            const bool handled = lua_isfunction(L, -1);
+            lua_pop(L, 1);
+            if (handled)
+                continue;
+            LogWarn("class pack: special '{}' (slot {}) of living family "
+                    "'{}' has no handler and no default: casting it will "
+                    "spend {} MP and do nothing\n",
+                    name, slot,
+                    fd->declared_id != nullptr ? fd->declared_id : fd->name,
+                    fd->special_cost[slot]);
+        }
+        lua_pop(L, 2);
+    }
+    lua_pop(L, 1);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -1060,6 +1198,8 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
         }
     }
     detail_->state.current_pack.clear();
+
+    warn_unhandled_castable_specials(L, detail_->state);
 }
 
 WorldScripts::~WorldScripts() = default;

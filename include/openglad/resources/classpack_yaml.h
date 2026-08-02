@@ -90,6 +90,73 @@ struct ClasspackAnimSet {
     std::vector<ClasspackAnimRow> frames;
 };
 
+// --- schema v2 living blocks -------------------------------------------
+//
+// v2 replaces the six positional arrays of a living entry with named
+// blocks. The engine reads both spellings for now (a single entry must
+// pick one — mixing them is a parse error), and every v2 value lands in
+// exactly the descriptor field its v1 column did.
+
+// `stats:` — the attribute scores a recruit starts with, and the base the
+// picker prices training deltas against. Every member is required when the
+// block appears: defaulting one silently would ship, say, a 0-armor class.
+struct ClasspackStatsBlock {
+    std::int32_t strength = 0;
+    std::int32_t dexterity = 0;
+    std::int32_t constitution = 0;
+    std::int32_t intelligence = 0;
+    std::int32_t armor = 0;
+    std::int32_t level = 0;   // starting level (1 for every core family)
+};
+
+// `combat:` — what one of these is in the field. All members required,
+// same argument as stats:. fire_delay is busy ticks added after each
+// attack (lower = faster); fire_mp_cost is MAGIC POINTS per ranged shot.
+struct ClasspackCombatBlock {
+    float hp = 0.0f;
+    float melee_damage = 0.0f;
+    float stepsize = 0.0f;
+    float fire_delay = 0.0f;
+    std::int32_t fire_mp_cost = 0;
+};
+
+// `costs.train:` — gold per training point on each axis. Axes are
+// optional here: an omitted axis is 0, which is what v1 shipped for an
+// unpriced one. `level` is vestigial (levels are priced by the exp curve)
+// and kept only so migrated packs install the bytes v1 did.
+struct ClasspackTrainCosts {
+    std::int32_t strength = 0;
+    std::int32_t dexterity = 0;
+    std::int32_t constitution = 0;
+    std::int32_t intelligence = 0;
+    std::int32_t armor = 0;
+    std::int32_t level = 0;
+};
+
+// `costs:` — gold, and only gold. `hire` is required.
+struct ClasspackCostsBlock {
+    std::int32_t hire = 0;
+    std::optional<ClasspackTrainCosts> train;
+};
+
+// The highest special slot a family has. Slot 0 is an engine artifact the
+// loader zeroes and v2 does not spell; the reachable slots are 1..5, the
+// fifth becoming selectable at level 13. (== FD_NUM_SPECIALS - 1, checked
+// where the two meet in the installer.)
+inline constexpr int kMaxSpecialSlot = 5;
+
+// One entry of a `specials:` list. List order gives slots 1..5; an entry
+// may name its own `slot:` to leave a hole, and slots must strictly
+// increase. `id` is the key a pack script's specials table may use in
+// place of the slot integer.
+struct ClasspackSpecialEntry {
+    std::string id;                // required, [a-z0-9_]+, unique per family
+    std::string name;              // required, the HUD string
+    std::int32_t mp_cost = 0;      // required
+    std::optional<std::string> alternate_name;  // alternate: {name: ...}
+    std::int32_t slot = 0;         // 1..5, resolved from order or `slot:`
+};
+
 // One entry under families.living. YAML keys per design doc §4; field
 // names match the keys, values mirror FamilyDescriptor's data fields.
 struct ClasspackLivingEntry {
@@ -97,6 +164,13 @@ struct ClasspackLivingEntry {
     std::string wire_id;                   // "0".."255", "auto", or "" = absent (auto)
     std::optional<std::string> name;
     NullableString short_name;
+    // schema v2 blocks
+    std::optional<ClasspackStatsBlock> stats;
+    std::optional<ClasspackCombatBlock> combat;
+    std::optional<ClasspackCostsBlock> costs;
+    std::optional<std::vector<ClasspackSpecialEntry>> specials;
+    // schema v1 positional arrays (still accepted; an entry may not mix
+    // the two spellings)
     std::optional<std::vector<std::int32_t>> base_stats;       // 6
     std::optional<std::int32_t> hiring_cost;
     std::optional<std::vector<float>> derived_bonuses;         // 8
@@ -211,6 +285,15 @@ struct ClasspackData {
 // (returns false after LogWarn; out is partially filled and must be
 // discarded). Unknown keys and unknown families sections are skipped for
 // forward compatibility. Never throws.
+//
+// The v2 blocks of a living entry hold two extra tiers, both about
+// mistakes a modder can actually make:
+//   * a member that stats: or combat: leaves out, a costs: without hire, a
+//     special without id/name/mp_cost, an out-of-order slot, a duplicate
+//     id, or one of the four dead derived axes (mp/ranged_damage/range/
+//     defense) fails the pack with a message saying what to write instead;
+//   * an unrecognized key INSIDE one of those blocks warns and is dropped,
+//     rather than vanishing the way an unknown entry-level key does.
 bool parse_classpack_yaml(std::string_view text, ClasspackData& out,
                           const char* source_name);
 

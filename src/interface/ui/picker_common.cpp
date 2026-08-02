@@ -94,23 +94,23 @@ std::uint32_t calculate_hire_cost(const guy& recruit)
     };
 
     temp += static_cast<std::int32_t>(
-        std::pow(stat_delta(recruit.strength, fd->base_stats[0]), kStatCostExponent)
-        * fd->stat_costs[0]);
+        std::pow(stat_delta(recruit.strength, fd->base_stats[StatAxis::Strength]), kStatCostExponent)
+        * fd->stat_costs[StatAxis::Strength]);
     temp += static_cast<std::int32_t>(
-        std::pow(stat_delta(recruit.dexterity, fd->base_stats[1]), kStatCostExponent)
-        * fd->stat_costs[1]);
+        std::pow(stat_delta(recruit.dexterity, fd->base_stats[StatAxis::Dexterity]), kStatCostExponent)
+        * fd->stat_costs[StatAxis::Dexterity]);
     temp += static_cast<std::int32_t>(
-        std::pow(stat_delta(recruit.constitution, fd->base_stats[2]), kStatCostExponent)
-        * fd->stat_costs[2]);
+        std::pow(stat_delta(recruit.constitution, fd->base_stats[StatAxis::Constitution]), kStatCostExponent)
+        * fd->stat_costs[StatAxis::Constitution]);
     temp += static_cast<std::int32_t>(
-        std::pow(stat_delta(recruit.intelligence, fd->base_stats[3]), kStatCostExponent)
-        * fd->stat_costs[3]);
+        std::pow(stat_delta(recruit.intelligence, fd->base_stats[StatAxis::Intelligence]), kStatCostExponent)
+        * fd->stat_costs[StatAxis::Intelligence]);
     temp += static_cast<std::int32_t>(
-        std::pow(stat_delta(recruit.armor, fd->base_stats[4]), kStatCostExponent)
-        * fd->stat_costs[4]);
+        std::pow(stat_delta(recruit.armor, fd->base_stats[StatAxis::Armor]), kStatCostExponent)
+        * fd->stat_costs[StatAxis::Armor]);
 
     // Level cost
-    short effective_level = std::max(recruit.level, static_cast<short>(fd->base_stats[5]));
+    short effective_level = std::max(recruit.level, static_cast<short>(fd->base_stats[StatAxis::Level]));
     std::int32_t exp_cost = static_cast<std::int32_t>(calculate_exp(effective_level));
     if (exp_cost < 0) // overflow
         return 0;
@@ -1991,18 +1991,18 @@ void HireSession::make_recruit()
     // Clamp stats up to family base values
     const auto* fd = get_family_descriptor(family);
     if (fd) {
-        if (recruit_->strength < fd->base_stats[0])
-            recruit_->strength = static_cast<short>(fd->base_stats[0]);
-        if (recruit_->dexterity < fd->base_stats[1])
-            recruit_->dexterity = static_cast<short>(fd->base_stats[1]);
-        if (recruit_->constitution < fd->base_stats[2])
-            recruit_->constitution = static_cast<short>(fd->base_stats[2]);
-        if (recruit_->intelligence < fd->base_stats[3])
-            recruit_->intelligence = static_cast<short>(fd->base_stats[3]);
-        if (recruit_->armor < fd->base_stats[4])
-            recruit_->armor = static_cast<short>(fd->base_stats[4]);
-        if (recruit_->level < fd->base_stats[5])
-            recruit_->upgrade_to_level(static_cast<short>(fd->base_stats[5]));
+        if (recruit_->strength < fd->base_stats[StatAxis::Strength])
+            recruit_->strength = static_cast<short>(fd->base_stats[StatAxis::Strength]);
+        if (recruit_->dexterity < fd->base_stats[StatAxis::Dexterity])
+            recruit_->dexterity = static_cast<short>(fd->base_stats[StatAxis::Dexterity]);
+        if (recruit_->constitution < fd->base_stats[StatAxis::Constitution])
+            recruit_->constitution = static_cast<short>(fd->base_stats[StatAxis::Constitution]);
+        if (recruit_->intelligence < fd->base_stats[StatAxis::Intelligence])
+            recruit_->intelligence = static_cast<short>(fd->base_stats[StatAxis::Intelligence]);
+        if (recruit_->armor < fd->base_stats[StatAxis::Armor])
+            recruit_->armor = static_cast<short>(fd->base_stats[StatAxis::Armor]);
+        if (recruit_->level < fd->base_stats[StatAxis::Level])
+            recruit_->upgrade_to_level(static_cast<short>(fd->base_stats[StatAxis::Level]));
     }
 }
 

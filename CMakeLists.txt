@@ -2973,6 +2973,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         og_add_unit_group(og_unit_data FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_yaml.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_errors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_schema_v2.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp

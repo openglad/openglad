@@ -654,6 +654,33 @@ void apply_presentation(const og::data::ClasspackPresentation& p,
     }
 }
 
+// Folds a v2 `specials:` list onto the three parallel slot arrays.
+//
+// The list is the whole story for a family: declaring it rewrites every
+// slot, so an entry a pack drops from the list goes back to the disabled
+// pair ("NONE" / 5000) instead of lingering from whatever occupied the
+// registry slot before. That is what the v1 six-wide arrays did too.
+void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
+                      FamilyDescriptor& d)
+{
+    static_assert(og::data::kMaxSpecialSlot == FD_NUM_SPECIALS - 1,
+                  "the YAML slot cap and the descriptor's array must agree");
+    for (int i = 0; i < FD_NUM_SPECIALS; i++) {
+        d.special_cost[i] = kSpecialCostDisabled;
+        d.special_names[i] = kSpecialNameNone;
+        d.alternate_names[i] = kSpecialNameNone;
+        d.special_ids[i] = nullptr;
+    }
+    for (const og::data::ClasspackSpecialEntry& s : list) {
+        // The parser guarantees 1..kMaxSpecialSlot, strictly increasing.
+        d.special_cost[s.slot] = static_cast<unsigned short>(s.mp_cost);
+        d.special_names[s.slot] = s.name.c_str();
+        d.special_ids[s.slot] = s.id.c_str();
+        if (s.alternate_name)
+            d.alternate_names[s.slot] = s.alternate_name->c_str();
+    }
+}
+
 // --- per-order installers (entries must already live in the store) ------
 
 bool install_living(const og::data::ClasspackLivingEntry& e, int id,
@@ -678,21 +705,60 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
         d.name = e.name->c_str();
     if (e.short_name.present)
         d.short_name = nullable_cstr(e.short_name);
+    // --- schema v2 blocks ------------------------------------------------
+    // Each lands in exactly the descriptor field its v1 column did, so a
+    // migrated entry installs the same bytes the array spelling installed.
+    if (e.stats) {
+        d.base_stats[StatAxis::Strength] = e.stats->strength;
+        d.base_stats[StatAxis::Dexterity] = e.stats->dexterity;
+        d.base_stats[StatAxis::Constitution] = e.stats->constitution;
+        d.base_stats[StatAxis::Intelligence] = e.stats->intelligence;
+        d.base_stats[StatAxis::Armor] = e.stats->armor;
+        d.base_stats[StatAxis::Level] = e.stats->level;
+    }
+    if (e.combat) {
+        d.combat.hp = e.combat->hp;
+        d.combat.melee_damage = e.combat->melee_damage;
+        d.combat.stepsize = e.combat->stepsize;
+        d.combat.fire_delay = e.combat->fire_delay;
+        d.combat.fire_mp_cost = static_cast<short>(e.combat->fire_mp_cost);
+    }
+    if (e.costs) {
+        d.hiring_cost = e.costs->hire;
+        if (e.costs->train) {
+            d.stat_costs[StatAxis::Strength] = e.costs->train->strength;
+            d.stat_costs[StatAxis::Dexterity] = e.costs->train->dexterity;
+            d.stat_costs[StatAxis::Constitution] =
+                e.costs->train->constitution;
+            d.stat_costs[StatAxis::Intelligence] =
+                e.costs->train->intelligence;
+            d.stat_costs[StatAxis::Armor] = e.costs->train->armor;
+            d.stat_costs[StatAxis::Level] = e.costs->train->level;
+        }
+    }
+    if (e.specials)
+        install_specials(*e.specials, d);
+    // --- schema v1 positional arrays -------------------------------------
     if (e.base_stats) {
-        const std::size_t n = std::min<std::size_t>(6, e.base_stats->size());
+        const std::size_t n = std::min<std::size_t>(StatAxis::Count,
+                                                    e.base_stats->size());
         for (std::size_t i = 0; i < n; i++)
             d.base_stats[i] = (*e.base_stats)[i];
     }
     if (e.hiring_cost)
         d.hiring_cost = *e.hiring_cost;
     if (e.derived_bonuses) {
-        const std::size_t n =
-            std::min<std::size_t>(8, e.derived_bonuses->size());
-        for (std::size_t i = 0; i < n; i++)
-            d.derived_bonuses[i] = (*e.derived_bonuses)[i];
+        // The v1 column order: HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD.
+        // Only four ever had a reader; the rest are read past and dropped.
+        const std::vector<float>& db = *e.derived_bonuses;
+        if (db.size() > 0) d.combat.hp = db[0];
+        if (db.size() > 2) d.combat.melee_damage = db[2];
+        if (db.size() > 6) d.combat.stepsize = db[6];
+        if (db.size() > 7) d.combat.fire_delay = db[7];
     }
     if (e.stat_costs) {
-        const std::size_t n = std::min<std::size_t>(6, e.stat_costs->size());
+        const std::size_t n = std::min<std::size_t>(StatAxis::Count,
+                                                    e.stat_costs->size());
         for (std::size_t i = 0; i < n; i++)
             d.stat_costs[i] = (*e.stat_costs)[i];
     }
@@ -704,7 +770,7 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
                 static_cast<unsigned short>((*e.special_costs)[i]);
     }
     if (e.weapon_cost)
-        d.weapon_cost = static_cast<short>(*e.weapon_cost);
+        d.combat.fire_mp_cost = static_cast<short>(*e.weapon_cost);
     if (e.default_weapon) {
         const int weapon = resolve_ref(Order::Weapon, *e.default_weapon,
                                        "default_weapon", e.id, wire_ids);
@@ -723,8 +789,12 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
     if (e.special_names) {
         const std::size_t n = std::min<std::size_t>(
             FD_NUM_SPECIALS, e.special_names->size());
-        for (std::size_t i = 0; i < n; i++)
+        for (std::size_t i = 0; i < n; i++) {
             d.special_names[i] = (*e.special_names)[i].c_str();
+            // v1 names a slot without naming an id: whatever id the slot
+            // carried belonged to a different special.
+            d.special_ids[i] = nullptr;
+        }
     }
     if (e.alternate_names) {
         const std::size_t n = std::min<std::size_t>(

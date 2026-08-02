@@ -22,8 +22,11 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/classpack_yaml.h>
+#include <openglad/resources/packs.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -487,7 +490,8 @@ TEST_F(SpecialsDispatchTest, bad_specials_key_is_a_load_error)
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
               vm_errors().front().message.find(
-                  "keys must be integers 1..255 or 'default'"));
+                  "keys must be integers 1..255, a declared special id, or "
+                  "'default'"));
 }
 
 TEST_F(SpecialsDispatchTest, non_function_specials_entry_is_a_load_error)
@@ -510,6 +514,153 @@ TEST_F(SpecialsDispatchTest, specials_on_a_non_living_order_is_a_load_error)
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
               vm_errors().front().message.find("living-order key"));
+}
+
+// ---------------------------------------------------------------------------
+// Specials keyed by declared id (schema v2). A pack's YAML gives each
+// special an `id:`; the script may key its handler by that id instead of
+// by the slot integer, and the engine resolves it to the slot at
+// registration — so the two files reference each other by name and a typo
+// on either side is a load error instead of a handler bound to the wrong
+// special.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A living family with declared special ids, installed into a free wire
+// slot so it cannot disturb the core registry the other tests read.
+constexpr int kIdFamilyWireId = 64;
+
+class SpecialsByIdTest : public SpecialsDispatchTest {
+protected:
+    void SetUp() override
+    {
+        og::data::ClasspackData data;
+        ASSERT_TRUE(og::data::parse_classpack_yaml(
+            "families:\n"
+            "  living:\n"
+            "    - id: v2test:warlock\n"
+            "      wire_id: 64\n"
+            "      name: WARLOCK\n"
+            "      specials:\n"
+            "        - {id: flare_burst, name: FLARE BURST, mp_cost: 5}\n"
+            "        - {id: hex, name: HEX, mp_cost: 9}\n",
+            data, "v2test"));
+        ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+        self = world.add_ob(Order::Living, kIdFamilyWireId);
+        ASSERT_NE(nullptr, self);
+    }
+
+    std::optional<bool> dispatch_warlock(int sp)
+    {
+        self->set_current_special(static_cast<char>(sp));
+        const FamilyDescriptor* fd =
+            get_family_descriptor(kIdFamilyWireId);
+        EXPECT_NE(nullptr, fd);
+        if (fd == nullptr)
+            return std::nullopt;
+        return hooks::do_special(fd, self);
+    }
+};
+
+}  // namespace
+
+TEST_F(SpecialsByIdTest, a_declared_id_keys_its_own_slot)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = {\n"
+        "    hex = function(self) og.log('hex') return true end,\n"
+        "    flare_burst = function(self) og.log('flare') return true end,\n"
+        "  },\n"
+        "})\n");
+    auto r1 = dispatch_warlock(1);
+    ASSERT_TRUE(r1.has_value()) << "flare_burst is slot 1";
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("flare", vm_log().back());
+    auto r2 = dispatch_warlock(2);
+    ASSERT_TRUE(r2.has_value()) << "hex is slot 2";
+    EXPECT_EQ("hex", vm_log().back());
+    // The unmapped slot still falls through to the charging no-op: id keys
+    // change how a handler is named, nothing about dispatch.
+    auto r3 = dispatch_warlock(3);
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_TRUE(*r3);
+    ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(SpecialsByIdTest, misspelled_id_is_a_load_error_naming_the_real_ids)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { flare_brust = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("flare_brust")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("v2test:warlock")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("flare_burst, hex"))
+        << "the message must list what the family does declare: " << msg;
+}
+
+TEST_F(SpecialsByIdTest, an_id_and_its_slot_number_together_are_a_load_error)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) return true end,\n"
+        "    flare_burst = function(self) return false end,\n"
+        "  },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("both name slot 1")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("flare_burst")) << msg;
+}
+
+TEST_F(SpecialsDispatchTest, an_id_key_on_a_family_that_declares_none_says_so)
+{
+    // The shipped core pack is still on the array schema, so its families
+    // declare no ids at all; the error has to say that rather than list an
+    // empty set.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { charge = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("declares no special ids")) << msg;
+}
+
+TEST_F(SpecialsByIdTest, castable_slot_with_no_handler_warns_after_load)
+{
+    // HEX is castable (a name and a cost under 5000) and this table
+    // handles neither it nor `default`, so casting it would spend 9 MP and
+    // do nothing. That is still what happens — it is just no longer silent.
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { flare_burst = function(self) return true end },\n"
+        "})\n");
+    testing::internal::CaptureStderr();
+    (void)world.scripts();
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_NE(std::string::npos, said.find("HEX")) << said;
+    EXPECT_NE(std::string::npos, said.find("spend 9 MP and do nothing"))
+        << said;
+    EXPECT_EQ(std::string::npos, said.find("FLARE BURST"))
+        << "a handled slot is not worth a word: " << said;
+}
+
+TEST_F(SpecialsByIdTest, a_default_answers_for_every_castable_slot)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { default = function(self) return true end },\n"
+        "})\n");
+    testing::internal::CaptureStderr();
+    (void)world.scripts();
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(std::string::npos, said.find("has no handler")) << said;
 }
 
 // ---------------------------------------------------------------------------

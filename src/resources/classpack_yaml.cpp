@@ -74,6 +74,20 @@ struct Cursor {
         LogWarn("classpack.yaml error in {}: {}\n", source, msg);
         failed = true;
     }
+
+    // Warn tier: the pack still loads, but the author hears that one of
+    // their keys did nothing.
+    void warn(const std::string& msg) const
+    {
+        LogWarn("classpack.yaml in {}: {}\n", source, msg);
+    }
+};
+
+// What a key handler did with the value it was offered.
+enum class KeyResult : std::uint8_t {
+    Taken,    // recognized and consumed
+    Unknown,  // not one of ours — the caller decides (warn or skip)
+    Failed,   // malformed: the cursor already carries the error
 };
 
 // One scalar value; `null` marks an explicit YAML null (plain ~ / null /
@@ -432,14 +446,438 @@ bool parse_tuning_map(Cursor& c, std::vector<ClasspackTuningPair>& out)
     }
 }
 
+// --- schema v2 living blocks -------------------------------------------
+//
+// The named blocks that replace the positional arrays. Two tiers differ
+// from the entry level on purpose:
+//   * an unknown key INSIDE a block warns instead of vanishing. Forward
+//     compatibility is why unknown ENTRY keys are silent, and that argument
+//     holds for a future engine adding a section; inside `combat:` the
+//     realistic unknown key is `step_size`, and swallowing it installs a
+//     default the author never wrote.
+//   * a member of stats:/combat: that the block leaves out is fatal. There
+//     is no honest default for armor or hitpoints, so the file has to say.
+
+// Walks one v2 block's key/value pairs (MAPPING_START already consumed).
+// `where` names the block in diagnostics: "'core:soldier' combat".
+template <typename OnScalar, typename OnNode>
+bool parse_v2_block(Cursor& c, const std::string& where, OnScalar&& on_scalar,
+                    OnNode&& on_node)
+{
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type != YAML_SCALAR_EVENT) {
+            yaml_event_delete(&ev);
+            c.error(where + ": expected a field key");
+            return false;
+        }
+        const std::string key = scalar_of(ev).text;
+        yaml_event_delete(&ev);
+
+        yaml_event_t vev;
+        if (!c.next(vev))
+            return false;
+        if (vev.type == YAML_SCALAR_EVENT) {
+            const Scalar value = scalar_of(vev);
+            yaml_event_delete(&vev);
+            const KeyResult r = on_scalar(key, value);
+            if (r == KeyResult::Failed)
+                return false;
+            if (r == KeyResult::Unknown)
+                c.warn(where + ": unknown key '" + key + "' — ignored");
+            continue;
+        }
+        const yaml_event_type_t type = vev.type;
+        yaml_event_delete(&vev);
+        const KeyResult r = on_node(key, type);
+        if (r == KeyResult::Failed)
+            return false;
+        if (r == KeyResult::Taken)
+            continue;
+        c.warn(where + ": unknown key '" + key + "' — ignored");
+        if (!skip_node(c, type))
+            return false;
+    }
+}
+
+// A block key with no nested nodes of its own.
+KeyResult no_nested_nodes(const std::string&, yaml_event_type_t)
+{
+    return KeyResult::Unknown;
+}
+
+// One numeric member of a v2 block. An explicit `~` leaves `seen` false,
+// so a nulled-out required key trips the missing-key error instead of
+// installing 0.
+KeyResult take_int(Cursor& c, const std::string& where, const std::string& key,
+                   const Scalar& v, std::int32_t& out, bool& seen)
+{
+    if (v.null)
+        return KeyResult::Taken;
+    const auto parsed = parse_int_strict(v.text);
+    if (!parsed) {
+        c.error(where + "." + key + ": bad integer '" + v.text + "'");
+        return KeyResult::Failed;
+    }
+    out = *parsed;
+    seen = true;
+    return KeyResult::Taken;
+}
+
+KeyResult take_float(Cursor& c, const std::string& where,
+                     const std::string& key, const Scalar& v, float& out,
+                     bool& seen)
+{
+    if (v.null)
+        return KeyResult::Taken;
+    float value = 0.0f;
+    if (!parse_float_strict(v.text, value)) {
+        c.error(where + "." + key + ": bad number '" + v.text + "'");
+        return KeyResult::Failed;
+    }
+    out = value;
+    seen = true;
+    return KeyResult::Taken;
+}
+
+bool require_key(Cursor& c, const std::string& where, const char* key,
+                 bool seen)
+{
+    if (seen)
+        return true;
+    c.error(where + ": missing required key '" + std::string(key) + "'");
+    return false;
+}
+
+bool parse_stats_block(Cursor& c, const std::string& where,
+                       ClasspackStatsBlock& out)
+{
+    bool str = false, dex = false, con = false, intel = false, arm = false,
+         lvl = false;
+    const bool ok = parse_v2_block(
+        c, where,
+        [&](const std::string& key, const Scalar& v) {
+            if (key == "strength")
+                return take_int(c, where, key, v, out.strength, str);
+            if (key == "dexterity")
+                return take_int(c, where, key, v, out.dexterity, dex);
+            if (key == "constitution")
+                return take_int(c, where, key, v, out.constitution, con);
+            if (key == "intelligence")
+                return take_int(c, where, key, v, out.intelligence, intel);
+            if (key == "armor")
+                return take_int(c, where, key, v, out.armor, arm);
+            if (key == "level")
+                return take_int(c, where, key, v, out.level, lvl);
+            return KeyResult::Unknown;
+        },
+        no_nested_nodes);
+    if (!ok)
+        return false;
+    return require_key(c, where, "strength", str) &&
+           require_key(c, where, "dexterity", dex) &&
+           require_key(c, where, "constitution", con) &&
+           require_key(c, where, "intelligence", intel) &&
+           require_key(c, where, "armor", arm) &&
+           require_key(c, where, "level", lvl);
+}
+
+// The four columns of the old derived_bonuses[8] that never had a reader.
+// They are recognized-and-fatal rather than unknown-and-warned: a modder
+// writing `mp: 40` has a concrete belief about the engine, and the answer
+// is a sentence, not a shrug. Returns nullptr for a live key.
+const char* dead_combat_axis(const std::string& key)
+{
+    if (key == "mp")
+        return "max MP is derived (10 + INT*3); set init_max_magicpoints to "
+               "override it";
+    if (key == "ranged_damage")
+        return "a ranged attack's damage belongs to the weapon family";
+    if (key == "range")
+        return "ranged reach is ai_line_of_sight";
+    if (key == "defense")
+        return "armor is stats.armor";
+    return nullptr;
+}
+
+bool parse_combat_block(Cursor& c, const std::string& where,
+                        ClasspackCombatBlock& out)
+{
+    bool hp = false, dmg = false, step = false, delay = false, mp = false;
+    const bool ok = parse_v2_block(
+        c, where,
+        [&](const std::string& key, const Scalar& v) {
+            if (key == "hp")
+                return take_float(c, where, key, v, out.hp, hp);
+            if (key == "melee_damage")
+                return take_float(c, where, key, v, out.melee_damage, dmg);
+            if (key == "stepsize")
+                return take_float(c, where, key, v, out.stepsize, step);
+            if (key == "fire_delay")
+                return take_float(c, where, key, v, out.fire_delay, delay);
+            if (key == "fire_mp_cost")
+                return take_int(c, where, key, v, out.fire_mp_cost, mp);
+            if (const char* why = dead_combat_axis(key)) {
+                c.error(where + "." + key + " is not a mechanism: " + why);
+                return KeyResult::Failed;
+            }
+            return KeyResult::Unknown;
+        },
+        no_nested_nodes);
+    if (!ok)
+        return false;
+    return require_key(c, where, "hp", hp) &&
+           require_key(c, where, "melee_damage", dmg) &&
+           require_key(c, where, "stepsize", step) &&
+           require_key(c, where, "fire_delay", delay) &&
+           require_key(c, where, "fire_mp_cost", mp);
+}
+
+// costs.train — gold per training point. Every axis is optional here: an
+// omitted one is 0, which is exactly what an unpriced axis shipped in v1.
+bool parse_train_costs(Cursor& c, const std::string& where,
+                       ClasspackTrainCosts& out)
+{
+    bool seen = false;
+    return parse_v2_block(
+        c, where,
+        [&](const std::string& key, const Scalar& v) {
+            if (key == "strength")
+                return take_int(c, where, key, v, out.strength, seen);
+            if (key == "dexterity")
+                return take_int(c, where, key, v, out.dexterity, seen);
+            if (key == "constitution")
+                return take_int(c, where, key, v, out.constitution, seen);
+            if (key == "intelligence")
+                return take_int(c, where, key, v, out.intelligence, seen);
+            if (key == "armor")
+                return take_int(c, where, key, v, out.armor, seen);
+            if (key == "level")
+                return take_int(c, where, key, v, out.level, seen);
+            return KeyResult::Unknown;
+        },
+        no_nested_nodes);
+}
+
+bool parse_costs_block(Cursor& c, const std::string& where,
+                       ClasspackCostsBlock& out)
+{
+    bool hire = false;
+    const bool ok = parse_v2_block(
+        c, where,
+        [&](const std::string& key, const Scalar& v) {
+            if (key == "hire")
+                return take_int(c, where, key, v, out.hire, hire);
+            return KeyResult::Unknown;
+        },
+        [&](const std::string& key, yaml_event_type_t type) {
+            if (key != "train" || type != YAML_MAPPING_START_EVENT)
+                return KeyResult::Unknown;
+            ClasspackTrainCosts train;
+            if (!parse_train_costs(c, where + ".train", train))
+                return KeyResult::Failed;
+            out.train = train;
+            return KeyResult::Taken;
+        });
+    if (!ok)
+        return false;
+    return require_key(c, where, "hire", hire);
+}
+
+// An id is a bare Lua table key on the script side, so keep it to the
+// characters that can be spelled without brackets.
+bool is_special_id(const std::string& id)
+{
+    if (id.empty())
+        return false;
+    for (const char ch : id) {
+        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+                        ch == '_';
+        if (!ok)
+            return false;
+    }
+    return true;
+}
+
+bool parse_special_entry(Cursor& c, const std::string& where,
+                         ClasspackSpecialEntry& out)
+{
+    bool has_id = false, has_name = false, has_cost = false,
+         has_slot = false;
+    const bool ok = parse_v2_block(
+        c, where,
+        [&](const std::string& key, const Scalar& v) {
+            if (key == "id") {
+                if (!v.null) {
+                    out.id = v.text;
+                    has_id = true;
+                }
+                return KeyResult::Taken;
+            }
+            if (key == "name") {
+                if (!v.null) {
+                    out.name = v.text;
+                    has_name = true;
+                }
+                return KeyResult::Taken;
+            }
+            if (key == "mp_cost")
+                return take_int(c, where, key, v, out.mp_cost, has_cost);
+            if (key == "slot")
+                return take_int(c, where, key, v, out.slot, has_slot);
+            if (key == "alternate") {
+                // The shorthand a modder reaches for first. Say the shape
+                // rather than filing it under unknown keys.
+                c.error(where +
+                        ".alternate takes a mapping: alternate: {name: ...}");
+                return KeyResult::Failed;
+            }
+            return KeyResult::Unknown;
+        },
+        [&](const std::string& key, yaml_event_type_t type) {
+            if (key != "alternate" || type != YAML_MAPPING_START_EVENT)
+                return KeyResult::Unknown;
+            const std::string alt_where = where + ".alternate";
+            std::string alt_name;
+            bool alt_seen = false;
+            const bool alt_ok = parse_v2_block(
+                c, alt_where,
+                [&](const std::string& alt_key, const Scalar& v) {
+                    if (alt_key == "name") {
+                        if (!v.null) {
+                            alt_name = v.text;
+                            alt_seen = true;
+                        }
+                        return KeyResult::Taken;
+                    }
+                    if (alt_key == "mp_cost") {
+                        // Foreseeable and wrong: the HUD prices the
+                        // alternate at the special's own mp_cost.
+                        c.warn(alt_where +
+                               ": an alternate shares the special's mp_cost "
+                               "— ignored");
+                        return KeyResult::Taken;
+                    }
+                    return KeyResult::Unknown;
+                },
+                no_nested_nodes);
+            if (!alt_ok)
+                return KeyResult::Failed;
+            if (!require_key(c, alt_where, "name", alt_seen))
+                return KeyResult::Failed;
+            out.alternate_name = alt_name;
+            return KeyResult::Taken;
+        });
+    if (!ok)
+        return false;
+    if (!require_key(c, where, "id", has_id) ||
+        !require_key(c, where, "name", has_name) ||
+        !require_key(c, where, "mp_cost", has_cost))
+        return false;
+    if (!is_special_id(out.id)) {
+        c.error(where + ".id '" + out.id +
+                "': a special id is lowercase letters, digits and "
+                "underscores");
+        return false;
+    }
+    if (out.id == "default") {
+        c.error(where +
+                ".id: 'default' is reserved — it is the specials table's "
+                "catch-all key, so a special could never be handled by "
+                "name");
+        return false;
+    }
+    // An undeclared slot stays 0, which the list reads as "the next one".
+    // `slot: 0` written out is a different claim — the engine artifact,
+    // which is not a special — so it does not get that reading.
+    if (has_slot && (out.slot < 1 || out.slot > kMaxSpecialSlot)) {
+        c.error(where + ".slot: " + std::to_string(out.slot) +
+                " does not exist (a family has slots 1.." +
+                std::to_string(kMaxSpecialSlot) + ")");
+        return false;
+    }
+    return true;
+}
+
+// `specials:` — up to five entries, list order giving slots 1..5.
+// SEQUENCE_START already consumed.
+bool parse_specials_list(Cursor& c, const std::string& entry_where,
+                         std::vector<ClasspackSpecialEntry>& out)
+{
+    int previous_slot = 0;
+    while (true) {
+        yaml_event_t ev;
+        if (!c.next(ev))
+            return false;
+        if (ev.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&ev);
+            return true;
+        }
+        if (ev.type != YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&ev);
+            c.error(entry_where + " specials: entries must be mappings");
+            return false;
+        }
+        yaml_event_delete(&ev);
+
+        const std::string where =
+            entry_where + " specials[" + std::to_string(out.size()) + "]";
+        ClasspackSpecialEntry entry;
+        if (!parse_special_entry(c, where, entry))
+            return false;
+        for (const ClasspackSpecialEntry& seen : out) {
+            if (seen.id != entry.id)
+                continue;
+            c.error(where + ".id '" + entry.id +
+                    "': already used by an earlier special of this family");
+            return false;
+        }
+        if (entry.slot == 0)
+            entry.slot = previous_slot + 1;
+        if (entry.slot > kMaxSpecialSlot) {
+            c.error(where + ": slot " + std::to_string(entry.slot) +
+                    " does not exist (a family has slots 1.." +
+                    std::to_string(kMaxSpecialSlot) + ")");
+            return false;
+        }
+        if (entry.slot <= previous_slot) {
+            c.error(where + ": slot " + std::to_string(entry.slot) +
+                    " must be greater than the previous entry's slot " +
+                    std::to_string(previous_slot) +
+                    " (specials are listed in slot order)");
+            return false;
+        }
+        previous_slot = entry.slot;
+        out.push_back(std::move(entry));
+    }
+}
+
 // --- generic entry walker ----------------------------------------------
 
+// A family order with no nested structures beyond `tuning:`.
+struct NoRawNodes {
+    KeyResult operator()(const std::string&, yaml_event_type_t) const
+    {
+        return KeyResult::Unknown;
+    }
+};
+
 // Walks the key/value pairs of one family entry (MAPPING_START already
-// consumed). on_scalar / on_list return false to abort (cursor error set).
-// `tuning` receives the entry's `tuning:` map (every order has one).
-template <typename SetScalarFn, typename SetListFn>
+// consumed). on_scalar / on_list return false to abort (cursor error set);
+// on_raw_node gets first refusal on a nested list or mapping and consumes
+// the node itself when it claims one. `tuning` receives the entry's
+// `tuning:` map (every order has one).
+template <typename SetScalarFn, typename SetListFn,
+          typename RawNodeFn = NoRawNodes>
 bool parse_entry_fields(Cursor& c, std::vector<ClasspackTuningPair>& tuning,
-                        SetScalarFn&& on_scalar, SetListFn&& on_list)
+                        SetScalarFn&& on_scalar, SetListFn&& on_list,
+                        RawNodeFn&& on_raw_node = RawNodeFn{})
 {
     while (true) {
         yaml_event_t ev;
@@ -470,6 +908,12 @@ bool parse_entry_fields(Cursor& c, std::vector<ClasspackTuningPair>& tuning,
             }
             case YAML_SEQUENCE_START_EVENT: {
                 yaml_event_delete(&vev);
+                const KeyResult claimed =
+                    on_raw_node(key, YAML_SEQUENCE_START_EVENT);
+                if (claimed == KeyResult::Failed)
+                    return false;
+                if (claimed == KeyResult::Taken)
+                    break;
                 std::vector<Scalar> items;
                 if (!collect_scalars(c, items))
                     return false;
@@ -477,17 +921,24 @@ bool parse_entry_fields(Cursor& c, std::vector<ClasspackTuningPair>& tuning,
                     return false;
                 break;
             }
-            case YAML_MAPPING_START_EVENT:
+            case YAML_MAPPING_START_EVENT: {
                 yaml_event_delete(&vev);
                 if (key == "tuning") {
                     if (!parse_tuning_map(c, tuning))
                         return false;
                     break;
                 }
+                const KeyResult claimed =
+                    on_raw_node(key, YAML_MAPPING_START_EVENT);
+                if (claimed == KeyResult::Failed)
+                    return false;
+                if (claimed == KeyResult::Taken)
+                    break;
                 // Unknown nested mapping: skip (forward compatibility).
                 if (!skip_node(c, YAML_MAPPING_START_EVENT))
                     return false;
                 break;
+            }
             case YAML_ALIAS_EVENT:
                 yaml_event_delete(&vev);
                 break;
@@ -501,9 +952,42 @@ bool parse_entry_fields(Cursor& c, std::vector<ClasspackTuningPair>& tuning,
 
 // --- per-order entry parsers -------------------------------------------
 
+// The shape each v2 block takes, or nullptr when the key is not one of
+// them. A block written in the wrong shape — `stats: [12, 6, 12, ...]`,
+// the half-remembered v1 array — is fatal rather than unknown-and-
+// skipped: skipping it would install a family with no attributes at all
+// and say nothing.
+const char* v2_block_shape(const std::string& key)
+{
+    if (key == "stats" || key == "combat" || key == "costs")
+        return "a mapping of named keys";
+    if (key == "specials")
+        return "a list of specials";
+    return nullptr;
+}
+
+// True when the entry declares any of the six positional arrays (or the
+// two loose scalars) v2 replaced.
+bool declares_schema_v1(const ClasspackLivingEntry& e)
+{
+    return e.base_stats || e.hiring_cost || e.derived_bonuses ||
+           e.stat_costs || e.special_costs || e.weapon_cost ||
+           e.special_names || e.alternate_names;
+}
+
+bool declares_schema_v2(const ClasspackLivingEntry& e)
+{
+    return e.stats || e.combat || e.costs || e.specials;
+}
+
 bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
 {
-    return parse_entry_fields(
+    // Blocks can appear before `id:`, so name the entry as best we can.
+    const auto entry_where = [&e]() {
+        return e.id.empty() ? std::string("a living entry")
+                            : "'" + e.id + "'";
+    };
+    const bool ok = parse_entry_fields(
         c, e.tuning,
         [&](const std::string& key, const Scalar& v) {
             if (key == "id") {
@@ -554,6 +1038,12 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
                 return set_bool(c, key, v, e.playable);
             else if (key == "playable_order")
                 return set_int(c, key, v, e.playable_order);
+            else if (const char* shape = v2_block_shape(key)) {
+                if (v.null)
+                    return true;  // `~` is "not declared", as everywhere
+                c.error(entry_where() + " " + key + " takes " + shape);
+                return false;
+            }
             else {
                 // Presentation block; unknown keys are skipped (forward
                 // compatibility).
@@ -579,7 +1069,56 @@ bool parse_living_entry(Cursor& c, ClasspackLivingEntry& e)
             if (key == "names")
                 return set_string_list(c, key, items, e.names);
             return true;
+        },
+        [&](const std::string& key, yaml_event_type_t type) {
+            const char* shape = v2_block_shape(key);
+            if (shape == nullptr)
+                return KeyResult::Unknown;
+            const yaml_event_type_t wanted =
+                (key == "specials") ? YAML_SEQUENCE_START_EVENT
+                                    : YAML_MAPPING_START_EVENT;
+            if (type != wanted) {
+                c.error(entry_where() + " " + key + " takes " + shape);
+                return KeyResult::Failed;
+            }
+            if (key == "stats") {
+                ClasspackStatsBlock block;
+                if (!parse_stats_block(c, entry_where() + " stats", block))
+                    return KeyResult::Failed;
+                e.stats = block;
+            } else if (key == "combat") {
+                ClasspackCombatBlock block;
+                if (!parse_combat_block(c, entry_where() + " combat", block))
+                    return KeyResult::Failed;
+                e.combat = block;
+            } else if (key == "costs") {
+                ClasspackCostsBlock block;
+                if (!parse_costs_block(c, entry_where() + " costs", block))
+                    return KeyResult::Failed;
+                e.costs = block;
+            } else {
+                std::vector<ClasspackSpecialEntry> list;
+                if (!parse_specials_list(c, entry_where(), list))
+                    return KeyResult::Failed;
+                e.specials = std::move(list);
+            }
+            return KeyResult::Taken;
         });
+    if (!ok)
+        return false;
+    // Half-migrated entries are the one thing dual-accept must not swallow:
+    // with both spellings present, which one wins is a coin toss the author
+    // never sees. Fatal, like any other unusable value.
+    if (declares_schema_v1(e) && declares_schema_v2(e)) {
+        c.error(entry_where() +
+                ": mixes the old positional keys (base_stats, "
+                "derived_bonuses, stat_costs, special_costs, special_names, "
+                "alternate_names, hiring_cost, weapon_cost) with the named "
+                "blocks that replaced them (stats, combat, costs, specials) "
+                "— convert the whole entry");
+        return false;
+    }
+    return true;
 }
 
 bool parse_weapon_entry(Cursor& c, ClasspackWeaponEntry& e)
