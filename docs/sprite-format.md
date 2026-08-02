@@ -87,4 +87,4 @@ That command reads only `src/resources/our_palette.cpp::data[]`, so it is safe t
 
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — module layout and the resource pipeline.
 - `src/resources/our_palette.cpp` — the canonical 6-bit VGA palette.
-- `scripts/migrate_pix_to_aseprite.py` — one-shot migration plus `--emit-gpl` regeneration.
+- `scripts/migrate_pix_to_aseprite.py` — regenerates `pix/openglad.gpl` from `src/resources/our_palette.cpp` (`--emit-gpl`).

@@ -1,8 +1,8 @@
 # Z-Axis / Multi-Floor Design
 
-Status: **in progress** (branch `feature/z-axis-multifloor`, started 2026-06-28).
+Status: **shipped** (landed as "Multi-floor scenarios", #132).
 This document is the source of truth for the Z-axis feature. The phase checklist
-at the bottom tracks progress.
+at the bottom records what each phase landed.
 
 ## Goal
 

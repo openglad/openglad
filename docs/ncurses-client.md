@@ -132,7 +132,7 @@ include/openglad/platform/curses/
   curses_input.h     CursesInput : key events -> InputState via the config bindings
   curses_renderer.h  CursesRenderer : draw mirror GameWorld + HUD + message log
   curses_picker_client.h CursesPickerClient : og::ui::IPickerClient
-  curses_game_runtime.h  GameRunResult run_curses_level(...) ; loop + pacing
+  curses_game_runtime.h  GameRunResult run_level_loop(...) ; loop + pacing
   curses_network.h   host/join bring-up (transports + lobby + handoff)
   curses_app.h       CursesApp : top-level wiring (terminal, clock, options)
 src/platform/curses/   one .cpp per header + main.cpp
@@ -315,14 +315,14 @@ Implements `og::ui::IPickerClient` and is driven by the shared
 `og::ui::run_picker`. Mirrors `TextPickerClient` but renders rich TUI menus via
 `ITerminal` and reads keys from the terminal. Reuses `picker_menu_definition`,
 `HireSession`, `TrainSession`, `reset_for_new_game`, `initialize_starting_team`,
-campaign listing, save/load. `run_game()` calls `run_curses_level(...)` (local)
+campaign listing, save/load. `run_game()` calls `run_level_loop(...)` (local)
 or the networked runtime. `configure_networking()` / `host_game()` /
 `join_game()` open the networking submenu and build a host/join lobby via
 `curses_network`.
 
 ### `CursesGameRuntime` + `CursesNetwork`
 
-`run_curses_level` owns one level's loop for the local/host case: build the
+`run_level_loop` owns one level's loop for the local/host case: build the
 server world (`load_headless_level_from_save`), `InProcessTransport`,
 `GameServer`, in-process `GameClient` bound to a mirror world; wire client
 callbacks (control mapping → followed id; event batches → message log + end latch;

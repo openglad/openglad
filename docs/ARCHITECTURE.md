@@ -52,6 +52,7 @@ openglad/
 ├── docs/                   Architecture documentation
 │   └── external-dependencies.md  Package targets and FetchContent pins
 │
+├── packs/                  Class packs (built-in core pack: classpack.yaml, families/, Lua scripts/)
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
 ├── sound/                  Audio files (WAV, OGG)
@@ -743,6 +744,9 @@ ctest --preset ci-test         # Run tests
 | `dev-release` | Optimized build (RelWithDebInfo, tests off) |
 | `ci-test` | CI standard build + all tests |
 | `ci-asan` | ASan + UBSan sanitizer build |
+| `ci-tsan` | ThreadSanitizer build |
+| `ci-coverage` | Coverage-instrumented build (the coverage gate) |
+| `ci-fuzz` | libFuzzer targets |
 | `dev-debug-vcpkg` | With vcpkg toolchain |
 | `dev-debug-conan` | With Conan toolchain |
 | `web-emscripten` | Emscripten/WebAssembly build |
@@ -753,7 +757,7 @@ ctest --preset ci-test         # Run tests
 `og_core`, `og_gameplay`, `og_resources`, `og_interface`, `og_platform_sdl`
 
 **External libraries:**
-`og_ext_lodepng`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`, `og_ext_ixwebsocket`
+`og_ext_lodepng`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`, `og_ext_ixwebsocket`, `og_lua`
 
 **Aggregate target:**
 `og_game` — INTERFACE library linking all component libraries with `--start-group`/`--end-group` for cyclic resolution.
@@ -840,13 +844,13 @@ Key flags: `--use-port=sdl3`, `-sASYNCIFY`, `-sALLOW_MEMORY_GROWTH=1`, `-sINITIA
 ```
 ┌─────────────────────────────────────────┐
 │       SDL Integration Test Groups       │  Full game flows split across
-│      (og_test_*, 1496 total cases)      │  20 binaries, runs via CTest
+│              (og_test_*)                │  many binaries, runs via CTest
 ├─────────────────────────────────────────┤
 │         Text Client Tests               │  Headless simulation, picker
 │     (openglad_text_*, 3 CTest entries)  │  No display required
 ├─────────────────────────────────────────┤
 │           Headless Unit Tests           │  Pure logic, no SDL init
-│        (og_unit_*, 291 total cases)     │  GameSession RAII, sim determinism,
+│              (og_unit_*)                │  GameSession RAII, sim determinism,
 │                                         │  session isolation, spectator mode
 └─────────────────────────────────────────┘
 ```
@@ -891,11 +895,17 @@ TEST(MenuFlow, picker_main_unwinds) {
 
 ### CI Pipeline
 
-The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
+The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 
 1. **test** — Build all test binaries and run `ctest --parallel`
 2. **build** — Native release build (`openglad`, `openscen`)
-3. **asan** — ASan + UBSan build and test
+3. **headless-server** — SDL-free `openglad_text` / `openglad_server` build and test
+4. **asan** — ASan + UBSan build and test
+5. **tsan** — ThreadSanitizer build and test
+
+Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
+`nightly.yml` (nightly build + Cloudflare Pages production deploy), and
+`wasm-e2e.yml` (Playwright WebAssembly end-to-end tests + PR preview deploys).
 
 ---
 
@@ -913,7 +923,8 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/gameplay/game_world.cpp` | `GameWorld::tick()` — the deterministic, server-authoritative simulation step |
 | `src/gameplay/walker.cpp` | Base entity class — all game objects inherit from this |
 | `src/gameplay/living.cpp` | AI behavior for enemies and NPCs |
-| `src/gameplay/families/` | Data-driven `FamilyDescriptor` per-class files + registry |
+| `src/gameplay/families/` | Family string-id / namespace resolution (the descriptors themselves come from class packs) |
+| `packs/core/` | Built-in class pack: `classpack.yaml`, `families/`, Lua `scripts/` |
 | `src/gameplay/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/gameplay/game_server.cpp` | Authoritative `GameServer` (multiplayer + local runtime) |
 | `src/gameplay/game_client.cpp` | `GameClient` mirror |
@@ -935,6 +946,5 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `include/openglad/gameplay/families/family_registry.h` | Family registry lookup API |
 | `CMakeLists.txt` | Build system — component targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
-| `docs/architecture-rules.md` | Enforced component dependency rules |
 | `tests/integration_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |

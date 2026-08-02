@@ -37,6 +37,9 @@ cmake --build --preset dev-debug
 | `dev-release` | Optimized build (RelWithDebInfo) |
 | `ci-test` | CI standard build + all tests |
 | `ci-asan` | ASan + UBSan sanitizer build |
+| `ci-tsan` | ThreadSanitizer build |
+| `ci-coverage` | Coverage-instrumented build (the coverage gate) |
+| `ci-fuzz` | libFuzzer targets |
 | `web-emscripten` | Emscripten WebAssembly build |
 
 ### Dependencies (Debian/Ubuntu)
@@ -92,7 +95,7 @@ components only.
 
 ### Dependency Direction
 
-Dependencies flow inward: `og_platform_sdl → og_interface → og_resources → og_gameplay → og_core`. See `docs/architecture-rules.md` for the full dependency matrix and enforcement details, and `docs/ARCHITECTURE.md` for the networking architecture.
+Dependencies flow inward: `og_platform_sdl → og_interface → og_resources → og_gameplay → og_core`. See `docs/ARCHITECTURE.md` ("Dependency Direction Rules", "Include Boundary Rules", "Enforcement") for the full dependency matrix and enforcement details, and the same document for the networking architecture.
 
 ### Key Rules
 
@@ -131,6 +134,7 @@ GameContext (DI container) → screen*, prefs*, cfg*, IRandom*, InputState
 | libyaml users | Resource-level YAML readers/writers over libyaml |
 | IXWebSocket | WebSocket transport for networked multiplayer |
 | LodePNG | PNG codec for indexed-color sprite assets |
+| Lua 5.4.8 | Class-pack scripting VM (always vendored, compiled as C++) |
 
 Package targets, FetchContent pins, and update policy are in
 `docs/external-dependencies.md`.
@@ -265,7 +269,7 @@ The test build compiles game sources with `-DTESTING`. Use this for:
 1. Place public headers in `include/openglad/<module>/`
 2. Place implementation in `src/<module>/`
 3. Add source files to the appropriate `OG_*_SOURCES` list in `CMakeLists.txt`
-4. Respect module dependency rules (see `docs/architecture-rules.md`)
+4. Respect module dependency rules (see `docs/ARCHITECTURE.md`, "Dependency Direction Rules")
 5. Prefer `inline constexpr` over `#define` for constants
 6. Prefer `enum class` over plain `enum`
 7. Write unit tests for pure logic; integration tests for SDL-dependent flows

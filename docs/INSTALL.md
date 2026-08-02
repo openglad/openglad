@@ -35,8 +35,9 @@ nix develop
 ```
 
 The shell provides the native CMake toolchain and dependencies used by the
-documented presets: CMake, Ninja, pkg-config, SDL2, SDL2_mixer, ncurses, GTest,
-coverage tools, debugger tools, and common script utilities.
+documented presets: CMake, Ninja, pkg-config, SDL3, ncurses, GTest,
+lua-language-server, coverage tools, debugger tools, and common script
+utilities.
 
 Inside the shell, use the standard CMake presets:
 
@@ -96,6 +97,9 @@ ctest --preset ci-test
 | `dev-release` | Optimized build (RelWithDebInfo, no tests) |
 | `ci-test` | CI standard build + full test suite |
 | `ci-asan` | AddressSanitizer + UBSan build + tests |
+| `ci-tsan` | ThreadSanitizer build + tests |
+| `ci-coverage` | Coverage-instrumented build (used by the coverage gate) |
+| `ci-fuzz` | libFuzzer targets |
 | `dev-debug-vcpkg` | Debug build using vcpkg toolchain |
 | `dev-debug-conan` | Debug build using Conan toolchain |
 | `web-emscripten` | Emscripten WebAssembly build |
@@ -200,8 +204,8 @@ The CMake build produces these targets:
 |--------|-------------|
 | `openglad` | The game binary |
 | `openscen` | The level editor (compiled with `-DOPENSCEN`) |
-| `og_unit_*` | Four headless unit test binaries (291 tests total) |
-| `og_test_*` | Twenty SDL integration test binaries (1496 tests total) |
+| `og_unit_*` | Headless unit test binaries |
+| `og_test_*` | SDL integration test binaries |
 | `openglad_text` | Headless text client used by script-based CTest entries |
 
 ### Build Specific Targets
