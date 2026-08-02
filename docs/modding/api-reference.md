@@ -287,8 +287,8 @@ pool vent, a scaling drain) do their own extra deduction inside the entry.
 A castable slot with neither a handler nor a `default` still charges — that
 is the defined unmatched-slot behavior and it has not changed. What happens
 about it depends on who could have known: a slot the declaring pack itself
-left unhandled is that pack's error, and a slot some other front end filled
-only warns.
+left unhandled is that pack's error, and a slot the engine filled from C++
+(`install_classpack_data`) only warns.
 
 **Alternates.** A special may declare `alternate = { name = "..." }`, which is a
 DISPLAY name shown while Shift is held. There is no separate cost and no

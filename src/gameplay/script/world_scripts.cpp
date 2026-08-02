@@ -100,7 +100,7 @@ constexpr OrderInfo kOrders[] = {
 
 // Family string-id resolution ("core:soldier" → family byte) lives in
 // og::families::resolve_family_string_id (families/family_string_ids.h),
-// shared with the classpack.yaml exporter and reader.
+// shared with the installer and the declaration pass.
 
 }  // namespace
 

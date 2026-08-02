@@ -97,7 +97,8 @@ og::sim::PackManifestMessage make_test_manifest()
     manifest.pack_id = "org.test.mypack";
     manifest.version = "3";
     manifest.files = {
-        {.path = "classpack.yaml", .size_bytes = 24, .hash64 = 0x1122334455667788ull},
+        {.path = "families/warlock.lua", .size_bytes = 24,
+         .hash64 = 0x1122334455667788ull},
         {.path = "scripts/warlock.lua", .size_bytes = 900, .hash64 = 0xdeadbeefcafef00dull},
         {.path = "sprites/warlock.png", .size_bytes = 4096, .hash64 = 7},
     };
@@ -291,7 +292,7 @@ TEST(PackTransferWire, request_rejects_empty_and_oversized_ids)
 
 TEST(PackTransferValidation, safe_relative_path_rules)
 {
-    EXPECT_TRUE(og::sim::is_safe_pack_relative_path("classpack.yaml"));
+    EXPECT_TRUE(og::sim::is_safe_pack_relative_path("readme.txt"));
     EXPECT_TRUE(og::sim::is_safe_pack_relative_path("scripts/warlock.lua"));
     EXPECT_TRUE(og::sim::is_safe_pack_relative_path("a/b/c/d.PNG"));
     EXPECT_TRUE(og::sim::is_safe_pack_relative_path("under_score-dash.v2"));
@@ -718,18 +719,13 @@ namespace fs = std::filesystem;
 
 constexpr const char* kE2ePackId = "org.test.e2epack";
 constexpr const char* kE2eScript = "og.log('transferred pack loaded')\n";
-constexpr const char* kE2eYaml = "pack: org.test.e2epack\nversion: 1\n";
-// Split-layout descriptor file: families/*.yaml is ordinary pack content,
-// so it must ride the manifest and install — with
-// its tuning — on the receiving side exactly like a monolithic
-// classpack.yaml.
-constexpr const char* kE2eFamilyYaml =
-    "families:\n"
-    "  living:\n"
-    "    - id: e2epack:warrior\n"
-    "      wire_id: auto\n"
-    "      name: \"E2E WARRIOR\"\n"
-    "      tuning: {transferred_key: 42}\n";
+// A family declaration is ordinary pack content, so it must ride the
+// manifest and install — with its tuning — on the receiving side.
+constexpr const char* kE2eFamilyDecl =
+    "og.pack{ id = 'org.test.e2epack', version = '1' }\n"
+    "og.family('living', { id = 'e2epack:warrior', wire_id = 'auto',\n"
+    "                      name = 'E2E WARRIOR',\n"
+    "                      tuning = { transferred_key = 42 } })\n";
 
 bool pack_script_registered(const char* pack_id)
 {
@@ -752,8 +748,7 @@ protected:
         ASSERT_FALSE(ec) << ec.message();
         fs::create_directories(staging_ / "families", ec);
         ASSERT_FALSE(ec) << ec.message();
-        write_text(staging_ / "classpack.yaml", kE2eYaml);
-        write_text(staging_ / "families" / "warrior.yaml", kE2eFamilyYaml);
+        write_text(staging_ / "families" / "warrior.lua", kE2eFamilyDecl);
         write_text(staging_ / "scripts" / "hello.lua", kE2eScript);
         // Binary-ish third file exercises non-text content.
         std::ofstream png(staging_ / "sprite.bin", std::ios::binary);
@@ -798,8 +793,8 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
             return pack.manifest.pack_id == kE2ePackId;
         });
     ASSERT_NE(offer.end(), offered) << "mounted pack must be offered";
-    ASSERT_EQ(4u, offered->manifest.files.size())
-        << "families/warrior.yaml must ride the manifest walk";
+    ASSERT_EQ(3u, offered->manifest.files.size())
+        << "families/warrior.lua must ride the manifest walk";
     const og::sim::PackManifestMessage host_manifest = offered->manifest;
 
     // The joining machine does NOT have the pack: drop the host-side mount
@@ -881,7 +876,7 @@ TEST_F(PackTransferE2ETest, host_offers_and_join_client_installs_and_registers)
     const int warrior_id = og::families::resolve_family_string_id(
         Order::Living, "e2epack:warrior");
     ASSERT_GE(warrior_id, 0)
-        << "families/warrior.yaml must install from the mounted cache";
+        << "families/warrior.lua must install from the mounted cache";
     const og::script::TuningMap* warrior_tuning =
         og::script::family_tuning(Order::Living, warrior_id);
     ASSERT_NE(warrior_tuning, nullptr);
@@ -929,7 +924,8 @@ protected:
         manifest_.pack_id = kCachedPackId;
         manifest_.pack_index = 0;
         manifest_.pack_count = 1;
-        add_file("classpack.yaml", "pack: org.test.cachedpack\nversion: 1\n");
+        add_file("families/probe.lua",
+                 "og.pack{ id = 'org.test.cachedpack', version = '1' }\n");
         add_file("scripts/hello.lua", "og.log('cached pack loaded')\n");
         cache_dir_ = fs::path(get_user_path()) /
                      ("packs_cache/" + std::string(kCachedPackId) + "@" +

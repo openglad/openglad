@@ -12,6 +12,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
@@ -22,7 +23,6 @@
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
-#include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/physfs_api.h>
 
@@ -67,7 +67,7 @@ int refresh_pack_scripts()
     og::script::clear_pack_lib_modules();
     og::script::clear_pack_family_chunks();
     const int scripts = register_mounted_pack_scripts();
-    // Mount changes can add/remove classpack.yaml data too (campaign-
+    // Mount changes can add/remove family declarations too (campaign-
     // embedded packs); reinstall keeps registries in step with scripts.
     install_classpacks();
     return scripts;
@@ -181,7 +181,7 @@ int register_mounted_pack_scripts()
 }
 
 // ---------------------------------------------------------------------------
-// classpack.yaml → registry install
+// og.family declarations → registry install
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -221,34 +221,34 @@ unsigned store_object_count()
                                  s.anim_rows.size() + s.anim_tables.size());
 }
 
-// One pack's YAML text, already parsed.
+// One pack's declaration chunks, already harvested.
 //
 // WHY: install_classpacks() runs on EVERY mount and EVERY unmount (see
 // refresh_pack_scripts), and a single campaign switch is four of those —
 // CampaignData::load() unmounts the old campaign, mounts the new one, then
 // puts the old one back. Re-READING the tree each time is the point (a
 // campaign .glad may carry its own packs/, so the bytes really can change);
-// re-PARSING identical bytes is pure waste, and after the core pack moved
-// from one classpack.yaml to 73 families/*.yaml it became the dominant cost
-// of the whole call: ~9.6 ms of a 14.7 ms install under ASan, ~1.0 of 2.2
-// plain. It was also an unbounded leak — every pass pushed another copy of
-// the parsed data into the process-lifetime store, whose entries are never
-// freed, so a session that switched campaigns kept accumulating megabytes of
-// identical descriptor text.
+// re-EVALUATING identical bytes is pure waste, and with the core pack's 73
+// families spread over one file each it is the dominant cost of the whole
+// call: ~9.6 ms of a 14.7 ms install under ASan, ~1.0 of 2.2 plain. It was
+// also an unbounded leak — every pass pushed another copy of the harvested
+// data into the process-lifetime store, whose entries are never freed, so a
+// session that switched campaigns kept accumulating megabytes of identical
+// descriptor text.
 //
-// The memo caches ONLY the parse. Every install still resets the registries
-// and reinstalls every entry from scratch, in the same order, with the same
-// wire-id counter — so a hit is observationally identical to a miss except
-// for the missing work. `data` points into classpack_store(), which is never
-// destroyed and whose entries never move, so the pointer (and every
+// The memo caches ONLY the declaration pass. Every install still resets the
+// registries and reinstalls every entry from scratch, in the same order, with
+// the same wire-id counter — so a hit is observationally identical to a miss
+// except for the missing work. `data` points into classpack_store(), which is
+// never destroyed and whose entries never move, so the pointer (and every
 // descriptor field borrowing its strings) stays valid for the process.
 //
-// The one deliberate difference: a doc that parses successfully but logs a
-// warning while doing so (an unresolved reference, say) logs it once rather
-// than once per mount. A doc that FAILS to parse rejects its pack and is
-// never memoized, so the rejection warning still fires on every pass.
+// The one deliberate difference: a chunk that declares successfully but logs
+// a warning while doing so (an unresolved reference, say) logs it once rather
+// than once per mount. A chunk that FAILS rejects its pack and is never
+// memoized, so the rejection warning still fires on every pass.
 struct ParsedPack {
-    std::string signature;  // length-framed vpath+bytes of every doc, in order
+    std::string signature;  // length-framed chunk name + bytes, in order
     const og::data::ClasspackData* data = nullptr;  // owned by the store
 };
 
@@ -262,8 +262,8 @@ std::map<std::string, ParsedPack>& parsed_pack_memo()
 // Deterministic wire-id assignment for one install run: core packs pin
 // explicit ids; wire_id auto/absent takes the next id >= 21 per order in
 // encounter order (packs are visited pack-id-lexicographically, entries in
-// YAML order). Ids 0..20 are reserved for the core pins, and every install
-// pass starts from a registry whose mod slots were just freed, so the
+// declaration order). Ids 0..20 are reserved for the core pins, and every
+// install pass starts from a registry whose mod slots were just freed, so the
 // counter reproduces the same assignment on every peer. A pack that pins an
 // id >= 21 explicitly can still collide with an auto id — pin the whole
 // pack or none of it. Entries past a registry's capacity (256 ids per
@@ -293,9 +293,10 @@ int resolve_wire_id(const std::string& wire_id, Order order,
 
 // Every wire id one pack claims, resolved BEFORE anything installs.
 //
-// Two jobs. First, the ids are taken in a fixed sequence (entries in YAML
-// order, per order counter), which is what makes auto ids reproducible on
-// every peer — so they must be taken exactly once, here, and handed to the
+// Two jobs. First, the ids are taken in a fixed sequence (entries in
+// declaration order, per order counter), which is what makes auto ids
+// reproducible on every peer — so they must be taken exactly once, here,
+// and handed to the
 // installers rather than re-derived. Second, and the reason this exists at
 // all: a family may reference another family THE SAME PACK DECLARES LOWER
 // DOWN THE FILE. The core pack does it (core:mage promotes_to core:archmage,
@@ -366,7 +367,7 @@ bool fold_bit_flags(const std::vector<std::string>& names,
 }
 
 // The stored entry's string (owned by the ClasspackStore) or nullptr for
-// an explicit YAML null.
+// an explicit `og.NIL`.
 const char* nullable_cstr(const og::data::NullableString& s)
 {
     return s.is_null ? nullptr : s.value.c_str();
@@ -696,7 +697,7 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
                       FamilyDescriptor& d)
 {
     static_assert(og::data::kMaxSpecialSlot == FD_NUM_SPECIALS - 1,
-                  "the YAML slot cap and the descriptor's array must agree");
+                  "the slot cap and the descriptor's array must agree");
     for (int i = 0; i < FD_NUM_SPECIALS; i++) {
         d.special_cost[i] = kSpecialCostDisabled;
         d.special_names[i] = kSpecialNameNone;
@@ -730,7 +731,7 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
     }
 
     // Copying the live descriptor preserves every behavior callback
-    // pointer; only the data fields the YAML declares are overwritten.
+    // pointer; only the data fields the declaration spells are overwritten.
     FamilyDescriptor d = *current;
     d.declared_id = claim_declared_id(e.id, d.declared_id, "living");
     if (e.name)
@@ -738,8 +739,8 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
     if (e.short_name.present)
         d.short_name = nullable_cstr(e.short_name);
     // --- the named blocks -------------------------------------------------
-    // Each lands in exactly the descriptor field its schema v1 column did,
-    // so a migrated entry installs the bytes the array spelling installed.
+    // Each lands in exactly the descriptor field the DOS array's column
+    // did, so a declaration installs the bytes the arrays installed.
     if (e.stats) {
         d.base_stats[StatAxis::Strength] = e.stats->strength;
         d.base_stats[StatAxis::Dexterity] = e.stats->dexterity;
@@ -1024,8 +1025,9 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
 int install_pack_families(const og::data::ClasspackData& pack,
                           AutoWireIds& autos)
 {
-    // Same sequence the installers used to take them in — entries in YAML
-    // order, one counter per order — so auto ids land exactly where they did.
+    // Same sequence the installers used to take them in — entries in
+    // declaration order, one counter per order — so auto ids land exactly
+    // where they did.
     PackWireIds wire_ids;
     for (const auto& e : pack.weapons)
         wire_ids.take(Order::Weapon, e.id, e.wire_id, autos);
@@ -1090,71 +1092,56 @@ int install_classpacks()
     // Same deterministic pack order as script registration.
     for (const std::string& pack_id :
          og::io::physfs_enumerate_files_sorted("packs")) {
-        // One document of a pack: packs/<id>/classpack.yaml, or one
-        // packs/<id>/families/*.yaml. `name` is empty for the former, which
-        // is also what selects its rejection message.
-        struct Doc {
-            std::string vpath;
-            std::string name;
-            std::string text;
-        };
-        std::vector<Doc> docs;
         // Exact identity of what was read, framed so no combination of
-        // paths and contents can alias another: <vpath>\n<len>\n<bytes>.
+        // paths and contents can alias another: <chunk>\n<len>\n<bytes>.
         // Compared byte-for-byte rather than hashed — the whole point is
         // that a memo hit must mean the SAME text, and 60 KB of memcmp is
-        // three orders of magnitude cheaper than the parse it skips.
+        // three orders of magnitude cheaper than the evaluation it skips.
         std::string signature;
-        bool rejected = false;
 
-        // READ phase. Always runs: mounts really can change these bytes
-        // (a campaign .glad may carry its own packs/), and the read is what
-        // discovers that. Only the parse below is memoized.
-        const std::string vpath = "packs/" + pack_id + "/classpack.yaml";
-        std::vector<std::uint8_t> bytes = read_file(vpath.c_str());
-        if (!bytes.empty())
-            docs.push_back({vpath, std::string(),
-                            std::string(reinterpret_cast<const char*>(
-                                            bytes.data()),
-                                        bytes.size())});
-        // Split layout: packs/<id>/families/*.yaml, each an ordinary
-        // classpack document (usually one family entry), parsed into the
-        // SAME ClasspackData AFTER classpack.yaml in sorted filename
-        // order. parse_classpack_yaml appends per-order entries and
-        // last-wins the header scalars, so the split set loads exactly
-        // like the same text concatenated — and a pack may ship either
-        // layout or both (classpack.yaml first, then families/; a later
-        // entry pinning an already-declared WIRE slot overwrites just
-        // the data fields it declares — ordinary sparse-entry semantics
-        // — and replaces that slot's tuning map whole, since every
-        // installed entry installs its tuning). Any unusable family
-        // file rejects the whole pack, matching the classpack.yaml
-        // contract above.
-        const std::string families_dir = "packs/" + pack_id + "/families";
+        // THE v2 TRIPWIRE. A pack written for the retired YAML format now
+        // loads as a pack with no families at all — every stat, special and
+        // sprite silently absent, a team of default gladiators — so refuse
+        // it by name instead, and say what to run. Checked on every pass
+        // because a mount really can bring these files in (a campaign .glad
+        // may carry its own packs/). A DIRECTORY whose name happens to end
+        // in .yaml is not a document and never was.
+        bool rejected = false;
+        const std::string pack_dir = "packs/" + pack_id;
+        const std::string families_dir = pack_dir + "/families";
+        const auto refuse_v2 = [&](const std::string& what) {
+            LogWarn("class pack '{}' rejected: {} is the retired YAML "
+                    "format; families are Lua now — run "
+                    "scripts/migrate_classpack_v3.py, and see "
+                    "docs/lua-classpacks-design.md\n",
+                    pack_id, what);
+            rejected = true;
+        };
         for (const std::string& name :
-             og::io::physfs_enumerate_files_sorted(families_dir)) {
-            const std::string fpath = families_dir + "/" + name;
-            if (!name.ends_with(".yaml") ||
-                og::io::physfs_is_directory(fpath))
-                continue; // non-YAML notes and subdirs are fine
-            bytes = read_file(fpath.c_str());
-            if (bytes.empty()) {
-                LogWarn("class pack '{}' rejected: family file '{}' "
-                        "unusable\n", pack_id, name);
-                rejected = true;
+             og::io::physfs_enumerate_files_sorted(pack_dir)) {
+            if (name == "classpack.yaml" &&
+                !og::io::physfs_is_directory(pack_dir + "/" + name)) {
+                refuse_v2("classpack.yaml");
                 break;
             }
-            docs.push_back({fpath, name,
-                            std::string(reinterpret_cast<const char*>(
-                                            bytes.data()),
-                                        bytes.size())});
         }
-        // The Lua front end's inputs, already read into the chunk registries
-        // by register_mounted_pack_scripts: this pack's families/*.lua (the
-        // og.family declarations) and its lib/*.lua (which og.use pulls into
-        // the declaration, so a module edit really can change what a family
-        // declares). Framed into the same signature, so one memo covers
-        // both front ends and a hit still means the same bytes.
+        if (!rejected) {
+            for (const std::string& name :
+                 og::io::physfs_enumerate_files_sorted(families_dir)) {
+                if (name.ends_with(".yaml") &&
+                    !og::io::physfs_is_directory(families_dir + "/" + name)) {
+                    refuse_v2("families/" + name);
+                    break;
+                }
+            }
+        }
+
+        // The declaration pass's inputs, already read into the chunk
+        // registries by register_mounted_pack_scripts: this pack's
+        // families/*.lua (the og.family declarations) and its lib/*.lua
+        // (which og.use pulls into the declaration, so a module edit really
+        // can change what a family declares). Both are framed into the
+        // signature, so a memo hit means the same bytes on both.
         std::vector<const og::script::PackScript*> family_chunks;
         for (const og::script::PackScript& c :
              og::script::pack_family_chunks()) {
@@ -1162,18 +1149,11 @@ int install_classpacks()
                 family_chunks.push_back(&c);
         }
         auto& memo = parsed_pack_memo();
-        if (rejected || (docs.empty() && family_chunks.empty())) {
-            // No classpack data at all (scripts-only) is fine. Either way
-            // this pack has no valid parse to remember.
+        if (rejected || family_chunks.empty()) {
+            // A pack with no family chunks (scripts-only, or art-only) is
+            // fine. Either way this pack has no valid harvest to remember.
             memo.erase(pack_id);
             continue;
-        }
-        for (const Doc& doc : docs) {
-            signature += doc.vpath;
-            signature += '\n';
-            signature += std::to_string(doc.text.size());
-            signature += '\n';
-            signature += doc.text;
         }
         for (const og::script::PackLibModule& m :
              og::script::pack_lib_modules()) {
@@ -1193,7 +1173,7 @@ int install_classpacks()
             signature += c->source;
         }
 
-        // PARSE phase, memoized on the exact bytes just read.
+        // DECLARE phase, memoized on the exact bytes just read.
         const og::data::ClasspackData* stored = nullptr;
         const auto hit = memo.find(pack_id);
         if (hit != memo.end() && hit->second.signature == signature) {
@@ -1201,26 +1181,10 @@ int install_classpacks()
             g_pack_install_stats.pack_parse_reuses++;
         } else {
             auto parsed = std::make_unique<og::data::ClasspackData>();
-            for (const Doc& doc : docs) {
-                if (og::data::parse_classpack_yaml(doc.text, *parsed,
-                                                   doc.vpath.c_str()))
-                    continue;
-                if (doc.name.empty())
-                    LogWarn("class pack '{}' rejected: classpack.yaml "
-                            "unusable\n", pack_id);
-                else
-                    LogWarn("class pack '{}' rejected: family file '{}' "
-                            "unusable\n", pack_id, doc.name);
-                rejected = true;
-                break;
-            }
-            if (rejected) {
-                memo.erase(pack_id);
-                continue;
-            }
-            // The Lua front end, into the SAME structs, after the YAML: a
-            // pack may ship either (during the migration, both), and the
-            // installer never learns which produced an entry.
+            // Every chunk of the pack, evaluated in a throwaway VM whose
+            // og.family harvests into these structs. One bad chunk rejects
+            // the whole pack — a half-installed family is a worse outcome
+            // than a named refusal.
             const og::script::DeclareResult declared =
                 og::script::declare_pack_families(pack_id, *parsed);
             if (!declared.ok) {
@@ -1241,11 +1205,10 @@ int install_classpacks()
         // just reset, and every entry is reinstalled in the same order with
         // the same wire-id counter.
         installed += install_pack_families(*stored, autos);
-        // Which registry slots this pack declared in LUA. The rules that
-        // hold a Lua declaration to a higher standard than a YAML one read
-        // it back after the bind pass — an unhandled castable special is a
-        // warning for a slot some other front end filled and a pack error
-        // for one an og.family wrote (format spec V3). Resolved here because
+        // Which registry slots this pack declared in LUA. The bind pass
+        // reads it back — an unhandled castable special is a warning for a
+        // slot install_classpack_data filled from C++ and a pack error for
+        // one an og.family wrote (format spec V3). Resolved here because
         // the family byte only exists after the install: a declared id is
         // all the declaration itself can name.
         for (const og::data::ClasspackLuaDeclaration& decl :

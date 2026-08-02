@@ -73,7 +73,7 @@ struct RadarBlip {
                                      const RadarBlip&) = default;
 };
 
-// --- classpack.yaml vocabulary --------------------------------------------
+// --- the declaration's presentation vocabulary ----------------------------
 
 inline constexpr std::array<const char*, 10> kGlyphColorNames = {
     "default", "black",   "red",  "green", "yellow",

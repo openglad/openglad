@@ -7,8 +7,8 @@
  */
 #pragma once
 
-// Family-id resolution (docs/lua-classpacks-design.md §5) and
-// classpack.yaml vocabulary parsing used by resources/classpack_yaml.
+// Family-id resolution (docs/lua-classpacks-design.md §5) and the name
+// vocabulary a family declaration writes, resolved at install.
 
 #include <openglad/core/order.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -34,11 +34,11 @@ namespace og::families {
 // Matching is case-insensitive and treats ' ' and '_' as the same character.
 int resolve_family_string_id(Order order, const char* family_str);
 
-// classpack.yaml `animation:` name to FamilyAnimationType
+// An `animation` name to FamilyAnimationType
 // (standard|mage|skeleton|giant_skeleton|slime|small_slime|static).
 bool animation_type_from_name(std::string_view name, FamilyAnimationType& out);
 
-// classpack.yaml `init_bit_flags:` entry name ("FLYING", "SWIMMING", ...)
+// A `flags` entry name ("FLYING", "SWIMMING", ...)
 // to a BIT_* stat flag. Returns 0 for unknown names.
 std::int32_t bit_flag_from_name(std::string_view name);
 

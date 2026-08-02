@@ -65,9 +65,9 @@ WHAT IT REFUSES
 WHY A SCRIPT AND NOT 19 HAND EDITS
 ----------------------------------
 21 families times ~40 scalars is the exact shape that produces the
-transcription slip nobody sees — the same argument migrate_classpack_v2.py
-was written under, and the same discipline: values move as text, unclaimed
-lines are proven identical, and the tool refuses rather than guesses.
+transcription slip nobody sees. The discipline is the same one the v2
+migration ran under: values move as text, unclaimed lines are proven
+identical, and the tool refuses rather than guesses.
 
 USAGE
 -----

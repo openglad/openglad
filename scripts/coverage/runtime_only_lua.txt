@@ -31,6 +31,6 @@
 7855f36eebd94cc8cb0bf8ed3d8961879bdedc72c2ce0d61d9dedb6b6bee4987  tests/unit/test_pack_transfer.cpp — pack served out of the on-disk pack cache
 9f2c0dd70f115b202f2eadff691ac6541b3f6fe0adcaefee9c941cf15147684b  tests/unit/test_pack_transfer_errors.cpp — cache-regeneration probe, first generation
 07c728ed47b11abf3d36dafd7fd4e3ada166a5cbac225b7336a0c350a1fbd381  tests/unit/test_pack_transfer_errors.cpp — cache-regeneration probe, second generation
-18665daa3c47df971d22542e81fd2b2c13f16712b39770b5f01468242c0e368b  tests/unit/test_classpack_yaml.cpp kLibAaa — og.use lib module in the mounted scratch pack
-e1af1b7073e80792253731be73aaf3287fa93e5a1f53a7231c8009a5d33ed3ab  tests/unit/test_classpack_yaml.cpp kLibHelper — og.use lib module in the mounted scratch pack
-e252b49ea5557e8c47a78f47173044d327aac6ea8a4be9a362d4a67ebc44e421  tests/unit/test_classpack_yaml.cpp kLibProbeScript — pack script binding both lib exports
+18665daa3c47df971d22542e81fd2b2c13f16712b39770b5f01468242c0e368b  tests/unit/test_classpack_install.cpp kLibAaa — og.use lib module in the mounted scratch pack
+e1af1b7073e80792253731be73aaf3287fa93e5a1f53a7231c8009a5d33ed3ab  tests/unit/test_classpack_install.cpp kLibHelper — og.use lib module in the mounted scratch pack
+e252b49ea5557e8c47a78f47173044d327aac6ea8a4be9a362d4a67ebc44e421  tests/unit/test_classpack_install.cpp kLibProbeScript — pack script binding both lib exports

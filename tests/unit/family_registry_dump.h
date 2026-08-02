@@ -9,13 +9,14 @@
 
 // A text rendering of every installed family descriptor, field by field.
 //
-// This exists to answer ONE question mechanically: did changing the FRONT
-// END change the DATA? packs/core is being moved off classpack.yaml onto
-// Lua `og.family` declarations, and the whole promise of that move is that
-// the installed registry comes out identical — same wire ids, same numbers,
-// same strings, same animation frames, same tuning. A promise nobody can
-// diff is a hope, so this dumps the registry into stable text that a golden
-// file can hold and a test can compare byte for byte.
+// It was built to answer ONE question mechanically: did changing the FRONT
+// END change the DATA? packs/core moved off classpack.yaml onto Lua
+// `og.family` declarations, and the promise of that move was that the
+// installed registry came out identical — same wire ids, same numbers, same
+// strings, same animation frames, same tuning. A promise nobody can diff is
+// a hope, so this dumps the registry into stable text that a golden file can
+// hold and a test can compare byte for byte. The front-end swap is done; the
+// golden stays, now as the regression pin on what packs/core installs.
 //
 // Rules the format follows, all so the text is a function of the DATA and
 // nothing else:

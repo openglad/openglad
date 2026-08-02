@@ -6,12 +6,20 @@
  * (at your option) any later version.
  */
 
-// classpack.yaml reader + family string-id tests (headless).
+// The INSTALLER, and the string-id table it fills (headless).
 //
-// Covers typed parsing of every field kind (ints, floats, bools, string
-// lists, nullable strings), strictness (bad YAML / bad numbers / missing
-// ids fail the pack), string-id resolution for all five registries, the
-// committed split-layout core pack, and descriptor installation semantics.
+// Everything downstream of the declaration pass: a harvested ClasspackData
+// goes into install_classpack_data or arrives from a real mount, and these
+// tests read the registries back. Wire-id assignment (pinned, auto, out of
+// range, freed on unmount), string-id resolution for all five orders, the
+// sparse copy-and-patch override rule, presentation, pack-shipped animation
+// tables and the tuning store are all installer contracts, independent of
+// how the data was written.
+//
+// The front end that writes it is `og.family` — see
+// tests/unit/test_classpack_lua_decl.cpp for the declaration pass and its
+// error surface. Where a test here needs data, it declares it, because a
+// hand-built ClasspackData can hold shapes no author can write.
 
 #include <gtest/gtest.h>
 
@@ -20,6 +28,7 @@
 #include <openglad/core/family_presentation.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/effect_family_descriptor.h>
@@ -32,7 +41,6 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/packs.h>
@@ -53,69 +61,26 @@
 #endif
 
 using og::data::ClasspackData;
-using og::data::parse_classpack_yaml;
 
 namespace {
 
-const char* kLivingSnippet = R"(pack: testpack
-version: 3
-title: "Test Pack"
-authors: "Nobody"
-families:
-  living:
-    - id: testpack:warlock
-      wire_id: auto
-      name: "WARLOCK"
-      short_name: ~
-      stats:
-        strength: 12
-        dexterity: 6
-        constitution: 12
-        intelligence: 8
-        armor: 9
-        level: 1
-      combat:
-        hp: 120
-        melee_damage: 20
-        stepsize: 4
-        fire_delay: 6
-        fire_mp_cost: 2
-      costs:
-        hire: 250
-        train:
-          strength: 6
-          dexterity: 10
-          constitution: 6
-          intelligence: 25
-          armor: 50
-          level: 200
-      specials:
-        - id: charge
-          name: CHARGE
-          mp_cost: 25
-      default_weapon: core:knife
-      init_bit_flags: [FLYING, ETHEREAL]
-      init_ani_type: 0
-      init_max_magicpoints: 50.5
-      leaves_bloodspot: true
-      magic_damage_modifier: 0.5
-      is_stationary: false
-      has_returning_weapon: true
-      is_undead: false
-      promotes_to: core:archmage
-      promotion_level_req: 6
-      death_message: "WARLOCK UNDONE"
-      sprite: "mage.png"
-      animation: mage
-      ai_line_of_sight: 7
-      description: "Line one   \nline two"
-      names: ["Foo", "Bar"]
-      playable: true
-      playable_order: 3
-)";
+// One family chunk, harvested. This is the front end: registering the chunk
+// is what a mount does, and declare_pack_families is what the installer
+// calls before it touches a registry.
+void declare_or_die(const std::string& lua, ClasspackData& out,
+                    const char* pack_id = "testpack")
+{
+    og::script::clear_pack_family_chunks();
+    og::script::register_pack_family_chunk(
+        {pack_id, std::string("packs/") + pack_id + "/families/a.lua", lua});
+    const og::script::DeclareResult r =
+        og::script::declare_pack_families(pack_id, out);
+    og::script::clear_pack_family_chunks();
+    ASSERT_TRUE(r.ok) << r.error;
+}
 
-// costs: with a hire price and no training table — the smallest declaration
-// that gives an entry one value worth checking after an install.
+// A costs block with a hire price and no training table — the smallest
+// declaration that gives an entry one value worth checking after an install.
 og::data::ClasspackCostsBlock hire_only(std::int32_t gold)
 {
     og::data::ClasspackCostsBlock costs;
@@ -126,252 +91,7 @@ og::data::ClasspackCostsBlock hire_only(std::int32_t gold)
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Parsing
-// ---------------------------------------------------------------------------
-
-TEST(ClasspackYaml, parse_full_living_entry)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(kLivingSnippet, data, "snippet"));
-
-    ASSERT_EQ(data.pack, "testpack");
-    ASSERT_EQ(data.version, "3");
-    ASSERT_EQ(data.title, "Test Pack");
-    ASSERT_EQ(data.authors, "Nobody");
-    ASSERT_EQ(data.living.size(), 1u);
-
-    const auto& e = data.living[0];
-    ASSERT_EQ(e.id, "testpack:warlock");
-    ASSERT_EQ(e.wire_id, "auto");
-    ASSERT_TRUE(e.name.has_value());
-    ASSERT_EQ(*e.name, "WARLOCK");
-    ASSERT_TRUE(e.short_name.present);
-    ASSERT_TRUE(e.short_name.is_null);
-    ASSERT_TRUE(e.stats.has_value());
-    ASSERT_EQ(e.stats->strength, 12);
-    ASSERT_EQ(e.stats->level, 1);
-    ASSERT_TRUE(e.combat.has_value());
-    ASSERT_EQ(e.combat->hp, 120.0f);
-    ASSERT_EQ(e.combat->fire_mp_cost, 2);
-    ASSERT_TRUE(e.costs.has_value());
-    ASSERT_EQ(e.costs->hire, 250);
-    ASSERT_TRUE(e.costs->train.has_value());
-    ASSERT_EQ(e.costs->train->dexterity, 10);
-    ASSERT_EQ(e.default_weapon.value_or(""), "core:knife");
-    ASSERT_TRUE(e.init_bit_flags.has_value());
-    ASSERT_EQ(e.init_bit_flags->size(), 2u);
-    ASSERT_EQ((*e.init_bit_flags)[0], "FLYING");
-    ASSERT_EQ((*e.init_bit_flags)[1], "ETHEREAL");
-    ASSERT_EQ(e.init_ani_type.value_or(-1), 0);
-    ASSERT_EQ(e.init_max_magicpoints.value_or(-1.0f), 50.5f);
-    ASSERT_TRUE(e.specials.has_value());
-    ASSERT_EQ(e.specials->size(), 1u);
-    ASSERT_EQ((*e.specials)[0].name, "CHARGE");
-    ASSERT_EQ(e.leaves_bloodspot.value_or(false), true);
-    ASSERT_EQ(e.magic_damage_modifier.value_or(-1.0f), 0.5f);
-    ASSERT_EQ(e.is_stationary.value_or(true), false);
-    ASSERT_EQ(e.has_returning_weapon.value_or(false), true);
-    ASSERT_EQ(e.is_undead.value_or(true), false);
-    ASSERT_TRUE(e.promotes_to.present);
-    ASSERT_FALSE(e.promotes_to.is_null);
-    ASSERT_EQ(e.promotes_to.value, "core:archmage");
-    ASSERT_EQ(e.promotion_level_req.value_or(-1), 6);
-    ASSERT_TRUE(e.death_message.present);
-    ASSERT_EQ(e.death_message.value, "WARLOCK UNDONE");
-    ASSERT_TRUE(e.sprite.present);
-    ASSERT_EQ(e.sprite.value, "mage.png");
-    ASSERT_EQ(e.animation.value_or(""), "mage");
-    ASSERT_EQ(e.ai_line_of_sight.value_or(-1), 7);
-    ASSERT_TRUE(e.description.present);
-    ASSERT_EQ(e.description.value, "Line one   \nline two")
-        << "double-quoted \\n and trailing spaces must survive";
-    ASSERT_TRUE(e.names.has_value());
-    ASSERT_EQ(e.names->size(), 2u);
-    ASSERT_EQ((*e.names)[0], "Foo");
-    ASSERT_EQ(e.playable.value_or(false), true);
-    ASSERT_EQ(e.playable_order.value_or(-1), 3);
-}
-
-TEST(ClasspackYaml, absent_fields_stay_absent)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: x:sparse\n"
-        "      costs:\n        hire: 9\n",
-        data, "sparse"));
-    ASSERT_EQ(data.living.size(), 1u);
-    const auto& e = data.living[0];
-    ASSERT_EQ(e.id, "x:sparse");
-    ASSERT_TRUE(e.wire_id.empty());
-    ASSERT_TRUE(e.costs.has_value());
-    ASSERT_EQ(e.costs->hire, 9);
-    ASSERT_FALSE(e.costs->train.has_value());
-    ASSERT_FALSE(e.name.has_value());
-    ASSERT_FALSE(e.short_name.present);
-    ASSERT_FALSE(e.stats.has_value());
-    ASSERT_FALSE(e.promotes_to.present);
-    ASSERT_FALSE(e.description.present);
-    ASSERT_FALSE(e.names.has_value());
-    ASSERT_FALSE(e.playable.has_value());
-}
-
-TEST(ClasspackYaml, parse_weapon_effect_treasure_generator)
-{
-    const char* yaml =
-        "families:\n"
-        "  weapon:\n"
-        "    - id: core:rock\n"
-        "      wire_id: 1\n"
-        "      name: \"ROCK\"\n"
-        "      fire_sound: 10\n"
-        "      skip_sit_notify: false\n"
-        "      is_auto_attackable: true\n"
-        "      init_bit_flags: [FORESTWALK]\n"
-        "      init_lifetime: 350\n"
-        "      init_ani_type: 5\n"
-        "      vz: 0.7\n"
-        "      gravity: 0.09\n"
-        "      sizez: 12\n"
-        "      can_drop_floors: true\n"
-        "  effect:\n"
-        "    - id: core:marker\n"
-        "      wire_id: 8\n"
-        "      loops_animation: true\n"
-        "      creates_hit_effect: false\n"
-        "      init_bit_flags: []\n"
-        "  treasure:\n"
-        "    - id: core:stain\n"
-        "      wire_id: 0\n"
-        "      init_ignore: true\n"
-        "      init_frame: -1\n"
-        "  generator:\n"
-        "    - id: core:tent\n"
-        "      wire_id: 0\n"
-        "      default_weapon: core:skeleton\n"
-        "      has_lifetime: true\n"
-        "      spawn_ani_type: 3\n"
-        "      clear_owner: false\n";
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "orders"));
-
-    ASSERT_EQ(data.weapons.size(), 1u);
-    const auto& w = data.weapons[0];
-    ASSERT_EQ(w.id, "core:rock");
-    ASSERT_EQ(w.wire_id, "1");
-    ASSERT_EQ(w.fire_sound.value_or(-1), 10);
-    ASSERT_EQ(w.is_auto_attackable.value_or(false), true);
-    ASSERT_EQ(w.init_bit_flags->at(0), "FORESTWALK");
-    ASSERT_EQ(w.init_lifetime.value_or(-1), 350);
-    ASSERT_EQ(w.init_ani_type.value_or(-1), 5);
-    ASSERT_EQ(w.vz.value_or(-1.0f), 0.7f);
-    ASSERT_EQ(w.gravity.value_or(-1.0f), 0.09f);
-    ASSERT_EQ(w.sizez.value_or(-1), 12);
-    ASSERT_EQ(w.can_drop_floors.value_or(false), true);
-
-    ASSERT_EQ(data.effects.size(), 1u);
-    ASSERT_EQ(data.effects[0].loops_animation.value_or(false), true);
-    ASSERT_TRUE(data.effects[0].init_bit_flags.has_value());
-    ASSERT_TRUE(data.effects[0].init_bit_flags->empty());
-
-    ASSERT_EQ(data.treasures.size(), 1u);
-    ASSERT_EQ(data.treasures[0].init_ignore.value_or(false), true);
-    ASSERT_EQ(data.treasures[0].init_frame.value_or(0), -1);
-
-    ASSERT_EQ(data.generators.size(), 1u);
-    ASSERT_EQ(data.generators[0].default_weapon.value_or(""),
-              "core:skeleton");
-    ASSERT_EQ(data.generators[0].spawn_ani_type.value_or(-1), 3);
-}
-
-TEST(ClasspackYaml, positional_escape_id_is_plain_scalar)
-{
-    // "core:#19" must parse as one plain scalar: '#' only opens a YAML
-    // comment after whitespace.
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: core:#19\n      wire_id: 19\n",
-        data, "escape"));
-    ASSERT_EQ(data.living.size(), 1u);
-    ASSERT_EQ(data.living[0].id, "core:#19");
-}
-
-TEST(ClasspackYaml, parse_errors_fail_pack)
-{
-    ClasspackData a;
-    ASSERT_FALSE(parse_classpack_yaml("families: [unclosed", a, "bad-yaml"));
-
-    ClasspackData b;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: x:y\n      ai_line_of_sight: soon\n",
-        b, "bad-int"));
-
-    ClasspackData c;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: x:y\n      playable: yep\n", c,
-        "bad-bool"));
-
-    ClasspackData d;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - name: \"NO ID\"\n", d, "no-id"));
-
-    ClasspackData e;
-    ASSERT_FALSE(parse_classpack_yaml("", e, "empty"));
-}
-
-TEST(ClasspackYaml, unknown_keys_and_sections_skipped)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "pack: p\n"
-        "future_thing:\n"
-        "  nested: {a: 1, b: [2, 3]}\n"
-        "families:\n"
-        "  holograms:\n"
-        "    - id: p:ghost2\n"
-        "      shimmer: 9\n"
-        "  living:\n"
-        "    - id: p:one\n"
-        "      future_field: whatever\n"
-        "      state_slots: 2\n"
-        "      script: scripts/one.lua\n"
-        "      costs:\n        hire: 5\n",
-        data, "forward"));
-    ASSERT_EQ(data.pack, "p");
-    ASSERT_EQ(data.living.size(), 1u);
-    ASSERT_EQ(data.living[0].id, "p:one");
-    ASSERT_EQ(data.living[0].costs->hire, 5);
-}
-
-TEST(ClasspackYaml, unknown_list_fields_on_treasure_and_generator_skipped)
-{
-    // The sequence-shaped branch of the forward-compatibility rule above:
-    // treasure and generator entries define no list-valued fields today, so
-    // an unknown list on one is accepted and dropped — the entry's known
-    // scalar fields still land — instead of failing the whole pack.
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  treasure:\n"
-        "    - id: p:chest\n"
-        "      wire_id: 2\n"
-        "      init_frame: 4\n"
-        "      future_list: [gild, 7]\n"
-        "  generator:\n"
-        "    - id: p:spawner\n"
-        "      wire_id: 3\n"
-        "      spawn_ani_type: 1\n"
-        "      future_spawns: [p:ghost, p:orc]\n",
-        data, "forward-lists"));
-    ASSERT_EQ(data.treasures.size(), 1u);
-    ASSERT_EQ(data.treasures[0].id, "p:chest");
-    ASSERT_EQ(data.treasures[0].init_frame.value_or(0), 4);
-    ASSERT_EQ(data.generators.size(), 1u);
-    ASSERT_EQ(data.generators[0].id, "p:spawner");
-    ASSERT_EQ(data.generators[0].spawn_ani_type.value_or(-1), 1);
-}
-
-// ---------------------------------------------------------------------------
-// Family string-id resolution + reader vocabulary
+// Family string-id resolution + the installer's name vocabulary
 // ---------------------------------------------------------------------------
 
 TEST(FamilyStringIds, resolution)
@@ -418,7 +138,7 @@ TEST(FamilyStringIds, reader_vocabulary)
 }
 
 // ---------------------------------------------------------------------------
-// Reader coverage over the committed core pack
+// The committed core pack, declared
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -463,7 +183,7 @@ void load_committed_core_pack(ClasspackData& data)
 
 }  // namespace
 
-TEST(ClasspackYaml, committed_core_pack_matches_registries)
+TEST(CommittedCorePack, matches_the_built_in_registries)
 {
     ClasspackData data;
     load_committed_core_pack(data);
@@ -482,7 +202,7 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
 
     init_all_registries();
     // Spot-check the soldier entry against the live registry: the
-    // committed YAML must mirror the C++ descriptor data exactly.
+    // committed declaration must mirror the C++ descriptor data exactly.
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(fd, nullptr);
     const auto& e = data.living[0];
@@ -541,7 +261,7 @@ TEST(ClasspackYaml, committed_core_pack_matches_registries)
 }
 
 // ---------------------------------------------------------------------------
-// Registry install: YAML data overwrites, callbacks preserved
+// Registry install: declared data overwrites, callbacks preserved
 // ---------------------------------------------------------------------------
 
 TEST(ClasspackInstall, overrides_data_preserves_callbacks)
@@ -564,7 +284,7 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
 
     const FamilyDescriptor* after = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(after, nullptr);
-    // Declared fields reflect the YAML override...
+    // Declared fields reflect the override...
     ASSERT_EQ(after->base_stats[0], 99);
     ASSERT_STREQ(after->death_message, "SOLDIER TESTED");
     ASSERT_EQ(after->name_pool_size, 2);
@@ -638,7 +358,7 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, before_tent));
 }
 
-TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
+TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
 {
     init_all_registries();
     const WeaponFamilyDescriptor before_rock =
@@ -646,20 +366,15 @@ TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
     const FamilyDescriptor before_elf = *get_family_descriptor(FAMILY_ELF);
 
     og::data::ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  weapon:\n"
-        "    - id: test:rock\n"
-        "      wire_id: 1\n"
-        "      fire_sound: 42\n"
-        "      init_bit_flags: [MAGICAL, FIRE]\n"
-        "  living:\n"
-        "    - id: test:elf\n"
-        "      wire_id: 1\n"
-        "      default_weapon: test:no_such_weapon\n"
-        "      animation: moonwalk\n"
-        "      costs: {hire: 7}\n",
-        data, "install-yaml"));
+    declare_or_die(
+        "og.family('weapon', { id = 'test:rock', wire_id = 1,\n"
+        "                      fire_sound = 42,\n"
+        "                      flags = { 'MAGICAL', 'FIRE' } })\n"
+        "og.family('living', { id = 'test:elf', wire_id = 1,\n"
+        "                      default_weapon = 'test:no_such_weapon',\n"
+        "                      animation = 'moonwalk',\n"
+        "                      costs = { hire = 7 } })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 2);
 
     const WeaponFamilyDescriptor* rock =
@@ -679,6 +394,177 @@ TEST(ClasspackInstall, parsed_yaml_installs_weapon_and_skips_bad_refs)
 
     ASSERT_TRUE(set_weapon_family_descriptor(FAMILY_ROCK, before_rock));
     ASSERT_TRUE(set_family_descriptor(FAMILY_ELF, before_elf));
+}
+
+// ---------------------------------------------------------------------------
+// The named blocks → the descriptor's parallel arrays
+// ---------------------------------------------------------------------------
+//
+// A living descriptor still holds the shapes the DOS data files had: six
+// base_stats columns, six stat_costs columns, and three parallel
+// special_* arrays with a dead slot 0 and a disabled-cost sentinel. The
+// declaration spells none of that — it names its axes and lists its
+// specials — so the fold is the installer's, and these four cases are what
+// says it folds the way the arrays were written by hand.
+
+namespace {
+
+// The soldier's shipped numbers, on a free wire slot. Every value is one
+// the original arrays carried:
+//   base_stats: [12, 6, 12, 8, 9, 1]      hiring_cost: 250
+//   derived_bonuses: [120, 0, 20, 0, 0, 0, 4, 6]   weapon_cost: 2
+//   stat_costs: [6, 10, 6, 25, 50, 200]
+//   special_costs: [5000, 25, 100, 120, 150, 5000]
+//   special_names: ["NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM",
+//                   "NONE"]
+//   alternate_names: ["NONE", "NONE", "NONE", "MYSTIC MACE", "NONE", "NONE"]
+constexpr const char* kSoldierDecl = R"LUA(
+og.family('living', {
+  id = 'decl:soldier',
+  wire_id = 61,
+  name = 'SOLDIER',
+  stats  = { strength = 12, dexterity = 6, constitution = 12,
+             intelligence = 8, armor = 9, level = 1 },
+  combat = { hp = 120, melee_damage = 20, stepsize = 4,
+             fire_delay = 6, fire_mp_cost = 2 },
+  costs  = { hire = 250,
+             train = { strength = 6, dexterity = 10, constitution = 6,
+                       intelligence = 25, armor = 50, level = 200 } },
+  specials = {
+    { id = 'charge',    name = 'CHARGE',    mp_cost = 25 },
+    { id = 'boomerang', name = 'BOOMERANG', mp_cost = 100 },
+    { id = 'whirlwind', name = 'WHIRLWIND', mp_cost = 120,
+      alternate = { name = 'MYSTIC MACE' } },
+    { id = 'disarm',    name = 'DISARM',    mp_cost = 150 },
+  },
+})
+)LUA";
+
+}  // namespace
+
+TEST(ClasspackInstall, a_declaration_installs_the_shipped_soldier_bytes)
+{
+    init_all_registries();
+
+    ClasspackData data;
+    declare_or_die(kSoldierDecl, data);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(61);
+    ASSERT_NE(d, nullptr);
+
+    // The six base_stats columns, in the order the array had them.
+    const std::int32_t stats[StatAxis::Count] = {12, 6, 12, 8, 9, 1};
+    const std::int32_t train[StatAxis::Count] = {6, 10, 6, 25, 50, 200};
+    for (int i = 0; i < StatAxis::Count; i++) {
+        ASSERT_EQ(d->base_stats[i], stats[i]) << "base_stats " << i;
+        ASSERT_EQ(d->stat_costs[i], train[i]) << "stat_costs " << i;
+    }
+    ASSERT_EQ(d->hiring_cost, 250);
+    // The four live derived_bonuses columns: 0, 2, 6, 7.
+    ASSERT_EQ(d->combat.hp, 120.0f);
+    ASSERT_EQ(d->combat.melee_damage, 20.0f);
+    ASSERT_EQ(d->combat.stepsize, 4.0f);
+    ASSERT_EQ(d->combat.fire_delay, 6.0f);
+    ASSERT_EQ(d->combat.fire_mp_cost, 2);
+
+    // The three parallel special arrays, folded out of one list. Slot 0 is
+    // the engine artifact and slot 5 was never declared; both are the
+    // disabled pair, which is what the arrays spelled out by hand.
+    const char* names[FD_NUM_SPECIALS] = {"NONE",      "CHARGE",   "BOOMERANG",
+                                          "WHIRLWIND", "DISARM",   "NONE"};
+    const unsigned short costs[FD_NUM_SPECIALS] = {5000, 25, 100, 120, 150,
+                                                   5000};
+    for (int i = 0; i < FD_NUM_SPECIALS; i++) {
+        ASSERT_STREQ(d->special_names[i], names[i]) << "slot " << i;
+        ASSERT_EQ(d->special_cost[i], costs[i]) << "slot " << i;
+    }
+    ASSERT_STREQ(d->alternate_names[3], "MYSTIC MACE");
+    ASSERT_STREQ(d->alternate_names[1], "NONE");
+
+    // ...and the ids the arrays could not spell: a script keys its handler
+    // by these, and og.family binds its casts through them.
+    ASSERT_STREQ(d->special_ids[1], "charge");
+    ASSERT_STREQ(d->special_ids[4], "disarm");
+    ASSERT_EQ(d->special_ids[0], nullptr) << "slot 0 is not a special";
+    ASSERT_EQ(d->special_ids[5], nullptr) << "undeclared slot has no id";
+}
+
+// A specials list is not sparse: it rewrites all five slots. Anything else
+// and a mod that renamed one special would silently inherit four.
+TEST(ClasspackInstall, a_specials_list_rewrites_every_slot)
+{
+    init_all_registries();
+    ClasspackData full;
+    declare_or_die(kSoldierDecl, full);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(full)), 1);
+    ASSERT_STREQ(get_family_descriptor(61)->special_names[4], "DISARM");
+
+    ClasspackData thin;
+    declare_or_die(
+        "og.family('living', { id = 'decl:soldier', wire_id = 61,\n"
+        "  specials = { { id = 'charge', name = 'CHARGE',\n"
+        "                 mp_cost = 25 } } })\n",
+        thin);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(thin)), 1);
+
+    const FamilyDescriptor* d = get_family_descriptor(61);
+    ASSERT_STREQ(d->special_names[1], "CHARGE");
+    ASSERT_STREQ(d->special_names[4], "NONE");
+    ASSERT_EQ(d->special_cost[4], kSpecialCostDisabled);
+    ASSERT_EQ(d->special_ids[4], nullptr);
+    // Everything outside the list is untouched by a sparse entry.
+    ASSERT_EQ(d->base_stats[StatAxis::Strength], 12);
+}
+
+// `slot = N` jumps the cursor and the list resumes after it, so a family
+// can leave a hole where an older one had a special and still fill slot 5.
+TEST(ClasspackInstall, an_explicit_slot_leaves_a_hole_behind_it)
+{
+    init_all_registries();
+    ClasspackData data;
+    declare_or_die(
+        "og.family('living', { id = 'decl:slots', wire_id = 62,\n"
+        "  specials = {\n"
+        "    { id = 'a', name = 'A', mp_cost = 1 },\n"
+        "    { id = 'b', name = 'B', mp_cost = 2, slot = 4 },\n"
+        "    { id = 'c', name = 'C', mp_cost = 3 } } })\n",
+        data);
+    const auto& list = *data.living[0].specials;
+    ASSERT_EQ(list[0].slot, 1);
+    ASSERT_EQ(list[1].slot, 4);
+    ASSERT_EQ(list[2].slot, 5) << "the list resumes after an explicit slot";
+
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+    const FamilyDescriptor* d = get_family_descriptor(62);
+    ASSERT_NE(d, nullptr);
+    ASSERT_STREQ(d->special_names[1], "A");
+    ASSERT_STREQ(d->special_names[2], "NONE") << "the hole is a hole";
+    ASSERT_STREQ(d->special_names[3], "NONE");
+    ASSERT_STREQ(d->special_names[4], "B");
+    ASSERT_STREQ(d->special_names[5], "C")
+        << "slot 5 is real: a level-13 caster cycles into it";
+    ASSERT_EQ(d->special_cost[5], 3);
+    ASSERT_STREQ(d->special_ids[5], "c");
+}
+
+// A training table names only the axes it prices. The rest install 0 —
+// free to train, exactly as the original tables shipped it.
+TEST(ClasspackInstall, absent_train_axes_install_zero)
+{
+    init_all_registries();
+    ClasspackData data;
+    declare_or_die(
+        "og.family('living', { id = 'decl:sparse', wire_id = 63,\n"
+        "  costs = { hire = 40, train = { strength = 7 } } })\n",
+        data);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+    const FamilyDescriptor* d = get_family_descriptor(63);
+    ASSERT_NE(d, nullptr);
+    ASSERT_EQ(d->hiring_cost, 40);
+    ASSERT_EQ(d->stat_costs[StatAxis::Strength], 7);
+    ASSERT_EQ(d->stat_costs[StatAxis::Armor], 0)
+        << "an unpriced axis is 0, exactly as v1 shipped it";
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,56 +1097,9 @@ TEST(ClasspackInstall, a_pack_may_override_a_core_family_in_place)
 // Presentation fields (glyph + radar + editor label)
 // ---------------------------------------------------------------------------
 
-TEST(ClasspackYaml, parse_presentation_block)
-{
-    const char* yaml =
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:wisp\n"
-        "      glyph: \"\xe2\x99\xa3\"\n"  // U+2663 CLUB, 3 UTF-8 bytes
-        "      glyph_ascii: \"&\"\n"
-        "      glyph_color: magenta\n"
-        "      glyph_bold: true\n"
-        "      glyph_transparent: false\n"
-        "      radar_color: 88\n"
-        "      radar_jitter: 5\n"
-        "  treasure:\n"
-        "    - id: mod:relic\n"
-        "      radar_color: team\n"
-        "      radar_jitter: 7\n"
-        "    - id: mod:dust\n"
-        "      radar_color: none\n"
-        "  generator:\n"
-        "    - id: mod:hut\n"
-        "      editor_label: \"HUT\"\n"
-        "      glyph_color: team\n";
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "presentation"));
-
-    const auto& p = data.living[0].presentation;
-    ASSERT_EQ(p.glyph.value_or(""), "\xe2\x99\xa3");
-    ASSERT_EQ(p.glyph_ascii.value_or(""), "&");
-    ASSERT_EQ(p.glyph_color.value_or(""), "magenta");
-    ASSERT_EQ(p.glyph_bold.value_or(false), true);
-    ASSERT_EQ(p.glyph_transparent.value_or(true), false);
-    ASSERT_EQ(p.radar_color.value_or(0), 88);
-    ASSERT_EQ(p.radar_jitter.value_or(-1), 5);
-
-    // The two radar sentinel spellings fold to their numeric values.
-    ASSERT_EQ(data.treasures[0].presentation.radar_color.value_or(0),
-              og::kRadarColorTeam);
-    ASSERT_EQ(data.treasures[0].presentation.radar_jitter.value_or(-1), 7);
-    ASSERT_EQ(data.treasures[1].presentation.radar_color.value_or(0),
-              og::kRadarColorNone);
-
-    ASSERT_EQ(data.generators[0].editor_label.value_or(""), "HUT");
-    ASSERT_EQ(data.generators[0].presentation.glyph_color.value_or(""),
-              "team");
-}
-
 // The committed core pack must carry an exact transcription of the UI
 // switch tables, so the sweep that deletes them changes no pixel.
-TEST(ClasspackYaml, committed_core_pack_carries_ui_presentation)
+TEST(CommittedCorePack, carries_ui_presentation)
 {
     ClasspackData data;
     load_committed_core_pack(data);
@@ -1444,65 +1283,6 @@ TEST(ClasspackInstall, malformed_presentation_keeps_the_current_value)
 // anims: pack-defined animation tables
 // ---------------------------------------------------------------------------
 
-TEST(ClasspackYaml, parse_anims_section)
-{
-    const char* yaml =
-        "anims:\n"
-        "  wisp_walk:\n"
-        "    rows: 16\n"
-        "    frames:\n"
-        "      - [0, 1, 2, 3]\n"
-        "      - [4, 5]\n"
-        "      - ~\n"
-        "  wisp_idle:\n"
-        "    frames:\n"
-        "      - [7]\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:wisp\n"
-        "      animation: wisp_walk\n";
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "anims"));
-
-    ASSERT_EQ(data.anims.size(), 2u);
-    EXPECT_EQ(data.anims[0].name, "wisp_walk");
-    EXPECT_EQ(data.anims[0].rows.value_or(-1), 16);
-    ASSERT_EQ(data.anims[0].frames.size(), 3u);
-    EXPECT_EQ(data.anims[0].frames[0].frames,
-              (std::vector<std::int32_t>{0, 1, 2, 3}));
-    EXPECT_FALSE(data.anims[0].frames[0].is_null);
-    EXPECT_EQ(data.anims[0].frames[1].frames,
-              (std::vector<std::int32_t>{4, 5}));
-    EXPECT_TRUE(data.anims[0].frames[2].is_null);
-
-    EXPECT_EQ(data.anims[1].name, "wisp_idle");
-    EXPECT_FALSE(data.anims[1].rows.has_value());
-    ASSERT_EQ(data.anims[1].frames.size(), 1u);
-
-    ASSERT_EQ(data.living.size(), 1u);
-    EXPECT_EQ(data.living[0].animation.value_or(""), "wisp_walk");
-}
-
-TEST(ClasspackYaml, malformed_anims_fail_the_pack)
-{
-    ClasspackData a;
-    EXPECT_FALSE(parse_classpack_yaml("anims: [not, a, mapping]\n", a, "a"));
-
-    ClasspackData b;
-    EXPECT_FALSE(parse_classpack_yaml(
-        "anims:\n  bad:\n    frames:\n      - [0, oops]\n", b, "b"));
-
-    ClasspackData c;
-    EXPECT_FALSE(parse_classpack_yaml(
-        "anims:\n  bad:\n    frames:\n      - 7\n", c, "c"))
-        << "a bare non-null scalar is not a frame row";
-
-    // `anims: ~` is a legal empty section.
-    ClasspackData d;
-    EXPECT_TRUE(parse_classpack_yaml("anims: ~\npack: mod\n", d, "d"));
-    EXPECT_TRUE(d.anims.empty());
-}
-
 // The headline Feature-2 case: a pack-defined set survives parse → install
 // → descriptor, with the row pointers, the -1 sentinels and — critically —
 // the explicit row count that bounds walker::ani_count.
@@ -1510,22 +1290,15 @@ TEST(ClasspackInstall, pack_animation_set_reaches_the_descriptor)
 {
     ModSlotGuard guard;
 
-    const char* yaml =
-        "pack: mod\n"
-        "anims:\n"
-        "  wisp_walk:\n"
-        "    rows: 16\n"
-        "    frames:\n"
-        "      - [0, 1, 2]\n"
-        "      - ~\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:wisp\n"
-        "      wire_id: auto\n"
-        "      animation: wisp_walk\n"
-        "      sprite: packs/mod/sprites/wisp.png\n";
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "packanim"));
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.anims('wisp_walk', { rows = 16,\n"
+        "                        frames = { {0, 1, 2}, false } })\n"
+        "og.family('living', { id = 'mod:wisp', wire_id = 'auto',\n"
+        "                      animation = 'wisp_walk',\n"
+        "                      sprite = 'packs/mod/sprites/wisp.png' })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
 
     const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
@@ -1560,28 +1333,19 @@ TEST(ClasspackInstall, builtin_animation_names_still_win)
     ModSlotGuard guard;
 
     ClasspackData first;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "anims:\n"
-        "  custom:\n"
-        "    frames:\n"
-        "      - [0]\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:shifter\n"
-        "      wire_id: auto\n"
-        "      animation: custom\n",
-        first, "first"));
+    declare_or_die(
+        "og.anims('custom', { frames = { {0} } })\n"
+        "og.family('living', { id = 'mod:shifter', wire_id = 'auto',\n"
+        "                      animation = 'custom' })\n",
+        first);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(first)), 1);
     ASSERT_NE(get_family_descriptor(NUM_FAMILIES)->anim_table, nullptr);
 
     ClasspackData second;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:shifter\n"
-        "      wire_id: 21\n"
-        "      animation: skeleton\n",
-        second, "second"));
+    declare_or_die(
+        "og.family('living', { id = 'mod:shifter', wire_id = 21,\n"
+        "                      animation = 'skeleton' })\n",
+        second);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(second)), 1);
 
     const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
@@ -1599,34 +1363,21 @@ TEST(ClasspackInstall, rejected_animation_sets_leave_the_family_alone)
     ModSlotGuard guard;
 
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "anims:\n"
-        "  too_short:\n"
-        "    rows: 1\n"
-        "    frames:\n"
-        "      - [0]\n"
-        "      - [1]\n"        // rows < declared rows
-        "  bad_frame:\n"
-        "    frames:\n"
-        "      - [999]\n"      // outside 0..127
-        "  empty_row:\n"
-        "    frames:\n"
-        "      - []\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:a\n"
-        "      wire_id: 21\n"
-        "      animation: too_short\n"
-        "    - id: mod:b\n"
-        "      wire_id: 22\n"
-        "      animation: bad_frame\n"
-        "    - id: mod:c\n"
-        "      wire_id: 23\n"
-        "      animation: empty_row\n"
-        "    - id: mod:d\n"
-        "      wire_id: 24\n"
-        "      animation: nope\n",
-        data, "rejects"));
+    declare_or_die(
+        // rows < the declared row count
+        "og.anims('too_short', { rows = 1, frames = { {0}, {1} } })\n"
+        // a frame index outside 0..127
+        "og.anims('bad_frame', { frames = { {999} } })\n"
+        "og.anims('empty_row',  { frames = { {} } })\n"
+        "og.family('living', { id = 'mod:a', wire_id = 21,\n"
+        "                      animation = 'too_short' })\n"
+        "og.family('living', { id = 'mod:b', wire_id = 22,\n"
+        "                      animation = 'bad_frame' })\n"
+        "og.family('living', { id = 'mod:c', wire_id = 23,\n"
+        "                      animation = 'empty_row' })\n"
+        "og.family('living', { id = 'mod:d', wire_id = 24,\n"
+        "                      animation = 'nope' })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
 
     for (int id = 21; id <= 24; id++) {
@@ -1643,43 +1394,26 @@ TEST(ClasspackInstall, animation_set_bounds_are_enforced)
 {
     ModSlotGuard guard;
 
-    std::string yaml =
-        "anims:\n"
-        "  no_frames:\n"
-        "    rows: 4\n"
-        "  too_many_rows:\n"
-        "    rows: 257\n"
-        "    frames:\n"
-        "      - [0]\n"
-        "  long_row:\n"
-        "    frames:\n"
-        "      - [";
+    std::string lua =
+        "og.anims('no_frames', { rows = 4, frames = {} })\n"
+        "og.anims('too_many_rows', { rows = 257, frames = { {0} } })\n"
+        "og.anims('long_row', { frames = { {";
     for (int i = 0; i < 256; i++)
-        yaml += (i > 0 ? ", 1" : "1");
-    yaml +=
-        "]\n"
-        "  twice:\n"
-        "    frames:\n"
-        "      - [1]\n"
-        "  twice:\n"
-        "    frames:\n"
-        "      - [2]\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:a\n"
-        "      wire_id: 21\n"
-        "      animation: no_frames\n"
-        "    - id: mod:b\n"
-        "      wire_id: 22\n"
-        "      animation: too_many_rows\n"
-        "    - id: mod:c\n"
-        "      wire_id: 23\n"
-        "      animation: long_row\n"
-        "    - id: mod:d\n"
-        "      wire_id: 24\n"
-        "      animation: twice\n";
+        lua += (i > 0 ? ", 1" : "1");
+    lua +=
+        "} } })\n"
+        "og.anims('twice', { frames = { {1} } })\n"
+        "og.anims('twice', { frames = { {2} } })\n"
+        "og.family('living', { id = 'mod:a', wire_id = 21,\n"
+        "                      animation = 'no_frames' })\n"
+        "og.family('living', { id = 'mod:b', wire_id = 22,\n"
+        "                      animation = 'too_many_rows' })\n"
+        "og.family('living', { id = 'mod:c', wire_id = 23,\n"
+        "                      animation = 'long_row' })\n"
+        "og.family('living', { id = 'mod:d', wire_id = 24,\n"
+        "                      animation = 'twice' })\n";
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(yaml, data, "bounds"));
+    declare_or_die(lua, data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
 
     for (int id = 21; id <= 23; id++) {
@@ -1701,13 +1435,10 @@ TEST(ClasspackInstall, unknown_animation_name_on_a_weapon_keeps_the_table)
     ModSlotGuard guard;
 
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  weapon:\n"
-        "    - id: mod:shard\n"
-        "      wire_id: auto\n"
-        "      animation: nope\n",
-        data, "unknown"));
+    declare_or_die(
+        "og.family('weapon', { id = 'mod:shard', wire_id = 'auto',\n"
+        "                      animation = 'nope' })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
     ASSERT_NE(get_weapon_family_descriptor(21), nullptr);
     EXPECT_EQ(get_weapon_family_descriptor(21)->anim_table, nullptr);
@@ -1721,31 +1452,18 @@ TEST(ClasspackInstall, pack_animation_sets_reach_the_other_orders)
     ModSlotGuard guard;
 
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "anims:\n"
-        "  spin:\n"
-        "    rows: 24\n"
-        "    frames:\n"
-        "      - [3, 4]\n"
-        "families:\n"
-        "  weapon:\n"
-        "    - id: mod:shard\n"
-        "      wire_id: auto\n"
-        "      animation: spin\n"
-        "      sprite: packs/mod/sprites/shard.png\n"
-        "  effect:\n"
-        "    - id: mod:spark\n"
-        "      wire_id: auto\n"
-        "      animation: spin\n"
-        "  treasure:\n"
-        "    - id: mod:relic\n"
-        "      wire_id: auto\n"
-        "      animation: spin\n"
-        "  generator:\n"
-        "    - id: mod:hut\n"
-        "      wire_id: auto\n"
-        "      animation: spin\n",
-        data, "orders"));
+    declare_or_die(
+        "og.anims('spin', { rows = 24, frames = { {3, 4} } })\n"
+        "og.family('weapon', { id = 'mod:shard', wire_id = 'auto',\n"
+        "                      animation = 'spin',\n"
+        "                      sprite = 'packs/mod/sprites/shard.png' })\n"
+        "og.family('effect', { id = 'mod:spark', wire_id = 'auto',\n"
+        "                      animation = 'spin' })\n"
+        "og.family('treasure', { id = 'mod:relic', wire_id = 'auto',\n"
+        "                        animation = 'spin' })\n"
+        "og.family('generator', { id = 'mod:hut', wire_id = 'auto',\n"
+        "                         animation = 'spin' })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
 
     const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
@@ -1772,18 +1490,14 @@ TEST(ClasspackInstall, animation_sets_do_not_leak_between_packs)
     ModSlotGuard guard;
 
     ClasspackData a;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "anims:\n  shared:\n    frames:\n      - [0]\n", a, "a"));
+    declare_or_die("og.anims('shared', { frames = { {0} } })\n", a, "packa");
     ASSERT_EQ(og::resources::install_classpack_data(std::move(a)), 0);
 
     ClasspackData b;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  living:\n"
-        "    - id: modb:thief\n"
-        "      wire_id: auto\n"
-        "      animation: shared\n",
-        b, "b"));
+    declare_or_die(
+        "og.family('living', { id = 'modb:thief', wire_id = 'auto',\n"
+        "                      animation = 'shared' })\n",
+        b, "packb");
     ASSERT_EQ(og::resources::install_classpack_data(std::move(b)), 1);
 
     const FamilyDescriptor* d = get_family_descriptor(NUM_FAMILIES);
@@ -1846,155 +1560,8 @@ public:
 
 }  // namespace
 
-// Kind classification preserves the author's YAML spelling: plain integers
-// stay integers (int64-wide), plain decimals/exponents become doubles,
-// true/false become booleans, QUOTED text is a string even when it looks
-// numeric, and an unparseable plain scalar falls back to a plain string.
-// YAML mapping order is preserved.
-TEST(ClasspackYaml, tuning_map_kinds_follow_the_yaml_spelling)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  living:\n"
-        "    - id: p:orc\n"
-        "      tuning:\n"
-        "        yell_stun: 10\n"
-        "        heal_scale: 2.5\n"
-        "        eats_corpses: true\n"
-        "        timid: false\n"
-        "        label: \"5\"\n"
-        "        big: 9223372036854775807\n"
-        "        neg: -42\n"
-        "        expo: 1e3\n"
-        "        odd: 12abc\n",
-        data, "tuning-kinds"));
-    ASSERT_EQ(data.living.size(), 1u);
-    const auto& t = data.living[0].tuning;
-    ASSERT_EQ(t.size(), 9u);
-
-    EXPECT_EQ(t[0].key, "yell_stun");
-    ASSERT_EQ(t[0].value.kind, ClasspackTuningValue::Kind::Integer);
-    EXPECT_EQ(t[0].value.integer, 10);
-
-    EXPECT_EQ(t[1].key, "heal_scale");
-    ASSERT_EQ(t[1].value.kind, ClasspackTuningValue::Kind::Number);
-    EXPECT_EQ(t[1].value.number, 2.5);
-
-    EXPECT_EQ(t[2].key, "eats_corpses");
-    ASSERT_EQ(t[2].value.kind, ClasspackTuningValue::Kind::Boolean);
-    EXPECT_TRUE(t[2].value.boolean);
-
-    EXPECT_EQ(t[3].key, "timid");
-    ASSERT_EQ(t[3].value.kind, ClasspackTuningValue::Kind::Boolean);
-    EXPECT_FALSE(t[3].value.boolean);
-
-    EXPECT_EQ(t[4].key, "label");
-    ASSERT_EQ(t[4].value.kind, ClasspackTuningValue::Kind::String)
-        << "a QUOTED \"5\" must stay a string";
-    EXPECT_EQ(t[4].value.string, "5");
-
-    ASSERT_EQ(t[5].value.kind, ClasspackTuningValue::Kind::Integer)
-        << "tuning integers are int64-wide";
-    EXPECT_EQ(t[5].value.integer, 9223372036854775807LL);
-
-    ASSERT_EQ(t[6].value.kind, ClasspackTuningValue::Kind::Integer);
-    EXPECT_EQ(t[6].value.integer, -42);
-
-    ASSERT_EQ(t[7].value.kind, ClasspackTuningValue::Kind::Number)
-        << "exponent spelling is a double";
-    EXPECT_EQ(t[7].value.number, 1000.0);
-
-    ASSERT_EQ(t[8].value.kind, ClasspackTuningValue::Kind::String)
-        << "an unparseable plain scalar falls back to a plain string";
-    EXPECT_EQ(t[8].value.string, "12abc");
-}
-
-// Every order's entries may carry a tuning map — the shared entry walker
-// owns the key, so one spelling works everywhere.
-TEST(ClasspackYaml, tuning_parses_on_every_order)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n"
-        "  living:\n"
-        "    - id: p:l\n"
-        "      tuning: {a: 1}\n"
-        "  weapon:\n"
-        "    - id: p:w\n"
-        "      tuning: {b: 2}\n"
-        "  effect:\n"
-        "    - id: p:e\n"
-        "      tuning: {c: 3}\n"
-        "  treasure:\n"
-        "    - id: p:t\n"
-        "      tuning: {d: 4}\n"
-        "  generator:\n"
-        "    - id: p:g\n"
-        "      tuning: {e: 5}\n",
-        data, "tuning-orders"));
-    ASSERT_EQ(data.living.size(), 1u);
-    ASSERT_EQ(data.living[0].tuning.size(), 1u);
-    EXPECT_EQ(data.living[0].tuning[0].key, "a");
-    ASSERT_EQ(data.weapons.size(), 1u);
-    ASSERT_EQ(data.weapons[0].tuning.size(), 1u);
-    EXPECT_EQ(data.weapons[0].tuning[0].value.integer, 2);
-    ASSERT_EQ(data.effects.size(), 1u);
-    ASSERT_EQ(data.effects[0].tuning.size(), 1u);
-    ASSERT_EQ(data.treasures.size(), 1u);
-    ASSERT_EQ(data.treasures[0].tuning.size(), 1u);
-    ASSERT_EQ(data.generators.size(), 1u);
-    ASSERT_EQ(data.generators[0].tuning.size(), 1u);
-    EXPECT_EQ(data.generators[0].tuning[0].value.integer, 5);
-}
-
-// An entry with no tuning: parses to an empty map — absent means absent.
-TEST(ClasspackYaml, absent_tuning_is_an_empty_map)
-{
-    ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:plain\n", data, "no-tuning"));
-    ASSERT_EQ(data.living.size(), 1u);
-    EXPECT_TRUE(data.living[0].tuning.empty());
-}
-
-// Malformed tuning fails the pack, strict like every other field: null
-// values, nested mappings, nested lists, non-scalar keys, empty keys.
-TEST(ClasspackYaml, malformed_tuning_fails_the_pack)
-{
-    ClasspackData a;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:x\n      tuning:\n        k: ~\n",
-        a, "tuning-null"))
-        << "tuning keys carry values; null must fail";
-
-    ClasspackData b;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:x\n"
-        "      tuning:\n        k: {nested: 1}\n",
-        b, "tuning-nested-map"));
-
-    ClasspackData c;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:x\n"
-        "      tuning:\n        k: [1, 2]\n",
-        c, "tuning-nested-list"));
-
-    ClasspackData d;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:x\n"
-        "      tuning:\n        ? [1, 2]\n        : 3\n",
-        d, "tuning-sequence-key"));
-
-    ClasspackData e;
-    ASSERT_FALSE(parse_classpack_yaml(
-        "families:\n  living:\n    - id: p:x\n"
-        "      tuning:\n        \"\": 3\n",
-        e, "tuning-empty-key"));
-}
-
 // ---------------------------------------------------------------------------
-// tuning install — YAML data lands in the gameplay-side store
+// tuning install — declared data lands in the gameplay-side store
 // ---------------------------------------------------------------------------
 
 // install_classpack_data carries each entry's tuning into
@@ -2007,28 +1574,17 @@ TEST(ClasspackInstall, tuning_reaches_the_gameplay_store)
     TuningStoreGuard tuning_guard;
 
     ClasspackData data;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "pack: mod\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:tuned\n"
-        "      wire_id: auto\n"
-        "      name: \"TUNED\"\n"
-        "      tuning:\n"
-        "        stun: 7\n"
-        "        scale: 1.5\n"
-        "        brave: true\n"
-        "        tag: knife\n"
-        "    - id: mod:plain\n"
-        "      wire_id: auto\n"
-        "      name: \"PLAIN\"\n"
-        "  weapon:\n"
-        "    - id: mod:zap\n"
-        "      wire_id: auto\n"
-        "      name: \"ZAP\"\n"
-        "      tuning:\n"
-        "        speed: 9\n",
-        data, "tuning-install"));
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.family('living', { id = 'mod:tuned', wire_id = 'auto',\n"
+        "                      name = 'TUNED',\n"
+        "                      tuning = { stun = 7, scale = 1.5,\n"
+        "                                 brave = true, tag = 'knife' } })\n"
+        "og.family('living', { id = 'mod:plain', wire_id = 'auto',\n"
+        "                      name = 'PLAIN' })\n"
+        "og.family('weapon', { id = 'mod:zap', wire_id = 'auto',\n"
+        "                      name = 'ZAP', tuning = { speed = 9 } })\n",
+        data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 3);
 
     const int tuned_id =
@@ -2041,19 +1597,24 @@ TEST(ClasspackInstall, tuning_reaches_the_gameplay_store)
     ASSERT_GE(plain_id, 0);
     ASSERT_GE(zap_id, 0);
 
+    // Key order: sorted, not as typed — a Lua table has no source order,
+    // so the harvest imposes one (brave, scale, stun, tag).
     const og::script::TuningMap* tuned =
         og::script::family_tuning(Order::Living, tuned_id);
     ASSERT_NE(tuned, nullptr);
     ASSERT_EQ(tuned->size(), 4u);
-    EXPECT_EQ((*tuned)[0].key, "stun");
+    EXPECT_EQ((*tuned)[0].key, "brave");
     ASSERT_EQ((*tuned)[0].value.kind,
-              og::script::TuningValue::Kind::Integer);
-    EXPECT_EQ((*tuned)[0].value.integer, 7);
+              og::script::TuningValue::Kind::Boolean);
+    EXPECT_TRUE((*tuned)[0].value.boolean);
+    EXPECT_EQ((*tuned)[1].key, "scale");
     ASSERT_EQ((*tuned)[1].value.kind, og::script::TuningValue::Kind::Number);
     EXPECT_EQ((*tuned)[1].value.number, 1.5);
+    EXPECT_EQ((*tuned)[2].key, "stun");
     ASSERT_EQ((*tuned)[2].value.kind,
-              og::script::TuningValue::Kind::Boolean);
-    EXPECT_TRUE((*tuned)[2].value.boolean);
+              og::script::TuningValue::Kind::Integer);
+    EXPECT_EQ((*tuned)[2].value.integer, 7);
+    EXPECT_EQ((*tuned)[3].key, "tag");
     ASSERT_EQ((*tuned)[3].value.kind, og::script::TuningValue::Kind::String);
     EXPECT_EQ((*tuned)[3].value.string, "knife");
 
@@ -2078,27 +1639,20 @@ TEST(ClasspackInstall, reinstalling_a_slot_without_tuning_clears_it)
     TuningStoreGuard tuning_guard;
 
     ClasspackData first;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "pack: mod\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:v1\n"
-        "      wire_id: 255\n"
-        "      name: \"V1\"\n"
-        "      tuning: {cap: 420}\n",
-        first, "tuned-v1"));
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.family('living', { id = 'mod:v1', wire_id = 255,\n"
+        "                      name = 'V1', tuning = { cap = 420 } })\n",
+        first);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(first)), 1);
     ASSERT_NE(og::script::family_tuning(Order::Living, 255), nullptr);
 
     ClasspackData second;
-    ASSERT_TRUE(parse_classpack_yaml(
-        "pack: mod\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: mod:v2\n"
-        "      wire_id: 255\n"
-        "      name: \"V2\"\n",
-        second, "tuned-v2"));
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.family('living', { id = 'mod:v2', wire_id = 255,\n"
+        "                      name = 'V2' })\n",
+        second);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(second)), 1);
     EXPECT_EQ(og::script::family_tuning(Order::Living, 255), nullptr)
         << "the replacing entry declared no tuning, so the slot is bare";
@@ -2145,14 +1699,11 @@ std::filesystem::path make_scratch_lib_pack()
     put(root / "lib" / "notes.txt", "not lua; must be ignored\n");
     put(root / "lib" / "empty.lua", "");  // unreadable/empty: warn + skip
     put(root / "scripts" / "probe.lua", kLibProbeScript);
-    put(root / "classpack.yaml",
-        "pack: org.test.libpack\n"
-        "families:\n"
-        "  living:\n"
-        "    - id: libpack:tuned\n"
-        "      wire_id: auto\n"
-        "      name: \"TUNED\"\n"
-        "      tuning: {cap: 11}\n");
+    std::filesystem::create_directories(root / "families", ec);
+    put(root / "families" / "tuned.lua",
+        "og.pack{ id = 'org.test.libpack' }\n"
+        "og.family('living', { id = 'libpack:tuned', wire_id = 'auto',\n"
+        "                      name = 'TUNED', tuning = { cap = 11 } })\n");
     return root;
 }
 
@@ -2161,7 +1712,7 @@ std::filesystem::path make_scratch_lib_pack()
 // One mount drives the whole class-pack resources contract: lib/*.lua (and
 // only *.lua with content) registers under deterministic packs/<id>/lib/
 // chunk names, the pack's script og.use-binds the exports when the shared
-// VM rebuilds, classpack.yaml tuning reaches the gameplay store, the MP
+// VM rebuilds, the declared tuning reaches the gameplay store, the MP
 // transfer manifest carries the lib files (they are pack CONTENT — the
 // same walk that ships scripts ships lib), and unmount+refresh removes all
 // of it.
@@ -2200,7 +1751,7 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
     EXPECT_TRUE(saw_probe)
         << "probe.lua must have read both lib exports through og.use";
 
-    // Tuning: the classpack.yaml `tuning:` map reached the gameplay store
+    // Tuning: the declaration's `tuning` map reached the gameplay store
     // through the same install pass.
     const int tuned_id = og::families::resolve_family_string_id(
         Order::Living, "libpack:tuned");
@@ -2212,8 +1763,8 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
     EXPECT_EQ((*tuned)[0].key, "cap");
     EXPECT_EQ((*tuned)[0].value.integer, 11);
 
-    // Transfer: the host-side manifest walk ships lib/ (and classpack.yaml)
-    // as ordinary pack content. Tuning rides INSIDE classpack.yaml — it is
+    // Transfer: the host-side manifest walk ships lib/ (and families/) as
+    // ordinary pack content. Tuning rides INSIDE the declaration — it is
     // load-time pack data, never wire state.
     bool found_pack = false;
     for (const og::sim::HostedPack& hp :
@@ -2232,7 +1783,8 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
         EXPECT_NE(paths.end(),
                   std::find(paths.begin(), paths.end(), "scripts/probe.lua"));
         EXPECT_NE(paths.end(),
-                  std::find(paths.begin(), paths.end(), "classpack.yaml"));
+                  std::find(paths.begin(), paths.end(),
+                            "families/tuned.lua"));
     }
     EXPECT_TRUE(found_pack)
         << "the mounted scratch pack must be transferable";
@@ -2250,19 +1802,19 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
 }
 
 // ---------------------------------------------------------------------------
-// Split layout: packs/<id>/families/*.yaml
+// packs/<id>/families/ — many files, one pack; and the retired format
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// A scratch pack in the SPLIT layout: header-only classpack.yaml (plus one
-// header-declared family when `header_family` is set), two families/ files
-// in sorted order, a non-YAML note and a subdirectory that must both be
-// ignored. bb.yaml re-declares aa.yaml's slot with one field, proving the
-// documented precedence: later files overwrite exactly the fields they
-// declare.
-std::filesystem::path make_scratch_split_pack(bool header_family,
-                                              bool broken_family_file)
+// A scratch pack whose families/ holds two declaration files in sorted
+// order, a non-Lua note and a subdirectory that must both be ignored.
+// bb.lua re-declares aa.lua's slot with one field, proving the documented
+// precedence: later files overwrite exactly the fields they declare.
+// `stale_yaml` additionally drops a v2 descriptor in beside them.
+std::filesystem::path make_scratch_split_pack(bool second_family,
+                                              bool broken_family_file,
+                                              bool stale_yaml)
 {
     std::string templ =
         (std::filesystem::temp_directory_path() / "og_split_XXXXXX")
@@ -2281,32 +1833,27 @@ std::filesystem::path make_scratch_split_pack(bool header_family,
         std::ofstream out(p, std::ios::binary);
         out << bytes;
     };
-    if (header_family)
-        put(root / "classpack.yaml",
-            "pack: org.test.splitpack\n"
+    put(root / "families" / "aa.lua",
+        "og.pack{ id = 'org.test.splitpack' }\n"
+        "og.family('living', { id = 'splitpack:alpha', wire_id = 30,\n"
+        "                      name = 'ALPHA', costs = { hire = 111 },\n"
+        "                      tuning = { split_key = 7 } })\n");
+    if (second_family)
+        put(root / "families" / "bb.lua",
+            broken_family_file
+                ? "og.family('living', { id = 'splitpack:alpha',\n"
+                  "                      wire_id = 30, nmae = 'BETA' })\n"
+                : "og.family('living', { id = 'splitpack:alpha',\n"
+                  "                      wire_id = 30,\n"
+                  "                      costs = { hire = 222 },\n"
+                  "                      tuning = { split_key = 9 } })\n");
+    if (stale_yaml)
+        put(root / "families" / "cc.yaml",
             "families:\n"
             "  living:\n"
-            "    - id: splitpack:from_header\n"
-            "      wire_id: auto\n"
-            "      name: \"FROM HEADER\"\n");
-    put(root / "families" / "aa.yaml",
-        "families:\n"
-        "  living:\n"
-        "    - id: splitpack:alpha\n"
-        "      wire_id: 30\n"
-        "      name: \"ALPHA\"\n"
-        "      costs: {hire: 111}\n"
-        "      tuning: {split_key: 7}\n");
-    put(root / "families" / "bb.yaml",
-        broken_family_file
-            ? "families: [unclosed\n"
-            : "families:\n"
-              "  living:\n"
-              "    - id: splitpack:alpha\n"
-              "      wire_id: 30\n"
-              "      costs: {hire: 222}\n"
-              "      tuning: {split_key: 9}\n");
-    put(root / "families" / "notes.txt", "not yaml; must be ignored\n");
+            "    - id: splitpack:leftover\n"
+            "      wire_id: 31\n");
+    put(root / "families" / "notes.txt", "not lua; must be ignored\n");
     return root;
 }
 
@@ -2337,37 +1884,34 @@ private:
 
 }  // namespace
 
-// Both layouts in one pack: the classpack.yaml header entry AND the
-// families/ entries install; the two families/ files parse in sorted
-// filename order into one pack, so bb.yaml's sparse re-declaration of
-// aa.yaml's WIRE slot overwrites exactly the data field it declares
-// (costs.hire) while undeclared fields (name) keep aa.yaml's values —
-// and the tuning map follows the install-always-replaces rule (bb.yaml's
-// map wins whole). notes.txt and the directory named *.yaml are skipped.
-TEST(ClasspackSplitLayout, families_dir_installs_like_a_monolith)
+// The two families/ files declare into one pack in sorted filename order,
+// so bb.lua's sparse re-declaration of aa.lua's WIRE slot overwrites
+// exactly the data field it declares (costs.hire) while undeclared fields
+// (name) keep aa.lua's values — and the tuning map follows the
+// install-always-replaces rule (bb.lua's map wins whole). notes.txt and the
+// directory named *.yaml are skipped.
+TEST(ClasspackSplitLayout, many_files_install_as_one_pack)
 {
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*header_family=*/true, /*broken_family_file=*/false);
+        /*second_family=*/true, /*broken_family_file=*/false,
+        /*stale_yaml=*/false);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
 
-    const int header_id = og::families::resolve_family_string_id(
-        Order::Living, "splitpack:from_header");
-    ASSERT_GE(header_id, 0) << "classpack.yaml families must still install";
     const int alpha_id = og::families::resolve_family_string_id(
         Order::Living, "splitpack:alpha");
-    ASSERT_GE(alpha_id, 0) << "families/*.yaml entries must install";
+    ASSERT_GE(alpha_id, 0) << "families/*.lua entries must install";
 
     EXPECT_EQ(alpha_id, 30) << "wire_id pins the slot across both files";
     const FamilyDescriptor* alpha = get_family_descriptor(alpha_id);
     ASSERT_NE(alpha, nullptr);
-    EXPECT_STREQ(alpha->name, "ALPHA") << "aa.yaml's undeclared-in-bb "
+    EXPECT_STREQ(alpha->name, "ALPHA") << "aa.lua's undeclared-in-bb "
                                           "fields must survive";
     EXPECT_EQ(alpha->hiring_cost, 222)
-        << "bb.yaml loads after aa.yaml (sorted) and overwrites the one "
+        << "bb.lua loads after aa.lua (sorted) and overwrites the one "
            "field it declares";
 
     const og::script::TuningMap* tuned =
@@ -2381,34 +1925,35 @@ TEST(ClasspackSplitLayout, families_dir_installs_like_a_monolith)
            "later file's map replaces the earlier one whole";
 }
 
-// families/ alone is a complete pack: no classpack.yaml at all.
-TEST(ClasspackSplitLayout, families_only_pack_installs)
+// One file is a complete pack.
+TEST(ClasspackSplitLayout, a_single_family_file_installs)
 {
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*header_family=*/false, /*broken_family_file=*/false);
+        /*second_family=*/false, /*broken_family_file=*/false,
+        /*stale_yaml=*/false);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
 
-    EXPECT_GE(og::families::resolve_family_string_id(Order::Living,
-                                                     "splitpack:alpha"),
-              0);
-    EXPECT_LT(og::families::resolve_family_string_id(
-                  Order::Living, "splitpack:from_header"),
-              0);
+    const int alpha_id = og::families::resolve_family_string_id(
+        Order::Living, "splitpack:alpha");
+    ASSERT_GE(alpha_id, 0);
+    EXPECT_EQ(get_family_descriptor(alpha_id)->hiring_cost, 111)
+        << "nothing overwrote aa.lua";
 }
 
-// One unusable families/ file rejects the WHOLE pack — including entries a
-// perfectly good classpack.yaml in the same pack declared — matching the
-// all-or-nothing contract a broken classpack.yaml always had.
+// One unusable families/ file rejects the WHOLE pack — including the
+// entries its well-formed neighbour declared. All or nothing: a pack that
+// half-installed would be a game whose families depend on load order.
 TEST(ClasspackSplitLayout, bad_family_file_rejects_the_whole_pack)
 {
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*header_family=*/true, /*broken_family_file=*/true);
+        /*second_family=*/true, /*broken_family_file=*/true,
+        /*stale_yaml=*/false);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
@@ -2416,9 +1961,215 @@ TEST(ClasspackSplitLayout, bad_family_file_rejects_the_whole_pack)
     EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
                                                      "splitpack:alpha"),
               0);
-    EXPECT_LT(og::families::resolve_family_string_id(
-                  Order::Living, "splitpack:from_header"),
-              0);
-    EXPECT_EQ(og::script::family_tuning(Order::Living, 21), nullptr)
+    EXPECT_EQ(og::script::family_tuning(Order::Living, 30), nullptr)
         << "no tuning may leak from a rejected pack";
+}
+
+// THE v2 TRIPWIRE (format spec V9). A families/*.yaml is a descriptor
+// written for a reader that no longer exists. Loading the pack anyway would
+// install its Lua families and silently drop the YAML ones — a team of
+// gladiators with the right names and nobody's stats — so the whole pack is
+// refused instead, and the refusal says what to run.
+TEST(ClasspackSplitLayout, a_leftover_yaml_descriptor_rejects_the_pack)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_split_pack(
+        /*second_family=*/false, /*broken_family_file=*/false,
+        /*stale_yaml=*/true);
+    ASSERT_FALSE(root.empty());
+    SplitPackMount mount(root);
+    ASSERT_TRUE(mount.ok());
+
+    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
+                                                     "splitpack:alpha"),
+              0)
+        << "the pack's good Lua families must not install either";
+    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
+                                                     "splitpack:leftover"),
+              0)
+        << "and nothing may read the YAML";
+    EXPECT_EQ(og::script::family_tuning(Order::Living, 30), nullptr);
+}
+
+// The same refusal for the monolith the split layout replaced. A pack whose
+// whole descriptor set is one classpack.yaml has no Lua at all, so without
+// this it would mount as an empty pack and say nothing.
+TEST(ClasspackSplitLayout, a_leftover_classpack_yaml_rejects_the_pack)
+{
+    ModSlotGuard guard;
+    TuningStoreGuard tuning_guard;
+    const std::filesystem::path root = make_scratch_split_pack(
+        /*second_family=*/false, /*broken_family_file=*/false,
+        /*stale_yaml=*/false);
+    ASSERT_FALSE(root.empty());
+    {
+        std::ofstream out(root / "classpack.yaml", std::ios::binary);
+        out << "pack: org.test.splitpack\n";
+    }
+    SplitPackMount mount(root);
+    ASSERT_TRUE(mount.ok());
+
+    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
+                                                     "splitpack:alpha"),
+              0);
+}
+
+// ---------------------------------------------------------------------------
+// Hostile data, straight into the installer
+// ---------------------------------------------------------------------------
+//
+// install_classpack_data takes a ClasspackData from anywhere — a
+// declaration, or C++ (tools/concept_mapgen builds one directly) — and the
+// declaration itself arrives over the network from another player's machine
+// (src/gameplay/pack_transfer.cpp). So these are shapes a peer can hand this
+// process, asserted against the uniform contract: a bad entry is SKIPPED,
+// never obeyed and never fatal, the rest of the pack installs, and nothing
+// reads out of bounds or is left half-written.
+
+// ---------------------------------------------------------------------------
+// Install: asking for more than the registries have
+// ---------------------------------------------------------------------------
+
+// Wire ids are one byte, but the auto counter is not: it runs 21, 22, ...
+// per order and simply walks off the end of the 256-slot registry. The
+// install-slot lookup is the only thing standing between a pack that
+// declares more families than the engine can hold and an out-of-bounds
+// registry write, so exercise it on EVERY order — each has its own
+// installer with its own copy of the guard.
+TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
+{
+    ModSlotGuard guard;
+
+    constexpr int kFirstModId = 21;
+    constexpr int kFits = NUM_FAMILY_SLOTS - kFirstModId;
+    constexpr int kOverflow = 8;
+
+    ClasspackData data;
+    data.pack = "mod";
+    for (int i = 0; i < kFits + kOverflow; i++) {
+        const std::string suffix = "_" + std::to_string(i);
+        {
+            og::data::ClasspackLivingEntry e;
+            e.id = "mod:bulk_living" + suffix;
+            e.costs = hire_only(1);
+            data.living.push_back(std::move(e));
+        }
+        {
+            og::data::ClasspackWeaponEntry e;
+            e.id = "mod:bulk_weapon" + suffix;
+            e.init_lifetime = 1;
+            data.weapons.push_back(std::move(e));
+        }
+        {
+            og::data::ClasspackEffectEntry e;
+            e.id = "mod:bulk_effect" + suffix;
+            e.loops_animation = true;
+            data.effects.push_back(std::move(e));
+        }
+        {
+            og::data::ClasspackTreasureEntry e;
+            e.id = "mod:bulk_treasure" + suffix;
+            e.init_frame = 1;
+            data.treasures.push_back(std::move(e));
+        }
+        {
+            og::data::ClasspackGeneratorEntry e;
+            e.id = "mod:bulk_generator" + suffix;
+            e.has_lifetime = true;
+            data.generators.push_back(std::move(e));
+        }
+    }
+
+    EXPECT_EQ(og::resources::install_classpack_data(std::move(data)),
+              5 * kFits)
+        << "each order installs exactly its free slots and rejects the rest";
+
+    // Per order: the last id that fits is populated, the first past the end
+    // is not, and nothing wrapped around onto a core pin.
+    const std::pair<Order, const char*> orders[] = {
+        {Order::Living, "mod:bulk_living_"},
+        {Order::Weapon, "mod:bulk_weapon_"},
+        {Order::FX, "mod:bulk_effect_"},
+        {Order::Treasure, "mod:bulk_treasure_"},
+        {Order::Generator, "mod:bulk_generator_"},
+    };
+    for (const auto& [order, prefix] : orders) {
+        const std::string last = prefix + std::to_string(kFits - 1);
+        const std::string past = prefix + std::to_string(kFits);
+        EXPECT_EQ(og::families::resolve_family_string_id(order, last.c_str()),
+                  NUM_FAMILY_SLOTS - 1)
+            << last;
+        EXPECT_EQ(og::families::resolve_family_string_id(order, past.c_str()),
+                  -1)
+            << past;
+    }
+
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(soldier, nullptr);
+    EXPECT_STREQ(soldier->name, "SOLDIER") << "core pin untouched";
+}
+
+// init_bit_flags is a list of NAMES. One unknown name must keep the whole
+// mask the descriptor already had rather than folding a partial mask — a
+// partial fold would silently drop, say, BIT_IMMORTAL off a family and turn
+// an immortal boss mortal. The rest of the entry still installs: an
+// unrecognised flag is a forward-compatibility miss, not a corrupt pack.
+TEST(ClasspackInstallErrors, an_unknown_bit_flag_name_keeps_the_whole_mask)
+{
+    ModSlotGuard guard;
+
+    // Pin onto a core family so there is a non-zero mask to preserve.
+    const FamilyDescriptor* ghost_before =
+        get_family_descriptor(FAMILY_GHOST);
+    ASSERT_NE(ghost_before, nullptr);
+    const std::int32_t mask_before = ghost_before->init_bit_flags;
+    ASSERT_NE(mask_before, 0) << "the ghost is the family with flags to lose";
+
+    ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id = "mod:bad_flags";
+    e.wire_id = std::to_string(FAMILY_GHOST);
+    e.costs = hire_only(77);
+    // FLYING is real and would fold if the loop folded partially.
+    e.init_bit_flags =
+        std::vector<std::string>{"FLYING", "NOT_A_REAL_FLAG"};
+    data.living.push_back(std::move(e));
+
+    EXPECT_EQ(og::resources::install_classpack_data(std::move(data)), 1)
+        << "an unknown flag name does not sink the entry";
+
+    const FamilyDescriptor* after = get_family_descriptor(FAMILY_GHOST);
+    ASSERT_NE(after, nullptr);
+    EXPECT_EQ(after->hiring_cost, 77) << "the good fields still applied";
+    EXPECT_EQ(after->init_bit_flags, mask_before)
+        << "an unknown flag name must keep the mask whole, not fold a prefix";
+}
+
+// An entry with no `id:` at all still resolves a slot, and the slot keeps
+// whatever declared id it already had. Nothing may write a null name.
+TEST(ClasspackInstallErrors, an_entry_without_a_declared_id_keeps_the_slot_id)
+{
+    ModSlotGuard guard;
+
+    const FamilyDescriptor* before = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(before, nullptr);
+    const char* declared_before = before->declared_id;
+
+    ClasspackData data;
+    data.pack = "mod";
+    og::data::ClasspackLivingEntry e;
+    e.id.clear();      // no id declared
+    e.wire_id = "0";   // but pinned onto the soldier slot
+    e.costs = hire_only(4242);
+    data.living.push_back(std::move(e));
+
+    EXPECT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+
+    const FamilyDescriptor* after = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(after, nullptr);
+    EXPECT_EQ(after->hiring_cost, 4242) << "declared field applied";
+    EXPECT_EQ(after->declared_id, declared_before)
+        << "an id-less entry must not clear the slot's string id";
 }

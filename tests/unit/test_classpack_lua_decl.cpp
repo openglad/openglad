@@ -10,9 +10,9 @@
 // DATA, in a throwaway VM, once per content change.
 //
 // A family file is evaluated twice in two different contexts, and this is
-// the first: a fresh VM whose og.family harvests into the same interchange
-// structs the classpack.yaml reader fills, whose world bindings all refuse
-// to run, and which is thrown away the moment the harvest is done. The
+// the first: a fresh VM whose og.family harvests into the interchange
+// structs the installer consumes, whose world bindings all refuse to run,
+// and which is thrown away the moment the harvest is done. The
 // second context (binding hooks against the installed descriptors) is
 // tests/unit/test_classpack_lua_bind.cpp.
 //
@@ -28,9 +28,9 @@
 // that will not load.
 //
 // The second is that harvesting is a pure function of the chunk's bytes.
-// The declaration pass runs behind the same exact-bytes memo as the YAML
-// parse, so if it could read the world, the clock or the RNG, two peers
-// would install different registries from the same pack.
+// The declaration pass runs behind an exact-bytes memo, so if it could read
+// the world, the clock or the RNG, two peers would install different
+// registries from the same pack.
 
 #include <gtest/gtest.h>
 

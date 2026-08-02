@@ -503,7 +503,7 @@ TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
     const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, soldier);
     EXPECT_STREQ("SOLDIER", soldier->name)
-        << "headless io_init must still install classpack.yaml descriptor data";
+        << "headless io_init must still install pack descriptor data";
 
     std::filesystem::remove_all(config_dir, ec);
 }

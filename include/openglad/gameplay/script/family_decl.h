@@ -15,7 +15,7 @@
 //
 //   DECLARE — a fresh, tight VM evaluates one pack's families/ chunks (and,
 //     through og.use, that pack's lib/ modules). og.family harvests into the
-//     interchange structs the classpack.yaml reader also fills; the hook and
+//     interchange structs the installer consumes; the hook and
 //     cast functions it carries are type-checked and thrown away with the
 //     VM. Nothing binds, nothing installs: the caller hands the harvest to
 //     the ordinary installer. World-facing og.* bindings all error, so a

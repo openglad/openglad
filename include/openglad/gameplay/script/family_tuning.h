@@ -9,11 +9,11 @@
 
 // Per-family tuning data supplied by class packs.
 //
-// A classpack.yaml family entry may carry a `tuning:` map of scalar
-// constants. The resources installer parses it and stores it here, keyed by
-// (order, wire id), exactly like the rest of the descriptor data: tuning is
-// LOAD-TIME pack content — it rides multiplayer transfer as part of
-// classpack.yaml, never as wire state, and no snapshot carries it. Scripts
+// A family declaration may carry a `tuning` map of scalar constants. The
+// resources installer stores it here, keyed by (order, wire id), exactly
+// like the rest of the descriptor data: tuning is LOAD-TIME pack content —
+// it rides multiplayer transfer as part of the family file, never as wire
+// state, and no snapshot carries it. Scripts
 // read it through `og.tuning(self)` as a frozen read-only table (key access
 // only; writes error; iteration is neither needed nor provided, so the
 // no-pairs rule never comes up).

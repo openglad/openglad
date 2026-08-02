@@ -16,6 +16,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -23,7 +24,6 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/resources/classpack_yaml.h>
 #include <openglad/resources/packs.h>
 
 #include <memory>
@@ -557,12 +557,11 @@ TEST_F(SpecialsDispatchTest, specials_on_a_non_living_order_is_a_load_error)
 }
 
 // ---------------------------------------------------------------------------
-// Specials keyed by declared id (schema v2). A pack's YAML gives each
-// special an `id:`; the script keys its handler by that id and the engine
-// resolves it to the slot at registration — so the two files reference each
-// other by name and a typo on either side is a load error instead of a
-// handler bound to the wrong special. The slot number that used to work
-// here is refused.
+// Specials keyed by declared id. A declaration gives each special an `id`;
+// a script keys its handler by that id and the engine resolves it to the
+// slot at registration — so the two reference each other by name and a typo
+// on either side is a load error instead of a handler bound to the wrong
+// special. The slot number that used to work here is refused.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -576,16 +575,18 @@ protected:
     void SetUp() override
     {
         og::data::ClasspackData data;
-        ASSERT_TRUE(og::data::parse_classpack_yaml(
-            "families:\n"
-            "  living:\n"
-            "    - id: v2test:warlock\n"
-            "      wire_id: 64\n"
-            "      name: WARLOCK\n"
-            "      specials:\n"
-            "        - {id: flare_burst, name: FLARE BURST, mp_cost: 5}\n"
-            "        - {id: hex, name: HEX, mp_cost: 9}\n",
-            data, "v2test"));
+        og::script::clear_pack_family_chunks();
+        og::script::register_pack_family_chunk(
+            {"idtest", "packs/idtest/families/warlock.lua",
+             "og.family('living', { id = 'idtest:warlock', wire_id = 64,\n"
+             "  name = 'WARLOCK',\n"
+             "  specials = {\n"
+             "    { id = 'flare_burst', name = 'FLARE BURST', mp_cost = 5 },\n"
+             "    { id = 'hex', name = 'HEX', mp_cost = 9 } } })\n"});
+        const og::script::DeclareResult declared =
+            og::script::declare_pack_families("idtest", data);
+        og::script::clear_pack_family_chunks();
+        ASSERT_TRUE(declared.ok) << declared.error;
         ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
         self = world.add_ob(Order::Living, kIdFamilyWireId);
         ASSERT_NE(nullptr, self);

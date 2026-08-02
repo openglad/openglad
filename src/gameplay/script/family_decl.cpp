@@ -11,8 +11,8 @@
 // A family file says what a family IS and what it DOES in one chunk. The
 // two halves have different lifetimes, so the chunk runs in two contexts
 // (family_decl.h): here, in a throwaway VM, the call is read for its DATA
-// and harvested into the same interchange structs the classpack.yaml reader
-// fills; in an ordinary world VM the same call binds behavior only.
+// and harvested into the interchange structs the installer consumes; in an
+// ordinary world VM the same call binds behavior only.
 //
 // Everything the harvest reads is a plain value. Functions (hooks, specials
 // casts) are type-checked and dropped — they belong to the VM that will run
@@ -921,10 +921,10 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
 
 // --- the five orders ----------------------------------------------------
 //
-// Field for field, these are the classpack.yaml readers with a Lua table
-// where the event stream was. Same key names, same meanings, same structs
-// out — which is the whole reason the installer never learns that a pack
-// stopped shipping YAML.
+// Field for field, one reader per order, filling the interchange structs
+// install_pack_families() consumes. The key names are the descriptor field
+// names — the mapping is meant to be boring, so that reading a declaration
+// tells you what installs.
 
 // The keys every order shares: identity, art, presentation, tuning.
 void append_common_keys(std::vector<const char*>& keys)
@@ -1234,9 +1234,9 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
     return ok;
 }
 
-// The og.pack header — what classpack.yaml's top-level scalars used to say.
-// Last one wins across a pack's chunks, exactly as the YAML front end
-// last-wins them across its documents.
+// The og.pack header: the pack's own id, version, title and authors. Last
+// one wins across a pack's chunks, so the convention is to put it in the
+// file that sorts first (packs/core/families/00-pack.lua).
 bool harvest_pack_header(Harvest& h, int tbl, og::data::ClasspackData& out)
 {
     const std::string where = "og.pack";
@@ -1746,8 +1746,8 @@ DeclareResult declare_pack_families(const std::string& pack_id,
             continue;
         if (host.run_chunk(chunk.chunk_name, chunk.source, chunk.pack_id))
             continue;
-        // One unusable family file rejects the whole pack, exactly as one
-        // unusable families/*.yaml always has.
+        // One unusable family file rejects the whole pack. Half a pack is
+        // a game whose families depend on load order.
         const auto& errors = host.errors();
         result.ok = false;
         result.error = errors.empty() ? std::string("chunk '") +

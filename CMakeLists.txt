@@ -305,7 +305,6 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
 		    ${SRC_DIR}/resources/campaign_yaml.cpp
-		    ${SRC_DIR}/resources/classpack_yaml.cpp
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
@@ -399,7 +398,6 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/resources/classpack_yaml.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
@@ -2973,9 +2971,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         og_add_unit_group(og_unit_data FILES
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_yaml.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_errors.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_schema_v2.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_install.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_decl.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_install.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry_golden.cpp

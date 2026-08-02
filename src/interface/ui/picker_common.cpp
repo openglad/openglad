@@ -202,8 +202,8 @@ bool has_name_in_save(const char* name, const SaveData& save)
 
 } // anonymous namespace
 
-// Recruit names come from the family descriptor's pool (`names:` in
-// classpack.yaml), so a class pack's family names its own recruits with no
+// Recruit names come from the family descriptor's pool (`names` in the
+// declaration), so a class pack's family names its own recruits with no
 // engine change. Families that deliberately share a pool — archmage with
 // mage, the orc captain with the orcs, all three slimes — do so by shipping
 // the same list, which is how the switch this replaced behaved.

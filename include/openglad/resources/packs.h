@@ -25,41 +25,41 @@ namespace og::resources {
 int register_mounted_pack_scripts();
 
 // Drop every registered pack script, rescan the mounted set, and
-// reinstall classpack.yaml data. The one call sites use when mounts
+// reinstall class-pack data. The one call sites use when mounts
 // CHANGE (campaign mount/unmount — campaign zips may embed packs/ that
 // merge into the virtual tree). World VMs rebuild lazily on their next
 // dispatch via the generation counter.
 int refresh_pack_scripts();
 
-// Scan packs/ for each pack's classpack data (same deterministic order
-// as the scripts) and install the family descriptor DATA into the five
-// gameplay registries. Per pack, packs/<pack_id>/classpack.yaml is
-// parsed first when present, then every packs/<pack_id>/families/*.yaml
-// in sorted filename order into the same parsed pack — the split layout
-// loads exactly like the concatenated monolith, and a pack may ship
-// either layout or both (families/ entries append after classpack.yaml;
-// a later entry pinning an already-declared WIRE slot overwrites just
-// the data fields it declares, and — like any install — replaces that
-// slot's tuning map whole). For each entry, the current descriptor is
-// copied, only
-// the fields the YAML declares are overwritten, and all C++ behavior
-// callback pointers are preserved unchanged (behavior lives in pack
-// Lua). wire_id pins the slot (core = legacy bytes); wire_id
-// auto/absent assigns the first free id >= 21 in pack-id-lexicographic
-// order — entries beyond a registry's capacity are skipped with a
-// warning. Any file that fails to parse rejects that pack only.
+// Scan packs/ for each pack's family declarations (same deterministic
+// order as the scripts) and install the family descriptor DATA into the
+// five gameplay registries. Per pack, every packs/<pack_id>/families/
+// *.lua is evaluated in sorted filename order by the declaration pass
+// (og::script::declare_pack_families) into one harvested set — so a
+// later file re-declaring an already-declared WIRE slot overwrites just
+// the data fields it spells, and — like any install — replaces that
+// slot's tuning map whole. For each entry, the current descriptor is
+// copied, only the fields the declaration spells are overwritten, and
+// all C++ behavior callback pointers are preserved unchanged (behavior
+// lives in pack Lua). wire_id pins the slot (core = legacy bytes);
+// wire_id auto/absent assigns the first free id >= 21 in
+// pack-id-lexicographic order — entries beyond a registry's capacity are
+// skipped with a warning. Any chunk that fails to declare rejects that
+// pack only, and so does a leftover classpack.yaml or families/*.yaml
+// from the retired YAML format (see scripts/migrate_classpack_v3.py).
 // Returns the number of family entries installed.
 //
-// Lifetime: descriptor const char* fields installed from YAML point into
-// a process-lifetime ClasspackStore that owns every parsed ClasspackData
-// (deliberately never destroyed — registry descriptors may be read up to
-// static teardown).
+// Lifetime: installed descriptor const char* fields point into a
+// process-lifetime ClasspackStore that owns every harvested
+// ClasspackData (deliberately never destroyed — registry descriptors may
+// be read up to static teardown).
 int install_classpacks();
 
-// Installs one already-parsed classpack, moving it into the process-
+// Installs one already-harvested classpack, moving it into the process-
 // lifetime ClasspackStore first (same semantics as one iteration of
 // install_classpacks, with a fresh auto-wire-id counter). Exposed for
-// unit tests. Returns the number of family entries installed.
+// unit tests and for tools that build a ClasspackData in C++
+// (tools/concept_mapgen). Returns the number of family entries installed.
 int install_classpack_data(og::data::ClasspackData&& data);
 
 // How much work the pack path has actually done this process.
@@ -76,13 +76,13 @@ int install_classpack_data(og::data::ClasspackData&& data);
 struct PackInstallStats {
     unsigned refreshes = 0;  // refresh_pack_scripts() calls
     unsigned installs = 0;   // install_classpacks() passes
-    // Packs whose YAML text was parsed, and packs served from the parse
+    // Packs whose declarations were evaluated, and packs served from the
     // memo instead. A repeat install of an unchanged tree must add only to
     // the latter.
     unsigned pack_parses = 0;
     unsigned pack_parse_reuses = 0;
     // How many objects the process-lifetime pack store holds right now: the
-    // parsed packs plus every array derived from them that a descriptor
+    // harvested packs plus every array derived from them that a descriptor
     // borrows (name pools, animation rows and row-pointer tables). Nothing
     // in that store is ever freed — the gameplay registries keep the borrows
     // through static teardown — so it must not grow when the mounted bytes

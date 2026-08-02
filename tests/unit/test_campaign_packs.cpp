@@ -158,7 +158,7 @@ TEST_F(CampaignPacksTest, core_pack_survives_campaign_cycling)
 // Pack-shipped graphics and animations, end to end
 // ---------------------------------------------------------------------------
 // docs/modding/examples/emberwisp is a complete mod pack that borrows nothing
-// from the core families: its own indexed sprite sheet, its own `anims:` set,
+// from the core families: its own indexed sprite sheet, its own og.anims set,
 // its own descriptor data and its own Lua hooks. It lives under docs/ rather
 // than packs/ precisely so it is NOT auto-mounted — a new living family in the
 // shipped build would move the picker and the auto-assigned wire ids.
@@ -214,9 +214,9 @@ TEST(ExampleClassPack, ships_its_own_sprite_and_animation_table)
     const FamilyDescriptor* fd = get_family_descriptor(family);
     ASSERT_NE(fd, nullptr);
     ASSERT_NE(fd->anim_table, nullptr)
-        << "the pack's anims: set must reach the descriptor";
+        << "the pack's og.anims set must reach the descriptor";
     ASSERT_EQ(fd->anim_row_count, 16)
-        << "16 rows = 2 ani_types x 8 facings, as classpack.yaml declares";
+        << "16 rows = 2 ani_types x 8 facings, as the declaration says";
     ASSERT_NE(fd->anim_table[0], nullptr);
     const signed char walk_row[] = {0, 1, 2, 3, 2, 1, -1};
     for (int i = 0; i < 7; i++)
@@ -444,8 +444,8 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
 // (unmount old, mount new, unmount new, mount old), and the level editor runs
 // that whole dance twice on entry. Re-reading the tree each time is the
 // point — a campaign .glad may carry its own packs/ — but re-PARSING bytes
-// that did not change is pure waste, and once the core pack became 73
-// families/*.yaml it was the single most expensive thing on the path.
+// that did not change is pure waste, and with the core pack spread over 73
+// family declarations it is the single most expensive thing on the path.
 //
 // These pin the COUNTS, deliberately, because counts are the deterministic
 // part: a wall-clock threshold in CI would just be a new flaky deadline (the
@@ -465,24 +465,16 @@ constexpr const char* kMemoPackMount = "packs/memoprobe/";
 // The `names:` pool is here because it is not parsed data: it is a pointer
 // array DERIVED from the parse and appended to the same never-freed store,
 // so it has its own memo and its own way to go stale.
-constexpr const char* kMemoYamlA =
-    "pack: org.test.memoprobe\n"
-    "version: 1\n"
-    "families:\n"
-    "  living:\n"
-    "    - id: memoprobe:probe\n"
-    "      wire_id: auto\n"
-    "      name: \"MEMO PACK 111\"\n"
-    "      names: [\"Probe One\"]\n";
-constexpr const char* kMemoYamlB =
-    "pack: org.test.memoprobe\n"
-    "version: 1\n"
-    "families:\n"
-    "  living:\n"
-    "    - id: memoprobe:probe\n"
-    "      wire_id: auto\n"
-    "      name: \"MEMO PACK 222\"\n"
-    "      names: [\"Probe Two\"]\n";
+constexpr const char* kMemoDeclA =
+    "og.pack{ id = 'org.test.memoprobe', version = '1' }\n"
+    "og.family('living', { id = 'memoprobe:probe', wire_id = 'auto',\n"
+    "                      name = 'MEMO PACK 111',\n"
+    "                      names = { 'Probe One' } })\n";
+constexpr const char* kMemoDeclB =
+    "og.pack{ id = 'org.test.memoprobe', version = '1' }\n"
+    "og.family('living', { id = 'memoprobe:probe', wire_id = 'auto',\n"
+    "                      name = 'MEMO PACK 222',\n"
+    "                      names = { 'Probe Two' } })\n";
 
 class PackInstallCostTest : public CampaignPacksTest
 {
@@ -507,7 +499,11 @@ protected:
 
     void write_probe_pack(const char* text) const
     {
-        std::ofstream out(staging_ / "classpack.yaml", std::ios::binary);
+        std::error_code ec;
+        fs::create_directories(staging_ / "families", ec);
+        ASSERT_FALSE(ec) << ec.message();
+        std::ofstream out(staging_ / "families" / "probe.lua",
+                          std::ios::binary);
         out << text;
         ASSERT_TRUE(out.good());
     }
@@ -611,7 +607,7 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
 {
     // The teeth for the memo. Everything above only proves it skips work;
     // this proves it skips work for the right reason.
-    write_probe_pack(kMemoYamlA);
+    write_probe_pack(kMemoDeclA);
     ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
                                      kMemoPackMount, 1));
     og::resources::reset_pack_install_stats();
@@ -623,7 +619,7 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
     ASSERT_STREQ("Probe One", probe_pooled_name());
 
     // Same path, same length, same second — different bytes.
-    write_probe_pack(kMemoYamlB);
+    write_probe_pack(kMemoDeclB);
     og::resources::reset_pack_install_stats();
     og::resources::refresh_pack_scripts();
     const og::resources::PackInstallStats second =
@@ -649,7 +645,7 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
     og::resources::refresh_pack_scripts();
     EXPECT_EQ(nullptr, probe_family_name())
         << "an unmounted pack leaves no family behind";
-    write_probe_pack(kMemoYamlA);
+    write_probe_pack(kMemoDeclA);
     ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
                                      kMemoPackMount, 1));
     og::resources::reset_pack_install_stats();

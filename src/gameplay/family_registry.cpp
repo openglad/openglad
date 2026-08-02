@@ -42,13 +42,13 @@ static void apply_defaults(FamilyDescriptor& d)
     d.ai_line_of_sight = 7;
 }
 
-// --- the one field classpack.yaml cannot declare yet ----------------------
+// --- the one field a declaration cannot spell yet -------------------------
 //
-// Everything else on a core family arrives from packs/core/classpack.yaml.
+// Everything else on a core family arrives from packs/core/families/.
 // `promotion_new_level` is the exception: it is a formula, and the pack
 // format has no way to spell one. Until it grows a declarative equivalent
-// (a `promotion_level_step` key, which needs the YAML reader and the
-// installer to carry it), these two live on as seeds — written into the
+// (a `promotion_level_step` key, which needs og.family and the installer
+// to carry it), these two live on as seeds — written into the
 // still-FREE slots before any pack installs, and preserved through the
 // install because the installer copies the slot it is patching.
 //
@@ -129,7 +129,7 @@ void require_core_families_installed(const char* context)
             continue;
         const std::string msg = std::format(
             "Fatal: {}: no mounted class pack declares {} family {} — the "
-            "core class pack (packs/core/classpack.yaml) is missing or "
+            "core class pack (packs/core/families/) is missing or "
             "malformed",
             context, check.order, gap);
         LogError("{}\n", msg);

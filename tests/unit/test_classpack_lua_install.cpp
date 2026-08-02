@@ -22,8 +22,8 @@
 // every level load, and worse, the installer would be re-writing registry
 // slots underneath a running game.
 //
-// So the declaration rides the same exact-bytes memo the YAML parse always
-// had, widened to cover families/ and lib/ (a lib module is an input to a
+// So the declaration rides an exact-bytes memo over families/ and lib/ (a
+// lib module is an input to a
 // declaration through og.use, so a module edit really can change what a
 // family declares). The tests here check both directions: unchanged bytes
 // must not re-declare, and changed bytes must.
@@ -136,8 +136,7 @@ TEST(LuaPackInstall, a_lua_only_pack_installs_its_families)
     ASSERT_TRUE(pack.ok()) << "mount failed: "
                            << og::resources::filesystem_last_error();
 
-    // No classpack.yaml anywhere in this pack: `docs.empty()` used to mean
-    // "nothing to install", and a Lua-only tree is data-bearing now.
+    // families/*.lua is the whole of this pack's data.
     const int family = installed_family();
     ASSERT_GE(family, 0) << "the declaration did not install";
     const EffectFamilyDescriptor* fd = get_effect_family_descriptor(family);
@@ -269,10 +268,9 @@ TEST(LuaPackInstall, a_declaration_edit_bumps_the_vm_build_generation)
         << "a VM built before the edit must read as stale";
 }
 
-// One unusable family file rejects the whole pack — exactly what one
-// unusable families/*.yaml always did. The important half is that the
-// engine keeps running: a bad pack is refused, never obeyed and never
-// fatal.
+// One unusable family file rejects the whole pack. The important half is
+// that the engine keeps running: a bad pack is refused, never obeyed and
+// never fatal.
 TEST(LuaPackInstall, a_pack_whose_declaration_fails_installs_nothing)
 {
     SyntheticLuaPack pack(sparkle_chunk(30));

@@ -8,17 +8,19 @@
 
 // The installed family registry, held against a golden file.
 //
-// packs/core is moving off classpack.yaml onto Lua `og.family`
-// declarations. The engineering claim behind that move is narrow and
-// checkable: the FRONT END changes and the DATA does not. This test is how
-// the claim gets checked. The golden was captured from the YAML front end;
-// when core flips to Lua the same install has to produce the same text,
-// character for character, or the diff names the field that moved.
+// The golden text was CAPTURED from the classpack.yaml reader, before
+// packs/core moved onto Lua `og.family` declarations, to check the one
+// claim that move rested on: the front end changes and the data does not.
+// It has not been recaptured since. The reader is gone and the file still
+// matches character for character, which is the proof, kept where it can
+// keep proving itself.
 //
-// It is also a plain regression pin in its own right. Every wire id, stat,
-// special cost, sprite name, animation row and tuning value the shipped
-// pack installs is in here, so an accidental edit to packs/core shows up as
-// a diff instead of as a subtly different game.
+// From here on it earns its place as a plain regression pin. Every wire id,
+// stat, special cost, sprite name, animation row and tuning value the
+// shipped pack installs is in this file, so an accidental edit to
+// packs/core shows up as a named diff instead of as a subtly different
+// game. The two tests under it are the self-consistency half: the dumper
+// reaches all five orders, and two dumps of one install are the same text.
 //
 // REGENERATING. The golden is not sacred, it is a record of a decision.
 // When packs/core changes on purpose:

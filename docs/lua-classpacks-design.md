@@ -248,6 +248,12 @@ tree and all read the same way:
 | `<user_path>/packs/` | user-installed packs |
 | `packs/` inside a campaign zip | mounts and unmounts **with that campaign** |
 
+A pack that still ships the retired YAML descriptors — a `classpack.yaml`,
+or any `families/*.yaml` — is REFUSED whole, by name, pointing at
+`scripts/migrate_classpack_v3.py`. Loading it would install its Lua families
+and silently drop the YAML ones: a team with the right names and nobody's
+stats. There is no reader left to fall back to.
+
 Loading is a whole-tree rescan (`refresh_pack_scripts`) triggered by
 `io_init`, campaign mount/unmount, and multiplayer pack transfer. It clears
 the registered chunk set, re-enumerates, and reinstalls descriptor data, so
@@ -485,8 +491,9 @@ answer: give the entry a `cast`, give the list a `default_cast = fn`
 had), or write `cast = false`, which is the explicit "spends the MP and does
 nothing, on purpose" spelling and counts as handled. The check runs after
 the mount-time bind pass, so a cross-file `og.register_hooks` override
-satisfies it too. A slot some OTHER front end filled still only warns: the
-pack could not have known about it.
+satisfies it too. A slot that arrived through `install_classpack_data` from
+C++ rather than from a declaration still only warns: the pack could not have
+known about it.
 
 The per-entry `ai` is sugar. It lowers to exactly one family-level
 `check_special_ai` — same call count, same order — so it cannot change

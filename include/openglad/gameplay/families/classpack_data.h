@@ -11,13 +11,13 @@
 // plain structs with OWNED std::string storage, independent of whatever
 // text produced it.
 //
-// Two front ends fill these — the classpack.yaml reader
-// (resources/classpack_yaml.h) and the Lua declaration pass
-// (gameplay/script/family_decl.h, `og.family`) — and exactly one back end
-// consumes them: install_pack_families() in src/resources/packs.cpp. That
-// is deliberate. Identical structs in, one installer, identical registry
-// bytes out — which is what makes "the Lua front end installs what the YAML
-// front end installed" a marshaling proof rather than a hope.
+// The Lua declaration pass fills these (gameplay/script/family_decl.h,
+// `og.family`), and exactly one back end consumes them:
+// install_pack_families() in src/resources/packs.cpp. The split is
+// deliberate. It kept the installer byte-identical while the front end
+// changed out from under it — the retired classpack.yaml reader filled the
+// same structs — and it is still the seam a tool can write directly
+// (install_classpack_data; tools/concept_mapgen builds one in C++).
 //
 // They live under gameplay rather than resources because the declaration
 // pass runs a Lua VM, and Lua headers may only be included from
@@ -106,14 +106,12 @@ struct ClasspackAnimSet {
     std::vector<ClasspackAnimRow> frames;
 };
 
-// --- schema v2 living blocks -------------------------------------------
+// --- the living blocks ---------------------------------------------------
 //
-// v2 replaced the six positional arrays of a living entry with named
-// blocks. The old spellings (base_stats, derived_bonuses, stat_costs,
-// special_costs, special_names, alternate_names, hiring_cost, weapon_cost)
-// are gone from the parser, but not into the unknown-key hole: each is
-// still recognized by name and fails the pack with the block it became
-// and a pointer at scripts/migrate_classpack_v2.py.
+// A living entry names its axes. The six positional arrays the DOS data
+// files had (base_stats, derived_bonuses, stat_costs, special_costs,
+// special_names, alternate_names) survive only inside the descriptor, where
+// the installer folds these blocks into them.
 
 // `stats:` — the attribute scores a recruit starts with, and the base the
 // picker prices training deltas against. Every member is required when the
@@ -182,7 +180,7 @@ struct ClasspackLivingEntry {
     std::string wire_id;                   // "0".."255", "auto", or "" = absent (auto)
     std::optional<std::string> name;
     NullableString short_name;
-    // schema v2 blocks
+    // the named blocks
     std::optional<ClasspackStatsBlock> stats;
     std::optional<ClasspackCombatBlock> combat;
     std::optional<ClasspackCostsBlock> costs;
