@@ -1316,13 +1316,6 @@ inline constexpr Mutation kMut_family_thief_init = {
     "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
 };
 
-inline constexpr Mutation kMut_family_ghost_init = {
-    "src/resources/gloader.cpp", 798,
-    "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>(0));",
-    "Forces every gloader-spawned walker to be tagged FAMILY_SOLDIER; in any build env the GHOST walker is dumped as SOLDIER, so WalkerFamilyCount(GHOST,1,1) drops to 0 and WalkerAliveAtFinal(GHOST,1) loses its quorum."
-};
-
 inline constexpr Mutation kMut_family_druid_init = {
     "packs/core/families/living-13-druid.yaml", 10,
     "[110",
