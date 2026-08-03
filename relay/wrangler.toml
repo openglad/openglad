@@ -10,6 +10,10 @@ workers_dev = true
 # object alarm deletes it, in milliseconds. smoke.mjs overrides this with
 # --var to exercise the expiry alarm quickly.
 EMPTY_ROOM_TTL_MS = "120000"
+# Cloud-save inactivity TTL (issue #155), in milliseconds: 180 days. Any GET
+# or successful POST refreshes it; tests override with a small value to
+# exercise the expiry alarm.
+CLOUD_SAVE_TTL_MS = "15552000000"
 
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
@@ -18,6 +22,10 @@ class_name = "GameRoom"
 [[durable_objects.bindings]]
 name = "ROOM_REGISTRY"
 class_name = "RoomRegistry"
+
+[[durable_objects.bindings]]
+name = "SAVE_VAULT"
+class_name = "SaveVault"
 
 # SQLite-backed durable objects: available on the free plan and cheaper than
 # the legacy KV-backed storage class.
@@ -28,3 +36,7 @@ new_sqlite_classes = ["GameRoom"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["RoomRegistry"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["SaveVault"]
