@@ -22,6 +22,8 @@
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
+#include <openglad/core/sound_ids.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -3208,6 +3210,90 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     game_screen->world().delete_objects();
 }
 
+// Records every sound the interface layer routes through the platform bridge
+// while still forwarding to whatever bridge was installed.
+struct PlaySoundRecorderGuard
+{
+    PlatformBridge previous;
+    std::vector<int> played;
+
+    PlaySoundRecorderGuard()
+        : previous(platform_bridge())
+    {
+        PlatformBridge recording = previous;
+        recording.play_sound = [this](int sound_id) {
+            played.push_back(sound_id);
+            if (previous.play_sound)
+                previous.play_sound(sound_id);
+        };
+        set_platform_bridge(std::move(recording));
+    }
+
+    ~PlaySoundRecorderGuard()
+    {
+        set_platform_bridge(previous);
+    }
+
+    bool saw(int sound_id) const
+    {
+        return std::find(played.begin(), played.end(), sound_id) != played.end();
+    }
+};
+
+// Issue #145: yelling used to be silent and invisible. Input is processed
+// authoritatively inside GameServer, which drops the SimInputResult cosmetics,
+// and the render-layer consumer of those fields is unreachable once the local
+// transport shadow is live. The cues only arrive if the sim layer emits them as
+// sim events that ride the tick's batch out to the mirror.
+TEST(GameLoop, game_frame_yell_delivers_sound_and_notification_to_mirror)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    disablePlayerJoystick(0);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_yell_cue"))
+        << "load_saved_game should succeed for the yell-cue test";
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_TRUE(view != nullptr);
+    ASSERT_TRUE(view->control != nullptr);
+    view->clear_text();
+
+    SessionKeyStateGuard keystates;
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_Y);
+    keystates.set(SDLK_Y, true);
+    ctx().input = {};
+    view->control->set_yo_delay(0);
+
+    PlaySoundRecorderGuard sounds;
+
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+
+    GameLoopFrameState st;
+    bool saw_text = false;
+    for (int frame = 0; frame < 4 && !saw_text; ++frame)
+    {
+        EXPECT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps));
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+        {
+            if (view->textlist[slot] == "Yo!")
+                saw_text = true;
+        }
+    }
+
+    EXPECT_TRUE(saw_text)
+        << "the yell should print \"Yo!\" on the mirror's HUD";
+    EXPECT_TRUE(sounds.saw(SOUND_YO))
+        << "the yell should play the yo clip through the platform bridge";
+
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, single_tick_per_call)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -5477,3 +5563,4 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     if (getenv("OG_FX_CAPTURE_DIR"))
         canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_4p", 0);
 }
+

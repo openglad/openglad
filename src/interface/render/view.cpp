@@ -1496,6 +1496,11 @@ void viewscreen::process_input(const InputState& input_state)
 		}
 	}
 
+	// During gameplay the authoritative server owns input processing, so
+	// everything below (including the notification/sound block at the end of
+	// this function) never runs. Those cues are emitted as sim events by
+	// sim_process_player_input and dispatched from the per-tick event batch in
+	// dispatch_cosmetic_screen_events instead.
 	if (og::runtime::current_session != nullptr &&
 	    og::runtime::current_session->gameplay_active_ &&
 	    og::runtime::local_transport_active(*og::runtime::current_session))
