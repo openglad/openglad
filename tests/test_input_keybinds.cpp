@@ -1686,14 +1686,17 @@ TEST(InputKeybinds, lookup_key_binding_persists_through_cfg_roundtrip)
 
 // ---------------------------------------------------------------------------
 // Browser-safe web control defaults (issue #144). Player 1's native factory
-// FIRE/SPECIAL are LCtrl/LAlt, which makes "attack while walking up" the
-// browser-reserved Ctrl+W chord. Web builds substitute Z/X (4-dir) and
-// Space/[ (8-dir) for profile 0, and a one-shot version-keyed cfg migration
-// moves persisted bindings still equal to the old factory default. All of it
-// is exercised natively through the web_mode parameter.
+// FIRE is LCtrl, which makes "attack while walking up" the browser-reserved
+// Ctrl+W chord. Ctrl is the only problem key — Left Alt is browser-safe — so
+// web builds substitute Z/X for profile 0's 4-dir FIRE/SPECIAL and, in the
+// 8-dir map where Z/X are P1's own diagonals, move FIRE to S (leaving SPECIAL
+// on Left Alt), YELL off S to V, and look-up off V to unbound. A one-shot
+// version-keyed cfg migration moves persisted bindings still equal to the old
+// factory default. All of it is exercised natively through the web_mode
+// parameter.
 // ---------------------------------------------------------------------------
 
-TEST(InputKeybinds, web_defaults_move_p1_fire_and_special_off_ctrl_alt)
+TEST(InputKeybinds, web_defaults_move_p1_fire_off_ctrl)
 {
     FullControlSnapshotGuard guard;
     reset_default_player_controls();
@@ -1707,16 +1710,25 @@ TEST(InputKeybinds, web_defaults_move_p1_fire_and_special_off_ctrl_alt)
         << "web 4-dir P1 fire should be Z";
     EXPECT_EQ(static_cast<int>(SDLK_X), get_player_key_binding_for_mode(0, kFour, KEY_SPECIAL))
         << "web 4-dir P1 special should be X";
-    EXPECT_EQ(static_cast<int>(SDLK_SPACE), get_player_key_binding_for_mode(0, kEight, KEY_FIRE))
-        << "web 8-dir P1 fire should be Space (z/x are P1's own diagonals)";
-    EXPECT_EQ(static_cast<int>(SDLK_LEFTBRACKET), get_player_key_binding_for_mode(0, kEight, KEY_SPECIAL))
-        << "web 8-dir P1 special should be [";
+    EXPECT_EQ(static_cast<int>(SDLK_S), get_player_key_binding_for_mode(0, kEight, KEY_FIRE))
+        << "web 8-dir P1 fire should be S (z/x are P1's own diagonals)";
+    EXPECT_EQ(static_cast<int>(SDLK_LALT), get_player_key_binding_for_mode(0, kEight, KEY_SPECIAL))
+        << "web 8-dir P1 special should stay on the native Left Alt";
+    EXPECT_EQ(static_cast<int>(SDLK_V), get_player_key_binding_for_mode(0, kEight, KEY_YELL))
+        << "web 8-dir P1 yell should move to V, displaced off S by fire";
+    EXPECT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
+        << "web 8-dir P1 look-up should start unbound, displaced off V by yell";
 
-    // Movement and the other action keys are untouched.
+    // Movement and the other action keys are untouched, and the 4-direction
+    // map keeps its native yell/look-up.
     EXPECT_EQ(static_cast<int>(SDLK_W), get_player_key_binding_for_mode(0, kFour, KEY_UP));
     EXPECT_EQ(static_cast<int>(SDLK_A), get_player_key_binding_for_mode(0, kFour, KEY_LEFT));
     EXPECT_EQ(static_cast<int>(SDLK_E), get_player_key_binding_for_mode(0, kFour, KEY_YELL));
+    EXPECT_EQ(static_cast<int>(SDLK_V), get_player_key_binding_for_mode(0, kFour, KEY_LOOKUP));
     EXPECT_EQ(static_cast<int>(SDLK_LSHIFT), get_player_key_binding_for_mode(0, kFour, KEY_SHIFTER));
+    // P1's 8-direction movement diamond is unchanged around the new fire key.
+    EXPECT_EQ(static_cast<int>(SDLK_X), get_player_key_binding_for_mode(0, kEight, KEY_DOWN));
+    EXPECT_EQ(static_cast<int>(SDLK_Z), get_player_key_binding_for_mode(0, kEight, KEY_DOWN_LEFT));
 
     // P2-P4 keep their native fire/special in both modes.
     EXPECT_EQ(static_cast<int>(SDLK_PERIOD), get_player_key_binding_for_mode(1, kFour, KEY_FIRE));
@@ -1746,11 +1758,10 @@ TEST(InputKeybinds, web_defaults_do_not_collide_with_any_player_mode)
 {
     // Same matrix as the native collision sweep, over the WEB defaults: on a
     // shared keyboard every player's bindings are live at once and modes are
-    // per-player. Documented exceptions only:
-    //  - the grandfathered P1 look-up 'v' vs P4 8-dir DOWN-LEFT 'v';
-    //  - web P1 8-dir FIRE = Space vs P3 FIRE = Space (accepted overlap:
-    //    it needs a 3+ player one-keyboard web game with P1 opted into
-    //    8-direction mode).
+    // per-player. Sole documented exception: the grandfathered 'v' overlap
+    // with P4's 8-dir DOWN-LEFT. Natively that is P1's look-up; on web P1's
+    // 8-dir map also puts YELL on v (displaced off s by fire), so both of
+    // P1's v bindings are covered by the one allowance.
     FullControlSnapshotGuard guard;
     reset_default_player_controls();
     for (int p = 0; p < 4; ++p)
@@ -1779,21 +1790,14 @@ TEST(InputKeybinds, web_defaults_do_not_collide_with_any_player_mode)
 
     const auto is_documented_v_quirk = [](const Binding& a, const Binding& b) {
         const auto matches = [](const Binding& p1, const Binding& p4) {
-            return p1.player == 0 && p1.key_enum == KEY_LOOKUP &&
-                   p1.keycode == KEYCODE_v &&
+            const bool p1_holds_v =
+                p1.key_enum == KEY_LOOKUP ||
+                (p1.key_enum == KEY_YELL &&
+                 p1.mode == static_cast<int>(ControlDirectionMode::EightDirection));
+            return p1.player == 0 && p1_holds_v && p1.keycode == KEYCODE_v &&
                    p4.player == 3 && p4.key_enum == KEY_DOWN_LEFT &&
                    p4.mode == static_cast<int>(ControlDirectionMode::EightDirection) &&
                    p4.keycode == KEYCODE_v;
-        };
-        return matches(a, b) || matches(b, a);
-    };
-    const auto is_documented_space_overlap = [](const Binding& a, const Binding& b) {
-        const auto matches = [](const Binding& p1, const Binding& p3) {
-            return p1.player == 0 && p1.key_enum == KEY_FIRE &&
-                   p1.mode == static_cast<int>(ControlDirectionMode::EightDirection) &&
-                   p1.keycode == KEYCODE_SPACE &&
-                   p3.player == 2 && p3.key_enum == KEY_FIRE &&
-                   p3.keycode == KEYCODE_SPACE;
         };
         return matches(a, b) || matches(b, a);
     };
@@ -1805,7 +1809,7 @@ TEST(InputKeybinds, web_defaults_do_not_collide_with_any_player_mode)
             const Binding& b = bindings[j];
             if (a.player == b.player || a.keycode != b.keycode)
                 continue;
-            if (is_documented_v_quirk(a, b) || is_documented_space_overlap(a, b))
+            if (is_documented_v_quirk(a, b))
                 continue;
             ADD_FAILURE()
                 << "web-defaults cross-player key collision: keycode "
@@ -1822,25 +1826,31 @@ TEST(InputKeybinds, web_cfg_migration_rewrites_stale_ctrl_binding_once)
     constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
     constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
 
-    // A returning web player's persisted cfg: the old factory LCtrl/LAlt
-    // values, no version marker (the boot path writes the whole controls
-    // block back on every boot, so these are frozen in for everyone who
-    // played before the web defaults moved).
+    // A returning web player's persisted cfg: the old factory values, no
+    // version marker (the boot path writes the whole controls block back on
+    // every boot, so these are frozen in for everyone who played before the
+    // web defaults moved).
     cfg_store config;
     config.apply_setting("controls", "player1_mode4_key8", std::to_string(SDLK_LCTRL));
     config.apply_setting("controls", "player1_mode4_key9", std::to_string(SDLK_LALT));
     config.apply_setting("controls", "player1_mode8_key8", std::to_string(SDLK_LCTRL));
     config.apply_setting("controls", "player1_mode8_key9", std::to_string(SDLK_LALT));
+    config.apply_setting("controls", "player1_mode8_key12", std::to_string(SDLK_S));
+    config.apply_setting("controls", "player1_mode8_key16", std::to_string(SDLK_V));
 
     load_player_control_settings_from_cfg(config, /*web_mode=*/true);
     EXPECT_EQ(static_cast<int>(SDLK_Z), get_player_key_binding_for_mode(0, kFour, KEY_FIRE))
         << "stale 4-dir LCtrl fire must migrate to Z";
     EXPECT_EQ(static_cast<int>(SDLK_X), get_player_key_binding_for_mode(0, kFour, KEY_SPECIAL))
         << "stale 4-dir LAlt special must migrate to X";
-    EXPECT_EQ(static_cast<int>(SDLK_SPACE), get_player_key_binding_for_mode(0, kEight, KEY_FIRE))
-        << "stale 8-dir LCtrl fire must migrate to Space";
-    EXPECT_EQ(static_cast<int>(SDLK_LEFTBRACKET), get_player_key_binding_for_mode(0, kEight, KEY_SPECIAL))
-        << "stale 8-dir LAlt special must migrate to [";
+    EXPECT_EQ(static_cast<int>(SDLK_S), get_player_key_binding_for_mode(0, kEight, KEY_FIRE))
+        << "stale 8-dir LCtrl fire must migrate to S";
+    EXPECT_EQ(static_cast<int>(SDLK_LALT), get_player_key_binding_for_mode(0, kEight, KEY_SPECIAL))
+        << "8-dir LAlt special is browser-safe and must NOT be migrated";
+    EXPECT_EQ(static_cast<int>(SDLK_V), get_player_key_binding_for_mode(0, kEight, KEY_YELL))
+        << "stale 8-dir S yell must migrate to V, out of the new fire key";
+    EXPECT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
+        << "stale 8-dir V look-up must migrate to unbound, out of the new yell key";
     EXPECT_EQ("1", config.get_setting("controls", "web_default_keys_version"))
         << "the migration must stamp its version marker into the cfg";
 
@@ -1862,6 +1872,7 @@ TEST(InputKeybinds, web_cfg_migration_never_touches_user_rebinds_or_native_loads
 {
     FullControlSnapshotGuard guard;
     constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
 
     {
         // A user's own (non-factory) binding is never migrated, even on the
@@ -1871,6 +1882,18 @@ TEST(InputKeybinds, web_cfg_migration_never_touches_user_rebinds_or_native_loads
         load_player_control_settings_from_cfg(config, /*web_mode=*/true);
         EXPECT_EQ(static_cast<int>(SDLK_F9), get_player_key_binding_for_mode(0, kFour, KEY_FIRE))
             << "a user rebind must never be migrated";
+    }
+    {
+        // Same for the 8-direction knock-on slots: a deliberate yell or
+        // look-up choice outranks the displacement the new fire key forces.
+        cfg_store config;
+        config.apply_setting("controls", "player1_mode8_key12", std::to_string(SDLK_F10));
+        config.apply_setting("controls", "player1_mode8_key16", std::to_string(SDLK_F11));
+        load_player_control_settings_from_cfg(config, /*web_mode=*/true);
+        EXPECT_EQ(static_cast<int>(SDLK_F10), get_player_key_binding_for_mode(0, kEight, KEY_YELL))
+            << "a user's 8-dir yell rebind must never be migrated";
+        EXPECT_EQ(static_cast<int>(SDLK_F11), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
+            << "a user's 8-dir look-up rebind must never be migrated";
     }
     {
         // Native load (default argument): LCtrl preserved, no version key
