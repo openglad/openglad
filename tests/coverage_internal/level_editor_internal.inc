@@ -916,6 +916,71 @@ int level_editor_test_exercise_internal_helpers()
 	            selected->set_act_type_state(ACT_RANDOM);
 	            selected->set_guard_hold_post(false);
 
+	            // "Delay" prompt: authors the per-object wave timer in sim
+	            // ticks. It must never dormant-ize while editing — a dormant
+	            // walker is skipped by the obmap update, so it would stop
+	            // being selectable and draggable in the editor.
+	            check(data.mode_buttons.find(&data.delayButton) != data.mode_buttons.end());
+	            level_editor_testing_prompt_queue_clear();
+	            level_editor_testing_prompt_queue_push("900");
+	            data.activate_mode_button(&data.delayButton);
+	            check(selected->spawn_delay() == 900 && !selected->dormant());
+	            // Out-of-range input clamps into the uint16 field either way.
+	            level_editor_testing_prompt_queue_push("70000");
+	            data.activate_mode_button(&data.delayButton);
+	            check(selected->spawn_delay() == 65535);
+	            level_editor_testing_prompt_queue_push("-5");
+	            data.activate_mode_button(&data.delayButton);
+	            check(selected->spawn_delay() == 0);
+	            level_editor_testing_prompt_queue_push("360");
+	            data.activate_mode_button(&data.delayButton);
+	            check(selected->spawn_delay() == 360);
+	            // 0 clears the delay again: the par-value prompt's `v > 0`
+	            // guard would have made it unclearable.
+	            level_editor_testing_prompt_queue_push("0");
+	            data.activate_mode_button(&data.delayButton);
+	            check(selected->spawn_delay() == 0 && !selected->dormant());
+	            check(level_editor_testing_prompt_queue_ref().empty());
+	            // A weapon selection neither offers the button nor takes a
+	            // delay (a delay there would upgrade the saved file to v10
+	            // for a field the loader ignores).
+	            walker* delay_weap = data.level->add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+	            check(delay_weap != nullptr);
+	            if (delay_weap != nullptr)
+	            {
+	                delay_weap->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(delay_weap));
+	                data.reset_mode_buttons();
+	                check(data.mode_buttons.find(&data.delayButton) == data.mode_buttons.end());
+	                level_editor_testing_prompt_queue_push("450");
+	                data.activate_mode_button(&data.delayButton);
+	                check(delay_weap->spawn_delay() == 0);
+	                data.level->remove_ob(delay_weap);
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(selected));
+	                data.reset_mode_buttons();
+	            }
+	            // Object mode edits the brush instead, and the brush stamps
+	            // placed Livings/Generators (weapon brushes are left alone).
+	            data.mode = Mode::Object;
+	            data.object_brush.order = Order::Living;
+	            data.object_brush.family = FAMILY_SOLDIER;
+	            data.reset_mode_buttons();
+	            check(data.mode_buttons.find(&data.delayButton) != data.mode_buttons.end());
+	            level_editor_testing_prompt_queue_push("240");
+	            data.activate_mode_button(&data.delayButton);
+	            check(data.object_brush.spawn_delay == 240);
+	            data.object_brush.order = Order::Treasure;
+	            data.object_brush.family = FAMILY_GOLD_BAR;
+	            data.reset_mode_buttons();
+	            check(data.mode_buttons.find(&data.delayButton) == data.mode_buttons.end());
+	            data.object_brush.order = Order::Living;
+	            data.object_brush.family = FAMILY_SOLDIER;
+	            data.object_brush.spawn_delay = 0;
+	            data.mode = Mode::Select;
+	            data.reset_mode_buttons();
+
 	            MouseState& mouse = query_mouse_no_poll();
 	            mouse.left = true;
 	            data.rect_selecting = false;

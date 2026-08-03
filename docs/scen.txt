@@ -249,6 +249,19 @@ than the first ones.  Note that changing the level only affects new
 troops you place - so anyone you placed who was level 1 will remain 
 that way.
 
+Delaying a Spawn: A character doesn't have to be on the map when the
+level starts.  Select one (or a generator) and click the Delay button -
+it sits to the right of the AI button in the select panel - to give it a
+spawn delay measured in game ticks.  The game runs twelve ticks per
+second, so 360 is half a minute.  A delayed character sleeps out of
+sight until its tick arrives and then flashes into the world; while
+anything is still asleep the level can't be finished, and the players see
+a NEXT WAVE countdown in the status bar.  Enter 0 to clear a delay.
+The same Delay button in object mode presets the delay on the object
+"pen," so an entire wave can be placed already delayed.  Only
+characters and generators carry a delay - treasure and weapons always
+start on the map.
+
 Adding a Name: Sometimes it can be fun to name some of the 
 enemies - give the level some flavor.  To do this, hold down the R 
 key (for Rename) and left click a character.  Now you can type the new 

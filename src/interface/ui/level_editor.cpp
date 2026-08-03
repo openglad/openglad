@@ -416,10 +416,11 @@ public:
     char team;
     Sint32 level;
     Sint32 worldz;   // authored sub-floor Z height (pixels) for placed objects
+    Sint32 spawn_delay;  // authored wave delay (sim ticks) for placed Livings/Generators
     bool picking;
 
     EditorObjectBrush()
-        : snap_to_grid(true), order(Order::Living), family(0), team(1), level(1), worldz(0), picking(false)
+        : snap_to_grid(true), order(Order::Living), family(0), team(1), level(1), worldz(0), spawn_delay(0), picking(false)
     {}
     
     void set(walker* target)
@@ -506,6 +507,8 @@ public:
 std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 const char* editor_ai_policy_label(char act_type, bool hold_post);
+bool editor_order_supports_spawn_delay(Order order);
+std::string format_editor_spawn_delay_label(int ticks);
 
 class LevelEditorData
 {
@@ -579,6 +582,7 @@ public:
 	SimpleButton prevClassButton, nextClassButton;
 	SimpleButton facingButton;
 	SimpleButton aiButton;
+	SimpleButton delayButton;
 
 	SimpleButton deleteButton;
 	
@@ -723,6 +727,10 @@ LevelEditorData::LevelEditorData()
     , nextClassButton("Class >", prevClassButton.area.x + prevClassButton.area.w, prevClassButton.area.y, 48, 15)
     , facingButton("Facing >", OVERSCAN_PADDING, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
     , aiButton("AI >", facingButton.area.x+facingButton.area.w, facingButton.area.y, 30, 15)
+    // Sits to the RIGHT of "AI >" on the same row so no existing button moves
+    // (the select-panel rows below are addressed by fixed coordinates in the
+    // editor interaction tests).
+    , delayButton("Delay", aiButton.area.x+aiButton.area.w, aiButton.area.y, 46, 15)
     , deleteButton("Delete", OVERSCAN_PADDING, 10+facingButton.area.y+facingButton.area.h, 40, 15)
     , panUpButton("U", OVERSCAN_PADDING + 18, 200 - 51, 15, 15)
     , panDownButton("D", OVERSCAN_PADDING + 18, 200 - 21, 15, 15)
@@ -916,6 +924,10 @@ void LevelEditorData::reset_mode_buttons()
         mode_buttons.insert(&gridSnapButton);
         mode_buttons.insert(&prevTeamButton);
         mode_buttons.insert(&nextTeamButton);
+        // Preset a wave delay on the brush so a whole group can be placed
+        // already delayed.
+        if(editor_order_supports_spawn_delay(object_brush.order))
+            mode_buttons.insert(&delayButton);
         if(object_brush.picking)
             pickerButton.set_colors_active();
         else
@@ -937,6 +949,16 @@ void LevelEditorData::reset_mode_buttons()
             mode_buttons.insert(&nextClassButton);
             mode_buttons.insert(&facingButton);
             mode_buttons.insert(&aiButton);
+            // Only offered when something in the selection can actually hold
+            // a delay (see editor_order_supports_spawn_delay).
+            for(const auto& sel : selection)
+            {
+                if(editor_order_supports_spawn_delay(sel.order))
+                {
+                    mode_buttons.insert(&delayButton);
+                    break;
+                }
+            }
             mode_buttons.insert(&deleteButton);
         }
         break;
@@ -1187,6 +1209,68 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                       editor_ai_policy_label(obj->act_type(), obj->guard_hold_post()),
                       static_cast<int>(obj->act_type()),
                       obj->guard_hold_post() ? 1 : 0);
+            }
+        }
+    }
+    else if(button == &delayButton)
+    {
+        // Wave authoring: how many sim ticks past level start this object
+        // stays asleep. The sim runs 12 ticks/second, matching the "NEXT
+        // WAVE: Ns" HUD countdown. Ticks (not seconds) are the unit here so a
+        // mapgen-authored value round-trips exactly through a re-save.
+        //
+        // In Object mode the prompt edits the brush (every object placed
+        // afterwards inherits it); in Select mode it edits the selection.
+        int current = object_brush.spawn_delay;
+        if(mode == Mode::Select)
+        {
+            current = 0;
+            for(auto& sel : selection)
+            {
+                walker* obj = sel.get_object(level.get());
+                if(obj == nullptr || !editor_order_supports_spawn_delay(obj->query_order()))
+                    continue;
+                current = obj->spawn_delay();
+                break;
+            }
+        }
+
+        std::string delay_text = std::format("{}", current);
+        if(prompt_for_string("Spawn Delay ticks (12/sec)", delay_text))
+        {
+            // Unlike the par-value prompt, 0 is meaningful: it clears the
+            // delay so the object spawns with the level again.
+            int v = toInt(delay_text);
+            if(v < 0)
+                v = 0;
+            if(v > 65535)
+                v = 65535;
+
+            if(mode == Mode::Object)
+            {
+                object_brush.spawn_delay = v;
+                TRACE("editor", "spawn_delay brush=%d order=%d", v,
+                      static_cast<int>(object_brush.order));
+            }
+            else
+            {
+                for(auto& sel : selection)
+                {
+                    walker* obj = sel.get_object(level.get());
+                    if(obj == nullptr || !editor_order_supports_spawn_delay(obj->query_order()))
+                        continue;
+                    // Never set_dormant() here. Dormancy is load/runtime
+                    // state — a dormant walker is skipped by the obmap
+                    // update, so it has to stay a normal visible, draggable
+                    // object while authoring. The loader puts it to sleep
+                    // when the level is played.
+                    obj->set_spawn_delay(static_cast<std::uint16_t>(v));
+                    eds().levelchanged = 1;
+                    TRACE("editor", "spawn_delay set=%d order=%d dormant=%d",
+                          static_cast<int>(obj->spawn_delay()),
+                          static_cast<int>(obj->query_order()),
+                          obj->dormant() ? 1 : 0);
+                }
             }
         }
     }
@@ -1558,6 +1642,18 @@ Sint32 LevelEditorData::display_panel(screen* s)
                     scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
                 }
             }
+
+            // Authored wave delay in sim ticks (the "Delay" button). Only
+            // shown when set, so undelayed objects keep the box short.
+            if(editor_order_supports_spawn_delay(sel.order))
+            {
+                walker* sel_obj = sel.get_object(level.get());
+                if(sel_obj != nullptr && sel_obj->spawn_delay() > 0)
+                {
+                    message = format_editor_spawn_delay_label(sel_obj->spawn_delay());
+                    scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+                }
+            }
         }
         
     }
@@ -1582,6 +1678,13 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(object_brush.worldz != 0)
         {
             message = std::format("Z: {}", object_brush.worldz);
+            scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+        }
+
+        // Wave delay the brush stamps onto the objects it places.
+        if(object_brush.spawn_delay != 0 && editor_order_supports_spawn_delay(object_brush.order))
+        {
+            message = format_editor_spawn_delay_label(object_brush.spawn_delay);
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
         }
 
@@ -2888,6 +2991,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         const int index = (windowx + ((windowy+eds().rowsdown) * PIX_OVER)) % pane_size;
                         object_brush.order = object_pane()[index].order;
                         object_brush.family = object_pane()[index].family;
+                        // The brush order decides whether "Delay" is offered.
+                        reset_mode_buttons();
                     }
                 } // end of background grid window
                 else if(mx < 245-4 || my > L_D(7)-2)
@@ -2903,6 +3008,11 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->set_team_num(static_cast<unsigned char>(object_brush.team));
                         newob->stats()->set_level(object_brush.level);
                         newob->set_worldz(static_cast<float>(object_brush.worldz));
+                        // Stamp the brush's wave delay so a whole group is
+                        // placed already delayed. Weapons/treasures never
+                        // carry one (see editor_order_supports_spawn_delay).
+                        if(editor_order_supports_spawn_delay(object_brush.order))
+                            newob->set_spawn_delay(static_cast<std::uint16_t>(object_brush.spawn_delay));
                         newob->set_dead(0); // just in case
                         newob->set_collide_ob(nullptr);
                         // Is there already something there?
@@ -2937,6 +3047,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         pick_by_mouse(mx, my);
                         object_brush.picking = false;
                         pickerButton.set_colors_normal();
+                        // Picking can change the brush order, which decides
+                        // whether "Delay" is offered.
+                        reset_mode_buttons();
                     }
                 }
             }  // end of putting a guy
@@ -3215,6 +3328,24 @@ const char* editor_ai_policy_label(char act_type, bool hold_post)
 {
     if(act_type != ACT_GUARD) return "ROAM";
     return hold_post ? "HOLD" : "GUARD";
+}
+
+// Which placed objects can carry a spawn delay. The level loader only puts
+// oblist members to sleep (level_file_io.cpp: weapons and treasures are loaded
+// awake whatever their reserved bytes say), but the writer's v9/v10 version
+// cascade counts a nonzero spawn_delay anywhere — so authoring a delay on a
+// treasure would upgrade the saved file for a field nothing ever reads.
+// Order::Special is excluded too: start markers are consumed at level load.
+bool editor_order_supports_spawn_delay(Order order)
+{
+    return order == Order::Living || order == Order::Generator;
+}
+
+// Select/object panel line for an authored spawn delay. Kept to 11 characters
+// at the widest (65535 ticks) so it fits the 245..315 info box at 6 px/char.
+std::string format_editor_spawn_delay_label(int ticks)
+{
+    return std::format("Delay:{}", ticks);
 }
 
 enum class EventType { Handled, Text, Scroll, MouseMotion, MouseDown, MouseUp, KeyDown };

@@ -56,7 +56,10 @@ container — mtimes differ).
   command byte (writer round-trips act_type; loader applies only
   Living+ACT_GUARD). spawn_delay (reserved[4-5]) makes dormant walkers: they
   hold level_done open, show in the NEXT WAVE HUD, are not
-  switchable/targetable, and wake with a flash.
+  switchable/targetable, and wake with a flash. The openscen SELECT panel
+  authors this as the "Delay" prompt (ticks, 12/sec), and the OBJECT panel
+  presets it on the brush so a whole wave places already delayed; only
+  Livings and Generators can carry one.
 - Guard wake policy (2026-07-11): a plain ACT_GUARD is an AMBUSH post — it
   holds until a foe is inside lineofsight() range with a clear sight ray
   (same-floor Bresenham over opaque tiles), then converts to ACT_RANDOM and
