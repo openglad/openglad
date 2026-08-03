@@ -51,7 +51,7 @@ import tempfile
 import urllib.parse
 from typing import Dict, List, Tuple
 
-ENFORCED_ROOTS = ("packs/", "docs/modding/")
+ENFORCED_ROOTS = ("packs/", "docs/modding/", "tools/modes_mapgen/pack/")
 
 SEVERITY = {1: "error", 2: "warning", 3: "information", 4: "hint"}
 

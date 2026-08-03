@@ -1706,6 +1706,39 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(concept_mapgen)
 
+    # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.modes.glad
+    # (the five-mode campaign absorbing arenas + ctf) and regenerates the
+    # committed level manifest tools/modes_mapgen/pack/lib/mode_levels.lua.
+    # Not part of the default build; run via scripts/generate_modes_campaign.sh.
+    add_executable(modes_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/builders_common.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/grid_canvas.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/manifest.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_tdm.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_ctf.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_onslaught.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_soccer.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_mutant.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(modes_mapgen)
+    target_link_libraries(modes_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(modes_mapgen)
+
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
     # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
     # the 26-level story campaign built act by act (one source file per act).
