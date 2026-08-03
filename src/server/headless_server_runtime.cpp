@@ -308,6 +308,8 @@ void copy_headless_server_save_data(SaveData& destination,
     // the server/checkpoint copies like the other lobby-negotiated settings
     // (the documented dropped-field bug class, design §4.1).
     destination.cross_control = source.cross_control;
+    // Infinite gold (protocol v11): same session-only dropped-field rule.
+    destination.infinite_gold = source.infinite_gold;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
@@ -351,6 +353,7 @@ void apply_headless_lobby_game_start_config(
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.cross_control = static_cast<short>(config_save.cross_control);
+    save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.my_team = 0;
 
     for (auto& member : save.team_list)

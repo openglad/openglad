@@ -2421,6 +2421,27 @@ TEST(CursesPickerClient, generator_rate_cycles_through_sequence)
     EXPECT_NE(f.t().dump().find("Generators: Normal"), std::string::npos);
 }
 
+// Infinite Gold: Off (0, classic economy) <-> On (free hire/train purchases).
+// Session-only, so the toggle never autosaves the company.
+TEST(CursesPickerClient, infinite_gold_toggles)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::ToggleInfiniteGold);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(0, (int)f.save().infinite_gold) << "default is the classic economy";
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(1, (int)f.save().infinite_gold);
+    EXPECT_NE(f.t().dump().find("Infinite Gold: On"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(0, (int)f.save().infinite_gold);
+    EXPECT_NE(f.t().dump().find("Infinite Gold: Off"), std::string::npos);
+}
+
 // The submenu rows render the live settings from options_/SaveData, and Esc
 // cancels to Back (like every non-Main menu).
 TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
@@ -2430,6 +2451,7 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     f.save().ctf_respawn_ticks = 60;
     f.save().keep_fallen_heroes = 1;
     f.save().generator_rate = 200;
+    f.save().infinite_gold = 1;
 
     f.t().push_special(KeyCode::Escape);
     const auto* item = f.client.present_menu(PickerMenuId::Difficulty);
@@ -2443,6 +2465,7 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     EXPECT_NE(dump.find("Spawn Delay: Fast"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Permadeath: Off"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Generators: Frenzy"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Infinite Gold: On"), std::string::npos) << dump;
 }
 
 // run_picker reaches the nested Difficulty submenu from the Main menu door and

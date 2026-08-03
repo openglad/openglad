@@ -75,6 +75,8 @@ enum class PickerMenuCommand : std::int32_t
     // §2.5 base camp (append-only):
     ToggleDeploy, // flip a roster member's mission-deploy flag
     ToggleReady,  // networked lobbies only: flip this machine's ready state
+    // DIFFICULTY screen, host-only: flip free hire/train purchases.
+    ToggleInfiniteGold,
 };
 
 struct PickerMenuItem

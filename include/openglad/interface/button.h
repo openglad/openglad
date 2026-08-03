@@ -190,6 +190,7 @@ Sint32 change_respawn_mode();
 Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
+Sint32 change_infinite_gold(); // DIFFICULTY infinite-gold toggle (session-only)
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 change_resolution(); // DISPLAY resolution selector (cfg graphics/width+height)
 Sint32 change_zoom(); // DISPLAY zoom selector (cfg graphics/zoom)
@@ -345,6 +346,8 @@ enum class ButtonAction : Sint32
     // run_menu_screen MUST consume the stash and rewrite retvalue before its
     // loop-condition test (the retvalue-collision discipline).
     MenuSpecRow = 101,
+    // DIFFICULTY subscreen: flip free hire/train purchases (host-only).
+    ToggleInfiniteGold = 102,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

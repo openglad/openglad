@@ -198,6 +198,23 @@ void toggle_permadeath(SaveData& save);
 // -> 200 (frenzy) -> 0.
 void cycle_generator_rate(SaveData& save);
 
+// Toggle infinite gold: infinite_gold 0 (classic economy) <-> 1 (free
+// purchases). SESSION-ONLY, so no company autosave follows a toggle.
+void toggle_infinite_gold(SaveData& save);
+
+// True when hire/train purchases are free for this session.
+[[nodiscard]] bool gold_is_infinite(const SaveData& save) noexcept;
+
+// The one affordability question every purchase site asks: always true with
+// infinite gold on, otherwise cost <= the team's wallet. `team` is clamped
+// into [0, MAX_PLAYERS) because it comes from unvalidated save data.
+[[nodiscard]] bool can_afford(const SaveData& save, int team,
+                              std::uint32_t cost) noexcept;
+
+// The wallet as the clients print it: "INF" with infinite gold on, the
+// decimal balance otherwise.
+std::string format_wallet_amount(const SaveData& save, int team);
+
 // --- Team choice helpers (local seats) ---
 
 // True when any roster slot is on the given team.
@@ -622,6 +639,9 @@ std::string format_permadeath_label(const SaveData& save);
 
 // "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
 std::string format_generator_rate_label(const SaveData& save);
+
+// "Infinite Gold: Off" / "Infinite Gold: On".
+std::string format_infinite_gold_label(const SaveData& save);
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:

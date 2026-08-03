@@ -1363,6 +1363,7 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     EXPECT_EQ(0, server.state().settings.generator_rate);
     EXPECT_EQ(0, server.state().settings.keep_fallen_heroes);
     EXPECT_EQ(0, server.state().settings.cross_control);
+    EXPECT_EQ(0, server.state().settings.infinite_gold);
 
     // In-range values pass through and reach the game-start equivalent.
     og::sim::LobbySettings valid = make_ctf_lobby_settings();
@@ -1370,6 +1371,7 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     valid.generator_rate = 200;
     valid.keep_fallen_heroes = 1;
     valid.cross_control = 1;
+    valid.infinite_gold = 1;
     transport.queue_lobby_message(11u, make_settings_change_message(valid));
     server.poll_incoming_messages();
     EXPECT_EQ(3, server.state().settings.respawn_mode);
@@ -1380,6 +1382,8 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     EXPECT_EQ(200, server.build_save_data_equivalent().generator_rate);
     EXPECT_EQ(1, server.build_save_data_equivalent().keep_fallen_heroes);
     EXPECT_EQ(1, server.build_save_data_equivalent().cross_control);
+    EXPECT_EQ(1, server.state().settings.infinite_gold);
+    EXPECT_EQ(1, server.build_save_data_equivalent().infinite_gold);
 
     // respawn_mode outside {0,1,2,3} falls back to the current value.
     og::sim::LobbySettings junk_mode = make_ctf_lobby_settings();
@@ -1452,6 +1456,27 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     transport.queue_lobby_message(11u, make_settings_change_message(cross_off));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.cross_control);
+
+    // infinite_gold is binary-or-fallback (protocol v11), same shape.
+    og::sim::LobbySettings gold_on = make_ctf_lobby_settings();
+    gold_on.infinite_gold = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(gold_on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.infinite_gold);
+
+    og::sim::LobbySettings junk_gold = make_ctf_lobby_settings();
+    junk_gold.infinite_gold = 7;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_gold));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.infinite_gold)
+        << "out-of-range infinite_gold falls back to the accepted value";
+    EXPECT_EQ(1, server.build_save_data_equivalent().infinite_gold);
+
+    og::sim::LobbySettings gold_off = make_ctf_lobby_settings();
+    gold_off.infinite_gold = 0;
+    transport.queue_lobby_message(11u, make_settings_change_message(gold_off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.infinite_gold);
 }
 
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)

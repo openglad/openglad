@@ -458,6 +458,7 @@ TEST(MenuSpec, difficulty_menu_model_labels_pin_the_default_screen)
         "Spawn Delay: Normal",
         "Permadeath: On",
         "Generators: Normal",
+        "Infinite Gold: Off",
         "Back",
     };
     EXPECT_EQ(expected, labels);

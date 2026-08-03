@@ -634,6 +634,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_permadeath();
     case ButtonAction::CycleGeneratorRate:
         return change_generator_rate();
+    case ButtonAction::ToggleInfiniteGold:
+        return change_infinite_gold();
     case ButtonAction::ToggleControlMode:
         return toggle_player_control_mode(arg);
     case ButtonAction::EditPlayerKeymap:

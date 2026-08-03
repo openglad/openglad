@@ -2960,6 +2960,24 @@ Sint32 change_generator_rate()
    return MENU_OK;
 }
 
+// Infinite gold is the one DIFFICULTY row that is SESSION-ONLY: the wallet is
+// never inflated and infinite_gold is never serialized, so the settings
+// autosave tail is deliberately absent (the cross_control precedent). Writing
+// the wallet — or persisting the flag — would bake the cheat into the
+// player's company file and outlive the toggle.
+Sint32 change_infinite_gold()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::toggle_infinite_gold(save);
+
+   refresh_difficulty_menu_button_label(kDifficultyMenuInfiniteGoldIndex,
+                                        og::ui::format_infinite_gold_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
 // GRAPHICS FX depth selector: step cfg effects/depth_fx one value. Pure
 // cfg, no save/lobby state — main_options() persists cfg on exit like every
 // FX toggle. The row's label re-derives from cfg on both surfaces every

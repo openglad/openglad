@@ -411,8 +411,8 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     ASSERT_EQ(static_cast<int>(PickerMenuId::Difficulty), static_cast<int>(def.id))
         << "difficulty definition should report difficulty id";
     ASSERT_TRUE(def.title == "Difficulty");
-    ASSERT_EQ(6u, def.items.size())
-        << "difficulty menu: cycle + the four match rules + back";
+    ASSERT_EQ(7u, def.items.size())
+        << "difficulty menu: cycle + the five match rules + back";
 
     const struct
     {
@@ -424,6 +424,7 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
         {"respawn_delay", PickerMenuCommand::CycleRespawnDelay},
         {"permadeath", PickerMenuCommand::TogglePermadeath},
         {"generator_rate", PickerMenuCommand::CycleGeneratorRate},
+        {"infinite_gold", PickerMenuCommand::ToggleInfiniteGold},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -441,7 +442,8 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
 
     // The match-rule entries live only in the submenu.
     for (const char* submenu_id :
-         {"respawn_mode", "respawn_delay", "permadeath", "generator_rate"})
+         {"respawn_mode", "respawn_delay", "permadeath", "generator_rate",
+          "infinite_gold"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, submenu_id) == nullptr)
             << submenu_id << " should not appear in the main menu";
@@ -549,11 +551,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     }
 
     // §2.1: load_company remains at the end; Main now exposes both stable
-    // Help and Quit actions. TeamBuild/Scenario/Difficulty are unchanged.
+    // Help and Quit actions. TeamBuild/Scenario are unchanged; Difficulty
+    // grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
-    ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
+    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
     // load_company resolves by id and by command, and is the last Main item.
     const PickerMenuItem* load_company =

@@ -223,6 +223,8 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.ctf_strip_scenario_troops = 1;
     // v8: host-only cross-control setting and the start-denial echo field.
     state.settings.cross_control = 1;
+    // v11: host-only infinite-gold setting (the twelfth LobbySettings i16).
+    state.settings.infinite_gold = 1;
     state.host_player_id = 1u;
     state.last_start_denial =
         og::sim::start_denial_reason_value(
@@ -252,7 +254,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0a, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0b, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -474,6 +476,8 @@ TEST(NetTransport, v8_deploy_company_cross_control_and_denial_fields_round_trip)
         og::sim::deserialize_lobby_state_message(state_bytes);
     ASSERT_TRUE(decoded_state.has_value());
     EXPECT_EQ(1, decoded_state->settings.cross_control);
+    EXPECT_EQ(1, decoded_state->settings.infinite_gold)
+        << "protocol v11 appends infinite_gold after cross_control";
     EXPECT_EQ(og::sim::start_denial_reason_value(
                   og::sim::StartDenialReason::MachinesNotReady),
               decoded_state->last_start_denial);
@@ -972,8 +976,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0a, 0x01, 0x17, 0x00,
-            0x0a, 0x0a, 0x03,
+            0x0b, 0x01, 0x17, 0x00,
+            0x0b, 0x0b, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,

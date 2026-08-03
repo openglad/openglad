@@ -384,7 +384,7 @@ void view_team_roster(Menu& menu, SaveData& save)
         if (slots.empty()) {
             menu.show_text("Team Roster", {"(empty)", "",
                 std::format("Gold: {}",
-                    static_cast<unsigned>(save.m_totalcash[0]))});
+                    og::ui::format_wallet_amount(save, 0))});
             return;
         }
 
@@ -402,7 +402,7 @@ void view_team_roster(Menu& menu, SaveData& save)
         entries.push_back(ListEntry{std::format("DEP {}/{}   Gold: {}",
             og::ui::count_deployed_members(save),
             static_cast<int>(slots.size()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
 
         char32_t key = 0;
         const int choice = menu.choose("Team Roster", entries,
@@ -460,7 +460,7 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
             r->intelligence, r->armor, r->level), false});
         entries.push_back(ListEntry{std::format("Cost: {}   Gold: {}",
             static_cast<unsigned>(session.current_cost()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
         const int first_action = static_cast<int>(entries.size());
         entries.push_back(ListEntry{"Hire this recruit", true});
         entries.push_back(ListEntry{"Next family", true});
@@ -567,7 +567,7 @@ void train_team(Menu& menu, SaveData& save, int seed_slot)
             std::format("LVL  {:5} (was {:5}){}", w.level, o.level, llock), true});
         entries.push_back(ListEntry{std::format("Cost: {}   Gold: {}",
             static_cast<unsigned>(session.current_cost()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
         const int first_action = static_cast<int>(entries.size());
         entries.push_back(ListEntry{"Accept training", true});
         entries.push_back(ListEntry{"Next member", true});
@@ -839,6 +839,13 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Generators",
                 {og::ui::format_generator_rate_label(save_data_)});
             autosave_company_after_mutation(save_data_); // §3.8 settings tail
+            break;
+        case PickerMenuCommand::ToggleInfiniteGold:
+            // SESSION-ONLY (never in the GTL file), so unlike every other row
+            // here this one deliberately skips the settings autosave tail.
+            og::ui::toggle_infinite_gold(save_data_);
+            menu.show_text("Infinite Gold",
+                {og::ui::format_infinite_gold_label(save_data_)});
             break;
         default:
             break;
@@ -1155,7 +1162,7 @@ bool CursesPickerClient::load_game()
              level_display(config_)),
          std::format("Team: {}  Gold: {}",
              static_cast<int>(save_data_.team_size),
-             static_cast<unsigned>(save_data_.m_totalcash[0]))});
+             og::ui::format_wallet_amount(save_data_, 0))});
     return true;
 }
 

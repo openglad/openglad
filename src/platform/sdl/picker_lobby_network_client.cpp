@@ -1544,6 +1544,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     equivalent.cross_control = state.settings.cross_control;
+    equivalent.infinite_gold = state.settings.infinite_gold;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1597,6 +1598,7 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     save.generator_rate = state.settings.generator_rate;
     save.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     save.cross_control = state.settings.cross_control;
+    save.infinite_gold = state.settings.infinite_gold;
     save.numplayers = static_cast<unsigned char>(
         spectator_mode
             ? 0u
@@ -1907,6 +1909,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.cross_control = save.cross_control;
+    settings.infinite_gold = save.infinite_gold;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{

@@ -686,6 +686,7 @@ private:
         settings.generator_rate = save.generator_rate;
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
         settings.cross_control = save.cross_control;
+        settings.infinite_gold = save.infinite_gold;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -876,6 +877,7 @@ private:
         save.generator_rate = state_->settings.generator_rate;
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
         save.cross_control = state_->settings.cross_control;
+        save.infinite_gold = state_->settings.infinite_gold;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0
