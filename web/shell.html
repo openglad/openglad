@@ -868,8 +868,23 @@
                     delete down[code];
                 }
             }
+            // Cocoa can swallow the Meta keyup itself (Globe/Cmd HUD): the
+            // tracker then believes Meta is held forever and the "Meta
+            // released" recovery below never fires. Every trusted key event
+            // carries live modifier truth — if we think Meta is down but
+            // the event says it is not, the keyup was swallowed; release
+            // everything (Meta suppressed other keyups while it was held).
+            function healSwallowedMetaKeyup(e) {
+                if ((down.MetaLeft !== undefined ||
+                        down.MetaRight !== undefined) &&
+                        typeof e.getModifierState === 'function' &&
+                        !e.getModifierState('Meta')) {
+                    releaseAll();
+                }
+            }
             window.addEventListener('keydown', function(e) {
                 if (!e.isTrusted || !e.code) { return; }
+                healSwallowedMetaKeyup(e);
                 var now = Date.now();
                 var last = down[e.code];
                 if (last !== undefined && !e.repeat &&
@@ -880,6 +895,7 @@
             }, true);
             window.addEventListener('keyup', function(e) {
                 if (!e.isTrusted || !e.code) { return; }
+                healSwallowedMetaKeyup(e);
                 delete down[e.code];
                 if (e.key === 'Meta' || e.key === 'OS') {
                     releaseAll();

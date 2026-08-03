@@ -692,27 +692,101 @@ std::int8_t axis_conflict_winner(std::uint8_t raw_mask, std::uint8_t rose,
         return neg_rose ? std::int8_t{0} : previous;
     return neg_rose ? std::int8_t{-1} : std::int8_t{1};
 }
+
+// One axis, cancel mode: while both sides are held and exactly one side
+// rose this sample, the OTHER side's held keys are presumed phantom and
+// cancelled persistently. A same-sample tie (or no fresh edge) adds no
+// cancels — two genuinely simultaneous opposite presses keep the legacy
+// net-to-zero.
+void axis_cancel_stale_side(std::uint8_t raw_mask, std::uint8_t rose,
+                            std::uint8_t neg_side, std::uint8_t pos_side,
+                            std::uint8_t& cancelled)
+{
+    if ((raw_mask & neg_side) == 0 || (raw_mask & pos_side) == 0)
+        return;
+    const bool neg_rose = (rose & neg_side) != 0;
+    const bool pos_rose = (rose & pos_side) != 0;
+    if (neg_rose == pos_rose)
+        return;
+    cancelled = static_cast<std::uint8_t>(
+        cancelled |
+        static_cast<std::uint8_t>((neg_rose ? pos_side : neg_side) & raw_mask));
+}
 } // namespace
 
 std::uint8_t resolve_opposing_directions(std::uint8_t raw_mask,
-                                         DirectionConflictState& state)
+                                         DirectionConflictState& state,
+                                         bool cancel_stale)
 {
-    const std::uint8_t rose =
+    const std::uint8_t keystate_rose =
         static_cast<std::uint8_t>(raw_mask & static_cast<std::uint8_t>(~state.prev_raw));
-    state.y_winner = axis_conflict_winner(
-        raw_mask, rose, kUpSideMask, kDownSideMask, state.y_winner);
-    state.x_winner = axis_conflict_winner(
-        raw_mask, rose, kLeftSideMask, kRightSideMask, state.x_winner);
+    // Key-EVENT edges (note_direction_key_event) count only while the key is
+    // in the raw mask, and are consumed exactly once per sample.
+    const std::uint8_t event_rose =
+        static_cast<std::uint8_t>(state.event_edges & raw_mask);
+    state.event_edges = 0;
     state.prev_raw = raw_mask;
 
-    std::uint8_t out = raw_mask;
-    if (state.y_winner < 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kDownSideMask));
-    else if (state.y_winner > 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kUpSideMask));
-    if (state.x_winner < 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kRightSideMask));
-    else if (state.x_winner > 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kLeftSideMask));
-    return out;
+    if (!cancel_stale)
+    {
+        // Legacy mode: PR #147 last-press-priority-with-restore, unchanged.
+        // Edges come from the sampled keystate alone — feeding auto-repeat
+        // events in here would let a held key's repeat flip a deliberate
+        // simultaneous-press cancellation on native, where keyups are
+        // reliable and no healing is needed.
+        state.cancelled = 0;
+        state.y_winner = axis_conflict_winner(
+            raw_mask, keystate_rose, kUpSideMask, kDownSideMask, state.y_winner);
+        state.x_winner = axis_conflict_winner(
+            raw_mask, keystate_rose, kLeftSideMask, kRightSideMask, state.x_winner);
+
+        std::uint8_t out = raw_mask;
+        if (state.y_winner < 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kDownSideMask));
+        else if (state.y_winner > 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kUpSideMask));
+        if (state.x_winner < 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kRightSideMask));
+        else if (state.x_winner > 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kLeftSideMask));
+        return out;
+    }
+
+    // Cancel mode (unreliable keyups): persistent opposite-direction
+    // cancellation with event-driven re-assert. See input_direction_grace.h
+    // for the full contract.
+    state.y_winner = 0;
+    state.x_winner = 0;
+    const std::uint8_t rose =
+        static_cast<std::uint8_t>(keystate_rose | event_rose);
+    // A delivered keyup forgives (the record corrected itself)...
+    state.cancelled = static_cast<std::uint8_t>(state.cancelled & raw_mask);
+    // ...and a real re-press revives (keystate edge or key-event edge).
+    state.cancelled = static_cast<std::uint8_t>(
+        state.cancelled & static_cast<std::uint8_t>(~rose));
+    axis_cancel_stale_side(
+        raw_mask, rose, kUpSideMask, kDownSideMask, state.cancelled);
+    axis_cancel_stale_side(
+        raw_mask, rose, kLeftSideMask, kRightSideMask, state.cancelled);
+    return static_cast<std::uint8_t>(
+        raw_mask & static_cast<std::uint8_t>(~state.cancelled));
+}
+
+void note_direction_key_event(int keycode)
+{
+    if (keycode == KEYCODE_UNKNOWN)
+        return;
+    if (og::runtime::current_session == nullptr)
+        return;
+    for (int p = 0; p < 4; ++p)
+    {
+        for (int d = KEY_UP; d <= KEY_UP_LEFT; ++d)
+        {
+            if (og::runtime::current_session->player_keys_[p][d] == keycode)
+                hw().direction_conflict[p].event_edges =
+                    static_cast<std::uint8_t>(
+                        hw().direction_conflict[p].event_edges |
+                        static_cast<std::uint8_t>(1u << d));
+        }
+    }
 }

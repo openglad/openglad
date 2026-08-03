@@ -693,6 +693,286 @@ TEST(InputLatch, resolver_x_axis_is_symmetric)
 }
 
 // ---------------------------------------------------------------------------
+// Cancel mode (issue #157): on platforms with unreliable keyups
+// (hw().unreliable_keyups, true by default only on web builds) the
+// suppression of the stale side is PERSISTENT — releasing the corrective
+// key leaves the phantom dead instead of resuming it — and a cancelled key
+// revives only via a delivered keyup or a real key EVENT
+// (note_direction_key_event; SDL posts repeat=true keydowns for re-presses
+// of an already-down scancode, the only signal a swallowed keyup leaves).
+// Native (unreliable_keyups=false) keeps the PR #147 semantics pinned
+// above, including the documented residual.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Flips the unreliable-keyups platform flag for one test and zeroes the
+// per-player conflict state on entry and exit so cancel-mode timelines are
+// deterministic and nothing leaks into the legacy-mode tests.
+struct UnreliableKeyupsGuard
+{
+    bool old_value;
+
+    explicit UnreliableKeyupsGuard(bool enable)
+        : old_value(input_hardware_state().unreliable_keyups)
+    {
+        input_hardware_state().unreliable_keyups = enable;
+        reset_conflicts();
+    }
+
+    ~UnreliableKeyupsGuard()
+    {
+        input_hardware_state().unreliable_keyups = old_value;
+        reset_conflicts();
+    }
+
+    static void reset_conflicts()
+    {
+        for (auto& c : input_hardware_state().direction_conflict)
+            c = DirectionConflictState{};
+    }
+};
+} // namespace
+
+TEST(InputLatchCancel, native_build_defaults_to_legacy_mode)
+{
+    // A fresh InputHardwareState on a native build starts with reliable
+    // keyups: the resolver keeps PR #147 last-win-with-restore semantics.
+    InputHardwareState fresh{};
+    ASSERT_FALSE(fresh.unreliable_keyups)
+        << "native builds must not enable persistent cancellation";
+}
+
+TEST(InputLatchCancel, fresh_press_kills_stale_side_permanently)
+{
+    DirectionConflictState state;
+
+    for (int t = 0; t < 3; ++t)
+        ASSERT_EQ(kUpBit, resolve_opposing_directions(kUpBit, state, true))
+            << "a lone side passes through, tick " << t;
+
+    const std::uint8_t both = static_cast<std::uint8_t>(kUpBit | kDownBit);
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(both, state, true))
+        << "fresh DOWN must cancel the stale UP";
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(both, state, true));
+
+    // DOWN released: the phantom UP stays DEAD — the exact inverse of the
+    // legacy documented residual pinned in fresh_down_press_beats_stale_up_
+    // latch_full_arc.
+    for (int t = 0; t < 3; ++t)
+        ASSERT_EQ(0, resolve_opposing_directions(kUpBit, state, true))
+            << "the cancelled phantom must not resume walking, tick " << t;
+}
+
+TEST(InputLatchCancel, delivered_keyup_forgives_cancelled_key)
+{
+    DirectionConflictState state;
+    resolve_opposing_directions(kUpBit, state, true);
+    resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpBit | kDownBit), state, true); // UP cancelled
+
+    // UP's keyup finally arrives (bit leaves raw): the record corrected
+    // itself, the cancel is forgiven.
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(kDownBit, state, true));
+    ASSERT_EQ(0, static_cast<int>(state.cancelled));
+
+    // A later real UP press (keystate edge) passes cleanly.
+    ASSERT_EQ(0, resolve_opposing_directions(0, state, true));
+    ASSERT_EQ(kUpBit, resolve_opposing_directions(kUpBit, state, true));
+}
+
+TEST(InputLatchCancel, event_edge_revives_cancelled_key_and_flips_cancel)
+{
+    DirectionConflictState state;
+    const std::uint8_t both = static_cast<std::uint8_t>(kUpBit | kDownBit);
+    resolve_opposing_directions(kUpBit, state, true);
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(both, state, true)); // UP cancelled
+
+    // A real UP keydown EVENT arrives (SDL repeat=true re-press) while both
+    // stay in the raw mask: UP revives and the cancel flips onto DOWN.
+    state.event_edges = kUpBit;
+    ASSERT_EQ(kUpBit, resolve_opposing_directions(both, state, true))
+        << "the event edge must revive the cancelled UP and cancel DOWN";
+    ASSERT_EQ(kUpBit, resolve_opposing_directions(both, state, true))
+        << "the flipped cancel persists without further edges";
+}
+
+TEST(InputLatchCancel, same_sample_tie_keeps_net_zero_without_cancel)
+{
+    DirectionConflictState state;
+    const std::uint8_t both = static_cast<std::uint8_t>(kUpBit | kDownBit);
+    // Both rise in one sample: legacy cancellation (mask passes through,
+    // move_y() nets to zero) and NO persistent cancel is recorded.
+    ASSERT_EQ(both, resolve_opposing_directions(both, state, true));
+    ASSERT_EQ(both, resolve_opposing_directions(both, state, true));
+    ASSERT_EQ(0, static_cast<int>(state.cancelled));
+    // Releasing one side leaves the other in effect.
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(kDownBit, state, true));
+}
+
+TEST(InputLatchCancel, stale_diagonal_cancelled_with_whole_side_kills_drift)
+{
+    DirectionConflictState state;
+    resolve_opposing_directions(kUpLeftBit, state, true); // UP_LEFT latches
+    ASSERT_EQ(kDownBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpLeftBit | kDownBit), state, true))
+        << "fresh DOWN must cancel the whole stale diagonal";
+
+    // DOWN released: the phantom UP_LEFT is dead on BOTH axes.
+    ASSERT_EQ(0, resolve_opposing_directions(kUpLeftBit, state, true));
+
+    // LEFT pressed for real: pure left — the cancelled UP_LEFT must not
+    // bleed an upward component in (the permanent up-left drift of gap 3).
+    ASSERT_EQ(kLeftBit, resolve_opposing_directions(
+        static_cast<std::uint8_t>(kUpLeftBit | kLeftBit), state, true));
+}
+
+TEST(InputLatchCancel, event_edge_for_unheld_key_is_ignored_and_consumed)
+{
+    DirectionConflictState state;
+    resolve_opposing_directions(kUpBit, state, true);
+    // A DOWN event whose key never entered the sampled mask (pressed and
+    // released between samples) must not fabricate a conflict.
+    state.event_edges = kDownBit;
+    ASSERT_EQ(kUpBit, resolve_opposing_directions(kUpBit, state, true));
+    ASSERT_EQ(0, static_cast<int>(state.cancelled));
+    ASSERT_EQ(0, static_cast<int>(state.event_edges))
+        << "event edges are consumed exactly once per sample";
+}
+
+TEST(InputLatchCancel, cross_axis_heal_end_to_end)
+{
+    // The full user story through the real sampling pipeline: latched UP,
+    // one corrective DOWN tap, then LEFT alone must give pure leftward
+    // movement (no up-left drift, no dead axis).
+    disablePlayerJoystick(0);
+    UnreliableKeyupsGuard unreliable(true);
+    GraceStateGuard grace;
+    ControlModeGuard mode_guard(0);
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    KeyBindingGuard bind_up(0, KEY_UP, SDLK_W);
+    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_S);
+    KeyBindingGuard bind_left(0, KEY_LEFT, SDLK_A);
+
+    KeyStateGuard ks_w(scan_of(SDLK_W));
+    KeyStateGuard ks_s(scan_of(SDLK_S));
+    KeyStateGuard ks_a(scan_of(SDLK_A));
+    ks_w.set(false);
+    ks_s.set(false);
+    ks_a.set(false);
+
+    InputState input{};
+    input.clear();
+    input_state_from_sdl(input);
+
+    ks_w.set(true); // UP latches (keyup swallowed)
+    input_state_from_sdl(input);
+    ASSERT_EQ(-1, input.players[0].move_y());
+
+    ks_s.set(true); // corrective DOWN tap
+    input_state_from_sdl(input);
+    ASSERT_EQ(1, input.players[0].move_y());
+
+    ks_s.set(false); // tap ends: the axis must be DEAD, not resume walking up
+    input_state_from_sdl(input);
+    ASSERT_EQ(0, input.players[0].move_y())
+        << "cancel mode must keep the phantom UP dead after the tap";
+
+    ks_a.set(true); // LEFT alone
+    input_state_from_sdl(input);
+    ASSERT_EQ(-1, input.players[0].move_x());
+    ASSERT_EQ(0, input.players[0].move_y())
+        << "no up-left drift from the cancelled phantom";
+}
+
+TEST(InputLatchCancel, event_repress_revives_cancelled_direction_end_to_end)
+{
+    disablePlayerJoystick(0);
+    UnreliableKeyupsGuard unreliable(true);
+    GraceStateGuard grace;
+    ControlModeGuard mode_guard(0);
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    KeyBindingGuard bind_up(0, KEY_UP, SDLK_W);
+    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_S);
+
+    KeyStateGuard ks_w(scan_of(SDLK_W));
+    KeyStateGuard ks_s(scan_of(SDLK_S));
+    ks_w.set(false);
+    ks_s.set(false);
+
+    InputState input{};
+    input.clear();
+    input_state_from_sdl(input);
+
+    ks_w.set(true); // UP latches
+    input_state_from_sdl(input);
+    ks_s.set(true); // DOWN cancels UP
+    input_state_from_sdl(input);
+    ks_s.set(false); // axis dead
+    input_state_from_sdl(input);
+    ASSERT_EQ(0, input.players[0].move_y());
+
+    // The player genuinely presses UP again. The keystate cannot edge (it
+    // never went up), but the browser DOES deliver the keydown event — the
+    // event-layer feed revives the direction.
+    note_direction_key_event(static_cast<int>(SDLK_W));
+    input_state_from_sdl(input);
+    ASSERT_EQ(-1, input.players[0].move_y())
+        << "a real UP key event must revive the cancelled UP";
+}
+
+TEST(InputLatchCancel, key_event_pump_feeds_event_edges_per_player_binding)
+{
+    // Event wiring: a crafted SDL keydown through handle_key_event (never
+    // SDL_PushEvent + GetKeyboardState — pushed events cannot set SDL's
+    // keystate) must mark the event-edge bit for the player/slot bound to
+    // that keycode, and only for them.
+    UnreliableKeyupsGuard unreliable(true); // zeroes all conflict state
+    KeyBindingGuard bind_up(0, KEY_UP, SDLK_W);
+
+    SDL_Event event;
+    SDL_memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.key = SDLK_W;
+    event.key.repeat = true; // repeats are the swallowed-keyup re-press signal
+    handle_key_event(static_cast<const void*>(&event));
+
+    InputHardwareState& hw = input_hardware_state();
+    ASSERT_EQ(1 << KEY_UP,
+              static_cast<int>(hw.direction_conflict[0].event_edges))
+        << "P1's UP slot (bound to W) must edge";
+    for (int p = 1; p < 4; ++p)
+        ASSERT_EQ(0, static_cast<int>(hw.direction_conflict[p].event_edges))
+            << "player " << (p + 1) << " has no W direction binding";
+
+    // KEYCODE_UNKNOWN (0) must never match, even though unbound direction
+    // slots (e.g. 4-dir diagonals) store exactly that value.
+    UnreliableKeyupsGuard::reset_conflicts();
+    SDL_memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.key = SDLK_UNKNOWN;
+    handle_key_event(static_cast<const void*>(&event));
+    for (int p = 0; p < 4; ++p)
+        ASSERT_EQ(0, static_cast<int>(hw.direction_conflict[p].event_edges))
+            << "an unknown keycode must not edge unbound slots";
+}
+
+TEST(InputLatchCancel, focus_loss_clears_cancel_and_event_state)
+{
+    UnreliableKeyupsGuard unreliable(true);
+    InputHardwareState& hw = input_hardware_state();
+    hw.direction_conflict[0].cancelled = kUpBit;
+    hw.direction_conflict[0].event_edges = kDownBit;
+
+    send_window_event(SDL_EVENT_WINDOW_FOCUS_LOST);
+
+    ASSERT_EQ(0, static_cast<int>(hw.direction_conflict[0].cancelled))
+        << "focus loss must drop persistent cancels";
+    ASSERT_EQ(0, static_cast<int>(hw.direction_conflict[0].event_edges))
+        << "focus loss must drop pending event edges";
+}
+
+// ---------------------------------------------------------------------------
 // Factory default keymaps: no cross-player key collisions. On a shared
 // keyboard every player's bindings are live at once (modes are per-player,
 // so any 4-dir/8-dir combination can be active). A shared keycode makes one

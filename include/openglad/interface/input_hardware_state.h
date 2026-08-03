@@ -22,6 +22,16 @@ struct InputHardwareState {
     // Opposite-direction re-assert over stale holds (input_state_from_sdl);
     // per player.
     DirectionConflictState direction_conflict[4]{};
+    // True on platforms whose keyup delivery is unreliable (browsers swallow
+    // keyups around system gestures — iPad Safari especially); switches
+    // resolve_opposing_directions into persistent-cancel mode. A plain bool
+    // (not a build constant) so native tests can exercise the web behavior.
+    bool unreliable_keyups =
+#ifdef __EMSCRIPTEN__
+        true;
+#else
+        false;
+#endif
     std::int32_t mouse_buttons{0};
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
