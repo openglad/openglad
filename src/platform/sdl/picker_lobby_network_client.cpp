@@ -217,6 +217,48 @@ EM_ASYNC_JS(char*, relay_http_get_text_js, (const char* url_cstr), {
     }
 });
 
+// Cloud saves (#155): POST with a JSON body. A clone of
+// relay_http_post_text_js with options.body + content-type, the same
+// Promise.race 10 s timeout, and the same OK/ERR\n<status>\n<body> framing.
+EM_ASYNC_JS(char*, relay_http_post_body_text_js,
+            (const char* url_cstr, const char* body_cstr), {
+    let timeoutHandle = 0;
+    try {
+        const url = UTF8ToString(url_cstr);
+        const options = {
+            method: 'POST',
+            headers: { 'content-type': 'application/json; charset=utf-8' },
+            body: UTF8ToString(body_cstr),
+        };
+        const controller = (typeof AbortController === 'function')
+            ? new AbortController()
+            : null;
+        if (controller)
+            options.signal = controller.signal;
+        const timeout = new Promise((unusedResolve, reject) => {
+            timeoutHandle = setTimeout(() => {
+                if (controller)
+                    controller.abort();
+                reject(new Error('timed out after 10 seconds'));
+            }, 10000);
+        });
+        const response = await Promise.race([fetch(url, options), timeout]);
+        const text = await response.text();
+        return stringToNewUTF8(
+            (response.ok ? 'OK\n' : 'ERR\n') +
+            String(response.status) +
+            '\n' +
+            text);
+    } catch (error) {
+        const message =
+            (error && error.message) ? error.message : String(error);
+        return stringToNewUTF8('ERR\n0\n' + message);
+    } finally {
+        if (timeoutHandle)
+            clearTimeout(timeoutHandle);
+    }
+});
+
 EM_JS(char*, current_browser_hostname_js, (), {
     const host =
         (typeof window !== 'undefined' && window.location &&
@@ -4625,6 +4667,113 @@ bool install_picker_lobby_gameplay_runtime(
     if (auto* const join_client = dynamic_cast<JoinPickerLobbyClient*>(client))
         return join_client->install_gameplay_runtime(session, gameplay_screen);
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Cloud saves (#155): blocking text HTTP for /api/save/<KEY>. The parsers
+// live in the pure layer (cloud_save_client.cpp); this is transport only.
+// ---------------------------------------------------------------------------
+
+#ifdef __EMSCRIPTEN__
+namespace {
+
+// Parse the EM_ASYNC_JS helpers' OK/ERR\n<status>\n<body> framing (the
+// create_relay_room three-line split) into a CloudHttpResult. status 0 =
+// transport failure; the message rides `error`.
+og::ui::cloud::CloudHttpResult parse_cloud_http_framing(char* raw)
+{
+    const std::unique_ptr<char, decltype(&std::free)> owned(raw, &std::free);
+    og::ui::cloud::CloudHttpResult result;
+    const std::string response =
+        owned ? std::string(owned.get()) : std::string();
+    const std::size_t first_newline = response.find('\n');
+    const std::size_t second_newline =
+        first_newline == std::string::npos
+            ? std::string::npos
+            : response.find('\n', first_newline + 1);
+    if (first_newline == std::string::npos ||
+        second_newline == std::string::npos)
+    {
+        result.error = "Cloud sync returned an invalid response";
+        return result;
+    }
+    const std::string status_text =
+        response.substr(first_newline + 1,
+                        second_newline - first_newline - 1);
+    int status = 0;
+    (void)std::from_chars(status_text.data(),
+                          status_text.data() + status_text.size(), status);
+    result.status = status;
+    result.body = response.substr(second_newline + 1);
+    if (status == 0)
+    {
+        result.error = trim_copy(result.body);
+        result.body.clear();
+    }
+    return result;
+}
+
+} // namespace
+#endif
+
+og::ui::cloud::CloudHttpResult platform_cloud_http_get(const std::string& url)
+{
+#ifdef __EMSCRIPTEN__
+    return parse_cloud_http_framing(relay_http_get_text_js(url.c_str()));
+#else
+    og::sim::detail::IxNetSystemGuard net_system_guard;
+    ix::HttpClient client;
+    ix::HttpRequestArgsPtr args =
+        client.createRequest(url, ix::HttpClient::kGet);
+    args->connectTimeout = 5;
+    args->transferTimeout = 10;
+    args->followRedirects = true;
+    const ix::HttpResponsePtr response = client.get(url, args);
+    og::ui::cloud::CloudHttpResult result;
+    if (!response)
+    {
+        result.error = "no HTTP response";
+        return result;
+    }
+    result.status = response->statusCode;
+    result.body = response->body;
+    if (result.status == 0)
+        result.error = response->errorMsg.empty() ? "network error"
+                                                  : response->errorMsg;
+    return result;
+#endif
+}
+
+og::ui::cloud::CloudHttpResult platform_cloud_http_post(
+    const std::string& url,
+    const std::string& json_body)
+{
+#ifdef __EMSCRIPTEN__
+    return parse_cloud_http_framing(
+        relay_http_post_body_text_js(url.c_str(), json_body.c_str()));
+#else
+    og::sim::detail::IxNetSystemGuard net_system_guard;
+    ix::HttpClient client;
+    ix::HttpRequestArgsPtr args =
+        client.createRequest(url, ix::HttpClient::kPost);
+    args->connectTimeout = 5;
+    args->transferTimeout = 10;
+    args->followRedirects = true;
+    args->extraHeaders["Content-Type"] = "application/json; charset=utf-8";
+    const ix::HttpResponsePtr response = client.post(url, json_body, args);
+    og::ui::cloud::CloudHttpResult result;
+    if (!response)
+    {
+        result.error = "no HTTP response";
+        return result;
+    }
+    result.status = response->statusCode;
+    result.body = response->body;
+    if (result.status == 0)
+        result.error = response->errorMsg.empty() ? "network error"
+                                                  : response->errorMsg;
+    return result;
+#endif
 }
 
 } // namespace og::platform

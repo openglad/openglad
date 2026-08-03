@@ -5,6 +5,8 @@ import {
   CREATE_RATE_LIMIT_WINDOW_MS,
   REGISTRY_ENTRY_TTL_MS,
   REGISTRY_ROOM_KEY_PREFIX,
+  SAVE_UPLOAD_RATE_LIMIT_MAX,
+  SAVE_UPLOAD_RATE_LIMIT_WINDOW_MS,
   registryRoomKey,
 } from "./shared";
 import type { Env, RegistryEntry, RoomInfo } from "./types";
@@ -36,6 +38,9 @@ interface RateBudget {
  */
 export class RoomRegistry extends DurableObject {
   private readonly createBudgets = new Map<string, RateBudget>();
+  /** Cloud-save upload budget (issue #155): a second in-memory map with the
+   *  same prune discipline, so save abuse can never starve room creation. */
+  private readonly saveBudgets = new Map<string, RateBudget>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -45,7 +50,20 @@ export class RoomRegistry extends DurableObject {
     const url = new URL(request.url);
 
     if (url.pathname === "/internal/create-limit" && request.method === "POST") {
-      return this.checkCreateLimit(request);
+      return this.checkBudget(
+        request,
+        this.createBudgets,
+        CREATE_RATE_LIMIT_MAX_ROOMS,
+        CREATE_RATE_LIMIT_WINDOW_MS,
+      );
+    }
+    if (url.pathname === "/internal/save-limit" && request.method === "POST") {
+      return this.checkBudget(
+        request,
+        this.saveBudgets,
+        SAVE_UPLOAD_RATE_LIMIT_MAX,
+        SAVE_UPLOAD_RATE_LIMIT_WINDOW_MS,
+      );
     }
     if (url.pathname === "/internal/upsert" && request.method === "POST") {
       return this.upsertRoom(request);
@@ -60,7 +78,12 @@ export class RoomRegistry extends DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  private async checkCreateLimit(request: Request): Promise<Response> {
+  private async checkBudget(
+    request: Request,
+    budgets: Map<string, RateBudget>,
+    maxPerWindow: number,
+    windowMs: number,
+  ): Promise<Response> {
     let ip = "";
     try {
       const payload = (await request.json()) as { ip?: string };
@@ -73,37 +96,41 @@ export class RoomRegistry extends DurableObject {
     }
 
     const now = Date.now();
-    if (this.createBudgets.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
-      this.pruneExpiredBudgets(now);
+    if (budgets.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
+      this.pruneExpiredBudgets(budgets, windowMs, now);
     }
 
-    const budget = this.createBudgets.get(ip);
-    if (!budget || now - budget.windowStartedAt >= CREATE_RATE_LIMIT_WINDOW_MS) {
-      this.createBudgets.set(ip, { count: 1, windowStartedAt: now });
+    const budget = budgets.get(ip);
+    if (!budget || now - budget.windowStartedAt >= windowMs) {
+      budgets.set(ip, { count: 1, windowStartedAt: now });
       return new Response(null, { status: 204 });
     }
-    if (budget.count >= CREATE_RATE_LIMIT_MAX_ROOMS) {
+    if (budget.count >= maxPerWindow) {
       return new Response("Rate limit exceeded", { status: 429 });
     }
     budget.count += 1;
     return new Response(null, { status: 204 });
   }
 
-  private pruneExpiredBudgets(now: number): void {
-    for (const [ip, budget] of this.createBudgets) {
-      if (now - budget.windowStartedAt >= CREATE_RATE_LIMIT_WINDOW_MS) {
-        this.createBudgets.delete(ip);
+  private pruneExpiredBudgets(
+    budgets: Map<string, RateBudget>,
+    windowMs: number,
+    now: number,
+  ): void {
+    for (const [ip, budget] of budgets) {
+      if (now - budget.windowStartedAt >= windowMs) {
+        budgets.delete(ip);
       }
     }
     // Under active abuse from >4k distinct IPs the map could still be full;
     // dropping the oldest entries keeps memory bounded at the price of
     // slightly loosening the limit for those IPs.
-    while (this.createBudgets.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
-      const oldest = this.createBudgets.keys().next();
+    while (budgets.size >= RATE_LIMIT_MAX_TRACKED_IPS) {
+      const oldest = budgets.keys().next();
       if (oldest.done) {
         break;
       }
-      this.createBudgets.delete(oldest.value);
+      budgets.delete(oldest.value);
     }
   }
 

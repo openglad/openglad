@@ -1,11 +1,14 @@
 import { GameRoom } from "./game-room";
 import { RoomRegistry } from "./registry";
+import { SaveVault } from "./save-vault";
 import {
   REGISTRY_INSTANCE_NAME,
+  applyCorsHeaders,
   clientIpFromRequest,
   emptyResponse,
   generateOwnerToken,
   generateRoomCode,
+  isValidCloudSaveKey,
   isValidRoomCode,
   jsonResponse,
   normalizeRoomCode,
@@ -150,7 +153,88 @@ async function connectRoom(
   return room.fetch(new Request(request, { headers }));
 }
 
-export { GameRoom, RoomRegistry };
+/** Re-wrap a durable object response with the permissive CORS headers every
+ *  public /api route carries (the DO responses are internal and carry none). */
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  applyCorsHeaders(headers);
+  return new Response(response.body, { status: response.status, headers });
+}
+
+/** Pre-parse cap for POST /api/save/<KEY>: the JSON body around a maximal
+ *  131072-char data_hex stays well under this, so anything larger is
+ *  refused before the JSON is even read. */
+const MAX_CLOUD_SAVE_REQUEST_BYTES = 300 * 1024;
+
+/**
+ * GET/POST /api/save/<KEY> (issue #155): passphrase-keyed cloud saves. The
+ * key is validated here, BEFORE any durable object is touched; uploads pass
+ * the per-IP budget in the registry first (the createRoom pattern).
+ */
+async function handleCloudSave(
+  env: Env,
+  request: Request,
+  rawKey: string,
+): Promise<Response> {
+  let decodedKey = rawKey;
+  try {
+    decodedKey = decodeURIComponent(rawKey);
+  } catch {
+    return textResponse("Invalid save key", { status: 400 });
+  }
+  if (!isValidCloudSaveKey(decodedKey)) {
+    return textResponse("Invalid save key", { status: 400 });
+  }
+
+  if (request.method !== "GET" && request.method !== "POST") {
+    return textResponse("Method not allowed", { status: 405 });
+  }
+
+  const vault = env.SAVE_VAULT.get(env.SAVE_VAULT.idFromName(decodedKey));
+
+  if (request.method === "GET") {
+    const response = await vault.fetch(
+      new Request("https://relay.internal/internal/save"),
+    );
+    return withCors(response);
+  }
+
+  // POST: refuse oversized bodies before any parsing.
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) &&
+      contentLength > MAX_CLOUD_SAVE_REQUEST_BYTES) {
+    return textResponse("Save too large", { status: 413 });
+  }
+
+  const limitResponse = await registryStub(env).fetch(
+    new Request("https://relay.internal/internal/save-limit", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ ip: clientIpFromRequest(request) }),
+    }),
+  );
+  if (limitResponse.status === 429) {
+    return textResponse("Rate limit exceeded", { status: 429 });
+  }
+  if (!limitResponse.ok && limitResponse.status !== 204) {
+    return textResponse("Cloud saves are unavailable", { status: 503 });
+  }
+
+  const body = await request.text();
+  if (body.length > MAX_CLOUD_SAVE_REQUEST_BYTES) {
+    return textResponse("Save too large", { status: 413 });
+  }
+  const response = await vault.fetch(
+    new Request("https://relay.internal/internal/save", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body,
+    }),
+  );
+  return withCors(response);
+}
+
+export { GameRoom, RoomRegistry, SaveVault };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -176,6 +260,14 @@ export default {
 
     if (url.pathname.startsWith("/api/room/")) {
       return connectRoom(env, request, url.pathname.slice("/api/room/".length));
+    }
+
+    if (url.pathname.startsWith("/api/save/")) {
+      return handleCloudSave(
+        env,
+        request,
+        url.pathname.slice("/api/save/".length),
+      );
     }
 
     if (url.pathname === "/") {

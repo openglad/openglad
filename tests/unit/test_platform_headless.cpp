@@ -18,6 +18,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -886,6 +887,47 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     EXPECT_EQ("textslot", config.save_name);
     EXPECT_EQ(2, config.level);
     ASSERT_GE(config.team_families.size(), 2u);
+}
+
+TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
+{
+    // #155: Main 9=cloud (appended after load_company, so positions 1-8 are
+    // untouched); the submenu is 1=passphrase, 2=upload, 3=download, 4=back.
+    // The headless bridge installs no cloud HTTP callbacks, so upload and
+    // download degrade with the D8 unavailable line.
+    cfg.data.erase("cloud");
+    const std::string input =
+        "9\n"                      // main: cloud -> CLOUD submenu
+        "1\n"                      // cloud: passphrase
+        "\n"                       //   blank cancels (unchanged)
+        "1\n"                      // cloud: passphrase
+        "short12\n"                //   7 chars -> rejected by the length gate
+        "1\n"                      // cloud: passphrase (valid this time)
+        "correct horse battery\n"
+        "2\n"                      // cloud: upload -> unavailable
+        "3\n"                      // cloud: download -> unavailable
+        "4\n"                      // cloud: back -> main
+        "7\n";                     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string output = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, output.find("Passphrase unchanged."));
+    EXPECT_NE(std::string::npos, output.find("Passphrase set."));
+    EXPECT_NE(std::string::npos,
+              output.find("Cloud sync is not available"))
+        << "the headless bridge has no HTTP: the flows must degrade (D8)";
+    EXPECT_EQ("73270125791ba273", cfg.get_setting("cloud", "key"))
+        << "the DERIVED key persists (D9), pinned to the D2 vector";
+    EXPECT_EQ("0", cfg.get_setting("cloud", "revision"));
+    cfg.data.erase("cloud");
 }
 
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)

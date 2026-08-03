@@ -16,6 +16,8 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker.h>
@@ -129,6 +131,10 @@ public:
         }
         if (menu_id == PickerMenuId::Difficulty) {
             handle_difficulty_menu_item(item);
+            return;
+        }
+        if (menu_id == PickerMenuId::CloudSave) {
+            handle_cloud_menu_item(item);
             return;
         }
         handle_team_build_item(item);
@@ -661,9 +667,112 @@ private:
         case PickerMenuCommand::LevelEdit:
             std::printf("Level Editor is not available in the headless text client.\n");
             break;
+        case PickerMenuCommand::OpenCloudMenu:
+            // #155: the CLOUD submenu — the shared nested presentation loop
+            // until Back.
+            show_submenu(PickerMenuId::CloudSave);
+            break;
         default:
             break;
         }
+    }
+
+    // #155 cloud saves, text projection: passphrase on stdin (echoed, like
+    // company names), upload/download through the shared pure flows with
+    // stdin y/N confirms. The headless bridge installs no HTTP callbacks, so
+    // the flows degrade with the D8 unavailable line.
+    void handle_cloud_menu_item(const PickerMenuItem& item)
+    {
+        switch (item.command) {
+        case PickerMenuCommand::CloudSetPassphrase: {
+            std::printf("Cloud passphrase (8-64 chars, blank cancels): ");
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line) || line.empty()) {
+                std::printf("Passphrase unchanged.\n");
+                break;
+            }
+            const std::string key =
+                og::ui::cloud::derive_cloud_save_key(line);
+            if (key.empty()) {
+                std::printf("Passphrase must be 8-64 characters.\n");
+                break;
+            }
+            og::ui::cloud::store_cloud_key(key);
+            std::printf("Passphrase set.\n");
+            break;
+        }
+        case PickerMenuCommand::CloudUpload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_upload(
+                {}, text_cloud_hooks(notified));
+            if (!notified)
+                std::printf("%s\n", status.c_str());
+            break;
+        }
+        case PickerMenuCommand::CloudDownload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_download(
+                {}, text_cloud_hooks(notified),
+                [this](const std::string& slot) {
+                    return open_downloaded_company(slot);
+                });
+            if (!notified)
+                std::printf("%s\n", status.c_str());
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    // Hooks for the shared cloud flows: bridge HTTP (absent in the headless
+    // bridge -> the flows report unavailability), stdin y/N confirm, printf
+    // notify. `notified` lets the caller print the returned status only for
+    // silent paths (the explicit-No cancels).
+    og::ui::cloud::CloudHooks text_cloud_hooks(bool& notified)
+    {
+        og::ui::cloud::CloudHooks hooks;
+        const PlatformBridge& bridge = platform_bridge();
+        if (bridge.cloud_http_get)
+            hooks.http_get = bridge.cloud_http_get;
+        if (bridge.cloud_http_post)
+            hooks.http_post = bridge.cloud_http_post;
+        hooks.confirm = [](const std::string& title,
+                           const std::string& message) {
+            std::string flat = message;
+            std::replace(flat.begin(), flat.end(), '\n', ' ');
+            // NO-first (U3): only an explicit yes proceeds.
+            std::printf("%s %s [y/N]: ", title.c_str(), flat.c_str());
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line))
+                return false;
+            return line == "y" || line == "yes";
+        };
+        hooks.notify = [&notified](const std::string& title,
+                                   const std::string& message) {
+            std::string flat = message;
+            std::replace(flat.begin(), flat.end(), '\n', ' ');
+            std::printf("%s: %s\n", title.c_str(), flat.c_str());
+            notified = true;
+        };
+        return hooks;
+    }
+
+    // #155 download open path: the terminal §2.3 open sequence — repoint
+    // this client's slot authority at the installed company and load it;
+    // restore the previous slot on failure (the show_company_list
+    // discipline).
+    bool open_downloaded_company(const std::string& slot)
+    {
+        const std::string previous_slot = config_.save_name;
+        config_.save_name = slot;
+        if (load_game())
+            return true;
+        config_.save_name = previous_slot;
+        assert_company_slot_authority(); // [SAVE-R2]
+        return false;
     }
 
     void handle_team_build_item(const PickerMenuItem& item)

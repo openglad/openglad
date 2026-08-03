@@ -1941,10 +1941,11 @@ void check_materialized_shape(const og::ui::MenuScreenSpec& spec,
         EXPECT_EQ(want.hidden, got.hidden) << shape_name << " " << got.id;
         EXPECT_FALSE(got.no_draw) << shape_name << " " << got.id;
     }
-    // §2.1/§9.2: load_company then the no_company_note are appended at the
-    // table END of every variant, so the note is the last materialized row.
-    EXPECT_EQ("no_company_note", rows.back().id) << shape_name;
-    EXPECT_EQ("load_company", rows[rows.size() - 2].id) << shape_name;
+    // §2.1/§9.2 + #155: load_company, no_company_note, then the CLOUD door
+    // are appended at the table END of every variant.
+    EXPECT_EQ("cloud", rows.back().id) << shape_name;
+    EXPECT_EQ("no_company_note", rows[rows.size() - 2].id) << shape_name;
+    EXPECT_EQ("load_company", rows[rows.size() - 3].id) << shape_name;
 }
 
 // The centered main chassis shared by every build. HELP is permanent;
@@ -1955,9 +1956,9 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 9}},
     {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 9, .down = 4}},
     {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 5}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
@@ -1977,6 +1978,11 @@ constexpr ExpectedSpecRow kMainMenuMPLoad = {
 constexpr ExpectedSpecRow kMainMenuMPNote = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
     ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
+// #155: the always-visible CLOUD door (MenuSpecRow arg == materialized
+// ordinal 9 on every variant — exactly one QUIT row survives).
+constexpr ExpectedSpecRow kMainMenuMPCloud = {
+    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 80, 119, 140, 15,
+    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 2, .down = 3}};
 
 // Main geometry no longer changes with multiplayer support: every build
 // manages seats in Base Camp and reaches persistent profiles via CONTROLS.
@@ -1989,18 +1995,22 @@ constexpr ExpectedSpecRow kMainMenuNoMPQuitNative = kMainMenuMPQuitNative;
 constexpr ExpectedSpecRow kMainMenuNoMPQuitWeb = kMainMenuMPQuitWeb;
 constexpr ExpectedSpecRow kMainMenuNoMPLoad = kMainMenuMPLoad;
 constexpr ExpectedSpecRow kMainMenuNoMPNote = kMainMenuMPNote;
+constexpr ExpectedSpecRow kMainMenuNoMPCloud = kMainMenuMPCloud;
 
 // Materialized order: common chassis, the platform's QUIT row, then the
-// appended load_company and no_company_note (§2.1/§9.2 index-contract END).
+// appended load_company, no_company_note, and the #155 CLOUD door
+// (§2.1/§9.2 index-contract END).
 std::vector<ExpectedSpecRow> build_expected_shape(
     const ExpectedSpecRow* common, int common_count,
     const ExpectedSpecRow& quit,
-    const ExpectedSpecRow& load, const ExpectedSpecRow& note)
+    const ExpectedSpecRow& load, const ExpectedSpecRow& note,
+    const ExpectedSpecRow& cloud)
 {
     std::vector<ExpectedSpecRow> shape(common, common + common_count);
     shape.push_back(quit);
     shape.push_back(load);
     shape.push_back(note);
+    shape.push_back(cloud);
     return shape;
 }
 
@@ -2034,8 +2044,9 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     ASSERT_GT(count, 2);
     EXPECT_EQ(4, picker_mainmenu_options_index());
     EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
-    EXPECT_EQ("load_company", buttons[count - 2].id);
-    EXPECT_EQ("no_company_note", buttons[count - 1].id);
+    EXPECT_EQ("load_company", buttons[count - 3].id);
+    EXPECT_EQ("no_company_note", buttons[count - 2].id);
+    EXPECT_EQ("cloud", buttons[count - 1].id);
 }
 
 TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
@@ -2138,7 +2149,8 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_native = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuitNative, kMainMenuMPLoad, kMainMenuMPNote);
+        kMainMenuMPQuitNative, kMainMenuMPLoad, kMainMenuMPNote,
+        kMainMenuMPCloud);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Native, mp_native.data(),
                              static_cast<int>(mp_native.size()),
@@ -2146,7 +2158,8 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
 
     const std::vector<ExpectedSpecRow> mp_web = build_expected_shape(
         kMainMenuMPCommon, static_cast<int>(std::size(kMainMenuMPCommon)),
-        kMainMenuMPQuitWeb, kMainMenuMPLoad, kMainMenuMPNote);
+        kMainMenuMPQuitWeb, kMainMenuMPLoad, kMainMenuMPNote,
+        kMainMenuMPCloud);
     check_materialized_shape(og::ui::main_menu_screen_spec_mp(),
                              MenuBuildVariant::Web, mp_web.data(),
                              static_cast<int>(mp_web.size()),
@@ -2155,7 +2168,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
     const std::vector<ExpectedSpecRow> nomp_native = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
         kMainMenuNoMPQuitNative, kMainMenuNoMPLoad,
-        kMainMenuNoMPNote);
+        kMainMenuNoMPNote, kMainMenuNoMPCloud);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Native, nomp_native.data(),
                              static_cast<int>(nomp_native.size()),
@@ -2164,7 +2177,7 @@ TEST(MenuEngine, main_menu_four_variant_materialization_pins)
     const std::vector<ExpectedSpecRow> nomp_web = build_expected_shape(
         kMainMenuNoMPCommon, static_cast<int>(std::size(kMainMenuNoMPCommon)),
         kMainMenuNoMPQuitWeb, kMainMenuNoMPLoad,
-        kMainMenuNoMPNote);
+        kMainMenuNoMPNote, kMainMenuNoMPCloud);
     check_materialized_shape(og::ui::main_menu_screen_spec_nomp(),
                              MenuBuildVariant::Web, nomp_web.data(),
                              static_cast<int>(nomp_web.size()),

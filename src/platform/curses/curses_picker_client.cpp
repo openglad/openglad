@@ -29,6 +29,8 @@
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -716,6 +718,56 @@ void view_scenario(Menu& menu, const SaveData& save)
     menu.show_text("View Scenario", lines);
 }
 
+// Split a popup-shaped message ('\n' separated) into list lines.
+std::vector<std::string> split_message_lines(const std::string& message)
+{
+    std::vector<std::string> lines;
+    std::string current;
+    for (const char ch : message) {
+        if (ch == '\n') {
+            lines.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(ch);
+    }
+    lines.push_back(current);
+    return lines;
+}
+
+// #155: hooks for the shared cloud flows — bridge HTTP (absent in the curses
+// bridge -> the flows report unavailability), the NO-first list confirm, and
+// show_text notify. `notified` lets the caller show the returned status only
+// for silent paths (the explicit-No cancels).
+og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
+{
+    og::ui::cloud::CloudHooks hooks;
+    const PlatformBridge& bridge = platform_bridge();
+    if (bridge.cloud_http_get)
+        hooks.http_get = bridge.cloud_http_get;
+    if (bridge.cloud_http_post)
+        hooks.http_post = bridge.cloud_http_post;
+    hooks.confirm = [&menu](const std::string& title,
+                            const std::string& message) {
+        // NO-first confirm (U3): the highlight starts on No.
+        std::vector<ListEntry> entries;
+        for (const std::string& line : split_message_lines(message))
+            entries.push_back(ListEntry{line, false});
+        const int no_index = static_cast<int>(entries.size());
+        entries.push_back(ListEntry{"No", true});
+        entries.push_back(ListEntry{"Yes", true});
+        const int verdict = menu.choose(title, entries,
+            "Enter select | Esc back", no_index);
+        return verdict == no_index + 1;
+    };
+    hooks.notify = [&menu, &notified](const std::string& title,
+                                      const std::string& message) {
+        menu.show_text(title, split_message_lines(message));
+        notified = true;
+    };
+    return hooks;
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -807,6 +859,61 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
                 {"The level editor is not available in the curses client.",
                  "Use the standalone 'openscen' tool instead."});
             break;
+        case PickerMenuCommand::OpenCloudMenu:
+            // #155: the CLOUD submenu — the shared nested presentation loop
+            // until Back.
+            show_submenu(PickerMenuId::CloudSave);
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    // #155 cloud saves, curses projection: passphrase via the line prompt,
+    // upload/download through the shared pure flows with the NO-first list
+    // confirm. The curses bridge installs no cloud HTTP callbacks, so the
+    // flows degrade with the D8 unavailable notice.
+    if (menu_id == PickerMenuId::CloudSave) {
+        switch (item.command) {
+        case PickerMenuCommand::CloudSetPassphrase: {
+            bool accepted = false;
+            const std::string entered = menu.prompt("Cloud Passphrase",
+                "Passphrase (8-64 chars): ", "", accepted);
+            if (!accepted || entered.empty()) {
+                menu.show_text("Cloud Save", {"Passphrase unchanged."});
+                break;
+            }
+            const std::string key =
+                og::ui::cloud::derive_cloud_save_key(entered);
+            if (key.empty()) {
+                menu.show_text("Cloud Save",
+                    {"Passphrase must be 8-64 characters."});
+                break;
+            }
+            og::ui::cloud::store_cloud_key(key);
+            menu.show_text("Cloud Save", {"Passphrase set."});
+            break;
+        }
+        case PickerMenuCommand::CloudUpload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_upload(
+                {}, curses_cloud_hooks(menu, notified));
+            if (!notified)
+                menu.show_text("Cloud Save", {status});
+            break;
+        }
+        case PickerMenuCommand::CloudDownload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_download(
+                {}, curses_cloud_hooks(menu, notified),
+                [this](const std::string& slot) {
+                    return open_downloaded_company(slot);
+                });
+            if (!notified)
+                menu.show_text("Cloud Save", {status});
+            break;
+        }
         default:
             break;
         }
@@ -1177,6 +1284,17 @@ bool CursesPickerClient::load_game()
              static_cast<int>(save_data_.team_size),
              og::ui::format_wallet_amount(save_data_, 0))});
     return true;
+}
+
+bool CursesPickerClient::open_downloaded_company(const std::string& slot)
+{
+    const std::string previous_slot = config_.save_name;
+    config_.save_name = slot;
+    if (load_game())
+        return true;
+    config_.save_name = previous_slot;
+    assert_company_slot_authority(); // [SAVE-R2]
+    return false;
 }
 
 bool CursesPickerClient::save_game()

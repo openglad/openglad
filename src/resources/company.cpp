@@ -29,6 +29,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -733,7 +734,124 @@ bool delete_company(const std::string& slot)
     (void)remove_user_file("save/" + slot + ".gtl.restoretmp");
     (void)remove_user_file("save/" + slot + ".gtl.restoretmp.tmp");
     (void)remove_user_file("save/" + slot + ".gtl.tmp");
+    (void)remove_user_file("save/" + slot + ".cloudstage.tmp.gtl");
     return remove_user_file("save/" + slot + ".gtl");
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-save byte IO (issue #155)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Best-effort removal of a save/-relative staging file, whether og_open_write
+// selected the user directory or its cwd fallback (the atomic_company_save
+// cleanup pattern).
+void remove_save_relative_file(const std::string& relative_path)
+{
+    (void)remove_user_file(relative_path);
+    std::error_code cleanup_ec;
+    std::filesystem::remove(std::filesystem::path(relative_path), cleanup_ec);
+}
+
+} // namespace
+
+std::optional<std::vector<std::uint8_t>> export_company_bytes(
+    const std::string& slot)
+{
+    // The reserved "netsession" scratch is session state, never a company;
+    // it must not leak to the cloud.
+    if (slot == kNetsessionSlot || !is_safe_virtual_basename(slot))
+        return std::nullopt;
+
+    const std::string filename = slot + ".gtl";
+    og::io::OgFilePtr infile = og::io::og_open_read("save/", filename.c_str());
+    if (!infile)
+        return std::nullopt;
+
+    // Verbatim read of the on-disk file — NEVER a re-serialization
+    // (SaveData::save has cursor side effects and would change bytes).
+    std::vector<std::uint8_t> bytes;
+    std::array<std::uint8_t, 4096> chunk{};
+    for (;;)
+    {
+        const std::size_t got = infile->read(chunk.data(), 1, chunk.size());
+        bytes.insert(bytes.end(), chunk.begin(),
+                     chunk.begin() + static_cast<std::ptrdiff_t>(got));
+        if (got < chunk.size())
+            break;
+    }
+    return bytes;
+}
+
+CompanyInstallError install_company_bytes(const std::string& slot,
+                                          std::span<const std::uint8_t> bytes)
+{
+    // Step 1: slot safety — downloaded metadata is untrusted input.
+    if (slot == kNetsessionSlot || !is_safe_virtual_basename(slot))
+        return CompanyInstallError::InvalidSlot;
+
+    // Step 2: stage the bytes. The ".tmp.gtl" suffix keeps the staging file
+    // out of list_companies; "cloudstage" keeps it distinct from the §3.6
+    // atomic-write staging name so neither flow can eat the other's file.
+    const std::string staging_name = slot + ".cloudstage.tmp.gtl";
+    const std::string staging_rel = "save/" + staging_name;
+    {
+        og::io::OgFilePtr outfile =
+            og::io::og_open_write("save/", staging_name.c_str());
+        if (!outfile ||
+            (!bytes.empty() &&
+             !og::io::og_write_exact(*outfile, bytes.data(), 1, bytes.size())))
+        {
+            LogError("install_company_bytes_stage_failed slot={}\n", slot);
+            remove_save_relative_file(staging_rel);
+            return CompanyInstallError::StageFailed;
+        }
+    }
+    sync_filesystem();
+
+    // Step 3: header-validate the STAGED file with the [SAVE-R1] ladder. A
+    // company is never clobbered by junk ([SAVE-R6]); empty and truncated
+    // downloads both land here.
+    const std::optional<CompanyInfo> header =
+        read_header_from("save/", staging_name, slot);
+    if (!header.has_value() || !header->valid)
+    {
+        LogError("install_company_bytes_invalid slot={}\n", slot);
+        remove_save_relative_file(staging_rel);
+        return CompanyInstallError::InvalidBytes;
+    }
+
+    // Step 4: a fresh backup BEFORE anything destructive (§3.7 ordering).
+    const std::string slot_rel = "save/" + slot + ".gtl";
+    if (user_file_exists(slot_rel) && !backup_company_now(slot))
+    {
+        LogError("install_company_bytes_backup_failed slot={}\n", slot);
+        remove_save_relative_file(staging_rel);
+        return CompanyInstallError::BackupFailed;
+    }
+
+    // Step 5: rename staging -> slot (the §3.6 whole-file swap), with the
+    // og_open_write cwd fallback handled like atomic_company_save.
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path staging_path = fs::path(get_user_path()) / staging_rel;
+    fs::path dst_path = fs::path(get_user_path()) / slot_rel;
+    if (!fs::exists(staging_path, ec))
+    {
+        staging_path = fs::path(staging_rel);
+        dst_path = fs::path(slot_rel);
+    }
+    fs::rename(staging_path, dst_path, ec);
+    if (ec)
+    {
+        LogError("install_company_bytes_rename_failed slot={} error={}\n",
+                 slot, ec.message());
+        remove_save_relative_file(staging_rel);
+        return CompanyInstallError::RenameFailed;
+    }
+    sync_filesystem();
+    return CompanyInstallError::None;
 }
 
 // ---------------------------------------------------------------------------

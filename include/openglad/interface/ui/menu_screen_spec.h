@@ -437,4 +437,29 @@ void install_company_backups_state_for_screen(CompanyBackupsScreenState* state);
 bool run_company_backups_screen(const std::string& slot,
                                 const std::string& company_name);
 
+// #155 CLOUD SAVE screen state: purely local (design D14 — no network on
+// entry; HTTP fires only on the UPLOAD/DOWNLOAD clicks). Public so tests can
+// drive the row-state shapes through the installed-state seam; production
+// state is owned by run_cloud_save_screen.
+struct CloudSaveScreenState {
+    bool key_set = false;         // refreshed on entry + after passphrase set
+    bool company_present = false; // user_file_exists(active slot .gtl)
+    std::string company_name;     // header display name ("" when absent)
+    std::string status_line;      // last action result, drawn in content pass
+};
+
+// #155 CLOUD SAVE subscreen: PASSPHRASE / UPLOAD / DOWNLOAD / BACK. UPLOAD
+// and DOWNLOAD use the engine's Disabled grammar until their prerequisites
+// hold (key set; key set + company present).
+const MenuScreenSpec& cloud_save_menu_screen_spec();
+
+// Installs the state the row-state overrides read (the company-list seam
+// pattern; the null state renders the all-enabled shape bare engine sweeps
+// expect).
+void install_cloud_save_state_for_screen(CloudSaveScreenState* state);
+
+// Runs the CLOUD SAVE screen (blocking); always returns MENU_REDRAW to the
+// main menu's spec-row dispatcher.
+Sint32 run_cloud_save_screen();
+
 } // namespace og::ui

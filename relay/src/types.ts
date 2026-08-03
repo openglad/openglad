@@ -1,10 +1,15 @@
 export interface Env {
   GAME_ROOM: DurableObjectNamespace;
   ROOM_REGISTRY: DurableObjectNamespace;
+  SAVE_VAULT: DurableObjectNamespace;
   /** Optional override (milliseconds, as a string var) for how long an empty
    *  room survives before the expiry alarm deletes it. Used by smoke.mjs to
    *  exercise the alarm path quickly; production uses the default. */
   EMPTY_ROOM_TTL_MS?: string;
+  /** Optional override (milliseconds, as a string var) for the cloud-save
+   *  inactivity TTL. Tests set a small value to exercise the expiry alarm;
+   *  production uses the 180-day default. */
+  CLOUD_SAVE_TTL_MS?: string;
   /** Optional override for the per-connection message budget (messages per
    *  window). The default (2000/s) is far above game traffic but too high for
    *  a loaded test machine to trip inside one window; tests set a small
@@ -52,4 +57,22 @@ export interface StoredRoomState {
 export interface WebSocketAttachment {
   peerId: number;
   isOwner: boolean;
+}
+
+/** One passphrase-keyed cloud save persisted by a SaveVault durable object
+ *  (issue #155). The blob is the client's on-disk GTL bytes hex-encoded
+ *  VERBATIM; the metadata is a client-supplied echo of the file header (the
+ *  server never parses GTL). */
+export interface StoredCloudSave {
+  /** Optimistic-concurrency revision; first create stores 1. */
+  revision: number;
+  /** When the blob was last stored (ms since epoch). */
+  uploaded_at: number;
+  /** Last GET or successful POST (ms since epoch); drives the TTL alarm. */
+  last_access: number;
+  slot: string;
+  save_name: string;
+  scen_num: number;
+  last_played: number;
+  data_hex: string;
 }

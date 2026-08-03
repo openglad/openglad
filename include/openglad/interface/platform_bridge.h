@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 
 #include <functional>
@@ -36,6 +37,16 @@ struct PlatformBridge {
     std::function<std::unique_ptr<og::ui::IPickerRelayRoomListRequest>(
         const std::string& base_url,
         const std::string& campaign_tag)> begin_list_relay_rooms;
+
+    // Cloud saves (#155): generic blocking text-HTTP callbacks, so the
+    // parsers stay in the pure layer (cloud_save_client.cpp). Left empty on
+    // clients without HTTP (the headless text bridge) — the flows then
+    // degrade with "Cloud sync is not available in this client."
+    std::function<og::ui::cloud::CloudHttpResult(const std::string& url)>
+        cloud_http_get;
+    std::function<og::ui::cloud::CloudHttpResult(
+        const std::string& url,
+        const std::string& json_body)> cloud_http_post;
 };
 
 void set_platform_bridge(PlatformBridge bridge);

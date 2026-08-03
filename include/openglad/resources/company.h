@@ -23,6 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -235,6 +236,42 @@ bool delete_company_backup(const std::string& slot, int seq);
 // was removed (stray backups of an already-missing company are still
 // reaped).
 bool delete_company(const std::string& slot);
+
+// ---------------------------------------------------------------------------
+// Cloud-save byte IO (issue #155)
+// ---------------------------------------------------------------------------
+
+// Verbatim bytes of save/<slot>.gtl. nullopt for a missing file, an unsafe
+// slot name, or the reserved "netsession" scratch. NEVER re-serializes
+// (SaveData::save has cursor side effects; the cloud blob must be the exact
+// on-disk file).
+std::optional<std::vector<std::uint8_t>> export_company_bytes(
+    const std::string& slot);
+
+// Why install_company_bytes stopped. Every error except RenameFailed leaves
+// the slot file untouched; RenameFailed removed the staging file, so the
+// worst outcome is "nothing changed".
+enum class CompanyInstallError
+{
+    None = 0,
+    InvalidSlot,     // unsafe basename or "netsession"
+    InvalidBytes,    // staged header failed validation — nothing touched
+    StageFailed,     // could not write/sync the staging file
+    BackupFailed,    // pre-install backup_company_now failed — slot untouched
+    RenameFailed,    // rename over the slot failed (staging file removed)
+};
+
+// The [SAVE-R6] install sequence for downloaded company bytes:
+//   1. refuse unsafe slots and "netsession";
+//   2. write bytes to save/<slot>.cloudstage.tmp.gtl + sync (the .tmp.gtl
+//      suffix keeps the staging file out of list_companies);
+//   3. header-validate the STAGED file (the read_company_header ladder run
+//      against the staging path; invalid or unreadable => InvalidBytes,
+//      staging file removed, slot untouched);
+//   4. if save/<slot>.gtl exists: backup_company_now(slot) BEFORE the rename;
+//   5. rename staging -> save/<slot>.gtl + sync_filesystem().
+[[nodiscard]] CompanyInstallError install_company_bytes(
+    const std::string& slot, std::span<const std::uint8_t> bytes);
 
 // ---------------------------------------------------------------------------
 // Autosave choke point (§3.8)

@@ -23,6 +23,7 @@ enum class PickerMenuId : std::int32_t
     LoadCompany, // §2.3 Company List (LOAD)
     Backups,     // §2.4 per-company Backups sub-view
     NameEntry,   // §2.2 new-company name entry
+    CloudSave,   // #155 passphrase-keyed cloud save sync
 };
 
 enum class PickerMenuCommand : std::int32_t
@@ -77,6 +78,11 @@ enum class PickerMenuCommand : std::int32_t
     ToggleReady,  // networked lobbies only: flip this machine's ready state
     // DIFFICULTY screen, host-only: flip free hire/train purchases.
     ToggleInfiniteGold,
+    // #155 cloud saves (append-only):
+    OpenCloudMenu,      // main-menu CLOUD door -> the CloudSave submenu
+    CloudSetPassphrase, // set/replace the passphrase (stores the derived key)
+    CloudUpload,        // upload the active company to the relay vault
+    CloudDownload,      // download + install the vault's company
 };
 
 struct PickerMenuItem

@@ -1563,6 +1563,7 @@ void picker_cleanup_resources()
     pks().name_entry_buttons.clear();
     pks().company_list_buttons.clear();
     pks().company_backups_buttons.clear();
+    pks().cloud_save_buttons.clear();
 }
 
 void picker_quit()

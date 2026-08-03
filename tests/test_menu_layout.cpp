@@ -228,6 +228,122 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
     EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
     EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
+
+    // #155: the CLOUD door fills the free band between LEVEL EDITOR and
+    // DIFFICULTY (always visible — reachable with zero companies), wired
+    // into the vertical chain on both sides. Both build variants share the
+    // geometry (the tables differ only in the QUIT fork).
+    ASSERT_EQ(10, count);
+    EXPECT_EQ("cloud", buttons[9].id);
+    EXPECT_EQ(80, buttons[9].x);
+    EXPECT_EQ(119, buttons[9].y);
+    EXPECT_EQ(140, buttons[9].sizex);
+    EXPECT_EQ(15, buttons[9].sizey);
+    EXPECT_EQ(2, buttons[9].nav.up);
+    EXPECT_EQ(3, buttons[9].nav.down);
+    EXPECT_EQ(9, buttons[2].nav.down) << "level_edit links down to CLOUD";
+    EXPECT_EQ(9, buttons[3].nav.up) << "difficulty links up to CLOUD";
+    // 5-char label within the 140px face's 23-char budget.
+    EXPECT_EQ("CLOUD", buttons[9].label);
+    EXPECT_LE(buttons[9].label.size() * 6,
+              static_cast<std::size_t>(buttons[9].sizex));
+}
+
+// #155 CLOUD SAVE screen: geometry table, label budgets, the static nav
+// cycle, and the Disabled shapes the installed state drives (the engine's
+// inert-box grammar keeps every row visible, so one nav graph covers all
+// shapes).
+TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
+{
+    button* buttons = picker_cloud_save_buttons();
+    const int count = picker_cloud_save_button_count();
+    ASSERT_EQ(4, count);
+    check_no_overlaps(buttons, count, "cloud_save");
+    check_bounds(buttons, count, "cloud_save");
+    check_nav_closed_and_reachable(buttons, count, 0, "cloud_save");
+
+    const struct
+    {
+        const char* id;
+        const char* label;
+        int x, y, w, h;
+        int up, down;
+    } kExpected[] = {
+        {"cloud_passphrase", "PASSPHRASE", 80, 60, 140, 15, 3, 1},
+        {"cloud_upload", "UPLOAD", 80, 84, 140, 15, 0, 2},
+        {"cloud_download", "DOWNLOAD", 80, 108, 140, 15, 1, 3},
+        {"back", "BACK", 80, 150, 60, 15, 2, 0},
+    };
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+    for (int i = 0; i < count; ++i)
+    {
+        const auto& want = kExpected[i];
+        EXPECT_EQ(want.id, buttons[i].id) << "cloud_save index " << i;
+        EXPECT_EQ(want.label, buttons[i].label) << want.id;
+        EXPECT_EQ(want.x, buttons[i].x) << want.id;
+        EXPECT_EQ(want.y, buttons[i].y) << want.id;
+        EXPECT_EQ(want.w, buttons[i].sizex) << want.id;
+        EXPECT_EQ(want.h, buttons[i].sizey) << want.id;
+        EXPECT_EQ(spec_row, buttons[i].myfun) << want.id;
+        EXPECT_EQ(i, buttons[i].arg1)
+            << want.id << " (MenuSpecRow arg == ordinal)";
+        EXPECT_EQ(want.up, buttons[i].nav.up) << want.id;
+        EXPECT_EQ(want.down, buttons[i].nav.down) << want.id;
+        EXPECT_FALSE(buttons[i].hidden) << want.id;
+        // Label budget: 6px/char on the face width.
+        EXPECT_LE(buttons[i].label.size() * 6,
+                  static_cast<std::size_t>(buttons[i].sizex)) << want.id;
+    }
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[3].hotkey) << "cloud_save back";
+
+    // Row-state shapes through the installed-state seam: UPLOAD needs
+    // key+company, DOWNLOAD needs the key; the null state is all-enabled
+    // (what a bare engine sweep sees).
+    const og::ui::MenuScreenSpec& spec = og::ui::cloud_save_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.rows[1].state_override);
+    ASSERT_NE(nullptr, spec.rows[2].state_override);
+    ASSERT_EQ(nullptr, spec.rows[0].state_override);
+    ASSERT_EQ(nullptr, spec.rows[3].state_override);
+    og::ui::MenuLabelContext context;
+
+    og::ui::CloudSaveScreenState state;
+    const struct
+    {
+        bool key_set;
+        bool company_present;
+        og::ui::RowState upload;
+        og::ui::RowState download;
+    } kShapes[] = {
+        {false, false, og::ui::RowState::Disabled, og::ui::RowState::Disabled},
+        {true, false, og::ui::RowState::Disabled, og::ui::RowState::Visible},
+        {true, true, og::ui::RowState::Visible, og::ui::RowState::Visible},
+    };
+    for (const auto& shape : kShapes)
+    {
+        state.key_set = shape.key_set;
+        state.company_present = shape.company_present;
+        og::ui::install_cloud_save_state_for_screen(&state);
+        EXPECT_EQ(static_cast<int>(shape.upload),
+                  static_cast<int>(spec.rows[1].state_override(context)))
+            << "upload key=" << shape.key_set
+            << " company=" << shape.company_present;
+        EXPECT_EQ(static_cast<int>(shape.download),
+                  static_cast<int>(spec.rows[2].state_override(context)))
+            << "download key=" << shape.key_set;
+    }
+    og::ui::install_cloud_save_state_for_screen(nullptr);
+    EXPECT_EQ(static_cast<int>(og::ui::RowState::Visible),
+              static_cast<int>(spec.rows[1].state_override(context)))
+        << "null state renders the all-enabled sweep shape";
+    EXPECT_EQ(static_cast<int>(og::ui::RowState::Visible),
+              static_cast<int>(spec.rows[2].state_override(context)));
+
+    // Spec obligations pinned: no lobby poll (D14), spec-row dispatch only.
+    EXPECT_FALSE(spec.polls_lobby);
+    EXPECT_EQ(static_cast<int>(og::ui::RemoteStartScope::None),
+              static_cast<int>(spec.remote_start));
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_STREQ("cloud_save", spec.name);
 }
 
 TEST(MenuLayout, global_control_reset_is_centered_and_reachable)

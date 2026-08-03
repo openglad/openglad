@@ -26,8 +26,9 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id)) << "main menu definition should report main id";
-    ASSERT_EQ(8u, def.items.size())
-        << "terminal main menu has no player-count rows";
+    ASSERT_EQ(9u, def.items.size())
+        << "terminal main menu has no player-count rows (8 classic items + "
+           "the #155 cloud door)";
 
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
@@ -394,9 +395,10 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
     // submenu: same id, same list shape, new command.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(8u, main_def.items.size())
-        << "main menu exposes both Help and Quit plus the company loader, "
-           "without the retired player-count or seat-mode rows";
+    ASSERT_EQ(9u, main_def.items.size())
+        << "main menu exposes both Help and Quit plus the company loader "
+           "and the cloud door, without the retired player-count or "
+           "seat-mode rows";
 
     const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
     ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
@@ -550,20 +552,87 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
         }
     }
 
-    // §2.1: load_company remains at the end; Main now exposes both stable
-    // Help and Quit actions. TeamBuild/Scenario are unchanged; Difficulty
-    // grew the appended infinite-gold row.
-    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
+    // §2.1: load_company remains after the classic items; the #155 cloud
+    // door is appended last. Main exposes both stable Help and Quit actions.
+    // TeamBuild/Scenario are unchanged; Difficulty grew the appended
+    // infinite-gold row.
+    ASSERT_EQ(9u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
-    // load_company resolves by id and by command, and is the last Main item.
+    // load_company resolves by id and by command and keeps its 1-based
+    // position 8 (the text-drive index contract); the appended cloud door is
+    // the last Main item.
     const PickerMenuItem* load_company =
         find_picker_menu_item(PickerMenuId::Main, "load_company");
     ASSERT_TRUE(load_company != nullptr);
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::LoadGame),
               static_cast<int>(load_company->command));
     ASSERT_EQ(load_company,
-              &picker_menu_definition(PickerMenuId::Main).items.back());
+              &picker_menu_definition(PickerMenuId::Main).items[7]);
+    const PickerMenuItem* cloud =
+        find_picker_menu_item(PickerMenuId::Main, "cloud");
+    ASSERT_TRUE(cloud != nullptr);
+    ASSERT_EQ(cloud, &picker_menu_definition(PickerMenuId::Main).items.back());
+}
+
+TEST(MenuModel, cloud_save_menu_definition_and_lookup)
+{
+    using namespace og::ui;
+
+    // #155: the main-menu CLOUD door.
+    const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "cloud");
+    ASSERT_TRUE(door != nullptr) << "cloud id should resolve in main";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::OpenCloudMenu),
+              static_cast<int>(door->command))
+        << "the main cloud entry opens the CloudSave submenu";
+
+    const PickerMenuDefinition& def =
+        picker_menu_definition(PickerMenuId::CloudSave);
+    ASSERT_EQ(static_cast<int>(PickerMenuId::CloudSave),
+              static_cast<int>(def.id))
+        << "cloud-save definition should report its own id";
+    ASSERT_TRUE(def.title == "Cloud Save");
+    ASSERT_EQ(4u, def.items.size())
+        << "cloud save: passphrase/upload/download + back";
+
+    const struct
+    {
+        const char* id;
+        PickerMenuCommand command;
+    } kExpected[] = {
+        {"cloud_passphrase", PickerMenuCommand::CloudSetPassphrase},
+        {"cloud_upload", PickerMenuCommand::CloudUpload},
+        {"cloud_download", PickerMenuCommand::CloudDownload},
+        {"back", PickerMenuCommand::Back},
+    };
+    for (const auto& want : kExpected)
+    {
+        const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::CloudSave, want.id);
+        ASSERT_TRUE(item != nullptr) << want.id << " should resolve";
+        ASSERT_EQ(static_cast<int>(want.command),
+                  static_cast<int>(item->command)) << want.id;
+        const PickerMenuItem* by_command =
+            find_picker_menu_item(PickerMenuId::CloudSave, want.command);
+        ASSERT_TRUE(by_command == item)
+            << want.id << " should also resolve by command";
+    }
+
+    // Shared cancel semantics + no leakage into the legacy menus.
+    const PickerMenuItem* cancel = menu_cancel_item(PickerMenuId::CloudSave);
+    ASSERT_TRUE(cancel != nullptr);
+    ASSERT_TRUE(cancel->id == "back");
+    for (const char* new_id :
+         {"cloud_passphrase", "cloud_upload", "cloud_download"})
+    {
+        for (const PickerMenuId legacy_menu :
+             {PickerMenuId::Main, PickerMenuId::TeamBuild,
+              PickerMenuId::Scenario, PickerMenuId::Difficulty})
+        {
+            ASSERT_TRUE(find_picker_menu_item(legacy_menu, new_id) == nullptr)
+                << new_id << " must not appear outside the cloud submenu";
+        }
+    }
 }

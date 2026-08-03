@@ -67,6 +67,31 @@ export const REGISTRY_INSTANCE_NAME = "global";
 export const REGISTRY_ROOM_KEY_PREFIX = "room:";
 
 // ---------------------------------------------------------------------------
+// Cloud saves (issue #155). One passphrase-derived key = one SaveVault
+// durable object holding one hex-encoded GTL blob. The key is the lowercase
+// 16-hex fnv1a64 the CLIENT derives; the server never sees the passphrase.
+// ---------------------------------------------------------------------------
+
+export const CLOUD_SAVE_KEY_PATTERN = /^[0-9a-f]{16}$/;
+
+export function isValidCloudSaveKey(key: string): boolean {
+  return CLOUD_SAVE_KEY_PATTERN.test(key);
+}
+
+/** Decoded blob cap. A maxed company is a few KB; 64 KiB is ~10x headroom
+ *  and far under the SQLite-DO value limit. Enforced on the hex length. */
+export const MAX_CLOUD_SAVE_BYTES = 64 * 1024;
+export const MAX_CLOUD_SAVE_HEX_CHARS = MAX_CLOUD_SAVE_BYTES * 2;
+export const MAX_CLOUD_SAVE_SLOT_LENGTH = 64;
+export const MAX_CLOUD_SAVE_NAME_LENGTH = 64;
+/** Inactivity TTL: any GET or successful POST refreshes it (the
+ *  EMPTY_ROOM_TTL_MS alarm pattern; CLOUD_SAVE_TTL_MS env override). */
+export const DEFAULT_CLOUD_SAVE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+/** Uploads allowed per client IP per window (GETs are unlimited). */
+export const SAVE_UPLOAD_RATE_LIMIT_MAX = 10;
+export const SAVE_UPLOAD_RATE_LIMIT_WINDOW_MS = 60_000;
+
+// ---------------------------------------------------------------------------
 // Room codes. GLAD-XXXX with an alphabet that avoids the confusable
 // characters 0/O, 1/I/L. Lookup still accepts the full A-Z0-9 range so a
 // mistyped-but-plausible code fails with a clean 404 rather than a 400.

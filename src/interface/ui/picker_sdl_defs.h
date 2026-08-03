@@ -161,6 +161,9 @@ int picker_company_list_button_count();
 // §2.4 Backups sub-view (per company) — Layer F engine screen.
 button* picker_company_backups_buttons();
 int picker_company_backups_button_count();
+// #155 CLOUD SAVE subscreen — engine screen.
+button* picker_cloud_save_buttons();
+int picker_cloud_save_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
