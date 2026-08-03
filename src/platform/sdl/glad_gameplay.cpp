@@ -107,6 +107,7 @@ void apply_lobby_game_start_config(
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.cross_control = static_cast<short>(config_save.cross_control);
+    save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     // The old network handoff collapsed every allied-mode client onto team 0.
     // allied_mode remains in the save/replay format, but Base Camp's explicit
     // per-seat assignment is now authoritative in every mode.

@@ -9,6 +9,12 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -36,11 +42,12 @@ static void cleanup_picker_state()
 
 // Test: The main-menu DIFFICULTY button is a DOOR into the blocking
 // DIFFICULTY subscreen (unique BACK id "difficulty_back"), which holds the
-// difficulty cycler plus the four match-rule settings.
+// difficulty cycler plus the five match-rule settings.
 //
 // Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
-// (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3 — all
-// back to their defaults) -> BACK -> GAME SETTINGS -> CONTROLS -> BACK
+// (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3,
+// infinite gold x2 — all back to their defaults) -> BACK -> GAME SETTINGS
+// -> CONTROLS -> BACK
 // -> BACK -> return
 //
 // This used to tour PLAYER SETTINGS and all four player-count outlines here.
@@ -95,6 +102,7 @@ static int difficulty_injector(void* data)
     interact_times("respawn_delay", 3);  // Normal -> Fast -> Slow -> Normal
     interact_times("permadeath", 2);     // On -> Off -> On
     interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal
+    interact_times("infinite_gold", 2);  // Off -> On -> Off
     state->cycled_settings = true;
 
     // Leave the subscreen.
@@ -137,6 +145,7 @@ TEST(Difficulty, submenu_door_flow) {
     save.ctf_respawn_ticks = 0;
     save.keep_fallen_heroes = 0;
     save.generator_rate = 0;
+    save.infinite_gold = 0;
     save.save("save0");
     og::runtime::current_session->current_difficulty_ = 1;
 
@@ -167,4 +176,53 @@ TEST(Difficulty, submenu_door_flow) {
     EXPECT_EQ(0, after.ctf_respawn_ticks) << "respawn delay should be back at Normal";
     EXPECT_EQ(0, after.keep_fallen_heroes) << "permadeath should be back at On";
     EXPECT_EQ(0, after.generator_rate) << "generators should be back at Normal";
+    EXPECT_EQ(0, after.infinite_gold) << "infinite gold should be back at Off";
+}
+
+// Infinite gold is a SESSION-ONLY setting: the wallet is never inflated and
+// the flag itself never reaches the .gtl bytes. Saving with it on must
+// produce a byte-identical file to saving with it off, and a load must never
+// bring it back — this is what keeps every company autosave from baking the
+// cheat into the player's file.
+TEST(Difficulty, infinite_gold_never_reaches_the_save_file)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short gold_before = save.infinite_gold;
+
+    const std::filesystem::path save_dir =
+        std::filesystem::path(get_user_path()) / "save";
+    const std::filesystem::path off_path = save_dir / "test_gold_off.gtl";
+    const std::filesystem::path on_path = save_dir / "test_gold_on.gtl";
+
+    save.infinite_gold = 0;
+    ASSERT_TRUE(save.save("test_gold_off")) << "control save should succeed";
+    save.infinite_gold = 1;
+    ASSERT_TRUE(save.save("test_gold_on")) << "cheat-on save should succeed";
+
+    const auto read_all = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<char>((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+    };
+    const std::vector<char> off_bytes = read_all(off_path);
+    const std::vector<char> on_bytes = read_all(on_path);
+    ASSERT_FALSE(off_bytes.empty()) << "control save should have been written";
+    EXPECT_EQ(off_bytes.size(), on_bytes.size())
+        << "infinite_gold must not add bytes to the GTL format";
+    EXPECT_TRUE(off_bytes == on_bytes)
+        << "infinite_gold must not change a single serialized byte";
+
+    // A company opened into a fresh SaveData always starts on the classic
+    // economy: nothing in the file can turn the cheat back on. (An in-place
+    // load leaves the live session's own toggle alone, exactly like
+    // cross_control — the flag belongs to the session, not the file.)
+    SaveData reopened;
+    ASSERT_TRUE(reopened.load("test_gold_on")) << "load should succeed";
+    EXPECT_EQ(0, static_cast<int>(reopened.infinite_gold))
+        << "a loaded company always starts on the classic economy";
+
+    save.infinite_gold = gold_before;
+    std::error_code ec;
+    std::filesystem::remove(off_path, ec);
+    std::filesystem::remove(on_path, ec);
 }

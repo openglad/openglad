@@ -143,6 +143,7 @@ struct PickerSaveStateGuard
     short ctf_respawn_ticks = 0;
     short keep_fallen_heroes = 0;
     short cross_control = 0;
+    short infinite_gold = 0;
     std::unique_ptr<guy> team_list[MAX_TEAM_SIZE];
 
     explicit PickerSaveStateGuard(SaveData& save_in)
@@ -158,6 +159,7 @@ struct PickerSaveStateGuard
         , ctf_respawn_ticks(save.ctf_respawn_ticks)
         , keep_fallen_heroes(save.keep_fallen_heroes)
         , cross_control(save.cross_control)
+        , infinite_gold(save.infinite_gold)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[i] = std::move(save.team_list[i]);
@@ -176,6 +178,7 @@ struct PickerSaveStateGuard
         save.ctf_respawn_ticks = ctf_respawn_ticks;
         save.keep_fallen_heroes = keep_fallen_heroes;
         save.cross_control = cross_control;
+        save.infinite_gold = infinite_gold;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[i] = std::move(team_list[i]);
     }
@@ -8261,16 +8264,19 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
         EXPECT_EQ(0, static_cast<int>(join_save.generator_rate));
         EXPECT_EQ(0, static_cast<int>(join_save.keep_fallen_heroes));
         EXPECT_EQ(0, static_cast<int>(join_save.ctf_respawn_ticks));
+        EXPECT_EQ(0, static_cast<int>(join_save.infinite_gold));
     }
 
     // Host cycles: Respawns Off->Heroes, Generators Normal->Calm->Frenzy,
-    // Delay Normal->Fast, Permadeath On->Off — then one settings sync, the
-    // exact shape of the difficulty-subscreen button callbacks.
+    // Delay Normal->Fast, Permadeath On->Off, Infinite Gold Off->On — then
+    // one settings sync, the exact shape of the difficulty-subscreen button
+    // callbacks.
     og::ui::cycle_respawn_mode(host_save);   // 0 -> 1 (Heroes)
     og::ui::cycle_generator_rate(host_save); // 0 -> 50 (Calm)
     og::ui::cycle_generator_rate(host_save); // 50 -> 200 (Frenzy)
     og::ui::cycle_respawn_delay(host_save);  // 0 -> 60 ticks (Fast)
     og::ui::toggle_permadeath(host_save);    // keep_fallen_heroes = 1
+    og::ui::toggle_infinite_gold(host_save); // infinite_gold = 1
     host_client->sync_settings_from_save();
 
     ASSERT_TRUE(wait_until([&] {
@@ -8283,10 +8289,28 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
             join_synced = join_save.respawn_mode == 1 &&
                 join_save.generator_rate == 200 &&
                 join_save.ctf_respawn_ticks == 60 &&
-                join_save.keep_fallen_heroes == 1;
+                join_save.keep_fallen_heroes == 1 &&
+                join_save.infinite_gold == 1;
         }
         return join_synced;
     })) << "the joiner's save must reflect the host's difficulty settings";
+
+    // The host's free-purchase setting reaches the joiner's economy, not
+    // just its save field: a broke joiner can now hire, and its wallet is
+    // still untouched afterwards.
+    {
+        auto join_scope = join_session.activate();
+        SaveData& join_save = join_session.myscreen_->save_data;
+        const short filled_slots = join_save.team_size;
+        join_save.m_totalcash[1] = 0;
+        og::ui::HireSession hire(join_save, 1);
+        ASSERT_GT(hire.current_cost(), 0u);
+        EXPECT_GE(hire.hire(), 0)
+            << "the host's infinite gold makes the joiner's purchase free";
+        EXPECT_EQ(filled_slots + 1, join_save.team_size);
+        EXPECT_EQ(0u, join_save.m_totalcash[1])
+            << "a free purchase never writes the joiner's wallet";
+    }
 
     // A second cycle round (Respawns Heroes->Everyone, Generators
     // Frenzy->Normal) must replicate as well, proving the sync is not a
@@ -8316,6 +8340,7 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     EXPECT_EQ(0, static_cast<int>(host_save.generator_rate));
     EXPECT_EQ(60, static_cast<int>(host_save.ctf_respawn_ticks));
     EXPECT_EQ(1, static_cast<int>(host_save.keep_fallen_heroes));
+    EXPECT_EQ(1, static_cast<int>(host_save.infinite_gold));
 
     {
         auto join_scope = join_session.activate();

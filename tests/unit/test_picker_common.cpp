@@ -2538,6 +2538,172 @@ TEST(PickerCommon, format_generator_rate_label)
     ASSERT_EQ("Generators: Normal", og::ui::format_generator_rate_label(save));
 }
 
+// --- Infinite gold (session-only free purchases) ---
+
+TEST(PickerCommon, toggle_infinite_gold_round_trips)
+{
+    SaveData save;
+    EXPECT_EQ(0, static_cast<int>(save.infinite_gold))
+        << "the classic economy is the default";
+    EXPECT_FALSE(og::ui::gold_is_infinite(save));
+
+    og::ui::toggle_infinite_gold(save);
+    EXPECT_EQ(1, static_cast<int>(save.infinite_gold));
+    EXPECT_TRUE(og::ui::gold_is_infinite(save));
+
+    og::ui::toggle_infinite_gold(save);
+    EXPECT_EQ(0, static_cast<int>(save.infinite_gold));
+    EXPECT_FALSE(og::ui::gold_is_infinite(save));
+
+    // Any out-of-set stored value counts as ON and normalizes to OFF.
+    save.infinite_gold = 7;
+    EXPECT_TRUE(og::ui::gold_is_infinite(save));
+    og::ui::toggle_infinite_gold(save);
+    EXPECT_EQ(0, static_cast<int>(save.infinite_gold));
+}
+
+TEST(PickerCommon, format_infinite_gold_label)
+{
+    SaveData save;
+    ASSERT_EQ("Infinite Gold: Off", og::ui::format_infinite_gold_label(save));
+    save.infinite_gold = 1;
+    ASSERT_EQ("Infinite Gold: On", og::ui::format_infinite_gold_label(save));
+
+    EXPECT_LE(og::ui::format_infinite_gold_label(save).size(), 23u);
+    save.infinite_gold = 0;
+    EXPECT_LE(og::ui::format_infinite_gold_label(save).size(), 23u);
+}
+
+TEST(PickerCommon, can_afford_and_format_wallet_amount)
+{
+    SaveData save;
+    save.m_totalcash[0] = 100;
+    save.m_totalcash[2] = 0;
+
+    EXPECT_TRUE(og::ui::can_afford(save, 0, 100u));
+    EXPECT_FALSE(og::ui::can_afford(save, 0, 101u));
+    EXPECT_FALSE(og::ui::can_afford(save, 2, 1u));
+    EXPECT_EQ("100", og::ui::format_wallet_amount(save, 0));
+    EXPECT_EQ("0", og::ui::format_wallet_amount(save, 2));
+
+    // Out-of-range teams clamp instead of reading past m_totalcash[4].
+    EXPECT_EQ(og::ui::format_wallet_amount(save, 0),
+              og::ui::format_wallet_amount(save, -3));
+    EXPECT_EQ(og::ui::format_wallet_amount(save, MAX_PLAYERS - 1),
+              og::ui::format_wallet_amount(save, 99));
+    EXPECT_TRUE(og::ui::can_afford(save, -3, 100u));
+
+    save.infinite_gold = 1;
+    EXPECT_TRUE(og::ui::can_afford(save, 2, 4000000000u));
+    EXPECT_EQ("INF", og::ui::format_wallet_amount(save, 0));
+    EXPECT_EQ("INF", og::ui::format_wallet_amount(save, 99));
+}
+
+TEST(PickerCommon, base_camp_gold_label_reads_inf_when_infinite)
+{
+    SaveData save;
+    save.m_totalcash[0] = 12345;
+    save.infinite_gold = 1;
+    EXPECT_EQ("GOLD INF", og::ui::format_base_camp_gold_label(save));
+    EXPECT_LE(og::ui::format_base_camp_gold_label(save).size(), 11u);
+}
+
+TEST(PickerCommon, hire_with_infinite_gold_is_free_and_never_writes_the_wallet)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 0; // broke
+    save.infinite_gold = 1;
+
+    og::ui::HireSession session(save, 0);
+    ASSERT_GT(session.current_cost(), 0u);
+
+    const int slot = session.hire();
+    EXPECT_EQ(0, slot) << "an unaffordable recruit is hired for free";
+    EXPECT_EQ(1, save.team_size);
+    ASSERT_NE(nullptr, save.team_list[0]);
+    EXPECT_EQ(0u, save.m_totalcash[0])
+        << "the wallet is never written, so no autosave can bake in a cheat "
+           "balance";
+
+    // The team-full guard still applies with infinite gold on.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (!save.team_list[i]) {
+            save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_size++;
+        }
+    }
+    EXPECT_TRUE(session.team_full());
+    EXPECT_EQ(-1, session.hire());
+}
+
+TEST(PickerCommon, hire_without_infinite_gold_still_rejects_and_charges)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 0;
+    save.infinite_gold = 0;
+
+    og::ui::HireSession broke(save, 0);
+    EXPECT_EQ(-1, broke.hire());
+    EXPECT_EQ(0, save.team_size);
+    EXPECT_EQ(nullptr, save.team_list[0]);
+
+    save.m_totalcash[0] = 50000;
+    og::ui::HireSession rich(save, 0);
+    const std::uint32_t cost = rich.current_cost();
+    ASSERT_GT(cost, 0u);
+    EXPECT_EQ(0, rich.hire());
+    EXPECT_EQ(50000u - cost, save.m_totalcash[0]);
+}
+
+TEST(PickerCommon, train_accept_with_infinite_gold_is_free)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 0;
+
+    og::ui::TrainSession session(save);
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
+    ASSERT_GT(session.current_cost(), 0u);
+
+    // Broke and classic: the raise is rejected outright.
+    EXPECT_FALSE(session.accept(false));
+    EXPECT_EQ(0u, save.m_totalcash[0]);
+
+    save.infinite_gold = 1;
+    og::ui::TrainSession free_session(save);
+    const short strength_before = save.team_list[0]->strength;
+    free_session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
+    ASSERT_GT(free_session.current_cost(), 0u);
+    EXPECT_TRUE(free_session.accept(false));
+    EXPECT_GT(save.team_list[0]->strength, strength_before);
+    EXPECT_EQ(0u, save.m_totalcash[0])
+        << "training on the house never touches the wallet";
+}
+
+TEST(PickerCommon, selling_still_credits_the_wallet_with_infinite_gold)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 100;
+    save.infinite_gold = 1;
+
+    og::ui::TrainSession session(save);
+    const std::uint32_t payout = session.current_sell_value();
+    ASSERT_GT(payout, 0u);
+    EXPECT_EQ(og::ui::TrainSession::SellResult::Sold,
+              session.sell_current([] { return true; }));
+    EXPECT_EQ(100u + payout, save.m_totalcash[0])
+        << "infinite gold makes purchases free; it does not disable income";
+}
+
 TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
 {
     // The SDL DIFFICULTY subscreen draws 140px-wide single-column rows at
@@ -2564,6 +2730,11 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
     {
         save.generator_rate = rate;
         labels.push_back(og::ui::format_generator_rate_label(save));
+    }
+    for (short gold : {short(0), short(1)})
+    {
+        save.infinite_gold = gold;
+        labels.push_back(og::ui::format_infinite_gold_label(save));
     }
     for (int difficulty : {0, 1, 2})
         labels.push_back(og::ui::format_difficulty_label(difficulty));

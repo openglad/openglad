@@ -326,12 +326,12 @@ public:
 
         sync_config_from_save();
 
-        std::printf("Loaded '%s' (campaign=%s level=%s team=%d gold=%u).\n",
+        std::printf("Loaded '%s' (campaign=%s level=%s team=%d gold=%s).\n",
             config_.save_name.c_str(),
             og::data::campaign_display_title(config_.campaign).c_str(),
             level_display(config_.level).c_str(),
             static_cast<int>(save_data_.team_size),
-            static_cast<unsigned>(save_data_.m_totalcash[0]));
+            format_wallet_amount(save_data_, 0).c_str());
         clear_error();
         return true;
     }
@@ -765,6 +765,12 @@ private:
             std::printf("%s\n", format_generator_rate_label(save_data_).c_str());
             autosave_company_after_mutation(); // §3.8 settings tail
             break;
+        case PickerMenuCommand::ToggleInfiniteGold:
+            // SESSION-ONLY (never in the GTL file), so unlike every other row
+            // here this one deliberately skips the settings autosave tail.
+            toggle_infinite_gold(save_data_);
+            std::printf("%s\n", format_infinite_gold_label(save_data_).c_str());
+            break;
         default:
             break;
         }
@@ -1038,9 +1044,9 @@ private:
                 session.level_increased() ? " [locked]" : "");
             std::printf("  6.LVL:  %5d    %5d%s\n", w.level, o.level,
                 session.stats_increased() ? " [locked]" : "");
-            std::printf("Cost: %u  |  Gold: %u\n",
+            std::printf("Cost: %u  |  Gold: %s\n",
                 static_cast<unsigned>(session.current_cost()),
-                static_cast<unsigned>(save_data_.m_totalcash[0]));
+                format_wallet_amount(save_data_, 0).c_str());
             std::printf("[+1..6] increase  [-1..-6] decrease\n");
             std::printf("[A]ccept  [N]ext  [P]rev  [B]ack: ");
             std::fflush(stdout);
@@ -1099,9 +1105,9 @@ private:
             std::printf("STR: %d  DEX: %d  CON: %d  INT: %d  ARM: %d  LVL: %d\n",
                 r->strength, r->dexterity, r->constitution,
                 r->intelligence, r->armor, r->level);
-            std::printf("Cost: %u  |  Gold: %u\n",
+            std::printf("Cost: %u  |  Gold: %s\n",
                 static_cast<unsigned>(session.current_cost()),
-                static_cast<unsigned>(save_data_.m_totalcash[0]));
+                format_wallet_amount(save_data_, 0).c_str());
             std::printf("[N]ext  [P]rev  [H]ire  [B]ack: ");
             std::fflush(stdout);
 

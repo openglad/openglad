@@ -175,6 +175,13 @@ std::string generator_rate_row_label(const MenuLabelContext& context)
         : std::string("Generators: Normal");
 }
 
+std::string infinite_gold_row_label(const MenuLabelContext& context)
+{
+    return context.save != nullptr
+        ? format_infinite_gold_label(*context.save)
+        : std::string("Infinite Gold: Off");
+}
+
 constexpr GateBinding kHostOnlyGate{.gate = MenuGate::HostOnly};
 
 constexpr MenuButtonSpec kDifficultyRows[] = {
@@ -209,8 +216,14 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "generator_rate", .label = "Generators: Normal",
      .x = 90, .y = 127, .w = 140, .h = 15,
      .action = ButtonAction::CycleGeneratorRate, .arg = -1,
-     .nav = {.up = 4, .down = 0},
+     .nav = {.up = 4, .down = 6},
      .label_binding = {.formatter = &generator_rate_row_label},
+     .gate = kHostOnlyGate},
+    {.id = "infinite_gold", .label = "Infinite Gold: Off",
+     .x = 90, .y = 150, .w = 140, .h = 15,
+     .action = ButtonAction::ToggleInfiniteGold, .arg = -1,
+     .nav = {.up = 5, .down = 0},
+     .label_binding = {.formatter = &infinite_gold_row_label},
      .gate = kHostOnlyGate},
 };
 

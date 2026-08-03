@@ -104,6 +104,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.keep_fallen_heroes = fallback.keep_fallen_heroes;
     if (sanitized.cross_control != 0 && sanitized.cross_control != 1)
         sanitized.cross_control = fallback.cross_control;
+    if (sanitized.infinite_gold != 0 && sanitized.infinite_gold != 1)
+        sanitized.infinite_gold = fallback.infinite_gold;
     return sanitized;
 }
 
@@ -1332,6 +1334,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.generator_rate = state_.settings.generator_rate;
     equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.cross_control = state_.settings.cross_control;
+    equivalent.infinite_gold = state_.settings.infinite_gold;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

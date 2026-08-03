@@ -538,12 +538,14 @@ int text_picker_testing_exercise_internal_paths()
         [&] { return save.keep_fallen_heroes; });
     check_difficulty_rule(PickerMenuCommand::CycleGeneratorRate, 3,
         [&] { return save.generator_rate; });
+    check_difficulty_rule(PickerMenuCommand::ToggleInfiniteGold, 2,
+        [&] { return save.infinite_gold; });
     // The main-menu DIFFICULTY door runs the nested submenu loop: toggle
     // permadeath twice, then back — a round trip that leaves save untouched.
     if (const PickerMenuItem* door =
             find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::OpenDifficultyMenu)) {
         const short previous_permadeath = save.keep_fallen_heroes;
-        ScopedCinRedirect input("4\n4\n6\n");
+        ScopedCinRedirect input("4\n4\n7\n");
         client.handle_menu_item(PickerMenuId::Main, *door);
         check(save.keep_fallen_heroes == previous_permadeath);
     } else {

@@ -357,7 +357,7 @@ void sync_difficulty_menu_visibility(button* buttons,
         sync_button_hidden_state(buttons, index);
     }
     buttons[kDifficultyMenuBackIndex].nav.up =
-        host_controls_visible ? kDifficultyMenuGeneratorRateIndex : -1;
+        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1;
     buttons[kDifficultyMenuBackIndex].nav.down =
         host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
 
@@ -1696,12 +1696,16 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
          og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
             ? 0
             : static_cast<int>(og::runtime::current_session->current_team_num_);
-    og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
+    og::runtime::current_session->message_ = std::format(
+        "CASH: {}",
+        og::ui::format_wallet_amount(
+            og::runtime::current_session->myscreen_->save_data, hire_cash_team));
     mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
     const Uint32 current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
     mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
     og::runtime::current_session->message_ = std::format("      {}", current_cost );
-    if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
+    if (!og::ui::can_afford(og::runtime::current_session->myscreen_->save_data,
+                            hire_cash_team, current_cost))
         mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
     else
         mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
@@ -2039,13 +2043,18 @@ void picker_train_menu_engine_draw_content(void* screen_state)
              og::runtime::current_session->current_guy_->teamnum >= MAX_PLAYERS)
                 ? 0
                 : static_cast<int>(og::runtime::current_session->current_guy_->teamnum);
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team]);
+        og::runtime::current_session->message_ = std::format(
+            "CASH: {}",
+            og::ui::format_wallet_amount(
+                og::runtime::current_session->myscreen_->save_data,
+                train_cash_team));
 	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
 
         linesdown++;
 	        mytext.write_xy(180, info_y(linesdown), "COST: ", DARK_BLUE, 1);
         og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team])
+        if (!og::ui::can_afford(og::runtime::current_session->myscreen_->save_data,
+                                train_cash_team, current_cost))
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
 	        else
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);

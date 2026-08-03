@@ -210,6 +210,11 @@ struct LobbySettings {
     // 1 = players may control other machines' characters. sanitize_settings
     // keeps it in {0, 1}.
     std::int16_t cross_control = 0;
+    // Host-only infinite-gold setting (protocol v11): 0 = classic economy,
+    // 1 = hire/train purchases are free on every peer. Wallets are never
+    // written, so this never reaches the sim or any save file.
+    // sanitize_settings keeps it in {0, 1}.
+    std::int16_t infinite_gold = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };

@@ -14,9 +14,9 @@ class GameWorld;
 
 namespace og::sim {
 
-// v12 records protocol-v10 snapshots/input frames. The payload layout is
-// otherwise unchanged, but v11 readers must reject the new protocol byte.
-inline constexpr std::uint8_t kReplayFormatVersion = 12;
+// v13 records protocol-v11 snapshots/input frames. The payload layout is
+// otherwise unchanged, but v12 readers must reject the new protocol byte.
+inline constexpr std::uint8_t kReplayFormatVersion = 13;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 enum class ReplayIoError : std::uint8_t {
