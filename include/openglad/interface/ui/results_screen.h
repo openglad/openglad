@@ -5,6 +5,7 @@
 #include <vector>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 bool results_screen(int ending, int nextlevel);  // When no change to the guys has happened.
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after);
 
@@ -19,6 +20,12 @@ struct CtfCapsSegment
     int team;
 };
 std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ctf);
+
+// Scripted-mode (TYPE_SCRIPTED) scoreboard line for the results overview:
+// the mode's own HUD slot-0 text verbatim, in its team ramp color (team 255
+// reads as neutral -1). Empty slot -> empty vector (nothing drawn).
+std::vector<CtfCapsSegment> format_mode_scoreboard_segments(
+    const og::sim::ModeState& mode);
 
 #ifdef TESTING
 void results_screen_testing_set_force_full(bool enabled);

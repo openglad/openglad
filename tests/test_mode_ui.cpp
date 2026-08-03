@@ -738,3 +738,78 @@ TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
     vs->radarstart = saved_radarstart;
     pop_test_context();
 }
+
+TEST(ModeUi, format_mode_scoreboard_segments_reads_hud_slot_zero)
+{
+    og::sim::ModeState mode;
+    EXPECT_TRUE(format_mode_scoreboard_segments(mode).empty())
+        << "an empty slot 0 draws nothing";
+
+    mode.hud[0].team = 2;
+    std::strncpy(mode.hud[0].text.data(), "GOALS 1:3",
+                 mode.hud[0].text.size() - 1);
+    std::vector<CtfCapsSegment> segments =
+        format_mode_scoreboard_segments(mode);
+    ASSERT_EQ(1u, segments.size());
+    EXPECT_EQ("GOALS 1:3", segments[0].text);
+    EXPECT_EQ(2, segments[0].team);
+
+    mode.hud[0].team = 255;
+    segments = format_mode_scoreboard_segments(mode);
+    ASSERT_EQ(1u, segments.size());
+    EXPECT_EQ(-1, segments[0].team) << "team 255 reads as neutral";
+}
+
+TEST(ModeUi, scripted_ending_popup_reports_outcome_from_local_controls)
+{
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+    GameWorld& world = s->world();
+    world.mode.winner_team = 1;
+    std::strncpy(world.mode.name.data(), "SOCCER",
+                 world.mode.name.size() - 1);
+    s->save_data.scen_num = 1;
+
+    auto control = make_control(1); // local hero on the winning team
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    walker* old_control = v->control;
+    v->control = control.get();
+
+    // Rematch shape (nextlevel == scen_num): VICTORY + rematch line, and the
+    // body names the mode.
+    trace_clear();
+    (void)results_screen(0, 1);
+    EXPECT_TRUE(trace_contains("popup", "VICTORY!"));
+    EXPECT_TRUE(trace_contains("popup", "SOCCER: GREEN TEAM WINS!"));
+    EXPECT_TRUE(trace_contains("popup", "Get ready for a rematch!"));
+
+    // Moving-on shape names the next scenario.
+    trace_clear();
+    (void)results_screen(0, 2);
+    EXPECT_TRUE(trace_contains("popup", "Moving on to"));
+
+    // A local control on the losing side reads DEFEAT!.
+    control->set_team_num(0);
+    trace_clear();
+    (void)results_screen(0, 1);
+    EXPECT_TRUE(trace_contains("popup", "DEFEAT!"));
+
+    // No local controls at all: the neutral MATCH OVER.
+    v->control = nullptr;
+    trace_clear();
+    (void)results_screen(0, 1);
+    EXPECT_TRUE(trace_contains("popup", "MATCH OVER"));
+
+    // Undecided match: the scripted popup declines and the generic victory
+    // popup shows instead.
+    world.mode.winner_team = -1;
+    v->control = control.get();
+    trace_clear();
+    (void)results_screen(0, 2);
+    EXPECT_FALSE(trace_contains("popup", "TEAM WINS"));
+    EXPECT_TRUE(trace_contains("popup", "Victory!"))
+        << "without a winner the classic popup chain runs";
+
+    v->control = old_control;
+}

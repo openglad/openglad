@@ -13,6 +13,7 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -607,6 +608,78 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
     EXPECT_FALSE(trace_contains("results", "LOSERHERO"));
 
     screen_ref.world().ctf = og::sim::CtfState{};
+    screen_ref.world().type = saved_type;
+    screen_ref.world().end = saved_end;
+}
+
+// Scripted-mode twin of the CTF bots-win case: in a decided scripted match
+// the MVP pool is the WINNING team's rostered humans only, and the overview
+// page draws the generic winner banner + the mode's own scoreboard line
+// (HUD slot 0 verbatim) at the CTF slot.
+TEST(ResultsScreenFullUi, scripted_mode_win_scopes_mvp_and_draws_overview)
+{
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    const char saved_end = screen_ref.world().end;
+    const char saved_type = screen_ref.world().type;
+    screen_ref.world().end = 0;
+
+    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+
+    screen_ref.world().type |= GameWorld::TYPE_SCRIPTED;
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().mode.active = true;
+    screen_ref.world().mode.winner_team = 1; // bots won
+    screen_ref.world().mode.winner_is_player = false;
+    screen_ref.world().mode.hud[0].team = 1;
+    std::strncpy(screen_ref.world().mode.hud[0].text.data(), "FRAGS 2:9",
+                 screen_ref.world().mode.hud[0].text.size() - 1);
+
+    // One rostered human on the LOSING team with huge classic MVP points.
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    auto* loser = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(loser != nullptr) << "expected walker for mode MVP test";
+    loser->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    loser->set_team_num(0);
+    loser->myguy->name = "MODELOSER";
+    loser->myguy->family = FAMILY_SOLDIER;
+    loser->myguy->exp = calculate_exp(2) + 5;
+    loser->myguy->scen_damage = 40;
+    loser->myguy->scen_damage_taken = 100;
+    loser->myguy->scen_min_hp = 1;
+    loser->stats()->set_max_hitpoints(10);
+    loser->stats()->set_hitpoints(5);
+    after[1] = loser;
+
+    trace_clear();
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(
+        results_ui_ok_injector, "results_mode_mvp_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(0, 1, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(!retry);
+    EXPECT_TRUE(trace_contains("results", "mvp_none"))
+        << "bots-win must leave the MVP unset (line omitted)";
+    EXPECT_FALSE(trace_contains("results", "mvp_pick"))
+        << "a losing-team human must not be picked as MVP";
+    EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=1"))
+        << "the overview page draws the generic winner banner";
+    EXPECT_TRUE(trace_contains("results", "mode_scoreboard FRAGS 2:9"))
+        << "the overview page draws the mode's own scoreboard line";
+
+    screen_ref.world().mode = og::sim::ModeState{};
     screen_ref.world().type = saved_type;
     screen_ref.world().end = saved_end;
 }
