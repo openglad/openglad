@@ -9,6 +9,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/text_protocol.h>
@@ -1128,6 +1129,110 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         << "the explicit yes must delete the other company";
     EXPECT_TRUE(user_file_exists("save/wp3hlc.gtl"))
         << "the corrupt company is never opened OR deleted here";
+}
+
+// #155 cloud saves, text projection: the DOWNLOAD flow all the way down.
+// text_picker_drives_the_cloud_submenu stops at the D8 unavailable line
+// (the headless bridge installs no HTTP), so this one hands the bridge a
+// canned vault reply and walks the rest: the stdin y/N confirm over an
+// existing company, install_company_bytes, and the §2.3 open that repoints
+// the terminal slot ([SAVE-R2]).
+TEST(PlatformHeadless, text_picker_cloud_download_confirms_installs_and_opens)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    HeadlessSaveDirSandbox sandbox;
+    cfg.data.erase("cloud");
+
+    // The company the cloud holds: real writer bytes (so install accepts them
+    // and the open path can load them), staged through a scratch slot.
+    ASSERT_TRUE(seed_headless_company("hlcloudr", "CLOUD BAND", 7000));
+    std::string remote_bytes;
+    {
+        std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                             "hlcloudr.gtl",
+                         std::ios::binary);
+        remote_bytes.assign((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    }
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/hlcloudr.gtl"));
+
+    // ...and the DIFFERENT company already occupying the target slot, so the
+    // NO-first confirm actually fires.
+    ASSERT_TRUE(seed_headless_company("hlcloudl", "LOCAL BAND", 6000));
+
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::string(
+            R"({"revision":5,"uploaded_at":1754200000000,"slot":"hlcloudl",)"
+            R"("save_name":"CLOUD BAND","scen_num":1,"last_played":7000,)"
+            R"("data_hex":")") +
+        og::ui::cloud::hex_encode(remote_raw) + R"("})";
+
+    std::vector<std::string> get_urls;
+    // Restore on every exit path: an ASSERT inside the flow must not leak the
+    // faked HTTP into the rest of the binary.
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string& url) {
+        get_urls.push_back(url);
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        // Present only so hooks_available() passes; this flow never posts.
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    const std::string input =
+        "9\n"                      // main: cloud -> CLOUD submenu
+        "1\n"                      // cloud: passphrase
+        "correct horse battery\n"
+        "3\n"                      // cloud: download
+        "y\n"                      //   NO-first overwrite confirm -> yes
+        "4\n"                      // cloud: back -> main
+        "7\n";                     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string output = stdout_capture.restore();
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    ASSERT_EQ(1u, get_urls.size());
+    EXPECT_NE(std::string::npos,
+              get_urls[0].find("/api/save/73270125791ba273"))
+        << "the GET addresses the derived-key route";
+    EXPECT_NE(std::string::npos, output.find("OVERWRITE COMPANY?"));
+    EXPECT_NE(std::string::npos, output.find("[y/N]"))
+        << "the terminal confirm hook must have run (NO-first)";
+    EXPECT_NE(std::string::npos, output.find("Loaded 'hlcloudl'"))
+        << "the download runs the 2.3 open sequence on the installed company";
+    EXPECT_NE(std::string::npos, output.find("Downloaded 'CLOUD BAND'."));
+    EXPECT_EQ("hlcloudl", config.save_name)
+        << "[SAVE-R2] the open repoints the terminal slot";
+    EXPECT_EQ("CLOUD BAND", og::data::read_company_header("hlcloudl")
+                                .value_or(og::data::CompanyInfo{})
+                                .display_name)
+        << "the slot holds the downloaded company";
+    EXPECT_EQ("5", cfg.get_setting("cloud", "revision"))
+        << "the server revision persists for the next optimistic upload";
+    cfg.data.erase("cloud");
 }
 
 // The §2.4 Backups sub-view (text projection): snapshots list newest-first,
