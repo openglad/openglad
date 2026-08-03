@@ -1956,9 +1956,10 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 9}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 9, .down = 4}},
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
+     ButtonAction::OpenDifficultyMenu, -1,
+     MenuNav{.up = 2, .down = 4, .right = 9}},
     {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 5}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
@@ -1979,10 +1980,11 @@ constexpr ExpectedSpecRow kMainMenuMPNote = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
     ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
 // #155: the always-visible CLOUD door (MenuSpecRow arg == materialized
-// ordinal 9 on every variant — exactly one QUIT row survives).
+// ordinal 9 on every variant — exactly one QUIT row survives), paired
+// with DIFFICULTY on one row (y=119..134 holds the SETTINGS heading).
 constexpr ExpectedSpecRow kMainMenuMPCloud = {
-    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 80, 119, 140, 15,
-    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 2, .down = 3}};
+    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
+    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 2, .down = 4, .left = 3}};
 
 // Main geometry no longer changes with multiplayer support: every build
 // manages seats in Base Camp and reaches persistent profiles via CONTROLS.

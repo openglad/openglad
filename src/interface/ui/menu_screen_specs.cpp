@@ -994,14 +994,14 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 9}},
+     .nav = {.up = 1, .down = 3}},
     // Seat lifecycle moved beside the live lobby in Base Camp. The remaining
     // session category keeps the full-width row, followed by the broader
     // game/presentation settings door.
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 9, .down = 4}},
+     .nav = {.up = 2, .down = 4, .right = 9}},
     {.id = "options", .label = "GAME SETTINGS",
      .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
@@ -1035,13 +1035,15 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
-    // browser restore flow is the point). Appended after the note, so its
-    // materialized ordinal is 9 on every variant (exactly one QUIT row
-    // survives materialization). Dispatches through the generic MenuSpecRow.
+    // browser restore flow is the point). Shares the DIFFICULTY row as a
+    // 68px pair (the y=119..134 band belongs to the grey SETTINGS heading
+    // drawn by main_menu_draw_content at y=125 — a full-width row there is
+    // painted over). Appended after the note, so its materialized ordinal
+    // is 9 on every variant (exactly one QUIT row survives materialization).
     {.id = "cloud", .label = "CLOUD",
-     .x = 80, .y = 119, .w = 140, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 2, .down = 3}},
+     .nav = {.up = 2, .down = 4, .left = 3}},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1058,11 +1060,11 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 9}},
+     .nav = {.up = 1, .down = 3}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 9, .down = 4}},
+     .nav = {.up = 2, .down = 4, .right = 9}},
     {.id = "options", .label = "GAME SETTINGS",
      .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
@@ -1093,13 +1095,15 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
-    // browser restore flow is the point). Appended after the note, so its
-    // materialized ordinal is 9 on every variant (exactly one QUIT row
-    // survives materialization). Dispatches through the generic MenuSpecRow.
+    // browser restore flow is the point). Shares the DIFFICULTY row as a
+    // 68px pair (the y=119..134 band belongs to the grey SETTINGS heading
+    // drawn by main_menu_draw_content at y=125 — a full-width row there is
+    // painted over). Appended after the note, so its materialized ordinal
+    // is 9 on every variant (exactly one QUIT row survives materialization).
     {.id = "cloud", .label = "CLOUD",
-     .x = 80, .y = 119, .w = 140, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 2, .down = 3}},
+     .nav = {.up = 2, .down = 4, .left = 3}},
 };
 
 // The CLOUD row's materialized ordinal (table length - 2: exactly one QUIT
