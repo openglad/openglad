@@ -20,8 +20,11 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+
+#include <cstring>
 
 #include <openglad/interface/game_context.h>
 
@@ -213,8 +216,11 @@ static char ctf_flag_state_glyph(const og::sim::CtfFlag& flag)
     }
 }
 
-// Shared CTF/classic countdown. Classic mode deliberately calls only this
-// helper: capture scores, flags and waypoint progress remain CTF-only.
+// Shared CTF/classic/scripted countdown. Classic and scripted modes
+// deliberately call only this helper: capture scores, flags and waypoint
+// progress remain CTF-only (scripted modes surface theirs through the
+// generic ModeState HUD lines). The queue storage is the shared RespawnState
+// base, so every engine's pending entries read identically here.
 static void draw_respawn_countdown(screen* s, walker* control,
                                    Sint32 lm, Sint32 tm)
 {
@@ -232,6 +238,171 @@ static void draw_respawn_countdown(screen* s, walker* control,
                                 static_cast<unsigned char>(YELLOW),
                                 static_cast<short>(1));
         break;
+    }
+}
+
+// Ramp color for a mode HUD element: team ramp when a score team is set,
+// else the classic HUD text yellow (the un-overlaid draw_respawn_countdown
+// default).
+static unsigned char mode_hud_color(std::uint8_t team)
+{
+    if (team < SCORE_TEAM_COUNT)
+        return static_cast<unsigned char>(team * 16 + 40);
+    return static_cast<unsigned char>(YELLOW);
+}
+
+// Per-viewport scripted-mode overlay: the four Lua-written ModeState HUD
+// lines, rendered at the slots the CTF panel proved out. Reads only
+// ModeState (replicated once the mode snapshot block lands), never mode
+// names in C++ — Lua is the only writer.
+//   slot 0 -> right-aligned ending at rm-60 on the tm+4 caps row
+//   slot 1 -> right-aligned ending at rm-60 on the tm+28 2-view digits row
+//   slot 2 -> lm+2, tm+36 (the WP-meter position)
+//   slot 3 -> lm+2, tm+28 (the FLAG!-tag position)
+// The >2-view suppression rule is kept: small panes cannot fit the
+// right-aligned rows beside the name, so slots 0-1 are suppressed exactly
+// like the CTF caps groups; the left-column slots 2-3 draw in every layout.
+static void draw_mode_panel(screen* s, Sint32 lm, Sint32 tm, Sint32 rm)
+{
+    const og::sim::ModeState& mode = s->world_.mode;
+    text& mytext = s->text_normal;
+
+    if (s->numviews <= 2)
+    {
+        for (int slot = 0; slot < 2; ++slot)
+        {
+            const og::sim::ModeHudLine& line =
+                mode.hud[static_cast<std::size_t>(slot)];
+            if (line.text[0] == '\0')
+                continue;
+            const Sint32 width = static_cast<Sint32>(
+                6 * std::strlen(line.text.data()));
+            const Sint32 row = (slot == 0) ? tm + 4 : tm + 28;
+            mytext.write_xy(rm - 60 - width, row, line.text.data(),
+                            mode_hud_color(line.team),
+                            static_cast<short>(1));
+            TRACE("mode_hud", "slot=%d text=%s team=%d", slot,
+                  line.text.data(), static_cast<int>(line.team));
+        }
+    }
+    if (mode.hud[2].text[0] != '\0')
+    {
+        mytext.write_xy(lm + 2, tm + 36, mode.hud[2].text.data(),
+                        mode_hud_color(mode.hud[2].team),
+                        static_cast<short>(1));
+        TRACE("mode_hud", "slot=2 text=%s team=%d", mode.hud[2].text.data(),
+              static_cast<int>(mode.hud[2].team));
+    }
+    if (mode.hud[3].text[0] != '\0')
+    {
+        mytext.write_xy(lm + 2, tm + 28, mode.hud[3].text.data(),
+                        mode_hud_color(mode.hud[3].team),
+                        static_cast<short>(1));
+        TRACE("mode_hud", "slot=3 text=%s team=%d", mode.hud[3].text.data(),
+              static_cast<int>(mode.hud[3].team));
+    }
+}
+
+// A small solid triangle at the viewport edge pointing along (dx, dy) —
+// exactly one of the four axis directions. (x, y) is the tip pixel.
+static void draw_beacon_arrow(screen* s, Sint32 x, Sint32 y, int dx, int dy,
+                              unsigned char color)
+{
+    for (int step = 0; step < 3; ++step)
+    {
+        const Sint32 span = static_cast<Sint32>(2 * step + 1);
+        if (dx != 0)
+        {
+            // Horizontal arrow: columns shrink toward the tip.
+            s->fastbox(x - dx * step, y - step, 1, span, color, 1);
+        }
+        else
+        {
+            // Vertical arrow: rows shrink toward the tip.
+            s->fastbox(x - step, y - dy * step, span, 1, color, 1);
+        }
+    }
+}
+
+// Off-screen beacon arrows + in-view pulse markers for the ModeState beacon
+// slots (og.set_beacon). Directional edge arrows point at out-of-view beacon
+// entities; an in-view beacon gets a pulsing underline bar. Render-only and
+// RNG-free: the pulse phase derives from the replicated tick, never from a
+// rng draw (the radar jitter-0 discipline).
+static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
+                              Sint32 tm, Sint32 rm, Sint32 bm)
+{
+    const GameWorld& world = s->world_;
+    const int view_floor =
+        (view->control != nullptr) ? static_cast<int>(view->control->floor())
+                                   : 0;
+    for (int slot = 0; slot < og::sim::kModeBeacons; ++slot)
+    {
+        const og::sim::ModeBeacon& beacon =
+            world.mode.beacons[static_cast<std::size_t>(slot)];
+        if (beacon.entity_id == 0)
+            continue;
+        const walker* target =
+            world.find_by_id(static_cast<std::uint32_t>(beacon.entity_id));
+        if (target == nullptr || target->dead() || target->dormant())
+            continue;
+        // Multi-floor: beacons on another floor would project at a
+        // meaningless spot; skip them (the radar's floor rule).
+        if (world.floor_count() > 1 &&
+            static_cast<int>(target->floor()) != view_floor)
+            continue;
+
+        const unsigned char color =
+            (beacon.team < SCORE_TEAM_COUNT)
+                ? static_cast<unsigned char>(beacon.team * 16 + 40)
+                : target->query_team_color();
+
+        // Project the entity center into this viewport's screen space.
+        const Sint32 cx = view->xloc +
+            (static_cast<Sint32>(target->xpos()) +
+             target->sizex() / 2 - view->topx);
+        const Sint32 cy = view->yloc +
+            (static_cast<Sint32>(target->ypos()) +
+             target->sizey() / 2 - view->topy);
+
+        // Clamp into the viewport interior; a binding clamp = off-view.
+        const Sint32 clamped_x = std::clamp(cx, lm + 4, rm - 5);
+        const Sint32 clamped_y = std::clamp(cy, tm + 4, bm - 5);
+        const Sint32 over_x = cx - clamped_x;
+        const Sint32 over_y = cy - clamped_y;
+
+        if (over_x == 0 && over_y == 0)
+        {
+            // In view: pulsing underline bar just below the sprite. Triangle
+            // wave over a 12-tick period (one second at the sim rate).
+            const int phase =
+                static_cast<int>(world.tick_count_ % 12u);
+            const int half = (phase < 6) ? phase : (11 - phase);
+            const Sint32 bar_w = static_cast<Sint32>(8 + 2 * half);
+            const Sint32 bar_x =
+                std::clamp(cx - bar_w / 2, lm, rm - bar_w);
+            const Sint32 bar_y = std::min(
+                cy + target->sizey() / 2 + 1, bm - 2);
+            s->fastbox(bar_x, bar_y, bar_w, 2, color, 1);
+            TRACE("mode_hud", "beacon_pulse slot=%d w=%d x=%d y=%d", slot,
+                  static_cast<int>(bar_w), static_cast<int>(bar_x),
+                  static_cast<int>(bar_y));
+        }
+        else
+        {
+            // Off view: an edge arrow pointing along the dominant overshoot
+            // axis, at the clamped projection.
+            int dx = 0;
+            int dy = 0;
+            if (std::abs(over_x) >= std::abs(over_y))
+                dx = (over_x > 0) ? 1 : -1;
+            else
+                dy = (over_y > 0) ? 1 : -1;
+            draw_beacon_arrow(s, clamped_x, clamped_y, dx, dy, color);
+            TRACE("mode_hud", "beacon_edge slot=%d dx=%d dy=%d x=%d y=%d",
+                  slot, dx, dy, static_cast<int>(clamped_x),
+                  static_cast<int>(clamped_y));
+        }
     }
 }
 
@@ -400,11 +571,23 @@ short new_score_panel(screen* s, short /*do_it*/)
         rm = s->viewob[players]->endx - OVERSCAN_PADDING;
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
 
+        // Scripted-mode (TYPE_SCRIPTED) worlds render the generic ModeState
+        // HUD; CTF worlds keep the CTF renderer. The two gates are disjoint
+        // (no CTF level is scripted until the CTF engine retirement).
+        const bool scripted_mode_hud =
+            (s->world_.type & GameWorld::TYPE_SCRIPTED) &&
+            s->world_.mode.active;
+        if (scripted_mode_hud)
+        {
+            draw_mode_panel(s, lm, tm, rm);
+            draw_mode_beacons(s, s->viewob[players].get(), lm, tm, rm, bm);
+        }
         if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
             draw_ctf_panel(s, control, lm, tm, rm);
         if (((s->world_.type & GameWorld::TYPE_CTF) &&
              s->world_.ctf.active) ||
-            og::sim::classic_respawn_active(s->world_))
+            og::sim::classic_respawn_active(s->world_) ||
+            scripted_mode_hud)
         {
             draw_respawn_countdown(s, control, lm, tm);
         }

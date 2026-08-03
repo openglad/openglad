@@ -21,6 +21,7 @@
 */
 
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/interface/cheat_handler.h>
@@ -249,12 +250,16 @@ struct ClassicRespawnCameraFocus
 // Classic respawns carry their exact eventual destination in the pending
 // entry, including cross-floor spawns. CTF entries intentionally do not use
 // x/y when firing (anchor rotation decides), so they must never enter this
-// camera path.
+// camera path. Scripted-mode (TYPE_SCRIPTED) respawns fire through the same
+// classic in-place paths, so their entries carry honest x/y too and the
+// camera follows them (D14: mode.active || classic; a Lua on_respawn that
+// re-places the walker afterwards is an accepted post-fire correction).
 std::optional<ClassicRespawnCameraFocus> classic_respawn_camera_focus(
     const GameWorld& world, const walker* control)
 {
     if (control == nullptr || !control->dead() ||
-        !og::sim::classic_respawn_active(world))
+        !(og::sim::classic_respawn_active(world) ||
+          og::sim::mode_scripted_active(world)))
     {
         return std::nullopt;
     }
