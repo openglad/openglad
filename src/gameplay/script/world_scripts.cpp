@@ -1293,24 +1293,22 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
 // WorldScripts
 // ---------------------------------------------------------------------------
 
-#ifdef TESTING
 // Test-only budget override: a world VM built while this is positive uses it
 // as the per-entry instruction budget instead of ScriptLimits' 5M default.
 // The og_unit_modes headroom proof runs a full scripted-mode tick under a
 // 10x-reduced budget; set it BEFORE the world's first dispatch (the VM is
-// built lazily) and restore 0 afterwards.
+// built lazily) and restore 0 afterwards. Nothing in production writes it
+// (unconditional rather than TESTING-gated because the unit binaries link
+// the production og_gameplay archive).
 std::int64_t g_test_world_instruction_budget = 0;
-#endif
 
 namespace {
 
 ScriptLimits world_script_limits()
 {
     ScriptLimits limits;
-#ifdef TESTING
     if (g_test_world_instruction_budget > 0)
         limits.instructions_per_call = g_test_world_instruction_budget;
-#endif
     return limits;
 }
 
