@@ -487,6 +487,271 @@ TEST(SimWorldHeadless, exit_with_foes_alive_says_foes_remain)
     EXPECT_EQ(2, exit_prompts());
 }
 
+// --- #160 exit-pad re-trigger latch -----------------------------------------
+//
+// Exit pads are eaten from ob_pass_check on EVERY movement probe, so before
+// the latch, held-direction walking on the pad re-ran the exit prompt (or the
+// "Foes remain!" toast) each time the skip_exit cooldown expired (~10 ticks).
+// These tests drive REAL movement probes (walkstep -> walk -> query_passable
+// -> ob_pass_check), never direct eat_me calls.
+
+namespace exit_latch {
+
+int exit_prompts(const og::sim::SimEventLog& log)
+{
+    int count = 0;
+    for (const auto& ev : log.events())
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation)
+            count++;
+    return count;
+}
+
+int notifications(const og::sim::SimEventLog& log, const char* needle)
+{
+    int count = 0;
+    for (const auto& ev : log.events())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find(needle) != std::string::npos)
+            count++;
+    return count;
+}
+
+// Movement probes only happen on passable ground; make the whole default
+// grid uniform grass so geometry is exact.
+void all_grass(GameWorld& w)
+{
+    const int n = w.grid.w * w.grid.h;
+    for (int i = 0; i < n; ++i)
+        w.grid.data[i] = PIX_GRASS1;
+}
+
+walker* make_exit_pad(TestGameWorld& t, short x, short y, short dest_level)
+{
+    walker* pad = t.world().add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    if (pad == nullptr)
+        return nullptr;
+    pad->setxy(x, y);
+    pad->stats()->set_level(dest_level); // destination level id
+    return pad;
+}
+
+// A player-controlled hero centered on the pad, pre-faced RIGHT so every
+// walkstep(1, 0) is a genuine movement probe (a direction CHANGE turns in
+// place without probing).
+walker* make_hero_on_pad(TestGameWorld& t, const walker* pad)
+{
+    walker* hero = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    if (hero == nullptr)
+        return nullptr;
+    hero->setxy(pad->xpos() + (pad->sizex() - hero->sizex()) / 2,
+                pad->ypos() + (pad->sizey() - hero->sizey()) / 2);
+    hero->set_act_type(ACT_CONTROL);
+    hero->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    hero->set_enddir(static_cast<char>(FACE_RIGHT));
+    return hero;
+}
+
+// One control-walker sim tick. living::act only reaches the skip_exit
+// decrement in the plain-walk shape: a mid-animation act returns early via
+// animate() and a pending turn returns via turn(), so hold both flat.
+void act_tick(walker* hero)
+{
+    hero->set_ani_type(ANI_WALK);
+    hero->set_enddir(static_cast<char>(hero->curdir()));
+    hero->act();
+}
+
+// One held-direction walk tick ON the pad: a real movement probe, then a
+// snap back to (x, y) so the walker never leaves the pad footprint no
+// matter how many ticks the test runs.
+void probe_tick(walker* hero, short x, short y)
+{
+    hero->walkstep(1, 0);
+    hero->setxy(x, y);
+}
+
+} // namespace exit_latch
+
+// RED-BEFORE: a control walker walking within the pad footprint used to be
+// re-prompted every time the 10-tick skip_exit cooldown expired (measured 5
+// prompts in 40 ticks); one CONTACT must produce exactly one prompt.
+TEST(SimWorldHeadless, exit_prompts_once_per_contact_not_per_cooldown)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = exit_latch::make_hero_on_pad(t, pad);
+    ASSERT_NE(nullptr, hero);
+    t.world().level_done = 2; // level cleared: the exit-prompt branch
+
+    const short hx = hero->xpos();
+    const short hy = hero->ypos();
+    for (int tick = 0; tick < 40; ++tick)
+    {
+        exit_latch::probe_tick(hero, hx, hy); // walkstep probes eat the pad
+        exit_latch::act_tick(hero);           // skip_exit expires twice in 40
+    }
+    EXPECT_EQ(1, exit_latch::exit_prompts(t.events))
+        << "one contact with the pad must produce exactly one exit prompt";
+}
+
+// Fully leaving the pad clears the latch on the next act tick; stepping back
+// on is a deliberate act and prompts again.
+TEST(SimWorldHeadless, exit_reprompts_after_stepping_fully_off_and_back)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = exit_latch::make_hero_on_pad(t, pad);
+    ASSERT_NE(nullptr, hero);
+    t.world().level_done = 2;
+
+    const short hx = hero->xpos();
+    const short hy = hero->ypos();
+    exit_latch::probe_tick(hero, hx, hy);
+    ASSERT_EQ(1, exit_latch::exit_prompts(t.events));
+    ASSERT_TRUE(hero->exit_latched());
+
+    // Step fully off the pad; the next act tick clears the latch.
+    hero->setxy(300, 120);
+    exit_latch::act_tick(hero);
+    EXPECT_FALSE(hero->exit_latched())
+        << "the latch must clear once the bbox no longer overlaps the pad";
+
+    // Walk back on (cooldown spent) -> a fresh contact, a fresh prompt.
+    hero->set_skip_exit(0);
+    hero->setxy(hx, hy);
+    exit_latch::probe_tick(hero, hx, hy);
+    EXPECT_EQ(2, exit_latch::exit_prompts(t.events))
+        << "stepping off and back on must re-prompt exactly once";
+}
+
+// Standing still on the pad never re-prompts, and the latch holds — it must
+// not decay with time, only with actually leaving the rect.
+TEST(SimWorldHeadless, exit_latch_holds_while_standing_still)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = exit_latch::make_hero_on_pad(t, pad);
+    ASSERT_NE(nullptr, hero);
+    t.world().level_done = 2;
+
+    exit_latch::probe_tick(hero, hero->xpos(), hero->ypos());
+    ASSERT_EQ(1, exit_latch::exit_prompts(t.events));
+
+    for (int tick = 0; tick < 60; ++tick)
+        exit_latch::act_tick(hero); // no movement -> no probes
+    EXPECT_EQ(1, exit_latch::exit_prompts(t.events));
+    EXPECT_TRUE(hero->exit_latched())
+        << "standing still on the pad must keep the latch armed";
+}
+
+// In-footprint jitter with the cooldown forced OFF every tick: the latch
+// alone must suppress the re-trigger (pre-latch this fired on EVERY probe).
+TEST(SimWorldHeadless, exit_latch_suppresses_infootprint_jitter_without_cooldown)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = exit_latch::make_hero_on_pad(t, pad);
+    ASSERT_NE(nullptr, hero);
+    t.world().level_done = 2;
+
+    const short hx = hero->xpos();
+    const short hy = hero->ypos();
+    for (int tick = 0; tick < 30; ++tick)
+    {
+        hero->set_skip_exit(0); // defeat the cooldown: only the latch is left
+        exit_latch::probe_tick(hero, hx, hy);
+        exit_latch::act_tick(hero);
+    }
+    EXPECT_EQ(1, exit_latch::exit_prompts(t.events))
+        << "small nudges whose bbox never leaves the pad must not re-prompt";
+}
+
+// RED-BEFORE: the "Foes remain!" toast (level_done == 0, destination
+// unearned) used to spam on the same cooldown cadence; it must fire exactly
+// once per contact.
+TEST(SimWorldHeadless, foes_remain_toast_fires_once_per_contact)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = exit_latch::make_hero_on_pad(t, pad);
+    ASSERT_NE(nullptr, hero);
+    t.world().level_done = 0; // foes alive, destination unearned: the toast
+
+    const short hx = hero->xpos();
+    const short hy = hero->ypos();
+    for (int tick = 0; tick < 40; ++tick)
+    {
+        exit_latch::probe_tick(hero, hx, hy);
+        exit_latch::act_tick(hero);
+    }
+    EXPECT_EQ(1, exit_latch::notifications(t.events, "Foes remain"))
+        << "one contact must produce exactly one Foes remain! toast";
+    EXPECT_EQ(0, exit_latch::exit_prompts(t.events));
+
+    // A fresh contact gets its own toast.
+    hero->setxy(300, 120);
+    exit_latch::act_tick(hero);
+    ASSERT_FALSE(hero->exit_latched());
+    hero->set_skip_exit(0);
+    hero->setxy(hx, hy);
+    exit_latch::probe_tick(hero, hx, hy);
+    EXPECT_EQ(2, exit_latch::notifications(t.events, "Foes remain"))
+        << "stepping off and back on is a new contact: a second toast";
+}
+
+// The latch is per-walker, not per-pad: A's latch must not suppress B's
+// first trigger on the same pad.
+TEST(SimWorldHeadless, two_control_walkers_latch_one_pad_independently)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+    walker* pad = t.world().add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, pad);
+    // Widen the pad (16x16 stock) into a 48x16 strip BEFORE placing it, so
+    // the obmap registers the full span and two 16px heroes fit on it with
+    // a clear gap between them (their probes must hit only the pad).
+    pad->set_sizex(48);
+    pad->setxy(120, 120);
+    pad->stats()->set_level(2);
+    t.world().level_done = 2;
+
+    // A on the pad's left cell, B on its right cell: both overlap the pad,
+    // neither overlaps the other (nor after a one-step probe right).
+    walker* a = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, a);
+    a->setxy(pad->xpos(), pad->ypos());
+    a->set_act_type(ACT_CONTROL);
+    a->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    a->set_enddir(static_cast<char>(FACE_RIGHT));
+
+    walker* b = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, b);
+    const short bx = static_cast<short>(pad->xpos() + pad->sizex() - b->sizex());
+    b->setxy(bx, pad->ypos());
+    b->set_act_type(ACT_CONTROL);
+    b->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    b->set_enddir(static_cast<char>(FACE_RIGHT));
+
+    exit_latch::probe_tick(a, a->xpos(), a->ypos());
+    EXPECT_EQ(1, exit_latch::exit_prompts(t.events));
+    EXPECT_TRUE(a->exit_latched());
+
+    exit_latch::probe_tick(b, b->xpos(), b->ypos());
+    EXPECT_EQ(2, exit_latch::exit_prompts(t.events))
+        << "B's first contact must trigger even though A is latched";
+    EXPECT_TRUE(b->exit_latched());
+}
+
 // Life-gem value vs permadeath: with keep_fallen_heroes set (permadeath off)
 // the fallen hero returns with their growth intact, so the gem drops at HALF
 // the legacy value — full salvage would double-dip. Default (0) is the

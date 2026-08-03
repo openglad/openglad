@@ -91,6 +91,12 @@ bool living::act()
 	if (dead())
 		return 0;
 
+	// #160: exit-pad re-trigger latch upkeep — clears once we have fully
+	// left the latched pad's rect. Runs before the animate/turn/frozen
+	// early-returns so the latch can never wedge shut on a walker that is
+	// mid-animation or frozen while stepping off the pad.
+	update_exit_latch();
+
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
 		set_foe(nullptr);

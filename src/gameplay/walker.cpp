@@ -2310,5 +2310,42 @@ std::string_view entity_display_name(const walker* w, std::string_view fallback)
 	return fallback;
 }
 
+// #160: arm the exit-pad re-trigger latch with the PAD's bbox — called by
+// ob_pass_check on the first movement probe that eats an exit pad. See the
+// exit_latched_ field comment in walker.h for the persistence contract
+// (server-only transient, the z_stair_latched_ precedent).
+void walker::latch_exit_contact(const walker* pad)
+{
+	if (pad == nullptr)
+		return;
+	exit_latched_ = true;
+	exit_latch_x_ = static_cast<std::int16_t>(pad->xpos());
+	exit_latch_y_ = static_cast<std::int16_t>(pad->ypos());
+	exit_latch_w_ = static_cast<std::int16_t>(pad->sizex());
+	exit_latch_h_ = static_cast<std::int16_t>(pad->sizey());
+}
+
+// #160: clear the exit latch once this walker's bbox no longer overlaps the
+// latched pad's rect. Runs every living::act tick. The test is EXACT bbox
+// overlap — deliberately one pixel wider than the shrunken obmap collide()
+// that arms the latch — so the latch always clears strictly AFTER movement
+// probes have stopped eating the pad, never before (edge jitter can not
+// slip a re-prompt through the gap).
+void walker::update_exit_latch()
+{
+	if (!exit_latched_)
+		return;
+	const std::int16_t x = static_cast<std::int16_t>(xpos());
+	const std::int16_t y = static_cast<std::int16_t>(ypos());
+	const std::int16_t w = static_cast<std::int16_t>(sizex());
+	const std::int16_t h = static_cast<std::int16_t>(sizey());
+	const bool overlaps = x < static_cast<std::int16_t>(exit_latch_x_ + exit_latch_w_) &&
+	                      exit_latch_x_ < static_cast<std::int16_t>(x + w) &&
+	                      y < static_cast<std::int16_t>(exit_latch_y_ + exit_latch_h_) &&
+	                      exit_latch_y_ < static_cast<std::int16_t>(y + h);
+	if (!overlaps)
+		exit_latched_ = false;
+}
+
 // attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
 // are all in src/runtime/walker_render_bridge.cpp.
