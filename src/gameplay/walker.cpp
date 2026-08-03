@@ -573,6 +573,23 @@ walker  * walker::fire()
 	//xp = weapon->xpos();
 	//yp = weapon->ypos();
 
+	// Delayed spawns: a dormant walker is intangible (absent from the obmap),
+	// so the pad probe below cannot see it — a generator would stack its
+	// spawn on top of a walker that has not entered the world yet. Treat a
+	// dormant-occupied pad exactly like a blocked pad: discard this round's
+	// spawn and retry on the next cadence — no melee (there is nothing
+	// tangible to attack), no pad side effects, and the dormant walker is
+	// never consumed. Only ever true when a dormant walker overlaps the pad,
+	// so stock levels (which never author spawn_delay) keep byte-identical
+	// behavior and RNG streams. Generator-gated: livings' weapons must keep
+	// flying straight over dormant cells.
+	if (query_order() == Order::Generator &&
+	    current_game->world->dormant_occupies_spot(weapon))
+	{
+		weapon->set_dead(1);
+		return nullptr;
+	}
+
 	// Actual combat
 	if (!current_game->world->query_passable(weapon->xpos(), weapon->ypos(), weapon))
 	{

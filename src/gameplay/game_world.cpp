@@ -21,6 +21,7 @@
 #include <openglad/core/test_trace.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <format>
 #include <utility>
 
@@ -1721,7 +1722,32 @@ void GameWorld::tick()
     // Wake a delayed-spawn walker: re-enter the obmap the way a spawned unit
     // does, then emit the teleporter-pad flash flourish at its spot. Only ever
     // reached when spawn_delay > 0 (non-default), so parity is untouched.
+    //
+    // The authored spot can be occupied by wake time: the walker was
+    // intangible while dormant, so nothing kept the spot free — an
+    // equal-delay formation member that woke earlier this same tick, a
+    // generator spawn, or a wanderer can be standing there. Entering the
+    // obmap regardless stacked live bodies permanently (a packed formation
+    // "merged" into one visible walker). So: wake in place when the spot is
+    // clear of LIVE blockers (dormant walkers never block — the first member
+    // of a mutual-overlap group always wakes in place, which is the no-
+    // deadlock guarantee); otherwise relocate to the nearest clear cell
+    // (deterministic ring scan, no RNG); when the whole nudge radius is
+    // blocked, defer — the walker stays dormant, keeps counting as alive
+    // below, and retries next tick. No wake path ever consumes a walker.
+    // BIT_NO_COLLIDE wakers keep the legacy wake-in-place (overlap is legal
+    // for them in ob_pass_check).
     auto wake_delayed_spawn = [this](walker* ob) {
+        const bool no_collide =
+            ob->stats() != nullptr &&
+            ob->stats()->query_bit_flags(BIT_NO_COLLIDE);
+        if (!no_collide && wake_spot_blocked(ob) &&
+            !relocate_to_nearest_wake_spot(ob))
+        {
+            TRACE("game", "delayed spawn deferred: spot blocked, tick=%u",
+                  static_cast<unsigned>(level_tick_count_));
+            return;
+        }
         ob->set_dormant(false);
         walker* flash = add_ob(Order::FX, FAMILY_FLASH);
         if (flash != nullptr)
@@ -2029,6 +2055,117 @@ bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
         }
     }
     return true;
+}
+
+// --- Delayed-spawn wake placement (see game_world.h) ------------------------
+//
+// Both helpers are only ever reached when a dormant walker is involved (the
+// wake path itself, or a generator pad holding one), so stock levels and all
+// parity goldens — none of which author spawn_delay — stay byte-identical.
+
+namespace
+{
+
+// Live dormant walker overlapping self's bbox at (x, y) on `floor`.
+bool dormant_overlaps_box(const GameWorld& world, const walker* self,
+                          std::int32_t x, std::int32_t y, int floor)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* other = uptr.get();
+        if (other == nullptr || other == self || other->dead() ||
+            !other->dormant() || static_cast<int>(other->floor()) != floor)
+            continue;
+        if (x + self->sizex() > other->xpos() &&
+            x < other->xpos() + other->sizex() &&
+            y + self->sizey() > other->ypos() &&
+            y < other->ypos() + other->sizey())
+            return true;
+    }
+    return false;
+}
+
+// Same nudge reach as the air-fall landing search (kFallNudgeRadius): four
+// 16px rings around the authored cell.
+inline constexpr std::int32_t kWakeNudgeRadius = 4;
+
+} // namespace
+
+bool GameWorld::dormant_occupies_spot(const walker* probe) const
+{
+    if (probe == nullptr)
+        return false;
+    return dormant_overlaps_box(*this, probe, probe->xpos(), probe->ypos(),
+                                probe->floor());
+}
+
+bool GameWorld::wake_spot_blocked(walker* ob)
+{
+    if (ob == nullptr || myobmap == nullptr)
+        return false;
+    const std::int32_t xi = ob->xpos();
+    const std::int32_t yi = ob->ypos();
+    // Same bucket sweep + blocking-entity shape as floor_landing_clear, minus
+    // its grid half (see game_world.h). The waker itself is dormant — never
+    // registered — so it cannot self-block.
+    constexpr std::int32_t kBucket = 32;
+    for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)
+    {
+        for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
+             by += kBucket)
+        {
+            const std::list<walker*>& pile = myobmap->obmap_get_list(
+                static_cast<short>(bx), static_cast<short>(by), ob->floor());
+            for (const walker* other : pile)
+            {
+                if (landing_blocked_by(other, ob, xi, yi))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
+{
+    if (ob == nullptr)
+        return false;
+    const PixieData& g = grid_for_floor(ob->floor());
+    if (!g.valid())
+        return false;
+    const std::int32_t cx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
+    const std::int32_t cy = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
+    for (std::int32_t r = 0; r <= kWakeNudgeRadius; ++r)
+    {
+        for (std::int32_t dy = -r; dy <= r; ++dy)
+        {
+            for (std::int32_t dx = -r; dx <= r; ++dx)
+            {
+                if (std::max(std::abs(dx), std::abs(dy)) != r)
+                    continue; // ring perimeter only
+                const std::int32_t nx = cx + dx;
+                const std::int32_t ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+                    continue;
+                const std::int32_t px = nx * GRID_SIZE;
+                const std::int32_t py = ny * GRID_SIZE;
+                if (!floor_landing_clear(ob, static_cast<float>(px),
+                                         static_cast<float>(py), ob->floor()))
+                    continue;
+                // Keep relocations off still-dormant footprints too: the
+                // displaced neighbour would only have to move again on its
+                // own wake tick.
+                if (dormant_overlaps_box(*this, ob, px, py, ob->floor()))
+                    continue;
+                // setxy on a dormant walker performs no obmap bookkeeping
+                // (dormancy is the "never in the obmap" state); the caller's
+                // set_dormant(false) registers it at this new spot.
+                ob->setxy(static_cast<short>(px), static_cast<short>(py));
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // SCEN_TYPE_SAVE_ALL scoping probe (see game_world.h). Only ever consulted
