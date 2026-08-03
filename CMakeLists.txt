@@ -3046,6 +3046,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
