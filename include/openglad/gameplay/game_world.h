@@ -330,6 +330,26 @@ public:
     // Unlike query_object_passable it never routes through ob_pass_check, so
     // probing cannot eat treasures or fire collide() side effects ("no-eat").
     bool floor_landing_clear(walker* ob, float x, float y, int target_floor);
+    // Delayed spawns are intangible (out of the obmap), so entity probes
+    // cannot see them. True when any live dormant walker's footprint overlaps
+    // probe's bbox on probe's floor — the check spawn placements use so a new
+    // body is never stacked onto (and can never consume) a walker that has
+    // not entered the world yet. Side-effect-free, RNG-free; only ever true
+    // when a dormant walker exists, so stock levels are byte-identical.
+    bool dormant_occupies_spot(const walker* probe) const;
+    // Entity-only occupancy probe for the delayed-spawn wake decision: true
+    // when a live blocking entity (living / generator / solid weapon-order
+    // scenery) overlaps ob's bbox at its current spot and floor. Deliberately
+    // no grid half: the authored spot's terrain is the author's business
+    // (legacy wakes never re-validated it) — a wake relocates only to solve
+    // ENTITY overlap, never to second-guess terrain.
+    bool wake_spot_blocked(walker* ob);
+    // Deterministic same-floor nudge for a delayed-spawn wake whose authored
+    // spot is blocked by a live entity: ring-by-ring, row-major scan (the
+    // land_on_nearest_clear_cell order, no RNG) for the nearest clear cell
+    // within kWakeNudgeRadius rings. Moves ob and returns true, or leaves it
+    // untouched and returns false (caller defers the wake to the next tick).
+    bool relocate_to_nearest_wake_spot(walker* ob);
 
     // 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
     // True when the straight cell ray between the two walkers' centers
