@@ -60,6 +60,18 @@ inline constexpr int kCtfLevelD = 9004;
 inline constexpr int kOtherModeLevel = 9050;  // manifest row for ANOTHER mode
 inline constexpr int kProbeLevel = 9090;      // mode_core helper probes
 
+// Soccer test levels (9301+): two-team pitch, four-team pitch, short time
+// limit, capped ally generators. Onslaught test levels (9401+): capped
+// two-team, three-team, short time limit. Rows live in
+// kTestRegistrationLua below; the default 40x60 test grid is 640x960 px.
+inline constexpr int kSoccerLevelA = 9301;
+inline constexpr int kSoccerLevelB = 9302;
+inline constexpr int kSoccerLevelC = 9303;
+inline constexpr int kSoccerLevelD = 9304;
+inline constexpr int kOnsLevelA = 9401;
+inline constexpr int kOnsLevelB = 9402;
+inline constexpr int kOnsLevelC = 9403;
+
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
 // re-map in the Lua breaks them loudly.
@@ -140,7 +152,54 @@ inline constexpr const char* kTestRegistrationLua =
     "    end\n"
     "    core.hud_score_line(0, 3, 7, 9)\n"
     "  end,\n"
-    "})\n";
+    "})\n"
+    "local soccer = og.use(\"mode_soccer_impl\")\n"
+    "local soccer_rows = {\n"
+    "  { id = 9301, mode = \"soccer\", teams = 2, time_limit = 10800,\n"
+    "    score_limit = 3,\n"
+    "    goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 },\n"
+    "                   [1] = { x = 592, y = 400, w = 32, h = 128 } },\n"
+    "    kickoff = { x = 320, y = 464 } },\n"
+    "  { id = 9302, mode = \"soccer\", teams = 4, time_limit = 10800,\n"
+    "    score_limit = 3,\n"
+    "    goal_rects = { [0] = { x = 256, y = 16, w = 128, h = 32 },\n"
+    "                   [1] = { x = 592, y = 256, w = 32, h = 128 },\n"
+    "                   [2] = { x = 256, y = 912, w = 128, h = 32 },\n"
+    "                   [3] = { x = 16, y = 256, w = 32, h = 128 } },\n"
+    "    kickoff = { x = 320, y = 480 } },\n"
+    "  { id = 9303, mode = \"soccer\", teams = 2, time_limit = 120,\n"
+    "    score_limit = 3,\n"
+    "    goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 },\n"
+    "                   [1] = { x = 592, y = 400, w = 32, h = 128 } },\n"
+    "    kickoff = { x = 320, y = 464 } },\n"
+    "  { id = 9304, mode = \"soccer\", teams = 2, time_limit = 10800,\n"
+    "    score_limit = 3, spawn_caps = { [0] = 2, [1] = 2 },\n"
+    "    goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 },\n"
+    "                   [1] = { x = 592, y = 400, w = 32, h = 128 } },\n"
+    "    kickoff = { x = 320, y = 464 } },\n"
+    "}\n"
+    "for i = 1, #soccer_rows do\n"
+    "  og.register_level_hooks(soccer_rows[i].id,\n"
+    "                          soccer.make_hooks(soccer_rows[i]))\n"
+    "end\n"
+    "og.register_level_hooks(9308, soccer.make_hooks({\n"
+    "  id = 9308, mode = \"soccer\", teams = 2, time_limit = 10800,\n"
+    "  score_limit = 3,\n"
+    "  goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 } },\n"
+    "  kickoff = { x = 320, y = 464 } }))\n"
+    "og.register_level_hooks(9309, soccer.make_hooks(nil))\n"
+    "local onslaught = og.use(\"mode_onslaught_impl\")\n"
+    "local ons_rows = {\n"
+    "  { id = 9401, mode = \"onslaught\", teams = 2, time_limit = 14400,\n"
+    "    spawn_caps = { [0] = 3, [1] = 3, [7] = 2 } },\n"
+    "  { id = 9402, mode = \"onslaught\", teams = 3, time_limit = 14400 },\n"
+    "  { id = 9403, mode = \"onslaught\", teams = 2, time_limit = 120 },\n"
+    "}\n"
+    "for i = 1, #ons_rows do\n"
+    "  og.register_level_hooks(ons_rows[i].id,\n"
+    "                          onslaught.make_hooks(ons_rows[i]))\n"
+    "end\n"
+    "og.register_level_hooks(9409, onslaught.make_hooks(nil))\n";
 
 inline bool write_text(const std::filesystem::path& path,
                        const std::string& text)
@@ -340,6 +399,22 @@ struct ModesCtfWorld : TestGameWorld
     void stage_self_teleport(walker* w)
     {
         w->set_last_self_teleport_tick(world().tick_count_ + 1);
+    }
+
+    // An authored generator (soccer/onslaught waves): ACT_GENERATE so the
+    // engine spawn machinery runs, difficulty-stamped for full HP.
+    walker* spawn_generator(int family, int team, int x, int y, int level = 1)
+    {
+        walker* gen = world().add_ob(Order::Generator, family);
+        if (gen == nullptr)
+            return nullptr;
+        gen->setxy(static_cast<short>(x), static_cast<short>(y));
+        gen->set_team_num(static_cast<unsigned char>(team));
+        if (gen->stats() != nullptr)
+            gen->stats()->set_level(level);
+        gen->set_difficulty(static_cast<std::uint32_t>(level));
+        gen->set_act_type(ACT_GENERATE);
+        return gen;
     }
 
     walker* spawn_living(int family, int team, int x, int y,
