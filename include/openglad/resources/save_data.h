@@ -90,6 +90,13 @@ public:
     // meaningless outside a networked session), so save()/load() bytes are
     // untouched.
     short cross_control = 0;
+    // Infinite gold (protocol v11): host-only lobby setting; 0 = the classic
+    // economy, 1 = hire/train purchases are FREE. The wallet is never
+    // inflated and never written — turning the setting off restores exactly
+    // the pre-toggle economy. SESSION-ONLY — never serialized to the GTL
+    // file (like cross_control), which also keeps every company autosave
+    // from baking a cheat balance into the player's file.
+    short infinite_gold = 0;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation

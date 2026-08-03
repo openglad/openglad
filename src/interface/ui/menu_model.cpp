@@ -13,7 +13,7 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
     // The DIFFICULTY entry is a door into the DIFFICULTY submenu
@@ -29,6 +29,9 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
     // §2.1: the LOAD half of the CONTINUE|LOAD split remains at the end of
     // the terminal model; the SDL surface positions it beside CONTINUE.
     {"load_company", "Load Company", PickerMenuCommand::LoadGame},
+    // #155: the CLOUD door — appended so the 1-based text-drive positions
+    // of every older row stay stable.
+    {"cloud", "Cloud", PickerMenuCommand::OpenCloudMenu},
 }};
 
 // §2.5 base camp: the TeamBuild model stays 12 items by IN-PLACE substitution
@@ -67,14 +70,16 @@ constexpr std::array<PickerMenuItem, 6> kScenarioItems = {{
 }};
 
 // The DIFFICULTY submenu: session difficulty plus the match rules that ride
-// SaveData (respawns, respawn delay, permadeath, generator rate). Defaults
-// keep classic behavior; the terminal clients present it as a nested list.
-constexpr std::array<PickerMenuItem, 6> kDifficultyMenuItems = {{
+// SaveData (respawns, respawn delay, permadeath, generator rate, infinite
+// gold). Defaults keep classic behavior; the terminal clients present it as a
+// nested list. Append new rows before "back" — Back stays last.
+constexpr std::array<PickerMenuItem, 7> kDifficultyMenuItems = {{
     {"difficulty", "Difficulty", PickerMenuCommand::SetDifficulty},
     {"respawn_mode", "Respawns", PickerMenuCommand::CycleRespawnMode},
     {"respawn_delay", "Respawn Delay", PickerMenuCommand::CycleRespawnDelay},
     {"permadeath", "Permadeath", PickerMenuCommand::TogglePermadeath},
     {"generator_rate", "Generators", PickerMenuCommand::CycleGeneratorRate},
+    {"infinite_gold", "Infinite Gold", PickerMenuCommand::ToggleInfiniteGold},
     {"back", "Back", PickerMenuCommand::Back},
 }};
 
@@ -100,6 +105,15 @@ constexpr std::array<PickerMenuItem, 4> kNameEntryItems = {{
     {"company_name_value", "Company Name", PickerMenuCommand::EditCompanyName},
     {"company_name_reroll", "Reroll", PickerMenuCommand::RerollCompanyName},
     {"company_name_accept", "Accept", PickerMenuCommand::AcceptCompanyName},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
+// #155 cloud saves: passphrase entry + the two manual sync actions. One
+// passphrase = one cloud slot holding one company file.
+constexpr std::array<PickerMenuItem, 4> kCloudSaveItems = {{
+    {"cloud_passphrase", "Passphrase", PickerMenuCommand::CloudSetPassphrase},
+    {"cloud_upload", "Upload", PickerMenuCommand::CloudUpload},
+    {"cloud_download", "Download", PickerMenuCommand::CloudDownload},
     {"back", "Back", PickerMenuCommand::Back},
 }};
 
@@ -145,6 +159,12 @@ constexpr PickerMenuDefinition kNameEntryMenu{
     std::span<const PickerMenuItem>(kNameEntryItems),
 };
 
+constexpr PickerMenuDefinition kCloudSaveMenu{
+    PickerMenuId::CloudSave,
+    "Cloud Save",
+    std::span<const PickerMenuItem>(kCloudSaveItems),
+};
+
 } // namespace
 
 const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
@@ -164,6 +184,8 @@ const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
         return kBackupsMenu;
     case PickerMenuId::NameEntry:
         return kNameEntryMenu;
+    case PickerMenuId::CloudSave:
+        return kCloudSaveMenu;
     }
     return kMainMenu;
 }

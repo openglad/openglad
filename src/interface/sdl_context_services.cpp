@@ -62,7 +62,9 @@ void input_state_from_sdl(InputState& out)
         // 1. Opposite-direction re-assert: a fresh press must beat a STALE
         //    opposite hold. A browser-swallowed keyup (iPad Safari around
         //    system gestures) otherwise latches the old direction forever
-        //    and every real opposite press nets the axis to zero.
+        //    and every real opposite press nets the axis to zero. On
+        //    platforms with unreliable keyups the suppression is
+        //    persistent (cancel mode) with event-driven re-assert.
         // 2. Diagonal release retention: a sloppy two-key diagonal release
         //    (one key clearing 1-3 samples before the other) keeps
         //    reporting the diagonal for a short grace window so the control
@@ -72,7 +74,8 @@ void input_state_from_sdl(InputState& out)
             if (out.players[p].held[d])
                 raw_mask = static_cast<std::uint8_t>(raw_mask | (1u << d));
         const std::uint8_t resolved = resolve_opposing_directions(
-            raw_mask, input_hardware_state().direction_conflict[p]);
+            raw_mask, input_hardware_state().direction_conflict[p],
+            input_hardware_state().unreliable_keyups);
         const std::uint8_t shaped = coalesce_direction_release(
             resolved, input_hardware_state().direction_grace[p]);
         if (shaped != raw_mask)

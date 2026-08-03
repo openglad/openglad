@@ -310,7 +310,7 @@ og.family("living", {
   sprite = "mage.png",
   animation = "mage",
   ai_line_of_sight = 7,
-  description = "Mages are slow, can't     \nstand much damage, and are\nhorrible at hand-to-hand  \ncombat, but their magical \nfireballs pack a big      \npunch.                    \n\nSpecial: Teleport",
+  description = "Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.\n\nSpecial: Teleport",
   names = { "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando",
             "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry",
             "Manannan", "Mordack", "Jace" },

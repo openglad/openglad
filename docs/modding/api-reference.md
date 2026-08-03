@@ -82,6 +82,11 @@ Three companions live in the same chunk:
 None of the world API works at a chunk's top level — see R4 in the design
 doc. Declare, bind, and ask the world from inside a hook.
 
+`description` is plain prose: the HIRE screen auto-flows it to its box at
+render time, so do NOT hand-wrap it to a column or pad it with trailing
+spaces. `'\n\n'` is a paragraph break (the core families use it before
+their `Special: ...` line); a single `'\n'` is soft and joins with a space.
+
 ## Hooks
 
 Hooks are keys on the declaration table, beside the data they act on:

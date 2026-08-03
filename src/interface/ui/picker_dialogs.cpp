@@ -18,14 +18,15 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/screen.h>
 
+#include <algorithm>
 #include <cstring>
 #include <array>
-#include <list>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,10 @@ namespace {
 constexpr int YES_VALUE = 5;
 constexpr int NO_VALUE = 6;
 constexpr int PIX_PER_CHAR = 6;
+// Widest dialog message line that keeps the frame on the 320px screen:
+// 46*6 = 276px of text + 24px of frame = 300 (issue #152). Longer messages
+// word-wrap instead of pushing the dialog off-screen.
+constexpr int kMaxDialogChars = 46;
 
 static const button k_yes_or_no_buttons[] =
     {
@@ -57,7 +62,7 @@ struct DialogBounds {
 };
 
 // Get the max dimensions needed to display it
-DialogBounds compute_dialog_bounds(const char* title, const std::list<std::string>& lines)
+DialogBounds compute_dialog_bounds(const char* title, const std::vector<std::string>& lines)
 {
     int w = static_cast<int>(strlen(title)) * 9;
     int h = 30 + 10 * static_cast<int>(lines.size());
@@ -89,13 +94,25 @@ void timed_dialog(const char* message, float delay_seconds)
 
     text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
-    int len = static_cast<int>(strlen(message));
-    int width = len * PIX_PER_CHAR;
+    // Wrap over-long messages so the frame stays on-screen (issue #152);
+    // a single-line message renders exactly as it always has.
+    const std::vector<std::string> lines =
+        og::core::wrap_text(message, kMaxDialogChars);
+    int width = 0;
+    for (const std::string& line : lines)
+        width = std::max(width, static_cast<int>(line.size()) * PIX_PER_CHAR);
     int leftside  = 160 - width/2 - 12;
     int rightside = 160 + width/2 + 12;
+    const int bottom = 110 + 10 * std::max(0, static_cast<int>(lines.size()) - 1);
 
-    og::runtime::current_session->myscreen_->draw_button(leftside, 80, rightside, 110, 1);
-    gladtext.write_xy(160 - width/2, 94, message, static_cast<unsigned char>(DARK_BLUE), 1);
+    og::runtime::current_session->myscreen_->draw_button(leftside, 80, rightside, bottom, 1);
+    int line_y = 94;
+    for (const std::string& line : lines)
+    {
+        gladtext.write_xy(160 - static_cast<int>(line.size()) * PIX_PER_CHAR / 2,
+                          line_y, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+        line_y += 10;
+    }
 
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
@@ -178,8 +195,8 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
 
     text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
-    // Break message into lines
-    std::list<std::string> ls = explode(message, '\n');
+    // Break message into lines, wrapping over-long ones (issue #152).
+    std::vector<std::string> ls = og::core::wrap_text(message, kMaxDialogChars);
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
@@ -272,7 +289,7 @@ void popup_dialog(const char* title, const char* message)
 
     text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
-    std::list<std::string> ls = explode(message, '\n');
+    std::vector<std::string> ls = og::core::wrap_text(message, kMaxDialogChars);
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.

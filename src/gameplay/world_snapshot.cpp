@@ -1578,6 +1578,20 @@ void apply_entity_snapshot_fields(GameWorld& world,
                          snapshot.entity_id, static_cast<int>(snapshot.order),
                          static_cast<int>(snapshot.family));
             }
+            else
+            {
+                // The configurator only updates sim tables (loader::set_walker:
+                // act type, animation table, derived stats); it hands the new
+                // family's art back for the caller to install. Without this the
+                // mirror keeps the OLD family's bitmap and frame count while the
+                // wire fields below stamp on the NEW family's sizex/sizey — the
+                // stride mismatch that garbles every grown slime (small -> medium
+                // -> big all reuse one entity_id via walker::transform_to), and a
+                // heap over-read once the new rectangle is larger than the stale
+                // buffer. walker::transform_to does exactly this on the
+                // authoritative side; the snapshot-apply path owes the same call.
+                entity.set_data(*data);
+            }
         }
         world.set_entity_derived_stats(&entity, snapshot.order, snapshot.family);
     }

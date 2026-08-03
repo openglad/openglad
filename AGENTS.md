@@ -17,6 +17,23 @@ tooling. Follow their checklists and gates exactly; the hard invariants
 (byte-identical parity via `og_test_parity`, coverage floors, vendor-header
 isolation) are enforced by CI and scripts under `scripts/`.
 
+## PR screenshots and proof media
+
+Never commit screenshots, GIFs, or other PR/issue proof media to this repo
+(no `docs/media/`, no images anywhere in the tree). Push them to
+[openglad/openglad-screenshots](https://github.com/openglad/openglad-screenshots)
+— one `pr-<number>/` directory per PR — and embed them in the PR body with
+raw URLs pinned to a commit SHA:
+
+```
+https://raw.githubusercontent.com/openglad/openglad-screenshots/<sha>/pr-123/before.png
+```
+
+The capture tooling stays here (`scripts/media/capture_showcase.sh`,
+`openglad_demo` frame dumps, `save_screenshot()`); it writes to the
+gitignored `build/media/`, and finished artifacts get committed to the
+screenshots repo.
+
 ## Modding map
 
 Three documents, three lanes: the skill is the playbook, the design doc is

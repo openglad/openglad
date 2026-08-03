@@ -323,6 +323,25 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 {
                     if ( targetorder == Order::Treasure )
                     {
+                        // #160: exit pads fire once per CONTACT, not once per
+                        // skip_exit cooldown. Every movement probe lands here,
+                        // so held-direction walking on the pad used to re-run
+                        // the exit prompt / "Foes remain!" toast each time the
+                        // 10-tick cooldown expired (and in MP every re-prompt
+                        // froze the sim for everyone). The prober latches the
+                        // pad's rect on its first eaten contact and skips
+                        // exit-pad eats until it has fully left the rect
+                        // (cleared each tick in living::act via
+                        // update_exit_latch()). Non-exit treasures are
+                        // unchanged; skip_exit stays as a secondary bound
+                        // (it also throttles teleporters/door toasts and
+                        // feeds game_server's prompt-routing sniff).
+                        if (w->family() == FAMILY_EXIT)
+                        {
+                            if (ob->exit_latched())
+                                continue;
+                            ob->latch_exit_contact(w);
+                        }
                         w->eat_me(ob);
                     }
                     else if ( (targetorder == Order::Weapon)

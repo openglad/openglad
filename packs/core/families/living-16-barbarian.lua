@@ -101,7 +101,7 @@ og.family("living", {
   sprite = "barby.png",
   animation = "standard",
   ai_line_of_sight = 12,
-  description = "Barbarians are powerful   \nand resist some magic     \ndamage, but have more will\nthan skill. They are tough,\ntending to bash their way \nthrough trouble with heavy\niron hammers.             \nSpecial: Hurl Boulder",
+  description = "Barbarians are powerful and resist some magic damage, but have more will than skill. They are tough, tending to bash their way through trouble with heavy iron hammers.\n\nSpecial: Hurl Boulder",
   names = { "Thor", "Conan", "Beowulf", "Cronus", "Pallas", "Atlas",
             "Prometheus", "Titan" },
   playable = true,

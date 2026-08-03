@@ -43,8 +43,7 @@ std::vector<std::string> team_build_context_lines(const SaveData& save)
         });
         lines.push_back(team);
     }
-    lines.push_back(std::format("Gold: {}",
-        static_cast<unsigned>(save.m_totalcash[0])));
+    lines.push_back(std::format("Gold: {}", format_wallet_amount(save, 0)));
     return lines;
 }
 

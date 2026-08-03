@@ -28,6 +28,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -77,6 +79,18 @@ Sint32 create_train_menu(Sint32 arg1);
 void popup_dialog(const char* title, const char* message);
 bool no_or_yes_prompt(const char* title, const char* message,
                       bool default_value);
+// The shared one-line text prompt (level_editor_ui.cpp; the JOIN ROOM CODE
+// dialog) — the #155 CLOUD passphrase entry reuses it.
+bool prompt_for_string(const std::string& message, std::string& result);
+#ifdef TESTING
+// #155 cloud passphrase prompt seam (the picker_testing_yes_or_no_queue
+// pattern): tests queue passphrases, the PASSPHRASE handler pops one per
+// click, and an empty queue is a deterministic cancel. Defined at the end
+// of this file; tests declare these locally (repo pattern).
+void picker_testing_cloud_passphrase_queue_clear();
+void picker_testing_cloud_passphrase_queue_push(const char* value);
+bool picker_testing_cloud_passphrase_queue_pop(std::string& out);
+#endif
 // MATCHUP engine hooks (defined beside their file-local helpers in
 // picker_team_build.cpp).
 void picker_teams_menu_engine_reset_open_state();
@@ -175,6 +189,13 @@ std::string generator_rate_row_label(const MenuLabelContext& context)
         : std::string("Generators: Normal");
 }
 
+std::string infinite_gold_row_label(const MenuLabelContext& context)
+{
+    return context.save != nullptr
+        ? format_infinite_gold_label(*context.save)
+        : std::string("Infinite Gold: Off");
+}
+
 constexpr GateBinding kHostOnlyGate{.gate = MenuGate::HostOnly};
 
 constexpr MenuButtonSpec kDifficultyRows[] = {
@@ -209,8 +230,14 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "generator_rate", .label = "Generators: Normal",
      .x = 90, .y = 127, .w = 140, .h = 15,
      .action = ButtonAction::CycleGeneratorRate, .arg = -1,
-     .nav = {.up = 4, .down = 0},
+     .nav = {.up = 4, .down = 6},
      .label_binding = {.formatter = &generator_rate_row_label},
+     .gate = kHostOnlyGate},
+    {.id = "infinite_gold", .label = "Infinite Gold: Off",
+     .x = 90, .y = 150, .w = 140, .h = 15,
+     .action = ButtonAction::ToggleInfiniteGold, .arg = -1,
+     .nav = {.up = 5, .down = 0},
+     .label_binding = {.formatter = &infinite_gold_row_label},
      .gate = kHostOnlyGate},
 };
 
@@ -967,33 +994,35 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4}},
     // Seat lifecycle moved beside the live lobby in Base Camp. The remaining
     // session category keeps the full-width row, followed by the broader
     // game/presentation settings door.
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "options", .label = "GAME SETTINGS",
      .x = 80, .y = 154, .w = 140, .h = 15,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 4, .down = 5}},
+    // "GAME" reads as a settings category under the SETTINGS heading; the
+    // terminal clients keep the fuller "Game Settings" (no heading there).
+    {.id = "options", .label = "GAME",
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 3, .down = 5}},
+     .nav = {.up = 2, .down = 3, .right = 9}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .down = 0, .right = 6}},
+     .nav = {.up = 3, .down = 0, .right = 6}},
     // The web/native fork (§1.6): exactly one QUIT row survives at
     // materialized index 6. Native activation quits; web is visibly disabled.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
@@ -1007,6 +1036,16 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
+    // #155 CLOUD: always visible (reachable with zero companies — the fresh
+    // browser restore flow is the point). Pairs with the GAME door on the
+    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
+    // heading drawn by main_menu_draw_content at y=125 — no button may sit
+    // there). Appended after the note, so its materialized ordinal is 9 on
+    // every variant (exactly one QUIT row survives materialization).
+    {.id = "cloud", .label = "CLOUD",
+     .x = 152, .y = 135, .w = 68, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 9,
+     .nav = {.up = 2, .down = 3, .left = 4}},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1023,28 +1062,30 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
-    {.id = "options", .label = "GAME SETTINGS",
      .x = 80, .y = 154, .w = 140, .h = 15,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 4, .down = 5}},
+    // "GAME" reads as a settings category under the SETTINGS heading; the
+    // terminal clients keep the fuller "Game Settings" (no heading there).
+    {.id = "options", .label = "GAME",
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 3, .down = 5}},
+     .nav = {.up = 2, .down = 3, .right = 9}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .down = 0, .right = 6}},
+     .nav = {.up = 3, .down = 0, .right = 6}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 4, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
@@ -1057,7 +1098,33 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
+    // #155 CLOUD: always visible (reachable with zero companies — the fresh
+    // browser restore flow is the point). Pairs with the GAME door on the
+    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
+    // heading drawn by main_menu_draw_content at y=125 — no button may sit
+    // there). Appended after the note, so its materialized ordinal is 9 on
+    // every variant (exactly one QUIT row survives materialization).
+    {.id = "cloud", .label = "CLOUD",
+     .x = 152, .y = 135, .w = 68, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 9,
+     .nav = {.up = 2, .down = 3, .left = 4}},
 };
+
+// The CLOUD row's materialized ordinal (table length - 2: exactly one QUIT
+// row survives materialization, and CLOUD is appended after the note).
+constexpr int kMainMenuCloudSpecArg = 9;
+
+// #155: the main menu's first spec-row consumer. The no_company_note row
+// (arg 8) is never Visible, so only CLOUD can arrive here.
+Sint32 main_menu_on_spec_row(int row, void* /*screen_state*/)
+{
+    if (row == kMainMenuCloudSpecArg)
+    {
+        (void)run_cloud_save_screen();
+        return MENU_REDRAW;
+    }
+    return 0;
+}
 
 void main_menu_draw_background(void* /*screen_state*/)
 {
@@ -3441,6 +3508,8 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
     spec.polls_lobby = true;
     spec.draw_background = &main_menu_draw_background;
     spec.draw_content = &main_menu_draw_content;
+    // #155: the CLOUD row dispatches through the generic MenuSpecRow (D15).
+    spec.on_spec_row = &main_menu_on_spec_row;
     // Every caller ignores mainmenu()'s return value; MENU_EXIT mirrors the
     // legacy loop's exit-bearing retvalue.
     spec.exit_value = MENU_EXIT;
@@ -4210,6 +4279,206 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
     return MENU_REDRAW;
 }
 
+// ---------------------------------------------------------------------------
+// #155 CLOUD SAVE subscreen (the main-menu CLOUD door): passphrase entry +
+// manual UPLOAD/DOWNLOAD against the relay save vault. All state is local
+// (design D14 — HTTP fires only on the two action clicks); the flows live in
+// the pure layer (cloud_save_client.cpp) and reach the network through the
+// PlatformBridge text-HTTP callbacks.
+// ---------------------------------------------------------------------------
+
+// The company-list seam pattern: the row-state overrides read this
+// file-static pointer; run_menu_screen's screen_state points at the SAME
+// object. Null state renders the all-enabled shape bare engine sweeps see.
+CloudSaveScreenState* g_cloud_save_state = nullptr;
+
+constexpr int kCloudSavePassphraseIndex = 0;
+constexpr int kCloudSaveUploadIndex = 1;
+constexpr int kCloudSaveDownloadIndex = 2;
+constexpr int kCloudSaveBackIndex = 3;
+
+// UPLOAD needs a passphrase AND a company on disk; DOWNLOAD needs only the
+// passphrase. Disabled rows use the engine's greyed inert-box grammar
+// (visible, keyboard navigable, click no-ops with the disabled_row_click
+// TRACE), so the static nav graph never needs rewiring.
+RowState cloud_upload_row_state(const MenuLabelContext& /*context*/)
+{
+    const CloudSaveScreenState* st = g_cloud_save_state;
+    if (st == nullptr)
+        return RowState::Visible;
+    return (st->key_set && st->company_present) ? RowState::Visible
+                                                : RowState::Disabled;
+}
+
+RowState cloud_download_row_state(const MenuLabelContext& /*context*/)
+{
+    const CloudSaveScreenState* st = g_cloud_save_state;
+    if (st == nullptr)
+        return RowState::Visible;
+    return st->key_set ? RowState::Visible : RowState::Disabled;
+}
+
+// Vertical cycle 0..3 (wrap both ways); BACK carries the Escape hotkey.
+constexpr MenuButtonSpec kCloudSaveRows[] = {
+    {.id = "cloud_passphrase", .label = "PASSPHRASE",
+     .x = 80, .y = 60, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = kCloudSavePassphraseIndex,
+     .nav = {.up = kCloudSaveBackIndex, .down = kCloudSaveUploadIndex}},
+    {.id = "cloud_upload", .label = "UPLOAD",
+     .x = 80, .y = 84, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = kCloudSaveUploadIndex,
+     .nav = {.up = kCloudSavePassphraseIndex,
+             .down = kCloudSaveDownloadIndex},
+     .state_override = &cloud_upload_row_state},
+    {.id = "cloud_download", .label = "DOWNLOAD",
+     .x = 80, .y = 108, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = kCloudSaveDownloadIndex,
+     .nav = {.up = kCloudSaveUploadIndex, .down = kCloudSaveBackIndex},
+     .state_override = &cloud_download_row_state},
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 80, .y = 150, .w = 60, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = kCloudSaveBackIndex,
+     .nav = {.up = kCloudSaveDownloadIndex,
+             .down = kCloudSavePassphraseIndex}},
+};
+
+// Refresh the purely-local state: cfg key presence + the active company's
+// on-disk header (never the network).
+void cloud_save_refresh_state(CloudSaveScreenState& state)
+{
+    state.key_set = !og::ui::cloud::stored_cloud_key().empty();
+    const std::string slot = og::data::active_company_slot();
+    state.company_present = user_file_exists("save/" + slot + ".gtl");
+    state.company_name.clear();
+    if (state.company_present)
+    {
+        if (const std::optional<og::data::CompanyInfo> header =
+                og::data::read_company_header(slot))
+        {
+            state.company_name = header->display_name;
+        }
+    }
+}
+
+void cloud_save_draw_content(void* screen_state)
+{
+    const CloudSaveScreenState* st =
+        static_cast<const CloudSaveScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    game->text_normal.write_xy(80, 13, DARK_BLUE, "%s", "CLOUD SAVE");
+    // Three status lines under DOWNLOAD, clear of BACK's face at y=150.
+    const std::string company_line = (st != nullptr && st->company_present)
+        ? std::format("COMPANY: {}",
+                      st->company_name.empty()
+                          ? og::data::active_company_slot()
+                          : st->company_name)
+        : std::string("NO COMPANY");
+    game->text_normal.write_xy(80, 126, DARK_BLUE, "%s",
+                               company_line.c_str());
+    game->text_normal.write_xy(
+        80, 134, DARK_BLUE, "%s",
+        format_cloud_passphrase_status(st != nullptr && st->key_set).c_str());
+    if (st != nullptr && !st->status_line.empty())
+    {
+        game->text_normal.write_xy(80, 142, DARK_BLUE, "%s",
+                                   st->status_line.c_str());
+    }
+}
+
+// Hooks bundle: the PlatformBridge text-HTTP callbacks (empty on clients
+// without HTTP -> the flows degrade, design D8) + the shared NO-first
+// confirm and popup dialogs (trace-only under TESTING).
+og::ui::cloud::CloudHooks make_sdl_cloud_hooks()
+{
+    og::ui::cloud::CloudHooks hooks;
+    const PlatformBridge& bridge = platform_bridge();
+    if (bridge.cloud_http_get)
+        hooks.http_get = bridge.cloud_http_get;
+    if (bridge.cloud_http_post)
+        hooks.http_post = bridge.cloud_http_post;
+    hooks.confirm = [](const std::string& title, const std::string& message) {
+        return no_or_yes_prompt(title.c_str(), message.c_str(), false);
+    };
+    hooks.notify = [](const std::string& title, const std::string& message) {
+        popup_dialog(title.c_str(), message.c_str());
+    };
+    return hooks;
+}
+
+// The §2.3 OPEN sequence for a freshly downloaded company: validate + load +
+// mount via open_company_slot, then re-seed the lobby cache and the main
+// menu's company view. False on any failure (the flow's D16 popup then
+// names the missing campaign; the company stays installed on disk).
+bool cloud_save_open_company(const std::string& slot)
+{
+    SaveDataIoError io = SaveDataIoError::None;
+    const ContinueResult result = open_company_slot(
+        og::runtime::current_session->myscreen_->save_data, slot, &io);
+    if (result != ContinueResult::Opened)
+        return false;
+    picker_lobby_initialize_from_save();
+    refresh_main_menu_company_view();
+    TRACE("cloud_save", "opened %s", slot.c_str());
+    return true;
+}
+
+Sint32 cloud_save_on_spec_row(int row, void* screen_state)
+{
+    CloudSaveScreenState* st =
+        static_cast<CloudSaveScreenState*>(screen_state);
+    if (st == nullptr)
+        return row == kCloudSaveBackIndex ? MENU_EXIT : 0;
+
+    switch (row)
+    {
+    case kCloudSavePassphraseIndex:
+    {
+        // Clear-text entry is deliberate (typo visibility beats
+        // shoulder-surfing for a game save). Cancel changes nothing.
+        std::string value;
+        bool accepted = false;
+#ifdef TESTING
+        // Deterministic seam: tests queue passphrases; an empty queue is a
+        // cancel (picker_testing_cloud_passphrase_queue_push below).
+        accepted = picker_testing_cloud_passphrase_queue_pop(value);
+#else
+        accepted = prompt_for_string("CLOUD PASSPHRASE", value);
+#endif
+        if (!accepted)
+            return MENU_REDRAW;
+        const std::string key = og::ui::cloud::derive_cloud_save_key(value);
+        if (key.empty())
+        {
+            popup_dialog("CLOUD SAVE", "Passphrase must be\n8-64 characters.");
+            return MENU_REDRAW;
+        }
+        og::ui::cloud::store_cloud_key(key);
+        cloud_save_refresh_state(*st);
+        st->status_line = "Passphrase set.";
+        TRACE("cloud_save", "passphrase_set");
+        return MENU_REDRAW;
+    }
+    case kCloudSaveUploadIndex:
+        st->status_line = og::ui::cloud::run_cloud_upload(
+            default_relay_base_url(), make_sdl_cloud_hooks());
+        cloud_save_refresh_state(*st);
+        TRACE("cloud_save", "upload: %s", st->status_line.c_str());
+        return MENU_REDRAW;
+    case kCloudSaveDownloadIndex:
+        st->status_line = og::ui::cloud::run_cloud_download(
+            default_relay_base_url(), make_sdl_cloud_hooks(),
+            &cloud_save_open_company);
+        cloud_save_refresh_state(*st);
+        TRACE("cloud_save", "download: %s", st->status_line.c_str());
+        return MENU_REDRAW;
+    case kCloudSaveBackIndex:
+        TRACE("cloud_save", "back");
+        return MENU_EXIT;
+    default:
+        return 0;
+    }
+}
+
 } // namespace
 
 // §2.1: refresh the cached company view once per mainmenu() entry (the
@@ -4651,6 +4920,46 @@ bool run_company_backups_screen(const std::string& slot,
     return state.opened;
 }
 
+const MenuScreenSpec& cloud_save_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "cloud_save",
+        .rows = kCloudSaveRows,
+        .row_count = static_cast<int>(std::size(kCloudSaveRows)),
+        .buttons_accessor = &picker_cloud_save_buttons,
+        .count_accessor = &picker_cloud_save_button_count,
+        // Static nav: the Disabled rows stay visible and navigable, so the
+        // vertical cycle never needs rewiring (design D15 note).
+        .nav = {.kind = NavProgramKind::Static},
+        .default_highlight = kCloudSavePassphraseIndex,
+        // Only reachable from the main menu, where no lobby exists (D14).
+        .polls_lobby = false,
+        .draw_background = &options_panel_draw_background,
+        .draw_content = &cloud_save_draw_content,
+        .on_spec_row = &cloud_save_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+void install_cloud_save_state_for_screen(CloudSaveScreenState* state)
+{
+    g_cloud_save_state = state;
+}
+
+// #155: run the CLOUD SAVE screen (blocking) over fresh local state.
+Sint32 run_cloud_save_screen()
+{
+    if (og::runtime::current_session->myscreen_ == nullptr)
+        return MENU_REDRAW;
+    CloudSaveScreenState state;
+    cloud_save_refresh_state(state);
+    install_cloud_save_state_for_screen(&state);
+    (void)run_menu_screen(cloud_save_menu_screen_spec(), &state);
+    install_cloud_save_state_for_screen(nullptr);
+    return MENU_REDRAW;
+}
+
 // G4 registry: the one-lookup answer to "which system owns this screen"
 // while legacy loops remain. Update the row when a screen migrates (and the
 // host table in docs/menu-engine.md with it).
@@ -4910,6 +5219,49 @@ button* picker_company_backups_buttons()
         pks().company_backups_buttons);
     return pks().company_backups_buttons.data();
 }
+
+button* picker_cloud_save_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::cloud_save_menu_screen_spec(),
+                                     pks().cloud_save_buttons);
+    return pks().cloud_save_buttons.data();
+}
+
+int picker_cloud_save_button_count()
+{
+    return static_cast<int>(pks().cloud_save_buttons.size());
+}
+
+#ifdef TESTING
+namespace {
+std::vector<std::string>& cloud_passphrase_queue_ref()
+{
+    static std::vector<std::string> queue;
+    return queue;
+}
+} // namespace
+
+void picker_testing_cloud_passphrase_queue_clear()
+{
+    cloud_passphrase_queue_ref().clear();
+}
+
+void picker_testing_cloud_passphrase_queue_push(const char* value)
+{
+    cloud_passphrase_queue_ref().push_back(
+        value != nullptr ? std::string(value) : std::string());
+}
+
+bool picker_testing_cloud_passphrase_queue_pop(std::string& out)
+{
+    auto& queue = cloud_passphrase_queue_ref();
+    if (queue.empty())
+        return false;
+    out = queue.front();
+    queue.erase(queue.begin());
+    return true;
+}
+#endif
 
 int picker_company_backups_button_count()
 {

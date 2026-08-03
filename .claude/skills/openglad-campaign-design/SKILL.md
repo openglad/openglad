@@ -32,8 +32,11 @@ container — mtimes differ).
 
 ## Hard budgets (silently truncated or test-enforced)
 
-- Title ≤30 bytes; briefing lines ≤33 chars (COUNT them); names ≤11 chars
-  ("Ranger-King" exactly fits); grid_file = scen{:04d} (8 bytes).
+- Title ≤30 bytes; briefing lines auto-flow at render time (keep them under
+  ~60 chars for editor readability; the mapgen audits allow up to 120);
+  names ≤11 chars ("Ranger-King" exactly fits); grid_file = scen{:04d}
+  (8 bytes). Existing shipped campaigns still pin a 33-char briefing budget
+  in their unit tests — regenerating those must keep honoring it.
 - MAXOBS 150 total livings INCLUDING generator output — author ≤120.
 - Start markers: ≥8, 2x2 tiles of clearance each, LEAD MARKER FIRST (oblist
   order = deploy order).
@@ -56,7 +59,10 @@ container — mtimes differ).
   command byte (writer round-trips act_type; loader applies only
   Living+ACT_GUARD). spawn_delay (reserved[4-5]) makes dormant walkers: they
   hold level_done open, show in the NEXT WAVE HUD, are not
-  switchable/targetable, and wake with a flash.
+  switchable/targetable, and wake with a flash. The openscen SELECT panel
+  authors this as the "Delay" prompt (ticks, 12/sec), and the OBJECT panel
+  presets it on the brush so a whole wave places already delayed; only
+  Livings and Generators can carry one.
 - Guard wake policy (2026-07-11): a plain ACT_GUARD is an AMBUSH post — it
   holds until a foe is inside lineofsight() range with a clear sight ray
   (same-floor Bresenham over opaque tiles), then converts to ACT_RANDOM and

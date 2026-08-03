@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/version.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -356,7 +357,7 @@ void sync_difficulty_menu_visibility(button* buttons,
         sync_button_hidden_state(buttons, index);
     }
     buttons[kDifficultyMenuBackIndex].nav.up =
-        host_controls_visible ? kDifficultyMenuGeneratorRateIndex : -1;
+        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1;
     buttons[kDifficultyMenuBackIndex].nav.down =
         host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
 
@@ -1546,7 +1547,7 @@ struct HireEngineState
     Sint32 start_time = 0;
     unsigned char last_family = 0;
     std::string description;
-    std::list<std::string> desc;
+    std::vector<std::string> desc;
     const char* family_name = "";
     // arg1 == 1: show the new-game intro popup after the first presented
     // frame (no production caller passes 1 today — team build passes -1 —
@@ -1653,16 +1654,31 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         // Update description
         state->last_family = og::runtime::current_session->current_guy_->family;
         state->description = get_class_description(state->last_family);
-        state->desc = explode(state->description);
+        state->desc = og::core::wrap_text(state->description,
+                                          l.description_box_content.w / 6,
+                                          og::core::WrapMode::Paragraphs);
 
         state->family_name = get_family_string(state->last_family);
     }
 
-    int i = 0;
-    for(auto& line : state->desc)
+    // Fit the flowed description inside the box (issue #152): the shipped
+    // 10px pitch for up to 8 lines, an 8px pitch for longer descriptions
+    // (pack authors are no longer hand-wrapping to the box). Never draw
+    // past the inner bevel — a runaway pack description stays inside.
     {
-        mytext.write_xy(l.description_box_content.x, l.description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
-        i++;
+        const int desc_lines = static_cast<int>(state->desc.size());
+        const int pitch = (desc_lines <= 8) ? 10 : 8;
+        const int max_desc_lines =
+            (l.description_box_inner.y + l.description_box_inner.h -
+             l.description_box_content.y - 6) / pitch + 1;
+        int i = 0;
+        for(auto& line : state->desc)
+        {
+            if (i >= max_desc_lines)
+                break;
+            mytext.write_xy(l.description_box_content.x, l.description_box_content.y + i*pitch, DARK_BLUE, "%s", line.c_str());
+            i++;
+        }
     }
 
     // Cost box
@@ -1680,12 +1696,16 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
          og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
             ? 0
             : static_cast<int>(og::runtime::current_session->current_team_num_);
-    og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
+    og::runtime::current_session->message_ = std::format(
+        "CASH: {}",
+        og::ui::format_wallet_amount(
+            og::runtime::current_session->myscreen_->save_data, hire_cash_team));
     mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
     const Uint32 current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
     mytext.write_xy(l.cost_box_content.x, l.cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
     og::runtime::current_session->message_ = std::format("      {}", current_cost );
-    if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
+    if (!og::ui::can_afford(og::runtime::current_session->myscreen_->save_data,
+                            hire_cash_team, current_cost))
         mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
     else
         mytext.write_xy(l.cost_box_content.x + 10, l.cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
@@ -1759,7 +1779,9 @@ Sint32 create_hire_menu(Sint32 arg1)
     state.start_time = query_timer();
     state.last_family = og::runtime::current_session->current_guy_->family;
     state.description = get_class_description(state.last_family);
-    state.desc = explode(state.description);
+    state.desc = og::core::wrap_text(state.description,
+                                     HireMenuLayout{}.description_box_content.w / 6,
+                                     og::core::WrapMode::Paragraphs);
     state.family_name = get_family_string(state.last_family);
     state.pending_new_game_popup = (arg1 == 1);
 
@@ -2021,13 +2043,18 @@ void picker_train_menu_engine_draw_content(void* screen_state)
              og::runtime::current_session->current_guy_->teamnum >= MAX_PLAYERS)
                 ? 0
                 : static_cast<int>(og::runtime::current_session->current_guy_->teamnum);
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team]);
+        og::runtime::current_session->message_ = std::format(
+            "CASH: {}",
+            og::ui::format_wallet_amount(
+                og::runtime::current_session->myscreen_->save_data,
+                train_cash_team));
 	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
 
         linesdown++;
 	        mytext.write_xy(180, info_y(linesdown), "COST: ", DARK_BLUE, 1);
         og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team])
+        if (!og::ui::can_afford(og::runtime::current_session->myscreen_->save_data,
+                                train_cash_team, current_cost))
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
 	        else
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);

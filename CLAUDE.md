@@ -274,3 +274,6 @@ The test build compiles game sources with `-DTESTING`. Use this for:
 6. Prefer `enum class` over plain `enum`
 7. Write unit tests for pure logic; integration tests for SDL-dependent flows
 8. Run `cmake --build --preset ci-test && ctest --preset ci-test` before committing
+9. Never commit screenshots/GIFs to this repo — PR proof media goes to the
+   [openglad/openglad-screenshots](https://github.com/openglad/openglad-screenshots)
+   repo (see AGENTS.md, "PR screenshots and proof media")

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Regenerate docs/media/lua-classpacks from a headless openglad_demo run.
+# Regenerate the lua-classpacks showcase media from a headless openglad_demo
+# run. Output lands in build/media/ (gitignored); finished artifacts get
+# committed to the openglad/openglad-screenshots repo, never to this one.
 #
 # Two capture runs, both fully seeded, so the frame numbers picked below stay
 # on the moments they were picked for:
@@ -19,7 +21,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEMO_BIN="${OPENGLAD_DEMO:-$REPO_ROOT/build/ci-test/openglad_demo}"
-OUT_DIR="${1:-$REPO_ROOT/docs/media/lua-classpacks}"
+OUT_DIR="${1:-$REPO_ROOT/build/media/lua-classpacks}"
 MEDIA="$REPO_ROOT/scripts/media"
 
 if [ ! -x "$DEMO_BIN" ]; then

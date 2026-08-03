@@ -122,7 +122,7 @@ SimInputResult sim_process_player_input(
     short my_team,
     SimInputDebounce& debounce,
     const std::string (*special_names)[NUM_SPECIALS],
-    [[maybe_unused]] og::sim::SimEventLog* sim_events)
+    og::sim::SimEventLog* sim_events)
 {
     SimInputResult result;
     walker* oldcontrol = control;
@@ -258,6 +258,12 @@ SimInputResult sim_process_player_input(
         result.play_sound = SOUND_YO;
         result.notify_text = "Yo!";
         result.notify_source = control;
+        // The authoritative server owns input processing, so the cue has to
+        // reach the mirrors as sim events. The render-layer consumer of the
+        // result fields below is unreachable during gameplay (view.cpp early
+        // return once the local transport shadow is live).
+        og::sim::emit_sound(sim_events, SOUND_YO);
+        og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification, "Yo!");
     }
 
     // --- Shift+Yell: summon/release ---
@@ -279,6 +285,8 @@ SimInputResult sim_process_player_input(
                 }
                 result.notify_text = "SUMMONING DEFENSE!";
                 result.notify_source = control;
+                og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification,
+                                         "SUMMONING DEFENSE!");
                 break;
             case ACTION_FOLLOW:
                 for (auto& uptr : level.oblist)
@@ -295,6 +303,8 @@ SimInputResult sim_process_player_input(
                 control->set_action(0);
                 result.notify_text = "RELEASING MEN!";
                 result.notify_source = control;
+                og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification,
+                                         "RELEASING MEN!");
                 break;
             default:
                 control->set_action(0);

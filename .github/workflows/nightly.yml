@@ -194,12 +194,45 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
 
-  # ── Web build + Cloudflare Pages deploy ───────────────────────────────
-  web-deploy:
+  # ── Relay worker deploy ───────────────────────────────────────────────
+  # Deploys relay/ (rooms + cloud-save vault) BEFORE the Pages deploy so a
+  # Durable Object migration is always live before any client that needs
+  # it. Idempotent when nothing changed. Requires CLOUDFLARE_API_TOKEN to
+  # carry the "Workers Scripts: Edit" permission (not just Pages).
+  relay-deploy:
     needs: check-new-commits
     if: >-
       github.event_name != 'pull_request' &&
       needs.check-new-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - name: Install relay npm dependencies
+        working-directory: relay
+        run: npm ci
+      - name: Deploy relay worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: relay
+          command: deploy
+
+  # ── Web build + Cloudflare Pages deploy ───────────────────────────────
+  web-deploy:
+    needs: [check-new-commits, relay-deploy]
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.check-new-commits.outputs.has_new_commits == 'true' &&
+      needs.relay-deploy.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

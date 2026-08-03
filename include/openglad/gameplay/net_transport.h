@@ -109,7 +109,13 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // pack's stream). Manifests are sent by the LobbyServer during the lobby
 // handshake, alongside the initial LobbyState. Existing payload layouts are
 // unchanged; replay format moves to v12 with the envelope byte.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 10;
+// v11: LobbySettings gains a twelfth i16, infinite_gold (the DIFFICULTY
+// screen's host-only free-purchase setting), appended after cross_control in
+// append/read_lobby_settings. No snapshot payload change — the setting only
+// gates the picker's hire/train purchases and never reaches the sim — but the
+// snapshot/input protocol byte follows the network version, so replay format
+// moves to v13.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 11;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

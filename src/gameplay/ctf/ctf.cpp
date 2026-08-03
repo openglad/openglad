@@ -88,7 +88,12 @@ walker* flag_entity_for(GameWorld& world, const CtfFlag& flag)
 // so re-register explicitly after placement.
 void ensure_obmap_registration(GameWorld& world, walker* w)
 {
-    if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead())
+    // dormant(): a delayed spawn holds the "never in the obmap" invariant
+    // until its wake tick — no respawn/placement path may re-register one.
+    // No current caller passes a dormant walker, so this is pure invariant
+    // enforcement (byte-identical for every existing path).
+    if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() ||
+        w->dormant())
         return;
     if (world.myobmap->walker_to_pos.find(w) == world.myobmap->walker_to_pos.end())
         world.myobmap->add(w, w->xpos(), w->ypos());

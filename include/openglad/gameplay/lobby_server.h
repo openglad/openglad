@@ -27,6 +27,8 @@ struct LobbySaveDataEquivalent {
     std::int16_t keep_fallen_heroes = 0;
     // Host-only cross-control setting (protocol v8; see LobbySettings).
     std::int16_t cross_control = 0;
+    // Host-only infinite-gold setting (protocol v11; see LobbySettings).
+    std::int16_t infinite_gold = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

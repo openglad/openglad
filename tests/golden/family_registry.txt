@@ -77,7 +77,7 @@
   ai_line_of_sight = 7
   anim_row_count = 0
   anim_table = ~
-  description = "Your basic grunt, can     \nabsorb and deal damage and\nmove moderately fast. A   \ngood all-around fighter. A\nsoldier's normal weapon is\na magical returning blade.\n\nSpecial: Charge"
+  description = "Your basic grunt, can absorb and deal damage and move moderately fast. A good all-around fighter. A soldier's normal weapon is a magical returning blade.\n\nSpecial: Charge"
   name_pool_size = 15
   name_pool[0] = "Lothar"
   name_pool[1] = "Arthur"
@@ -190,7 +190,7 @@
   ai_line_of_sight = 8
   anim_row_count = 0
   anim_table = ~
-  description = "Elves are small and weak, \nbut are harder to hit than\nmost classes. Alone of all\nthe classes, elves possess\nthe 'ForestWalk' ability. \n\nSpecial: Rocks"
+  description = "Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.\n\nSpecial: Rocks"
   name_pool_size = 7
   name_pool[0] = "Legolas"
   name_pool[1] = "Took"
@@ -288,7 +288,7 @@
   ai_line_of_sight = 12
   anim_row_count = 0
   anim_table = ~
-  description = "Archers are fleet of foot,\nand their arrows have a   \nlong range. Although      \nthey're not as strong as  \nother fighters, they can  \nbe a good squad backbone. \n\nSpecial: Fire Arrows"
+  description = "Archers are fleet of foot, and their arrows have a long range. Although they're not as strong as other fighters, they can be a good squad backbone.\n\nSpecial: Fire Arrows"
   name_pool_size = 9
   name_pool[0] = "Robin"
   name_pool[1] = "Green Arrow"
@@ -391,7 +391,7 @@
   ai_line_of_sight = 7
   anim_row_count = 0
   anim_table = ~
-  description = "Mages are slow, can't     \nstand much damage, and are\nhorrible at hand-to-hand  \ncombat, but their magical \nfireballs pack a big      \npunch.                    \n\nSpecial: Teleport"
+  description = "Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.\n\nSpecial: Teleport"
   name_pool_size = 13
   name_pool[0] = "Gandalf"
   name_pool[1] = "Saruman"
@@ -503,7 +503,7 @@
   ai_line_of_sight = 7
   anim_row_count = 0
   anim_table = ~
-  description = "Skeletons are the pathetic\nremains of those who once \nwere among the living.    \nThey are not particularly \ndangerous, but they move  \nwith blinding speed.      \n\nSpecial: Tunnel"
+  description = "Skeletons are the pathetic remains of those who once were among the living. They are not particularly dangerous, but they move with blinding speed.\n\nSpecial: Tunnel"
   name_pool_size = 7
   name_pool[0] = "Drybones"
   name_pool[1] = "Blackbeard"
@@ -601,7 +601,7 @@
   ai_line_of_sight = 4
   anim_row_count = 0
   anim_table = ~
-  description = "Clerics, like mages, are  \nslow, but have a stronger \nhand-to-hand attack.      \nClerics possess abilities \nrelated to healing and    \ninteraction with the dead.\n\nSpecial: Heal"
+  description = "Clerics, like mages, are slow, but have a stronger hand-to-hand attack. Clerics possess abilities related to healing and interaction with the dead.\n\nSpecial: Heal"
   name_pool_size = 8
   name_pool[0] = "Tuck"
   name_pool[1] = "Brother"
@@ -709,7 +709,7 @@
   ai_line_of_sight = 10
   anim_row_count = 0
   anim_table = ~
-  description = "Strong and quick, fire    \nelementals can expel      \nflaming meteors in all    \ndirections to decimate    \nenemies.                  \n\nSpecial: Starburst"
+  description = "Strong and quick, fire elementals can expel flaming meteors in all directions to decimate enemies.\n\nSpecial: Starburst"
   name_pool_size = 10
   name_pool[0] = "Furnace"
   name_pool[1] = "Molten"
@@ -810,7 +810,7 @@
   ai_line_of_sight = 8
   anim_row_count = 0
   anim_table = ~
-  description = "The faerie are small,     \nflying above friends and  \nenemies alike unnoticed.  \nAlthough they are delicate\nand easily destroyed,     \nfaeries can sprinkle a    \nmagic powder which freezes\ntheir enemies."
+  description = "The faerie are small, flying above friends and enemies alike unnoticed. Although they are delicate and easily destroyed, faeries can sprinkle a magic powder which freezes their enemies."
   name_pool_size = 16
   name_pool[0] = "Tink"
   name_pool[1] = "Gem"
@@ -917,7 +917,7 @@
   ai_line_of_sight = 4
   anim_row_count = 0
   anim_table = ~
-  description = "Slimes are patches of ooze\nwhich grow and split into \ntwo smaller slimes, over- \nwhelming the enemy. Their \nnebulous nature makes them\nmore susceptible to magic.\n\nSpecial: Grow"
+  description = "Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptible to magic.\n\nSpecial: Grow"
   name_pool_size = 6
   name_pool[0] = "Grimer"
   name_pool[1] = "Goop"
@@ -1014,7 +1014,7 @@
   ai_line_of_sight = 2
   anim_row_count = 0
   anim_table = ~
-  description = "Slimes are patches of ooze\nwhich grow and split into \ntwo smaller slimes, over- \nwhelming the enemy. Their \nnebulous nature makes them\nmore susceptible to magic.\n\nSpecial: Grow"
+  description = "Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptible to magic.\n\nSpecial: Grow"
   name_pool_size = 6
   name_pool[0] = "Grimer"
   name_pool[1] = "Goop"
@@ -1111,7 +1111,7 @@
   ai_line_of_sight = 3
   anim_row_count = 0
   anim_table = ~
-  description = "Slimes are patches of ooze\nwhich grow and split into \ntwo smaller slimes, over- \nwhelming the enemy. Their \nnebulous nature makes them\nmore susceptible to magic.\n\nSpecial: Grow"
+  description = "Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptible to magic.\n\nSpecial: Grow"
   name_pool_size = 6
   name_pool[0] = "Grimer"
   name_pool[1] = "Goop"
@@ -1208,7 +1208,7 @@
   ai_line_of_sight = 10
   anim_row_count = 0
   anim_table = ~
-  description = "Thieves are fast, though  \nnot so potent as the      \nsoldier. Thieves can throw\nsmall blades rapidly and  \ndamage whole groups of    \nenemies with their bombs. \n\nSpecial: Drop Bomb"
+  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.\n\nSpecial: Drop Bomb"
   name_pool_size = 7
   name_pool[0] = "Shinobi"
   name_pool[1] = "Dismas"
@@ -1317,7 +1317,7 @@
   ai_line_of_sight = 12
   anim_row_count = 0
   anim_table = ~
-  description = "Ghosts can pass through   \nwalls, trees, and anything\nelse that gets in the way.\nTheir chilling touch can  \nbring death quickly at    \nclose range.              \n\nSpecial: Scare"
+  description = "Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\n\nSpecial: Scare"
   name_pool_size = 8
   name_pool[0] = "Casper"
   name_pool[1] = "Slimer"
@@ -1416,7 +1416,7 @@
   ai_line_of_sight = 10
   anim_row_count = 0
   anim_table = ~
-  description = "Druids are the magicians  \nof nature, and have power \nover natural events. They \nthrow lightning bolts at  \ntheir foes; the fast bolts\nhave long range.          \n\nSpecial: Plant Tree"
+  description = "Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.\n\nSpecial: Plant Tree"
   name_pool_size = 6
   name_pool[0] = "Roland"
   name_pool[1] = "Merlin"
@@ -1513,7 +1513,7 @@
   ai_line_of_sight = 20
   anim_row_count = 0
   anim_table = ~
-  description = "Orcs are a basic 'grunt'; \nstrong and hard to hurt,  \nthey don't do much more   \nthan inflict pain. Orcs   \ncan't attack at range.    \n\nSpecial: Howl"
+  description = "Orcs are a basic 'grunt'; strong and hard to hurt, they don't do much more than inflict pain. Orcs can't attack at range.\n\nSpecial: Howl"
   name_pool_size = 8
   name_pool[0] = "Grom"
   name_pool[1] = "Thrull"
@@ -1617,7 +1617,7 @@
   ai_line_of_sight = 25
   anim_row_count = 0
   anim_table = ~
-  description = "Orcs captains are stronger\nand smarter than the basic\norc.  They throw blades   \nacross the battlefield to \ndeal damage from afar."
+  description = "Orcs captains are stronger and smarter than the basic orc. They throw blades across the battlefield to deal damage from afar."
   name_pool_size = 8
   name_pool[0] = "Grom"
   name_pool[1] = "Thrull"
@@ -1716,7 +1716,7 @@
   ai_line_of_sight = 12
   anim_row_count = 0
   anim_table = ~
-  description = "Barbarians are powerful   \nand resist some magic     \ndamage, but have more will\nthan skill. They are tough,\ntending to bash their way \nthrough trouble with heavy\niron hammers.             \nSpecial: Hurl Boulder"
+  description = "Barbarians are powerful and resist some magic damage, but have more will than skill. They are tough, tending to bash their way through trouble with heavy iron hammers.\n\nSpecial: Hurl Boulder"
   name_pool_size = 8
   name_pool[0] = "Thor"
   name_pool[1] = "Conan"
@@ -1815,7 +1815,7 @@
   ai_line_of_sight = 10
   anim_row_count = 0
   anim_table = ~
-  description = "An Archmage takes the     \nlearnings of the Magi one \nstep further, possessing  \nextraordinary firepower at\nthe expense of physical   \nweakness.                 \n\nSpecial: Teleport"
+  description = "An Archmage takes the learnings of the Magi one step further, possessing extraordinary firepower at the expense of physical weakness.\n\nSpecial: Teleport"
   name_pool_size = 13
   name_pool[0] = "Gandalf"
   name_pool[1] = "Saruman"

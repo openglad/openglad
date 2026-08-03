@@ -39,6 +39,10 @@ class text;
 //  * the GAMEPLAY UI canvas — a transparent overlay pinned to the zoom-1.0
 //    gameplay geometry. Radar, messages and HUD paint here at a stable size,
 //    then the backend composites it nearest-neighbour over the zoomed scenery.
+//    Anything drawn here that must line up with a world sprite has to project
+//    BOTH its anchor and its extents (mini health bars do; see
+//    draw_small_health_bar) — a raw world-canvas length used on this overlay
+//    comes out 1/zoom times too large.
 //
 // Draw primitives route to the ACTIVE canvas; each canvas is aspect-fitted in
 // the window viewport at swap time. While the world canvas is 320x200 the two

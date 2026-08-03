@@ -38,6 +38,13 @@ struct SnapshotWalker final : walker
         walker::set_regen_delay(value);
     }
 
+    // walker::frames is protected sim state with no public getter; a derived
+    // test walker is the only way to read the installed sheet's frame count.
+    [[nodiscard]] short frame_count() const
+    {
+        return frames;
+    }
+
     bool act() override
     {
         return true;
@@ -105,10 +112,15 @@ const PixieData& pixie_for_family(std::int32_t family)
 {
     static PixieData default_pix = make_snapshot_pixie(2, 16, 16, 10);
     static PixieData small_slime_pix = make_snapshot_pixie(2, 12, 12, 20);
+    // Shaped like the real m_slime sheet (12 frames of 20x20) so a stale
+    // small-slime sheet is distinguishable by both frame count and dimensions.
+    static PixieData medium_slime_pix = make_snapshot_pixie(12, 20, 20, 21);
     static PixieData weapon_pix = make_snapshot_pixie(2, 8, 8, 30);
 
     if (family == FAMILY_SMALL_SLIME)
         return small_slime_pix;
+    if (family == FAMILY_MEDIUM_SLIME)
+        return medium_slime_pix;
     if (family == FAMILY_ARROW || family == FAMILY_KNIFE)
         return weapon_pix;
     return default_pix;
@@ -166,6 +178,23 @@ void configure_snapshot_test_services(GameWorld& world)
     world.entity_derived_stats =
         [](walker* entity, Order order, std::int32_t family) {
             apply_snapshot_test_derived_stats(entity, order, family);
+        };
+}
+
+// Same services, but with the configurator narrowed to what the real one does.
+// Production wires entity_configurator to loader::set_walker plus a
+// graphics_for() lookup (sdl_context_services.cpp / platform_headless.cpp
+// wire_world_with_loader): the sim tables are rewritten and the new family's
+// art is HANDED BACK, never installed. Installing it belongs to the caller,
+// which is the whole of issue #150.
+void configure_snapshot_test_services_without_art_install(GameWorld& world)
+{
+    configure_snapshot_test_services(world);
+    world.entity_configurator =
+        [](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+            entity.set_order_family(order, static_cast<char>(family));
+            entity.ani = animation_rows_for_family(family);
+            return &pixie_for_family(family);
         };
 }
 
@@ -1659,6 +1688,61 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
     EXPECT_GE(static_cast<int>(applied->current_special()), 0);
     EXPECT_LT(static_cast<int>(applied->current_special()), NUM_SPECIALS)
         << "out-of-range current_special must be clamped";
+}
+
+TEST(WorldSnapshot, family_change_installs_the_new_family_art_on_the_mirror)
+{
+    // Issue #150. A slime grows by walker::transform_to, which keeps the
+    // entity_id and only swaps the family, so the mirror sees one entity change
+    // family mid-life. apply_entity_snapshot_fields used to call the
+    // configurator and throw away the PixieData* it returned, leaving the mirror
+    // walker on the small-slime sheet while the wire fields stamped the medium
+    // slime's 20x20 rectangle on top of it — striped-noise blits, and an
+    // over-read once the new rectangle outgrew the stale buffer.
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_NE(nullptr, slime);
+    slime->setworldxy(64.0f, 96.0f);
+    const std::uint32_t slime_id = slime->entity_id();
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services_without_art_install(mirror);
+
+    og::sim::apply_snapshot(mirror, og::sim::capture_snapshot(source));
+
+    auto* mirror_slime = static_cast<SnapshotWalker*>(mirror.find_by_id(slime_id));
+    ASSERT_NE(nullptr, mirror_slime);
+    ASSERT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).frames, mirror_slime->frame_count())
+        << "fresh mirror entity should start on the small-slime sheet";
+
+    // Grow: same entity, new family, new art — exactly what transform_to does
+    // on the authoritative side.
+    const PixieData* grown =
+        source.configure_existing_entity(*slime, Order::Living, FAMILY_MEDIUM_SLIME);
+    ASSERT_NE(nullptr, grown);
+    slime->set_data(*grown);
+    source.set_entity_derived_stats(slime, Order::Living, FAMILY_MEDIUM_SLIME);
+
+    og::sim::apply_snapshot(mirror, og::sim::capture_snapshot(source));
+
+    mirror_slime = static_cast<SnapshotWalker*>(mirror.find_by_id(slime_id));
+    ASSERT_NE(nullptr, mirror_slime);
+    EXPECT_EQ(FAMILY_MEDIUM_SLIME, static_cast<int>(mirror_slime->family()));
+
+    const PixieData& medium = pixie_for_family(FAMILY_MEDIUM_SLIME);
+    EXPECT_EQ(medium.frames, mirror_slime->frame_count())
+        << "the mirror must adopt the new family's sheet, not keep the old one";
+    EXPECT_EQ(medium.w, mirror_slime->sizex());
+    EXPECT_EQ(medium.h, mirror_slime->sizey());
+
+    // set_frame() is bounded by the installed frame count: the last medium-slime
+    // frame is unreachable while the stale two-frame sheet is still in place.
+    EXPECT_EQ(1, mirror_slime->set_frame(static_cast<short>(medium.frames - 1)))
+        << "every frame of the new family's sheet must be addressable";
 }
 
 TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)

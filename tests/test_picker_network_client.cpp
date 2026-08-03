@@ -8,9 +8,11 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
@@ -143,6 +145,7 @@ struct PickerSaveStateGuard
     short ctf_respawn_ticks = 0;
     short keep_fallen_heroes = 0;
     short cross_control = 0;
+    short infinite_gold = 0;
     std::unique_ptr<guy> team_list[MAX_TEAM_SIZE];
 
     explicit PickerSaveStateGuard(SaveData& save_in)
@@ -158,6 +161,7 @@ struct PickerSaveStateGuard
         , ctf_respawn_ticks(save.ctf_respawn_ticks)
         , keep_fallen_heroes(save.keep_fallen_heroes)
         , cross_control(save.cross_control)
+        , infinite_gold(save.infinite_gold)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[i] = std::move(save.team_list[i]);
@@ -176,6 +180,7 @@ struct PickerSaveStateGuard
         save.ctf_respawn_ticks = ctf_respawn_ticks;
         save.keep_fallen_heroes = keep_fallen_heroes;
         save.cross_control = cross_control;
+        save.infinite_gold = infinite_gold;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[i] = std::move(team_list[i]);
     }
@@ -1069,6 +1074,40 @@ public:
                         response_body);
                 }
 
+                // #155 cloud saves: the passphrase-keyed save vault route,
+                // served for both verbs so the native cloud transport can be
+                // driven end to end (relay/src/save-vault.ts shape).
+                if (request && request->uri.rfind("/api/save/", 0) == 0)
+                {
+                    int status_code = 0;
+                    std::string response_body;
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        if (request->method == "POST")
+                        {
+                            last_save_post_uri_ = request->uri;
+                            last_save_post_body_ = request->body;
+                        }
+                        else
+                        {
+                            last_save_get_uri_ = request->uri;
+                        }
+                        status_code = save_status_code_;
+                        response_body = save_response_body_;
+                    }
+
+                    ix::WebSocketHttpHeaders headers;
+                    headers["Content-Type"] = "application/json";
+                    return std::make_shared<ix::HttpResponse>(
+                        status_code,
+                        status_code >= 200 && status_code < 300
+                            ? "OK"
+                            : "ERROR",
+                        ix::HttpErrorCode::Ok,
+                        headers,
+                        response_body);
+                }
+
                 return std::make_shared<ix::HttpResponse>(
                     404,
                     "Not Found",
@@ -1185,6 +1224,32 @@ public:
         return room_list_condition_.wait_for(lock, timeout, [&] {
             return room_list_request_count_ > previous_request_count;
         });
+    }
+
+    // #155: what the /api/save/<KEY> route answers next, and what it last saw.
+    void set_save_response(int status_code, std::string body)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        save_status_code_ = status_code;
+        save_response_body_ = std::move(body);
+    }
+
+    [[nodiscard]] std::string last_save_get_uri() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_save_get_uri_;
+    }
+
+    [[nodiscard]] std::string last_save_post_uri() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_save_post_uri_;
+    }
+
+    [[nodiscard]] std::string last_save_post_body() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_save_post_body_;
     }
 
     void release_room_list_responses()
@@ -1513,6 +1578,11 @@ private:
     bool room_list_responses_blocked_ = false;
     std::string last_create_uri_;
     std::string last_room_list_uri_;
+    int save_status_code_ = 404;
+    std::string save_response_body_;
+    std::string last_save_get_uri_;
+    std::string last_save_post_uri_;
+    std::string last_save_post_body_;
     bool stopped_ = false;
 };
 
@@ -2113,6 +2183,107 @@ TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
     EXPECT_NE(*first_campaign_hash, *second_campaign_hash);
 
     host_client_restarted->shutdown();
+}
+
+// #155 cloud saves, native transport: platform_cloud_http_get/post are the
+// ix::HttpClient half of the /api/save/<KEY> vault. Drive both verbs against
+// the loopback relay (the same fixture the room-create flow uses), then drive
+// them again THROUGH the installed SDL PlatformBridge so the bridge's two
+// forwarding lambdas run against a real server too.
+TEST(PickerNetworkClient, cloud_save_http_round_trips_over_the_native_transport)
+{
+    IxNetSystemScope net_system;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(relay_port);
+
+    const std::string url = std::format(
+        "http://127.0.0.1:{}/api/save/73270125791ba273", relay_port);
+
+    // POST: the JSON body reaches the vault verbatim; the reply comes back
+    // status + body with no error.
+    relay_server.set_save_response(200, R"({"revision":7})");
+    const og::ui::cloud::CloudHttpResult posted =
+        og::platform::platform_cloud_http_post(
+            url, R"({"expected_revision":0,"slot":"cloudflow"})");
+    EXPECT_EQ(200, posted.status);
+    EXPECT_EQ(R"({"revision":7})", posted.body);
+    EXPECT_TRUE(posted.error.empty());
+    EXPECT_EQ(R"({"expected_revision":0,"slot":"cloudflow"})",
+              relay_server.last_save_post_body());
+    EXPECT_NE(std::string::npos,
+              relay_server.last_save_post_uri().find(
+                  "/api/save/73270125791ba273"));
+    EXPECT_EQ(7, og::ui::cloud::parse_cloud_save_post_ok(posted.body));
+
+    // GET: the vault body round trips to the pure parser.
+    relay_server.set_save_response(
+        200,
+        R"({"revision":7,"uploaded_at":1754200000000,"slot":"cloudflow",)"
+        R"("save_name":"CLOUD BAND","scen_num":3,"last_played":1754100000,)"
+        R"("data_hex":"00ff10"})");
+    const og::ui::cloud::CloudHttpResult fetched =
+        og::platform::platform_cloud_http_get(url);
+    EXPECT_EQ(200, fetched.status);
+    EXPECT_TRUE(fetched.error.empty());
+    EXPECT_NE(std::string::npos,
+              relay_server.last_save_get_uri().find(
+                  "/api/save/73270125791ba273"));
+    const og::ui::cloud::CloudSaveGetResponse parsed =
+        og::ui::cloud::parse_cloud_save_get_response(fetched.body);
+    EXPECT_EQ(7, parsed.revision);
+    EXPECT_EQ("cloudflow", parsed.meta.slot);
+    EXPECT_EQ("CLOUD BAND", parsed.meta.save_name);
+    EXPECT_EQ((std::vector<std::uint8_t>{0x00u, 0xffu, 0x10u}), parsed.data);
+
+    // A missing key is an ordinary HTTP status, not a transport failure.
+    relay_server.set_save_response(404, R"({"error":"not found"})");
+    const og::ui::cloud::CloudHttpResult missing =
+        og::platform::platform_cloud_http_get(url);
+    EXPECT_EQ(404, missing.status);
+    EXPECT_TRUE(missing.error.empty());
+
+    // The SDL bridge's cloud seam forwards to exactly this transport.
+    const PlatformBridge& bridge = platform_bridge();
+    ASSERT_TRUE(static_cast<bool>(bridge.cloud_http_get))
+        << "the SDL bridge must install the #155 cloud GET seam";
+    ASSERT_TRUE(static_cast<bool>(bridge.cloud_http_post))
+        << "the SDL bridge must install the #155 cloud POST seam";
+
+    relay_server.set_save_response(200, R"({"revision":11})");
+    const og::ui::cloud::CloudHttpResult bridged_post =
+        bridge.cloud_http_post(url, R"({"expected_revision":7})");
+    EXPECT_EQ(200, bridged_post.status);
+    EXPECT_EQ(R"({"revision":11})", bridged_post.body);
+    EXPECT_EQ(R"({"expected_revision":7})",
+              relay_server.last_save_post_body());
+
+    relay_server.set_save_response(200, R"({"revision":11,"data_hex":""})");
+    const og::ui::cloud::CloudHttpResult bridged_get =
+        bridge.cloud_http_get(url);
+    EXPECT_EQ(200, bridged_get.status);
+    EXPECT_EQ(R"({"revision":11,"data_hex":""})", bridged_get.body);
+}
+
+// #155: a refused connection is a TRANSPORT failure — status 0 with a
+// non-empty reason, which is what the flows turn into "network error".
+TEST(PickerNetworkClient, cloud_save_http_reports_transport_failure_as_status_zero)
+{
+    IxNetSystemScope net_system;
+
+    // Nothing is listening here: getFreePort hands back an unbound port.
+    const std::string url = std::format(
+        "http://127.0.0.1:{}/api/save/73270125791ba273", ix::getFreePort());
+
+    const og::ui::cloud::CloudHttpResult fetched =
+        og::platform::platform_cloud_http_get(url);
+    EXPECT_EQ(0, fetched.status);
+    EXPECT_FALSE(fetched.error.empty());
+
+    const og::ui::cloud::CloudHttpResult posted =
+        og::platform::platform_cloud_http_post(url, "{}");
+    EXPECT_EQ(0, posted.status);
+    EXPECT_FALSE(posted.error.empty());
 }
 
 TEST(PickerNetworkClient,
@@ -8261,16 +8432,19 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
         EXPECT_EQ(0, static_cast<int>(join_save.generator_rate));
         EXPECT_EQ(0, static_cast<int>(join_save.keep_fallen_heroes));
         EXPECT_EQ(0, static_cast<int>(join_save.ctf_respawn_ticks));
+        EXPECT_EQ(0, static_cast<int>(join_save.infinite_gold));
     }
 
     // Host cycles: Respawns Off->Heroes, Generators Normal->Calm->Frenzy,
-    // Delay Normal->Fast, Permadeath On->Off — then one settings sync, the
-    // exact shape of the difficulty-subscreen button callbacks.
+    // Delay Normal->Fast, Permadeath On->Off, Infinite Gold Off->On — then
+    // one settings sync, the exact shape of the difficulty-subscreen button
+    // callbacks.
     og::ui::cycle_respawn_mode(host_save);   // 0 -> 1 (Heroes)
     og::ui::cycle_generator_rate(host_save); // 0 -> 50 (Calm)
     og::ui::cycle_generator_rate(host_save); // 50 -> 200 (Frenzy)
     og::ui::cycle_respawn_delay(host_save);  // 0 -> 60 ticks (Fast)
     og::ui::toggle_permadeath(host_save);    // keep_fallen_heroes = 1
+    og::ui::toggle_infinite_gold(host_save); // infinite_gold = 1
     host_client->sync_settings_from_save();
 
     ASSERT_TRUE(wait_until([&] {
@@ -8283,10 +8457,28 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
             join_synced = join_save.respawn_mode == 1 &&
                 join_save.generator_rate == 200 &&
                 join_save.ctf_respawn_ticks == 60 &&
-                join_save.keep_fallen_heroes == 1;
+                join_save.keep_fallen_heroes == 1 &&
+                join_save.infinite_gold == 1;
         }
         return join_synced;
     })) << "the joiner's save must reflect the host's difficulty settings";
+
+    // The host's free-purchase setting reaches the joiner's economy, not
+    // just its save field: a broke joiner can now hire, and its wallet is
+    // still untouched afterwards.
+    {
+        auto join_scope = join_session.activate();
+        SaveData& join_save = join_session.myscreen_->save_data;
+        const short filled_slots = join_save.team_size;
+        join_save.m_totalcash[1] = 0;
+        og::ui::HireSession hire(join_save, 1);
+        ASSERT_GT(hire.current_cost(), 0u);
+        EXPECT_GE(hire.hire(), 0)
+            << "the host's infinite gold makes the joiner's purchase free";
+        EXPECT_EQ(filled_slots + 1, join_save.team_size);
+        EXPECT_EQ(0u, join_save.m_totalcash[1])
+            << "a free purchase never writes the joiner's wallet";
+    }
 
     // A second cycle round (Respawns Heroes->Everyone, Generators
     // Frenzy->Normal) must replicate as well, proving the sync is not a
@@ -8316,6 +8508,7 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     EXPECT_EQ(0, static_cast<int>(host_save.generator_rate));
     EXPECT_EQ(60, static_cast<int>(host_save.ctf_respawn_ticks));
     EXPECT_EQ(1, static_cast<int>(host_save.keep_fallen_heroes));
+    EXPECT_EQ(1, static_cast<int>(host_save.infinite_gold));
 
     {
         auto join_scope = join_session.activate();

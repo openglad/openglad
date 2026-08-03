@@ -191,6 +191,39 @@ constexpr std::array<int, 4> kDefaultControlModes = {
     static_cast<int>(ControlDirectionMode::FourDirection),
 };
 
+// web_control_defaults.h duplicates these values to stay self-contained;
+// pin them against the real constants here.
+static_assert(og::input::kWebKeySlotFire == KEY_FIRE);
+static_assert(og::input::kWebKeySlotSpecial == KEY_SPECIAL);
+static_assert(og::input::kWebKeySlotYell == KEY_YELL);
+static_assert(og::input::kWebKeySlotLookup == KEY_LOOKUP);
+static_assert(og::input::kWebModeFourIndex == kModeFourIndex);
+static_assert(og::input::kWebModeEightIndex == kModeEightIndex);
+static_assert(og::input::kWebFourDirFireKey == KEYCODE_z);
+static_assert(og::input::kWebFourDirSpecialKey == KEYCODE_x);
+static_assert(og::input::kWebEightDirFireKey == KEYCODE_s);
+static_assert(og::input::kWebEightDirYellKey == KEYCODE_v);
+static_assert(og::input::kWebEightDirLookupKey == KEYCODE_UNKNOWN);
+static_assert(og::input::kWebLegacyFireKey == KEYCODE_LCTRL);
+static_assert(og::input::kWebLegacySpecialKey == KEYCODE_LALT);
+static_assert(og::input::kWebLegacyEightDirYellKey == KEYCODE_s);
+static_assert(og::input::kWebLegacyEightDirLookupKey == KEYCODE_v);
+
+// The migration only ever rewrites a value still equal to the native factory
+// default, so pin those against the tables above: editing profile 0's native
+// keymap without revisiting the migration would silently leave it chasing a
+// value nobody has stored.
+static_assert(kDefaultFourDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
+static_assert(kDefaultFourDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
+static_assert(kDefaultEightDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
+static_assert(kDefaultEightDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
+static_assert(kDefaultEightDirKeys[0][KEY_YELL] ==
+              og::input::kWebLegacyEightDirYellKey);
+static_assert(kDefaultEightDirKeys[0][KEY_LOOKUP] ==
+              og::input::kWebLegacyEightDirLookupKey);
+// That S is free of every OTHER player's bindings — the substitution's whole
+// justification — is swept at runtime by the web collision-matrix test.
+
 int normalize_control_mode(int mode)
 {
     return (mode == static_cast<int>(ControlDirectionMode::EightDirection))
@@ -214,7 +247,7 @@ void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
-bool reset_default_player_controls_for_player(int player_index)
+bool reset_default_player_controls_for_player(int player_index, bool web_mode)
 {
     if (player_index < 0 || player_index >= 4)
         return false;
@@ -230,9 +263,13 @@ bool reset_default_player_controls_for_player(int player_index)
     for (int k = 0; k < NUM_KEYS; ++k)
     {
         hw().player_mode_keys[player_index][kModeFourIndex][k] =
-            kDefaultFourDirKeys[default_profile][k];
+            og::input::browser_safe_default_key(
+                default_profile, kModeFourIndex, k,
+                kDefaultFourDirKeys[default_profile][k], web_mode);
         hw().player_mode_keys[player_index][kModeEightIndex][k] =
-            kDefaultEightDirKeys[default_profile][k];
+            og::input::browser_safe_default_key(
+                default_profile, kModeEightIndex, k,
+                kDefaultEightDirKeys[default_profile][k], web_mode);
     }
     hw().player_control_modes[player_index] =
         kDefaultControlModes[static_cast<std::size_t>(
@@ -362,9 +399,21 @@ void set_player_key_binding(int player_index, int key_enum, int keycode)
     og::runtime::current_session->player_keys_[player_index][key_enum] = keycode;
 }
 
-void load_player_control_settings_from_cfg(cfg_store& config)
+void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
 {
     reset_default_player_controls();
+
+    // One-shot web-defaults migration (issue #144): a persisted binding still
+    // equal to profile 0's native factory value predates the browser-safe
+    // defaults, and on web the whole controls block is written back on every
+    // boot — so without this rewrite the new defaults would never reach a
+    // returning player. Version-keyed: once controls/web_default_keys_version
+    // is current, a deliberate LCtrl rebind is left alone forever.
+    const bool migrate_web_defaults =
+        web_mode &&
+        parse_int_strict(
+            config.get_setting("controls", "web_default_keys_version"))
+                .value_or(0) < og::input::kWebControlDefaultsVersion;
 
     // A profile's factory-layout identity is a permutation of 1..4. It
     // follows compacted profiles so per-seat RESET remains collision-free
@@ -403,7 +452,7 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             valid_default_profiles
             ? default_profiles[static_cast<std::size_t>(p)]
             : p;
-        reset_default_player_controls_for_player(p);
+        reset_default_player_controls_for_player(p, web_mode);
     }
 
     for (int p = 0; p < 4; ++p)
@@ -414,14 +463,17 @@ void load_player_control_settings_from_cfg(cfg_store& config)
         const std::string mode_str = config.get_setting("controls", mode_key);
         for (int k = 0; k < NUM_KEYS; ++k)
         {
+            const int four_fallback = og::input::browser_safe_default_key(
+                default_profile, kModeFourIndex, k,
+                kDefaultFourDirKeys[default_profile][k], web_mode);
+            const int eight_fallback = og::input::browser_safe_default_key(
+                default_profile, kModeEightIndex, k,
+                kDefaultEightDirKeys[default_profile][k], web_mode);
+
             const std::string legacy_key_name = std::format("player{}_key{}", p + 1, k);
             const std::string legacy_key_value = config.get_setting("controls", legacy_key_name);
             if (!legacy_key_value.empty())
             {
-                const int four_fallback =
-                    kDefaultFourDirKeys[default_profile][k];
-                const int eight_fallback =
-                    kDefaultEightDirKeys[default_profile][k];
                 hw().player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
                 hw().player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
             }
@@ -431,8 +483,7 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode4_key_value.empty())
             {
                 hw().player_mode_keys[p][kModeFourIndex][k] =
-                    parse_int_strict(mode4_key_value).value_or(
-                        kDefaultFourDirKeys[default_profile][k]);
+                    parse_int_strict(mode4_key_value).value_or(four_fallback);
             }
 
             const std::string mode8_key_name = std::format("player{}_mode8_key{}", p + 1, k);
@@ -440,9 +491,43 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode8_key_value.empty())
             {
                 hw().player_mode_keys[p][kModeEightIndex][k] =
-                    parse_int_strict(mode8_key_value).value_or(
-                        kDefaultEightDirKeys[default_profile][k]);
+                    parse_int_strict(mode8_key_value).value_or(eight_fallback);
             }
+        }
+
+        if (default_profile == 0)
+        {
+            // Only the profile-0 seat carries the factory layout the web
+            // defaults move; rewrite a stored value only while it still
+            // equals that old default (never a user's own choice).
+            hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE],
+                    KEYCODE_LCTRL, og::input::kWebFourDirFireKey,
+                    migrate_web_defaults);
+            hw().player_mode_keys[p][kModeFourIndex][KEY_SPECIAL] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeFourIndex][KEY_SPECIAL],
+                    KEYCODE_LALT, og::input::kWebFourDirSpecialKey,
+                    migrate_web_defaults);
+            // 8-direction: FIRE takes S, so YELL moves to V and look-up (V
+            // natively) goes unbound. SPECIAL is deliberately absent — Left
+            // Alt is browser-safe and stays put.
+            hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE],
+                    KEYCODE_LCTRL, og::input::kWebEightDirFireKey,
+                    migrate_web_defaults);
+            hw().player_mode_keys[p][kModeEightIndex][KEY_YELL] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeEightIndex][KEY_YELL],
+                    og::input::kWebLegacyEightDirYellKey,
+                    og::input::kWebEightDirYellKey, migrate_web_defaults);
+            hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP],
+                    og::input::kWebLegacyEightDirLookupKey,
+                    og::input::kWebEightDirLookupKey, migrate_web_defaults);
         }
 
         hw().player_control_modes[p] = mode_str.empty()
@@ -452,6 +537,15 @@ void load_player_control_settings_from_cfg(cfg_store& config)
                   kDefaultControlModes[static_cast<std::size_t>(
                       default_profile)]));
         activate_mode_keymap_for_player(p, hw().player_control_modes[p]);
+    }
+
+    if (web_mode)
+    {
+        // Stamp the version even when nothing migrated, so the next load
+        // (and any later deliberate LCtrl/LAlt rebind) is left alone. The
+        // boot path saves this cfg right after loading controls.
+        config.apply_setting("controls", "web_default_keys_version",
+            std::to_string(og::input::kWebControlDefaultsVersion));
     }
 }
 
@@ -625,27 +719,101 @@ std::int8_t axis_conflict_winner(std::uint8_t raw_mask, std::uint8_t rose,
         return neg_rose ? std::int8_t{0} : previous;
     return neg_rose ? std::int8_t{-1} : std::int8_t{1};
 }
+
+// One axis, cancel mode: while both sides are held and exactly one side
+// rose this sample, the OTHER side's held keys are presumed phantom and
+// cancelled persistently. A same-sample tie (or no fresh edge) adds no
+// cancels — two genuinely simultaneous opposite presses keep the legacy
+// net-to-zero.
+void axis_cancel_stale_side(std::uint8_t raw_mask, std::uint8_t rose,
+                            std::uint8_t neg_side, std::uint8_t pos_side,
+                            std::uint8_t& cancelled)
+{
+    if ((raw_mask & neg_side) == 0 || (raw_mask & pos_side) == 0)
+        return;
+    const bool neg_rose = (rose & neg_side) != 0;
+    const bool pos_rose = (rose & pos_side) != 0;
+    if (neg_rose == pos_rose)
+        return;
+    cancelled = static_cast<std::uint8_t>(
+        cancelled |
+        static_cast<std::uint8_t>((neg_rose ? pos_side : neg_side) & raw_mask));
+}
 } // namespace
 
 std::uint8_t resolve_opposing_directions(std::uint8_t raw_mask,
-                                         DirectionConflictState& state)
+                                         DirectionConflictState& state,
+                                         bool cancel_stale)
 {
-    const std::uint8_t rose =
+    const std::uint8_t keystate_rose =
         static_cast<std::uint8_t>(raw_mask & static_cast<std::uint8_t>(~state.prev_raw));
-    state.y_winner = axis_conflict_winner(
-        raw_mask, rose, kUpSideMask, kDownSideMask, state.y_winner);
-    state.x_winner = axis_conflict_winner(
-        raw_mask, rose, kLeftSideMask, kRightSideMask, state.x_winner);
+    // Key-EVENT edges (note_direction_key_event) count only while the key is
+    // in the raw mask, and are consumed exactly once per sample.
+    const std::uint8_t event_rose =
+        static_cast<std::uint8_t>(state.event_edges & raw_mask);
+    state.event_edges = 0;
     state.prev_raw = raw_mask;
 
-    std::uint8_t out = raw_mask;
-    if (state.y_winner < 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kDownSideMask));
-    else if (state.y_winner > 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kUpSideMask));
-    if (state.x_winner < 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kRightSideMask));
-    else if (state.x_winner > 0)
-        out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kLeftSideMask));
-    return out;
+    if (!cancel_stale)
+    {
+        // Legacy mode: PR #147 last-press-priority-with-restore, unchanged.
+        // Edges come from the sampled keystate alone — feeding auto-repeat
+        // events in here would let a held key's repeat flip a deliberate
+        // simultaneous-press cancellation on native, where keyups are
+        // reliable and no healing is needed.
+        state.cancelled = 0;
+        state.y_winner = axis_conflict_winner(
+            raw_mask, keystate_rose, kUpSideMask, kDownSideMask, state.y_winner);
+        state.x_winner = axis_conflict_winner(
+            raw_mask, keystate_rose, kLeftSideMask, kRightSideMask, state.x_winner);
+
+        std::uint8_t out = raw_mask;
+        if (state.y_winner < 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kDownSideMask));
+        else if (state.y_winner > 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kUpSideMask));
+        if (state.x_winner < 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kRightSideMask));
+        else if (state.x_winner > 0)
+            out = static_cast<std::uint8_t>(out & static_cast<std::uint8_t>(~kLeftSideMask));
+        return out;
+    }
+
+    // Cancel mode (unreliable keyups): persistent opposite-direction
+    // cancellation with event-driven re-assert. See input_direction_grace.h
+    // for the full contract.
+    state.y_winner = 0;
+    state.x_winner = 0;
+    const std::uint8_t rose =
+        static_cast<std::uint8_t>(keystate_rose | event_rose);
+    // A delivered keyup forgives (the record corrected itself)...
+    state.cancelled = static_cast<std::uint8_t>(state.cancelled & raw_mask);
+    // ...and a real re-press revives (keystate edge or key-event edge).
+    state.cancelled = static_cast<std::uint8_t>(
+        state.cancelled & static_cast<std::uint8_t>(~rose));
+    axis_cancel_stale_side(
+        raw_mask, rose, kUpSideMask, kDownSideMask, state.cancelled);
+    axis_cancel_stale_side(
+        raw_mask, rose, kLeftSideMask, kRightSideMask, state.cancelled);
+    return static_cast<std::uint8_t>(
+        raw_mask & static_cast<std::uint8_t>(~state.cancelled));
+}
+
+void note_direction_key_event(int keycode)
+{
+    if (keycode == KEYCODE_UNKNOWN)
+        return;
+    if (og::runtime::current_session == nullptr)
+        return;
+    for (int p = 0; p < 4; ++p)
+    {
+        for (int d = KEY_UP; d <= KEY_UP_LEFT; ++d)
+        {
+            if (og::runtime::current_session->player_keys_[p][d] == keycode)
+                hw().direction_conflict[p].event_edges =
+                    static_cast<std::uint8_t>(
+                        hw().direction_conflict[p].event_edges |
+                        static_cast<std::uint8_t>(1u << d));
+        }
+    }
 }

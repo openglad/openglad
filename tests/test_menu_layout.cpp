@@ -207,19 +207,22 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: seat lifecycle left this screen for Base Camp, so DIFFICULTY
-    // and GAME SETTINGS now form a centered full-width stack.
+    // SETTINGS: the GAME | CLOUD 68px pair leads the group directly under
+    // the grey SETTINGS heading (which owns the y=119..134 band), with
+    // full-width DIFFICULTY on the row below — narrow-pair-over-full-width,
+    // mirrored by the HELP | QUIT footer.
     EXPECT_EQ("difficulty", buttons[3].id);
     EXPECT_EQ("options", buttons[4].id);
-    EXPECT_EQ(buttons[2].x, buttons[3].x);
-    EXPECT_EQ(buttons[2].sizex, buttons[3].sizex);
-    EXPECT_EQ(buttons[3].x, buttons[4].x);
-    EXPECT_EQ(buttons[3].sizex, buttons[4].sizex);
+    EXPECT_EQ(buttons[2].x, buttons[4].x);
+    EXPECT_EQ(68, buttons[4].sizex);
+    EXPECT_EQ("GAME", buttons[4].label);
+    EXPECT_EQ(buttons[4].x, buttons[3].x);
+    EXPECT_EQ(140, buttons[3].sizex);
     EXPECT_EQ(kWithinGroupGutter,
-              buttons[4].y - (buttons[3].y + buttons[3].sizey));
+              buttons[3].y - (buttons[4].y + buttons[4].sizey));
 
     // Tightening within groups does not collapse the category breaks.
-    EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
+    EXPECT_EQ(17, buttons[4].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
     EXPECT_EQ("help", buttons[5].id);
@@ -227,7 +230,130 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(buttons[5].y, buttons[6].y);
     EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
     EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
-    EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
+    // Footer break measured from DIFFICULTY, the settings group's last row.
+    EXPECT_EQ(9, buttons[5].y - (buttons[3].y + buttons[3].sizey));
+
+    // #155: the CLOUD door shares the GAME row as an aligned 68px pair
+    // (always visible — reachable with zero companies), first row of the
+    // settings group. Both build variants share the geometry (the tables
+    // differ only in the QUIT fork). No button may sit in the y=119..134
+    // band — main_menu_draw_content paints the grey SETTINGS heading
+    // there, over any button face.
+    ASSERT_EQ(10, count);
+    EXPECT_EQ("cloud", buttons[9].id);
+    EXPECT_EQ(152, buttons[9].x);
+    EXPECT_EQ(buttons[4].y, buttons[9].y);
+    EXPECT_EQ(buttons[4].sizex, buttons[9].sizex);
+    EXPECT_EQ(15, buttons[9].sizey);
+    EXPECT_EQ(4, buttons[9].x - (buttons[4].x + buttons[4].sizex));
+    EXPECT_EQ(2, buttons[9].nav.up);
+    EXPECT_EQ(3, buttons[9].nav.down) << "cloud links down to DIFFICULTY";
+    EXPECT_EQ(4, buttons[9].nav.left) << "cloud links left to GAME";
+    EXPECT_EQ(9, buttons[4].nav.right) << "GAME links right to CLOUD";
+    EXPECT_EQ(3, buttons[6].nav.up) << "QUIT links up to DIFFICULTY";
+    EXPECT_EQ(4, buttons[2].nav.down) << "level_edit links down to GAME";
+    EXPECT_EQ(4, buttons[3].nav.up) << "difficulty links up to GAME";
+    // 5-char label within the 68px face's 11-char budget.
+    EXPECT_EQ("CLOUD", buttons[9].label);
+    EXPECT_LE(buttons[9].label.size() * 6,
+              static_cast<std::size_t>(buttons[9].sizex));
+}
+
+// #155 CLOUD SAVE screen: geometry table, label budgets, the static nav
+// cycle, and the Disabled shapes the installed state drives (the engine's
+// inert-box grammar keeps every row visible, so one nav graph covers all
+// shapes).
+TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
+{
+    button* buttons = picker_cloud_save_buttons();
+    const int count = picker_cloud_save_button_count();
+    ASSERT_EQ(4, count);
+    check_no_overlaps(buttons, count, "cloud_save");
+    check_bounds(buttons, count, "cloud_save");
+    check_nav_closed_and_reachable(buttons, count, 0, "cloud_save");
+
+    const struct
+    {
+        const char* id;
+        const char* label;
+        int x, y, w, h;
+        int up, down;
+    } kExpected[] = {
+        {"cloud_passphrase", "PASSPHRASE", 80, 60, 140, 15, 3, 1},
+        {"cloud_upload", "UPLOAD", 80, 84, 140, 15, 0, 2},
+        {"cloud_download", "DOWNLOAD", 80, 108, 140, 15, 1, 3},
+        {"back", "BACK", 80, 150, 60, 15, 2, 0},
+    };
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+    for (int i = 0; i < count; ++i)
+    {
+        const auto& want = kExpected[i];
+        EXPECT_EQ(want.id, buttons[i].id) << "cloud_save index " << i;
+        EXPECT_EQ(want.label, buttons[i].label) << want.id;
+        EXPECT_EQ(want.x, buttons[i].x) << want.id;
+        EXPECT_EQ(want.y, buttons[i].y) << want.id;
+        EXPECT_EQ(want.w, buttons[i].sizex) << want.id;
+        EXPECT_EQ(want.h, buttons[i].sizey) << want.id;
+        EXPECT_EQ(spec_row, buttons[i].myfun) << want.id;
+        EXPECT_EQ(i, buttons[i].arg1)
+            << want.id << " (MenuSpecRow arg == ordinal)";
+        EXPECT_EQ(want.up, buttons[i].nav.up) << want.id;
+        EXPECT_EQ(want.down, buttons[i].nav.down) << want.id;
+        EXPECT_FALSE(buttons[i].hidden) << want.id;
+        // Label budget: 6px/char on the face width.
+        EXPECT_LE(buttons[i].label.size() * 6,
+                  static_cast<std::size_t>(buttons[i].sizex)) << want.id;
+    }
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[3].hotkey) << "cloud_save back";
+
+    // Row-state shapes through the installed-state seam: UPLOAD needs
+    // key+company, DOWNLOAD needs the key; the null state is all-enabled
+    // (what a bare engine sweep sees).
+    const og::ui::MenuScreenSpec& spec = og::ui::cloud_save_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.rows[1].state_override);
+    ASSERT_NE(nullptr, spec.rows[2].state_override);
+    ASSERT_EQ(nullptr, spec.rows[0].state_override);
+    ASSERT_EQ(nullptr, spec.rows[3].state_override);
+    og::ui::MenuLabelContext context;
+
+    og::ui::CloudSaveScreenState state;
+    const struct
+    {
+        bool key_set;
+        bool company_present;
+        og::ui::RowState upload;
+        og::ui::RowState download;
+    } kShapes[] = {
+        {false, false, og::ui::RowState::Disabled, og::ui::RowState::Disabled},
+        {true, false, og::ui::RowState::Disabled, og::ui::RowState::Visible},
+        {true, true, og::ui::RowState::Visible, og::ui::RowState::Visible},
+    };
+    for (const auto& shape : kShapes)
+    {
+        state.key_set = shape.key_set;
+        state.company_present = shape.company_present;
+        og::ui::install_cloud_save_state_for_screen(&state);
+        EXPECT_EQ(static_cast<int>(shape.upload),
+                  static_cast<int>(spec.rows[1].state_override(context)))
+            << "upload key=" << shape.key_set
+            << " company=" << shape.company_present;
+        EXPECT_EQ(static_cast<int>(shape.download),
+                  static_cast<int>(spec.rows[2].state_override(context)))
+            << "download key=" << shape.key_set;
+    }
+    og::ui::install_cloud_save_state_for_screen(nullptr);
+    EXPECT_EQ(static_cast<int>(og::ui::RowState::Visible),
+              static_cast<int>(spec.rows[1].state_override(context)))
+        << "null state renders the all-enabled sweep shape";
+    EXPECT_EQ(static_cast<int>(og::ui::RowState::Visible),
+              static_cast<int>(spec.rows[2].state_override(context)));
+
+    // Spec obligations pinned: no lobby poll (D14), spec-row dispatch only.
+    EXPECT_FALSE(spec.polls_lobby);
+    EXPECT_EQ(static_cast<int>(og::ui::RemoteStartScope::None),
+              static_cast<int>(spec.remote_start));
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_STREQ("cloud_save", spec.name);
 }
 
 TEST(MenuLayout, global_control_reset_is_centered_and_reachable)
@@ -1819,7 +1945,7 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 }
 
 // DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
-// five match-rule rows in one centered 140px column on the FX row pitch.
+// six match-rule rows in one centered 140px column on the FX row pitch.
 // Static labels are the default-state formatter outputs; the screen re-derives
 // every row from session/save each frame, so also pin that every label the
 // formatters can produce fits the 140px face (23 chars at 6px/char).
@@ -1832,6 +1958,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {"respawn_delay", "Spawn Delay: Normal", 90, 81},
         {"permadeath", "Permadeath: On", 90, 104},
         {"generator_rate", "Generators: Normal", 90, 127},
+        {"infinite_gold", "Infinite Gold: Off", 90, 150},
     };
     button* buttons = picker_difficulty_menu_buttons();
     const int count = picker_difficulty_menu_button_count();
@@ -1846,6 +1973,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     EXPECT_EQ("respawn_delay", buttons[kDifficultyMenuRespawnDelayIndex].id);
     EXPECT_EQ("permadeath", buttons[kDifficultyMenuPermadeathIndex].id);
     EXPECT_EQ("generator_rate", buttons[kDifficultyMenuGeneratorRateIndex].id);
+    EXPECT_EQ("infinite_gold", buttons[kDifficultyMenuInfiniteGoldIndex].id);
 
     // Every dynamic label across the full value cycles stays within the
     // 140px face budget.
@@ -1869,10 +1997,14 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         EXPECT_LE(static_cast<int>(og::ui::format_generator_rate_label(save).size()) * 6,
                   face_width)
             << og::ui::format_generator_rate_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_infinite_gold_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_infinite_gold_label(save);
         og::ui::cycle_respawn_mode(save);
         og::ui::cycle_respawn_delay(save);
         og::ui::toggle_permadeath(save);
         og::ui::cycle_generator_rate(save);
+        og::ui::toggle_infinite_gold(save);
     }
 
     // Non-host (networked joiner) variant: every settings row is

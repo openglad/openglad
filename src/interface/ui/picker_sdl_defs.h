@@ -161,6 +161,9 @@ int picker_company_list_button_count();
 // §2.4 Backups sub-view (per company) — Layer F engine screen.
 button* picker_company_backups_buttons();
 int picker_company_backups_button_count();
+// #155 CLOUD SAVE subscreen — engine screen.
+button* picker_cloud_save_buttons();
+int picker_cloud_save_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -328,7 +331,8 @@ inline constexpr int kDifficultyMenuRespawnModeIndex = 2;
 inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
 inline constexpr int kDifficultyMenuPermadeathIndex = 4;
 inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
-inline constexpr int kDifficultyMenuButtonCount = 6;
+inline constexpr int kDifficultyMenuInfiniteGoldIndex = 6;
+inline constexpr int kDifficultyMenuButtonCount = 7;
 
 // Per-frame host gating for the DIFFICULTY subscreen: every settings row is
 // LobbySettings-backed (difficulty included), so a non-host joiner sees only

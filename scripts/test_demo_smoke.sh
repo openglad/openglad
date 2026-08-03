@@ -85,7 +85,7 @@ grep -Fq \
     <<<"$invalid_seed_output"
 
 # ---------------------------------------------------------------------------
-# Frame capture (docs/media pipeline)
+# Frame capture (showcase media pipeline)
 # ---------------------------------------------------------------------------
 # Little-endian scalar out of a binary header, so the BMPs can be checked
 # without a Python or ImageMagick dependency.

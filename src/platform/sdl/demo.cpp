@@ -166,7 +166,7 @@ static std::vector<int> env_scenario_list(const char* name)
 }
 
 // ---------------------------------------------------------------------------
-// Opt-in frame capture (docs/media)
+// Opt-in frame capture (showcase media pipeline)
 // ---------------------------------------------------------------------------
 // Where the captured session's camera looks. "player" is the demo's own
 // follow-a-hero camera; the other two exist because a showcase frame wants the
@@ -901,7 +901,7 @@ int main(int argc, char* argv[])
                 render_session_frame(
                     *s, demos[static_cast<size_t>(i)].session->session_surface_);
 
-                // --- Phase 4b: opt-in frame dump (docs/media) ---
+                // --- Phase 4b: opt-in frame dump (showcase media) ---
                 if (capture_this_frame && i == capture.session_index) {
                     const std::string path = capture_path();
                     og::runtime::GameSession& sess =

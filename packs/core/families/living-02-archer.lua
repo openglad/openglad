@@ -119,7 +119,7 @@ og.family("living", {
   sprite = "archer.png",
   animation = "standard",
   ai_line_of_sight = 12,
-  description = "Archers are fleet of foot,\nand their arrows have a   \nlong range. Although      \nthey're not as strong as  \nother fighters, they can  \nbe a good squad backbone. \n\nSpecial: Fire Arrows",
+  description = "Archers are fleet of foot, and their arrows have a long range. Although they're not as strong as other fighters, they can be a good squad backbone.\n\nSpecial: Fire Arrows",
   names = { "Robin", "Green Arrow", "Legolas", "Yeoman", "Strider",
             "Longshot", "Bowyer", "Hunter", "Archy" },
   playable = true,

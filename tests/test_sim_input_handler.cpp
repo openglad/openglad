@@ -289,6 +289,58 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     ASSERT_TRUE(ally->leader() == control) << "plain yell should assign nearby ally leader";
     ASSERT_EQ(30, control->yo_delay()) << "plain yell should set yell cooldown";
 
+    // The authoritative server drops the result cosmetics; the sound and the
+    // HUD text only reach the client mirrors as sim events (issue #145).
+    ASSERT_EQ(2u, log.size()) << "plain yell should emit exactly sound + notification";
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound)
+        << "first yell event should be the sound";
+    ASSERT_EQ(static_cast<std::uint32_t>(SOUND_YO), log.events()[0].a)
+        << "yell sound event should carry SOUND_YO";
+    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification)
+        << "second yell event should be the notification";
+    ASSERT_TRUE(log.events()[1].text == "Yo!")
+        << "yell notification event should carry the Yo text";
+
+    teardown();
+}
+
+
+TEST(SimInputHandler, sim_input_yell_within_cooldown_emits_nothing)
+{
+    auto control_up = make_living(0, 0);
+    ASSERT_TRUE(control_up != nullptr) << "control should be created";
+
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->set_yo_delay(0);
+
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    sim_process_player_input(
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
+        0, 0, debounce, special_names, &log);
+    ASSERT_EQ(2u, log.size()) << "the first yell should emit sound + notification";
+
+    // Second yell inside the cooldown window: yo_delay ticks 30 -> 29 and the
+    // yell branch is skipped, so nothing new reaches the mirrors.
+    log.clear();
+    const SimInputResult repeat = sim_process_player_input(
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
+        0, 0, debounce, special_names, &log);
+
+    ASSERT_EQ(-1, repeat.play_sound) << "yell inside the cooldown should request no sound";
+    ASSERT_TRUE(repeat.notify_text.empty()) << "yell inside the cooldown should not notify";
+    ASSERT_EQ(0u, log.size()) << "yell inside the cooldown should emit no sim events";
+    ASSERT_EQ(29, control->yo_delay()) << "the cooldown should still be ticking down";
+
     teardown();
 }
 
@@ -324,13 +376,24 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
 
     ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!") << "shift+yell should enter summon mode";
     ASSERT_EQ(ACTION_FOLLOW, ally->action()) << "summon mode should set ally action to follow";
+    ASSERT_EQ(1u, log.size()) << "summon should emit one event and no sound";
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::Notification)
+        << "summon event should be a notification";
+    ASSERT_TRUE(log.events()[0].text == "SUMMONING DEFENSE!")
+        << "summon notification should carry the summon text";
 
+    log.clear();
     control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!") << "shift+yell in follow mode should release";
+    ASSERT_EQ(1u, log.size()) << "release should emit one event and no sound";
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::Notification)
+        << "release event should be a notification";
+    ASSERT_TRUE(log.events()[0].text == "RELEASING MEN!")
+        << "release notification should carry the release text";
     ASSERT_EQ(0, ally->action()) << "release should reset ally action";
     ASSERT_EQ(0, control->action()) << "release should reset control action";
 

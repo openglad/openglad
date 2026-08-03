@@ -89,6 +89,16 @@ PlatformBridge make_sdl_platform_bridge()
                 campaign_tag);
         };
 
+    // Cloud saves (#155): generic text HTTP for /api/save/<KEY>; the flows
+    // and parsers live in the pure layer (cloud_save_client.cpp).
+    bridge.cloud_http_get = [](const std::string& url) {
+        return og::platform::platform_cloud_http_get(url);
+    };
+    bridge.cloud_http_post =
+        [](const std::string& url, const std::string& json_body) {
+            return og::platform::platform_cloud_http_post(url, json_body);
+        };
+
     return bridge;
 }
 } // namespace

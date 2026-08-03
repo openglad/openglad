@@ -704,6 +704,77 @@ TEST_F(RenderEffects, mini_health_bar_uses_threshold_colors_and_hides_at_full)
     EXPECT_FLOAT_EQ(100.0f, w->stats()->max_hitpoints());
 }
 
+// Issue #149 identity pin. The bar's footprint is now projected from the world
+// pane into the gameplay-UI pane. At zoom 1.0 those two rectangles are the same
+// rectangle, so the projection must be the exact identity and the bar must keep
+// its historical width to the pixel.
+TEST_F(RenderEffects, mini_health_bar_width_matches_sprite_at_zoom_one)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+
+    ASSERT_EQ(scr()->world_canvas_w(), scr()->gameplay_ui_canvas_w())
+        << "this pin assumes the default zoom-1.0 canvas";
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    w->stats()->set_max_hitpoints(100.0f);
+    w->stats()->set_hitpoints(94.0f);
+    w->set_last_hitpoints(94.0f);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+
+    const Sint32 sprite_w = w->sizex();
+    const float world_x = w->worldx() - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_bottom = w->worldy() - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc + w->sizey());
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(world_x, world_bottom);
+    const Sint32 bar_y = walker_bottom + 1;
+    ASSERT_LT(bar_x + sprite_w + 8, vs->endx)
+        << "the sampled columns must stay inside the pane";
+
+    ScopedGameplayUiCanvas gameplay_ui(*scr());
+    scr()->clearbuffer();
+    int background_index = -1;
+    scr()->get_pixel(bar_x + sprite_w + 8, bar_y, &background_index);
+    draw_small_health_bar(w, vs);
+
+    int hp_index = -1;
+    scr()->get_pixel(bar_x, bar_y, &hp_index);
+    ASSERT_NE(background_index, hp_index) << "the bar must have been drawn";
+
+    int run = 0;
+    while (bar_x + run < vs->endx)
+    {
+        int sample = -1;
+        scr()->get_pixel(bar_x + run, bar_y, &sample);
+        if (sample != hp_index)
+            break;
+        ++run;
+    }
+
+    // Same expression the renderer uses: (Sint32)((float)bar_w * ratio).
+    const Sint32 expected_cur_w =
+        static_cast<Sint32>(static_cast<float>(sprite_w) * (94.0f / 100.0f));
+    EXPECT_EQ(expected_cur_w + 1, run)
+        << "at zoom 1.0 the filled HP run must stay at the raw sprite scale";
+
+    int outline_index = -1;
+    scr()->get_pixel(bar_x - 1, bar_y, &outline_index);
+    ASSERT_NE(background_index, outline_index) << "the outline must be drawn";
+    int right_edge = -1;
+    scr()->get_pixel(bar_x + sprite_w + 1, bar_y, &right_edge);
+    EXPECT_EQ(outline_index, right_edge)
+        << "the outline's right edge must land at bar_x + sizex + 1";
+}
+
 TEST_F(RenderEffects, damage_number_visibility_and_expiration_preserve_cache)
 {
     viewscreen* const vs = view0();

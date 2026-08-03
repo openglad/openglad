@@ -33,9 +33,11 @@
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/effect.h>
+#include <openglad/core/test_trace.h>
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <utility>
 
 #define SIZE_ORDERS 7 // see constants.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
@@ -637,13 +639,21 @@ void loader::reload_graphics()
 		fire_frequency[idx] = e.fire_freq;
 	}
 
-	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off
-	if (cfg.is_on("effects", "gore")) {
+	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off.
+	// Both variants are loaded and kept for the loader's lifetime so
+	// sync_gore_graphics() can honour a mid-session toggle with a swap; two
+	// extra 1 KB buffers buys a setting that no longer needs a restart.
+	gore_graphics_gory_ = cfg.is_on("effects", "gore");
+	if (gore_graphics_gory_) {
 		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.png");
 		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain.png");
+		gore_alt_blood_ = read_pixie_file("blood_friendly.png");
+		gore_alt_stain_ = read_pixie_file("stain_friendly.png");
 	} else {
 		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.png");
 		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain_friendly.png");
+		gore_alt_blood_ = read_pixie_file("blood.png");
+		gore_alt_stain_ = read_pixie_file("stain.png");
 	}
 
 	// Treasure items that share graphics via data_copy
@@ -909,4 +919,22 @@ walker  *loader::set_walker(walker *ob,
 	}
 
 	return ob;
+}
+
+// Kept at the bottom of the file on purpose: the mutation-canary pins in
+// tests/parity/scenario_table.h anchor line numbers inside set_walker above,
+// and appending here adds no drift to them.
+void loader::sync_gore_graphics()
+{
+	const bool want_gory = cfg.is_on("effects", "gore");
+	if (want_gory == gore_graphics_gory_)
+		return;
+
+	// Swap, never reload: the buffers move between PixieData objects and both
+	// stay alive, so every pixieN that already cached its facings pointer (and
+	// every menu button holding a persistent mypixie) keeps valid pixels.
+	std::swap(graphics[PIX(Order::Weapon, FAMILY_BLOOD)], gore_alt_blood_);
+	std::swap(graphics[PIX(Order::Treasure, FAMILY_STAIN)], gore_alt_stain_);
+	gore_graphics_gory_ = want_gory;
+	TRACE("gore", "blood/stain sprites now %s", want_gory ? "gory" : "friendly");
 }

@@ -24,10 +24,13 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -148,7 +151,19 @@ public:
         for (const std::string& line : lines) {
             if (row >= footer)
                 break;
-            term_.put_str(row++, 0, line, kNormalColor, Color::Default, false);
+            if (line.empty()) {
+                ++row;
+                continue;
+            }
+            // Defensive terminal-width wrap (issue #152): a line wider than
+            // the terminal wraps instead of being cut off at the edge.
+            for (const std::string& wrapped :
+                 og::core::wrap_text(line, term_.cols())) {
+                if (row >= footer)
+                    break;
+                term_.put_str(row++, 0, wrapped, kNormalColor, Color::Default,
+                              false);
+            }
         }
         if (footer >= 0)
             term_.put_str(footer, 0, "[ press any key ]", kHintColor, Color::Default, false);
@@ -384,7 +399,7 @@ void view_team_roster(Menu& menu, SaveData& save)
         if (slots.empty()) {
             menu.show_text("Team Roster", {"(empty)", "",
                 std::format("Gold: {}",
-                    static_cast<unsigned>(save.m_totalcash[0]))});
+                    og::ui::format_wallet_amount(save, 0))});
             return;
         }
 
@@ -402,7 +417,7 @@ void view_team_roster(Menu& menu, SaveData& save)
         entries.push_back(ListEntry{std::format("DEP {}/{}   Gold: {}",
             og::ui::count_deployed_members(save),
             static_cast<int>(slots.size()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
 
         char32_t key = 0;
         const int choice = menu.choose("Team Roster", entries,
@@ -460,7 +475,7 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
             r->intelligence, r->armor, r->level), false});
         entries.push_back(ListEntry{std::format("Cost: {}   Gold: {}",
             static_cast<unsigned>(session.current_cost()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
         const int first_action = static_cast<int>(entries.size());
         entries.push_back(ListEntry{"Hire this recruit", true});
         entries.push_back(ListEntry{"Next family", true});
@@ -567,7 +582,7 @@ void train_team(Menu& menu, SaveData& save, int seed_slot)
             std::format("LVL  {:5} (was {:5}){}", w.level, o.level, llock), true});
         entries.push_back(ListEntry{std::format("Cost: {}   Gold: {}",
             static_cast<unsigned>(session.current_cost()),
-            static_cast<unsigned>(save.m_totalcash[0])), false});
+            og::ui::format_wallet_amount(save, 0)), false});
         const int first_action = static_cast<int>(entries.size());
         entries.push_back(ListEntry{"Accept training", true});
         entries.push_back(ListEntry{"Next member", true});
@@ -703,6 +718,56 @@ void view_scenario(Menu& menu, const SaveData& save)
     menu.show_text("View Scenario", lines);
 }
 
+// Split a popup-shaped message ('\n' separated) into list lines.
+std::vector<std::string> split_message_lines(const std::string& message)
+{
+    std::vector<std::string> lines;
+    std::string current;
+    for (const char ch : message) {
+        if (ch == '\n') {
+            lines.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(ch);
+    }
+    lines.push_back(current);
+    return lines;
+}
+
+// #155: hooks for the shared cloud flows — bridge HTTP (absent in the curses
+// bridge -> the flows report unavailability), the NO-first list confirm, and
+// show_text notify. `notified` lets the caller show the returned status only
+// for silent paths (the explicit-No cancels).
+og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
+{
+    og::ui::cloud::CloudHooks hooks;
+    const PlatformBridge& bridge = platform_bridge();
+    if (bridge.cloud_http_get)
+        hooks.http_get = bridge.cloud_http_get;
+    if (bridge.cloud_http_post)
+        hooks.http_post = bridge.cloud_http_post;
+    hooks.confirm = [&menu](const std::string& title,
+                            const std::string& message) {
+        // NO-first confirm (U3): the highlight starts on No.
+        std::vector<ListEntry> entries;
+        for (const std::string& line : split_message_lines(message))
+            entries.push_back(ListEntry{line, false});
+        const int no_index = static_cast<int>(entries.size());
+        entries.push_back(ListEntry{"No", true});
+        entries.push_back(ListEntry{"Yes", true});
+        const int verdict = menu.choose(title, entries,
+            "Enter select | Esc back", no_index);
+        return verdict == no_index + 1;
+    };
+    hooks.notify = [&menu, &notified](const std::string& title,
+                                      const std::string& message) {
+        menu.show_text(title, split_message_lines(message));
+        notified = true;
+    };
+    return hooks;
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -794,6 +859,61 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
                 {"The level editor is not available in the curses client.",
                  "Use the standalone 'openscen' tool instead."});
             break;
+        case PickerMenuCommand::OpenCloudMenu:
+            // #155: the CLOUD submenu — the shared nested presentation loop
+            // until Back.
+            show_submenu(PickerMenuId::CloudSave);
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    // #155 cloud saves, curses projection: passphrase via the line prompt,
+    // upload/download through the shared pure flows with the NO-first list
+    // confirm. The curses bridge installs no cloud HTTP callbacks, so the
+    // flows degrade with the D8 unavailable notice.
+    if (menu_id == PickerMenuId::CloudSave) {
+        switch (item.command) {
+        case PickerMenuCommand::CloudSetPassphrase: {
+            bool accepted = false;
+            const std::string entered = menu.prompt("Cloud Passphrase",
+                "Passphrase (8-64 chars): ", "", accepted);
+            if (!accepted || entered.empty()) {
+                menu.show_text("Cloud Save", {"Passphrase unchanged."});
+                break;
+            }
+            const std::string key =
+                og::ui::cloud::derive_cloud_save_key(entered);
+            if (key.empty()) {
+                menu.show_text("Cloud Save",
+                    {"Passphrase must be 8-64 characters."});
+                break;
+            }
+            og::ui::cloud::store_cloud_key(key);
+            menu.show_text("Cloud Save", {"Passphrase set."});
+            break;
+        }
+        case PickerMenuCommand::CloudUpload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_upload(
+                {}, curses_cloud_hooks(menu, notified));
+            if (!notified)
+                menu.show_text("Cloud Save", {status});
+            break;
+        }
+        case PickerMenuCommand::CloudDownload: {
+            bool notified = false;
+            const std::string status = og::ui::cloud::run_cloud_download(
+                {}, curses_cloud_hooks(menu, notified),
+                [this](const std::string& slot) {
+                    return open_downloaded_company(slot);
+                });
+            if (!notified)
+                menu.show_text("Cloud Save", {status});
+            break;
+        }
         default:
             break;
         }
@@ -839,6 +959,13 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Generators",
                 {og::ui::format_generator_rate_label(save_data_)});
             autosave_company_after_mutation(save_data_); // §3.8 settings tail
+            break;
+        case PickerMenuCommand::ToggleInfiniteGold:
+            // SESSION-ONLY (never in the GTL file), so unlike every other row
+            // here this one deliberately skips the settings autosave tail.
+            og::ui::toggle_infinite_gold(save_data_);
+            menu.show_text("Infinite Gold",
+                {og::ui::format_infinite_gold_label(save_data_)});
             break;
         default:
             break;
@@ -1155,8 +1282,19 @@ bool CursesPickerClient::load_game()
              level_display(config_)),
          std::format("Team: {}  Gold: {}",
              static_cast<int>(save_data_.team_size),
-             static_cast<unsigned>(save_data_.m_totalcash[0]))});
+             og::ui::format_wallet_amount(save_data_, 0))});
     return true;
+}
+
+bool CursesPickerClient::open_downloaded_company(const std::string& slot)
+{
+    const std::string previous_slot = config_.save_name;
+    config_.save_name = slot;
+    if (load_game())
+        return true;
+    config_.save_name = previous_slot;
+    assert_company_slot_authority(); // [SAVE-R2]
+    return false;
 }
 
 bool CursesPickerClient::save_game()

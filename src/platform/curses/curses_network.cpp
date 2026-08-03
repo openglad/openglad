@@ -266,6 +266,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.cross_control = save.cross_control;
+    settings.infinite_gold = save.infinite_gold;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -354,6 +355,7 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     equivalent.cross_control = state.settings.cross_control;
+    equivalent.infinite_gold = state.settings.infinite_gold;
 
     std::vector<OrderedLobbyGameplaySlot> ordered_slots;
     for (std::size_t player_order = 0; player_order < state.players.size();

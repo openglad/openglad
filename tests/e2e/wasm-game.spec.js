@@ -265,19 +265,20 @@ async function openWebDisplayOptions(page) {
   // on the old player-count buttons and still sits among live menu faces.
   await clickCanvasGameCoord(page, 10, 10);
 
-  // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
-  // arrow keys and Enter. From CONTINUE, LEVEL EDITOR, DIFFICULTY, then GAME
-  // SETTINGS are three downward steps in the web layout.
-  for (let i = 0; i < 3; ++i) {
+  // Picker nav uses player 1's bindings: S/A/W and Z, not browser arrow
+  // keys and Enter. With no company the top row links straight to LEVEL
+  // EDITOR, and the GAME door (leading the settings group's GAME | CLOUD
+  // pair) is two downward steps in the web layout.
+  for (let i = 0; i < 2; ++i) {
     await pressPickerKey(page, 's');
   }
-  await pressPickerKey(page, 'Control', 300);
+  await pressPickerKey(page, 'z', 300);
 
   // GAME SETTINGS starts on BACK; DISPLAY is two rows below it. On web the
   // mode/resolution rows are hidden, so DISPLAY jumps BACK -> overscan -> Zoom.
   await pressPickerKey(page, 's');
   await pressPickerKey(page, 's');
-  await pressPickerKey(page, 'Control', 300);
+  await pressPickerKey(page, 'z', 300);
   await pressPickerKey(page, 's');
   await pressPickerKey(page, 's');
 }
@@ -359,6 +360,47 @@ test.describe('Landing Page', () => {
       const iconResponse = await page.request.get(iconPath);
       expect(iconResponse.ok(), `${iconPath} should be deployed`).toBe(true);
     }
+  });
+});
+
+test.describe('Landing page browser warning', () => {
+  // Firefox reserves Ctrl+W at browser-chrome level, so the landing page
+  // warns Firefox players before they reach the game. Playwright ships only
+  // chromium + webkit engines here, which is exactly why the page detects
+  // via navigator.userAgent (isCtrlReservedBrowser) — a UA override drives
+  // both sides of the branch.
+  test.describe('firefox UA', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    });
+
+    test('warns about Ctrl+W above the play button', async ({ page }) => {
+      await page.goto('/');
+
+      const warning = page.locator('#browser-warning');
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText('Ctrl+W');
+
+      // The warning must precede the Play button in DOM order so it is read
+      // before the player commits.
+      const warningPrecedesButton = await page.evaluate(() => {
+        const warningEl = document.getElementById('browser-warning');
+        const button = document.querySelector('a.play-button');
+        return Boolean(
+          warningEl.compareDocumentPosition(button) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      });
+      expect(warningPrecedesButton).toBe(true);
+    });
+  });
+
+  test.describe('default UA', () => {
+    test('stays hidden outside Firefox', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.locator('#browser-warning')).toBeHidden();
+    });
   });
 });
 
@@ -707,7 +749,7 @@ test.describe('Game Interaction', () => {
     // Walk 1.0 to the deepest step that fits this browser's CSS-logical
     // window, world-surface budget, and renderer texture limit.
     for (let i = 0; i < 10 - scaleContract.minimumZoomSteps; ++i) {
-      await pressPickerKey(page, 'Control');
+      await pressPickerKey(page, 'z');
     }
     const deepestZoomLabel = await getCanvasGameRegionScreenshot(
       page,
@@ -803,7 +845,7 @@ test.describe('Game Interaction', () => {
       82,
       9,
     );
-    await pressPickerKey(page, 'Control');
+    await pressPickerKey(page, 'z');
     const saiLabel = await getCanvasGameRegionScreenshot(page, 125, 130, 82, 9);
     expect(saiLabel.equals(defaultSmoothingLabel)).toBe(false);
 
@@ -811,7 +853,7 @@ test.describe('Game Interaction', () => {
     // fits both the CPU work budget and the renderer texture limit.
     await pressPickerKey(page, 'w');
     for (let i = 0; i < 10 - scaleContract.minimumSmartZoomSteps; ++i) {
-      await pressPickerKey(page, 'Control');
+      await pressPickerKey(page, 'z');
     }
     const smartZoomLabel = await getCanvasGameRegionScreenshot(
       page,

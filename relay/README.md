@@ -24,6 +24,28 @@ the game is served from a different origin.
 Room codes are `GLAD-` plus 4 characters from an alphabet without the
 confusable characters `0/O` and `1/I/L`; lookups are case-insensitive.
 
+### Cloud saves (issue #155)
+
+Passphrase-keyed storage for one company save file per key. The client
+derives `key = lowercase 16-hex fnv1a64("og-cloud-save:" + normalized
+passphrase)`; the server never sees the passphrase and never parses the
+save — `data_hex` is the on-disk GTL file hex-encoded verbatim, and the
+metadata fields are a client-supplied echo of the file header. One
+passphrase = one save; players with several companies use several
+passphrases. The passphrase is access control, not confidentiality: the
+blob is stored as sent (game-save-grade, not secrets-grade).
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/save/<KEY>` | `200` `{revision, uploaded_at, slot, save_name, scen_num, last_played, data_hex}`; `404` when the key holds nothing (never written or expired); `400` on a malformed key. Refreshes the retention clock. |
+| `POST /api/save/<KEY>` | Body `{expected_revision, slot, save_name, scen_num, last_played, data_hex}`. `200` `{revision}` (incremented; first create returns 1); `409` with the stored revision + metadata (no blob) when `expected_revision` mismatches; `400` malformed; `413` over the 64 KiB cap; `429` rate-limited. |
+
+Revision semantics: `expected_revision: 0` means "create" and conflicts when
+the key already holds a save; the client retries with the returned revision
+after an explicit user confirm. Saves untouched (no GET, no successful POST)
+for 180 days (`CLOUD_SAVE_TTL_MS` var) are deleted by a Durable Object
+alarm.
+
 ## WebSocket protocol
 
 Control messages (TEXT, JSON, relay -> client; `host` is `0` while no host is
@@ -71,6 +93,9 @@ assuming that.
 | Per-connection messages | 2000 msgs or 8 MiB per second | WS close 1008 |
 | Room creates per IP | 10 per minute | HTTP 429 |
 | Empty-room TTL | 120 s (`EMPTY_ROOM_TTL_MS` var) | DO alarm |
+| Cloud-save blob | 64 KiB decoded (131072 hex chars) | HTTP 413 |
+| Cloud-save uploads per IP | 10 per minute (GETs unlimited) | HTTP 429 |
+| Cloud-save retention | 180 days since last access (`CLOUD_SAVE_TTL_MS` var) | DO alarm |
 
 ## Architecture
 
@@ -86,8 +111,14 @@ assuming that.
   pruned on read, so a room DO that vanished without deregistering self-heals
   out of the listing. Rate counters are in-memory (a light limit; atomic
   because a DO is single-threaded).
-- Both DO classes are SQLite-backed (`new_sqlite_classes`), which works on
-  the free plan.
+- One `SaveVault` Durable Object per cloud-save key (`idFromName(key)`)
+  holds the single stored save; the DO's single-threaded execution makes the
+  revision check atomic. Upload rate limiting rides the registry (a second
+  in-memory budget map).
+- All three DO classes are SQLite-backed (`new_sqlite_classes`), which works
+  on the free plan. Deploy note: migration `v3` (SaveVault) must land before
+  or with the client release carrying the CLOUD menu; the endpoints are
+  additive and old clients are unaffected.
 
 ## Deploy
 

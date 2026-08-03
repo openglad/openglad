@@ -506,6 +506,34 @@ void cycle_generator_rate(SaveData& save)
     }
 }
 
+void toggle_infinite_gold(SaveData& save)
+{
+    save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+bool gold_is_infinite(const SaveData& save) noexcept
+{
+    return save.infinite_gold != 0;
+}
+
+bool can_afford(const SaveData& save, int team, std::uint32_t cost) noexcept
+{
+    if (gold_is_infinite(save))
+        return true;
+    const int wallet_team = std::clamp(team, 0, MAX_PLAYERS - 1);
+    return cost <= save.m_totalcash[static_cast<std::size_t>(wallet_team)];
+}
+
+std::string format_wallet_amount(const SaveData& save, int team)
+{
+    if (gold_is_infinite(save))
+        return "INF";
+    const int wallet_team = std::clamp(team, 0, MAX_PLAYERS - 1);
+    return std::format("{}",
+                       static_cast<unsigned>(
+                           save.m_totalcash[static_cast<std::size_t>(wallet_team)]));
+}
+
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 
 // Out-of-set values (including the empty string an absent key reads as)
@@ -1015,10 +1043,7 @@ std::string format_base_camp_gold_label(const SaveData& save)
             : 0;
     }
     return clip_chars(
-        std::format("GOLD {}",
-                    static_cast<unsigned>(
-                        save.m_totalcash[static_cast<std::size_t>(team)])),
-        11);
+        std::format("GOLD {}", format_wallet_amount(save, team)), 11);
 }
 
 std::string format_base_camp_scen_line(const SaveData& save,
@@ -1607,6 +1632,11 @@ std::string format_generator_rate_label(const SaveData& save)
     return "Generators: Normal";
 }
 
+std::string format_infinite_gold_label(const SaveData& save)
+{
+    return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
+}
+
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 
 namespace {
@@ -1618,9 +1648,12 @@ std::string clip_to(std::string text, std::size_t max_len)
     return text;
 }
 
+} // namespace
+
 // "YYYY-MM-DD" in UTC (deterministic — never the machine's timezone), or ""
 // for never-played (<= 0) and out-of-calendar values (a 4-digit year keeps
-// the §2.3 10-char date column budget honest).
+// the §2.3 10-char date column budget honest). Public: the cloud-save
+// confirm prompts (#155) reuse the same date rendering.
 std::string format_played_date_utc(std::int64_t unix_s)
 {
     // 9999-12-31T23:59:59Z. Values beyond this would overflow the int day
@@ -1639,7 +1672,10 @@ std::string format_played_date_utc(std::int64_t unix_s)
                        static_cast<unsigned>(ymd.day()));
 }
 
-} // namespace
+std::string format_cloud_passphrase_status(bool key_set)
+{
+    return key_set ? "PASSPHRASE: SET" : "PASSPHRASE: NOT SET";
+}
 
 std::string format_company_list_title(int count)
 {
@@ -1919,11 +1955,21 @@ int HireSession::hire()
     // out-of-bounds read/write of the 4-element m_totalcash array.
     const int cash_team = std::clamp(team_num_, 0, static_cast<int>(SCORE_TEAM_COUNT) - 1);
 
-    std::uint32_t cost = current_cost();
-    if (cost == 0 || cost > save_.m_totalcash[cash_team])
-        return -1;
+    // Infinite gold makes the purchase FREE: the affordability reject (and
+    // the cost==0 overflow reject it doubles as) is skipped and the wallet is
+    // never written. Nothing is inflated, so turning the setting back off
+    // restores exactly the pre-toggle economy — and no company autosave can
+    // bake a cheat balance into the .gtl file.
+    const bool free_purchase = gold_is_infinite(save_);
 
-    save_.m_totalcash[cash_team] -= cost;
+    std::uint32_t cost = current_cost();
+    if (!free_purchase)
+    {
+        if (cost == 0 || cost > save_.m_totalcash[cash_team])
+            return -1;
+
+        save_.m_totalcash[cash_team] -= cost;
+    }
 
     int newfamily = recruit_->family;
     recruit_->teamnum = static_cast<short>(team_num_);
@@ -2192,7 +2238,12 @@ bool TrainSession::accept(bool force)
 
     std::uint32_t cost = current_cost();
 
-    if (!force) {
+    // Infinite gold is the same "free purchase" path the right-mouse cheat
+    // already takes: no affordability check, no cost==0 overflow revert, and
+    // the wallet is never written.
+    const bool free_purchase = force || gold_is_infinite(save_);
+
+    if (!free_purchase) {
         // If cost is 0 but stats changed, that's a cost overflow — reject and revert
         if (cost == 0 && (working_->strength != original->strength ||
                           working_->dexterity != original->dexterity ||
