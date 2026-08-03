@@ -26,6 +26,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include <cstring>
 #include <memory>
 
 using namespace og::curses;
@@ -982,4 +983,92 @@ TEST(CursesRenderer, hud_line1_shows_floor_on_multifloor)
         << "row 1 shows the shared floor label; got: " << term.text_row(1);
     EXPECT_EQ(0, count_in_viewport(term, U'o'))
         << "entities on a different floor stay out of the viewport";
+}
+
+// --- Scripted-mode (TYPE_SCRIPTED) HUD + beacons -------------------------
+
+// The mode group on HUD row 1: mode name + every non-empty ModeState HUD
+// line + the followed walker's respawn seconds, gated on the ACTIVE mode.
+TEST(CursesRenderer, scripted_mode_hud_shows_name_lines_and_respawn)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+
+    GameWorld& world = hw.world();
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    std::strncpy(world.mode.name.data(), "MUTANT",
+                 world.mode.name.size() - 1);
+    world.mode.hud[0].team = 1;
+    std::strncpy(world.mode.hud[0].text.data(), "FRAGS 3:1",
+                 world.mode.hud[0].text.size() - 1);
+
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 0;
+    entry.ticks_left = 60; // 5 s at the 12 Hz sim rate
+    entry.walker_entity_id = hero->entity_id();
+    world.respawn.respawn_queue.push_back(entry);
+
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+    renderer.draw(term, world, hero->entity_id());
+    const std::string row1 = term.text_row(1);
+    EXPECT_NE(row1.find("MUTANT"), std::string::npos)
+        << "row 1 shows the mode name; got: " << row1;
+    EXPECT_NE(row1.find("FRAGS 3:1"), std::string::npos)
+        << "row 1 shows the non-empty HUD line; got: " << row1;
+    EXPECT_NE(row1.find("RESPAWN 5"), std::string::npos)
+        << "row 1 shows the followed walker's respawn seconds; got: " << row1;
+
+    // Empty HUD slots contribute nothing (no stray separators), and the
+    // whole group is gated on mode.active.
+    world.mode.active = false;
+    renderer.draw(term, world, hero->entity_id());
+    const std::string inactive_row1 = term.text_row(1);
+    EXPECT_EQ(inactive_row1.find("MUTANT"), std::string::npos)
+        << "an inactive mode draws no group; got: " << inactive_row1;
+    EXPECT_EQ(inactive_row1.find("RESPAWN"), std::string::npos);
+}
+
+// A beacon entity's glyph renders bold (og.set_beacon -> terminal highlight);
+// clearing the slot restores the plain glyph.
+TEST(CursesRenderer, mode_beacon_entity_glyph_renders_bold)
+{
+    HandWorld hw(24, 24);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    walker* thief = hw.add_creature(12, 11, FAMILY_THIEF, 1);
+    ASSERT_NE(nullptr, hero);
+    ASSERT_NE(nullptr, thief);
+
+    GameWorld& world = hw.world();
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.beacons[0].entity_id =
+        static_cast<std::int32_t>(thief->entity_id());
+    world.mode.beacons[0].team = 1;
+
+    HeadlessTerminal term(21, 41);
+    CursesRenderer renderer;
+    renderer.draw(term, world, hero->entity_id());
+
+    const int vp_top = 2;
+    const int vp_h = 21 - 2 - 6;
+    const int center_row = vp_top + vp_h / 2;
+    const int center_col = 41 / 2;
+
+    {
+        const Cell& c = term.cell_at(center_row + 1, center_col + 2);
+        EXPECT_EQ(c.ch, U't') << "the beacon target keeps its family glyph";
+        EXPECT_TRUE(c.bold) << "a beacon entity renders bold";
+    }
+
+    world.mode.beacons[0].entity_id = 0;
+    renderer.draw(term, world, hero->entity_id());
+    {
+        const Cell& c = term.cell_at(center_row + 1, center_col + 2);
+        EXPECT_EQ(c.ch, U't');
+        EXPECT_FALSE(c.bold) << "clearing the slot restores the plain glyph";
+    }
 }

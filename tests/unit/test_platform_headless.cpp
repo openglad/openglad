@@ -23,6 +23,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/pixie_data.h>
 
@@ -251,6 +252,7 @@ PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned cha
 namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
 std::string text_protocol_testing_format_event_text(std::string_view text);
+std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
 
 TEST(PlatformHeadless, production_platform_globals_preserve_headless_contracts)
@@ -791,6 +793,102 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_ctf_state)
 
     EXPECT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// The scripted-mode observability block, byte-pinned (the json_ctf literal
+// pin's twin). The emitter reads only ModeState, so a hand-built world pins
+// the exact JSON shape all headless harnesses will parse.
+TEST(PlatformHeadless, text_protocol_json_mode_literal_shape)
+{
+    GameWorld world(997);
+    world.type |= SCEN_TYPE_SCRIPTED;
+    world.mode.active = true;
+    std::strncpy(world.mode.name.data(), "CTF", world.mode.name.size() - 1);
+    world.mode.vars[0] = 5;
+    world.mode.vars[63] = -2;
+    world.mode.hud[1].team = 0;
+    std::strncpy(world.mode.hud[1].text.data(), "2H",
+                 world.mode.hud[1].text.size() - 1);
+    world.mode.beacons[2].entity_id = 123;
+    world.mode.beacons[2].team = 2;
+
+    std::string vars = "5";
+    for (int i = 1; i < og::sim::kModeVarCount - 1; ++i)
+        vars += ",0";
+    vars += ",-2";
+    const std::string expected =
+        "{\"active\":true,\"name\":\"CTF\",\"winner_team\":-1,"
+        "\"vars\":[" + vars + "],"
+        "\"hud\":[{\"team\":0,\"text\":\"2H\"}],"
+        "\"beacons\":[{\"id\":123,\"team\":2}]}";
+    EXPECT_EQ(expected, og::ui::text_protocol_testing_json_mode(world));
+
+    // The pre-activation shape: everything default, empty hud/beacons.
+    GameWorld blank(998);
+    std::string zeros = "0";
+    for (int i = 1; i < og::sim::kModeVarCount; ++i)
+        zeros += ",0";
+    EXPECT_EQ("{\"active\":false,\"name\":\"\",\"winner_team\":-1,"
+              "\"vars\":[" + zeros + "],\"hud\":[],\"beacons\":[]}",
+              og::ui::text_protocol_testing_json_mode(blank));
+}
+
+// End-to-end: a level authored with SCEN_TYPE_SCRIPTED makes cmd_state emit
+// the "mode" key (active:false without a registered on_mode_init — the
+// activation itself is observable). The json_ctf block keeps emitting
+// unchanged beside it.
+TEST(PlatformHeadless, text_protocol_emits_mode_block_for_scripted_levels)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path fss = fs::path(get_user_path()) / "scen" / "scen997.fss";
+    const fs::path grid_png =
+        fs::path(get_user_path()) / "pix" / "modep997.png";
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
+
+    {
+        // The tower user-dir pipeline writes the .fss + grid png exactly
+        // where the og_file fallback chain loads them from.
+        GameWorld world(997);
+        world.create_new_grid();
+        world.type = SCEN_TYPE_SCRIPTED;
+        world.title = "MODE PROBE";
+        og::data::LevelFileMetadata metadata;
+        metadata.grid_file = "modep997";
+        og::data::LevelFileIoError err = og::data::LevelFileIoError::None;
+        ASSERT_TRUE(og::data::save_level_to_user_dir(world, 997, metadata,
+                                                     &err))
+            << "authoring the scripted probe level should succeed";
+    }
+
+    {
+        StdinRedirect input("state\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "org.openglad.gladiator";
+        args.level = 997;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":false,\"name\":\"\","
+                            "\"winner_team\":-1"))
+            << "scripted levels must carry the mode block";
+        EXPECT_NE(std::string::npos, text.find("\"ctf\":{\"active\":false"))
+            << "the ctf block stays beside the mode block";
+    }
+
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
 }
 
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
