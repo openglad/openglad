@@ -16,12 +16,14 @@
  */
 #include <cstring>
 #include <cstdio>
+#include <list>
 #include <vector>
 #include <string>
 #include <format>
 #ifdef TESTING
 #include <atomic>
 #endif
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/resources/io_common.h>
@@ -43,6 +45,11 @@ inline constexpr Sint32 HELPTEXT_LEFT = 40;
 inline constexpr Sint32 HELPTEXT_TOP = 40;
 inline constexpr Sint32 DISPLAY_LINES = 15;
 constexpr Sint32 text_down(Sint32 x) { return (x * 7) + HELPTEXT_TOP; }
+
+// Character budget of a help frame: text starts at HELPTEXT_LEFT+2, the
+// frame's right edge sits at HELPTEXT_LEFT+box_width, glyphs advance 6px.
+// box_width 200 (scenario) -> 33 chars; 240 (intro/general help) -> 39.
+constexpr int help_char_budget(int box_width) { return (box_width - 2) / 6; }
 
 namespace
 {
@@ -81,6 +88,15 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
     GetLine get_line)
 {
 	ScopedUiCanvas canvas_target(*scr);
+	// Flow the source lines to the frame's character budget before display
+	// (issue #152). HardBreaks keeps authored line breaks and ASCII tables
+	// intact; only over-long lines re-wrap.
+	std::list<std::string> source_lines;
+	for (int i = 0; i < num_lines; i++)
+		source_lines.push_back(get_line(i));
+	const std::vector<std::string> flowed =
+		og::core::wrap_lines(source_lines, help_char_budget(box_width));
+	num_lines = static_cast<int>(flowed.size());
 	Sint32 screenlines = num_lines * 8;
 	Sint32 linesdown = 0;
 	Sint32 changed = 1;
@@ -182,10 +198,12 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			                 HELPTEXT_LEFT+box_width, HELPTEXT_TOP+107, 3, 1);
 			for (Sint32 j = 0; j < DISPLAY_LINES; j++)
 			{
-				std::string line = get_line(j + templines);
-				if (line.size() > 0)
+				const int line_idx = j + templines;
+				if (line_idx >= 0 && line_idx < num_lines &&
+				    !flowed[static_cast<std::size_t>(line_idx)].empty())
 					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8),
-					                line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+					                flowed[static_cast<std::size_t>(line_idx)].c_str(),
+					                static_cast<unsigned char>(DARK_BLUE), 1);
 			}
 
 			// Draw a bounding box (top and bottom edges) ..
@@ -472,7 +490,19 @@ Sint32 show_general_help()
 	HelpTab current_tab = HelpTab::Controls;
 	TabContent current_content = get_tab_content(current_tab);
 
-	Sint32 screenlines = current_content.num_lines * 8;
+	// Flow each tab's lines to the 39-char frame budget (issue #152); the
+	// user-editable help files and the three over-budget Controls lines wrap
+	// instead of painting past the dialog bevel. HardBreaks preserves the
+	// tab's ASCII tables.
+	const auto flow_tab_lines = [](const TabContent& content) {
+		std::list<std::string> source;
+		for (int i = 0; i < content.num_lines; i++)
+			source.push_back(get_content_line(content, i));
+		return og::core::wrap_lines(source, help_char_budget(240));
+	};
+	std::vector<std::string> flowed_lines = flow_tab_lines(current_content);
+
+	Sint32 screenlines = static_cast<Sint32>(flowed_lines.size()) * 8;
 	Sint32 j;
 	Sint32 linesdown;
 	Sint32 changed;
@@ -489,7 +519,8 @@ Sint32 show_general_help()
 	auto switch_tab = [&](HelpTab new_tab) {
 		current_tab = new_tab;
 		current_content = get_tab_content(current_tab);
-		screenlines = current_content.num_lines * 8;
+		flowed_lines = flow_tab_lines(current_content);
+		screenlines = static_cast<Sint32>(flowed_lines.size()) * 8;
 		bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
 		if (bottomrow < 0) bottomrow = 0;
 		linesdown = 0;
@@ -676,11 +707,13 @@ Sint32 show_general_help()
 			for (j=0; j < DISPLAY_LINES; j++)
 			{
 				int line_idx = j + templines;
-				if (line_idx >= 0 && line_idx < current_content.num_lines)
+				if (line_idx >= 0 &&
+				    line_idx < static_cast<int>(flowed_lines.size()))
 				{
 					int text_y = content_text_top + (j * 7) - (linesdown % 8);
 					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_y),
-					                get_content_line(current_content, line_idx), static_cast<unsigned char>(DARK_BLUE), 1);
+					                flowed_lines[static_cast<std::size_t>(line_idx)].c_str(),
+					                static_cast<unsigned char>(DARK_BLUE), 1);
 				}
 			}
 

@@ -98,7 +98,7 @@ og.family("living", {
   sprite = "elf.png",
   animation = "standard",
   ai_line_of_sight = 8,
-  description = "Elves are small and weak, \nbut are harder to hit than\nmost classes. Alone of all\nthe classes, elves possess\nthe 'ForestWalk' ability. \n\nSpecial: Rocks",
+  description = "Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.\n\nSpecial: Rocks",
   names = { "Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot",
             "Treewee" },
   playable = true,

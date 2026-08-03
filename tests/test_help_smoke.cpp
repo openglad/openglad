@@ -22,6 +22,7 @@ std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client();
 Sint32 help_testing_exercise_internal_paths();
 void help_testing_set_force_scroll_text(bool enabled);
 void help_testing_set_page_state(bool page_up, bool page_down);
+Sint32 help_testing_controls_flowed_max_width();
 
 struct ViewportGuard
 {
@@ -333,4 +334,47 @@ TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
 TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
 {
     EXPECT_EQ(0, help_testing_exercise_internal_paths());
+}
+
+// #152: the Controls tab shipped three 41-42 char lines against the 39-char
+// frame. After render-time flowing, every line fits and the over-budget
+// lines actually wrapped (the flowed line count grew).
+TEST(HelpSmoke, controls_help_lines_flow_within_frame_budget)
+{
+    const Sint32 max_width = help_testing_controls_flowed_max_width();
+    ASSERT_GT(max_width, 0)
+        << "the over-budget Controls lines did not wrap at all";
+    EXPECT_LE(max_width, 39);
+}
+
+static int overlong_scenario_injector_thread(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(150);
+    inject_key_press(SDLK_ESCAPE, 10);
+    return 0;
+}
+
+// #152: scenario lines wider than the 33-char frame budget re-wrap instead
+// of painting past the dialog bevel. scroll_text_view returns
+// flowed_line_count * 8, so the return value is the flow probe: 10 source
+// lines of 49 chars flow to exactly 20 display lines.
+TEST(HelpSmoke, help_read_scenario_flows_overlong_lines)
+{
+    ForceScrollTextGuard force_scroll;
+    HelpTestingInputGuard input_guard;
+    auto& description = og::runtime::current_session->myscreen_->level_description();
+    LevelDescriptionGuard description_guard(description);
+    description.clear();
+    for (int i = 0; i < 10; ++i)
+        description.push_back(
+            "word word word word word word word word word word");
+
+    SdlThreadJoinGuard thread(SDL_CreateThread(
+        overlong_scenario_injector_thread, "overlong_scenario", nullptr));
+    ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
+
+    ASSERT_EQ(160, read_scenario(og::runtime::current_session->myscreen_));
+    ASSERT_EQ(0, thread.join());
 }

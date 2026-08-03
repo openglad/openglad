@@ -1799,6 +1799,21 @@ TEST(CursesPickerClient, help_renders_and_dismisses)
     EXPECT_TRUE(found);
 }
 
+// #152: show_text wraps a line wider than the terminal instead of letting
+// put_str cut it off at the right edge.
+TEST(CursesPickerClient, help_wraps_lines_wider_than_terminal)
+{
+    PickerFixture f;
+    f.t().resize(40, 30);
+    f.t().push_special(KeyCode::Enter);
+    f.client.show_help();
+    // "Continue Game opens Team Build; use GO! there to start playing." is
+    // 64 chars; at 30 columns the tail survives only if the line wrapped.
+    EXPECT_NE(f.t().dump().find("playing."), std::string::npos)
+        << "overflow tail must land on a wrapped row:\n"
+        << f.t().dump();
+}
+
 // A "press any key" screen must dismiss only on a FRESH press — never on a
 // key-up or an auto-repeat. This is the level-end modal bug: when a level ends
 // because the player walked into the exit, the movement key is still held, and

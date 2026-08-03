@@ -225,7 +225,7 @@ og.family("living", {
   sprite = "thief.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Thieves are fast, though  \nnot so potent as the      \nsoldier. Thieves can throw\nsmall blades rapidly and  \ndamage whole groups of    \nenemies with their bombs. \n\nSpecial: Drop Bomb",
+  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.\n\nSpecial: Drop Bomb",
   names = { "Shinobi", "Dismas", "Shadow", "Stabby", "Swiftstrike", "Scourge",
             "Rogue" },
   playable = true,

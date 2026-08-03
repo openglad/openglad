@@ -34,7 +34,7 @@ og.family("living", {
   sprite = "orc2.png",
   animation = "standard",
   ai_line_of_sight = 25,
-  description = "Orcs captains are stronger\nand smarter than the basic\norc.  They throw blades   \nacross the battlefield to \ndeal damage from afar.",
+  description = "Orcs captains are stronger and smarter than the basic orc. They throw blades across the battlefield to deal damage from afar.",
   names = { "Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog",
             "Krosh" },
   playable = false,

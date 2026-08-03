@@ -126,7 +126,7 @@ og.family("living", {
   sprite = "orc.png",
   animation = "standard",
   ai_line_of_sight = 20,
-  description = "Orcs are a basic 'grunt'; \nstrong and hard to hurt,  \nthey don't do much more   \nthan inflict pain. Orcs   \ncan't attack at range.    \n\nSpecial: Howl",
+  description = "Orcs are a basic 'grunt'; strong and hard to hurt, they don't do much more than inflict pain. Orcs can't attack at range.\n\nSpecial: Howl",
   names = { "Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog",
             "Krosh" },
   playable = true,

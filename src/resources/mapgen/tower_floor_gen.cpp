@@ -196,8 +196,11 @@ struct BandSpec
     const char* briefing2; // nullptr = single-line briefing
 };
 
-// 33-char briefing budget (SCENARIO INFORMATION dialog).
-constexpr std::size_t kBriefingLineBudget = 33;
+// Briefing line sanity bound. The SCENARIO INFORMATION dialog word-wraps at
+// render time (issue #152), so this is no longer the 33-char display budget
+// — just a guard against a runaway generated line (the .glad serializer
+// caps a line at 255 bytes).
+constexpr std::size_t kBriefingLineBudget = 120;
 constexpr const char* kOpenStairsLine = "The stairs stand open.";
 
 constexpr std::array<BandSpec, 6> kBands = {{

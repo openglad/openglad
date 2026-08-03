@@ -183,7 +183,7 @@ og.family("living", {
   sprite = "druid.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Druids are the magicians  \nof nature, and have power \nover natural events. They \nthrow lightning bolts at  \ntheir foes; the fast bolts\nhave long range.          \n\nSpecial: Plant Tree",
+  description = "Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.\n\nSpecial: Plant Tree",
   names = { "Roland", "Merlin", "Hippy", "Green Thumb", "Treefall", "Rain" },
   playable = true,
   playable_order = 8,

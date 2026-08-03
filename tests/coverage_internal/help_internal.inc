@@ -4,6 +4,28 @@ void help_testing_set_page_state(bool page_up, bool page_down)
 	s_help_test_page_down.store(page_down, std::memory_order_release);
 }
 
+// #152: the Controls tab shipped three 41-42 char lines against the 39-char
+// frame. Flow the static table exactly as show_general_help does and report
+// the widest flowed line — or -1 if nothing wrapped (the overflow lines were
+// not flowed at all).
+Sint32 help_testing_controls_flowed_max_width()
+{
+	std::list<std::string> source;
+	for (int i = 0; i < NUM_CONTROLS_LINES; i++)
+		source.push_back(controls_help_lines[i]);
+	const std::vector<std::string> flowed =
+		og::core::wrap_lines(source, help_char_budget(240));
+	if (flowed.size() <= static_cast<std::size_t>(NUM_CONTROLS_LINES))
+		return -1;
+	std::size_t max_len = 0;
+	for (const std::string& line : flowed)
+	{
+		if (line.size() > max_len)
+			max_len = line.size();
+	}
+	return static_cast<Sint32>(max_len);
+}
+
 Sint32 help_testing_exercise_internal_paths()
 {
 	struct HelpCacheGuard

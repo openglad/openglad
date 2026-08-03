@@ -32,8 +32,11 @@ container — mtimes differ).
 
 ## Hard budgets (silently truncated or test-enforced)
 
-- Title ≤30 bytes; briefing lines ≤33 chars (COUNT them); names ≤11 chars
-  ("Ranger-King" exactly fits); grid_file = scen{:04d} (8 bytes).
+- Title ≤30 bytes; briefing lines auto-flow at render time (keep them under
+  ~60 chars for editor readability; the mapgen audits allow up to 120);
+  names ≤11 chars ("Ranger-King" exactly fits); grid_file = scen{:04d}
+  (8 bytes). Existing shipped campaigns still pin a 33-char briefing budget
+  in their unit tests — regenerating those must keep honoring it.
 - MAXOBS 150 total livings INCLUDING generator output — author ≤120.
 - Start markers: ≥8, 2x2 tiles of clearance each, LEAD MARKER FIRST (oblist
   order = deploy order).
