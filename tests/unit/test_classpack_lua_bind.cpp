@@ -79,10 +79,15 @@ protected:
         clear_failed_pack_declarations();
     }
 
+    // Chunk names here are pack-SHAPED but not `packs/`-prefixed, and the
+    // whole file follows that rule. A `packs/` name claims the bytes are
+    // pack content at that virtual path, which makes registration declare
+    // them to the pack-Lua coverage inventory (pack_scripts.h); these
+    // fixtures are literals that exist nowhere in the repository, so they
+    // are named as what they are and stay unmeasured.
     static void family_chunk(const std::string& lua)
     {
-        register_pack_family_chunk(
-            {kPack, "packs/v3bind/families/a.lua", lua});
+        register_pack_family_chunk({kPack, "v3bind/families/a.lua", lua});
     }
 
     // Everything the VM recorded while loading, as one string — the load
@@ -117,7 +122,7 @@ bool contains(const std::string& haystack, const std::string& needle)
 TEST_F(LuaFamilyBindTest, declaring_outside_families_is_a_load_error)
 {
     register_pack_script(
-        {kPack, "packs/v3bind/scripts/wrong.lua",
+        {kPack, "v3bind/scripts/wrong.lua",
          "og.family('living', { id = 'core:soldier', name = 'X' })\n"});
     const std::string errors = load_errors(active_world_scripts());
     EXPECT_TRUE(contains(errors, "only a packs/<id>/families/*.lua chunk may "
@@ -127,9 +132,9 @@ TEST_F(LuaFamilyBindTest, declaring_outside_families_is_a_load_error)
 
 TEST_F(LuaFamilyBindTest, anims_and_pack_headers_are_families_only_too)
 {
-    register_pack_script({kPack, "packs/v3bind/scripts/a.lua",
+    register_pack_script({kPack, "v3bind/scripts/a.lua",
                           "og.anims('x', { frames = { {0} } })\n"});
-    register_pack_script({kPack, "packs/v3bind/scripts/b.lua",
+    register_pack_script({kPack, "v3bind/scripts/b.lua",
                           "og.pack{ id = 'v3bind' }\n"});
     const std::string errors = load_errors(active_world_scripts());
     EXPECT_TRUE(contains(errors, "og.anims: only a packs/<id>/families/"))
@@ -144,10 +149,10 @@ TEST_F(LuaFamilyBindTest, anims_and_pack_headers_are_families_only_too)
 TEST_F(LuaFamilyBindTest, declaring_inside_a_lib_module_is_a_load_error)
 {
     register_pack_lib_module(
-        {kPack, "sneaky", "packs/v3bind/lib/sneaky.lua",
+        {kPack, "sneaky", "v3bind/lib/sneaky.lua",
          "og.family('living', { id = 'core:soldier', name = 'X' })\n"
          "return {}\n"});
-    register_pack_script({kPack, "packs/v3bind/scripts/pull.lua",
+    register_pack_script({kPack, "v3bind/scripts/pull.lua",
                           "local m = og.use('sneaky')\n"});
     const std::string errors = load_errors(active_world_scripts());
     EXPECT_TRUE(contains(errors, "og.family: only a packs/<id>/families/"))
@@ -391,7 +396,7 @@ TEST_F(LuaFamilyBindTest, register_hooks_overrides_a_declaration_quietly)
                  "  on_death = function() og.log('declared') return true end,\n"
                  "})\n");
     register_pack_script(
-        {kPack, "packs/v3bind/scripts/override.lua",
+        {kPack, "v3bind/scripts/override.lua",
          "og.register_hooks('living', 'core:soldier', { on_death = "
          "function() og.log('override') return true end })\n"});
 
@@ -417,11 +422,11 @@ TEST_F(LuaFamilyBindTest, a_second_override_of_one_hook_is_still_reported)
     family_chunk("og.family('living', { id = 'core:soldier',\n"
                  "  on_death = function() return true end })\n");
     register_pack_script(
-        {kPack, "packs/v3bind/scripts/a-first.lua",
+        {kPack, "v3bind/scripts/a-first.lua",
          "og.register_hooks('living', 'core:soldier', "
          "{ on_death = function() return true end })\n"});
     register_pack_script(
-        {kPack, "packs/v3bind/scripts/b-second.lua",
+        {kPack, "v3bind/scripts/b-second.lua",
          "og.register_hooks('living', 'core:soldier', "
          "{ on_death = function() return true end })\n"});
 
@@ -444,7 +449,7 @@ TEST_F(LuaFamilyBindTest, a_declaration_may_use_a_lib_module_at_bind_time)
     // core pack whose scripts cannot og.use anything. TearDown takes this
     // one back out by pack id.
     register_pack_lib_module(
-        {kPack, "shared", "packs/v3bind/lib/shared.lua",
+        {kPack, "shared", "v3bind/lib/shared.lua",
          "return { die = function() og.log('from lib') return true end }\n"});
     family_chunk("local shared = og.use('shared')\n"
                  "og.family('living', { id = 'core:soldier',\n"

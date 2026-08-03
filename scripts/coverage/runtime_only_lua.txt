@@ -34,3 +34,19 @@
 18665daa3c47df971d22542e81fd2b2c13f16712b39770b5f01468242c0e368b  tests/unit/test_classpack_install.cpp kLibAaa — og.use lib module in the mounted scratch pack
 e1af1b7073e80792253731be73aaf3287fa93e5a1f53a7231c8009a5d33ed3ab  tests/unit/test_classpack_install.cpp kLibHelper — og.use lib module in the mounted scratch pack
 e252b49ea5557e8c47a78f47173044d327aac6ea8a4be9a362d4a67ebc44e421  tests/unit/test_classpack_install.cpp kLibProbeScript — pack script binding both lib exports
+
+# families/*.lua of the same generated packs. A family chunk is pack content
+# like any other, so a scratch pack that declares one has its declaration
+# compiled by the installer's throwaway VM as well as by every world VM.
+907d58c0247299acc41da49a2868f729b40960bce18eeced8f6736f73ab5f18a  tests/unit/test_classpack_lua_install.cpp sparkle_chunk(30) — synthetic effect declaration, as first mounted
+0b5b38a42fe488e542d9f7b1e128d6e5d019931ade4af62f1d7546a97f8eea3a  tests/unit/test_classpack_lua_install.cpp sparkle_chunk(45) — same file rewritten, re-parse probe
+5058ada1cdaa0f01b1a08a24816bb550e348fb04cf3bf11d770c08fb08d64ab7  tests/unit/test_classpack_lua_install.cpp — same file rewritten to a REJECTED declaration (`nmae`)
+86c6da27fafdf5ea037217074e565bbce272f2edbb354c815eba2725336e28d9  tests/unit/test_classpack_lua_install.cpp sparkle_chunk(30) + a second og.family — wire-slot re-declaration probe
+9537a754ed0b60ded48436796f0bd7861a31c389a3161d451cde41ac6e647120  tests/unit/test_campaign_packs.cpp kMemoDeclA — parse-memo probe, first revision
+78deba5f319803413bcfb9256d38f5c92a9e446c97870c96e7619e966d732099  tests/unit/test_campaign_packs.cpp kMemoDeclB — parse-memo probe, second revision (same byte length)
+a7b9463971d495234d7080dcc3ae819af2e5a8eb5c03bf6c7102416588c9ffe8  tests/unit/test_pack_transfer.cpp kE2eFamilyDecl — declaration streamed over the multiplayer wire
+4dc043b19d6869f22fc97b81cc1bd6216399d4e5945a3a517b694bfc0121e699  tests/unit/test_pack_transfer.cpp — og.pack header served out of the on-disk pack cache
+b9e440a99a5d8a35fbd51f34068bbe4ddbf81eb4b9fd862309a93456fecc3b04  tests/unit/test_classpack_install.cpp make_scratch_lib_pack families/tuned.lua — tuning reaches the store from a mounted pack
+9207879bebc78a1a366cc62daa562c0aded578fa901850440d09f7fdaecc8585  tests/unit/test_classpack_install.cpp make_scratch_split_pack families/aa.lua — first of two declaration files
+f8d2a6f9be555a45a78e177a0041ae50e7959e9714d1c027b37c64efe6baa331  tests/unit/test_classpack_install.cpp make_scratch_split_pack families/bb.lua — second file, re-declaring aa.lua's wire slot
+5f6297d022aad7c25163da6dba19c218801e3bb84159850950e033400da53c1f  tests/unit/test_classpack_install.cpp make_scratch_split_pack families/bb.lua, broken variant — one bad file rejects the pack

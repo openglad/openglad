@@ -22,7 +22,42 @@ struct PackScript {
     std::string pack_id;     // e.g. "org.openglad.core"
     std::string chunk_name;  // e.g. "core/scripts/soldier.lua" (diagnostics)
     std::string source;      // Lua source text
+    // The real directory or archive PhysFS resolved the chunk out of, for
+    // the coverage report's diagnostics. Filled in by the mount walk only
+    // while the pack-Lua recorder is armed (see declare_registered_chunk);
+    // empty everywhere else, including for a chunk a test hands over
+    // directly.
+    std::string origin = {};
 };
+
+// ---------------------------------------------------------------------------
+// THE COVERAGE INVENTORY, at the one door every loader compiles from
+// ---------------------------------------------------------------------------
+//
+// A chunk name under `packs/` is a claim that these bytes are pack content
+// at that virtual path, and the coverage report measures exactly the chunks
+// that make it. It scores a hit against the generation whose compiled
+// prototype recorded it, which is possible only for bytes DECLARED before
+// the compile — so every pack chunk has to reach
+// og::script::coverage::declare_pack_source() first.
+//
+// The three registries below are where that can be guaranteed rather than
+// remembered: the declaration VM, the world VM and the lib loader compile
+// out of these vectors and nothing else, so a chunk that was never
+// registered cannot be compiled, and a chunk that was is declared here.
+// (It used to be the mount walk's job, one call per loop, which held for
+// every real mount and silently did not for the tests that hand a chunk
+// straight to a registry.)
+//
+// Chunk names OUTSIDE packs/ are somebody's literal — the throwaway Lua a
+// unit test compiles under its own name — and are deliberately not
+// declared: they are not repository content, nothing can measure them, and
+// the report leaves such a chunk unmeasured instead of failing on it.
+namespace detail {
+void declare_registered_chunk(const std::string& chunk_name,
+                              const std::string& source,
+                              const std::string& origin);
+}  // namespace detail
 
 // Append a script. Duplicate (pack_id, chunk_name) pairs replace the prior
 // entry in place (same position), so a re-mounted pack keeps its load order.
@@ -104,6 +139,7 @@ struct PackLibModule {
     std::string name;        // og.use key: the file stem, e.g. "living_common"
     std::string chunk_name;  // e.g. "packs/core/lib/living_common.lua"
     std::string source;      // Lua source text
+    std::string origin = {};  // as PackScript::origin
 };
 
 // Append a module. A duplicate (pack_id, name) replaces the prior entry in

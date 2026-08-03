@@ -113,8 +113,9 @@ DUMP_HEADER = "# openglad-lua-coverage 5"
 NO_GENERATION = "-"
 
 # Chunk names the engine loads pack scripts under always start here (see
-# og::resources::register_mounted_pack_scripts). A recorded chunk under this
-# prefix is a mounted pack script and MUST resolve to a denominator entry;
+# og::script::detail::declare_registered_chunk, which declares exactly the
+# registered chunks whose name carries this prefix). A recorded chunk under
+# this prefix is engine-loaded pack content and MUST resolve to an entry;
 # anything else is Lua a test compiled from a string literal inside its own
 # source file, which is test code, not the product, and is not measured.
 PACK_CHUNK_PREFIX = "packs/"
@@ -981,13 +982,16 @@ def attribute_dumps(
         errors.append(
             f"{len(undeclared)} chunk(s) recorded hits bound to a source "
             f"their own process never declared: {listed}. "
-            "og::resources::register_mounted_pack_scripts must call "
-            "declare_pack_source for every script it registers, BEFORE the "
-            "engine can compile it (the recorder binds prototypes to their "
-            "generation at compile time) — a declaration from some OTHER "
-            "process does not say what THIS process compiled, and a "
+            "Registering a chunk whose name starts with packs/ declares its "
+            "bytes (og::script::detail::declare_registered_chunk), BEFORE "
+            "anything can compile it — the recorder binds prototypes to "
+            "their generation at compile time, a declaration from some "
+            "OTHER process does not say what THIS process compiled, and a "
             "generation the dump never declared has no bytes to score "
-            "against"
+            "against. So this names Lua that reached a VM without going "
+            "through a registry, or a fixture wearing a packs/ chunk name "
+            "it should not: test Lua compiled from a literal belongs under "
+            "a name of its own, which the report leaves unmeasured"
         )
     if off_grid:
         errors.append(

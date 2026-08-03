@@ -243,6 +243,8 @@ unsigned& lib_generation_storage()
 
 void register_pack_lib_module(PackLibModule module)
 {
+    detail::declare_registered_chunk(module.chunk_name, module.source,
+                                     module.origin);
     for (PackLibModule& existing : lib_module_storage()) {
         if (existing.pack_id == module.pack_id &&
             existing.name == module.name) {

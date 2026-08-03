@@ -59,11 +59,19 @@ protected:
     // One chunk, declared and evaluated. This is the whole pass: chunk
     // registration is what the mounted-tree walk does for a real pack, and
     // declare_pack_families is what the installer calls.
+    //
+    // The chunk name deliberately does NOT start with `packs/`. That prefix
+    // is a claim that the bytes are pack content at that virtual path, and
+    // registering a chunk that makes it declares those bytes to the pack-Lua
+    // coverage inventory (pack_scripts.h) — which is right for a mount and a
+    // lie for the throwaway declarations below, none of which exist anywhere
+    // in the repository. Named this way they are what they are: test Lua,
+    // which the coverage report leaves unmeasured.
     static DeclareResult declare(const std::string& lua, ClasspackData& out)
     {
         og::script::clear_pack_family_chunks();
         og::script::register_pack_family_chunk(
-            {kPack, "packs/v3decl/families/a.lua", lua});
+            {kPack, "v3decl/families/a.lua", lua});
         return og::script::declare_pack_families(kPack, out);
     }
 
@@ -711,7 +719,7 @@ TEST_F(LuaFamilyDeclTest, og_use_resolves_inside_a_declaration)
     // this binary with a core pack whose scripts cannot og.use anything,
     // and nothing puts them back.
     og::script::register_pack_lib_module(
-        {kPack, "shared", "packs/v3decl/lib/shared.lua",
+        {kPack, "shared", "v3decl/lib/shared.lua",
          "return { hp = 99 }\n"});
     ClasspackData data;
     const DeclareResult r = declare(
@@ -762,13 +770,13 @@ TEST_F(LuaFamilyDeclTest, one_bad_chunk_rejects_the_whole_pack)
 {
     og::script::clear_pack_family_chunks();
     og::script::register_pack_family_chunk(
-        {kPack, "packs/v3decl/families/a-good.lua",
+        {kPack, "v3decl/families/a-good.lua",
          "og.family('living', { id = 'v3:good' })\n"});
     og::script::register_pack_family_chunk(
-        {kPack, "packs/v3decl/families/b-bad.lua",
+        {kPack, "v3decl/families/b-bad.lua",
          "og.family('living', { id = 'v3:bad', nmae = 'X' })\n"});
     og::script::register_pack_family_chunk(
-        {kPack, "packs/v3decl/families/c-never.lua",
+        {kPack, "v3decl/families/c-never.lua",
          "og.family('living', { id = 'v3:never' })\n"});
     ClasspackData data;
     const DeclareResult r = og::script::declare_pack_families(kPack, data);
@@ -783,7 +791,7 @@ TEST_F(LuaFamilyDeclTest, a_chunk_that_does_not_compile_is_named)
 {
     const DeclareResult r = declare("og.family('living', { id = ");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(std::string::npos, r.error.find("packs/v3decl/families/a.lua"))
+    EXPECT_NE(std::string::npos, r.error.find("v3decl/families/a.lua"))
         << r.error;
 }
 

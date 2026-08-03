@@ -404,8 +404,9 @@ dumps, and never by where PhysFS says the file came from. (A campaign `.glad`
 is staged into a temp user directory before it is mounted, so a shipped pack
 and a synthetic one a test generated are indistinguishable from both of those
 angles. The bytes are not.) The engine records what it compiled at the one
-place every pack script converges,
-`og::resources::register_mounted_pack_scripts()`, as
+place every pack chunk converges — the process-global registries the
+declaration VM, the world VM and the lib loader all compile out of, whose
+`register_*` functions declare any chunk named under `packs/` as
 `declare_pack_source(chunk, source, real_dir)`; the exact bytes travel beside
 the dump as a content-addressed sidecar under `sources/`, and the S record
 carries their sha256.

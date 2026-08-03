@@ -66,13 +66,16 @@ namespace {
 
 // One family chunk, harvested. This is the front end: registering the chunk
 // is what a mount does, and declare_pack_families is what the installer
-// calls before it touches a registry.
+// calls before it touches a registry. The chunk name stays clear of the
+// `packs/` prefix on purpose — that prefix declares the bytes to the
+// pack-Lua coverage inventory (pack_scripts.h), which is right for the
+// mounted scratch packs further down this file and wrong for a literal.
 void declare_or_die(const std::string& lua, ClasspackData& out,
                     const char* pack_id = "testpack")
 {
     og::script::clear_pack_family_chunks();
     og::script::register_pack_family_chunk(
-        {pack_id, std::string("packs/") + pack_id + "/families/a.lua", lua});
+        {pack_id, std::string(pack_id) + "/families/a.lua", lua});
     const og::script::DeclareResult r =
         og::script::declare_pack_families(pack_id, out);
     og::script::clear_pack_family_chunks();

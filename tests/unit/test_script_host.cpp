@@ -532,6 +532,42 @@ TEST(PackScriptRegistry, unregister_removes_one_packs_chunks_and_bumps_the_gen)
     og::script::clear_pack_scripts();
 }
 
+// The family-chunk registry is the same shape and owes the same guarantee,
+// for a sharper reason: a family chunk carries DESCRIPTOR DATA, so a chunk
+// left behind by an unmounted pack would keep re-installing its family into
+// a registry slot on the next pass, and every peer's install order — which
+// the wire ids depend on — would depend on what that peer had mounted
+// earlier.
+TEST(PackFamilyChunkRegistry, unregister_removes_one_packs_chunks)
+{
+    og::script::clear_pack_family_chunks();
+    og::script::register_pack_family_chunk(
+        {"pack.a", "a-families.lua", "-- a\n"});
+    og::script::register_pack_family_chunk(
+        {"pack.a", "a-more-families.lua", "-- a2\n"});
+    og::script::register_pack_family_chunk(
+        {"pack.b", "b-families.lua", "-- b\n"});
+    ASSERT_EQ(3u, og::script::pack_family_chunks().size());
+    const unsigned before = og::script::pack_family_generation();
+
+    og::script::unregister_pack_family_chunks("pack.a");
+
+    ASSERT_EQ(1u, og::script::pack_family_chunks().size());
+    EXPECT_EQ("pack.b", og::script::pack_family_chunks()[0].pack_id);
+    EXPECT_NE(before, og::script::pack_family_generation())
+        << "the generation must move so cached VMs rebuild";
+
+    // An id with no chunks removes nothing AND does not move the generation:
+    // a declaration-only rebuild of every long-lived VM is expensive, and an
+    // unmount of a pack that never had family chunks is not a content change.
+    const unsigned after = og::script::pack_family_generation();
+    og::script::unregister_pack_family_chunks("pack.missing");
+    EXPECT_EQ(1u, og::script::pack_family_chunks().size());
+    EXPECT_EQ(after, og::script::pack_family_generation());
+
+    og::script::clear_pack_family_chunks();
+}
+
 // ---------------------------------------------------------------------------
 // Duplicate hook registration diagnostic
 // ---------------------------------------------------------------------------
@@ -3090,8 +3126,10 @@ TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
     // Loads and runs cleanly under the sandbox: same text-only mode, same
     // environment fence a pack chunk gets. Running it is also what covers
     // the file's main chunk when the coverage recorder is armed — PROVIDED
-    // the (chunk, digest) pair is declared first, exactly as the resources
-    // layer declares every mounted pack script before a VM can compile it.
+    // the (chunk, digest) pair is declared first, exactly as registering a
+    // pack chunk declares it before any VM can compile it. Declared by hand
+    // here because this file is shipped Lua that is not pack content: it
+    // lives under docs/ and reaches no registry.
     // Without the declaration the recorder files the hits under the
     // no-generation marker and the shipped file scores 0%, failing the Lua
     // function bar by exactly one record (found the hard way: 163/164).

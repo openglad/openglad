@@ -576,8 +576,11 @@ protected:
     {
         og::data::ClasspackData data;
         og::script::clear_pack_family_chunks();
+        // Not `packs/idtest/...`: that prefix would declare these bytes to
+        // the pack-Lua coverage inventory (pack_scripts.h) as content of a
+        // pack that does not exist.
         og::script::register_pack_family_chunk(
-            {"idtest", "packs/idtest/families/warlock.lua",
+            {"idtest", "idtest/families/warlock.lua",
              "og.family('living', { id = 'idtest:warlock', wire_id = 64,\n"
              "  name = 'WARLOCK',\n"
              "  specials = {\n"

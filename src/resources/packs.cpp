@@ -44,6 +44,17 @@ PackInstallStats g_pack_install_stats;
 
 // Live size of the never-freed pack store, defined with it below.
 unsigned store_object_count();
+
+// Where PhysFS actually resolved a chunk — the host directory, or the
+// archive a campaign carried it in. It rides along on the registered chunk
+// purely so a coverage failure can print it ("these bytes are not
+// repository content" is only actionable if it says where they came from),
+// so PhysFS is asked only while the recorder is armed.
+std::string chunk_origin(const std::string& vpath)
+{
+    if (!og::script::coverage::enabled()) return {};
+    return og::io::physfs_real_dir(vpath);
+}
 }  // namespace
 
 PackInstallStats pack_install_stats()
@@ -83,9 +94,9 @@ int register_mounted_pack_scripts()
          og::io::physfs_enumerate_files_sorted("packs")) {
         // lib/ modules first (og.use): same deterministic order contract as
         // scripts — pack-id-lexicographic, then filename-lexicographic —
-        // and the same coverage-inventory declaration, because a module is
-        // engine-loaded pack Lua exactly like a script (every VM compiles
-        // and runs each one once, before any script).
+        // and the same coverage inventory, because a module is engine-loaded
+        // pack Lua exactly like a script (every VM compiles and runs each
+        // one once, before any script).
         const std::string lib_dir = "packs/" + pack_id + "/lib";
         for (const std::string& file :
              og::io::physfs_enumerate_files_sorted(lib_dir)) {
@@ -100,21 +111,18 @@ int register_mounted_pack_scripts()
             }
             std::string source(reinterpret_cast<const char*>(bytes.data()),
                                bytes.size());
-            if (og::script::coverage::enabled()) {
-                og::script::coverage::declare_pack_source(
-                    vpath, source, og::io::physfs_real_dir(vpath));
-            }
             og::script::register_pack_lib_module(
                 {pack_id, file.substr(0, file.size() - 4), vpath,
-                 std::move(source)});
+                 std::move(source), chunk_origin(vpath)});
             modules++;
         }
         // families/ next: the og.family declarations. Same enumeration and
         // the same coverage inventory as every other pack chunk — a family
-        // file is pack Lua, and the declaration pass is one of the two
-        // contexts it runs in. Registered separately from scripts/ because
-        // the declaration pass evaluates families/ and ONLY families/, which
-        // is what makes "og.family is legal only here" mechanical.
+        // file is pack Lua, and the declaration pass (which compiles it in a
+        // throwaway VM before any world exists) is one of the two contexts
+        // it runs in. Registered separately from scripts/ because the
+        // declaration pass evaluates families/ and ONLY families/, which is
+        // what makes "og.family is legal only here" mechanical.
         const std::string families_lua_dir = "packs/" + pack_id + "/families";
         for (const std::string& file :
              og::io::physfs_enumerate_files_sorted(families_lua_dir)) {
@@ -128,12 +136,8 @@ int register_mounted_pack_scripts()
             }
             std::string source(reinterpret_cast<const char*>(bytes.data()),
                                bytes.size());
-            if (og::script::coverage::enabled()) {
-                og::script::coverage::declare_pack_source(
-                    vpath, source, og::io::physfs_real_dir(vpath));
-            }
             og::script::register_pack_family_chunk(
-                {pack_id, vpath, std::move(source)});
+                {pack_id, vpath, std::move(source), chunk_origin(vpath)});
             families++;
         }
         const std::string scripts_dir = "packs/" + pack_id + "/scripts";
@@ -150,24 +154,18 @@ int register_mounted_pack_scripts()
             }
             std::string source(reinterpret_cast<const char*>(bytes.data()),
                                bytes.size());
-            // THE coverage inventory. This loop — not a scan of the host
-            // filesystem — is the definition of "a pack script the engine can
-            // load": the file may live in packs/ on disk, inside a campaign
-            // .glad, or in a generated archive that only ever existed as a
-            // C++ string literal, and PhysFS makes all three look the same
-            // here. Recording the source at the one place they converge is
-            // what stops such a script from being invisible to the gate.
-            // The real dir is what tells a shipped pack from a synthetic one
-            // a test mounted out of a temp directory. Guarded rather than
-            // relying on declare_pack_source's own early-out, so that with
-            // the recorder off this whole thing costs one bool load and
-            // never asks PhysFS anything.
-            if (og::script::coverage::enabled()) {
-                og::script::coverage::declare_pack_source(
-                    vpath, source, og::io::physfs_real_dir(vpath));
-            }
+            // This loop — not a scan of the host filesystem — is the
+            // definition of "a pack script the engine can load": the file
+            // may live in packs/ on disk, inside a campaign .glad, or in a
+            // generated archive that only ever existed as a C++ string
+            // literal, and PhysFS makes all three look the same here. What
+            // makes such a script visible to the coverage gate is that
+            // registration declares its bytes (see pack_scripts.h); all this
+            // walk owes the report is the real dir, which is what tells a
+            // shipped pack from a synthetic one a test mounted out of a temp
+            // directory.
             og::script::register_pack_script(
-                {pack_id, vpath, std::move(source)});
+                {pack_id, vpath, std::move(source), chunk_origin(vpath)});
             registered++;
         }
     }
