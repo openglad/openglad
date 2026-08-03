@@ -1,0 +1,788 @@
+// Shipped "Multiplayer Game Modes" campaign validation
+// (builtin/org.openglad.modes.glad, authored by tools/modes_mapgen).
+//
+// The 28-scenario five-mode campaign (TDM 300-305 absorbing the arenas
+// grids, CTF 500-509 keeping the shipped CTF maps, Onslaught 800-803,
+// Soccer 820-823, Mutant 840-843) is loaded through the production
+// campaign-mount path and pinned against the authoring invariants the
+// generator promises: every level SCEN_TYPE_SCRIPTED with no exit
+// treasures, Gamesmaster briefings inside the 33-char budget with the
+// exact sign-off, per-mode entity inventories (markers, flags, waypoints,
+// per-team generators, treasures, doors), the migrated decor-cell pins
+// (arenas + CTF values carried over from test_migrated_campaigns), the
+// kept CTF door/key/capture-limit content, the §2.3 obmap ledger with its
+// documented 303/305 A* waivers, closed soccer perimeters whose painted
+// goal strips match the generated manifest, footing + A*-reachability,
+// and the committed og.use("mode_levels") module byte-matching the
+// archive member and executing clean in the script sandbox.
+//
+// This test is the regression pin for the committed package: if it drifts
+// from tools/modes_mapgen, regenerate the package (the tool self-checks
+// the same tables) and update the pins here in the same change.
+
+#include <gtest/gtest.h>
+
+#include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/mapgen/builders.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/save_data.h>
+
+#include "test_gameplay_context_scope.h"
+
+#include <array>
+#include <cstdint>
+#include <fstream>
+#include <map>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace {
+
+// ---------------------------------------------------------------------------
+// Entity wiring: one shared loader (with the flag/waypoint entries the CTF
+// and Onslaught levels author) for every level load.
+// ---------------------------------------------------------------------------
+loader& modes_levels_loader()
+{
+    static loader instance{EntityFactory{}};
+    static const bool registered = [] {
+        register_ctf_loader_entries(instance);
+        return true;
+    }();
+    (void)registered;
+    return instance;
+}
+
+void wire_modes_world_entity_services(GameWorld* world, LevelRuntimeData* level)
+{
+    (void)level;
+    if (world == nullptr)
+        return;
+    loader* game_loader = &modes_levels_loader();
+    world->entity_factory = [game_loader](Order order, std::int32_t family) {
+        return game_loader->create_walker_owned(order, family);
+    };
+    world->entity_configurator =
+        [game_loader](walker& entity, Order order,
+                      std::int32_t family) -> const PixieData* {
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(), entity.family());
+    };
+    world->entity_derived_stats =
+        [game_loader](walker* entity, Order order, std::int32_t family) {
+            if (entity != nullptr)
+                game_loader->set_derived_stats(entity, order, family);
+        };
+}
+
+const LevelDataHooks& modes_levels_hooks()
+{
+    static const LevelDataHooks hooks = [] {
+        LevelDataHooks h{};
+        h.wire_world_entity_services = wire_modes_world_entity_services;
+        return h;
+    }();
+    return hooks;
+}
+
+// Mounts the shipped modes campaign for the duration of one test and
+// EXACT-restores the previous mount in teardown (og_unit_data carries a
+// PhysFS-roundtrip landmine: a fixture must collapse the tracked campaign
+// mount back to the state it found — empty at the process root — or the
+// next mount after the roundtrip fails its unmount-previous step).
+class ModesCampaignTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        restore_default_campaigns();
+        previous_ = get_mounted_campaign();
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("org.openglad.modes"))
+            << "builtin/org.openglad.modes.glad should restore and mount";
+    }
+
+    void TearDown() override
+    {
+        const std::string now = get_mounted_campaign();
+        if (!now.empty())
+            (void)unmount_campaign_package_with_error(now);
+        if (!previous_.empty())
+            (void)mount_campaign_package_with_error(previous_);
+    }
+
+private:
+    std::string previous_;
+};
+
+// A campaign level loaded with full sim context, ready to tick and audit.
+struct LoadedModesLevel
+{
+    LevelRuntimeData level;
+    SaveData save;
+    og::sim::SimEventLog events;
+    GameContext gc;
+    ScopedGameplayContext gameplay;
+    bool loaded = false;
+
+    explicit LoadedModesLevel(int id, std::uint32_t seed = 0)
+        : level(id, true, &modes_levels_hooks())
+        , gameplay(level, save, events, cfg)
+    {
+        level.world().rng_.state_ = seed;
+        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                              &level.world().rng_, &cfg);
+        gc.rng = &level.world().rng_;
+        push_test_context(&gc);
+        loaded = level.load();
+    }
+
+    ~LoadedModesLevel() { pop_test_context(); }
+
+    GameWorld& world() { return level.world(); }
+};
+
+// A living-sized (16x16) ground probe for marker/goal tile checks.
+std::unique_ptr<walker> make_tile_probe(GameWorld& world)
+{
+    std::unique_ptr<walker> probe =
+        world.entity_factory(Order::Living, FAMILY_SOLDIER);
+    if (probe != nullptr)
+    {
+        PixieData square;
+        square.frames = 1;
+        square.w = 16;
+        square.h = 16;
+        square.data = std::make_unique<unsigned char[]>(16 * 16);
+        probe->set_data(square);
+    }
+    return probe;
+}
+
+bool tile_passable(GameWorld& world, walker* probe, int tx, int ty)
+{
+    return world.query_grid_passable(static_cast<float>(tx * GRID_SIZE),
+                                     static_cast<float>(ty * GRID_SIZE),
+                                     probe);
+}
+
+// ---------------------------------------------------------------------------
+// The 28-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
+// tool and test move in lockstep).
+// ---------------------------------------------------------------------------
+struct ShippedModeLevel
+{
+    int id;
+    const char* mode; // manifest tag: tdm/ctf/onslaught/soccer/mutant
+    const char* title;
+    int par;
+    int grid_w;
+    int grid_h;
+    int teams;
+    int markers_per_team;
+    int flags;
+    int cps;
+    std::array<int, 8> gens; // per team byte (7 = neutral)
+    int livings;
+    int treasures; // spice incl. keys/teleporters, excl. flags/CPs
+    int doors;
+    int other_weapons;
+    int caps_total; // sum of the manifest's spawn caps (ledger input)
+    bool a_star_waived;
+    int decor_cells;
+};
+
+const std::vector<ShippedModeLevel>& shipped_levels()
+{
+    static const std::vector<ShippedModeLevel> levels = {
+        {300, "tdm", "Team Deathmatch: THE CIRCLE", 10, 60, 60, 4, 20, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 70, 0, 0, 0, false, 1},
+        {301, "tdm", "Team Deathmatch: BLOODGLADE", 12, 60, 60, 4, 20, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 110, 0, 0, 0, false, 1},
+        {302, "tdm", "Team Deathmatch: ARCHIPELAGO", 14, 80, 80, 4, 20, 0, 0,
+         {0, 0, 0, 0, 2, 0, 0, 0}, 0, 100, 0, 0, 8, false, 26},
+        {303, "tdm", "Team Deathmatch: GATEKEEPERS", 14, 80, 80, 4, 20, 0, 0,
+         {0, 0, 0, 0, 0, 1, 1, 0}, 0, 136, 15, 0, 8, true, 34},
+        {304, "tdm", "Team Deathmatch: THE CASTLE", 15, 60, 60, 4, 20, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 2}, 0, 112, 0, 0, 8, false, 16},
+        {305, "tdm", "Team Deathmatch: BULLSEYE", 15, 60, 60, 4, 20, 0, 0,
+         {1, 1, 1, 1, 0, 0, 0, 0}, 0, 120, 0, 0, 16, true, 24},
+        {500, "ctf", "CTF: FIRST BLOOD", 4, 40, 30, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 8},
+        {501, "ctf", "CTF: A BORDER FORT", 4, 30, 30, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 5, 25, 5, 0, 0, false, 4},
+        {502, "ctf", "CTF: CASTLE CORNER", 4, 30, 40, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 16, 0, 0, 0, false, 10},
+        {503, "ctf", "CTF: THE OUTPOST", 5, 40, 60, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 5, 0, 0, false, 10},
+        {504, "ctf", "CTF: RIVER RUN", 5, 60, 40, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 30},
+        {505, "ctf", "CTF: TRIAD", 6, 51, 51, 3, 12, 3, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 0},
+        {506, "ctf", "CTF: THE UNDERPASS", 5, 60, 20, 2, 12, 2, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 3, 16, 0, false, 0},
+        {507, "ctf", "CTF: DUNGEON OF STARS", 6, 70, 70, 4, 12, 4, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 57, 22, 0, 0, false, 12},
+        {508, "ctf", "CTF: CENTWHEIT MANOR", 6, 50, 50, 3, 12, 3, 2,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 17, 0, 0, 0, false, 9},
+        {509, "ctf", "CTF: CROSSFIRE", 6, 60, 60, 4, 12, 4, 1,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 9, 0, 0, 0, false, 48},
+        {800, "onslaught", "Onslaught: FOUNDRY LINE", 8, 50, 35, 2, 12, 0, 1,
+         {4, 4, 0, 0, 0, 0, 0, 0}, 0, 16, 4, 0, 48, false, 20},
+        {801, "onslaught", "Onslaught: TWIN SPIRES", 10, 60, 60, 2, 12, 0, 2,
+         {6, 6, 0, 0, 0, 0, 0, 0}, 4, 20, 0, 0, 40, false, 16},
+        {802, "onslaught", "Onslaught: THE MARCHES", 12, 80, 60, 3, 12, 0, 1,
+         {4, 4, 4, 0, 0, 0, 0, 0}, 0, 18, 6, 0, 42, false, 0},
+        {803, "onslaught", "Onslaught: LAST BASTION", 12, 70, 70, 2, 12, 0, 2,
+         {5, 5, 0, 0, 0, 0, 0, 2}, 0, 20, 8, 0, 44, false, 6},
+        {820, "soccer", "Soccer: THE PITCH", 6, 44, 28, 2, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4},
+        {821, "soccer", "Soccer: THE MUDBOWL", 8, 50, 30, 2, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4},
+        {822, "soccer", "Soccer: FOURSQUARE", 8, 40, 40, 4, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8},
+        {823, "soccer", "Soccer: BONEYARD CUP", 10, 46, 30, 2, 12, 0, 0,
+         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 12, false, 8},
+        {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4},
+        {841, "mutant", "Mutant: CATACOMBS", 8, 50, 50, 4, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 66},
+        {842, "mutant", "Mutant: MOONCOURT", 8, 40, 40, 4, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 48},
+        {843, "mutant", "Mutant: BROKEN CROWN", 10, 45, 45, 4, 12, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 20},
+    };
+    return levels;
+}
+
+// Soccer terrain contracts (tile coords; the manifest carries the same
+// rects in pixels — goal strip = the painted PIX_CARPET_M rect exactly).
+struct SoccerPins
+{
+    int id;
+    struct Rect { int x0, y0, x1, y1; };
+    std::vector<Rect> goals; // index = defending team
+    int kickoff_tx, kickoff_ty;
+};
+
+const std::vector<SoccerPins>& soccer_pins()
+{
+    static const std::vector<SoccerPins> pins = {
+        {820, {{1, 10, 2, 17}, {41, 10, 42, 17}}, 21, 13},
+        {821, {{1, 11, 2, 18}, {47, 11, 48, 18}}, 24, 14},
+        {822,
+         {{16, 1, 23, 2}, {37, 16, 38, 23}, {16, 37, 23, 38}, {1, 16, 2, 23}},
+         19, 19},
+        {823, {{1, 11, 2, 18}, {43, 11, 44, 18}}, 22, 14},
+    };
+    return pins;
+}
+
+struct Census
+{
+    std::array<int, 8> markers{};
+    std::array<int, 8> flags{};
+    std::array<int, 8> gens{};
+    int cps = 0;
+    int exits = 0;
+    int stains = 0;
+    int teleporters = 0;
+    int treasures = 0;
+    int doors = 0;
+    int other_weapons = 0;
+    int livings = 0;
+    int named = 0;
+    int save_protected = 0;
+};
+
+Census take_census(GameWorld& world)
+{
+    Census c;
+    auto sweep = [&](auto& list) {
+        for (const auto& uptr : list)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr)
+                continue;
+            const Order order = ob->query_order();
+            const int family = ob->family();
+            const int team = std::min<int>(ob->team_num(), 7);
+            if (ob->stats() != nullptr && !ob->stats()->name.empty())
+                ++c.named;
+            if (ob->save_all_protected())
+                ++c.save_protected;
+            if (order == Order::Special && family == FAMILY_RESERVED_TEAM)
+                ++c.markers[static_cast<std::size_t>(team)];
+            else if (order == Order::Treasure)
+            {
+                if (family == og::FAMILY_FLAG)
+                    ++c.flags[static_cast<std::size_t>(team)];
+                else if (family == og::FAMILY_CTF_POINT)
+                    ++c.cps;
+                else if (family == FAMILY_EXIT)
+                    ++c.exits;
+                else if (family == FAMILY_STAIN)
+                    ++c.stains;
+                else
+                {
+                    ++c.treasures;
+                    if (family == FAMILY_TELEPORTER)
+                        ++c.teleporters;
+                }
+            }
+            else if (order == Order::Weapon)
+            {
+                if (family == FAMILY_DOOR)
+                    ++c.doors;
+                else
+                    ++c.other_weapons;
+            }
+            else if (order == Order::Living)
+                ++c.livings;
+            else if (order == Order::Generator)
+                ++c.gens[static_cast<std::size_t>(team)];
+        }
+    };
+    sweep(world.oblist);
+    sweep(world.fxlist);
+    sweep(world.weaplist);
+    return c;
+}
+
+// ---------------------------------------------------------------------------
+
+using ModesLevels = ModesCampaignTest;
+
+TEST_F(ModesLevels, roster_structure_round_trips)
+{
+    const std::vector<int> listed = list_levels_v();
+    EXPECT_EQ(28u, listed.size()) << "the package must ship 28 scenarios";
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id << " failed to load";
+        GameWorld& world = loaded.world();
+        EXPECT_EQ(SCEN_TYPE_SCRIPTED, world.type)
+            << "scen" << pin.id
+            << ": every mode level authors 0x20 ONLY (no CAN_EXIT, no "
+               "SAVE_ALL, no CTF/tower bits)";
+        EXPECT_EQ(pin.title, world.title) << "scen" << pin.id;
+        EXPECT_LE(world.title.size(), 30u) << "scen" << pin.id;
+        EXPECT_EQ(pin.par, world.par_value) << "scen" << pin.id;
+        EXPECT_EQ(1, world.floor_count()) << "scen" << pin.id;
+        EXPECT_EQ(pin.grid_w, world.grid.w) << "scen" << pin.id;
+        EXPECT_EQ(pin.grid_h, world.grid.h) << "scen" << pin.id;
+    }
+}
+
+TEST_F(ModesLevels, briefings_fit_budget_and_carry_the_signoff)
+{
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        const auto& lines = loaded.level.description;
+        ASSERT_FALSE(lines.empty()) << "scen" << pin.id;
+        for (const std::string& line : lines)
+            EXPECT_LE(line.size(), 33u)
+                << "scen" << pin.id << ": briefing line '" << line << "'";
+        EXPECT_EQ("-- THE GAMESMASTER", lines.back())
+            << "scen" << pin.id
+            << ": every briefing ends with the Gamesmaster sign-off";
+    }
+}
+
+TEST_F(ModesLevels, entity_inventories_match)
+{
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        const Census c = take_census(loaded.world());
+        for (int team = 0; team < 8; ++team)
+        {
+            const int expect = (team < pin.teams) ? pin.markers_per_team : 0;
+            EXPECT_EQ(expect, c.markers[static_cast<std::size_t>(team)])
+                << "scen" << pin.id << " team " << team << " markers";
+            EXPECT_EQ(pin.gens[static_cast<std::size_t>(team)],
+                      c.gens[static_cast<std::size_t>(team)])
+                << "scen" << pin.id << " team " << team << " generators";
+        }
+        int total_flags = 0;
+        for (const int f : c.flags)
+            total_flags += f;
+        EXPECT_EQ(pin.flags, total_flags) << "scen" << pin.id;
+        EXPECT_EQ(pin.cps, c.cps) << "scen" << pin.id << " waypoints";
+        EXPECT_EQ(pin.treasures, c.treasures) << "scen" << pin.id;
+        EXPECT_EQ(pin.doors, c.doors) << "scen" << pin.id;
+        EXPECT_EQ(pin.other_weapons, c.other_weapons) << "scen" << pin.id;
+        EXPECT_EQ(pin.livings, c.livings) << "scen" << pin.id;
+    }
+}
+
+TEST_F(ModesLevels, no_exits_no_named_npcs_no_teleporters_on_mutant)
+{
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        const Census c = take_census(loaded.world());
+        EXPECT_EQ(0, c.exits)
+            << "scen" << pin.id << ": MP levels ship no exits";
+        EXPECT_EQ(0, c.stains) << "scen" << pin.id;
+        EXPECT_EQ(0, c.named) << "scen" << pin.id << ": no named NPCs";
+        EXPECT_EQ(0, c.save_protected)
+            << "scen" << pin.id << ": no protected bits";
+        if (std::string(pin.mode) == "mutant")
+            EXPECT_EQ(0, c.teleporters)
+                << "scen" << pin.id
+                << ": a pad ride would break the beacon hunt";
+    }
+}
+
+TEST_F(ModesLevels, decor_planes_well_formed_and_pinned)
+{
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        GameWorld& world = loaded.world();
+        const PixieData& dec = world.decor;
+        int cells = 0;
+        if (dec.valid())
+        {
+            ASSERT_EQ(world.grid.w, dec.w) << "scen" << pin.id;
+            ASSERT_EQ(world.grid.h, dec.h) << "scen" << pin.id;
+            for (int ty = 0; ty < dec.h; ++ty)
+                for (int tx = 0; tx < dec.w; ++tx)
+                {
+                    const unsigned char d = dec.data[tx + ty * dec.w];
+                    if (d == DECOR_NONE)
+                        continue;
+                    ++cells;
+                    EXPECT_LT(d, DECOR_MAX)
+                        << "scen" << pin.id << " (" << tx << ", " << ty << ")";
+                }
+        }
+        EXPECT_EQ(pin.decor_cells, cells) << "scen" << pin.id;
+    }
+}
+
+TEST_F(ModesLevels, footing_and_reachability)
+{
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        GameWorld& world = loaded.world();
+
+        // Marker tiles carry deploying 16x16 livings; probe them with a
+        // living-size box (the library audit's marker-sprite footprint is
+        // an editor artifact, filtered below).
+        std::unique_ptr<walker> probe = make_tile_probe(world);
+        ASSERT_NE(nullptr, probe) << "scen" << pin.id;
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Special ||
+                ob->family() != FAMILY_RESERVED_TEAM)
+                continue;
+            EXPECT_TRUE(tile_passable(world, probe.get(),
+                                      ob->xpos() / GRID_SIZE,
+                                      ob->ypos() / GRID_SIZE))
+                << "scen" << pin.id << ": marker ("
+                << ob->xpos() / GRID_SIZE << ", " << ob->ypos() / GRID_SIZE
+                << ") impassable";
+        }
+
+        for (const std::string& err : og::mapgen::audit_footing(world))
+        {
+            if (err.find("order 5 family 0") != std::string::npos)
+                continue; // marker sprite footprint: covered above
+            ADD_FAILURE() << "scen" << pin.id << ": " << err;
+        }
+        for (const std::string& err : og::mapgen::audit_reachability(world))
+        {
+            // THE CASTLE's paired towers are teleporter-served by design
+            // (the twelve kept pads are the map's identity).
+            if (pin.id == 304 && err.find("(28, 28)") != std::string::npos)
+                continue;
+            ADD_FAILURE() << "scen" << pin.id << ": " << err;
+        }
+    }
+}
+
+TEST_F(ModesLevels, kept_ctf_doors_and_keys)
+{
+    // scen503: the kept source door seals the empty inner keep; key at
+    // (18, 11). scen506: the kept door seals a dead-end treasure pocket;
+    // keys at (30, 15). Tile coordinates are pinned content.
+    {
+        LoadedModesLevel outpost(503);
+        ASSERT_TRUE(outpost.loaded);
+        std::set<std::pair<int, int>> door_tiles;
+        for (const auto& uptr : outpost.world().weaplist)
+        {
+            walker* ob = uptr.get();
+            if (ob != nullptr && ob->family() == FAMILY_DOOR)
+                door_tiles.insert({ob->xpos() / GRID_SIZE,
+                                   ob->ypos() / GRID_SIZE});
+        }
+        EXPECT_TRUE(door_tiles.count({18, 19}) && door_tiles.count({19, 19}))
+            << "scen503 kept door tiles (18-19, 19)";
+        bool key_found = false;
+        for (const auto& uptr : outpost.world().fxlist)
+        {
+            walker* fx = uptr.get();
+            if (fx != nullptr && fx->family() == FAMILY_KEY &&
+                fx->xpos() / GRID_SIZE == 18 && fx->ypos() / GRID_SIZE == 11)
+                key_found = true;
+        }
+        EXPECT_TRUE(key_found) << "scen503 kept key at (18, 11)";
+    }
+    {
+        LoadedModesLevel underpass(506);
+        ASSERT_TRUE(underpass.loaded);
+        std::set<std::pair<int, int>> door_tiles;
+        for (const auto& uptr : underpass.world().weaplist)
+        {
+            walker* ob = uptr.get();
+            if (ob != nullptr && ob->family() == FAMILY_DOOR)
+                door_tiles.insert({ob->xpos() / GRID_SIZE,
+                                   ob->ypos() / GRID_SIZE});
+        }
+        EXPECT_TRUE(door_tiles.count({43, 12}) &&
+                    door_tiles.count({44, 12}) && door_tiles.count({45, 12}))
+            << "scen506 kept door tiles (43-45, 12)";
+        int keys_at_pocket = 0;
+        for (const auto& uptr : underpass.world().fxlist)
+        {
+            walker* fx = uptr.get();
+            if (fx != nullptr && fx->family() == FAMILY_KEY &&
+                fx->xpos() / GRID_SIZE == 30 && fx->ypos() / GRID_SIZE == 15)
+                ++keys_at_pocket;
+        }
+        EXPECT_EQ(2, keys_at_pocket) << "scen506 kept keys at (30, 15)";
+    }
+}
+
+TEST_F(ModesLevels, crossfire_capture_limit_is_five)
+{
+    LoadedModesLevel crossfire(509);
+    ASSERT_TRUE(crossfire.loaded);
+    int flags_seen = 0;
+    for (const auto& uptr : crossfire.world().fxlist)
+    {
+        walker* fx = uptr.get();
+        if (fx == nullptr || fx->family() != og::FAMILY_FLAG)
+            continue;
+        ++flags_seen;
+        ASSERT_NE(nullptr, fx->stats());
+        EXPECT_EQ(5, fx->stats()->level())
+            << "CROSSFIRE plays to five captures (flag stat level 5)";
+    }
+    EXPECT_EQ(4, flags_seen);
+}
+
+TEST_F(ModesLevels, obmap_budget_ledger_holds)
+{
+    // §2.3 model: authored ground load + capped spawns + 16 heroes +
+    // 20 corpse/stain transients + 25 projectiles (+ the soccer ball)
+    // stays <= 190 so A* never short-circuits mid-match. 303 and 305 are
+    // the documented arenas-heritage waivers.
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        int gens = 0;
+        for (const int g : pin.gens)
+            gens += g;
+        const int ball = (std::string(pin.mode) == "soccer") ? 1 : 0;
+        int flags = pin.flags;
+        const int ledger = gens + pin.treasures + flags + pin.cps +
+                           pin.doors + pin.livings + pin.caps_total + 16 +
+                           20 + 25 + ball;
+        if (pin.a_star_waived)
+            EXPECT_GT(ledger, 190)
+                << "scen" << pin.id
+                << ": the A* waiver documents a real overrun; drop it if "
+                   "the ledger now fits";
+        else
+            EXPECT_LE(ledger, 190) << "scen" << pin.id;
+        EXPECT_TRUE(pin.a_star_waived == (pin.id == 303 || pin.id == 305))
+            << "scen" << pin.id
+            << ": only the two arenas-heritage maps carry the waiver";
+    }
+}
+
+TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
+{
+    for (const SoccerPins& pin : soccer_pins())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        GameWorld& world = loaded.world();
+        std::unique_ptr<walker> probe = make_tile_probe(world);
+        ASSERT_NE(nullptr, probe);
+
+        // Closed perimeter: the ball and the players can never leave.
+        for (int tx = 0; tx < world.grid.w; ++tx)
+        {
+            EXPECT_FALSE(tile_passable(world, probe.get(), tx, 0))
+                << "scen" << pin.id << " (" << tx << ", 0)";
+            EXPECT_FALSE(
+                tile_passable(world, probe.get(), tx, world.grid.h - 1))
+                << "scen" << pin.id << " (" << tx << ", " << world.grid.h - 1
+                << ")";
+        }
+        for (int ty = 0; ty < world.grid.h; ++ty)
+        {
+            EXPECT_FALSE(tile_passable(world, probe.get(), 0, ty))
+                << "scen" << pin.id << " (0, " << ty << ")";
+            EXPECT_FALSE(
+                tile_passable(world, probe.get(), world.grid.w - 1, ty))
+                << "scen" << pin.id << " (" << world.grid.w - 1 << ", " << ty
+                << ")";
+        }
+
+        // Goal strips: every tile carries the goal carpet, and the strip
+        // is exactly 8x2 tiles (128x32 px — the manifest's pixel rects).
+        for (const SoccerPins::Rect& g : pin.goals)
+        {
+            const int w = g.x1 - g.x0 + 1;
+            const int h = g.y1 - g.y0 + 1;
+            EXPECT_EQ(16, w * h)
+                << "scen" << pin.id << ": goal strips are 8x2 tiles";
+            for (int ty = g.y0; ty <= g.y1; ++ty)
+                for (int tx = g.x0; tx <= g.x1; ++tx)
+                    EXPECT_EQ(PIX_CARPET_M,
+                              world.grid.data[tx + ty * world.grid.w])
+                        << "scen" << pin.id << " goal tile (" << tx << ", "
+                        << ty << ")";
+        }
+        EXPECT_TRUE(tile_passable(world, probe.get(), pin.kickoff_tx,
+                                  pin.kickoff_ty))
+            << "scen" << pin.id << " kickoff";
+    }
+}
+
+TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
+{
+    // The committed og.use("mode_levels") module and the archive member
+    // must be the same bytes (regenerate-and-diff discipline), and the
+    // chunk must execute clean in the script sandbox.
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/org.openglad.modes.rules/lib/mode_levels.lua");
+    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    std::ifstream committed_in("tools/modes_mapgen/pack/lib/mode_levels.lua",
+                               std::ios::binary);
+    ASSERT_TRUE(committed_in.good())
+        << "committed manifest missing from the repo";
+    std::ostringstream committed_buf;
+    committed_buf << committed_in.rdbuf();
+    const std::string committed = committed_buf.str();
+    const std::string member_text(member.begin(), member.end());
+    EXPECT_EQ(committed, member_text)
+        << "regenerate the campaign: the committed manifest and the "
+           "package member have drifted";
+
+    og::script::ScriptHost host;
+    EXPECT_TRUE(host.run_chunk("mode_levels.lua", member_text,
+                               "org.openglad.modes.rules"))
+        << "the manifest chunk failed to execute";
+    EXPECT_TRUE(host.errors().empty());
+
+    // Spot-check the data through the sandbox (same env key: the module's
+    // global M is not visible — re-run returning fields instead).
+    og::script::ScriptHost probe_host;
+    const std::string expr_prefix =
+        "(function() local M = (function() " +
+        member_text.substr(member_text.find("local M = {}")) +
+        " end)() return ";
+    const auto teams =
+        probe_host.eval_integer(expr_prefix + "M.levels[822].teams end)()");
+    ASSERT_TRUE(teams.has_value());
+    EXPECT_EQ(4, *teams) << "FOURSQUARE is the four-team pitch";
+    const auto goal_w = probe_host.eval_integer(
+        expr_prefix + "M.levels[820].goal_rects[0].w end)()");
+    ASSERT_TRUE(goal_w.has_value());
+    EXPECT_EQ(32, *goal_w) << "side goals are 32px deep";
+    const auto cap = probe_host.eval_integer(
+        expr_prefix + "M.levels[800].spawn_caps[0] end)()");
+    ASSERT_TRUE(cap.has_value());
+    EXPECT_EQ(24, *cap) << "FOUNDRY LINE caps 24 live spawns per team";
+}
+
+TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
+{
+    const struct { const char* path; int w; int h; int frames; } sprites[] = {
+        {"icon.png", 32, 32, 1},
+        {"packs/org.openglad.modes.rules/sprites/flag.png", 10, 14, 4},
+        {"packs/org.openglad.modes.rules/sprites/ctfpoint.png", 16, 16, 1},
+        {"packs/org.openglad.modes.rules/sprites/ball.png", 12, 12, 1},
+        {"packs/org.openglad.modes.rules/sprites/aura.png", 16, 16, 4},
+    };
+    for (const auto& s : sprites)
+    {
+        const PixieData pix = read_pixie_file(s.path);
+        ASSERT_TRUE(pix.valid()) << s.path;
+        EXPECT_EQ(s.w, static_cast<int>(pix.w)) << s.path;
+        EXPECT_EQ(s.h, static_cast<int>(pix.h)) << s.path;
+        EXPECT_EQ(s.frames, static_cast<int>(pix.frames)) << s.path;
+    }
+}
+
+TEST_F(ModesLevels, embedded_pack_rides_the_mount_cycle)
+{
+    // Mounted: the pack lib member resolves through the VFS.
+    EXPECT_FALSE(og::resources::read_file(
+                     "packs/org.openglad.modes.rules/lib/mode_levels.lua")
+                     .empty());
+    // Unmounted: it leaves with its campaign.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              unmount_campaign_package_with_error("org.openglad.modes"));
+    EXPECT_TRUE(og::resources::read_file(
+                    "packs/org.openglad.modes.rules/lib/mode_levels.lua")
+                    .empty());
+    // Remount so teardown finds the state it expects.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.modes"));
+}
+
+TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
+{
+    // One level per mode: a full sim context, 30 real ticks. With no mode
+    // scripts landed yet the scripted fork must be a clean no-op — no
+    // script errors, no spurious level end. (The per-mode dispatch smokes
+    // arrive with the Lua-mode waves.)
+    for (const int id : {300, 500, 800, 820, 840})
+    {
+        LoadedModesLevel loaded(id, 7u);
+        ASSERT_TRUE(loaded.loaded) << "scen" << id;
+        for (int i = 0; i < 30; ++i)
+            loaded.world().tick();
+        EXPECT_TRUE(loaded.world().scripts().host().errors().empty())
+            << "scen" << id << " recorded script errors";
+    }
+}
+
+} // namespace

@@ -68,7 +68,7 @@ def parse_engine_palette(path):
     """Cross-check source: the 6-bit our_pal_lookup table in our_palette.cpp."""
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
-    m = re.search(r"data\[\]\s*=\s*\{(.*?)\};", text, re.S)
+    m = re.search(r"\bdata(?:\[\])?\s*=\s*\{(.*?)\};", text, re.S)
     if not m:
         raise SystemExit(f"{path}: could not locate palette data array")
     values = [int(v) for v in re.findall(r"\d+", m.group(1))]
