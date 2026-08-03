@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Structurally verify the generated media in docs/media/lua-classpacks.
+"""Structurally verify the generated lua-classpacks showcase media
+(build/media/lua-classpacks by default; pass a directory to check a
+checkout of the openglad/openglad-screenshots repo instead).
 
 Runs ffprobe (from the dev shell: `nix develop`) over every shipped file with
 frame counting on, which decodes each file end to end: a GIF whose frames all
@@ -80,7 +82,7 @@ def main(argv: list[str]) -> int:
         return 1
     root = argv[0] if argv else os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..",
-        "docs", "media", "lua-classpacks")
+        "build", "media", "lua-classpacks")
     root = os.path.abspath(root)
     print(f"verifying media in {root}")
 
