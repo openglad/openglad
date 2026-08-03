@@ -1,11 +1,15 @@
 /* Capture-the-flag simulation state and engine API.
  *
- * This header is deliberately leaf-level: it includes only <cstdint> and
- * <vector> and forward-declares the entity types, so game_world.h can embed
- * a CtfState member without include cycles. All per-tick CTF logic lives in
- * src/gameplay/ctf/ctf.cpp and ctf_ai.cpp.
+ * This header is deliberately leaf-level: it includes only the respawn-state
+ * leaf header plus <cstdint>/<vector> and forward-declares the entity types,
+ * so game_world.h can embed a CtfState member without include cycles. All
+ * per-tick CTF logic lives in src/gameplay/ctf/ctf.cpp and ctf_ai.cpp; the
+ * shared respawn engine state is the RespawnState base (respawn/
+ * respawn_state.h).
  */
 #pragma once
+
+#include <openglad/gameplay/respawn/respawn_state.h>
 
 #include <cstdint>
 #include <vector>
@@ -17,9 +21,6 @@ namespace og::sim {
 
 inline constexpr int kCtfMaxFlags = 4;            // one per score team
 inline constexpr int kCtfMaxControlPoints = 4;
-inline constexpr int kCtfMaxAnchorsPerTeam = 16;
-inline constexpr int kCtfMaxRespawnEntries = 64;
-inline constexpr std::uint16_t kCtfDefaultRespawnTicks = 120;    // 10 s @ 12 Hz
 inline constexpr std::uint16_t kCtfDefaultFlagReturnTicks = 360;
 inline constexpr std::uint32_t kCtfDefaultTimeLimitTicks = 14400;
 inline constexpr std::uint8_t kCtfDefaultCaptureLimit = 3;
@@ -29,14 +30,6 @@ inline constexpr int kCtfCpCaptureTicks = 36;
 inline constexpr int kCtfCpPulsePeriod = 300;
 inline constexpr int kCtfCpPulseRadius = 96;                     // px, localized speed pulse
 inline constexpr int kCtfAiCadenceTicks = 15;
-
-// SaveData/lobby/world values for the classic (non-CTF) respawn selector.
-// Keep the existing numeric meanings stable for saved companies and network
-// peers; the Team 1-only option is appended as value 3.
-inline constexpr short kRespawnModeOff = 0;
-inline constexpr short kRespawnModeHeroes = 1;
-inline constexpr short kRespawnModeEveryone = 2;
-inline constexpr short kRespawnModeTeamOneHeroes = 3;
 
 enum class CtfFlagState : std::uint8_t { AtHome = 0, Carried = 1, Dropped = 2 };
 
@@ -62,43 +55,24 @@ struct CtfControlPoint
     std::uint32_t next_pulse_tick = 0;
 };
 
-struct CtfRespawnEntry
-{
-    std::uint8_t kind = 0;                  // 0 = player (revive walker_entity_id), 1 = AI (spawn family/level)
-    std::uint8_t team = 0;
-    std::uint8_t family = 0;                // AI only
-    std::uint8_t level = 1;                 // AI only
-    std::uint16_t ticks_left = 0;
-    std::uint32_t walker_entity_id = 0;     // corpse id (player corpses stay in oblist)
-    // Classic (non-CTF) respawn location, filled at schedule time: the
-    // corpse's recorded spawn point when set, else where it fell. CTF fire
-    // paths ignore these (anchor rotation stays authoritative for CTF).
-    std::int16_t x = -1;
-    std::int16_t y = -1;
-    std::uint8_t floor = 0;
-};
-
-struct CtfState
+// CTF-only match state, layered over the shared respawn engine state (the
+// base carries respawn_ticks / respawn_serial / anchors / respawn_queue —
+// see respawn/respawn_state.h for why the storage still lives here).
+struct CtfState : RespawnState
 {
     bool active = false;                    // set only by ctf_initialize_for_level / apply_snapshot
     bool init_attempted = false;            // lazy-init latch
     std::uint8_t team_count = 2;            // active team count after init
     std::uint8_t capture_limit = kCtfDefaultCaptureLimit;
-    std::uint16_t respawn_ticks = kCtfDefaultRespawnTicks;
     std::uint16_t flag_return_ticks = kCtfDefaultFlagReturnTicks;
     std::uint32_t time_limit_ticks = kCtfDefaultTimeLimitTicks;  // 0 = none
     std::int8_t winner_team = -1;
     bool winner_is_player = false;
     std::uint16_t captures[4] = {};
-    std::uint16_t respawn_serial = 0;       // anchor rotation cursor
     bool team_active[4] = {};
     CtfFlag flags[kCtfMaxFlags];            // index == team
     std::uint8_t cp_count = 0;
     CtfControlPoint cps[kCtfMaxControlPoints];
-    std::uint8_t anchor_count[4] = {};
-    std::int16_t anchor_x[4][kCtfMaxAnchorsPerTeam] = {};
-    std::int16_t anchor_y[4][kCtfMaxAnchorsPerTeam] = {};
-    std::vector<CtfRespawnEntry> respawn_queue;   // cap kCtfMaxRespawnEntries
 };
 
 // Full reset + scan of flags/markers/control points, inactive-team stripping,
@@ -124,14 +98,6 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world);
 // at their authored placement, and mode 3 respawns only Team 1 heroes (the
 // player-facing Team 1 is internal team 0). Never draws world.rng_, and
 // leaves ctf.active false so every CTF-only consumer keeps keying off it.
-
-// Requested-delay clamp for classic respawns (the SaveData/lobby
-// ctf_respawn_ticks knob rides the same channel; out-of-range requests fall
-// back to kCtfDefaultRespawnTicks).
-inline constexpr short kClassicMinRespawnTicks = 12;
-inline constexpr short kClassicMaxRespawnTicks = 1200;
-// Blocked classic AI respawns retry on this bounded deterministic cadence.
-inline constexpr std::uint16_t kClassicBlockedRetryTicks = 12;
 
 // True when the classic respawn engine owns respawns on this level: a non-CTF
 // world with one of the supported nonzero respawn modes.
@@ -183,19 +149,6 @@ const char* ctf_team_color_name(int team);
 void ctf_authored_flag_teams(const GameWorld& world, bool (&present)[4]);
 [[nodiscard]] std::uint8_t
 ctf_authored_flag_team_mask(const GameWorld& world) noexcept;
-
-// True when a kind-0 (player revive) entry for this corpse is still pending.
-// Shared by the HUD countdown and the view-control keep-alive paths.
-inline bool ctf_pending_player_respawn(const CtfState& ctf,
-                                       std::uint32_t entity_id)
-{
-    for (const CtfRespawnEntry& entry : ctf.respawn_queue)
-    {
-        if (entry.kind == 0 && entry.walker_entity_id == entity_id)
-            return true;
-    }
-    return false;
-}
 
 // Cadence-gated AI director (role assignment for AI livings).
 void ctf_run_ai_director(GameWorld& world);

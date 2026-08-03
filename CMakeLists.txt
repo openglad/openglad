@@ -352,6 +352,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+    ${SRC_DIR}/gameplay/mode/mode_tick.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/sim_control_policy.cpp
@@ -553,6 +554,7 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+    ${SRC_DIR}/gameplay/mode/mode_tick.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
@@ -1589,6 +1591,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/game_world_weather.cpp
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
         ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+        ${SRC_DIR}/gameplay/mode/mode_tick.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
         ${SRC_DIR}/gameplay/sim_control_policy.cpp
         ${SRC_DIR}/interface/session_state.cpp

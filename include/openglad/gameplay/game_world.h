@@ -23,6 +23,7 @@
 #include <openglad/core/tower_constants.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/irandom.h>
@@ -143,6 +144,12 @@ public:
     // authored with both TYPE_CTF and TYPE_TOWER resolves CTF-first (v1
     // content never authors both).
     static constexpr char TYPE_TOWER = 0x10;
+    // Scripted-mode level (SCEN_TYPE_SCRIPTED in .fss files): match rules
+    // live in campaign-pack Lua level hooks; the tick fork dispatches
+    // og::sim::mode_run_tick ahead of the CTF branch. One bit for ALL
+    // scripted modes — mode identity comes from the pack's per-level
+    // og.register_level_hooks registration, not from type bits.
+    static constexpr char TYPE_SCRIPTED = 0x20;
 
     explicit GameWorld(std::uint32_t seed = 0);
     ~GameWorld();
@@ -454,6 +461,18 @@ public:
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     og::sim::CtfState ctf;
+    // The respawn engine's handle on its own state. Storage still lives
+    // inside `ctf` (RespawnState is CtfState's base — see respawn_state.h),
+    // so snapshot v9 capture and every existing world.ctf.respawn_queue
+    // reader keep their bytes and spellings; engine code and scripted modes
+    // read/write through this alias. Safe as a reference member: GameWorld
+    // is neither copyable nor movable. The physical split lands with the
+    // CTF retirement + snapshot v10.
+    og::sim::RespawnState& respawn = ctf;
+    // Scripted-mode (TYPE_SCRIPTED) match state. Reset at level load beside
+    // `ctf`; carried across the LevelRuntimeData world handoff. Not yet in
+    // WorldSnapshot (the coordinated bump lands with the CTF retirement).
+    og::sim::ModeState mode;
     short current_scenario = 0;
     int guy_id_counter = 0;
     std::uint8_t current_palette_id = 0;

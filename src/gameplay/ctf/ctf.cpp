@@ -15,6 +15,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
@@ -31,21 +32,12 @@ namespace og::sim {
 
 const char* ctf_team_color_name(int team)
 {
-    switch (team)
-    {
-        case 0: return "RED";
-        case 1: return "GREEN";
-        case 2: return "BLUE";
-        default: return "YELLOW";
-    }
+    // Forwards to the mode-generic name table (mode/mode_state.h) so every
+    // win/results surface keeps one color vocabulary.
+    return team_color_name(team);
 }
 
 namespace {
-
-const char* team_color_name(int team)
-{
-    return ctf_team_color_name(team);
-}
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
 void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry);

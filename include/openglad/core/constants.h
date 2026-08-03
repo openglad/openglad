@@ -212,6 +212,11 @@ inline constexpr char SCEN_TYPE_SAVE_ALL = 4;
 // the sole reader is floor_hud_label; sim rules never consult it, and it is
 // never runtime-mutated (unlike CTF's activation-time bit drop).
 inline constexpr char SCEN_TYPE_TOWER = 16;
+// Scripted-mode level (mirrors GameWorld::TYPE_SCRIPTED): match rules live
+// in campaign-pack Lua level hooks (on_mode_init / on_mode_tick / ...).
+// One bit for ALL scripted modes; per-mode identity comes from the pack's
+// per-level hook registration. 0x40 stays free.
+inline constexpr char SCEN_TYPE_SCRIPTED = 32;
 
 // Outline colors
 inline constexpr unsigned char OUTLINE_NAMED         = 7;
