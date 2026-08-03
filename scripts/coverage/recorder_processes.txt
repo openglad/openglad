@@ -51,6 +51,7 @@ og_unit_families
 og_unit_headless_platform
 og_unit_mapgen
 og_unit_mode
+og_unit_modes
 og_unit_script
 og_unit_server
 og_unit_sim

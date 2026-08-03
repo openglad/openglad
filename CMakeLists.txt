@@ -3032,6 +3032,15 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
         )
 
+        og_add_unit_group(og_unit_modes FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
+        )
+        # The modes-pack fixture zips the CURRENT repo pack sources into its
+        # temp .glad so the tests always exercise the shipped bytes.
+        target_compile_definitions(og_unit_modes PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+        )
+
         og_add_unit_group(og_unit_mapgen FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_mapgen_builders.cpp
         )
