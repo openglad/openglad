@@ -87,10 +87,10 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 1, .down = 3}},
+     MenuNav{.up = 1, .down = 9}},
     {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 2, .down = 4}},
+     MenuNav{.up = 9, .down = 4}},
     {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 3, .down = 5}},
@@ -110,6 +110,11 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 0, .down = 2, .left = 1}},
     {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
      button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
+    // #155: the always-visible CLOUD door, in the free band between LEVEL
+    // EDITOR and DIFFICULTY; MenuSpecRow arg == its materialized ordinal.
+    {"cloud", "CLOUD", KEYSTATE_UNKNOWN, 80, 119, 140, 15,
+     button_action_id(ButtonAction::MenuSpecRow), 9,
+     MenuNav{.up = 2, .down = 3}},
 };
 
 TEST(MenuEnginePins, mainmenu_exact_table)
@@ -119,11 +124,13 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     check_exact_table(buttons, count, kExpectedMainMenu,
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
-    // §2.1/§9.2 index contract: load_company then no_company_note remain the
-    // appended tail; DIFFICULTY and GAME SETTINGS are the full-width rows
-    // left after local seat management moved into Base Camp.
-    ASSERT_EQ("no_company_note", buttons[count - 1].id);
-    ASSERT_EQ("load_company", buttons[count - 2].id);
+    // §2.1/§9.2 index contract: load_company, no_company_note, then the
+    // #155 CLOUD door form the appended tail; DIFFICULTY and GAME SETTINGS
+    // are the full-width rows left after local seat management moved into
+    // Base Camp.
+    ASSERT_EQ("cloud", buttons[count - 1].id);
+    ASSERT_EQ("no_company_note", buttons[count - 2].id);
+    ASSERT_EQ("load_company", buttons[count - 3].id);
     ASSERT_EQ("level_edit", buttons[2].id);
     ASSERT_EQ("difficulty", buttons[3].id);
     ASSERT_EQ("options", buttons[4].id);

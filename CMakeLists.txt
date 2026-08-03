@@ -271,6 +271,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
+    ${SRC_DIR}/interface/ui/cloud_save_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/render/pixie.cpp
@@ -508,6 +509,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
+    ${SRC_DIR}/interface/ui/cloud_save_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
@@ -1549,6 +1551,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/menu_model.cpp
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
+        ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
         ${OG_CORE_SOURCES}
@@ -1835,6 +1838,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/menu_model.cpp
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
+        ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
     )
     set(OG_CURSES_SOURCES
@@ -2355,6 +2359,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_company_list.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_cloud_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_uxshots_probe.cpp
         )
 
@@ -2653,6 +2658,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_test_group(og_test_menu_ui FILES
             test_back_to_mainmenu.cpp
+            test_cloud_ui.cpp
             test_menu.cpp
             test_menu_layout.cpp
             test_new_game.cpp
@@ -2938,6 +2944,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
         )
 
         og_add_unit_group(og_unit_script FILES

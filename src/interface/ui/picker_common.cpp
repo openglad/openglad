@@ -1618,9 +1618,12 @@ std::string clip_to(std::string text, std::size_t max_len)
     return text;
 }
 
+} // namespace
+
 // "YYYY-MM-DD" in UTC (deterministic — never the machine's timezone), or ""
 // for never-played (<= 0) and out-of-calendar values (a 4-digit year keeps
-// the §2.3 10-char date column budget honest).
+// the §2.3 10-char date column budget honest). Public: the cloud-save
+// confirm prompts (#155) reuse the same date rendering.
 std::string format_played_date_utc(std::int64_t unix_s)
 {
     // 9999-12-31T23:59:59Z. Values beyond this would overflow the int day
@@ -1639,7 +1642,10 @@ std::string format_played_date_utc(std::int64_t unix_s)
                        static_cast<unsigned>(ymd.day()));
 }
 
-} // namespace
+std::string format_cloud_passphrase_status(bool key_set)
+{
+    return key_set ? "PASSPHRASE: SET" : "PASSPHRASE: NOT SET";
+}
 
 std::string format_company_list_title(int count)
 {

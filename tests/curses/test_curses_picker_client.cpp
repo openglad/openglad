@@ -30,6 +30,7 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
@@ -2471,4 +2472,73 @@ TEST(CursesPickerClient, run_picker_through_difficulty_submenu_then_quit)
         << "the submenu action must land on the save";
     EXPECT_TRUE(f.t().input_exhausted())
         << "the difficulty submenu round trip should consume the whole script";
+}
+
+// #155: the CLOUD submenu round trip — set a passphrase (stores the DERIVED
+// key, never the raw phrase), then Upload/Download degrade with the D8
+// unavailable notice (the curses bridge installs no cloud HTTP callbacks).
+TEST(CursesPickerClient, run_picker_through_cloud_submenu_then_quit)
+{
+    cfg.data.erase("cloud");
+    PickerFixture f;
+
+    const int door_idx =
+        main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+    ASSERT_GE(door_idx, 0);
+    ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
+    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_special(KeyCode::Enter);
+
+    // Cloud submenu: PASSPHRASE (row 0) -> type a phrase, accept, dismiss
+    // the "Passphrase set." notice.
+    pick(f.t(), 0);
+    for (const char ch : std::string("correct horse battery"))
+        f.t().push_char(static_cast<char32_t>(ch));
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    // UPLOAD (row 1): no HTTP in this client -> unavailable notice.
+    pick(f.t(), 1);
+    dismiss(f.t());
+    // DOWNLOAD (row 2): same degradation.
+    pick(f.t(), 2);
+    dismiss(f.t());
+    // Esc leaves the submenu (Back), Esc on Main quits.
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ("73270125791ba273", cfg.get_setting("cloud", "key"))
+        << "the DERIVED key is persisted (D9), pinned to the D2 vector";
+    EXPECT_EQ("0", cfg.get_setting("cloud", "revision"));
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the cloud submenu round trip should consume the whole script";
+    cfg.data.erase("cloud");
+}
+
+// #155: a too-short passphrase is rejected client-side and nothing persists.
+TEST(CursesPickerClient, cloud_passphrase_length_gate_rejects_short_input)
+{
+    cfg.data.erase("cloud");
+    PickerFixture f;
+
+    const int door_idx =
+        main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+    ASSERT_GE(door_idx, 0);
+    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_special(KeyCode::Enter);
+    pick(f.t(), 0);
+    for (const char ch : std::string("short12")) // 7 chars -> reject
+        f.t().push_char(static_cast<char32_t>(ch));
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t()); // "Passphrase must be 8-64 characters."
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ("", cfg.get_setting("cloud", "key"))
+        << "a rejected passphrase must not persist a key";
+    EXPECT_TRUE(f.t().input_exhausted());
+    cfg.data.erase("cloud");
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 
 #include <memory>
@@ -30,6 +31,16 @@ std::unique_ptr<og::ui::IPickerRelayRoomListRequest>
 begin_platform_list_relay_rooms(
     const std::string& base_url,
     const std::string& campaign_tag);
+
+// Cloud saves (#155): blocking text HTTP against the relay's
+// /api/save/<KEY> endpoints. Native: ix::HttpClient (10 s transfer
+// timeout); web: the EM_ASYNC_JS fetch helpers (10 s Promise.race
+// timeout). status 0 = transport failure with `error` filled.
+og::ui::cloud::CloudHttpResult platform_cloud_http_get(
+    const std::string& url);
+og::ui::cloud::CloudHttpResult platform_cloud_http_post(
+    const std::string& url,
+    const std::string& json_body);
 
 bool install_picker_lobby_gameplay_runtime(
     og::ui::IPickerLobbyClient* client,

@@ -1782,3 +1782,128 @@ TEST(CompanyAutosave, local_mutation_hook_is_a_plain_stamped_write)
     EXPECT_EQ(1234, og::data::read_company_header("save0")->last_played_unix_s);
     EXPECT_TRUE(og::data::list_company_backups("save0").empty());
 }
+
+
+// ---------------------------------------------------------------------------
+// #155 cloud-save byte IO: export_company_bytes / install_company_bytes.
+// ---------------------------------------------------------------------------
+
+TEST(CompanyCloudBytes, export_returns_verbatim_file_bytes)
+{
+    SaveDirSandbox sandbox;
+    HeaderFixture fixture;
+    fixture.name = "Cloud Export Co";
+    // Body bytes past the header prove the export is the WHOLE file, not a
+    // header-bounded read.
+    const std::string raw = fixture.bytes() + "ROSTER BYTES FOLLOW \x01\x02";
+    sandbox.write_raw("cloudexp.gtl", raw);
+
+    const std::optional<std::vector<std::uint8_t>> exported =
+        og::data::export_company_bytes("cloudexp");
+    ASSERT_TRUE(exported.has_value());
+    EXPECT_EQ(raw, std::string(exported->begin(), exported->end()))
+        << "the cloud blob is the on-disk file verbatim";
+}
+
+TEST(CompanyCloudBytes, export_refuses_missing_unsafe_and_netsession)
+{
+    SaveDirSandbox sandbox;
+    EXPECT_FALSE(og::data::export_company_bytes("absent").has_value());
+    EXPECT_FALSE(og::data::export_company_bytes("../save0").has_value());
+    sandbox.write_raw("netsession.gtl", HeaderFixture{}.bytes());
+    EXPECT_FALSE(og::data::export_company_bytes("netsession").has_value())
+        << "the reserved scratch never leaks to the cloud";
+}
+
+TEST(CompanyCloudBytes, install_over_existing_backs_up_then_replaces)
+{
+    SaveDirSandbox sandbox;
+
+    HeaderFixture local;
+    local.name = "Local Cloud Co";
+    const std::string local_bytes = local.bytes();
+    sandbox.write_raw("cloudinst.gtl", local_bytes);
+
+    HeaderFixture remote;
+    remote.name = "Remote Cloud Co";
+    remote.scen_num = 9;
+    const std::string remote_bytes = remote.bytes() + "TAIL";
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+
+    ASSERT_EQ(og::data::CompanyInstallError::None,
+              og::data::install_company_bytes("cloudinst", remote_raw));
+
+    EXPECT_EQ(remote_bytes, read_file_bytes(sandbox.dir() / "cloudinst.gtl"))
+        << "the slot now holds the downloaded bytes exactly";
+    const std::vector<og::data::CompanyBackupInfo> backups =
+        og::data::list_company_backups("cloudinst");
+    ASSERT_EQ(1u, backups.size())
+        << "a fresh pre-install backup exists (§3.7 ordering)";
+    EXPECT_EQ(local_bytes,
+              read_file_bytes(sandbox.dir() / "backups" /
+                              backups[0].filename))
+        << "the backup preserves the pre-install state byte-identically";
+    EXPECT_FALSE(user_file_exists("save/cloudinst.cloudstage.tmp.gtl"))
+        << "no staging residue";
+}
+
+TEST(CompanyCloudBytes, install_refuses_corrupt_bytes_and_touches_nothing)
+{
+    SaveDirSandbox sandbox;
+    const std::string local_bytes = HeaderFixture{}.bytes();
+    sandbox.write_raw("cloudinst.gtl", local_bytes);
+
+    const std::string junk = "definitely not a GTL file";
+    const std::vector<std::uint8_t> junk_raw(junk.begin(), junk.end());
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidBytes,
+              og::data::install_company_bytes("cloudinst", junk_raw));
+    // Truncated-magic and empty blobs land on the same refusal.
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidBytes,
+              og::data::install_company_bytes(
+                  "cloudinst", std::vector<std::uint8_t>{'G', 'T'}));
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidBytes,
+              og::data::install_company_bytes("cloudinst",
+                                              std::vector<std::uint8_t>{}));
+
+    EXPECT_EQ(local_bytes, read_file_bytes(sandbox.dir() / "cloudinst.gtl"))
+        << "the slot file is untouched ([SAVE-R6])";
+    EXPECT_TRUE(og::data::list_company_backups("cloudinst").empty())
+        << "refusals never spend a backup slot";
+    EXPECT_FALSE(user_file_exists("save/cloudinst.cloudstage.tmp.gtl"))
+        << "the staging file is removed on refusal";
+}
+
+TEST(CompanyCloudBytes, install_to_fresh_slot_creates_without_backup)
+{
+    SaveDirSandbox sandbox;
+    const std::string remote_bytes = HeaderFixture{}.bytes();
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    ASSERT_EQ(og::data::CompanyInstallError::None,
+              og::data::install_company_bytes("cloudnew", remote_raw));
+    EXPECT_EQ(remote_bytes, read_file_bytes(sandbox.dir() / "cloudnew.gtl"));
+    EXPECT_TRUE(og::data::list_company_backups("cloudnew").empty())
+        << "no pre-existing file -> no backup step";
+    // The staging suffix is inside list_companies' .tmp.gtl exclusion, so a
+    // torn install can never list as a company; the finished install lists.
+    bool listed = false;
+    for (const og::data::CompanyInfo& info : og::data::list_companies())
+        listed = listed || info.slot == "cloudnew";
+    EXPECT_TRUE(listed);
+}
+
+TEST(CompanyCloudBytes, install_refuses_unsafe_slots_and_netsession)
+{
+    SaveDirSandbox sandbox;
+    const std::string bytes = HeaderFixture{}.bytes();
+    const std::vector<std::uint8_t> raw(bytes.begin(), bytes.end());
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidSlot,
+              og::data::install_company_bytes("../escape", raw));
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidSlot,
+              og::data::install_company_bytes("netsession", raw));
+    EXPECT_EQ(og::data::CompanyInstallError::InvalidSlot,
+              og::data::install_company_bytes("", raw));
+    std::error_code ec;
+    EXPECT_FALSE(std::filesystem::exists(sandbox.dir() / "netsession.gtl", ec));
+}

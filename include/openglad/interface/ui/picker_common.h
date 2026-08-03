@@ -628,6 +628,15 @@ std::string format_generator_rate_label(const SaveData& save);
 // the filename teaches nothing; companies are fully managed in-game on
 // every client. Slug derivation itself stays og::data::derive_company_slot.)
 
+// "YYYY-MM-DD" (UTC — deterministic, never the machine's timezone), or ""
+// for never-played (<= 0) and out-of-calendar values. The §2.3 company-row
+// date column; the cloud-save confirm prompts (#155) reuse it.
+std::string format_played_date_utc(std::int64_t unix_s);
+
+// "PASSPHRASE: SET" / "PASSPHRASE: NOT SET" — the CLOUD SAVE screen's
+// status line (#155), shared by all three clients.
+std::string format_cloud_passphrase_status(bool key_set);
+
 // "COMPANIES (N)" — the §2.3 Company List header line.
 std::string format_company_list_title(int count);
 

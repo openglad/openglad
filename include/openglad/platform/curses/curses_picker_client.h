@@ -83,6 +83,11 @@ private:
     // build.
     bool show_company_backups(const og::data::CompanyInfo& company);
 
+    // #155 cloud saves: the terminal open path for a freshly downloaded
+    // company (repoint the slot authority + load; restore the previous slot
+    // on failure — the show_company_list discipline).
+    bool open_downloaded_company(const std::string& slot);
+
     // Drive a host/join lobby to a started game, then run the networked level.
     void run_network_lobby(std::unique_ptr<CursesLobby> lobby);
 };
