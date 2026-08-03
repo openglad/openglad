@@ -177,6 +177,49 @@ static void json_ctf(std::ostream& os, const og::sim::CtfState& ctf)
     os << "]}";
 }
 
+// Generic scripted-mode observability block (framework: clients render
+// ModeState, never mode names in C++). Emitted under a "mode" key whenever
+// the level authors TYPE_SCRIPTED — active:false before/without a
+// successful on_mode_init, so harnesses can watch activation itself. The
+// hud array carries only non-empty lines; beacons only occupied slots.
+static void json_mode(std::ostream& os, const GameWorld& world)
+{
+    const og::sim::ModeState& mode = world.mode;
+    os << "{\"active\":" << (mode.active ? "true" : "false")
+       << ",\"name\":";
+    json_string(os, mode.name.data());
+    os << ",\"winner_team\":" << static_cast<int>(mode.winner_team)
+       << ",\"vars\":[";
+    for (int i = 0; i < og::sim::kModeVarCount; i++) {
+        if (i > 0) os << ",";
+        os << mode.vars[static_cast<std::size_t>(i)];
+    }
+    os << "],\"hud\":[";
+    bool first = true;
+    for (const og::sim::ModeHudLine& line : mode.hud) {
+        if (line.text[0] == '\0')
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"team\":" << static_cast<int>(line.team)
+           << ",\"text\":";
+        json_string(os, line.text.data());
+        os << "}";
+    }
+    os << "],\"beacons\":[";
+    first = true;
+    for (const og::sim::ModeBeacon& beacon : mode.beacons) {
+        if (beacon.entity_id == 0)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"id\":" << beacon.entity_id
+           << ",\"team\":" << static_cast<int>(beacon.team)
+           << "}";
+    }
+    os << "]}";
+}
+
 static void cmd_state(const LevelRuntimeData& level)
 {
     std::ostringstream os;
@@ -200,6 +243,10 @@ static void cmd_state(const LevelRuntimeData& level)
     }
     os << "],\"ctf\":";
     json_ctf(os, level.world().ctf);
+    if (level.world().type & GameWorld::TYPE_SCRIPTED) {
+        os << ",\"mode\":";
+        json_mode(os, level.world());
+    }
     os << "}";
     std::cout << os.str() << "\n";
     std::cout.flush();
@@ -447,6 +494,16 @@ std::string text_protocol_testing_format_event_text(std::string_view text)
 
     std::ostringstream os;
     json_event(os, event);
+    return os.str();
+}
+
+// Deterministic literal-shape probe for the "mode" block (the json_ctf
+// literal pin's scripted twin): tests hand-build a ModeState and byte-pin
+// the emitted JSON without driving a whole session.
+std::string text_protocol_testing_json_mode(const GameWorld& world)
+{
+    std::ostringstream os;
+    json_mode(os, world);
     return os.str();
 }
 #endif

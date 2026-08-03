@@ -38,9 +38,17 @@ std::map<std::pair<std::string, int>, std::string>& scenario_name_cache()
     return cache;
 }
 
-std::map<std::string, std::string>& campaign_mode_cache()
+// The two campaign.yaml identity axes, cached together (one yaml read fills
+// both): `mode:` drives IProgression, `matchup:` drives the versus surfaces.
+struct CampaignModeMatchup
 {
-    static std::map<std::string, std::string> cache;
+    std::string mode;
+    std::string matchup;
+};
+
+std::map<std::string, CampaignModeMatchup>& campaign_mode_cache()
+{
+    static std::map<std::string, CampaignModeMatchup> cache;
     return cache;
 }
 
@@ -94,6 +102,65 @@ std::string lookup_campaign_title(const std::string& campaign_id)
     return campaign_id;
 }
 
+// Harvest mode/matchup from a campaign.yaml visible at yaml_path. Mirrors
+// read_campaign_title's tolerance: a parse error after the pairs were
+// pre-harvested still counts; only a missing file yields nothing.
+CampaignModeMatchup read_campaign_mode_matchup(const char* yaml_path)
+{
+    CampaignYaml metadata;
+    CampaignModeMatchup out;
+    if (read_campaign_yaml(yaml_path, metadata) ==
+        CampaignYamlReadResult::OpenFailed)
+    {
+        return out;
+    }
+    if (metadata.saw_mode)
+        out.mode = metadata.mode;
+    if (metadata.saw_matchup)
+        out.matchup = metadata.matchup;
+    return out;
+}
+
+// Memoized mode/matchup lookup for any campaign id: mounted fast path (root
+// campaign.yaml), else a throwaway private mount — the exact
+// lookup_campaign_title shape. Absent keys read as "" (Classic/cooperative),
+// including every failure path.
+const CampaignModeMatchup& lookup_campaign_mode_matchup(
+    const std::string& campaign_id)
+{
+    static const CampaignModeMatchup empty;
+    if (campaign_id.empty())
+        return empty;
+
+    auto& cache = campaign_mode_cache();
+    auto found = cache.find(campaign_id);
+    if (found != cache.end())
+        return found->second;
+
+    CampaignModeMatchup value;
+    if (!is_safe_campaign_id(campaign_id))
+    {
+        // Unsafe ids never touch PHYSFS_mount (same rule as the title path).
+    }
+    else if (campaign_id == get_mounted_campaign())
+    {
+        value = read_campaign_mode_matchup("campaign.yaml");
+    }
+    else
+    {
+        const std::string archive =
+            get_user_path() + "campaigns/" + campaign_id + ".glad";
+        const std::string mountpoint = ".og_meta/" + campaign_id;
+        if (og::resources::mount(archive.c_str(), mountpoint.c_str(), 1))
+        {
+            const std::string yaml_path = mountpoint + "/campaign.yaml";
+            value = read_campaign_mode_matchup(yaml_path.c_str());
+            (void)og::resources::unmount(archive.c_str());
+        }
+    }
+    return cache.emplace(campaign_id, std::move(value)).first->second;
+}
+
 } // namespace
 
 std::string campaign_display_title(const std::string& campaign_id)
@@ -128,33 +195,28 @@ std::string scenario_display_name(int scen_num)
     return name;
 }
 
+std::string campaign_mode(const std::string& campaign_id)
+{
+    return lookup_campaign_mode_matchup(campaign_id).mode;
+}
+
+std::string campaign_matchup(const std::string& campaign_id)
+{
+    return lookup_campaign_mode_matchup(campaign_id).matchup;
+}
+
 std::string mounted_campaign_mode()
 {
-    // Fast path only: the mode drives the ACTIVE session's progression, so
-    // the mounted campaign's root-visible campaign.yaml is the sole source
-    // (mirrors the campaign_display_title fast path). No mounted campaign
-    // (headless tests, pre-init) -> "" -> Classic, with no IO touched.
-    const std::string campaign_id = get_mounted_campaign();
-    if (campaign_id.empty())
-        return {};
+    // The mode drives the ACTIVE session's progression, so the mounted
+    // campaign's root-visible campaign.yaml is the source (the lookup's fast
+    // path). No mounted campaign (headless tests, pre-init) -> "" -> Classic,
+    // with no IO touched.
+    return campaign_mode(get_mounted_campaign());
+}
 
-    auto& cache = campaign_mode_cache();
-    auto found = cache.find(campaign_id);
-    if (found != cache.end())
-        return found->second;
-
-    // Mirror read_campaign_title's tolerance: only a missing file yields
-    // nothing; a parse error after the pair was pre-harvested still counts.
-    CampaignYaml metadata;
-    std::string mode;
-    if (read_campaign_yaml("campaign.yaml", metadata) !=
-            CampaignYamlReadResult::OpenFailed &&
-        metadata.saw_mode)
-    {
-        mode = metadata.mode;
-    }
-    cache.emplace(campaign_id, mode);
-    return mode;
+std::string mounted_campaign_matchup()
+{
+    return campaign_matchup(get_mounted_campaign());
 }
 
 void forget_campaign_display_title(const std::string& campaign_id)

@@ -167,6 +167,13 @@ void cycle_ctf_capture_limit(SaveData& save);
 // True when the save's current campaign is the CTF campaign.
 bool is_ctf_campaign(const SaveData& save);
 
+// True when the save's current campaign declares `matchup: versus` in its
+// campaign.yaml — the generic competitive-matchup predicate. New scripted-mode
+// surfaces key on this; the CTF campaign-id compares (is_ctf_campaign, the
+// MATCHUP settings gate, the lobby shared-teams rule) stay untouched until
+// the CTF engine retirement swaps them over.
+bool is_versus_campaign(const SaveData& save);
+
 // Authored flag-team mask for a level known to match this save. Returns zero
 // when campaign/mount/scenario metadata is not yet synchronized; lobby
 // authority deliberately treats that as the temporary four-team fallback.

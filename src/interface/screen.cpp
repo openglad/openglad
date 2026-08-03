@@ -188,14 +188,16 @@ namespace
 
 void cleanup_dead_view_controls(screen& self)
 {
-    // During an active CTF match — or an active classic respawn mode — a
-    // dead player corpse with a pending revive entry stays bound: the camera
-    // holds on the corpse until the revive. Strictly gated on those modes so
-    // plain non-respawning behavior is byte-identical.
+    // During an active CTF match — or an active classic respawn mode, or an
+    // active scripted (TYPE_SCRIPTED) mode — a dead player corpse with a
+    // pending revive entry stays bound: the camera holds on the corpse until
+    // the revive. Strictly gated on those modes so plain non-respawning
+    // behavior is byte-identical.
     const GameWorld& world = self.world();
     const bool respawn_keepalive =
         ((world.type & GameWorld::TYPE_CTF) && world.ctf.active) ||
-        og::sim::classic_respawn_active(world);
+        og::sim::classic_respawn_active(world) ||
+        og::sim::mode_scripted_active(world);
     for (int i = 0; i < self.numviews; i++)
     {
         walker* const control = self.viewob[i]->control;

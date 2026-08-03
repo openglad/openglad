@@ -21,6 +21,10 @@ struct CampaignYaml {
     // "tower" -> Tower. The writer emits the key ONLY when non-empty so
     // every existing (mode-less) campaign repack stays byte-stable.
     std::string mode;
+    // Matchup axis (orthogonal to `mode`): absent/"" -> cooperative,
+    // "versus" -> competitive multi-team matchup (lobby shared teams +
+    // MATCHUP settings). Same only-when-non-empty emit rule as `mode`.
+    std::string matchup;
     int suggested_power = 0;
     int first_level = 1;
     bool saw_title = false;
@@ -29,6 +33,7 @@ struct CampaignYaml {
     bool saw_contributors = false;
     bool saw_description = false;
     bool saw_mode = false;
+    bool saw_matchup = false;
     bool saw_suggested_power = false;
     bool saw_first_level = false;
 };

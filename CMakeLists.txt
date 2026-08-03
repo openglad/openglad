@@ -2396,6 +2396,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_mode_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
@@ -2828,6 +2829,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_test_group(og_test_ctf FILES
             test_ctf_ui.cpp
+            test_mode_ui.cpp
         )
         target_include_directories(og_test_parity PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/parity
