@@ -27,6 +27,8 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
@@ -2578,5 +2580,117 @@ TEST(CursesPickerClient, cloud_passphrase_length_gate_rejects_short_input)
     EXPECT_EQ("", cfg.get_setting("cloud", "key"))
         << "a rejected passphrase must not persist a key";
     EXPECT_TRUE(f.t().input_exhausted());
+    cfg.data.erase("cloud");
+}
+
+// #155: the DOWNLOAD flow all the way down in the curses projection. The
+// round trip above stops at the D8 unavailable line (no HTTP on the bridge),
+// so this one installs a canned vault reply and walks the rest: the NO-first
+// Yes/No list confirm over an existing company, install_company_bytes (which
+// snapshots first), and the §2.3 open — whose "Loaded" screen lands before
+// the cloud notice.
+TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
+{
+    cfg.data.erase("cloud");
+
+    // Cloud-side company: real writer bytes (loadable by the open path),
+    // staged through a scratch slot that is then removed.
+    CursesSlotCleanup staging_cleanup{{"wp3cloudr"}};
+    ASSERT_TRUE(seed_curses_company("wp3cloudr", "CLOUD BAND", 9300));
+    std::string remote_bytes;
+    {
+        std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                             "wp3cloudr.gtl",
+                         std::ios::binary);
+        remote_bytes.assign((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    }
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/wp3cloudr.gtl"));
+
+    // ...and the DIFFERENT company already occupying the target slot, so the
+    // NO-first confirm actually fires.
+    const std::string company_slot =
+        unique_curses_company_slot("curses-cloud-download");
+    CursesCompanyArtifactCleanup cleanup(company_slot);
+    ASSERT_TRUE(cleanup.ready());
+    ASSERT_TRUE(seed_curses_company(company_slot, "LOCAL BAND", 9200));
+
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::format(
+            R"({{"revision":5,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"CLOUD BAND","scen_num":1,"last_played":9300,)"
+            R"("data_hex":"{}"}})",
+            company_slot, og::ui::cloud::hex_encode(remote_raw));
+
+    std::vector<std::string> get_urls;
+    // Restore on every exit path: an ASSERT inside the flow must not leak the
+    // faked HTTP into the rest of the binary.
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string& url) {
+        get_urls.push_back(url);
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        // Present only so hooks_available() passes; this flow never posts.
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        PickerFixture f;
+
+        const int door_idx =
+            main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+        ASSERT_GE(door_idx, 0);
+        f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+        f.t().push_special(KeyCode::Enter);
+
+        // PASSPHRASE (row 0) -> derived key stored.
+        pick(f.t(), 0);
+        for (const char ch : std::string("correct horse battery"))
+            f.t().push_char(static_cast<char32_t>(ch));
+        f.t().push_special(KeyCode::Enter);
+        dismiss(f.t());
+        // DOWNLOAD (row 2): the confirm highlights No; digit-jump to Yes.
+        pick(f.t(), 2);
+        f.t().push_char(U'2');
+        f.t().push_special(KeyCode::Enter);
+        dismiss(f.t()); // the open path's "Loaded" screen
+        dismiss(f.t()); // the "Downloaded 'CLOUD BAND'." notice
+        f.t().push_special(KeyCode::Escape); // leave the submenu
+        f.t().push_special(KeyCode::Escape); // Main -> quit
+
+        og::ui::run_picker(f.client);
+
+        EXPECT_TRUE(f.t().input_exhausted())
+            << "the download round trip should consume the whole script";
+        EXPECT_EQ(company_slot, f.config.save_name)
+            << "[SAVE-R2] the open repoints the curses slot";
+        EXPECT_EQ("CLOUD BAND", f.save().save_name)
+            << "the opened company is the downloaded one";
+    }
+
+    ASSERT_EQ(1u, get_urls.size());
+    EXPECT_NE(std::string::npos,
+              get_urls[0].find("/api/save/73270125791ba273"))
+        << "the GET addresses the derived-key route";
+    EXPECT_GE(og::data::list_company_backups(company_slot).size(), 1u)
+        << "install_company_bytes snapshots before the swap";
+    EXPECT_EQ("5", cfg.get_setting("cloud", "revision"))
+        << "the server revision persists for the next optimistic upload";
+    EXPECT_TRUE(cleanup.cleanup());
     cfg.data.erase("cloud");
 }
