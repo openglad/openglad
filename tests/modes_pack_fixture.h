@@ -59,6 +59,10 @@ inline constexpr int kCtfLevelC = 9003;
 inline constexpr int kCtfLevelD = 9004;
 inline constexpr int kOtherModeLevel = 9050;  // manifest row for ANOTHER mode
 inline constexpr int kProbeLevel = 9090;      // mode_core helper probes
+inline constexpr int kTdmLevelA = 9101;       // TDM behavior levels
+inline constexpr int kTdmLevelB = 9102;
+inline constexpr int kMutantLevelA = 9201;    // Mutant behavior levels
+inline constexpr int kMutantLevelB = 9202;
 
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
@@ -112,6 +116,28 @@ inline constexpr const char* kTestRegistrationLua =
     "  on_mode_init = ctf.on_mode_init,\n"
     "  on_mode_tick = ctf.on_mode_tick,\n"
     "  on_respawn = ctf.on_respawn,\n"
+    "})\n"
+    "local tdm = og.use(\"mode_tdm_impl\")\n"
+    "local mutant = og.use(\"mode_mutant_impl\")\n"
+    "core.register_mode({\n"
+    "  { id = 9101, mode = \"tdm\" },\n"
+    "  { id = 9102, mode = \"tdm\" },\n"
+    "  { id = 9250, mode = \"mutant\" },\n"
+    "}, \"tdm\", {\n"
+    "  on_mode_init = tdm.on_mode_init,\n"
+    "  on_mode_tick = tdm.on_mode_tick,\n"
+    "  on_entity_death = tdm.on_entity_death,\n"
+    "  on_respawn = tdm.on_respawn,\n"
+    "})\n"
+    "core.register_mode({\n"
+    "  { id = 9201, mode = \"mutant\" },\n"
+    "  { id = 9202, mode = \"mutant\" },\n"
+    "}, \"mutant\", {\n"
+    "  on_mode_init = mutant.on_mode_init,\n"
+    "  on_mode_tick = mutant.on_mode_tick,\n"
+    "  on_damage = mutant.on_damage,\n"
+    "  on_entity_death = mutant.on_entity_death,\n"
+    "  on_respawn = mutant.on_respawn,\n"
     "})\n"
     "og.register_level_hooks(9090, {\n"
     "  on_mode_init = function(level)\n"
