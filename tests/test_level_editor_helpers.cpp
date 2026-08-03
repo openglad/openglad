@@ -34,6 +34,8 @@ bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int 
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
 std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
+bool editor_order_supports_spawn_delay(Order order);
+std::string format_editor_spawn_delay_label(int ticks);
 void importCampaignPicker();
 void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
@@ -138,6 +140,32 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+// Spawn-delay authoring guards. Only oblist orders (Living/Generator) are put
+// to sleep by the level loader, but the writer's v9/v10 cascade counts a
+// nonzero spawn_delay on ANY list — so the predicate is what stops the editor
+// from silently upgrading a saved level for a field nothing reads.
+TEST(LevelEditorHelpers, spawn_delay_authoring_labels_and_order_guard)
+{
+    ASSERT_TRUE(editor_order_supports_spawn_delay(Order::Living)) << "livings hold a wave delay";
+    ASSERT_TRUE(editor_order_supports_spawn_delay(Order::Generator)) << "generators hold a wave delay";
+    ASSERT_FALSE(editor_order_supports_spawn_delay(Order::Weapon)) << "weapons are loaded awake";
+    ASSERT_FALSE(editor_order_supports_spawn_delay(Order::Treasure)) << "treasures are loaded awake";
+    ASSERT_FALSE(editor_order_supports_spawn_delay(Order::FX)) << "fx are loaded awake";
+    ASSERT_FALSE(editor_order_supports_spawn_delay(Order::Special)) << "start markers are consumed at load";
+    ASSERT_FALSE(editor_order_supports_spawn_delay(Order::Button1)) << "buttons hold no wave delay";
+
+    ASSERT_EQ(std::string("Delay:0"), format_editor_spawn_delay_label(0)) << "cleared delay label";
+    ASSERT_EQ(std::string("Delay:1"), format_editor_spawn_delay_label(1)) << "one-tick delay label";
+    ASSERT_EQ(std::string("Delay:900"), format_editor_spawn_delay_label(900)) << "900-tick (75s) delay label";
+    ASSERT_EQ(std::string("Delay:65535"), format_editor_spawn_delay_label(65535)) << "uint16 ceiling label";
+
+    // The info box spans x 245..315 at 6 px/char, so 11 characters is the
+    // widest line that fits.
+    for (const int ticks : {0, 1, 12, 900, 65535})
+        ASSERT_LE(format_editor_spawn_delay_label(ticks).size(), 11u)
+            << "delay label must fit the info box for " << ticks << " ticks";
 }
 
 // The editor's generator captions come off GeneratorFamilyDescriptor

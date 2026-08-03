@@ -20,6 +20,10 @@ Sint32 level_editor();
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
+// From level_editor_ui.cpp (TESTING): queue answers for prompt_for_string().
+void level_editor_testing_prompt_queue_clear();
+void level_editor_testing_prompt_queue_push(const char* s);
+
 struct EditorThreadState {
     bool started;
     bool finished;
@@ -626,4 +630,120 @@ TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
         << "second AI click should author HOLD (ACT_GUARD + guard_hold_post)";
     ASSERT_TRUE(trace_contains("editor", "ai_cycle to=ROAM act=0 hold=0"))
         << "third AI click should return to ROAM (ACT_RANDOM)";
+}
+
+
+namespace
+{
+static int editor_spawn_delay_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    EditorThreadState* st = static_cast<EditorThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(300);
+
+    // Clear the stock level objects so the rect-select below grabs exactly
+    // the soldier this test places.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    inject_click_game(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click_game(90, 145, 20);  // Clear all objects
+    SDL_Delay(30);
+
+    // Object mode with a known brush: the object pane's first cell is the
+    // Living/soldier brush.
+    inject_key_press(SDLK_T, 10);   // -> Terrain
+    inject_key_press(SDLK_O, 10);   // Terrain -> Object
+    eds().rowsdown = 0;
+    SDL_Delay(30);
+    inject_click_game(246, 81, 20); // object pane cell (0,0): soldier brush
+    SDL_Delay(30);
+
+    // "Delay" sits right of "AI >" on the facing row and is shown in Object
+    // mode too, where it presets the brush.
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("240");
+    inject_click_game(100, 112, 20);
+    SDL_Delay(100);
+
+    // Place the soldier. The first click either places a decoy far from the
+    // select rect or disarms a leftover pick toggle; the second click always
+    // places a fresh soldier near game coords (160,120) — both inherit the
+    // brush's 240-tick delay.
+    inject_click_game(120, 60, 20);
+    SDL_Delay(30);
+    inject_click_game(160, 120, 20);
+    SDL_Delay(30);
+
+    // Select mode: rect-select the placed soldier.
+    inject_key_press(SDLK_O, 10);   // Object -> Select
+    SDL_Delay(30);
+    inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
+    SDL_Delay(20);
+    push_mouse_motion_game(135, 100, 5, 5);
+    SDL_Delay(20);
+    push_mouse_motion_game(200, 155, 65, 55);
+    SDL_Delay(20);
+    inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
+    SDL_Delay(60);
+
+    // Empty queue: the TESTING prompt accepts the seeded value, which is the
+    // selected walker's current delay. Re-applying it proves placement
+    // stamped the brush's 240 onto the object.
+    level_editor_testing_prompt_queue_clear();
+    inject_click_game(100, 112, 20);
+    SDL_Delay(150);
+
+    // Author a new delay on the selection.
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("900");
+    inject_click_game(100, 112, 20);
+    SDL_Delay(150);
+
+    // ... and clear it back to 0.
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("0");
+    inject_click_game(100, 112, 20);
+    SDL_Delay(150);
+
+    SDL_Delay(200);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+} // namespace
+
+// The delayed-spawn field (.fss v10 spawn_delay) already drives the sim and
+// the "NEXT WAVE" HUD; this pins the editor control that authors it.
+TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
+{
+    og::runtime::current_session->myscreen_->world().end = 0;
+    trace_clear();
+
+    EditorThreadState st{false, false};
+    SDL_Thread* thread = SDL_CreateThread(editor_spawn_delay_injector, "editor_spawn_delay", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    og::runtime::current_session->myscreen_->world().end = 0;
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_TRUE(st.started) << "injector thread should have started";
+    ASSERT_TRUE(st.finished) << "injector thread should have finished";
+
+    ASSERT_TRUE(trace_contains("editor", "spawn_delay brush=240 order=0"))
+        << "Object-mode Delay should preset the brush";
+    ASSERT_TRUE(trace_contains("editor", "spawn_delay set=240 order=0 dormant=0"))
+        << "the placed soldier should carry the brush's delay, seeded back into the prompt";
+    ASSERT_TRUE(trace_contains("editor", "spawn_delay set=900 order=0 dormant=0"))
+        << "Select-mode Delay should author the walker's spawn_delay and leave it awake";
+    ASSERT_TRUE(trace_contains("editor", "spawn_delay set=0 order=0 dormant=0"))
+        << "0 should clear the delay again";
 }
