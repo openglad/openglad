@@ -88,6 +88,9 @@ bool picker_prepare_new_game_setup()
     }
 
 	(void)og::ui::sync_campaign_mount_to_save(game->save_data);
+	// #162: NEW GAME resets the mount to the default campaign; between
+	// screens, so the loader can rebuild before the next menu draws.
+	game->myloader->reload_graphics_if_stale();
 	og::runtime::current_session->current_guy_ = nullptr;
     picker_lobby_initialize_from_save();
 

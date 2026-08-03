@@ -41,6 +41,7 @@
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -1099,6 +1100,9 @@ bool CursesPickerClient::prepare_new_game()
     // mount so the in-picker scenario viewer stays coherent.
     config_.campaign = save_data_.current_campaign;
     (void)og::ui::sync_campaign_mount_to_save(save_data_);
+    // #162: glyph client, no pixies — refresh the loader with the mount so
+    // walker sizes match the campaign the next level build will use.
+    headless_entity_loader()->reload_graphics_if_stale();
     config_.team_families = og::ui::collect_team_families(save_data_);
     return true;
 }
@@ -1150,6 +1154,8 @@ std::string CursesPickerClient::show_campaign_select()
     // The launch path self-heals the mount, but the in-picker scenario
     // viewer reads the mounted package directly — follow the selection now.
     (void)og::ui::sync_campaign_mount_to_save(save_data_);
+    // #162: same for the sprite set (glyph client, no pixie borrows).
+    headless_entity_loader()->reload_graphics_if_stale();
     return config_.campaign;
 }
 

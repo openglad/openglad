@@ -1074,6 +1074,10 @@ public:
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(
             load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // #162: the campaign just mounted may ship its own entity art or pack
+        // families. Between screens here — the next screen re-inits its
+        // buttons before anything draws from the loader.
+        sdl_entity_loader()->reload_graphics_if_stale();
         picker_lobby_sync_settings_from_save();
         return result.id;
     }
@@ -2638,11 +2642,13 @@ Sint32 do_pick_spritesheet(Sint32)
     if (!apply_sprite_sheet_setting()) {
         cfg.apply_setting("graphics", "sprite_sheet", old_selection);
         if (apply_sprite_sheet_setting())
-            sdl_entity_loader()->reload_graphics();
+            sdl_entity_loader()->reload_graphics_if_stale();
         popup_dialog("Sprite Sheet", "Could not load\nselected sprite sheet.");
         return MENU_REDRAW;
     }
-    sdl_entity_loader()->reload_graphics();
+    // The generation check makes a same-sheet re-pick free; a real change
+    // was bumped by apply_sprite_sheet_setting and reloads here.
+    sdl_entity_loader()->reload_graphics_if_stale();
     return MENU_REDRAW;
 }
 
@@ -2655,6 +2661,11 @@ Sint32 do_pick_campaign(Sint32 arg1)
         // Load new campaign
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // #162: same MENU_REDRAW position as do_pick_spritesheet — the frame
+        // skeleton re-creates every button pixie (reset_buttons) and the
+        // SCENARIO spec's guard frame_tick reloads the preview level before
+        // this frame draws, so freeing loader buffers here is safe.
+        sdl_entity_loader()->reload_graphics_if_stale();
         picker_lobby_sync_settings_from_save();
    }
    return MENU_REDRAW;

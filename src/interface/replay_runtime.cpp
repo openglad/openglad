@@ -141,6 +141,10 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
         return false;
     }
 
+    // #162: the replay's campaign may ship its own entity art; the screen is
+    // fully re-initialized below, so nothing still borrows loader pixels.
+    game_screen.myloader->reload_graphics_if_stale();
+
     ScopedReplayGameplayLoadActivation gameplay_load_active(og::runtime::current_session);
     const short desired_views = (header.player_count == 0)
         ? 1
