@@ -1877,9 +1877,20 @@ void GameWorld::tick()
         return;
 
     // --- Level completion check ---
+    // A TYPE_SCRIPTED map whose campaign pack registered no on_mode_init
+    // (or whose init errored) falls through to the classic completion rules
+    // starting the NEXT tick — the same four-state activation discipline as
+    // the CTF gate below. Scripted is checked FIRST, so a stray map
+    // authoring both 0x20 and 0x8 resolves scripted.
+    if ((type & TYPE_SCRIPTED) && !(mode.init_attempted && !mode.active))
+    {
+        og::sim::mode_run_tick(*this);
+        if (game_ended)
+            return;
+    }
     // A TYPE_CTF map that failed activation (init attempted, <2 flag teams)
     // falls through to the classic completion rules.
-    if ((type & TYPE_CTF) && !(ctf.init_attempted && !ctf.active))
+    else if ((type & TYPE_CTF) && !(ctf.init_attempted && !ctf.active))
     {
         og::sim::ctf_run_tick(*this);
         if (game_ended)

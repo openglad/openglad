@@ -81,4 +81,106 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept
     return effective;
 }
 
+void mode_end_level(GameWorld& world, int ending, int next_level)
+{
+    // First arming flushes the respawn engine (D2): every queued entry
+    // fires and eligible player corpses revive BEFORE any winner math, so
+    // save-merge/rematch flows never see mid-respawn heroes. Re-arming
+    // (last write wins) never re-flushes.
+    if (!world.mode.win_latched)
+        respawn_flush_revive_all(world);
+    world.mode.win_latched = true;
+    world.mode.win_ending = static_cast<std::int8_t>(ending);
+    world.mode.win_next_level = static_cast<std::int16_t>(next_level);
+}
+
+void mode_declare_winner(GameWorld& world, int team)
+{
+    if (!world.mode.win_latched)
+        respawn_flush_revive_all(world);
+    world.mode.winner_team = static_cast<std::int8_t>(team);
+    // winner_is_player: any live myguy walker wearing the winning team's
+    // color — the EXACT ctf.cpp run_win_check semantics (team_num equality,
+    // not is_friendly_to_team), computed AFTER the flush so just-revived
+    // heroes count.
+    bool winner_is_player = false;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team) &&
+            w->myguy != nullptr)
+        {
+            winner_is_player = true;
+            break;
+        }
+    }
+    world.mode.winner_is_player = winner_is_player;
+    world.mode.win_latched = true;
+    world.mode.win_ending = 0;
+    world.mode.win_next_level = static_cast<std::int16_t>(
+        winner_is_player ? world.id + 1 : world.id);
+}
+
+namespace {
+
+void assert_win_shape(GameWorld& world)
+{
+    world.game_ended = true;
+    world.ending = world.mode.win_ending;
+    world.next_level = world.mode.win_next_level;
+}
+
+} // namespace
+
+void mode_run_tick(GameWorld& world)
+{
+    // 0. Lazy init (the CTF activation discipline: latch init_attempted
+    //    FIRST, unconditionally; a failed init owns its tick and the level
+    //    falls to classic completion rules starting the NEXT tick).
+    if (!world.mode.active && !world.mode.init_attempted)
+    {
+        world.mode.init_attempted = true;
+        // Engine-side prep BEFORE the Lua hook: resolve the respawn delay
+        // (lobby request > default) and scan the team start markers into the
+        // anchor arrays while this tick's consumed-marker corpses are still
+        // in oblist (the dead sweep runs after the completion fork).
+        const short requested = world.ctf_requested_respawn_ticks;
+        world.respawn.respawn_ticks =
+            (requested > 0) ? static_cast<std::uint16_t>(requested)
+                            : kCtfDefaultRespawnTicks;
+        respawn_scan_anchors(world);
+        if (og::script::hooks::level_mode_init(&world))
+            world.mode.active = true;
+        if (!world.mode.active)
+            return;
+    }
+    if (!world.mode.active)
+        return;
+
+    // 1. Win latch — re-assert every tick (tick entry zeroed the fields);
+    //    a decided match runs no further phases and no more Lua.
+    if (world.mode.win_latched)
+    {
+        assert_win_shape(world);
+        return;
+    }
+
+    // 2. Engine respawn timers: fires due entries in place through the
+    //    RNG-free classic paths and dispatches on_respawn per fired revive
+    //    — BEFORE on_mode_tick so the Lua tick observes this tick's
+    //    revivals and their hook-side placement corrections.
+    respawn_run_timers(world);
+
+    // 3. The post-act Lua hook. A hook ERROR is deterministic and latched
+    //    (R9); the mode stays active — a mid-match script bug must not
+    //    silently flip the level to classic rules.
+    og::script::hooks::level_mode_tick(&world);
+
+    // 4. Fold a Lua-declared win into the world (og.end_level /
+    //    og.declare_winner wrote the latch during step 3).
+    if (world.mode.win_latched)
+        assert_win_shape(world);
+}
+
 } // namespace og::sim

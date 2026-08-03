@@ -2,6 +2,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/mode/mode_state.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -233,7 +234,9 @@ inline constexpr std::uint8_t kAllLobbyTeamMask =
 // Team domain used by every lobby surface and by server authority. Gameplay
 // activates authored flag teams in numeric order, stopping after explicit N;
 // this therefore deliberately differs from a numeric [0,N) clamp on sparse
-// maps (authored {0,2,3}, N=2 means teams {0,2}).
+// maps (authored {0,2,3}, N=2 means teams {0,2}). The clamp itself is
+// og::sim::effective_team_mask — the ONE copy of the rule, shared with the
+// og.effective_team_mask binding (mode/mode_state.h).
 inline std::uint8_t
 lobby_effective_team_mask(const LobbySettings& settings) noexcept
 {
@@ -244,26 +247,7 @@ lobby_effective_team_mask(const LobbySettings& settings) noexcept
     const std::uint8_t authored = published_authored == 0
         ? kAllLobbyTeamMask
         : published_authored;
-    if (settings.ctf_team_count <= 0)
-        return authored;
-
-    int remaining = settings.ctf_team_count;
-    if (remaining < 2)
-        remaining = 2;
-    if (remaining > SCORE_TEAM_COUNT)
-        remaining = SCORE_TEAM_COUNT;
-
-    std::uint8_t effective = 0;
-    for (int team = 0; team < SCORE_TEAM_COUNT && remaining > 0; ++team)
-    {
-        const std::uint8_t bit =
-            static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-        if ((authored & bit) == 0)
-            continue;
-        effective = static_cast<std::uint8_t>(effective | bit);
-        --remaining;
-    }
-    return effective;
+    return og::sim::effective_team_mask(authored, settings.ctf_team_count);
 }
 
 inline bool lobby_team_is_selectable(const LobbySettings& settings,

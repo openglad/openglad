@@ -17,6 +17,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -40,7 +41,7 @@ const char* ctf_team_color_name(int team)
 namespace {
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
-void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry);
+walker* classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry);
 
 [[nodiscard]] bool is_score_team(unsigned char team)
 {
@@ -161,18 +162,19 @@ void send_flag_home(GameWorld& world, int team)
 bool place_at_anchor(GameWorld& world, walker* w, int team)
 {
     CtfState& ctf = world.ctf;
+    RespawnState& respawn = world.respawn;
     short final_x = -1;
     short final_y = -1;
 
     if (team >= 0 && team < 4)
     {
-        const int count = ctf.anchor_count[team];
+        const int count = respawn.anchor_count[team];
         for (int attempt = 0; attempt < count; ++attempt)
         {
-            const int slot = ctf.respawn_serial % count;
-            ctf.respawn_serial++;
-            const short ax = ctf.anchor_x[team][slot];
-            const short ay = ctf.anchor_y[team][slot];
+            const int slot = respawn.respawn_serial % count;
+            respawn.respawn_serial++;
+            const short ax = respawn.anchor_x[team][slot];
+            const short ay = respawn.anchor_y[team][slot];
             if (spawn_spot_clear(world, w, ax, ay))
             {
                 final_x = ax;
@@ -240,9 +242,10 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     }
 }
 
-[[nodiscard]] bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
+[[nodiscard]] bool already_scheduled(const RespawnState& respawn,
+                                     std::uint32_t entity_id)
 {
-    for (const auto& entry : ctf.respawn_queue)
+    for (const auto& entry : respawn.respawn_queue)
     {
         if (entry.walker_entity_id == entity_id)
             return true;
@@ -313,19 +316,23 @@ void scrub_corpse_stain(GameWorld& world, const walker* corpse)
 
 void schedule_respawn(GameWorld& world, walker* corpse)
 {
-    CtfState& ctf = world.ctf;
-    if (ctf.respawn_queue.size() >= static_cast<std::size_t>(kCtfMaxRespawnEntries))
+    RespawnState& respawn = world.respawn;
+    if (respawn.respawn_queue.size() >= static_cast<std::size_t>(kCtfMaxRespawnEntries))
     {
         const auto victim = std::find_if(
-            ctf.respawn_queue.begin(), ctf.respawn_queue.end(),
+            respawn.respawn_queue.begin(), respawn.respawn_queue.end(),
             [](const CtfRespawnEntry& entry) { return entry.kind == 1; });
-        if (victim == ctf.respawn_queue.end())
+        if (victim == respawn.respawn_queue.end())
             return;
         // Fire the evicted bot immediately instead of dropping it: its corpse
         // is already swept, so a plain erase would shrink the roster forever.
+        // Scripted modes take the RNG-free classic fire; NO on_respawn
+        // dispatch here — scheduling can run inside a Lua binding call, and
+        // a nested hook dispatch from an eviction is a re-entrancy the
+        // engine does not owe (documented Phase-I behavior).
         const CtfRespawnEntry evicted = *victim;
-        ctf.respawn_queue.erase(victim);
-        if (classic_respawn_active(world))
+        respawn.respawn_queue.erase(victim);
+        if (classic_respawn_active(world) || mode_scripted_active(world))
             classic_fire_respawn(world, evicted);
         else
             fire_ai_respawn(world, evicted);
@@ -335,10 +342,10 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         // corpse is swept this same tick and never re-scanned), but the
         // retry's spot is currently occupied while the incoming corpse's may
         // be clear — and the cap must hold for the snapshot serializer.
-        if (ctf.respawn_queue.size() >=
+        if (respawn.respawn_queue.size() >=
             static_cast<std::size_t>(kCtfMaxRespawnEntries))
         {
-            ctf.respawn_queue.pop_back();
+            respawn.respawn_queue.pop_back();
         }
     }
 
@@ -352,7 +359,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     const std::int32_t level =
         (corpse->stats() != nullptr) ? corpse->stats()->level() : 1;
     entry.level = static_cast<std::uint8_t>(std::clamp<std::int32_t>(level, 1, 255));
-    entry.ticks_left = ctf.respawn_ticks;
+    entry.ticks_left = respawn.respawn_ticks;
     entry.walker_entity_id = corpse->entity_id();
     // Classic respawn location: the corpse's recorded spawn point when set,
     // else where it fell. CTF fire paths ignore these (anchor rotation stays
@@ -369,7 +376,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         entry.y = corpse->ypos();
         entry.floor = static_cast<std::uint8_t>(corpse->floor());
     }
-    ctf.respawn_queue.push_back(entry);
+    respawn.respawn_queue.push_back(entry);
 
     scrub_corpse_stain(world, corpse);
 }
@@ -398,24 +405,33 @@ void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
     place_at_anchor(world, w, entry.team);
 }
 
-// Phase 1: respawn timers. Owning any control point halves the wait.
-void run_respawn_timers(GameWorld& world)
+} // namespace
+
+// Phase 1: respawn timers. Owning any control point halves the wait
+// (cp_count is zero outside CTF, so classic/scripted waits stay flat).
+// Fire routing: scripted mode -> RNG-free classic placement + the
+// on_respawn level hook (revive-in-place is the default when the mode
+// registered none); classic modes -> classic placement; CTF -> anchor
+// rotation. mode_run_tick calls this OUTSIDE any Lua dispatch, so the
+// on_respawn dispatch never nests.
+void respawn_run_timers(GameWorld& world)
 {
-    CtfState& ctf = world.ctf;
-    if (ctf.respawn_queue.empty())
+    RespawnState& respawn = world.respawn;
+    if (respawn.respawn_queue.empty())
         return;
 
     std::array<bool, 4> team_owns_cp = {};
-    for (int i = 0; i < ctf.cp_count; ++i)
+    for (int i = 0; i < world.ctf.cp_count; ++i)
     {
-        const std::int8_t owner = ctf.cps[i].owner;
+        const std::int8_t owner = world.ctf.cps[i].owner;
         if (owner >= 0 && owner < 4)
             team_owns_cp[static_cast<std::size_t>(owner)] = true;
     }
 
-    for (std::size_t i = 0; i < ctf.respawn_queue.size();)
+    const bool scripted = mode_scripted_active(world);
+    for (std::size_t i = 0; i < respawn.respawn_queue.size();)
     {
-        CtfRespawnEntry& entry = ctf.respawn_queue[i];
+        CtfRespawnEntry& entry = respawn.respawn_queue[i];
         const std::uint16_t dec =
             (entry.team < 4 && team_owns_cp[static_cast<std::size_t>(entry.team)]) ? 2 : 1;
         entry.ticks_left -= std::min<std::uint16_t>(dec, entry.ticks_left);
@@ -425,9 +441,14 @@ void run_respawn_timers(GameWorld& world)
             continue;
         }
         const CtfRespawnEntry fired = entry;
-        ctf.respawn_queue.erase(ctf.respawn_queue.begin() +
-                                static_cast<std::ptrdiff_t>(i));
-        if (classic_respawn_active(world))
+        respawn.respawn_queue.erase(respawn.respawn_queue.begin() +
+                                    static_cast<std::ptrdiff_t>(i));
+        if (scripted)
+        {
+            if (walker* revived = classic_fire_respawn(world, fired))
+                og::script::hooks::level_respawn(&world, revived);
+        }
+        else if (classic_respawn_active(world))
             classic_fire_respawn(world, fired);
         else if (fired.kind == 0)
             fire_player_respawn(world, fired);
@@ -435,6 +456,8 @@ void run_respawn_timers(GameWorld& world)
             fire_ai_respawn(world, fired);
     }
 }
+
+namespace {
 
 // Phase 2: death scan. Runs before the dead sweep, so corpses that died this
 // tick are still in oblist. Player corpses (myguy) persist across ticks and
@@ -820,23 +843,8 @@ void ctf_initialize_for_level(GameWorld& world)
         }
     }
 
-    // Respawn anchors: team start markers, dead ones included (the level
-    // bootstrap kills the markers it consumes for player placement).
-    for (const auto& uptr : world.oblist)
-    {
-        walker* w = uptr.get();
-        if (w == nullptr || w->query_order() != Order::Special ||
-            w->family() != FAMILY_RESERVED_TEAM)
-        {
-            continue;
-        }
-        const unsigned char team = w->team_num();
-        if (!is_score_team(team) || ctf.anchor_count[team] >= kCtfMaxAnchorsPerTeam)
-            continue;
-        ctf.anchor_x[team][ctf.anchor_count[team]] = w->xpos();
-        ctf.anchor_y[team][ctf.anchor_count[team]] = w->ypos();
-        ctf.anchor_count[team]++;
-    }
+    // Respawn anchors: the shared start-marker scan (respawn_state.h).
+    respawn_scan_anchors(world);
 
     // Active teams: the requested count (0 = use everything the map authors)
     // intersected with authored flag teams, in team index order.
@@ -887,7 +895,7 @@ void ctf_initialize_for_level(GameWorld& world)
         if (walker* fe = flag_entity_for(world, ctf.flags[t]))
             fe->set_dead(1);
         ctf.flags[t] = CtfFlag{};
-        ctf.anchor_count[t] = 0;
+        world.respawn.anchor_count[t] = 0;
     }
     for (const auto& uptr : world.oblist)
     {
@@ -1050,7 +1058,7 @@ void ctf_run_tick(GameWorld& world)
         return;
     }
 
-    run_respawn_timers(world);
+    respawn_run_timers(world);
     run_death_scan(world);
     run_carried_flags(world);
     run_dropped_flags(world);
@@ -1230,6 +1238,10 @@ bool respawn_retains_player_control(const GameWorld& world,
 bool respawn_suppress_team_wipe_endgame(const GameWorld& world,
                                         short wiped_team)
 {
+    // An undecided scripted match: wipes never end the level — the mode's
+    // Lua owns the end, and respawns give the wiped team a way back in.
+    if (mode_scripted_active(world) && !world.mode.win_latched)
+        return true;
     if (ctf_suppress_team_wipe_endgame(world))
         return true;
     if (!classic_respawn_active(world))
@@ -1274,13 +1286,16 @@ namespace {
 // Classic player fire: revive the corpse in place (its position is already
 // legal), then move it home when its own recorded spawn point is clear. No
 // teleport() fallback — the classic engine never draws world.rng_.
-void classic_fire_player_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+// Returns the revived walker (nullptr when nothing revived) so the scripted
+// fire arm can dispatch on_respawn.
+walker* classic_fire_player_respawn(GameWorld& world,
+                                    const CtfRespawnEntry& entry)
 {
     walker* w = world.find_by_id(entry.walker_entity_id);
     if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
-        return;
+        return nullptr;
     if (live_duplicate_exists(world, w))
-        return;
+        return nullptr;
     revive_player_walker(world, w, entry.team);
     if (w->spawn_x() >= 0 && w->spawn_y() >= 0 &&
         classic_spot_clear(world, w, w->spawn_x(), w->spawn_y(),
@@ -1291,17 +1306,18 @@ void classic_fire_player_respawn(GameWorld& world, const CtfRespawnEntry& entry)
         w->setxy(w->spawn_x(), w->spawn_y());
     }
     ensure_obmap_registration(world, w);
+    return w;
 }
 
 // Classic AI fire (mode 2): a fresh walker per the fire_ai_respawn recipe,
 // placed at the entry's recorded coordinates. A blocked spot withdraws the
 // probe walker and re-enqueues the entry on a short deterministic retry
 // cadence instead of teleporting (no world.rng_ draw).
-void classic_fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+walker* classic_fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
 {
     walker* w = world.add_ob(Order::Living, entry.family);
     if (w == nullptr)
-        return;
+        return nullptr;
     w->set_team_num(entry.team);
     w->set_real_team_num(255);
     if (w->stats() != nullptr)
@@ -1317,25 +1333,25 @@ void classic_fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
         // Keep the placement durable: the replacement inherits the spawn
         // point, so its own later deaths respawn at the authored spot.
         w->set_spawn_point(entry.x, entry.y, entry.floor);
-        return;
+        return w;
     }
     world.remove_ob(w);
     if (entry.x >= 0 && entry.y >= 0 &&
-        world.ctf.respawn_queue.size() <
+        world.respawn.respawn_queue.size() <
             static_cast<std::size_t>(kCtfMaxRespawnEntries))
     {
         CtfRespawnEntry retry = entry;
         retry.ticks_left = kClassicBlockedRetryTicks;
-        world.ctf.respawn_queue.push_back(retry);
+        world.respawn.respawn_queue.push_back(retry);
     }
+    return nullptr;
 }
 
-void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+walker* classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry)
 {
     if (entry.kind == 0)
-        classic_fire_player_respawn(world, entry);
-    else
-        classic_fire_ai_respawn(world, entry);
+        return classic_fire_player_respawn(world, entry);
+    return classic_fire_ai_respawn(world, entry);
 }
 
 // Classic scheduling eligibility: every dead hero (myguy) for mode 1, Team 1
@@ -1425,7 +1441,7 @@ void classic_respawn_run_tick(GameWorld& world)
 
     // Timers first, then the death scan, matching ctf_run_tick's phase order:
     // a fresh corpse always waits its full delay.
-    run_respawn_timers(world);
+    respawn_run_timers(world);
     classic_run_death_scan(world);
 }
 
@@ -1478,6 +1494,156 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
             return true;
     }
     return false;
+}
+
+// ===========================================================================
+// Mode-agnostic respawn entry points (respawn/respawn_state.h). Serve the
+// scripted-mode (TYPE_SCRIPTED) engine and the og.respawn_* bindings; the
+// CTF and classic engines above keep their own routes through the same
+// shared helpers. Everything here is RNG-free.
+// ===========================================================================
+
+void respawn_scan_anchors(GameWorld& world)
+{
+    // Team start markers, dead ones included (the level bootstrap kills the
+    // markers it consumes for player placement). Idempotent: the arrays are
+    // rebuilt from scratch.
+    RespawnState& respawn = world.respawn;
+    for (int t = 0; t < 4; ++t)
+        respawn.anchor_count[t] = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Special ||
+            w->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        const unsigned char team = w->team_num();
+        if (!is_score_team(team) ||
+            respawn.anchor_count[team] >= kCtfMaxAnchorsPerTeam)
+            continue;
+        respawn.anchor_x[team][respawn.anchor_count[team]] = w->xpos();
+        respawn.anchor_y[team][respawn.anchor_count[team]] = w->ypos();
+        respawn.anchor_count[team]++;
+    }
+}
+
+void respawn_flush_revive_all(GameWorld& world)
+{
+    // First: fire every queued entry through the RNG-free classic paths. A
+    // blocked AI fire re-enqueues a retry; swapping the queue out first
+    // keeps this loop bounded, and the trailing clear drops those retries
+    // (the match is decided — nothing will run their timers meaningfully).
+    RespawnState& respawn = world.respawn;
+    std::vector<CtfRespawnEntry> pending;
+    pending.swap(respawn.respawn_queue);
+    for (const CtfRespawnEntry& entry : pending)
+        classic_fire_respawn(world, entry);
+    respawn.respawn_queue.clear();
+
+    // Then: revive still-unqueued eligible player corpses in place (a hero
+    // dying the very tick the latch arms has no entry yet) — the CTF
+    // win-check revive-all semantics with classic in-place placement. A
+    // corpse that died charmed revives on its recorded true team.
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && w->dead() && w->query_order() == Order::Living &&
+            w->myguy != nullptr && !live_duplicate_exists(world, w))
+        {
+            const unsigned char raw_team = (w->real_team_num() != 255)
+                ? w->real_team_num()
+                : w->team_num();
+            const int team = is_score_team(raw_team) ? raw_team : 0;
+            revive_player_walker(world, w, team);
+            ensure_obmap_registration(world, w);
+        }
+    }
+}
+
+bool respawn_schedule_corpse(GameWorld& world, walker* corpse,
+                             int ticks_override)
+{
+    if (corpse == nullptr || !corpse->dead() ||
+        corpse->query_order() != Order::Living)
+        return false;
+    if (already_scheduled(world.respawn, corpse->entity_id()))
+        return false;
+    if (live_duplicate_exists(world, corpse))
+        return false;
+    schedule_respawn(world, corpse);
+    if (!already_scheduled(world.respawn, corpse->entity_id()))
+    {
+        // A full queue of player entries refuses new work (schedule_respawn
+        // evicts bots only).
+        return false;
+    }
+    if (ticks_override > 0)
+    {
+        world.respawn.respawn_queue.back().ticks_left =
+            static_cast<std::uint16_t>(
+                std::min(ticks_override, 65535));
+    }
+    return true;
+}
+
+bool respawn_pending_for(const GameWorld& world, const walker* w)
+{
+    if (w == nullptr)
+        return false;
+    return already_scheduled(world.respawn, w->entity_id());
+}
+
+int respawn_pending_count(const GameWorld& world, int team)
+{
+    int count = 0;
+    for (const CtfRespawnEntry& entry : world.respawn.respawn_queue)
+    {
+        if (static_cast<int>(entry.team) == team)
+            count++;
+    }
+    return count;
+}
+
+bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
+                        int floor)
+{
+    if (w == nullptr)
+        return false;
+    if (floor < 0)
+        return spawn_spot_clear(world, w, x, y);
+    return classic_spot_clear(world, w, x, y, floor);
+}
+
+void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
+{
+    // The corpse-relative rule of scrub_corpse_drops_in, keyed by position:
+    // (x, y) is the corpse's top-left, treated as a 16px family footprint
+    // (larger corpses' drops still land within the 8px Manhattan window in
+    // practice — the stain shares the corner, the gem is center_on'd). No
+    // team filter: the calling hook context decides which corpse to scrub.
+    const auto scrub_list = [&](const GameWorld::EntityList& list) {
+        for (const auto& uptr : list)
+        {
+            walker* fx = uptr.get();
+            if (fx == nullptr || fx->dead() ||
+                fx->query_order() != Order::Treasure ||
+                (fx->family() != FAMILY_STAIN &&
+                 fx->family() != FAMILY_LIFE_GEM))
+            {
+                continue;
+            }
+            if (floor >= 0 && static_cast<int>(fx->floor()) != floor)
+                continue;
+            const int dx = std::abs((fx->xpos() + fx->sizex() / 2) - (x + 8));
+            const int dy = std::abs((fx->ypos() + fx->sizey() / 2) - (y + 8));
+            if (dx + dy <= 8)
+                fx->set_dead(1);
+        }
+    };
+    scrub_list(world.fxlist);
+    scrub_list(world.oblist);
 }
 
 } // namespace og::sim
