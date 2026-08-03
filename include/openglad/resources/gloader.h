@@ -69,8 +69,21 @@ class loader
 		// Replaces loader-owned sprite buffers. Call only when no live render
 		// component still points at graphics data from this loader.
 		void reload_graphics();
+
+		// Brings the BLOOD/STAIN sprite pair in line with the current
+		// effects/gore setting by swapping the active and held-back variants.
+		// Unlike reload_graphics() this frees nothing: both variants stay
+		// allocated for the loader's lifetime, so a pixieN that already cached
+		// its facings pointer keeps pointing at valid pixels. Safe to call from
+		// a menu handler with live render components and buttons on screen.
+		void sync_gore_graphics();
 	private:
 		EntityFactory entity_factory_;
+		// The BLOOD/STAIN variants that effects/gore is NOT currently using,
+		// parked here so the toggle is a swap rather than a reload.
+		PixieData gore_alt_blood_;
+		PixieData gore_alt_stain_;
+		bool gore_graphics_gory_ = true;
 };
 
 // Link-time dispatch: SDL build provides the real instance; headless build provides nothing.
