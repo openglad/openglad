@@ -22,7 +22,42 @@ struct PackScript {
     std::string pack_id;     // e.g. "org.openglad.core"
     std::string chunk_name;  // e.g. "core/scripts/soldier.lua" (diagnostics)
     std::string source;      // Lua source text
+    // The real directory or archive PhysFS resolved the chunk out of, for
+    // the coverage report's diagnostics. Filled in by the mount walk only
+    // while the pack-Lua recorder is armed (see declare_registered_chunk);
+    // empty everywhere else, including for a chunk a test hands over
+    // directly.
+    std::string origin = {};
 };
+
+// ---------------------------------------------------------------------------
+// THE COVERAGE INVENTORY, at the one door every loader compiles from
+// ---------------------------------------------------------------------------
+//
+// A chunk name under `packs/` is a claim that these bytes are pack content
+// at that virtual path, and the coverage report measures exactly the chunks
+// that make it. It scores a hit against the generation whose compiled
+// prototype recorded it, which is possible only for bytes DECLARED before
+// the compile — so every pack chunk has to reach
+// og::script::coverage::declare_pack_source() first.
+//
+// The three registries below are where that can be guaranteed rather than
+// remembered: the declaration VM, the world VM and the lib loader compile
+// out of these vectors and nothing else, so a chunk that was never
+// registered cannot be compiled, and a chunk that was is declared here.
+// (It used to be the mount walk's job, one call per loop, which held for
+// every real mount and silently did not for the tests that hand a chunk
+// straight to a registry.)
+//
+// Chunk names OUTSIDE packs/ are somebody's literal — the throwaway Lua a
+// unit test compiles under its own name — and are deliberately not
+// declared: they are not repository content, nothing can measure them, and
+// the report leaves such a chunk unmeasured instead of failing on it.
+namespace detail {
+void declare_registered_chunk(const std::string& chunk_name,
+                              const std::string& source,
+                              const std::string& origin);
+}  // namespace detail
 
 // Append a script. Duplicate (pack_id, chunk_name) pairs replace the prior
 // entry in place (same position), so a re-mounted pack keeps its load order.
@@ -40,6 +75,46 @@ void clear_pack_scripts();
 // Monotonic counter bumped by every mutation above. Long-lived hosts (the
 // picker-side UI host) compare it to decide when to rebuild.
 unsigned pack_scripts_generation();
+
+// ---------------------------------------------------------------------------
+// Pack family chunks (packs/<id>/families/*.lua — the og.family declarations)
+// ---------------------------------------------------------------------------
+//
+// A family chunk is pack Lua like any other: registered from the same
+// deterministic enumeration, declared to the coverage inventory, compiled
+// text-only, replayed by every VM. What sets it apart is that it runs TWICE
+// in two different contexts (docs/lua-classpacks-design.md):
+//
+//   * once per CONTENT CHANGE in a throwaway declaration VM, where
+//     og.family/og.anims/og.pack harvest descriptor data for the installer
+//     and nothing binds;
+//   * once per VM BUILD in the ordinary bind context, where the same calls
+//     bind hooks and specials casts against the already-installed
+//     descriptors and touch no registry.
+//
+// Replay order inside a pack is lib/ → families/ → scripts/, so a behavior
+// script's og.register_hooks layers after the declaration it overrides.
+// These share PackScript's shape (pack id, chunk name, source) because they
+// are the same kind of thing; the separate registry is what lets the
+// declaration pass evaluate families/ WITHOUT running any behavior script.
+
+// Append a family chunk. A duplicate (pack_id, chunk_name) replaces the
+// prior entry in place, mirroring register_pack_script.
+void register_pack_family_chunk(PackScript chunk);
+
+// Remove every family chunk belonging to pack_id (pack unmounted).
+void unregister_pack_family_chunks(const std::string& pack_id);
+
+// All registered family chunks in replay order.
+const std::vector<PackScript>& pack_family_chunks();
+
+// Drop everything (tests; full remount).
+void clear_pack_family_chunks();
+
+// Monotonic counter over family-chunk mutations, folded into the build
+// generation below for the same reason lib modules are: a declaration-only
+// edit must rebuild every long-lived VM.
+unsigned pack_family_generation();
 
 // ---------------------------------------------------------------------------
 // Pack lib modules (og.use)
@@ -64,6 +139,7 @@ struct PackLibModule {
     std::string name;        // og.use key: the file stem, e.g. "living_common"
     std::string chunk_name;  // e.g. "packs/core/lib/living_common.lua"
     std::string source;      // Lua source text
+    std::string origin = {};  // as PackScript::origin
 };
 
 // Append a module. A duplicate (pack_id, name) replaces the prior entry in
@@ -83,9 +159,10 @@ void clear_pack_lib_modules();
 // build generation so a module-only change still rebuilds long-lived hosts.
 unsigned pack_lib_generation();
 
-// pack_scripts_generation() + pack_lib_generation() — the ONE value
+// pack_scripts_generation() + pack_lib_generation() +
+// pack_family_generation() — the ONE value
 // WorldScripts::built_generation() stores and every staleness check must
-// compare against (both addends are monotonic, so the sum is too). A
+// compare against (every addend is monotonic, so the sum is too). A
 // consumer comparing built_generation() to pack_scripts_generation() alone
 // would see a permanent mismatch once any lib mutation happened and rebuild
 // its VM on every dispatch, wiping logs and hook state each time.

@@ -536,11 +536,11 @@ void loader::reload_graphics()
 		set_animation_slot(*this, idx, fd->anim_table, fd->anim_row_count,
 		                   animation_for_type(fd->animation_type));
 		lineofsight[idx] = fd->ai_line_of_sight;
-		hitpoints[idx] = fd->derived_bonuses[0];
+		hitpoints[idx] = fd->combat.hp;
 		// Strength of melee attack
-		damage[idx] = fd->derived_bonuses[2];
-		stepsizes[idx] = fd->derived_bonuses[6];
-		fire_frequency[idx] = fd->derived_bonuses[7];
+		damage[idx] = fd->combat.melee_damage;
+		stepsizes[idx] = fd->combat.stepsize;
+		fire_frequency[idx] = fd->combat.fire_delay;
 	}
 
 	// Table-driven entity initialization for non-Living entities
@@ -803,7 +803,7 @@ walker  *loader::set_walker(walker *ob,
 	set_derived_stats(ob, order, family);
 
 	for (i=0; i < NUM_SPECIALS; i++)
-		ob->stats()->set_special_cost(i, 5000);
+		ob->stats()->set_special_cost(i, kSpecialCostDisabled);
 
 	// For special settings
 	switch (order)
@@ -815,7 +815,7 @@ walker  *loader::set_walker(walker *ob,
 			{
 				for (i = 0; i < NUM_SPECIALS; i++)
 					ob->stats()->set_special_cost(i, fd->special_cost[i]);
-				ob->stats()->set_weapon_cost(fd->weapon_cost);
+				ob->stats()->set_weapon_cost(fd->combat.fire_mp_cost);
 					ob->set_default_weapon(static_cast<unsigned short>(fd->default_weapon));
 				if (fd->init_ani_type != 0)
 					ob->set_ani_type(fd->init_ani_type);

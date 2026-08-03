@@ -48,7 +48,9 @@
 // ...plus the inventory the denominator has to be built from:
 // declare_pack_source() records every script the ENGINE loads, whether it
 // came from the host filesystem, from inside a campaign .glad, or from a C++
-// string literal. Enumerating packs/ on disk is not the same set.
+// string literal. Enumerating packs/ on disk is not the same set. The one
+// caller is the chunk registries (pack_scripts.h), which every loader
+// compiles out of.
 //
 // DETERMINISM CONTRACT (docs/lua-classpacks-design.md §3). This is compiled
 // into every build and gated at RUNTIME on the OPENGLAD_LUA_COVERAGE
@@ -186,11 +188,12 @@ private:
 // from `source` under the chunk name `chunk`. Every prototype in its tree is
 // bound to (chunk, sha256(source)) — PROVIDED that exact pair has been
 // declared via declare_pack_source(), which is the engine's invariant
-// (og::resources::register_mounted_pack_scripts declares at mount time,
-// before any VM can compile the script). Compiling UNDECLARED bytes (test
-// Lua built from a string literal) instead scrubs any stale registry entry
-// its prototypes' addresses may have inherited, so their hits fall through
-// to the no-generation marker below.
+// (registering a chunk named under packs/ declares it, and every VM
+// compiles out of those registries — see pack_scripts.h). Compiling
+// UNDECLARED bytes (test Lua built from a string literal, which is why such
+// a fixture must not wear a packs/ chunk name) instead scrubs any stale
+// registry entry its prototypes' addresses may have inherited, so their
+// hits fall through to the no-generation marker below.
 //
 // Why raw Proto addresses are sound keys, spelled out because the registry
 // never unregisters:

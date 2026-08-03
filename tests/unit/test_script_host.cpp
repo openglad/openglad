@@ -14,6 +14,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -529,6 +530,42 @@ TEST(PackScriptRegistry, unregister_removes_one_packs_chunks_and_bumps_the_gen)
     EXPECT_EQ(1u, og::script::pack_scripts().size());
 
     og::script::clear_pack_scripts();
+}
+
+// The family-chunk registry is the same shape and owes the same guarantee,
+// for a sharper reason: a family chunk carries DESCRIPTOR DATA, so a chunk
+// left behind by an unmounted pack would keep re-installing its family into
+// a registry slot on the next pass, and every peer's install order — which
+// the wire ids depend on — would depend on what that peer had mounted
+// earlier.
+TEST(PackFamilyChunkRegistry, unregister_removes_one_packs_chunks)
+{
+    og::script::clear_pack_family_chunks();
+    og::script::register_pack_family_chunk(
+        {"pack.a", "a-families.lua", "-- a\n"});
+    og::script::register_pack_family_chunk(
+        {"pack.a", "a-more-families.lua", "-- a2\n"});
+    og::script::register_pack_family_chunk(
+        {"pack.b", "b-families.lua", "-- b\n"});
+    ASSERT_EQ(3u, og::script::pack_family_chunks().size());
+    const unsigned before = og::script::pack_family_generation();
+
+    og::script::unregister_pack_family_chunks("pack.a");
+
+    ASSERT_EQ(1u, og::script::pack_family_chunks().size());
+    EXPECT_EQ("pack.b", og::script::pack_family_chunks()[0].pack_id);
+    EXPECT_NE(before, og::script::pack_family_generation())
+        << "the generation must move so cached VMs rebuild";
+
+    // An id with no chunks removes nothing AND does not move the generation:
+    // a declaration-only rebuild of every long-lived VM is expensive, and an
+    // unmount of a pack that never had family chunks is not a content change.
+    const unsigned after = og::script::pack_family_generation();
+    og::script::unregister_pack_family_chunks("pack.missing");
+    EXPECT_EQ(1u, og::script::pack_family_chunks().size());
+    EXPECT_EQ(after, og::script::pack_family_generation());
+
+    og::script::clear_pack_family_chunks();
 }
 
 // ---------------------------------------------------------------------------
@@ -1820,13 +1857,13 @@ protected:
 }  // namespace
 
 // N1's demonstrated attack: a dump declares a 2-line stub as the source of
-// packs/core/scripts/archmage.lua while recording hits on the real file's
+// packs/core/families/living-17-archmage.lua while recording hits on the real file's
 // lines. While declarations pooled across dumps by chunk name, those hits
 // were scored against the real bytes some other dump declared and archmage
 // went 362/382 -> 382/382 without a line of it running.
 TEST_F(CoverageReportGate, hits_bind_to_the_bytes_their_own_process_declared)
 {
-    const RealSource real = load_real("packs/core/scripts/archmage.lua");
+    const RealSource real = load_real("packs/core/families/living-17-archmage.lua");
     const std::string stub = "local stub = 1\nreturn stub\n";
     forge_dump("lua-attack.luacov", "og_unit_script",
                forge_s_record(real.chunk, stub) +
@@ -1850,7 +1887,7 @@ TEST_F(CoverageReportGate, hits_bind_to_the_bytes_their_own_process_declared)
 // question; the answer must come from the dump whose hits they are.
 TEST_F(CoverageReportGate, a_dump_cannot_borrow_another_dumps_declaration)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     ASSERT_FALSE(real.facts.lines.empty());
     // Process A declares the real bytes and hits ONE line.
     forge_dump("lua-a.luacov", "procA",
@@ -1895,7 +1932,7 @@ TEST_F(CoverageReportGate, sidecar_paths_cannot_escape_the_dump_directory)
 
 TEST_F(CoverageReportGate, sidecar_bytes_must_hash_to_the_declared_digest)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     // Claim soldier's digest, ship a stub's bytes in the sidecar: the report
     // must refuse rather than score soldier's grid against stub content (or
     // vice versa).
@@ -1927,7 +1964,7 @@ TEST_F(CoverageReportGate, an_unknown_dump_format_version_is_an_error)
     write_text_file(scratch_ / "raw" / "lua-old.luacov",
                     "# openglad-lua-coverage 4\n"
                     "P\tog_unit_script\n"
-                    "L\tpacks/core/scripts/soldier.lua\t1\t1\n");
+                    "L\tpacks/core/families/living-00-soldier.lua\t1\t1\n");
 
     const ReportRun run =
         run_report(manifest_args({"og_unit_script"}) + fixtures_args());
@@ -1941,7 +1978,7 @@ TEST_F(CoverageReportGate, an_unknown_dump_format_version_is_an_error)
 // collapsed onto the Lua half, and the gate passed having measured no C++.
 TEST_F(CoverageReportGate, an_empty_cpp_half_is_an_error_not_a_smaller_union)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -1962,7 +1999,7 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
 {
     // Lua: one fully-covered file out of the whole inventory — far below
     // 95% for the half.
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -1994,7 +2031,7 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
 // like nothing at all. The population is structural, not a percentage.
 TEST_F(CoverageReportGate, the_recorder_process_population_is_checked)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "rogue_process",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -2022,8 +2059,8 @@ TEST_F(CoverageReportGate, the_recorder_process_population_is_checked)
 // their generation now, so the other generation gets exactly nothing.
 TEST_F(CoverageReportGate, hits_credit_only_the_generation_that_executed)
 {
-    const RealSource ran = load_real("packs/core/scripts/druid.lua");
-    const RealSource bystander = load_real("packs/core/scripts/soldier.lua");
+    const RealSource ran = load_real("packs/core/families/living-13-druid.lua");
+    const RealSource bystander = load_real("packs/core/families/living-00-soldier.lua");
     // The two grids overlap heavily by line NUMBER (both files put code on
     // most early lines) — that overlap is what the deleted guess credited.
     forge_dump("lua-twogen.luacov", "og_unit_script",
@@ -2053,7 +2090,7 @@ TEST_F(CoverageReportGate, hits_credit_only_the_generation_that_executed)
 // warning nobody reads. It fails the run now.
 TEST_F(CoverageReportGate, a_stale_fixture_digest_is_an_error)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -2079,7 +2116,7 @@ TEST_F(CoverageReportGate, a_stale_fixture_digest_is_an_error)
 // without a clean rebuild must not quietly inflate the number.
 TEST_F(CoverageReportGate, a_dropped_cpp_record_is_an_error_under_strict_cpp)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -2116,7 +2153,7 @@ TEST_F(CoverageReportGate, a_dropped_cpp_record_is_an_error_under_strict_cpp)
 // scripts/coverage/cpp_excluded.txt.
 TEST_F(CoverageReportGate, an_absent_tracked_tu_must_be_listed_or_measured)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -2153,7 +2190,7 @@ TEST_F(CoverageReportGate, an_absent_tracked_tu_must_be_listed_or_measured)
 // deleted — the same rule the Lua fixture ledger lives under.
 TEST_F(CoverageReportGate, a_stale_cpp_exclusion_is_an_error)
 {
-    const RealSource real = load_real("packs/core/scripts/soldier.lua");
+    const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
                    forge_full_hits(real.chunk, real));
@@ -2352,8 +2389,8 @@ TEST(ScriptCoverage, a_kill_during_publish_leaves_the_previous_complete_dump)
 // stale closure's hits to the newest declaration.
 TEST_F(CoverageReportGate, two_live_generations_score_cleanly_on_their_own_grids)
 {
-    const RealSource old_gen = load_real("packs/core/scripts/soldier.lua");
-    const RealSource new_gen = load_real("packs/core/scripts/orc.lua");
+    const RealSource old_gen = load_real("packs/core/families/living-00-soldier.lua");
+    const RealSource new_gen = load_real("packs/core/families/living-14-orc.lua");
     // One chunk name; the override generation is real repository content
     // (exactly as a campaign-embedded script is), so neither declaration is
     // itself an error.
@@ -3089,8 +3126,10 @@ TEST(ApiStubs, stub_file_is_annotation_only_and_loads_in_the_sandbox)
     // Loads and runs cleanly under the sandbox: same text-only mode, same
     // environment fence a pack chunk gets. Running it is also what covers
     // the file's main chunk when the coverage recorder is armed — PROVIDED
-    // the (chunk, digest) pair is declared first, exactly as the resources
-    // layer declares every mounted pack script before a VM can compile it.
+    // the (chunk, digest) pair is declared first, exactly as registering a
+    // pack chunk declares it before any VM can compile it. Declared by hand
+    // here because this file is shipped Lua that is not pack content: it
+    // lives under docs/ and reaches no registry.
     // Without the declaration the recorder files the hits under the
     // no-generation marker and the shipped file scores 0%, failing the Lua
     // function bar by exactly one record (found the hard way: 163/164).
@@ -3128,6 +3167,8 @@ protected:
         init_all_registries();
         og::script::clear_pack_scripts();
         og::script::clear_pack_lib_modules();
+        og::script::clear_pack_family_chunks();
+        og::script::clear_lua_declared_families();
         // active_world_scripts() must serve the shared UI instance, not
         // some world a previous test left in the gameplay context.
         previous_game_ = current_game;
@@ -3137,6 +3178,8 @@ protected:
     {
         og::script::clear_pack_scripts();
         og::script::clear_pack_lib_modules();
+        og::script::clear_pack_family_chunks();
+        og::script::clear_lua_declared_families();
         current_game = previous_game_;
     }
 

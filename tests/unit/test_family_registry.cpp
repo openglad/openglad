@@ -253,7 +253,7 @@ TEST(FamilyRegistry, every_core_family_carries_its_pack_declared_id)
     og::test::mount_core_pack();
     // declared_id is stamped by the classpack installer and by nothing else,
     // so a "core:" id on every core slot is the direct proof that the data
-    // came from packs/core/classpack.yaml rather than from compiled-in C++.
+    // came from packs/core/families/ rather than from compiled-in C++.
     auto declared = [](const char* id, const char* order, int slot) {
         ASSERT_NE(nullptr, id) << order << " slot " << slot
                                << " was not declared by any pack";
@@ -272,7 +272,7 @@ TEST(FamilyRegistry, every_core_family_carries_its_pack_declared_id)
         declared(get_generator_family_descriptor(i)->declared_id, "generator", i);
 }
 
-TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_yaml_order)
+TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_file_order)
 {
     og::test::mount_core_pack();
     // A pack may name a family it declares LOWER DOWN the same file. The
@@ -296,7 +296,7 @@ TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_yaml_order)
 TEST(FamilyRegistry, promotion_formula_survives_the_pack_install)
 {
     og::test::mount_core_pack();
-    // promotion_new_level is the one descriptor field classpack.yaml cannot
+    // promotion_new_level is the one descriptor field a declaration cannot
     // spell (it is a formula, not a value), so family_registry.cpp seeds it
     // into the free slot and the installer — which copies the slot it
     // patches — carries it through. If that ever stops working, every mage

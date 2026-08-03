@@ -695,8 +695,8 @@ og::script::TuningValue tuning_str(std::string v)
 
 }  // namespace
 
-// Every value kind arrives with the Lua subtype its YAML spelling chose:
-// plain 7 is an integer, 2.5 a float, true a boolean, quoted text a string.
+// Every value kind arrives with the Lua subtype the author wrote: 7 is an
+// integer, 2.5 a float, true a boolean, quoted text a string.
 TEST_F(ScriptBindingPropsTest, tuning_serves_every_value_kind)
 {
     og::script::TuningMap map;

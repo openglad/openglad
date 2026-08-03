@@ -94,7 +94,11 @@ void mount_core_pack()
                      og::resources::filesystem_last_error().c_str());
         return;
     }
-    if (og::script::pack_scripts().empty())
+    // Family chunks carry the shipped families' declarations AND their
+    // hooks, so a test that isolated itself by clearing them needs the same
+    // heal a cleared script registry gets.
+    if (og::script::pack_scripts().empty() ||
+        og::script::pack_family_chunks().empty())
         og::resources::refresh_pack_scripts();
 }
 

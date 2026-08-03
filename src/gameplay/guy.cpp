@@ -255,13 +255,13 @@ guy::guy(int whatfamily)
 	auto* fd = get_family_descriptor(whatfamily);
 	if (fd)
 	{
-        strength = static_cast<short>(fd->base_stats[0]);
-        dexterity = static_cast<short>(fd->base_stats[1]);
-        constitution = static_cast<short>(fd->base_stats[2]);
-        intelligence = static_cast<short>(fd->base_stats[3]);
-        armor = static_cast<short>(fd->base_stats[4]);
+        strength = static_cast<short>(fd->base_stats[StatAxis::Strength]);
+        dexterity = static_cast<short>(fd->base_stats[StatAxis::Dexterity]);
+        constitution = static_cast<short>(fd->base_stats[StatAxis::Constitution]);
+        intelligence = static_cast<short>(fd->base_stats[StatAxis::Intelligence]);
+        armor = static_cast<short>(fd->base_stats[StatAxis::Armor]);
         // should always be 1...
-        level = static_cast<short>(fd->base_stats[5]);
+        level = static_cast<short>(fd->base_stats[StatAxis::Level]);
         name = fd->name;
 	}
 	else
@@ -298,27 +298,27 @@ std::int32_t guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[0]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[StatAxis::Strength]));
 
 	// Get dexterity cost ..
 	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[1]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[StatAxis::Dexterity]));
 
 	// Get constitution cost ..
 	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[2]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[StatAxis::Constitution]));
 
 	// Get intelligence cost ..
 	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[3]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[StatAxis::Intelligence]));
 
 	// Get armor cost ..
 	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[4]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[StatAxis::Armor]));
 
 	// Add in the base cost value for the guy ..
 	cost += fd->hiring_cost;

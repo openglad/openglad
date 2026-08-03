@@ -8,7 +8,7 @@
 
 // Pack-Lua behaviour paths that no other test reaches (headless).
 //
-// packs/core/scripts/*.lua is game logic: a branch nothing exercises there
+// packs/core/families/*.lua and packs/core/lib/*.lua are game logic: a branch nothing exercises there
 // is untested game behaviour, not
 // untested content. The Lua coverage recorder
 // (OPENGLAD_LUA_COVERAGE, scripts/coverage/) named the branches below as

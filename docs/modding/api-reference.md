@@ -3,7 +3,7 @@
 The class-pack Lua API, symbol by symbol. Read
 [`docs/lua-classpacks-design.md`](../lua-classpacks-design.md) first — the
 Determinism Cookbook (R1–R10) governs everything here, and §4 is the
-`classpack.yaml` schema. For *how to build, run and prove* a mod, see
+declaration schema. For *how to build, run and prove* a mod, see
 [`.claude/skills/openglad-modding/SKILL.md`](../../.claude/skills/openglad-modding/SKILL.md).
 
 Everything below is generated from the registration tables in
@@ -50,14 +50,61 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 | `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Also errors when `n <= 0`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
 
+## Declaring a family (`og.family`)
+
+```lua
+og.family(order, { id = "mypack:warlock", <data keys>, <hook names> })
+```
+
+`order` is `"living" | "weapon" | "treasure" | "generator" | "fx"` (`"effect"`
+is an accepted alias for `"fx"`). Every key of the table is either a
+descriptor field or a hook name for that order, and a key that is neither is
+a load error with a did-you-mean.
+
+`og.family` is legal only in a `packs/<id>/families/*.lua` chunk, and that
+chunk is evaluated twice: once in a throwaway VM that harvests the DATA (and
+type-checks the functions, then drops them), and again in every world VM,
+where the same call binds the hooks and the specials casts against the
+already-installed descriptor, joined **by id**. Data installs once per
+content change; behavior installs per VM. Every descriptor key, per order,
+is in [design doc §4](../lua-classpacks-design.md); the rest of this section
+is the behavior half.
+
+Three companions live in the same chunk:
+
+| call | |
+|---|---|
+| `og.pack{ id, version, title, authors }` | the pack header, for the multiplayer manifest. Optional, last one wins. |
+| `og.anims(name, { rows = N, frames = { {0,1,2}, false, ... } })` | a pack-shipped frame table a family can name in `animation` (`false` is a null row) |
+| `og.NIL` | the present-null: `sprite = og.NIL` CLEARS the field, where omitting the key keeps whatever is there |
+| `og.api.version` | the pack format version, for a pack straddling engine releases; `ext = {}` is accepted and ignored on any declaration |
+
+None of the world API works at a chunk's top level — see R4 in the design
+doc. Declare, bind, and ask the world from inside a hook.
+
 ## Hooks
+
+Hooks are keys on the declaration table, beside the data they act on:
+
+```lua
+og.family("living", {
+  id = "mypack:warlock",
+  is_undead = true,
+  on_death = function(self) ... end,
+})
+```
+
+The same names are also the vocabulary of the **override seam**:
 
 ```lua
 og.register_hooks(order, family_id_string, { hook_name = function ... })
 ```
 
-`order` is `"living" | "weapon" | "treasure" | "generator" | "fx"` (`"effect"`
-is an accepted alias for `"fx"`).
+`og.register_hooks` binds behavior over a family someone else already
+declared, without restating its data — which is how one pack re-skins
+another's family. Inside `packs/core` it is lint-forbidden: the house style
+is inline, and a core family whose behavior lived away from its declaration
+would be back where the split format was.
 
 **The namespace is a real scope.** `og::families::resolve_family_string_id`
 tries three forms, in this order:
@@ -65,12 +112,12 @@ tries three forms, in this order:
 1. **Positional escape** `"<pack>:#<byte>"` (or bare `"#<byte>"`) — the family
    at that exact wire byte, valid only if something occupies it. The
    namespace is ignored here.
-2. **Fully-qualified id** `"<pack>:<name>"` — an exact match against the `id:`
+2. **Fully-qualified id** `"<pack>:<name>"` — an exact match against the `id`
    a mounted pack declared for the family. This is what makes packs
    pluggable: two packs may each ship a family named `WARLOCK` and stay
    addressable as `alpha:warlock` and `beta:warlock`.
 3. **Bare-name fallback** — the part after the first `:` (or the whole string)
-   matched against the descriptor's `name:`, namespace ignored. The lowest
+   matched against the descriptor's `name`, namespace ignored. The lowest
    matching byte wins.
 
 Matching is case-insensitive and treats a space and an underscore as the same
@@ -83,14 +130,14 @@ character, on both sides. Consequences:
   so does a namespace nobody declared — `"mypack:soldier"` still finds core's
   SOLDIER when `mypack` ships no `soldier`. Don't lean on that; a later pack
   version that *does* add a `soldier` silently changes what the string means.
-- Give every mod family a `name:` no other mounted family uses if you want the
-  bare form to stay unambiguous. A living entry that omits `name:` inherits
+- Give every mod family a `name` no other mounted family uses if you want the
+  bare form to stay unambiguous. A living family that omits `name` inherits
   the registry default `BEAST` and its bare form resolves to whichever `BEAST`
   sits at the lowest byte.
 - When registry names genuinely collide (golem / giant_skeleton / tower1 are
   all `BEAST`; the slime trio is all `SLIME`), form 1 addresses the exact
   byte — e.g. `core:#19` for giant_skeleton, which is why the core pack's
-  `families/*.yaml` files carry ids like `core:#19`.
+  `families/*.lua` declarations carry ids like `core:#19`.
 
 An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is
@@ -143,33 +190,86 @@ without a return value may still return anything; it is ignored.
 descriptor-driven spawn setup (level roll, lifetime, ani). Generators carry no
 C++ callbacks at all, so this hook is the only generator behavior there is.
 
-### The `specials` table
+### Specials
 
-A living family with more than a trivial special registers the table form of
-`do_special` (register one or the other per call — both is a load error):
+A special's handler is written into the entry that declares it:
 
 ```lua
-og.register_hooks("living", "core:orc", {
+og.family("living", {
+  id = "core:orc",
   specials = {
-    [1] = yell,             -- current_special() == 1
-    default = eat_corpse,   -- every other value
+    { id = "howl", name = "YELL", mp_cost = 20, cast = yell },
+    default_cast = eat_corpse,   -- every other slot
   },
   ...
 })
 ```
 
+`cast` is the handler for that slot; `default_cast` on the list is the
+any-slot handler. Both are optional, but a slot that is castable with
+neither — and no family-level `do_special` — is a **pack error at the end of
+the load**, naming the special and what the wasted cast would cost. Say
+`cast = false` if the charged no-op is deliberate; that counts as answered.
+Also refused: an `mp_cost` of 5000 or more (the registry's own "disabled"
+marker — leave the special out of the list, which is what absence means),
+and mixing per-entry `cast` with a family-level `do_special`, which is
+two answers to one question.
+
+Per-entry `ai = fn` is sugar for one family-level `check_special_ai` — same
+call count, same order. Mixing it with an explicit `check_special_ai` is a
+load error for the same reason.
+
+The override seam spells the same thing as a table keyed by declared id
+(register this or a `do_special` function per call — both is a load error):
+
+```lua
+og.register_hooks("living", "core:orc", {
+  specials = {
+    howl = yell,            -- the id the orc's declaration gives slot 1
+    default = eat_corpse,   -- every other slot
+  },
+  ...
+})
+```
+
+Both spellings build the same int-keyed table, so everything below describes
+both.
+
 Dispatch implements the slot semantics directly:
-`self:current_special()` selects the entry, a missing index falls to
+`self:current_special()` selects the entry, a missing slot falls to
 `default`, and a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
 touched). Each entry has the plain `do_special` signature: `(self) → bool`,
 `false` = the special did not fire.
 
+**Keys are declared ids.** A key is the special's declared `id` from the
+family's `specials` list, resolved to a slot ONCE, at registration — the
+cast path never sees the id. What the id buys is that the cost and the
+handler name each other: reordering the list cannot silently re-bind a
+handler, and a misspelling on either side is a load error naming the ids the
+family does declare.
+
+Which slot an id is, and when a player can reach it, is the list order:
+entry *i* is slot *i+1*, selectable from level `(N-1)*3+1`.
+
 Rules:
 
-- Living orders only; keys are integers `1..255` (`current_special` is a
-  char-wide slot index) or the string `"default"`; every value must be a
-  function; an empty table is a load error.
+- Living orders only; keys are a declared special id or the string
+  `"default"`; every value must be a function; an empty table is a load
+  error.
+- A slot number for a key is a load error, listing the ids the family
+  declares:
+
+  ```
+  og.register_hooks: 'specials' key [1] is a slot number; specials keys are
+  the family's declared special ids, or 'default' (living family
+  'core:soldier', declared ids: charge, boomerang, whirlwind, disarm)
+  ```
+
+  A position bound a handler to whatever slot the list happened to put
+  there, which is the failure the ids exist to prevent.
+- An id key against a family whose descriptor declares no special ids at
+  all (a declaration with no `specials` list) is a load error that says so.
 - The engine stores a **private copy** at registration — mutating the
   caller's table afterwards cannot change dispatch (R6 at the registration
   boundary).
@@ -179,10 +279,21 @@ Rules:
 
 **The cost contract around either form** (`walker_specials.cpp`): the engine
 gates the dispatch on `magicpoints >= special_cost(current_special)` (the
-descriptor's `special_costs` entry) *before* calling the hook, and deducts
-that cost only after the hook answers `true`. So `false` means "did not
-fire, charge nothing", and specials that price themselves (a pool vent, a
-scaling drain) do their own extra deduction inside the entry.
+slot's `mp_cost` in the family's `specials` list) *before* calling the
+hook, and deducts that cost only after the hook answers `true`. So `false`
+means "did not fire, charge nothing", and specials that price themselves (a
+pool vent, a scaling drain) do their own extra deduction inside the entry.
+
+A castable slot with neither a handler nor a `default` still charges — that
+is the defined unmatched-slot behavior and it has not changed. What happens
+about it depends on who could have known: a slot the declaring pack itself
+left unhandled is that pack's error, and a slot the engine filled from C++
+(`install_classpack_data`) only warns.
+
+**Alternates.** A special may declare `alternate = { name = "..." }`, which is a
+DISPLAY name shown while Shift is held. There is no separate cost and no
+engine dispatch for it: the handler forks on `self:shifter_down()` and
+spends the same `mp_cost`.
 
 ### Duplicate registration: last one wins
 
@@ -195,11 +306,13 @@ before — `core:soldier` resolves to core's soldier through form 2, since that
 is the id the core pack declared for it.
 
 To override a stock family's *data* (stats, sprite, description) rather than
-its behavior, give your `classpack.yaml` entry that family's `wire_id` **and
-keep its `id:`** — `id: core:soldier`, `wire_id: 0`. The wire slot is the
-family's identity, so an entry that claims slot 0 under a different `id:`
-retires `core:soldier`: the id stops resolving (except through the bare-name
-fallback, if you left `name:` alone) and the install warns.
+its behavior, declare that family's `wire_id` **and keep its `id`** —
+`id = "core:soldier"`, `wire_id = 0`. The wire slot is the family's
+identity, so a declaration that claims slot 0 under a different `id` retires
+`core:soldier`: the id stops resolving (except through the bare-name
+fallback, if you left `name` alone) and the install warns. A data-only
+override keeps the original behavior, because casts and hooks are joined by
+id at bind time.
 
 Every collision logs a warning naming the order, family, hook and the source
 location of the later registration, and is recorded as a script error record,
@@ -487,19 +600,19 @@ Recognised flags: `has_returning_weapon`, `is_undead`, `leaves_bloodspot`,
 `is_stationary`. An unknown flag name is an error; an unpopulated family byte
 returns `nil`.
 
-**`og.tuning(self) → frozen table`** — the `tuning:` map self's family
-declared in `classpack.yaml`, for lifting balance constants out of behavior
-code:
+**`og.tuning(self) → frozen table`** — the `tuning` map self's family
+declared, for lifting balance constants out of behavior code:
 
-```yaml
-families:
-  living:
-    - id: mymod:brute
-      tuning:
-        yell_stun: 10      # plain integer → Lua integer
-        heal_scale: 2.5    # decimal → Lua float
-        eats_corpses: true # boolean
-        label: "5"         # QUOTED stays a string
+```lua
+og.family("living", {
+  id = "mymod:brute",
+  tuning = {
+    yell_stun = 10,      -- integer → Lua integer
+    heal_scale = 2.5,    -- decimal → Lua float
+    eats_corpses = true, -- boolean
+    label = "5",         -- a string stays a string
+  },
+})
 ```
 
 ```lua
@@ -511,7 +624,7 @@ scripts can carry defaults), writes raise `attempt to modify a read-only
 table`, and no iteration is provided — the no-`pairs` rule never comes up.
 A family that declared nothing gets an empty frozen table. Tuning is
 LOAD-TIME pack content exactly like the rest of the descriptor: it rides
-multiplayer pack transfer inside `classpack.yaml` and never appears in a
+multiplayer pack transfer inside the declaration and never appears in a
 snapshot, and identical values mean byte-identical sim.
 
 ### Animation tables
@@ -727,18 +840,17 @@ local mirror have separate VMs, the same isolation rule as the obmap).
 `docs/modding/examples/emberwisp/` is a runnable pack you can read end to
 end in a few minutes. Nothing in it is inherited from a core family: it
 ships its own sprite sheet, its own animation table, its own descriptor data
-and its own behavior script.
+and its own behavior.
 
 ```
 docs/modding/examples/emberwisp/
-├── classpack.yaml            one living family, wire_id: auto, tuning block
-├── scripts/emberwisp.lua     hooks + a specials-table special
+├── families/emberwisp.lua    one living family: data, hooks and its special
 └── sprites/
     ├── emberwisp.png         16x16, 8 frames, indexed to the engine palette
     └── emberwisp.json        Aseprite "Hash" sidecar describing the frames
 ```
 
-The script is written in the current idiom
+The declaration is written in the current idiom
 ([lua-style.md](../lua-style.md)): walker properties, `og.tuning`, a
 `specials` table, `og.rand` where the bound is a positive literal and
 `og.rand0` where tuning can drive it to zero, and the `add_frozen_stun`
@@ -750,80 +862,107 @@ It deliberately sits outside `packs/`, because everything under `packs/` is
 mounted at startup and a new living family would change the hire menu, the
 registries and the auto-assigned wire ids of the shipped game. Mount it
 explicitly instead — the mount point is what fixes the pack id and makes the
-`sprite:` path resolve:
+`sprite` path resolve:
 
 ```cpp
 og::resources::mount("docs/modding/examples/emberwisp", "packs/emberwisp/", 1);
-og::resources::refresh_pack_scripts();   // rescans scripts + reinstalls YAML
+og::resources::refresh_pack_scripts();   // re-evaluates and reinstalls
 loader.reload_graphics();                // picks up the pack's sprites
 ```
 
 Its README covers the art pipeline. The parts worth reading here are the
-descriptor block, the animation table, and the script.
+data block, the animation table, and the hooks — all three in one file.
 
-### The family, in `classpack.yaml`
+### The family, in `families/emberwisp.lua`
 
-```yaml
-families:
-  living:
-    - id: example:emberwisp
-      wire_id: auto                       # next free id >= 21, deterministic
-      name: "EMBERWISP"                   # THE identity hooks resolve against
-      base_stats: [8, 14, 7, 16, 4, 1]    # STR DEX CON INT ARMOR LVL
-      derived_bonuses: [70, 40, 11, 0, 0, 0, 5, 9]
-      #                 HP  MP ATK RATK RNG DEF SPD ATKSPD
-      init_bit_flags: [FLYING, FORESTWALK]
-      default_weapon: core:fireball       # via the weapon registry
-      special_names: ["NONE", "FLARE BURST", "NONE", "NONE", "NONE", "NONE"]
-      special_costs: [5000, 5, 5000, 5000, 5000, 5000]   # MP; engine-gated
-      leaves_bloodspot: false
-      magic_damage_modifier: 0.5
-      death_message: "EMBERWISP GUTTERS OUT"
-      sprite: packs/emberwisp/sprites/emberwisp.png   # virtual-FS path
-      animation: emberwisp_motion         # this pack's own set, below
-      playable: true
-      playable_order: 90
-      glyph: "✦"                          # one UTF-8 codepoint
-      glyph_ascii: "*"                    # one byte, for ASCII terminals
-      glyph_color: yellow
-      glyph_bold: true
-      radar_color: 228
-      radar_jitter: 3                     # adds rand(3) — a real RNG call
-      tuning:                             # balance data, read by the script
-        flare_cost: 6.0                   # decimal → Lua float
-        burn_floor: 10                    # integer → Lua integer
-        burst_range: 80
-        stun_base: 4
-        stun_per_level: 8
+```lua
+og.family("living", {
+  id = "example:emberwisp",
+  wire_id = "auto",                   -- next free id >= 21, deterministic
+  name = "EMBERWISP",                 -- THE identity hooks resolve against
+  stats = {                           -- all six required
+    strength = 8, dexterity = 14, constitution = 7,
+    intelligence = 16, armor = 4,
+    level = 1,                        -- starting level
+  },
+  combat = {                          -- all five required
+    hp = 70,
+    melee_damage = 11,
+    stepsize = 5,                     -- px per step
+    fire_delay = 9,                   -- busy ticks AFTER an attack;
+                                      -- lower is faster
+    fire_mp_cost = 2,                 -- MP per ranged shot
+  },
+  costs = {                           -- gold only
+    hire = 400,
+    train = { strength = 30, dexterity = 8, constitution = 30,
+              intelligence = 8, armor = 60 },
+  },
+  specials = {                        -- order = slot; slot N at level
+    { id = "flare_burst",             -- (N-1)*3+1
+      name = "FLARE BURST",           -- HUD string
+      mp_cost = 5,                    -- engine-gated, engine-deducted
+      cast = flare_burst },           -- the handler, right here
+  },
+  flags = { "FLYING", "FORESTWALK" },
+  default_weapon = "core:fireball",   -- via the weapon registry
+  init_max_magicpoints = 40,          -- the live max-MP knob (the usual
+                                      -- maximum is 10 + INT*3)
+  leaves_bloodspot = false,
+  magic_damage_modifier = 0.5,
+  death_message = "EMBERWISP GUTTERS OUT",
+  sprite = "packs/emberwisp/sprites/emberwisp.png",  -- virtual-FS path
+  animation = "emberwisp_motion",     -- this pack's own set, below
+  playable = true,
+  playable_order = 90,
+  glyph = "✦",                        -- one UTF-8 codepoint
+  glyph_ascii = "*",                  -- one byte, for ASCII terminals
+  glyph_color = "yellow",
+  glyph_bold = true,
+  radar_color = 228,
+  radar_jitter = 3,                   -- adds rand(3) — a real RNG call
+  tuning = {                          -- balance data, read by the hooks
+    flare_cost = 6.0,                 -- decimal → Lua float
+    burn_floor = 10,                  -- integer → Lua integer
+    burst_range = 80,
+    stun_base = 4,
+    stun_per_level = 8,
+  },
+  on_create = on_create,              -- the hooks, same table
+  on_fire_weapon = on_fire_weapon,
+})
 ```
 
 Every key except `id` is optional, and an undeclared key changes nothing:
 the installer copies the registry slot's current descriptor and patches only
-what the YAML names. The `tuning:` block is the family's own dial panel —
-`og.tuning(self)` serves it back to the script as a frozen table, so
-rebalancing the wisp is a YAML edit, not a code edit.
+what the declaration names. Every key it does NOT recognise is a load error
+with a did-you-mean, so a typo cannot quietly do nothing. The `tuning` block
+is the family's own dial panel — `og.tuning(self)` serves it back to the
+hooks as a frozen table, and it sits a screen above the function that reads
+it.
 
 ### Its animation table
 
-```yaml
-anims:
-  emberwisp_motion:
-    rows: 16                       # two ani_types over eight facings
-    frames:
-      - [0, 1, 2, 3, 2, 1]         # ani_type 0 (walk), facing 0
-      # ... facings 1..7, same list (the wisp has no directional art)
-      - [4, 5, 6, 7]               # ani_type 1 (attack), facing 0
-      # ... facings 1..7
+```lua
+og.anims("emberwisp_motion", {
+  rows = 16,                       -- two ani_types over eight facings
+  frames = {
+    { 0, 1, 2, 3, 2, 1 },          -- ani_type 0 (walk), facing 0
+    -- ... facings 1..7, same list (the wisp has no directional art)
+    { 4, 5, 6, 7 },                -- ani_type 1 (attack), facing 0
+    -- ... facings 1..7
+  },
+})
 ```
 
 Row index is `ani_type * 8 + curdir`; frames are indices into the sprite's
-frame stack; there is no `-1` in the YAML because the row's end *is* the end.
-Declaring fewer rows than `rows:` asks for repeats them **cyclically**, so
-two declared rows over `rows: 16` would alternate walk/attack per facing
-rather than filling eight of each — write every row out unless the cycle is
-exactly what you want.
+frame stack; there is no `-1` because the row's end *is* the end. Declaring
+fewer rows than `rows` asks for repeats them **cyclically**, so two declared
+rows over `rows = 16` would alternate walk/attack per facing rather than
+filling eight of each — write every row out unless the cycle is exactly what
+you want.
 
-### Its behavior, in `docs/modding/examples/emberwisp/scripts/emberwisp.lua`
+### Its behavior, in the same file
 
 ```lua
 local C = og.C
@@ -879,16 +1018,10 @@ local function flare_burst(self)
   return true
 end
 
-og.register_hooks("living", "example:emberwisp", {
-  on_create = on_create,
-  on_fire_weapon = on_fire_weapon,
-  -- The specials table replaces a hand-written current_special() ladder:
-  -- [n] runs for special n, `default` (absent here) catches the rest, and
-  -- a table with neither entry makes that cast a successful no-op.
-  specials = {
-    [1] = flare_burst,
-  },
-})
+-- ...and the declaration above closes over them:
+--   specials = { { id = "flare_burst", ..., cast = flare_burst } },
+--   on_create = on_create,
+--   on_fire_weapon = on_fire_weapon,
 ```
 
 Details worth noticing: `self.magicpoints` reads the property, but the
@@ -902,8 +1035,8 @@ appear, each where its contract is the right one.
 
 | Pattern | Read |
 |---|---|
-| A whole family, canonical style | `packs/core/scripts/soldier.lua` beside `packs/core/families/living-00-soldier.yaml` (the core pack uses the split per-family layout; behavior dispatches through Lua) |
-| Specials table, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/scripts/orc.lua` beside `packs/core/families/living-14-orc.yaml` |
+| A whole family, canonical style | `packs/core/families/living-00-soldier.lua` — one file: behavior, then the declaration that names it |
+| Specials, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/families/living-14-orc.lua` |
 | `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
 | Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |
@@ -935,7 +1068,7 @@ literal.
 
 ### Two limits worth knowing before you design
 
-- **A living family with no `sprite:` has no graphics and cannot be drawn.**
+- **A living family with no `sprite` has no graphics and cannot be drawn.**
   Sprite lookup tries `pix/<value>` first, then `<value>` as a virtual-FS
   path, and the frame sidecar is resolved with whichever prefix opened the
   PNG — so a pack's `.json` always sits beside its own `.png` and can
@@ -946,7 +1079,7 @@ literal.
   `EntityDef` table, which pins core ids only; a mod weapon therefore starts
   at zero for all of them and must set what it needs on the entity after
   spawning it. Living families do not have this gap — their loader stats
-  come from `derived_bonuses`.
+  come from the declaration's `combat` block.
 
 ## Transliteration checklist
 

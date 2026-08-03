@@ -5,50 +5,114 @@ description: Writing, testing, and shipping OpenGlad class packs and level scrip
 
 # OpenGlad Modding (Class Packs + Level Scripts)
 
-Everything mod-related is Lua + YAML in a pack — never native code. This file
+Everything mod-related is Lua in a pack — never native code. This file
 is the **playbook**: how to build, stage, test, and prove a mod. The three
 reference documents, in reading order for any non-trivial task:
 
 1. `docs/lua-classpacks-design.md` — architecture and pack format. **§3
    Determinism Cookbook (R1–R10) is non-negotiable law** for anything that
-   runs inside the sim; §4 is the descriptor YAML schema.
+   runs inside the sim; §4 is the declaration schema.
 2. `docs/modding/api-reference.md` — every `og.*` function, walker/stats/guy
    method, property, constant, and hook signature, plus a guided tour of the
-   runnable example pack in `docs/modding/examples/emberwisp/` (yaml + lua +
-   art).
+   runnable example pack in `docs/modding/examples/emberwisp/` (one
+   declaration + art).
 3. `docs/lua-style.md` — the style contract (S1–S6): naming, one-line
    headers, comment policy, when a helper becomes a lib module, shim policy,
    and the `s_*` compatibility rules. Binding for all in-tree pack Lua.
 
-Real code to read side by side: `packs/core/scripts/soldier.lua` against
-`packs/core/families/living-00-soldier.yaml` (the canonical script/data
-pair), `packs/core/scripts/orc.lua`
-(specials table, `og.rand0`, tuning reads, `add_frozen_stun`, guy exp),
+Real code to read: `packs/core/families/living-00-soldier.lua` (the
+canonical shape — behavior first, then the `og.family` block that names it),
+`packs/core/families/living-14-orc.lua`
+(specials with casts, `og.rand0`, tuning reads, `add_frozen_stun`, guy exp),
 `packs/core/lib/living_common.lua` + `ai.lua` + `effect_common.lua` (what
 `og.use` modules look like), and `tools/concept_mapgen/showcase_pack.cpp`
 (the Ninefold Court's `court.lua` — level hooks, per-entity hooks, generator
 `customize_spawn`).
 
+## The declaration, in one screen
+
+A family is ONE file: its behavior functions, then one `og.family` call
+carrying the data AND naming those functions as hooks. A living family's
+numbers live in four named blocks; everything else (`sprite`, `animation`,
+`flags`, `tuning`, presentation) is a flat key — see design doc §4 for the
+full list, and copy a real file rather than typing one.
+
+```lua
+local function hex(self)
+  ...
+end
+
+og.family("living", {
+  id = "mypack:warlock",     -- required; qualified ids are scoped
+  wire_id = "auto",          -- 0..255, or "auto" (>= 21)
+  name = "WARLOCK",
+  stats = { strength = 6, dexterity = 8, constitution = 6,
+            intelligence = 15, armor = 5, level = 1 },   -- all six REQUIRED
+  combat = { hp = 90, melee_damage = 8, stepsize = 3,
+             fire_delay = 6, fire_mp_cost = 4 },         -- all five REQUIRED
+  costs = {                                              -- GOLD only
+    hire = 400,
+    train = { strength = 20, intelligence = 6 },         -- omitted axis = 0
+  },
+  specials = {               -- order = slot; slot N usable at level (N-1)*3+1
+    { id = "hex",            -- the id the cast is joined to
+      name = "HEX",          -- HUD string
+      mp_cost = 20,          -- MAGIC POINTS
+      alternate = { name = "GREATER HEX" },  -- display only, same mp_cost
+      cast = hex },          -- the handler, in the same entry as its price
+  },
+  on_death = function(self) ... end,
+})
+```
+
+The rules worth knowing before your first load error:
+
+- A missing member of `stats`/`combat`, or `costs` without `hire`, is
+  fatal. There is no honest default for armor or hitpoints.
+- **Any unrecognised key is a load error**, at the top level and inside the
+  blocks alike, with a did-you-mean. `step_size` stops the pack instead of
+  installing a default nobody wrote. `ext = {}` is the reserved opaque
+  escape hatch, and `og.api.version` is there for feature detection.
+- `combat.mp`, `combat.ranged_damage`, `combat.range`, `combat.defense` are
+  refused by name: max MP is `10 + INT*3` or `init_max_magicpoints`, ranged
+  damage belongs to the weapon family, reach is `ai_line_of_sight`, armor
+  is `stats.armor`.
+- Up to five specials; omit the key for a family with none. Absence IS the
+  disabled state — an `mp_cost` of 5000 or more (the registry's own "no
+  special here" marker) is a load error. A declared slot that is castable
+  with no `cast`, no `default_cast` and no `do_special` is a pack error;
+  `cast = false` is the deliberate charged no-op.
+- `costs.train.level` is vestigial — nothing reads it — but the core files
+  ship 200, so an override must restate it.
+- Omitting a key keeps whatever the slot already had; `og.NIL` on a
+  nullable field (`short_name`, `sprite`, `promotes_to`, `death_message`,
+  `description`) explicitly clears it.
+
 ## Pack anatomy
 
 ```
 packs/<pack_id>/
-├── classpack.yaml       # descriptor data: stats, sprites, animation sets,
-│                        # costs, glyph/radar presentation, tuning: blocks
-├── families/*.yaml      # optional split layout: parsed after classpack.yaml
-│                        # in sorted filename order, same schema, ONE pack
+├── families/*.lua       # ONE file per family: behavior + the og.family
+│                        # call. Evaluated in sorted filename order.
+│                        # og.family is legal NOWHERE ELSE.
 ├── lib/*.lua            # og.use modules: pure exports, loaded once per VM
 ├── sprites/*.png        # optional pack-shipped art (indexed PNG)
-└── scripts/*.lua        # behavior hooks; every .lua is loaded, filename-
-                         # lexicographically; one shared environment per pack
+└── scripts/*.lua        # optional behavior-only chunks (og.register_hooks),
+                         # for overriding a family someone else declared
 ```
 
 Packs under the repo `packs/` dir ship with the game (staged to the build
 tree, preloaded on wasm). User packs live in `<user_path>/packs/`. Campaign
-zips may embed `packs/`, mounted for that campaign only. There is no
-per-family `script:` key — the whole `scripts/` directory is loaded. The
-shipped core pack uses the split layout: a header-only `classpack.yaml` plus
-one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
+zips may embed `packs/`, mounted for that campaign only. The shipped core
+pack names its files `families/<order>-<NN>-<slug>.lua` (NN = pinned wire
+id) and puts its `og.pack` header in `families/00-pack.lua`.
+
+Each family chunk is evaluated TWICE: once in a throwaway VM that harvests
+the data (hooks type-checked and dropped), and again in every world VM,
+where the same `og.family` call binds only the behavior, joined to the
+installed descriptor by id. So: data installs once per content change,
+behavior per VM, and no world-facing `og.*` works at a chunk's top level in
+either pass.
 
 ## The rules that bite
 
@@ -84,13 +148,17 @@ one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
     Never hand-inline a formula that exists there.
   - *`og.max/min/clamp/sign`*: std:: tie semantics, C++-covered branches —
     use instead of if/else clamp ladders.
-  - *`og.tuning(self)`*: the family's `tuning:` YAML map as a frozen table.
+  - *`og.tuning(self)`*: the family's declared `tuning` map, frozen.
     Balance constants belong there, not inline in behavior code. Key access
     only; absent keys answer nil; no iteration.
-  - *`specials` table*: `specials = { [1]=fn, ..., default=fn }` in
-    `og.register_hooks` instead of a `current_special()` elseif ladder.
-    Missing index → `default`; neither → successful no-op (`true`, no Lua
-    call). The engine gates on `special_costs[current_special]` MP before
+  - *specials*: `cast = fn` in the entry (or `default_cast` on the list)
+    instead of a `current_special()` elseif ladder. The
+    key is the `id` the family's `specials:` list declares for that slot,
+    or `default` — nothing else. A key that names no declared id, and a
+    bare slot number like `[1]`, are both load errors listing the ids that
+    exist. Missing slot → `default`;
+    neither → successful no-op (`true`, no Lua call) that STILL charges,
+    and now warns at load. The engine gates on the slot's `mp_cost` before
     dispatch and deducts it only on a `true` answer.
   - *`og.use("name")`*: binds `packs/<id>/lib/<name>.lua` (own pack only),
     at chunk load time only, frozen pure exports. A helper used by 2+ files
@@ -133,21 +201,21 @@ one `families/<order>-<NN>-<slug>.yaml` per family (NN = pinned wire id).
 ## Testing pack changes
 
 ```bash
-cmake --build --preset ci-test --target stage_runtime_assets  # after .lua/.yaml edits
-./build/ci-test/og_test_parity            # 188/188 required for core changes
+cmake --build --preset ci-test --target stage_runtime_assets  # after .lua edits
+./build/ci-test/og_test_parity            # 256/256 required for core changes
 ./build/ci-test/og_unit_script --gtest_brief=1
 ./build/ci-test/og_unit_families --gtest_brief=1
 OPENGLAD_CONFIG_DIR=$(mktemp -d) ./build/ci-test/og_unit_data --gtest_brief=1
 ```
 
-- `.lua` and `.yaml` edits (scripts, lib modules, `classpack.yaml`,
-  `families/*.yaml`) need only re-staging, never a C++ rebuild.
-- `og_unit_data` carries the `classpack.yaml` parser and install tests, and
+- `.lua` edits (declarations, lib modules) need only re-staging, never a
+  C++ rebuild.
+- `og_unit_data` carries the descriptor install tests, and
   needs an isolated config dir (a headless run with nothing mounted otherwise
   rewrites the repo's `cfg/openglad.yaml` through the cwd fallback).
 - **Dispatch proof** (mandatory when changing core behavior): perturb one
-  constant in the STAGED copy (`build/ci-test/packs/...` — a `.lua` or a
-  `tuning:` value in the staged YAML, both are staged data), confirm the
+  constant in the STAGED copy (`build/ci-test/packs/...` — a behavior line
+  or a `tuning` value, both in the same staged file), confirm the
   targeted parity scenarios flip, restore, confirm green. A green run with
   no flip on perturbation means your hook never dispatched — either a load
   error (check the diagnostics below) or no scenario coverage; say which.
@@ -206,11 +274,11 @@ short-circuiting them changes the stream even if nothing else differs.
 
 1. Copy `docs/modding/examples/emberwisp/` (a runnable pack with its own
    art, animation table, tuning block and specials-table special), or lift
-   the closest core family's `packs/core/families/<order>-<NN>-<slug>.yaml`.
-2. Set `id: <pack>:<name>`, a meaningful `name:`, `wire_id: auto`, and a
-   `sprite:` (a living with no sprite has no graphics and cannot be drawn).
+   the closest core family's `packs/core/families/<order>-<NN>-<slug>.lua`.
+2. Set `id = "<pack>:<name>"`, a meaningful `name`, `wire_id = "auto"`, and
+   a `sprite` (a living with no sprite has no graphics and cannot be drawn).
    Reusing a display name is legal, but makes bare-name lookup ambiguous.
-   Pick an `animation:` — reuse a built-in set (`standard`, `mage`,
+   Pick an `animation` — reuse a built-in set (`standard`, `mage`,
    `skeleton`, `giant_skeleton`, `slime`, `small_slime`, `static`) before
    authoring your own `anims:` table.
 3. Give it presentation so it reads correctly outside the SDL client:
@@ -218,17 +286,17 @@ short-circuiting them changes the stream even if nothing else differs.
    `radar_color` for the minimap, `editor_label` for a generator. Undeclared
    presentation falls back to the legacy "unknown family" look, which is a
    valid but anonymous result.
-4. `scripts/<name>.lua`: `og.register_hooks("living", "<pack>:<name>", {...})`
-   — start from the emberwisp script's shape (properties, `og.tuning`,
-   a `specials` table). Balance constants go in the family's `tuning:`
-   block, not inline; specials also need `special_names`/`special_costs`
-   in the descriptor (the engine gates and charges the MP cost).
-5. Stage, then run the game or `openglad_text`. A `playable: true` family
+4. Write the behavior above the `og.family` call in the same file and name
+   the functions as hook keys — start from the emberwisp declaration's
+   shape (properties, `og.tuning`, a special with its `cast`). Balance
+   constants go in the family's `tuning` block, not inline; each special
+   carries its own `cast`, and the engine gates and charges its `mp_cost`.
+5. Stage, then run the game or `openglad_text`. A `playable = true` family
    appears in the hire menu.
 
 ## Shipping a family that replaces a core one
 
-Registration is last-wins: pack scripts load in pack-id order, then
+Registration is last-wins: pack chunks load in pack-id order, then
 filename-lexicographically within a pack. A mod that intentionally overrides
 `core:soldier` must therefore sort after the `core` pack and register that
 same declared id. The engine warns on every re-registration, naming the
@@ -239,16 +307,16 @@ same family, the lexicographically later filename wins. Split by family, not
 by concern.
 
 Replacing its **data** (stats, sprite, description) likewise requires the
-overriding pack to sort after `core`. Its descriptor entry pins the stock
-family's `wire_id` and **keeps its `id:`** —
-`id: core:soldier`, `wire_id: 0` (in your pack's `classpack.yaml` or a
-`families/*.yaml` file; the split layout parses identically). The wire slot
-is the identity: an entry claiming slot 0 under some other `id:` retires
+overriding pack to sort after `core`. Its declaration pins the stock
+family's `wire_id` and **keeps its `id`** —
+`id = "core:soldier"`, `wire_id = 0`. The wire slot
+is the identity: a declaration claiming slot 0 under some other `id` retires
 `core:soldier`, which then only resolves through the bare-name fallback (and
 not at all if you renamed it too). The installer warns when an install
-changes a slot's declared id. A sparse entry patches only the fields it
-declares — but any entry that touches a slot replaces that slot's `tuning:`
-map whole.
+changes a slot's declared id. A sparse declaration patches only the fields
+it declares — but any declaration that touches a slot replaces that slot's
+`tuning` map whole. Casts and hooks are joined by id at bind time, so a
+data-only override keeps the original behavior.
 
 ## Level scripts
 
@@ -280,11 +348,12 @@ ships them in an embedded pack that mounts and unmounts with it.
   cannot import another pack's lib.
 - `og.tuning(self)` is frozen (writes raise) and non-iterable; absent keys
   answer `nil`, so `t.key or DEFAULT` is the out-of-tree pattern (in-tree
-  core scripts read keys bare — the YAML is the single source of truth).
-  Any descriptor entry that touches a slot replaces its tuning map WHOLE.
-- A `specials` table with no entry for the cast slot and no `default` is a
-  *successful* no-op: the engine still deducts the slot's MP cost (that is
-  the defined unmatched-slot behavior). Return `false` from an entry to
+  core declarations read keys bare — the declaration is the single source
+  of truth). Any declaration that touches a slot replaces its tuning WHOLE.
+- A cast slot with no handler and no `default_cast` is a *successful*
+  no-op: the engine still deducts the slot's MP cost (that is the defined
+  unmatched-slot behavior), and for a slot the pack itself DECLARED it is
+  also a pack error at the end of the load. Return `false` from a cast to
   fire-and-charge-nothing.
 - `stats` accessors are flattened onto the walker with the `s_` prefix; the
   guy record uses `g_`. Where a property or fused verb exists, the `s_*`

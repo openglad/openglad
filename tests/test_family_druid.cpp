@@ -10,8 +10,9 @@
 #include "test_family_hook_dispatch.h"
 
 
-// Druid behavior lives in packs/core/scripts/druid.lua; the descriptor
-// carries data only. Everything here dispatches the way the sim does.
+// Druid behavior lives in packs/core/families/living-13-druid.lua, in the
+// same chunk that declares its data. Everything here dispatches the way the
+// sim does.
 
 TEST(FamilyDruid, descriptor_level_up_and_difficulty)
 {

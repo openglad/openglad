@@ -1142,7 +1142,7 @@ int og_query_object_passable(lua_State* L)
 // this one does not, because smoother::query_genre_x_y does not). Compare
 // against og.C.TYPE_*. The core door's orientation check is the only sim
 // caller that reaches terrain by genre rather than by passability; see
-// packs/core/scripts/weapon_door.lua. query_genre_x_y is total —
+// packs/core/lib/weapon_door.lua. query_genre_x_y is total —
 // out-of-range tiles report TYPE_GRASS — so there is no nil case.
 int og_query_genre(lua_State* L)
 {
@@ -1495,14 +1495,14 @@ int og_scare_radius(lua_State* L)
 // og.tuning — per-family tuning constants
 // ---------------------------------------------------------------------------
 
-// og.tuning(self) → the `tuning:` map self's family declared in
-// classpack.yaml, as a frozen read-only table — key access only; writes
+// og.tuning(self) → the `tuning` map self's family declared, as a frozen
+// read-only table — key access only; writes
 // raise; no iteration is provided (and none is needed, so the no-pairs rule
 // never comes up). A family that declared nothing gets an EMPTY frozen
 // table, so `og.tuning(self).some_key` is nil rather than an error and a
 // script can carry defaults. Tuning is load-time pack content exactly like
-// the rest of the descriptor: it rides multiplayer transfer inside
-// classpack.yaml and never appears in a snapshot. Views are cached per VM
+// the rest of the descriptor: it rides multiplayer transfer inside the
+// declaration and never appears in a snapshot. Views are cached per VM
 // per (order, family) and rebuilt when a pack reinstall bumps the store's
 // generation — a world VM built before a remount keeps serving the values
 // its scripts were loaded against, matching how the scripts themselves
@@ -1594,7 +1594,7 @@ int ani_row_len(const signed char* seq)
 
 // og.ani_frame(entity, row, index) → frame | nil.
 // The single-frame read `self->ani[row][index]` used by
-// packs/core/scripts/effect_chain.lua. nil means the animation table, row, or
+// packs/core/lib/effect_chain.lua. nil means the animation table, row, or
 // index does not exist, so the caller skips its set_frame. The
 // sentinel slot itself is addressable (index == length) so a legitimately
 // empty row reads back the same -1 the C++ would have handed set_frame.
@@ -1614,7 +1614,7 @@ int og_ani_frame(lua_State* L)
 
 // og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to
 // (excluding) the -1 sentinel, for row-walking pack hooks such as
-// packs/core/scripts/weapon_animate.lua. nil covers every case where the
+// packs/core/lib/weapon_animate.lua. nil covers every case where the
 // engine-side lookup stops early: no table, row past ani_count, null row, or
 // missing sentinel. An empty table is a present-but-zero-length sequence.
 int og_ani_row(lua_State* L)
@@ -2501,7 +2501,71 @@ const NamedConst kConstants[] = {
     {"MAXOBS", MAXOBS},
 };
 
+// ---------------------------------------------------------------------------
+// The load-time fence
+// ---------------------------------------------------------------------------
+//
+// The world API is DISPATCH-time only. A pack chunk's top level runs while
+// the VM is being built — during the declaration pass, and again in every
+// bind replay — and a world call there is never what the author meant: it
+// asks the world a question at a moment the answer is either unavailable or,
+// worse, available on ONE peer.
+//
+// og.rand is the case that proves it. It used to fail at chunk load by
+// accident, because current_game is null while the boot-time VM is built;
+// but GameWorld::scripts() rebuilds a VM at the first dispatch after a mount
+// change, with a live world, and a top-level og.rand there would have
+// SUCCEEDED and pulled the sim's stream out from under the other peers. The
+// fence makes "no world at chunk-load time" a property of load time rather
+// than of which VM happens to have no world.
+//
+// Deliberately NOT fenced: og.max/min/clamp/sign (pure branch helpers over
+// their arguments — a pack may reasonably fold a constant with them at load
+// time), og.div/mod/f*/i*/trunc/log (the sandbox arithmetic, which never
+// reached the world), and og.combat.* (draw-free formulas). Everything else
+// in the world table either needs a live world or a dispatch-scoped handle,
+// so fencing it costs a correct pack nothing.
+constexpr const char* kUnfencedWorldFuncs[] = {"max", "min", "clamp", "sign"};
+
+bool is_unfenced(const char* name)
+{
+    for (const char* n : kUnfencedWorldFuncs) {
+        if (std::strcmp(n, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+// upvalue 1: the real binding (a light C function), 2: the VmState,
+// 3: its og.* name. Calling the inner function DIRECTLY (rather than through
+// lua_call) keeps the Lua stack frame identical, so argument indices,
+// luaL_where levels and error positions are exactly what they were before
+// the fence existed.
+int load_fenced_call(lua_State* L)
+{
+    const auto* st =
+        static_cast<VmState*>(lua_touserdata(L, lua_upvalueindex(2)));
+    if (st != nullptr && st->loading) {
+        return luaL_error(
+            L,
+            "og.%s: the world API is dispatch-time only — a pack chunk's top "
+            "level runs before there is a world to ask (bind hooks here and "
+            "call it from them)",
+            lua_tostring(L, lua_upvalueindex(3)));
+    }
+    return lua_tocfunction(L, lua_upvalueindex(1))(L);
+}
+
 }  // namespace
+
+void fence_world_entry(lua_State* L, VmState* st, const char* name)
+{
+    lua_getfield(L, -1, name);
+    lua_pushlightuserdata(L, st);
+    lua_pushstring(L, name);
+    lua_pushcclosure(L, load_fenced_call, 3);
+    lua_setfield(L, -2, name);
+}
 
 void install_entity_bindings(lua_State* L, VmState* st)
 {
@@ -2548,10 +2612,27 @@ void install_entity_bindings(lua_State* L, VmState* st)
     lua_pop(L, 1);
 }
 
-void install_entity_bindings_into_og(lua_State* L)
+void install_entity_bindings_into_og(lua_State* L, VmState* st)
 {
     // Expects the og table at the top of the stack.
     luaL_setfuncs(L, kOgWorldFuncs, 0);
+    for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
+        if (is_unfenced(r->name))
+            continue;
+        // Two spellings of one entry point (og.ctf_flag_touch /
+        // og.ctf_on_flag_touch) must stay the SAME Lua value: a pack may
+        // compare them, and a test does. Wrapping each row independently
+        // would hand out two closures that behave alike and compare unequal,
+        // so an alias copies the wrapper its twin already got.
+        const luaL_Reg* twin = kOgWorldFuncs;
+        for (; twin != r && twin->func != r->func; twin++) {}
+        if (twin != r) {
+            lua_getfield(L, -1, twin->name);
+            lua_setfield(L, -2, r->name);
+            continue;
+        }
+        fence_world_entry(L, st, r->name);
+    }
     lua_newtable(L);
     luaL_setfuncs(L, kOgCombatFuncs, 0);
     lua_setfield(L, -2, "combat");

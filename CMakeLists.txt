@@ -217,6 +217,7 @@ set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/pack_scripts.cpp
     ${SRC_DIR}/gameplay/script/world_scripts.cpp
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+    ${SRC_DIR}/gameplay/script/family_decl.cpp
 )
 
 # Main game C++ sources
@@ -304,7 +305,6 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
 		    ${SRC_DIR}/resources/campaign_yaml.cpp
-		    ${SRC_DIR}/resources/classpack_yaml.cpp
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
@@ -398,7 +398,6 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/resources/classpack_yaml.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
@@ -2948,6 +2947,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_props.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_bind.cpp
         )
         # The P8-A tests forge REAL stripped Lua bytecode through the C API
         # (string.dump is sandbox-stripped, so the attack artifact has to be
@@ -2971,8 +2971,11 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         og_add_unit_group(og_unit_data FILES
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_yaml.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_errors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_install.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_decl.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_install.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry_golden.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/family_registry_dump.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_company.cpp

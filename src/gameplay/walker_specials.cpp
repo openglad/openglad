@@ -172,8 +172,9 @@ bool walker::special()
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}
 	// Bound the world's accumulated time-stop bank after each special. The
-	// per-cast formula remains in packs/core/scripts/mage.lua; chain-casting
-	// at the cap spends the usual MP without extending the freeze.
+	// per-cast formula remains in packs/core/families/living-03-mage.lua;
+	// chain-casting at the cap spends the usual MP without extending the
+	// freeze.
 	if (current_game != nullptr && current_game->world != nullptr &&
 	    current_game->world->enemy_freeze > og::combat::kEnemyFreezeBankCap)
 	{

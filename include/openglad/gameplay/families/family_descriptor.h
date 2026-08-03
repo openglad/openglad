@@ -22,6 +22,47 @@
 
 inline constexpr int FD_NUM_SPECIALS = 6;
 
+// The "this slot holds no special" pair. A slot is castable only when its
+// name is something other than kSpecialNameNone AND its cost is below
+// kSpecialCostDisabled — the two always travel together, in the registry
+// defaults and in every family the class packs install.
+inline constexpr unsigned short kSpecialCostDisabled = 5000;
+inline constexpr const char* kSpecialNameNone = "NONE";
+
+// Named indices into base_stats[] and stat_costs[]. Both stay arrays
+// because the picker walks them with a runtime axis (hire/train pricing,
+// the training star rating); these are for the sites that name one axis
+// outright, so nobody has to remember that column 4 is armor.
+namespace StatAxis {
+inline constexpr int Strength = 0;
+inline constexpr int Dexterity = 1;
+inline constexpr int Constitution = 2;
+inline constexpr int Intelligence = 3;
+inline constexpr int Armor = 4;
+inline constexpr int Level = 5;   // the family's STARTING level
+inline constexpr int Count = 6;
+}  // namespace StatAxis
+
+// The per-family combat numbers the loader stamps onto a walker when it
+// spawns. This replaces the old positional derived_bonuses[8]: four of
+// those eight columns had no reader anywhere and every family shipped 0 in
+// them (MP is 10 + INT*3 via guy::get_mp_bonus, armor comes from
+// base_stats[StatAxis::Armor], range from ai_line_of_sight), so they are
+// gone rather than preserved as a puzzle for the next reader.
+struct CombatBases {
+    float hp = 0.0f;            // base hitpoints (was derived_bonuses[0])
+    float melee_damage = 0.0f;  // melee strength (was [2])
+    float stepsize = 0.0f;      // px per step (was [6])
+    // Busy ticks added AFTER each attack (walker::attack), reduced by the
+    // guy bonus with a floor of 1: lower is faster. Was [7], and was called
+    // fire_frequency, which promised the opposite of what it does.
+    float fire_delay = 0.0f;
+    // Magic points spent per ranged shot. Firing is refused outright below
+    // it (walker::fire) — it is MP, never gold, which is why it lives here
+    // beside fire_delay and not among the hiring/training prices.
+    short fire_mp_cost = 0;
+};
+
 enum class FamilyAnimationType : std::uint8_t {
     FAMILY_ANIM_STANDARD = 0,       // animan (most livings)
     FAMILY_ANIM_MAGE,               // animage (mage, archmage)
@@ -66,20 +107,25 @@ struct FamilyDescriptor {
     const char* short_name;                    // abbreviated picker label (nullptr = use name)
 
     // Base stats from guy.cpp statlist[]
-    std::int32_t base_stats[6];                      // STR, DEX, CON, INT, ARMOR, LVL
+    // Attribute scores a fresh recruit starts with, and the base the picker
+    // prices training deltas against. Indexed by StatAxis.
+    std::int32_t base_stats[StatAxis::Count];
 
     // Hiring cost from guy.cpp costlist[]
+    // Gold to hire one.
     std::int32_t hiring_cost;
 
     // Derived bonuses from guy.cpp derived_bonuses[]
-    float derived_bonuses[8];                  // HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD
+    // What one of these is in the field (see CombatBases).
+    CombatBases combat;
 
     // Stat upgrade costs from guy.cpp statcosts[]
-    std::int32_t stat_costs[6];                      // STR, DEX, CON, INT, ARMOR, LVL
+    // Gold per training point on each axis. Indexed by StatAxis; the Level
+    // entry is vestigial (levels are priced by the exp curve).
+    std::int32_t stat_costs[StatAxis::Count];
 
     // Data from gloader.cpp set_walker()
-    unsigned short special_cost[FD_NUM_SPECIALS]; // cost of each special (index 0 unused)
-    short weapon_cost;                         // cost to fire weapon
+    unsigned short special_cost[FD_NUM_SPECIALS]; // MP per special (index 0 unused)
     int default_weapon;                        // weapon family ID
     std::int32_t init_bit_flags;                     // BIT_ flags to set on creation
     char init_ani_type;                        // 0=default, ANI_SKEL_GROW for skeleton
@@ -88,6 +134,15 @@ struct FamilyDescriptor {
     // Special ability display names from screen.cpp
     const char* special_names[FD_NUM_SPECIALS];
     const char* alternate_names[FD_NUM_SPECIALS];
+
+    // The pack-declared id of each special slot ("charge", "boomerang"),
+    // nullptr where the slot holds no declared special. This is the name a
+    // pack script may use as its `specials` table key instead of the slot
+    // integer: og.register_hooks resolves it here, so reordering a family's
+    // specials list can never silently re-bind a handler and a misspelled
+    // key is a load error naming the ids that do exist.
+    // Borrowed from the process-lifetime ClasspackStore, like `name`.
+    const char* special_ids[FD_NUM_SPECIALS];
 
     // Flags
     bool leaves_bloodspot;                     // false for ghost/skeleton/tower
@@ -149,10 +204,10 @@ struct FamilyDescriptor {
     og::FamilyGlyph glyph{U'?', '?', og::GlyphColor::Default, false, false};
     og::RadarBlip radar{};             // livings blip in their team colour
 
-    // Fully-qualified id the declaring pack gave this family — the YAML
-    // `id:` value, e.g. "core:soldier" or "mypack:warlock". This is the
-    // name resolution matches FIRST, so two packs may ship families with
-    // the same `name:` and stay distinguishable
+    // Fully-qualified id the declaring pack gave this family — the
+    // declaration's `id`, e.g. "core:soldier" or "mypack:warlock". This is
+    // the name resolution matches FIRST, so two packs may ship families
+    // with the same `name` and stay distinguishable
     // (og::families::resolve_family_string_id).
     // nullptr = no pack declared this slot; resolution then falls back to
     // `name`.

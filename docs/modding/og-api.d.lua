@@ -267,7 +267,11 @@
 -- and a table with neither is a successful no-op. Entries return
 -- like do_special itself.
 ---@class og.LivingSpecials
----@field [integer] fun(self: og.Walker): boolean
+-- Keys are the special ids the family declared;
+-- registration resolves them to slot ints (an
+-- unknown id, or a bare slot number, is a load
+-- error).
+---@field [string] fun(self: og.Walker): boolean
 ---@field default? fun(self: og.Walker): boolean
 
 -- Hook table for og.register_hooks(order = "living").
@@ -449,16 +453,26 @@
 ---@field stun_total fun(arg1: integer, arg2: integer): integer # og.combat.stun_total(cur_raw, add) — combat_math.h stun_total, the orc yell stun accumulator over RAW frozen_delay: cur_raw < 0 (thaw-immunity phase) discard...
 ---@field yell_radius fun(arg1: integer): integer # og.combat.yell_radius(level) — combat_math.h yell_radius: legacy 160 + 20*L px with a flat cap at kYellRadiusCap (420 = f(13)).
 
+-- The og.NIL sentinel. Compared, never indexed.
+---@class og.Nil
+
+-- Frozen og.api table: read-only, and a write to it errors.
+---@class og.Api
+---@field version integer
+
 -- The og namespace: deterministic arithmetic, world queries,
 -- sim events, and the registration entry points.
 ---@class og
 ---@field C og.Constants
 ---@field combat og.Combat
+---@field NIL og.Nil
+---@field api og.Api
 ---@field add_fx_ob fun(order: og.OrderName, fam: integer): og.Walker?
 ---@field add_ob fun(order: og.OrderName, fam: integer, atstart: any): og.Walker?
 ---@field add_weap_ob fun(order: og.OrderName, fam: integer): og.Walker?
 ---@field ani_frame fun(entity: og.Walker, row: integer, index: integer): integer? # og.ani_frame(entity, row, index) → frame | nil.
----@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for row-walking pack hooks such as packs/core/scripts/...
+---@field ani_row fun(entity: og.Walker, row: integer): integer[]? # og.ani_row(entity, row) → { frame, ... } | nil — the whole sequence up to (excluding) the -1 sentinel, for row-walking pack hooks such as packs/core/lib/weap...
+---@field anims fun(name: string, arg2: table)
 ---@field apply_difficulty_scaling fun(lv: og.Walker, level: integer, arg3: number, arg4: number, arg5: number, arg6: number)
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
 ---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit: bump GameWorld::m_score and emit ScoreChange with the same payload.
@@ -482,6 +496,7 @@
 ---@field entity_id fun(entity: og.Walker): integer # og.entity_id(handle) → stable sim entity id (0 for untracked).
 ---@field exp_from_action fun(entity: og.Walker, target: og.Walker?, action_name: "attack"|"eat_corpse"|"heal"|"kill"|"protection"|"raise_ghost"|"raise_skeleton"|"resurrect"|"resurrect_penalty"|"turn_undead", value: integer): integer # og.exp_from_action(self, target_or_nil, action_name, value) — the walker-level exp_from_action wrapper the family code calls.
 ---@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision so deterministic Lua arithmetic keeps the C++ per-operation rounding.
+---@field family fun(order_str: og.OrderName, arg2: table)
 ---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
 ---@field fdiv fun(a: number, b: number): number
@@ -513,6 +528,7 @@
 ---@field mod fun(a: integer, b: integer): integer
 ---@field my_team fun(): integer
 ---@field oblist fun(): og.Walker[]
+---@field pack fun(arg1: table)
 ---@field query_genre fun(tx: integer, ty: integer, floor: integer?): integer # og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain genre for a TILE coordinate (the passable queries above all take pixels; this one doe...
 ---@field query_grid_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field query_object_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
@@ -534,7 +550,7 @@
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
 ---@field trunc fun(x: number): integer
----@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning:` map self's family declared in classpack.yaml, as a frozen read-only table — key access only; writes raise; no iteration is pr...
+---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
 ---@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
 ---@field world_can_exit_whenever fun(): boolean

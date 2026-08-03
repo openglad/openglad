@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -37,6 +38,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace og::script {
 
@@ -46,10 +48,9 @@ namespace {
 // Hook name tables (per order)
 // ---------------------------------------------------------------------------
 
-struct HookName {
-    const char* name;
-    FamilyHook hook;
-};
+// HookName / OrderInfo are declared in script_internal.h (family_decl.cpp
+// walks the same vocabulary); the TABLES stay here, where
+// scripts/modding/gen_api_stubs.py reads them as the API's source of truth.
 
 constexpr HookName kLivingHooks[] = {
     {"do_special", FamilyHook::DoSpecial},
@@ -87,13 +88,6 @@ constexpr HookName kGeneratorHooks[] = {
     {"customize_spawn", FamilyHook::GeneratorCustomizeSpawn},
 };
 
-struct OrderInfo {
-    const char* name;
-    Order order;
-    const HookName* hooks;
-    size_t hook_count;
-};
-
 constexpr OrderInfo kOrders[] = {
     {"living", Order::Living, kLivingHooks, std::size(kLivingHooks)},
     {"weapon", Order::Weapon, kWeaponHooks, std::size(kWeaponHooks)},
@@ -104,6 +98,12 @@ constexpr OrderInfo kOrders[] = {
     {"effect", Order::FX, kEffectHooks, std::size(kEffectHooks)},  // alias
 };
 
+// Family string-id resolution ("core:soldier" → family byte) lives in
+// og::families::resolve_family_string_id (families/family_string_ids.h),
+// shared with the installer and the declaration pass.
+
+}  // namespace
+
 const OrderInfo* find_order(const char* name)
 {
     for (const auto& oi : kOrders)
@@ -111,12 +111,6 @@ const OrderInfo* find_order(const char* name)
             return &oi;
     return nullptr;
 }
-
-// Family string-id resolution ("core:soldier" → family byte) lives in
-// og::families::resolve_family_string_id (families/family_string_ids.h),
-// shared with the classpack.yaml exporter and reader.
-
-}  // namespace
 
 // ---------------------------------------------------------------------------
 // Entity handles (shared with bindings via script_internal.h)
@@ -249,6 +243,8 @@ unsigned& lib_generation_storage()
 
 void register_pack_lib_module(PackLibModule module)
 {
+    detail::declare_registered_chunk(module.chunk_name, module.source,
+                                     module.origin);
     for (PackLibModule& existing : lib_module_storage()) {
         if (existing.pack_id == module.pack_id &&
             existing.name == module.name) {
@@ -291,7 +287,8 @@ unsigned pack_lib_generation()
 
 unsigned pack_scripts_build_generation()
 {
-    return pack_scripts_generation() + pack_lib_generation();
+    return pack_scripts_generation() + pack_lib_generation() +
+           pack_family_generation();
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +465,9 @@ bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
     set_lib_status(L, st, key, "loading");
     // Modules resolve their own og.use calls against their OWN pack.
     const std::string caller_pack = st->current_pack;
+    const ChunkKind caller_chunk = st->current_chunk;
     st->current_pack = m.pack_id;
+    st->current_chunk = ChunkKind::Lib;
 
     bool ok = false;
     if (luaL_loadbufferx(L, m.source.data(), m.source.size(),
@@ -501,6 +500,7 @@ bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
         }
     }
     st->current_pack = caller_pack;
+    st->current_chunk = caller_chunk;
     set_lib_status(L, st, key, ok ? nullptr : "failed");
     return ok;
 }
@@ -513,8 +513,11 @@ int og_use(lua_State* L)
 {
     const char* name = luaL_checkstring(L, 1);
     VmState* st = get_vm_state(L);
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.use: no world scripts active");
+    // host_impl, not owner: a lib module is pure by contract, so og.use is
+    // one of the few entry points the declaration VM — which has a host but
+    // no WorldScripts — is allowed to serve.
+    if (st == nullptr || st->host_impl == nullptr)
+        return luaL_error(L, "og.use: no script host active");
     if (st->current_pack.empty())
         return luaL_error(L, "og.use: only callable while a pack chunk "
                              "loads (bind modules to locals at load time)");
@@ -539,15 +542,13 @@ int og_use(lua_State* L)
                           "packs/%s/lib/%s.lua)",
                           name, st->current_pack.c_str(),
                           st->current_pack.c_str(), name);
-    if (!load_pack_lib_module(st->owner->host().impl(), st, *m))
+    if (!load_pack_lib_module(*st->host_impl, st, *m))
         return luaL_error(L, "og.use: module '%s' failed to load", name);
     push_lib_export(L, st, key);
     return 1;
 }
 
 }  // namespace
-
-namespace {
 
 // ---------------------------------------------------------------------------
 // Function-coverage LABELS
@@ -577,6 +578,8 @@ void coverage_declare_hook(lua_State* L, const std::string& label)
     coverage::declare_function_closure(L, -1, label);
 }
 
+namespace {
+
 int walker_eq(lua_State* L)
 {
     auto* a = static_cast<WalkerHandle*>(luaL_checkudata(L, 1, kWalkerMeta));
@@ -596,6 +599,8 @@ int walker_tostring(lua_State* L)
     lua_pushfstring(L, "entity#%d", static_cast<int>(h->entity_id));
     return 1;
 }
+
+}  // namespace
 
 void ensure_handle_metatables(lua_State* L, VmState* st)
 {
@@ -654,8 +659,59 @@ void report_duplicate_hook(lua_State* L, VmState* st, const char* order_str,
 
     LogWarn("class pack: {}: {}\n", where, message);
     // Also traces (script_error) and folds repeats into one record.
-    st->owner->host().impl().record_error(where.c_str(), message.c_str());
+    if (st->host_impl != nullptr)
+        st->host_impl->record_error(where.c_str(), message.c_str());
 }
+
+// --- specials table keys ------------------------------------------------
+//
+// A specials table keys each entry by the special's declared id ("charge").
+// The id is resolved to its slot HERE, once, at registration: what gets
+// stored and dispatched is an int-keyed private table, so the cast path is
+// untouched. A bare slot number is refused — see the walk below.
+
+// One validated entry of a caller's specials table.
+namespace {
+struct SpecialsKey {
+    lua_Integer slot;
+    std::string id;  // the declared id the caller spelled
+};
+}  // namespace
+
+// The slot a declared special id names, or -1 when the family declares no
+// such id.
+int special_slot_for_id(const FamilyDescriptor* fd, const char* id)
+{
+    if (fd == nullptr)
+        return -1;
+    for (int slot = 0; slot < FD_NUM_SPECIALS; slot++) {
+        if (fd->special_ids[slot] != nullptr &&
+            std::strcmp(fd->special_ids[slot], id) == 0)
+            return slot;
+    }
+    return -1;
+}
+
+// The ids the family does declare — the other half of an unknown-key
+// error. A family whose descriptor names none (an entry with no
+// `specials:` list, say) says so, which is the answer to "why doesn't my
+// key resolve".
+std::string declared_special_ids(const FamilyDescriptor* fd)
+{
+    std::string list;
+    for (int slot = 0; fd != nullptr && slot < FD_NUM_SPECIALS; slot++) {
+        if (fd->special_ids[slot] == nullptr)
+            continue;
+        if (!list.empty())
+            list += ", ";
+        list += fd->special_ids[slot];
+    }
+    if (list.empty())
+        return "none — this family declares no special ids";
+    return list;
+}
+
+namespace {
 
 int og_register_hooks(lua_State* L)
 {
@@ -667,6 +723,51 @@ int og_register_hooks(lua_State* L)
     if (oi == nullptr)
         return luaL_error(L, "og.register_hooks: unknown order '%s'",
                           order_str);
+
+    // Every key must name a hook this order has (format spec V4). Walking
+    // the known names and taking whatever is there would let a misspelled
+    // `on_deatch` register nothing and say nothing: the family would simply
+    // have no death behavior, discovered in play.
+    // `specials` is the one extra key, the table form of do_special.
+    //
+    // Checked BEFORE the declaration pass bows out below: the names are a
+    // property of the order alone, so the pass that can still reject the
+    // pack is the one that should catch the typo.
+    {
+        std::vector<const char*> names;
+        for (size_t i = 0; i < oi->hook_count; i++)
+            names.push_back(oi->hooks[i].name);
+        names.push_back("specials");
+        lua_pushnil(L);
+        while (lua_next(L, 3) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            if (lua_type(L, -1) != LUA_TSTRING) {
+                return luaL_error(
+                    L, "og.register_hooks: a hook table's keys are hook "
+                       "names (got a %s key for %s '%s')",
+                    luaL_typename(L, -1), order_str, family_str);
+            }
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            for (const char* n : names)
+                known = known || key == n;
+            if (!known) {
+                const std::string hint = did_you_mean(key, names);
+                return luaL_error(
+                    L, "og.register_hooks: %s '%s' has no hook '%s'%s",
+                    order_str, family_str, key.c_str(), hint.c_str());
+            }
+        }
+    }
+
+    // Behavior only, and the declaration pass installs no behavior: the
+    // families the call names may not exist yet (this pass is what creates
+    // them), so resolving the id here would fail on a correct pack. The
+    // bind replay is where these land.
+    const VmState* declare_st = get_vm_state(L);
+    if (declare_st != nullptr && declare_st->mode == VmMode::Declare)
+        return 0;
+
     const int family_id =
         og::families::resolve_family_string_id(oi->order, family_str);
     if (family_id < 0)
@@ -688,6 +789,7 @@ int og_register_hooks(lua_State* L)
     // Stack: hooks_root, family_tbl. Walk the provided table with the known
     // hook-name list (no pairs(): iteration order must not matter and the
     // sandbox has no pairs anyway).
+    const int family_tbl_idx = lua_gettop(L);
     int registered = 0;
     for (size_t i = 0; i < oi->hook_count; i++) {
         lua_getfield(L, 3, oi->hooks[i].name);
@@ -702,7 +804,12 @@ int og_register_hooks(lua_State* L)
         lua_rawgeti(L, -2, static_cast<lua_Integer>(oi->hooks[i].hook));
         const bool occupied = !lua_isnil(L, -1);
         lua_pop(L, 1);
-        if (occupied)
+        // Overriding an og.family declaration is what this call is FOR
+        // (format spec V4/V7) — only two registrations racing each other
+        // are the accident the warning exists for.
+        const bool overriding_declaration =
+            take_declared_hook(L, family_tbl_idx, oi->hooks[i].hook);
+        if (occupied && !overriding_declaration)
             report_duplicate_hook(L, st, order_str, family_str,
                                   oi->hooks[i].name);
         if (coverage::enabled())
@@ -714,10 +821,10 @@ int og_register_hooks(lua_State* L)
         registered++;
     }
     // -----------------------------------------------------------------
-    // specials = { [1]=fn, [2]=fn, ..., default=fn } — table form of the
-    // do_special hook (living orders only). self:current_special() selects
-    // the entry, a missing index falls to `default`, and a table with neither
-    // is the dispatch fall-through — a successful no-op
+    // specials = { charge=fn, boomerang=fn, ..., default=fn } — table form
+    // of the do_special hook (living orders only). self:current_special()
+    // selects the entry, a missing slot falls to `default`, and a table with
+    // neither is the dispatch fall-through — a successful no-op
     // (result true) with no Lua call at all. The table shares the
     // do_special slot, so cross-chunk collisions are reported and last
     // registration wins, exactly like every named hook.
@@ -735,7 +842,7 @@ int og_register_hooks(lua_State* L)
         if (!lua_istable(L, spec_idx))
             return luaL_error(
                 L, "og.register_hooks: 'specials' must be a table "
-                   "({ [1]=fn, ..., default=fn })");
+                   "({ <special_id>=fn, ..., default=fn })");
         lua_getfield(L, 3, "do_special");
         const bool has_plain_do_special = !lua_isnil(L, -1);
         lua_pop(L, 1);
@@ -743,33 +850,54 @@ int og_register_hooks(lua_State* L)
             return luaL_error(
                 L, "og.register_hooks: register 'do_special' or 'specials' "
                    "for a family, not both in one call");
-        // Validate every entry before storing anything. Keys are integers
-        // 1..255 (current_special is a char-wide slot index) or the string
-        // "default"; every value is a function. lua_next order cannot
-        // matter here: any invalid entry raises the same load error.
-        lua_Integer max_index = 0;
+        // Validate every entry before storing anything. Keys are a declared
+        // special id or the string "default"; every value is a function.
+        // lua_next order cannot matter here: any invalid entry raises the
+        // same load error, and the resolved keys are sorted before they are
+        // stored so the table is built the same way every run.
+        //
+        // A slot number is refused. It was the original spelling and it
+        // bound a handler to a position, so reordering a family's
+        // `specials:` list silently re-pointed the handler; the declared id
+        // names what it handles and a typo on either side is this error.
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        std::vector<SpecialsKey> keys;
         int entry_count = 0;
         bool has_default = false;
         lua_pushnil(L);
         while (lua_next(L, spec_idx) != 0) {
-            bool key_ok = false;
             if (lua_isinteger(L, -2)) {
-                const lua_Integer k = lua_tointeger(L, -2);
-                if (k >= 1 && k <= 255) {
-                    key_ok = true;
-                    if (k > max_index)
-                        max_index = k;
-                }
+                return luaL_error(
+                    L,
+                    "og.register_hooks: 'specials' key [%s] is a slot "
+                    "number; specials keys are the family's declared special "
+                    "ids, or 'default' (living family '%s', declared ids: "
+                    "%s)",
+                    std::to_string(lua_tointeger(L, -2)).c_str(), family_str,
+                    declared_special_ids(fd).c_str());
             } else if (lua_type(L, -2) == LUA_TSTRING) {
                 // Safe during traversal: the key already IS a string.
-                key_ok = (std::strcmp(lua_tostring(L, -2), "default") == 0);
-                if (key_ok)
+                const std::string key = lua_tostring(L, -2);
+                if (key == "default") {
                     has_default = true;
-            }
-            if (!key_ok)
+                } else {
+                    const int slot = special_slot_for_id(fd, key.c_str());
+                    if (slot < 0)
+                        return luaL_error(
+                            L,
+                            "og.register_hooks: 'specials' key '%s' names no "
+                            "special of living family '%s' (declared ids: "
+                            "%s)",
+                            key.c_str(), family_str,
+                            declared_special_ids(fd).c_str());
+                    keys.push_back({slot, key});
+                }
+            } else {
                 return luaL_error(
-                    L, "og.register_hooks: 'specials' keys must be "
-                       "integers 1..255 or 'default'");
+                    L, "og.register_hooks: 'specials' keys must be a "
+                       "declared special id or 'default' (got a %s key)",
+                    luaL_typename(L, -2));
+            }
             if (!lua_isfunction(L, -1))
                 return luaL_error(
                     L, "og.register_hooks: 'specials' entries must be "
@@ -781,22 +909,27 @@ int og_register_hooks(lua_State* L)
             return luaL_error(
                 L, "og.register_hooks: 'specials' table is empty "
                    "(register at least one entry or a default)");
+        // Slot order, so the stored table and its coverage labels are built
+        // identically whatever order lua_next walked the keys in. Two keys
+        // cannot land on one slot: a family's declared ids are unique, so
+        // distinct ids name distinct slots.
+        std::sort(keys.begin(), keys.end(),
+                  [](const SpecialsKey& a, const SpecialsKey& b) {
+                      return a.slot < b.slot;
+                  });
         // Store a PRIVATE copy: mutating the caller's table after
         // registration must not be able to change dispatch — the
         // registered contract is as immutable as a registered function
         // value (R6 at the registration boundary).
-        lua_createtable(L, static_cast<int>(max_index), has_default ? 1 : 0);
-        for (lua_Integer k = 1; k <= max_index; k++) {
-            lua_rawgeti(L, spec_idx, k);
-            if (lua_isnil(L, -1)) {
-                lua_pop(L, 1);
-                continue;
-            }
+        lua_createtable(L, static_cast<int>(keys.size()),
+                        has_default ? 1 : 0);
+        for (const SpecialsKey& k : keys) {
+            lua_getfield(L, spec_idx, k.id.c_str());
             if (coverage::enabled())
                 coverage_declare_hook(
                     L, std::string(order_str) + "/" + family_str +
-                           "/do_special[" + std::to_string(k) + "]");
-            lua_rawseti(L, -2, k);
+                           "/do_special[" + std::to_string(k.slot) + "]");
+            lua_rawseti(L, -2, k.slot);
         }
         if (has_default) {
             lua_getfield(L, spec_idx, "default");
@@ -810,7 +943,9 @@ int og_register_hooks(lua_State* L)
                     static_cast<lua_Integer>(FamilyHook::DoSpecial));
         const bool occupied = !lua_isnil(L, -1);
         lua_pop(L, 1);
-        if (occupied)
+        const bool overriding_declaration =
+            take_declared_hook(L, family_idx, FamilyHook::DoSpecial);
+        if (occupied && !overriding_declaration)
             report_duplicate_hook(L, st, order_str, family_str, "specials");
         lua_rawseti(L, family_idx,
                     static_cast<lua_Integer>(FamilyHook::DoSpecial));
@@ -957,6 +1092,16 @@ int og_family_id(lua_State* L)
     const OrderInfo* oi = find_order(order_str);
     if (oi == nullptr)
         return luaL_error(L, "og.family_id: unknown order '%s'", order_str);
+    // In the declaration pass the answer does not exist yet: the ids are
+    // assigned by the install this very pass feeds, and a merged family file
+    // asks about its own neighbours at chunk top level. A deferred token
+    // keeps the shipped `assert(og.family_id(...))` idiom truthy and raises
+    // on every actual use.
+    const VmState* st = get_vm_state(L);
+    if (st != nullptr && st->mode == VmMode::Declare) {
+        push_family_ref(L);
+        return 1;
+    }
     const int id =
         og::families::resolve_family_string_id(oi->order, family_str);
     if (id < 0)
@@ -966,44 +1111,133 @@ int og_family_id(lua_State* L)
     return 1;
 }
 
+// Says so when a family can cast a special that nothing will handle.
+//
+// A specials table with no entry for the cast slot and no `default` is a
+// SUCCESSFUL no-op that still spends the MP (begin_special's
+// no_special_handler path, then walker::special deducts). That contract
+// stands — this only stops it being silent. Run once per VM, after every
+// pack chunk has registered, so the table it reads is the final one, which
+// is also what lets a cross-file og.register_hooks count as the handler.
+//
+// Two severities, and the difference is what the pack could have known
+// (format spec V3). A slot that arrived through install_classpack_data
+// rather than from a declaration may legitimately have no Lua handler — the
+// descriptor's own C++ do_special may serve it — so that stays a warning. A
+// slot an og.family DECLARED is a slot whose costs, name and cast were
+// written in one table by one author: leaving it castable with nothing to
+// run is a mistake with no other reading, and it is a pack error.
+// `cast = false` is how that author says "nothing, on purpose", and it
+// counts as handled.
+void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st.hooks_ref);
+    for (int family_id = 0; family_id < NUM_FAMILY_SLOTS; family_id++) {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        lua_rawgeti(L, -1, hook_table_key(Order::Living, family_id));
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            continue;
+        }
+        lua_rawgeti(L, -1, static_cast<lua_Integer>(FamilyHook::DoSpecial));
+        // Only the table form can fall through: a plain do_special function
+        // is asked about every slot and answers for itself.
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            continue;
+        }
+        lua_pushstring(L, "default");
+        lua_rawget(L, -2);
+        const bool has_default = lua_isfunction(L, -1);
+        lua_pop(L, 1);
+        if (has_default) {
+            lua_pop(L, 2);
+            continue;  // a default answers for every slot
+        }
+        const std::string* declaring_pack =
+            lua_declared_family_pack(Order::Living, family_id);
+        const char* family_label =
+            fd->declared_id != nullptr ? fd->declared_id : fd->name;
+        for (int slot = 1; slot < FD_NUM_SPECIALS; slot++) {
+            const char* name = fd->special_names[slot];
+            if (name == nullptr || std::strcmp(name, kSpecialNameNone) == 0)
+                continue;
+            if (fd->special_cost[slot] >= kSpecialCostDisabled)
+                continue;
+            lua_rawgeti(L, -1, slot);
+            // A stored `false` is the declaration's explicit charged no-op,
+            // and it is as much an answer as a function.
+            const bool handled = lua_isfunction(L, -1) || lua_isboolean(L, -1);
+            lua_pop(L, 1);
+            if (handled)
+                continue;
+            if (declaring_pack == nullptr) {
+                LogWarn("class pack: special '{}' (slot {}) of living family "
+                        "'{}' has no handler and no default: casting it will "
+                        "spend {} MP and do nothing\n",
+                        name, slot, family_label, fd->special_cost[slot]);
+                continue;
+            }
+            const std::string message =
+                "class pack '" + *declaring_pack + "': special '" + name +
+                "' (slot " + std::to_string(slot) + ") of living family '" +
+                family_label + "' is castable for " +
+                std::to_string(fd->special_cost[slot]) +
+                " MP and nothing handles it — give the special a cast, give "
+                "the list a default_cast, or say `cast = false` if the no-op "
+                "is deliberate";
+            LogError("{}\n", message);
+            if (st.host_impl != nullptr)
+                st.host_impl->record_error(declaring_pack->c_str(),
+                                           message.c_str());
+        }
+        lua_pop(L, 2);
+    }
+    lua_pop(L, 1);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// WorldScripts
+// VM scaffolding
 // ---------------------------------------------------------------------------
-
-WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
+//
+// Everything a VM needs before a pack chunk may run in it. BOTH kinds go
+// through here — the ordinary world VM and the throwaway declaration VM —
+// so the two contexts differ in VmState::mode and nothing else. Any surface
+// that appeared in one and not the other would be a second dialect of pack
+// Lua, and a family chunk has to mean the same thing in both.
+void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
 {
-    ScriptHost::Impl& impl = host_->impl();
     lua_State* L = impl.L;
-
-    detail_ = std::make_unique<WorldScriptsDetail>();
-    detail_->state.owner = this;
+    st.host_impl = &impl;
     lua_pushstring(L, "og.vmstate");
-    lua_pushlightuserdata(L, &detail_->state);
+    lua_pushlightuserdata(L, &st);
     lua_rawset(L, LUA_REGISTRYINDEX);
 
     lua_newtable(L);
-    detail_->state.hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
-    detail_->state.level_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.level_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
-    detail_->state.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
-    detail_->state.lib_exports_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.lib_exports_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
-    detail_->state.lib_status_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.lib_status_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
-    detail_->state.tuning_cache_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    detail_->state.tuning_cache_gen = family_tuning_generation();
+    st.tuning_cache_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    st.tuning_cache_gen = family_tuning_generation();
 
-    ensure_handle_metatables(L, &detail_->state);
-    install_entity_bindings(L, &detail_->state);
+    ensure_handle_metatables(L, &st);
+    install_entity_bindings(L, &st);
 
     // Extend the sandbox og table with world-facing entry points.
     impl.push_sandbox_root();
     lua_getfield(L, -1, "og");
-    install_entity_bindings_into_og(L);
+    install_entity_bindings_into_og(L, &st);
     lua_pushcfunction(L, og_register_hooks);
     lua_setfield(L, -2, "register_hooks");
     lua_pushcfunction(L, og_register_level_hooks);
@@ -1020,7 +1254,48 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     lua_setfield(L, -2, "entity_id");
     lua_pushcfunction(L, og_use);
     lua_setfield(L, -2, "use");
+    // The declaration vocabulary. Present in both VMs because one family
+    // chunk is read by both: harvesting in the declaration pass, binding in
+    // an ordinary one.
+    lua_pushcfunction(L, og_family);
+    lua_setfield(L, -2, "family");
+    lua_pushcfunction(L, og_anims);
+    lua_setfield(L, -2, "anims");
+    lua_pushcfunction(L, og_pack);
+    lua_setfield(L, -2, "pack");
+    push_og_nil(L);
+    lua_setfield(L, -2, "NIL");
+    // og.api.version — feature detection for a pack straddling engine
+    // releases, now that an unknown key is a load error rather than a
+    // silently skipped one.
+    lua_newtable(L);
+    lua_pushinteger(L, kPackApiVersion);
+    lua_setfield(L, -2, "version");
+    push_frozen_view_of_top(L);
+    lua_setfield(L, -2, "api");
+    // The world entry points registered by hand above, behind the same
+    // load-time fence the table-driven ones got. og.use and the three
+    // register_* seams are load-time BY DESIGN and stay open; og.family_id
+    // answers a deferred token in the declaration pass, so it handles its
+    // own case.
+    for (const char* name : {"rand", "is_alive", "entity_id",
+                             "set_entity_hooks"})
+        fence_world_entry(L, &st, name);
     lua_pop(L, 2);
+}
+
+// ---------------------------------------------------------------------------
+// WorldScripts
+// ---------------------------------------------------------------------------
+
+WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
+{
+    ScriptHost::Impl& impl = host_->impl();
+    lua_State* L = impl.L;
+
+    detail_ = std::make_unique<WorldScriptsDetail>();
+    detail_->state.owner = this;
+    install_vm_scaffolding(impl, detail_->state);
 
     // The registries' combined generation: a module-only mutation must
     // rebuild long-lived hosts exactly like a script mutation.
@@ -1031,6 +1306,10 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     // its top level. A module another module already pulled in on demand is
     // settled and skipped; failures are recorded and latched, never fatal.
     ScriptHost::Impl& host_impl = host_->impl();
+    // Chunk top level, start to finish: the world API is closed for the
+    // whole replay (VmState::loading). Hooks registered here run later, at
+    // dispatch, with the fence down.
+    detail_->state.loading = true;
     for (const PackLibModule& m : pack_lib_modules()) {
         const std::string key = m.pack_id + "/" + m.name;
         if (lib_status(L, &detail_->state, key) != LibStatus::None)
@@ -1042,8 +1321,32 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
             (void)load_pack_lib_module(host_impl, &detail_->state, m);
     }
 
+    // Family chunks next, before any behavior script: the BIND half of the
+    // two-context design. Their og.family calls hang hooks and specials
+    // casts on the descriptors the declaration pass already installed, so
+    // this is where a family's behavior enters the VM — and doing it
+    // BEFORE scripts/ is what makes og.register_hooks an override rather
+    // than a race (format spec V4/V7).
+    detail_->state.current_chunk = ChunkKind::Family;
+    for (const PackScript& fc : pack_family_chunks()) {
+        // A pack whose declaration failed installed nothing, so binding
+        // against it would report a second, worse error in every VM the
+        // process ever builds. The installer already named the casualty.
+        if (pack_declaration_failed(fc.pack_id))
+            continue;
+        detail_->state.current_pack = fc.pack_id;
+        if (host_->run_chunk(fc.chunk_name, fc.source, fc.pack_id))
+            continue;
+        const auto& errs = host_->errors();
+        LogError("class pack '{}': family chunk {} failed to bind: {}\n",
+                 fc.pack_id, fc.chunk_name,
+                 errs.empty() ? "(no error record)"
+                              : errs.back().message.c_str());
+    }
+
     // Replay pack scripts (registration order; env shared per pack).
     // current_pack scopes og.use to the pack whose chunk is loading.
+    detail_->state.current_chunk = ChunkKind::Script;
     for (const PackScript& ps : pack_scripts()) {
         detail_->state.current_pack = ps.pack_id;
         if (!host_->run_chunk(ps.chunk_name, ps.source, ps.pack_id)) {
@@ -1060,6 +1363,10 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
         }
     }
     detail_->state.current_pack.clear();
+    detail_->state.current_chunk = ChunkKind::None;
+    detail_->state.loading = false;
+
+    warn_unhandled_castable_specials(L, detail_->state);
 }
 
 WorldScripts::~WorldScripts() = default;
@@ -1187,10 +1494,11 @@ public:
     }
 
     // begin() for the DoSpecial slot, which may hold either the classic
-    // do_special function or a specials table ({ [1]=fn, ..., default=fn }).
-    // For a table this selects [sp], then "default". When the table holds
-    // neither, sets *no_special_handler and returns false with a clean stack:
-    // the dispatch is consumed as a successful no-op, with nothing called.
+    // do_special function or a specials table (its declared-id keys were
+    // resolved to slots at registration). For a table this selects [sp],
+    // then "default". When the table holds neither, sets
+    // *no_special_handler and returns false with a clean stack: the
+    // dispatch is consumed as a successful no-op, with nothing called.
     bool begin_special(int family_id, lua_Integer sp,
                        bool* no_special_handler)
     {
@@ -1208,6 +1516,14 @@ public:
                     static_cast<lua_Integer>(FamilyHook::DoSpecial));
         if (lua_istable(L_, -1)) {
             lua_rawgeti(L_, -1, sp);
+            // `cast = false` — the declaration's explicit charged no-op. It
+            // is a HANDLER, so it beats `default` rather than falling
+            // through to it: the slot was written to do nothing, on purpose.
+            if (lua_isboolean(L_, -1) && !lua_toboolean(L_, -1)) {
+                lua_pop(L_, 4);  // entry + specials + family + hooks root
+                *no_special_handler = true;
+                return false;
+            }
             if (!lua_isfunction(L_, -1)) {
                 lua_pop(L_, 1);
                 lua_pushstring(L_, "default");
@@ -1341,7 +1657,8 @@ std::optional<bool> try_script_do_special(int family_id, walker* self)
     if (!ws.has_hook(Order::Living, family_id, FamilyHook::DoSpecial))
         return std::nullopt;
     // Test dispatches may pass self == nullptr; slot 0 is unmappable
-    // (specials keys are 1..255), so selection falls to `default`.
+    // (declared specials occupy slots 1..5), so selection falls to
+    // `default`.
     const lua_Integer sp =
         (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
                           : 0;

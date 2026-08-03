@@ -15,7 +15,7 @@
 //
 // EVERY SLOT STARTS FREE. init() only lays down the order's defaults; nothing
 // is populated until a mounted class pack installs it. The engine carries no
-// family data of its own: core families arrive from packs/core/classpack.yaml
+// family data of its own: core families arrive from packs/core/families/*.lua
 // through exactly the same door as a mod's. A free
 // slot is *never* visible through get() — it answers nullptr, exactly as an
 // out-of-range id did before the registries grew — so every "descriptor ==

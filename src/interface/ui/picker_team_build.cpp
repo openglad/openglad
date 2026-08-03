@@ -1483,12 +1483,13 @@ std::string get_class_description(unsigned char family)
     return {};
 }
 
-// stat: str 0, dex 1, con 2, int 3, armor 4
+// stat is a StatAxis index (the caller walks the priced axes at runtime,
+// which is why stat_costs stays an array).
 	const char* get_training_cost_rating(unsigned char family, int stat)
 	{
 	    const auto* fd = get_family_descriptor(family);
 	    if (!fd) return "";
-	    if (stat < 0 || stat >= 6 || fd->stat_costs[stat] == 0) return "";
+	    if (stat < 0 || stat >= StatAxis::Count || fd->stat_costs[stat] == 0) return "";
 	    int value = 55/(fd->stat_costs[stat]);
 	    int rating = (value * 5) / 11;
 	    switch(rating)

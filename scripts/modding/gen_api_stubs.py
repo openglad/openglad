@@ -15,8 +15,9 @@ The pack-Lua API surface is registered in exactly three C++ files:
   src/gameplay/script/script_host.cpp       kOgFuncs (sandbox og.* arithmetic)
   src/gameplay/script/world_scripts.cpp     og.register_hooks and friends
                                             (lua_pushcfunction/lua_setfield
-                                            pairs in the WorldScripts ctor)
+                                            pairs in install_vm_scaffolding)
                                             + the hook-name tables
+  src/gameplay/script/family_decl.cpp       og.family / og.anims / og.pack
 
 Those tables are the single source of truth. This script PARSES them — it
 never carries its own list of functions — and emits EmmyLua (LuaCATS) type
@@ -55,7 +56,15 @@ and regeneration keeps working:
     `{"name", og_name},` line in the matching luaL_Reg table;
   * new constants: `{"NAME", VALUE},` in kConstants;
   * new world entry points: a `lua_pushcfunction(L, fn);` +
-    `lua_setfield(L, -2, "name");` pair in the WorldScripts constructor;
+    `lua_setfield(L, -2, "name");` pair in install_vm_scaffolding();
+  * new og.* VALUES (not functions) in install_vm_scaffolding(): the
+    generator recognises exactly two shapes — a `push_og_nil(L);` sentinel
+    and a `lua_newtable` … `push_frozen_view_of_top(L);` frozen table whose
+    members are `lua_push<kind>(L, x); lua_setfield(L, -2, "k");` pairs —
+    each followed by its own `lua_setfield(L, -2, "name");`. A value
+    registration in any other shape is a hard error rather than a silent
+    omission, because a field missing from the stub is a field LuaLS calls
+    undefined in every pack that touches it;
   * new hooks: a `{"name", FamilyHook::X},` row in the order's hook table
     and a try_script_hook call site in a hooks:: wrapper.
 
@@ -79,6 +88,7 @@ from typing import Dict, List, Optional, Tuple
 BINDINGS = "src/gameplay/script/bindings_entity.cpp"
 HOST = "src/gameplay/script/script_host.cpp"
 WORLD = "src/gameplay/script/world_scripts.cpp"
+FAMILY_DECL = "src/gameplay/script/family_decl.cpp"
 OUTPUT = "docs/modding/og-api.d.lua"
 
 TODO_ANY = "any"  # inference failure marker; paired with a TODO comment
@@ -477,20 +487,99 @@ def infer_signature(fn: CppFunction) -> Signature:
 # world_scripts.cpp: entry points, hook tables, hook signatures
 # ---------------------------------------------------------------------------
 
-def parse_world_entry_points(src: str) -> List[Tuple[str, str]]:
-    """(lua_name, c_function) pairs registered in the WorldScripts ctor."""
-    m = re.search(r"WorldScripts::WorldScripts\(\)", src)
+def scaffolding_body(src: str) -> str:
+    """The body of install_vm_scaffolding.
+
+    The hand-registered half of the og table. It moved out of the
+    WorldScripts constructor when the declaration VM started sharing the
+    scaffolding: both VM kinds must offer the same og.*, so there is one
+    place that builds it and this is that place.
+    """
+    m = re.search(r"void install_vm_scaffolding\(", src)
     if m is None:
-        raise SystemExit("gen_api_stubs: WorldScripts ctor not found")
-    body = balanced_body(src, src.index("{", m.end()))
+        raise SystemExit("gen_api_stubs: install_vm_scaffolding not found")
+    return balanced_body(src, src.index("{", m.end()))
+
+
+def parse_world_entry_points(body: str) -> List[Tuple[str, str]]:
+    """(lua_name, c_function) pairs registered in install_vm_scaffolding."""
     pairs = re.findall(
         r'lua_pushcfunction\(L,\s*(\w+)\);\s*'
         r'lua_setfield\(L,\s*-2,\s*"(\w+)"\);',
         body,
     )
     if not pairs:
-        raise SystemExit("gen_api_stubs: no ctor og registrations found")
+        raise SystemExit(
+            "gen_api_stubs: no install_vm_scaffolding og registrations found")
     return [(lua, c) for c, lua in pairs]
+
+
+# og.* entries that are VALUES rather than functions. Two shapes exist and
+# the generator knows both by sight; a third would be a silent hole in the
+# stub, so it stops the run instead (see the append contract above).
+SENTINEL_VALUE_RE = re.compile(
+    r'push_og_nil\(L\);\s*lua_setfield\(L,\s*-2,\s*"(\w+)"\);')
+FROZEN_TABLE_RE = re.compile(
+    r'lua_newtable\(L\);\s*((?:\s*lua_push\w+\(L,[^;]*\);\s*'
+    r'lua_setfield\(L,\s*-2,\s*"\w+"\);)+)\s*'
+    r'push_frozen_view_of_top\(L\);\s*lua_setfield\(L,\s*-2,\s*"(\w+)"\);',
+    re.S)
+FROZEN_MEMBER_RE = re.compile(
+    r'lua_push(\w+)\(L,[^;]*\);\s*lua_setfield\(L,\s*-2,\s*"(\w+)"\);')
+PUSH_KIND_TYPES = {
+    "integer": "integer",
+    "number": "number",
+    "string": "string",
+    "boolean": "boolean",
+}
+
+
+@dataclass
+class ValueEntry:
+    """One og.<name> that holds a value: a sentinel, or a frozen table."""
+    name: str
+    cls: str
+    members: List[Tuple[str, str]]  # (member, lua type); empty for sentinels
+
+
+def parse_world_value_entry_points(body: str) -> List[ValueEntry]:
+    """og.* value registrations, and proof that none was missed.
+
+    Names come from the source, not from a list here. Anything registered
+    on the og table that this cannot classify stops the generator: a field
+    absent from the stub is a field LuaLS calls undefined in every pack that
+    spells it, which is a worse failure than a noisy one here.
+    """
+    out: List[ValueEntry] = []
+    consumed = set()
+    for m in SENTINEL_VALUE_RE.finditer(body):
+        out.append(ValueEntry(m.group(1), "og." + m.group(1).capitalize(), []))
+        consumed.add(m.group(1))
+    for m in FROZEN_TABLE_RE.finditer(body):
+        members = []
+        for kind, member in FROZEN_MEMBER_RE.findall(m.group(1)):
+            lua_type = PUSH_KIND_TYPES.get(kind)
+            if lua_type is None:
+                raise SystemExit(
+                    f"gen_api_stubs: og.{m.group(2)}.{member} pushed with an "
+                    f"unhandled lua_push{kind}")
+            members.append((member, lua_type))
+            consumed.add(member)
+        out.append(ValueEntry(m.group(2), "og." + m.group(2).capitalize(),
+                              members))
+        consumed.add(m.group(2))
+
+    functions = {lua for lua, _c in parse_world_entry_points(body)}
+    every = {m.group(1)
+             for m in re.finditer(r'lua_setfield\(L,\s*-2,\s*"(\w+)"\);',
+                                  body)}
+    unclassified = sorted(every - functions - consumed)
+    if unclassified:
+        raise SystemExit(
+            "gen_api_stubs: unrecognised og registration(s) in "
+            "install_vm_scaffolding: " + ", ".join(unclassified) +
+            " (see the APPEND CONTRACT in this file's docstring)")
+    return out
 
 
 def parse_hook_tables(src: str) -> Dict[str, List[Tuple[str, str]]]:
@@ -884,7 +973,7 @@ def og_function_fields(entries: List[Tuple[str, str]],
         apply_comment_names(sig, comment, lua_name, skip_first=False)
         if lua_name in return_overrides:
             # A return shape the body-walking inference cannot see (the
-            # og.tuning table is built from YAML-typed TuningValue pushes,
+            # og.tuning table is built from typed TuningValue pushes,
             # which read as a scalar union): declared here, kept in ONE
             # place so a real signature change still regenerates cleanly.
             sig.returns = [return_overrides[lua_name]]
@@ -940,10 +1029,15 @@ def generate(repo_root: Path) -> str:
     bindings_src = read_source(repo_root, BINDINGS)
     host_src = read_source(repo_root, HOST)
     world_src = read_source(repo_root, WORLD)
+    # og.family / og.anims / og.pack are registered beside the rest of the
+    # og table but DEFINED next to the declaration pass they serve, so their
+    # doc comments and argument plumbing live here.
+    family_decl_src = read_source(repo_root, FAMILY_DECL)
 
     functions: Dict[str, CppFunction] = {}
     functions.update(parse_cpp_functions(host_src))
     functions.update(parse_cpp_functions(world_src))
+    functions.update(parse_cpp_functions(family_decl_src))
     functions.update(parse_cpp_functions(bindings_src))
     macro_sigs = parse_macro_accessors(bindings_src)
 
@@ -953,7 +1047,9 @@ def generate(repo_root: Path) -> str:
     og_combat = parse_luareg_table(bindings_src, "kOgCombatFuncs")
     og_host = parse_luareg_table(host_src, "kOgFuncs")
     constants = parse_constants(bindings_src)
-    world_entry = parse_world_entry_points(world_src)
+    scaffolding = scaffolding_body(world_src)
+    world_entry = parse_world_entry_points(scaffolding)
+    world_values = parse_world_value_entry_points(scaffolding)
 
     hook_tables = parse_hook_tables(world_src)
     orders = parse_orders(world_src)
@@ -1034,7 +1130,11 @@ def generate(repo_root: Path) -> str:
                        "Entries return")
             out.append("-- like do_special itself.")
             out.append(f"---@class {cls[:-5]}Specials")
-            out.append(f"---@field [integer] {branch_fun}")
+            out.append("-- Keys are the special ids the family declared;")
+            out.append("-- registration resolves them to slot ints (an")
+            out.append("-- unknown id, or a bare slot number, is a load")
+            out.append("-- error).")
+            out.append(f"---@field [string] {branch_fun}")
             out.append(f"---@field default? {branch_fun}")
             out.append("")
         out.append(f"-- Hook table for og.register_hooks(order = {quoted}).")
@@ -1093,11 +1193,28 @@ def generate(repo_root: Path) -> str:
     out.extend(og_function_fields(list(og_combat), functions, {}))
     out.append("")
 
+    # og.* entries that hold a value rather than a function. A sentinel is
+    # an empty class (it exists to be compared, never indexed); a frozen
+    # table gets its members typed.
+    for value in sorted(world_values, key=lambda v: v.name):
+        if value.members:
+            out.append(f"-- Frozen og.{value.name} table: read-only, and a "
+                       "write to it errors.")
+        else:
+            out.append(f"-- The og.{value.name} sentinel. Compared, never "
+                       "indexed.")
+        out.append(f"---@class {value.cls}")
+        for member, lua_type in sorted(value.members):
+            out.append(f"---@field {member} {lua_type}")
+        out.append("")
+
     out.append("-- The og namespace: deterministic arithmetic, world queries,")
     out.append("-- sim events, and the registration entry points.")
     out.append("---@class og")
     out.append("---@field C og.Constants")
     out.append("---@field combat og.Combat")
+    for value in sorted(world_values, key=lambda v: v.name):
+        out.append(f"---@field {value.name} {value.cls}")
     og_entries = list(og_world) + list(og_host) + list(world_entry)
     out.extend(og_function_fields(
         og_entries, functions, overrides,

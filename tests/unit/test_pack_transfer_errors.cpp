@@ -471,7 +471,7 @@ protected:
 TEST_F(PackTransferIoErrorTest, unshippable_entries_and_packs_are_not_offered)
 {
     const fs::path mixed =
-        stage_pack("mixed", {{"classpack.yaml", "pack: org.test.mixed\n"},
+        stage_pack("mixed", {{"readme.txt", "the shippable one\n"},
                              {"scripts/bad name.lua", "-- unshippable\n"}});
     const fs::path allbad =
         stage_pack("allbad", {{"bad name.lua", "-- unshippable\n"}});
@@ -488,7 +488,7 @@ TEST_F(PackTransferIoErrorTest, unshippable_entries_and_packs_are_not_offered)
     ASSERT_NE(offer.end(), found);
     ASSERT_EQ(1u, found->manifest.files.size())
         << "the unshippable entry must be dropped";
-    EXPECT_EQ("classpack.yaml", found->manifest.files[0].path);
+    EXPECT_EQ("readme.txt", found->manifest.files[0].path);
 
     EXPECT_TRUE(std::none_of(offer.begin(), offer.end(),
                              [](const og::sim::HostedPack& p) {
@@ -504,7 +504,7 @@ TEST_F(PackTransferIoErrorTest, unshippable_entries_and_packs_are_not_offered)
 TEST_F(PackTransferIoErrorTest, an_unsafely_named_pack_directory_is_skipped)
 {
     const fs::path dir =
-        stage_pack("weird", {{"classpack.yaml", "pack: weird\n"}});
+        stage_pack("weird", {{"readme.txt", "weird\n"}});
     mount_pack(dir, "bad id");
 
     const std::vector<og::sim::HostedPack> offer =
@@ -521,7 +521,7 @@ TEST_F(PackTransferIoErrorTest, an_unsafely_named_pack_directory_is_skipped)
 TEST_F(PackTransferIoErrorTest, a_content_mismatch_is_not_locally_available)
 {
     const fs::path dir = stage_pack(
-        "drift", {{"classpack.yaml", "pack: org.test.drift\n"},
+        "drift", {{"readme.txt", "org.test.drift\n"},
                   {"scripts/a.lua", "-- local\n"}});
     mount_pack(dir, "org.test.drift");
 

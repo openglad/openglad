@@ -16,14 +16,18 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/families/classpack_data.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/packs.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,8 +41,15 @@ protected:
     {
         init_all_registries();
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
-    void TearDown() override { clear_pack_scripts(); }
+    void TearDown() override
+    {
+        clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
+    }
 };
 
 }  // namespace
@@ -95,8 +106,10 @@ TEST_F(ScriptHooksTest, unknown_hook_name_is_a_load_error)
          "{ do_speshul = function() return true end })\n"});
     WorldScripts& ws = active_world_scripts();
     ASSERT_FALSE(ws.host().errors().empty());
-    EXPECT_NE(std::string::npos,
-              ws.host().errors().front().message.find("no valid hooks"));
+    const std::string& message = ws.host().errors().front().message;
+    EXPECT_NE(std::string::npos, message.find("has no hook 'do_speshul'"));
+    // The other half of a strict-key rule: the name the author meant.
+    EXPECT_NE(std::string::npos, message.find("did you mean 'do_special'"));
 }
 
 TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)
@@ -181,7 +194,9 @@ TEST_F(ScriptHooksTest, order_alias_fx_and_effect_both_resolve)
 }
 
 // ---------------------------------------------------------------------------
-// specials = { [1]=fn, ..., default=fn } — the do_special table form.
+// specials = { charge=fn, ..., default=fn } — the do_special table form.
+// Keys are the ids the family declares (core:soldier: charge,
+// boomerang, whirlwind, disarm at slots 1..4).
 // Contract: current_special() selects,
 // a missing index falls to `default`, a table with neither is a successful
 // no-op, and the selected function's result converts exactly like a plain
@@ -211,11 +226,15 @@ protected:
         previous_ = current_game;
         current_game = &context;
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
 
     ~SpecialsDispatchTest() override
     {
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
         current_game = previous_;
     }
 
@@ -266,8 +285,8 @@ TEST_F(SpecialsDispatchTest, table_selects_by_current_special)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('charge') return true end,\n"
-        "    [2] = function(self) og.log('boomerang') return false end,\n"
+        "    charge = function(self) og.log('charge') return true end,\n"
+        "    boomerang = function(self) og.log('boomerang') return false end,\n"
         "  },\n"
         "})\n");
     auto r1 = dispatch(1);
@@ -290,7 +309,7 @@ TEST_F(SpecialsDispatchTest, missing_index_falls_to_default)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('one') return true end,\n"
+        "    charge = function(self) og.log('one') return true end,\n"
         "    default = function(self) og.log('default') return false end,\n"
         "  },\n"
         "})\n");
@@ -306,7 +325,7 @@ TEST_F(SpecialsDispatchTest, unmatched_index_without_default_is_a_noop_true)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('one') return false end,\n"
+        "    charge = function(self) og.log('one') return false end,\n"
         "  },\n"
         "})\n");
     hooks::reset_hook_failures();
@@ -325,8 +344,8 @@ TEST_F(SpecialsDispatchTest, selection_reads_the_slot_at_each_dispatch)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('first') return true end,\n"
-        "    [3] = function(self) og.log('third') return true end,\n"
+        "    charge = function(self) og.log('first') return true end,\n"
+        "    whirlwind = function(self) og.log('third') return true end,\n"
         "  },\n"
         "})\n");
     ASSERT_TRUE(dispatch(3).has_value());
@@ -342,7 +361,7 @@ TEST_F(SpecialsDispatchTest, plain_do_special_function_form_still_works)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('table form') return true end,\n"
+        "    charge = function(self) og.log('table form') return true end,\n"
         "  },\n"
         "})\n"
         "og.register_hooks('living', 'core:elf', {\n"
@@ -367,7 +386,7 @@ TEST_F(SpecialsDispatchTest, null_self_selects_the_default_entry)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('one') return true end,\n"
+        "    charge = function(self) og.log('one') return true end,\n"
         "    default = function(self) og.log('default ran') return true "
         "end,\n"
         "  },\n"
@@ -387,10 +406,10 @@ TEST_F(SpecialsDispatchTest, registered_table_is_immune_to_later_mutation)
     // change dispatch.
     register_chunk(
         "local t = {\n"
-        "  [1] = function(self) og.log('original') return true end,\n"
+        "  charge = function(self) og.log('original') return true end,\n"
         "}\n"
         "og.register_hooks('living', 'core:soldier', { specials = t })\n"
-        "t[1] = function(self) og.log('mutated') return true end\n"
+        "t.charge = function(self) og.log('mutated') return true end\n"
         "t.default = function(self) og.log('sneaked default') return true "
         "end\n");
     ASSERT_TRUE(dispatch(1).has_value());
@@ -410,7 +429,7 @@ TEST_F(SpecialsDispatchTest, branch_falling_off_the_end_reads_as_false)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('no return') end,\n"
+        "    charge = function(self) og.log('no return') end,\n"
         "  },\n"
         "})\n");
     auto r = dispatch(1);
@@ -424,7 +443,7 @@ TEST_F(SpecialsDispatchTest, erroring_branch_latches_like_any_hook_error)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) error('branch boom') end,\n"
+        "    charge = function(self) error('branch boom') end,\n"
         "  },\n"
         "})\n");
     hooks::reset_hook_failures();
@@ -441,7 +460,7 @@ TEST_F(SpecialsDispatchTest, cross_chunk_collision_reports_and_last_wins)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    [1] = function(self) og.log('table form') return true end,\n"
+        "    charge = function(self) og.log('table form') return true end,\n"
         "  },\n"
         "})\n"
         "og.register_hooks('living', 'core:soldier', {\n"
@@ -462,7 +481,7 @@ TEST_F(SpecialsDispatchTest, both_forms_in_one_call_is_a_load_error)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  do_special = function(self) return true end,\n"
-        "  specials = { [1] = function(self) return true end },\n"
+        "  specials = { charge = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
@@ -480,21 +499,46 @@ TEST_F(SpecialsDispatchTest, empty_specials_table_is_a_load_error)
 
 TEST_F(SpecialsDispatchTest, bad_specials_key_is_a_load_error)
 {
+    // Neither a string nor an integer: nothing to resolve and nothing to
+    // suggest, so the error just states the two forms that exist.
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
-        "  specials = { [0] = function(self) return true end },\n"
+        "  specials = { [1.5] = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
               vm_errors().front().message.find(
-                  "keys must be integers 1..255 or 'default'"));
+                  "keys must be a declared special id or 'default'"));
+}
+
+TEST_F(SpecialsDispatchTest, a_slot_number_key_is_a_load_error)
+{
+    // The id form is the only spelling. A slot number bound a handler to a
+    // position in the YAML list, so the error names the key and the ids
+    // that would have worked.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { [1] = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("key [1] is a slot number")) << msg;
+    EXPECT_NE(std::string::npos,
+              msg.find("specials keys are the family's declared special ids, "
+                       "or 'default'"))
+        << msg;
+    EXPECT_NE(std::string::npos, msg.find("living family 'core:soldier'"))
+        << msg;
+    EXPECT_NE(std::string::npos,
+              msg.find("declared ids: charge, boomerang, whirlwind, disarm"))
+        << "the message must list what would have worked: " << msg;
 }
 
 TEST_F(SpecialsDispatchTest, non_function_specials_entry_is_a_load_error)
 {
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
-        "  specials = { [1] = 5 },\n"
+        "  specials = { charge = 5 },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
@@ -505,11 +549,187 @@ TEST_F(SpecialsDispatchTest, specials_on_a_non_living_order_is_a_load_error)
 {
     register_chunk(
         "og.register_hooks('weapon', 'core:knife', {\n"
-        "  specials = { [1] = function(self) return true end },\n"
+        "  specials = { charge = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
     EXPECT_NE(std::string::npos,
               vm_errors().front().message.find("living-order key"));
+}
+
+// ---------------------------------------------------------------------------
+// Specials keyed by declared id. A declaration gives each special an `id`;
+// a script keys its handler by that id and the engine resolves it to the
+// slot at registration — so the two reference each other by name and a typo
+// on either side is a load error instead of a handler bound to the wrong
+// special. The slot number that used to work here is refused.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A living family with declared special ids, installed into a free wire
+// slot so it cannot disturb the core registry the other tests read.
+constexpr int kIdFamilyWireId = 64;
+
+class SpecialsByIdTest : public SpecialsDispatchTest {
+protected:
+    void SetUp() override
+    {
+        og::data::ClasspackData data;
+        og::script::clear_pack_family_chunks();
+        // Not `packs/idtest/...`: that prefix would declare these bytes to
+        // the pack-Lua coverage inventory (pack_scripts.h) as content of a
+        // pack that does not exist.
+        og::script::register_pack_family_chunk(
+            {"idtest", "idtest/families/warlock.lua",
+             "og.family('living', { id = 'idtest:warlock', wire_id = 64,\n"
+             "  name = 'WARLOCK',\n"
+             "  specials = {\n"
+             "    { id = 'flare_burst', name = 'FLARE BURST', mp_cost = 5 },\n"
+             "    { id = 'hex', name = 'HEX', mp_cost = 9 } } })\n"});
+        const og::script::DeclareResult declared =
+            og::script::declare_pack_families("idtest", data);
+        og::script::clear_pack_family_chunks();
+        ASSERT_TRUE(declared.ok) << declared.error;
+        ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+        self = world.add_ob(Order::Living, kIdFamilyWireId);
+        ASSERT_NE(nullptr, self);
+    }
+
+    std::optional<bool> dispatch_warlock(int sp)
+    {
+        self->set_current_special(static_cast<char>(sp));
+        const FamilyDescriptor* fd =
+            get_family_descriptor(kIdFamilyWireId);
+        EXPECT_NE(nullptr, fd);
+        if (fd == nullptr)
+            return std::nullopt;
+        return hooks::do_special(fd, self);
+    }
+};
+
+}  // namespace
+
+TEST_F(SpecialsByIdTest, a_declared_id_keys_its_own_slot)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = {\n"
+        "    hex = function(self) og.log('hex') return true end,\n"
+        "    flare_burst = function(self) og.log('flare') return true end,\n"
+        "  },\n"
+        "})\n");
+    auto r1 = dispatch_warlock(1);
+    ASSERT_TRUE(r1.has_value()) << "flare_burst is slot 1";
+    ASSERT_FALSE(vm_log().empty());
+    EXPECT_EQ("flare", vm_log().back());
+    auto r2 = dispatch_warlock(2);
+    ASSERT_TRUE(r2.has_value()) << "hex is slot 2";
+    EXPECT_EQ("hex", vm_log().back());
+    // The unmapped slot still falls through to the charging no-op: id keys
+    // change how a handler is named, nothing about dispatch.
+    auto r3 = dispatch_warlock(3);
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_TRUE(*r3);
+    ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(SpecialsByIdTest, misspelled_id_is_a_load_error_naming_the_real_ids)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { flare_brust = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("flare_brust")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("v2test:warlock")) << msg;
+    EXPECT_NE(std::string::npos, msg.find("flare_burst, hex"))
+        << "the message must list what the family does declare: " << msg;
+}
+
+TEST_F(SpecialsByIdTest, a_slot_number_beside_its_id_is_still_a_load_error)
+{
+    // The table that used to be the ambiguous case — a slot and the id of
+    // that same slot — now fails on the slot alone, before anything is
+    // stored, so the well-spelled sibling entry does not register either.
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = {\n"
+        "    [1] = function(self) return true end,\n"
+        "    flare_burst = function(self) return false end,\n"
+        "  },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("key [1] is a slot number")) << msg;
+    EXPECT_NE(std::string::npos,
+              msg.find("declared ids: flare_burst, hex"))
+        << msg;
+    EXPECT_FALSE(dispatch_warlock(1).has_value())
+        << "a refused registration registers nothing";
+}
+
+TEST_F(SpecialsDispatchTest, an_id_key_on_a_family_that_declares_none_says_so)
+{
+    // core:faerie has no castable slot and so declares no id; the error has
+    // to say that rather than list an empty set.
+    register_chunk(
+        "og.register_hooks('living', 'core:faerie', {\n"
+        "  specials = { flutter = function(self) return true end },\n"
+        "})\n");
+    ASSERT_FALSE(vm_errors().empty());
+    const std::string& msg = vm_errors().front().message;
+    EXPECT_NE(std::string::npos, msg.find("declares no special ids")) << msg;
+}
+
+TEST_F(SpecialsDispatchTest, the_shipped_core_pack_declares_its_special_ids)
+{
+    // The join the migrated corpus depends on: soldier.lua keys its four
+    // handlers by the ids living-00-soldier.yaml declares.
+    register_chunk(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  specials = { charge = function(self) return true end },\n"
+        "})\n");
+    ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_STREQ("charge", fd->special_ids[1]);
+    EXPECT_STREQ("boomerang", fd->special_ids[2]);
+    EXPECT_STREQ("whirlwind", fd->special_ids[3]);
+    EXPECT_STREQ("disarm", fd->special_ids[4]);
+    EXPECT_EQ(nullptr, fd->special_ids[0]);
+    EXPECT_EQ(nullptr, fd->special_ids[5]);
+}
+
+TEST_F(SpecialsByIdTest, castable_slot_with_no_handler_warns_after_load)
+{
+    // HEX is castable (a name and a cost under 5000) and this table
+    // handles neither it nor `default`, so casting it would spend 9 MP and
+    // do nothing. That is still what happens — it is just no longer silent.
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { flare_burst = function(self) return true end },\n"
+        "})\n");
+    testing::internal::CaptureStderr();
+    (void)world.scripts();
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_NE(std::string::npos, said.find("HEX")) << said;
+    EXPECT_NE(std::string::npos, said.find("spend 9 MP and do nothing"))
+        << said;
+    EXPECT_EQ(std::string::npos, said.find("FLARE BURST"))
+        << "a handled slot is not worth a word: " << said;
+}
+
+TEST_F(SpecialsByIdTest, a_default_answers_for_every_castable_slot)
+{
+    register_chunk(
+        "og.register_hooks('living', 'v2test:warlock', {\n"
+        "  specials = { default = function(self) return true end },\n"
+        "})\n");
+    testing::internal::CaptureStderr();
+    (void)world.scripts();
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(std::string::npos, said.find("has no handler")) << said;
 }
 
 // ---------------------------------------------------------------------------
@@ -543,11 +763,15 @@ protected:
         previous_ = current_game;
         current_game = &context;
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
     }
 
     ~ScriptBindingTest() override
     {
         clear_pack_scripts();
+        clear_pack_family_chunks();
+        clear_lua_declared_families();
         current_game = previous_;
     }
 

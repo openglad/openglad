@@ -115,8 +115,8 @@ TEST_F(FamilyDataFixture, walker_init_matches_registry)
             ASSERT_EQ(d->special_cost[s], w->stats()->special_cost(s)) << msg;
         }
 
-        std::snprintf(msg, sizeof(msg), "family %d weapon_cost mismatch", fam);
-        ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost()) << msg;
+        std::snprintf(msg, sizeof(msg), "family %d fire_mp_cost mismatch", fam);
+        ASSERT_EQ(d->combat.fire_mp_cost, w->stats()->weapon_cost()) << msg;
     }
     if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
 }

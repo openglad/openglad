@@ -52,7 +52,7 @@ openglad/
 ├── docs/                   Architecture documentation
 │   └── external-dependencies.md  Package targets and FetchContent pins
 │
-├── packs/                  Class packs (built-in core pack: classpack.yaml, families/, Lua scripts/)
+├── packs/                  Class packs (built-in core pack: families/*.lua declarations, lib/ modules)
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
 ├── sound/                  Audio files (WAV, OGG)
@@ -398,9 +398,9 @@ right-click no longer exists.
 
 ## Data-Driven Family System
 
-Families are class-pack data. Mounted `classpack.yaml` and
-`families/*.yaml` documents populate the five runtime registries; pack Lua
-registers family-specific behavior. The built-in classes use this same path
+Families are class-pack data. A pack's `families/*.lua` chunks call
+`og.family(order, {...})`, which populates the five runtime registries and
+binds that family's behavior hooks. The built-in classes use this same path
 through `packs/core/`, so the engine has no separate compiled soldier, mage,
 weapon, effect, or treasure implementation.
 
@@ -418,10 +418,12 @@ assignment. Follow the schema and determinism rules in
 [`modding/api-reference.md`](modding/api-reference.md).
 
 **Key files:**
-- `packs/core/classpack.yaml`, `packs/core/families/`,
-  `packs/core/scripts/` — built-in pack data and behavior
-- `src/resources/classpack_yaml.cpp`, `src/resources/packs.cpp` — parse,
-  mount, and install class packs
+- `packs/core/families/`, `packs/core/lib/` — built-in pack declarations
+  and the behavior modules they share
+- `src/gameplay/script/family_decl.cpp` — `og.family` / `og.anims` /
+  `og.pack`: the declaration pass that harvests data and the bind pass that
+  installs hooks
+- `src/resources/packs.cpp` — mount, memoize, and install class packs
 - `include/openglad/gameplay/families/` — descriptor and registry APIs
 - `include/openglad/gameplay/script/family_hooks.h`,
   `src/gameplay/script/world_scripts.cpp` — Lua registration and dispatch
@@ -924,7 +926,7 @@ Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
 | `src/gameplay/walker.cpp` | Base entity class — all game objects inherit from this |
 | `src/gameplay/living.cpp` | AI behavior for enemies and NPCs |
 | `src/gameplay/families/` | Family string-id / namespace resolution (the descriptors themselves come from class packs) |
-| `packs/core/` | Built-in class pack: `classpack.yaml`, `families/`, Lua `scripts/` |
+| `packs/core/` | Built-in class pack: `families/*.lua` declarations, `lib/` behavior modules |
 | `src/gameplay/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/gameplay/game_server.cpp` | Authoritative `GameServer` (multiplayer + local runtime) |
 | `src/gameplay/game_client.cpp` | `GameClient` mirror |

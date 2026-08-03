@@ -390,10 +390,16 @@ public:
         : user_path_(get_user_path())
         , campaign_(get_mounted_campaign())
         , scripts_(og::script::pack_scripts())
+        , chunks_(og::script::pack_family_chunks())
+        , modules_(og::script::pack_lib_modules())
     {
         (void)og::resources::deinit();
         set_mounted_campaign_for_testing("");
+        // All three registries, because all three are what a mount fills:
+        // core's behavior is families/ + lib/ and nothing under scripts/.
         og::script::clear_pack_scripts();
+        og::script::clear_pack_family_chunks();
+        og::script::clear_pack_lib_modules();
     }
 
     // Runs AFTER the caller's EnvGuard has restored OPENGLAD_CONFIG_DIR
@@ -411,25 +417,37 @@ public:
         og::script::clear_pack_scripts();
         for (const og::script::PackScript& script : scripts_)
             og::script::register_pack_script(script);
+        og::script::clear_pack_family_chunks();
+        for (const og::script::PackScript& chunk : chunks_)
+            og::script::register_pack_family_chunk(chunk);
+        og::script::clear_pack_lib_modules();
+        for (const og::script::PackLibModule& module : modules_)
+            og::script::register_pack_lib_module(module);
     }
 
 private:
     std::string user_path_;
     std::string campaign_;
     std::vector<og::script::PackScript> scripts_;
+    std::vector<og::script::PackScript> chunks_;
+    std::vector<og::script::PackLibModule> modules_;
 };
 
 }  // namespace
 
 // Headless clients run the same deterministic sim as the SDL client, so
-// io_init must leave the process with the class-pack behavior SCRIPTS
-// registered — not just the classpack.yaml descriptor data. The moment a
-// family's behavior lives only in pack Lua, openglad_text / openglad_server
-// / openglad_curses would otherwise silently run with no behavior at all.
+// io_init must leave the process with the class-pack BEHAVIOR registered —
+// not just the descriptor data. The moment a family's behavior lives only in
+// pack Lua, openglad_text / openglad_server / openglad_curses would
+// otherwise silently run with no behavior at all. In v3 that behavior
+// reaches the VM through two registries: the families/*.lua chunks (which
+// carry both the declaration and its hooks) and the lib/*.lua modules they
+// og.use. Core ships nothing under scripts/ any more, so an empty script
+// registry is no longer evidence of anything.
 TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
 {
     FreshFilesystemForIoInit filesystem_guard;
-    ASSERT_TRUE(og::script::pack_scripts().empty());
+    ASSERT_TRUE(og::script::pack_family_chunks().empty());
 
     EnvGuard config_guard("OPENGLAD_CONFIG_DIR");
     const std::filesystem::path config_dir =
@@ -443,32 +461,49 @@ TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
     char* argv[] = {arg0, nullptr};
     io_init(1, argv);
 
-    const std::vector<og::script::PackScript>& scripts = og::script::pack_scripts();
-    EXPECT_FALSE(scripts.empty())
-        << "headless io_init must register the mounted packs' behavior scripts";
+    const std::vector<og::script::PackScript>& chunks =
+        og::script::pack_family_chunks();
+    EXPECT_FALSE(chunks.empty())
+        << "headless io_init must register the mounted packs' declarations";
 
+    // The soldier's declaration and behavior are one file under families/,
+    // and the shared behavior the other families reference is under lib/, so
+    // the mount has to fill both registries to have filled either.
     bool has_core_pack = false;
     bool has_core_soldier = false;
-    for (const og::script::PackScript& script : scripts) {
-        if (script.pack_id != "core")
+    bool has_core_lib = false;
+    for (const og::script::PackScript& chunk : chunks) {
+        if (chunk.pack_id != "core")
             continue;
         has_core_pack = true;
-        EXPECT_FALSE(script.source.empty())
-            << "registered script has no source: " << script.chunk_name;
-        if (script.chunk_name == "packs/core/scripts/soldier.lua")
+        EXPECT_FALSE(chunk.source.empty())
+            << "registered family chunk has no source: " << chunk.chunk_name;
+        if (chunk.chunk_name == "packs/core/families/living-00-soldier.lua")
             has_core_soldier = true;
+    }
+    for (const og::script::PackLibModule& module :
+         og::script::pack_lib_modules()) {
+        if (module.pack_id != "core")
+            continue;
+        EXPECT_FALSE(module.source.empty())
+            << "registered lib module has no source: " << module.chunk_name;
+        if (module.name == "weapon_projectiles")
+            has_core_lib = true;
     }
     EXPECT_TRUE(has_core_pack)
         << "the shipped core pack must be registered by headless io_init";
     EXPECT_TRUE(has_core_soldier)
-        << "core pack scripts must be readable through the headless packs mount";
+        << "core pack declarations must be readable through the headless "
+           "packs mount";
+    EXPECT_TRUE(has_core_lib)
+        << "the shared behavior a declaration og.uses must be mounted too";
 
     // refresh_pack_scripts also does what the old install_classpacks() call
     // did; the descriptor registries must still come out populated.
     const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, soldier);
     EXPECT_STREQ("SOLDIER", soldier->name)
-        << "headless io_init must still install classpack.yaml descriptor data";
+        << "headless io_init must still install pack descriptor data";
 
     std::filesystem::remove_all(config_dir, ec);
 }
