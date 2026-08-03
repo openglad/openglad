@@ -437,6 +437,11 @@ bool is_ctf_campaign(const SaveData& save)
     return save.current_campaign == og::kCtfCampaignId;
 }
 
+bool is_versus_campaign(const SaveData& save)
+{
+    return og::data::campaign_matchup(save.current_campaign) == "versus";
+}
+
 std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const SaveData& save,
     const GameWorld& world,

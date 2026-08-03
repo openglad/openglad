@@ -113,6 +113,10 @@ static og::data::CampaignYaml campaign_data_to_yaml(const CampaignData& campaign
     metadata.authors = campaign.authors;
     metadata.contributors = campaign.contributors;
     metadata.description = join_description_lines(campaign.description);
+    // Both yaml identity axes survive the editor round-trip; the writer's
+    // only-when-non-empty rule keeps mode-less/coop repacks byte-stable.
+    metadata.mode = campaign.mode;
+    metadata.matchup = campaign.matchup;
     return metadata;
 }
 
@@ -132,6 +136,10 @@ static void apply_campaign_yaml(CampaignData& campaign, const og::data::Campaign
         campaign.suggested_power = metadata.suggested_power;
     if(metadata.saw_first_level)
         campaign.first_level = metadata.first_level;
+    if(metadata.saw_mode)
+        campaign.mode = metadata.mode;
+    if(metadata.saw_matchup)
+        campaign.matchup = metadata.matchup;
 }
 
 static void wire_world_entity_services(GameWorld* world,

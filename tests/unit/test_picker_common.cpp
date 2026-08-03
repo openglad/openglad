@@ -13,13 +13,17 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gloader_ctf.h>
+#include <openglad/resources/io_common.h>
 #include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <list>
 #include <limits>
 #include <memory>
@@ -1338,6 +1342,49 @@ TEST(PickerCommon, is_ctf_campaign_matches_id_exactly)
     save.current_campaign = "org.openglad.ctf2";
     ASSERT_FALSE(og::ui::is_ctf_campaign(save))
         << "the match is exact, not a prefix";
+}
+
+// is_versus_campaign keys on the campaign.yaml `matchup:` axis, not on any
+// campaign id. The versus package here is a throwaway one-file .glad; the
+// lookup rides campaign_matchup's private mount, so no mount state changes.
+TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
+{
+    SaveData save;
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save))
+        << "the shipped classic campaign is cooperative";
+    save.current_campaign = "";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save));
+    save.current_campaign = "org.openglad.pc_no_such_pkg";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save));
+
+    namespace fs = std::filesystem;
+    const std::string id = "org.openglad.pc_versus_probe";
+    const fs::path staging =
+        fs::path(get_user_path()) / "pc_versus_staging" / id;
+    std::error_code ec;
+    fs::create_directories(staging, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(staging / "campaign.yaml");
+        out << "format_version: 1\ntitle: Versus Probe\nversion: 1\n"
+               "matchup: versus\n";
+        ASSERT_TRUE(out.good());
+    }
+    const fs::path archive =
+        fs::path(get_user_path()) / "campaigns" / (id + ".glad");
+    fs::remove(archive, ec);
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(staging.string(), archive.string()));
+
+    og::data::clear_campaign_metadata_cache();
+    save.current_campaign = id;
+    EXPECT_TRUE(og::ui::is_versus_campaign(save))
+        << "matchup: versus makes the campaign a versus matchup";
+
+    fs::remove(archive, ec);
+    fs::remove_all(fs::path(get_user_path()) / "pc_versus_staging", ec);
+    og::data::clear_campaign_metadata_cache();
 }
 
 // --- set_player_count ---

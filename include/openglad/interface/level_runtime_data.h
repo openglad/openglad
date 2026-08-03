@@ -61,6 +61,11 @@ public:
     std::string authors;
     std::string contributors;
     std::list<std::string> description;
+    // campaign.yaml identity axes (see campaign_yaml.h). Carried through the
+    // editor's load/save round-trip so repacking a campaign no longer drops
+    // `mode:` (the documented Tier-B gap) or `matchup:`. Empty = absent.
+    std::string mode;
+    std::string matchup;
     int suggested_power;
     int first_level;
 

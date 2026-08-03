@@ -22,11 +22,24 @@ std::string campaign_display_title(const std::string& campaign_id);
 // scenario or its title is missing. Memoized per (mounted campaign, N).
 std::string scenario_display_name(int scen_num);
 
-// Game-mode identity of the MOUNTED campaign: the raw `mode:` string from
-// its campaign.yaml ("" when absent — Classic). Memoized per campaign id;
-// invalidated with the display-title cache on mount changes. Consumed by
+// Game-mode identity of a campaign: the raw `mode:` string from its
+// campaign.yaml ("" when absent — Classic). Mounted campaigns read the root
+// campaign.yaml; others get a throwaway private mount (the
+// campaign_display_title shape). Memoized per campaign id; invalidated with
+// the display-title cache on mount changes.
+std::string campaign_mode(const std::string& campaign_id);
+
+// Matchup axis of a campaign: the raw `matchup:` string from its
+// campaign.yaml ("" when absent — cooperative; "versus" — competitive
+// multi-team matchup). Same lookup/memoization as campaign_mode.
+std::string campaign_matchup(const std::string& campaign_id);
+
+// Game-mode identity of the MOUNTED campaign. Consumed by
 // og::mode::current_progression().
 std::string mounted_campaign_mode();
+
+// Matchup axis of the MOUNTED campaign.
+std::string mounted_campaign_matchup();
 
 // Drop one campaign's memoized title (and mode). Mounting a package calls
 // this so a lookup that failed before the package existed (and memoized the
