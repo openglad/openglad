@@ -18,6 +18,8 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/zip_api.h>
 
 #include <algorithm>
@@ -181,7 +183,94 @@ bool is_safe_virtual_basename(std::string_view name, std::size_t max_length)
     });
 }
 
-CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
+// ---------------------------------------------------------------------------
+// Sprite-sheet (extra_pix) mount
+// ---------------------------------------------------------------------------
+// Lives beside the campaign mount code (moved here from platform_io.cpp,
+// issue #162) because the two mounts share one PhysFS search path and the
+// campaign mount below has to re-assert the sheet's front position.
+
+static std::string s_mounted_sprite_sheet_dir;
+
+// A sprite-sheet pack is always a single directory living directly under
+// extra_pix/. Reject any name containing a path separator or a "."/".."
+// component so a hand-edited config can't escape extra_pix/ and mount an
+// arbitrary host directory over pix/.
+static bool is_safe_sprite_sheet_name(const std::string& name)
+{
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+        return false;
+    return name != "." && name != "..";
+}
+
+bool apply_sprite_sheet_setting()
+{
+    std::string name = cfg.get_setting("graphics", "sprite_sheet");
+    if (!name.empty() && !is_safe_sprite_sheet_name(name)) {
+        LogWarn("Sprite sheet '{}': invalid pack name, ignoring\n", name);
+        name.clear();
+    }
+    const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
+
+    if (s_mounted_sprite_sheet_dir == new_dir)
+        return true;
+
+    if (!s_mounted_sprite_sheet_dir.empty()) {
+        const std::string old_dir = s_mounted_sprite_sheet_dir;
+        if (!og::resources::unmount(old_dir.c_str())) {
+            LogWarn("Sprite sheet '{}': failed to unmount, keeping previous mount state\n", old_dir);
+            return false;
+        }
+        s_mounted_sprite_sheet_dir.clear();
+        og::resources::note_sprite_source_changed();
+    }
+
+    if (!new_dir.empty()) {
+        if (!og::resources::mount(new_dir.c_str(), "pix/", 0)) {
+            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
+            return false;
+        }
+        Log("Sprite sheet mounted: {}\n", new_dir);
+        s_mounted_sprite_sheet_dir = new_dir;
+        og::resources::note_sprite_source_changed();
+    }
+
+    return true;
+}
+
+// Re-prepends the mounted sheet so it answers pix/ lookups ahead of any
+// campaign package mounted after it. note_change=false is the editor-save
+// remount: the net source set is unchanged, so a successful re-prepend must
+// not mark loaders stale.
+static bool reassert_sprite_sheet_mount_impl(bool note_change)
+{
+    const std::string dir = s_mounted_sprite_sheet_dir;
+    if (dir.empty())
+        return true; // nothing mounted (headless boots never mount a sheet)
+
+    if (!og::resources::unmount(dir.c_str())) {
+        LogWarn("Sprite sheet '{}': failed to unmount for re-assert, keeping current search order\n", dir);
+        return false;
+    }
+    if (!og::resources::mount(dir.c_str(), "pix/", 0)) {
+        LogWarn("Sprite sheet '{}': failed to re-mount, sheet is now unmounted\n", dir);
+        s_mounted_sprite_sheet_dir.clear();
+        // The sheet really left the search path: always a source change.
+        og::resources::note_sprite_source_changed();
+        return false;
+    }
+    if (note_change)
+        og::resources::note_sprite_source_changed();
+    return true;
+}
+
+bool reassert_sprite_sheet_mount()
+{
+    return reassert_sprite_sheet_mount_impl(true);
+}
+
+static CampaignPackageIoError mount_campaign_package_impl(const std::string& id,
+                                                          bool note_sprite_change)
 {
     if(id.size() == 0)
         return CampaignPackageIoError::EmptyId;
@@ -218,7 +307,21 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     // Campaign zips may embed class packs (packs/<id>/ merged into the
     // virtual tree by this mount): rescan the pack-script set.
     og::resources::refresh_pack_scripts();
+    // #162: campaign packages carry pix/ entity art and pack sprites, so a
+    // mount changes what sprite bytes resolve — except the editor-save
+    // remount (note_sprite_change=false), which restores the identical set.
+    if (note_sprite_change)
+        og::resources::note_sprite_source_changed();
+    // Precedence: an explicitly selected user sprite sheet outranks campaign
+    // pix/ art for the names the sheet ships. The campaign PREPENDED itself
+    // in front of the sheet just now; put the sheet back in front.
+    (void)reassert_sprite_sheet_mount_impl(note_sprite_change);
     return CampaignPackageIoError::None;
+}
+
+CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
+{
+    return mount_campaign_package_impl(id, /*note_sprite_change=*/true);
 }
 
 CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id)
@@ -241,6 +344,9 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
     mounted_campaign_state().clear();
     // Drop any campaign-embedded pack scripts that just left the tree.
     og::resources::refresh_pack_scripts();
+    // #162: the package's pix/ art and pack sprites just left the search
+    // path; loaders built while it was mounted are stale.
+    og::resources::note_sprite_source_changed();
     return CampaignPackageIoError::None;
 }
 
@@ -264,7 +370,11 @@ CampaignPackageIoError remount_campaign_package_with_error()
         return CampaignPackageIoError::UnmountFailed;
     }
     mounted_campaign_state().clear();
-    return mount_campaign_package_with_error(id);
+    // Same id out, same id in: an editor save re-creates the identical
+    // sprite-source set, so this whole cycle must not bump the sprite
+    // generation (D13 — editing pack sprites mid-session needs editor
+    // re-entry; a bump here would mark live loaders stale on every save).
+    return mount_campaign_package_impl(id, /*note_sprite_change=*/false);
 }
 
 // ---------------------------------------------------------------------------
