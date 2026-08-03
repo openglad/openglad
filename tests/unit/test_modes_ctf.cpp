@@ -30,6 +30,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -492,6 +493,49 @@ TEST_F(ModesCtf, strip_scenario_troops_inert_when_ctf_does_not_activate)
 // dropped_flag_auto_returns_after_countdown,
 // drop_on_impassable_tile_returns_home_instantly.
 // ===========================================================================
+
+// The shipped maps author the CORE families (wire bytes 13/14 —
+// campaign.md §2.0b): the init scan must count them and their touches must
+// run the Lua rules through the scripts/mode_ctf_touch.lua override. The
+// override takes core's DECLARED hook mark, so it is silent — no duplicate
+// registration error may be recorded. This is the case that would have
+// caught the family mismatch the integration self-check found.
+TEST_F(ModesCtf, authored_core_families_activate_and_run_lua_rules)
+{
+    ModesCtfWorld fx;
+    walker* flag0 = fx.spawn_flag(og::FAMILY_FLAG, 0, 96, 96);
+    walker* flag1 = fx.spawn_flag(og::FAMILY_FLAG, 1, 544, 800);
+    walker* point = fx.spawn_point(og::FAMILY_CTF_POINT, 320, 320);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.ctf_active())
+        << "core-family flags must activate the match";
+    EXPECT_EQ(3, fx.var(kSlotTeamMask));
+    EXPECT_EQ(1, fx.var(kSlotCpCount))
+        << "the core-family waypoint scans as a control point";
+    EXPECT_EQ(static_cast<std::int32_t>(flag1->entity_id()),
+              fx.team_var(kSlotFlagEntity, 1));
+    EXPECT_FALSE(has_script_error(fx.world(), "duplicate hook"))
+        << "overriding core's DECLARED on_eat must be silent";
+
+    ASSERT_TRUE(flag1->eat_me(runner));
+    EXPECT_TRUE(fx.flag_carried(1));
+    EXPECT_EQ(runner->entity_id(), fx.carrier_id(1));
+    EXPECT_EQ(1, flag1->ignore());
+    EXPECT_TRUE(has_notification(fx.events, "GREEN FLAG TAKEN!"));
+
+    // The waypoint touch stays the preserved no-op through the override.
+    EXPECT_EQ(1, point->eat_me(runner));
+    EXPECT_EQ(0, fx.var(kSlotCpOwner1));
+
+    // Capture through the authored flag pair banks on the Lua counters.
+    ASSERT_TRUE(flag0->eat_me(runner));
+    EXPECT_EQ(1, fx.captures(0));
+    EXPECT_TRUE(has_notification(fx.events, "TEAM 1 SCORES! 1/3"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
 
 TEST_F(ModesCtf, enemy_touch_picks_up_and_carry_visual_follows)
 {
@@ -2282,4 +2326,136 @@ TEST_F(ModesCtf, other_mode_manifest_rows_do_not_bind_ctf)
     EXPECT_EQ(0u, fx.carrier_id(1));
     EXPECT_EQ(0, flag1->ignore());
     EXPECT_FALSE(has_notification(fx.events, "FLAG TAKEN"));
+
+    // The authored core family falls through to the shipped C++ delegation
+    // when no scripted CTF match is live — inert on a non-TYPE_CTF world,
+    // exactly what core's own hook did.
+    walker* core_flag = fx.spawn_flag(og::FAMILY_FLAG, 1, 500, 700);
+    ASSERT_NE(nullptr, core_flag);
+    EXPECT_EQ(1, core_flag->eat_me(runner));
+    EXPECT_EQ(0, core_flag->ignore());
+    EXPECT_FALSE(has_notification(fx.events, "FLAG TAKEN"));
+}
+
+// ===========================================================================
+// The REAL shipped package: scen500 from builtin/org.openglad.modes.glad
+// must activate through the manifest registration and run the Lua touch
+// rules on its AUTHORED core-family flags — end to end, the case the
+// synthetic fixture masked.
+// ===========================================================================
+
+namespace {
+
+// A real campaign level under full sim context (the test_modes_levels
+// LoadedModesLevel shape, over the shared modes_test loader hooks).
+struct LoadedRealLevel
+{
+    LevelRuntimeData level;
+    SaveData save;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    GameContext gc;
+    ScopedGameplayContext gameplay;
+    bool loaded = false;
+
+    explicit LoadedRealLevel(int id)
+        : level(id, true, &modes_test_level_hooks())
+        , gameplay(level, save, events, cfg)
+    {
+        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                              &rng, &cfg);
+        gc.rng = &rng;
+        push_test_context(&gc);
+        loaded = level.load();
+    }
+
+    ~LoadedRealLevel() { pop_test_context(); }
+
+    GameWorld& world() { return level.world(); }
+};
+
+}  // namespace
+
+TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
+{
+    restore_default_campaigns();
+    const std::string previous = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.modes"))
+        << "builtin/org.openglad.modes.glad should restore and mount";
+    {
+        LoadedRealLevel fx(500);
+        ASSERT_TRUE(fx.loaded) << "scen500 must load from the package";
+        ASSERT_NE(0, fx.world().type & GameWorld::TYPE_SCRIPTED);
+
+        fx.world().tick();
+        ASSERT_TRUE(fx.world().mode.active)
+            << "the manifest registration must activate CTF on scen500";
+        EXPECT_EQ(kModeIdCtf, fx.world().mode.vars[kSlotModeId]);
+        EXPECT_NE(0, fx.world().mode.vars[kSlotTeamMask]);
+        EXPECT_STREQ("CTF", fx.world().mode.name.data());
+        bool announced = false;
+        for (const auto& ev : fx.events.events())
+        {
+            if (ev.kind == og::sim::EventKind::Notification &&
+                ev.text.find("CAPTURE THE FLAG") != std::string::npos)
+                announced = true;
+        }
+        EXPECT_TRUE(announced);
+
+        // The authored flags are the CORE family: pick team 1's, touch it
+        // with a fresh team-0 living, and the LUA rules must bank the
+        // pickup (carrier var + TAKEN + the carried visual).
+        const std::int32_t flag1_id =
+            fx.world().mode.vars[kSlotFlagEntity + 1];
+        ASSERT_NE(0, flag1_id) << "team 1 must author a flag on scen500";
+        walker* flag1 =
+            fx.world().find_by_id(static_cast<std::uint32_t>(flag1_id));
+        ASSERT_NE(nullptr, flag1);
+        EXPECT_EQ(og::FAMILY_FLAG, flag1->family())
+            << "the shipped maps author the core flag family";
+
+        walker* runner = fx.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, runner);
+        runner->setxy(static_cast<short>(flag1->xpos() + 24),
+                      static_cast<short>(flag1->ypos()));
+        runner->set_team_num(0);
+        runner->set_real_team_num(255);
+        runner->set_act_type(ACT_CONTROL);
+
+        ASSERT_TRUE(flag1->eat_me(runner));
+        EXPECT_EQ(static_cast<std::int32_t>(runner->entity_id()),
+                  fx.world().mode.vars[kSlotFlagCarrier + 1]);
+        EXPECT_EQ(1, flag1->ignore());
+        bool taken = false;
+        for (const auto& ev : fx.events.events())
+        {
+            if (ev.kind == og::sim::EventKind::Notification &&
+                ev.text.find("FLAG TAKEN!") != std::string::npos)
+                taken = true;
+        }
+        EXPECT_TRUE(taken) << "the Lua pickup rule must announce TAKEN";
+
+        fx.world().tick();
+        EXPECT_EQ(static_cast<std::int32_t>(runner->entity_id()),
+                  fx.world().mode.vars[kSlotFlagCarrier + 1])
+            << "the carried flag survives a full tick of the Lua phases";
+        for (const auto& err : fx.world().scripts().host().errors())
+            ADD_FAILURE() << "script error: " << err.where << ": "
+                          << err.message;
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    const std::string now = get_mounted_campaign();
+    if (now == "org.openglad.modes")
+        (void)unmount_campaign_package_with_error(now);
+    if (previous.empty())
+    {
+        const std::string still = get_mounted_campaign();
+        if (!still.empty())
+            (void)unmount_campaign_package_with_error(still);
+    }
+    else if (get_mounted_campaign() != previous)
+    {
+        (void)mount_campaign_package_with_error(previous);
+    }
 }

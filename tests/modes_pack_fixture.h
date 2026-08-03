@@ -33,7 +33,9 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 
 #include "test_game_world_fixture.h"
 
@@ -350,6 +352,57 @@ private:
     std::string previous_mount_;
 };
 
+// The shared test loader: a plain headless loader plus the CTF loader
+// entries, so the AUTHORED core families (flag 13 / waypoint 14 — what the
+// shipped maps carry) create real treasures instead of falling back to
+// family 0.
+inline loader& modes_test_loader()
+{
+    static loader* instance = [] {
+        auto* l = new loader{EntityFactory{}};
+        register_ctf_loader_entries(*l);
+        return l;
+    }();
+    return *instance;
+}
+
+// LevelDataHooks for loading REAL shipped levels (scenNNN.fss from a
+// mounted campaign) inside a unit binary: wires the world entity services
+// to the shared loader (og_unit binaries have no SDL platform hooks).
+inline void wire_modes_test_entity_services(GameWorld* world,
+                                            LevelRuntimeData* level)
+{
+    (void)level;
+    if (world == nullptr)
+        return;
+    loader* game_loader = &modes_test_loader();
+    world->entity_factory = [game_loader](Order order, std::int32_t family) {
+        return game_loader->create_walker_owned(order, family);
+    };
+    world->entity_configurator =
+        [game_loader](walker& entity, Order order,
+                      std::int32_t family) -> const PixieData* {
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(),
+                                         entity.family());
+    };
+    world->entity_derived_stats =
+        [game_loader](walker* entity, Order order, std::int32_t family) {
+            if (entity != nullptr)
+                game_loader->set_derived_stats(entity, order, family);
+        };
+}
+
+inline const LevelDataHooks& modes_test_level_hooks()
+{
+    static const LevelDataHooks hooks = [] {
+        LevelDataHooks h{};
+        h.wire_world_entity_services = wire_modes_test_entity_services;
+        return h;
+    }();
+    return hooks;
+}
+
 // Scripted-mode world over the mounted rules pack: TYPE_SCRIPTED plus the
 // spawn helpers the C++ CTF tests used, retargeted at the pack families.
 struct ModesCtfWorld : TestGameWorld
@@ -357,20 +410,20 @@ struct ModesCtfWorld : TestGameWorld
     explicit ModesCtfWorld(int level_id = kCtfLevelA)
         : TestGameWorld(level_id)
     {
-        static loader* game_loader = new loader{EntityFactory{}};
+        loader* game_loader = &modes_test_loader();
         world().entity_factory =
-            [](Order order, std::int32_t family) {
+            [game_loader](Order order, std::int32_t family) {
                 return game_loader->create_walker_owned(order, family);
             };
         world().entity_configurator =
-            [](walker& entity, Order order,
-               std::int32_t family) -> const PixieData* {
+            [game_loader](walker& entity, Order order,
+                          std::int32_t family) -> const PixieData* {
                 game_loader->set_walker(&entity, order, family);
                 return game_loader->graphics_for(entity.query_order(),
                                                  entity.family());
             };
         world().entity_derived_stats =
-            [](walker* entity, Order order, std::int32_t family) {
+            [game_loader](walker* entity, Order order, std::int32_t family) {
                 if (entity != nullptr)
                     game_loader->set_derived_stats(entity, order, family);
             };
