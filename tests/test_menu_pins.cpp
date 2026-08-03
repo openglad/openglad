@@ -87,16 +87,16 @@ static const ExpectedButton kExpectedMainMenu[] = {
      MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
+     MenuNav{.up = 1, .down = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
      button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 2, .down = 4}},
-    {"options", "GAME", KEYSTATE_UNKNOWN, 80, 154, 68, 15,
+     MenuNav{.up = 4, .down = 5}},
+    {"options", "GAME", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
      button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 3, .down = 5, .right = 9}},
+     MenuNav{.up = 2, .down = 3, .right = 9}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
-     MenuNav{.up = 4, .down = 0, .right = 6}},
+     MenuNav{.up = 3, .down = 0, .right = 6}},
     {"quit", "QUIT ",
 #ifdef __EMSCRIPTEN__
      KEYSTATE_UNKNOWN,
@@ -104,18 +104,18 @@ static const ExpectedButton kExpectedMainMenu[] = {
      KEYSTATE_ESCAPE,
 #endif
      152, 178, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
-     MenuNav{.up = 9, .down = 0, .left = 5}},
+     MenuNav{.up = 3, .down = 0, .left = 5}},
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
     {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
      button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
     // #155: the always-visible CLOUD door, paired with the GAME door on
-    // the second settings row (the y=119..134 band holds the grey SETTINGS
-    // heading); MenuSpecRow arg == its materialized ordinal.
-    {"cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 154, 68, 15,
+    // the first settings row directly under the grey SETTINGS heading
+    // (which owns y=119..134); MenuSpecRow arg == its materialized ordinal.
+    {"cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
      button_action_id(ButtonAction::MenuSpecRow), 9,
-     MenuNav{.up = 3, .down = 6, .left = 4}},
+     MenuNav{.up = 2, .down = 3, .left = 4}},
 };
 
 TEST(MenuEnginePins, mainmenu_exact_table)
@@ -127,7 +127,7 @@ TEST(MenuEnginePins, mainmenu_exact_table)
                       "mainmenu");
     // §2.1/§9.2 index contract: load_company, no_company_note, then the
     // #155 CLOUD door form the appended tail. The settings group reads
-    // DIFFICULTY full-width over the GAME | CLOUD pair.
+    // the GAME | CLOUD pair over full-width DIFFICULTY.
     ASSERT_EQ("cloud", buttons[count - 1].id);
     ASSERT_EQ("no_company_note", buttons[count - 2].id);
     ASSERT_EQ("load_company", buttons[count - 3].id);

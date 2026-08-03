@@ -207,22 +207,22 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: DIFFICULTY keeps the full-width row (under the grey
-    // SETTINGS heading that owns the y=119..134 band), and the GAME door
-    // pairs with the #155 CLOUD door on the 68px row below — the same
-    // full-width-over-narrow-pair rhythm as the footer's HELP | QUIT.
+    // SETTINGS: the GAME | CLOUD 68px pair leads the group directly under
+    // the grey SETTINGS heading (which owns the y=119..134 band), with
+    // full-width DIFFICULTY on the row below — narrow-pair-over-full-width,
+    // mirrored by the HELP | QUIT footer.
     EXPECT_EQ("difficulty", buttons[3].id);
     EXPECT_EQ("options", buttons[4].id);
-    EXPECT_EQ(buttons[2].x, buttons[3].x);
-    EXPECT_EQ(140, buttons[3].sizex);
-    EXPECT_EQ(buttons[3].x, buttons[4].x);
+    EXPECT_EQ(buttons[2].x, buttons[4].x);
     EXPECT_EQ(68, buttons[4].sizex);
     EXPECT_EQ("GAME", buttons[4].label);
+    EXPECT_EQ(buttons[4].x, buttons[3].x);
+    EXPECT_EQ(140, buttons[3].sizex);
     EXPECT_EQ(kWithinGroupGutter,
-              buttons[4].y - (buttons[3].y + buttons[3].sizey));
+              buttons[3].y - (buttons[4].y + buttons[4].sizey));
 
     // Tightening within groups does not collapse the category breaks.
-    EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
+    EXPECT_EQ(17, buttons[4].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
     EXPECT_EQ("help", buttons[5].id);
@@ -233,12 +233,11 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
 
     // #155: the CLOUD door shares the GAME row as an aligned 68px pair
-    // (always visible — reachable with zero companies), wired into the
-    // chain column-wise: down lands on QUIT, whose up returns to CLOUD.
-    // Both build variants share the geometry (the tables differ only in
-    // the QUIT fork). No button may sit in the y=119..134 band —
-    // main_menu_draw_content paints the grey SETTINGS heading there, over
-    // any button face.
+    // (always visible — reachable with zero companies), first row of the
+    // settings group. Both build variants share the geometry (the tables
+    // differ only in the QUIT fork). No button may sit in the y=119..134
+    // band — main_menu_draw_content paints the grey SETTINGS heading
+    // there, over any button face.
     ASSERT_EQ(10, count);
     EXPECT_EQ("cloud", buttons[9].id);
     EXPECT_EQ(152, buttons[9].x);
@@ -246,13 +245,13 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(buttons[4].sizex, buttons[9].sizex);
     EXPECT_EQ(15, buttons[9].sizey);
     EXPECT_EQ(4, buttons[9].x - (buttons[4].x + buttons[4].sizex));
-    EXPECT_EQ(3, buttons[9].nav.up);
-    EXPECT_EQ(6, buttons[9].nav.down) << "cloud links down to QUIT";
+    EXPECT_EQ(2, buttons[9].nav.up);
+    EXPECT_EQ(3, buttons[9].nav.down) << "cloud links down to DIFFICULTY";
     EXPECT_EQ(4, buttons[9].nav.left) << "cloud links left to GAME";
     EXPECT_EQ(9, buttons[4].nav.right) << "GAME links right to CLOUD";
-    EXPECT_EQ(9, buttons[6].nav.up) << "QUIT links up to CLOUD";
-    EXPECT_EQ(3, buttons[2].nav.down) << "level_edit links down to DIFFICULTY";
-    EXPECT_EQ(2, buttons[3].nav.up) << "difficulty links up to LEVEL EDITOR";
+    EXPECT_EQ(3, buttons[6].nav.up) << "QUIT links up to DIFFICULTY";
+    EXPECT_EQ(4, buttons[2].nav.down) << "level_edit links down to GAME";
+    EXPECT_EQ(4, buttons[3].nav.up) << "difficulty links up to GAME";
     // 5-char label within the 68px face's 11-char budget.
     EXPECT_EQ("CLOUD", buttons[9].label);
     EXPECT_LE(buttons[9].label.size() * 6,

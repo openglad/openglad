@@ -994,35 +994,35 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4}},
     // Seat lifecycle moved beside the live lobby in Base Camp. The remaining
     // session category keeps the full-width row, followed by the broader
     // game/presentation settings door.
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
+     .nav = {.up = 4, .down = 5}},
     // "GAME" reads as a settings category under the SETTINGS heading; the
     // terminal clients keep the fuller "Game Settings" (no heading there).
     {.id = "options", .label = "GAME",
-     .x = 80, .y = 154, .w = 68, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 3, .down = 5, .right = 9}},
+     .nav = {.up = 2, .down = 3, .right = 9}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .down = 0, .right = 6}},
+     .nav = {.up = 3, .down = 0, .right = 6}},
     // The web/native fork (§1.6): exactly one QUIT row survives at
     // materialized index 6. Native activation quits; web is visibly disabled.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 9, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 9, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
@@ -1038,14 +1038,14 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
     // browser restore flow is the point). Pairs with the GAME door on the
-    // second settings row (the y=119..134 band belongs to the grey SETTINGS
+    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
     // heading drawn by main_menu_draw_content at y=125 — no button may sit
     // there). Appended after the note, so its materialized ordinal is 9 on
     // every variant (exactly one QUIT row survives materialization).
     {.id = "cloud", .label = "CLOUD",
-     .x = 152, .y = 154, .w = 68, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 3, .down = 6, .left = 4}},
+     .nav = {.up = 2, .down = 3, .left = 4}},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1062,30 +1062,30 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 3}},
+     .nav = {.up = 1, .down = 4}},
     {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 154, .w = 140, .h = 15,
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 2, .down = 4}},
+     .nav = {.up = 4, .down = 5}},
     // "GAME" reads as a settings category under the SETTINGS heading; the
     // terminal clients keep the fuller "Game Settings" (no heading there).
     {.id = "options", .label = "GAME",
-     .x = 80, .y = 154, .w = 68, .h = 15,
+     .x = 80, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 3, .down = 5, .right = 9}},
+     .nav = {.up = 2, .down = 3, .right = 9}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 4, .down = 0, .right = 6}},
+     .nav = {.up = 3, .down = 0, .right = 6}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 9, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 9, .down = 0, .left = 5},
+     .nav = {.up = 3, .down = 0, .left = 5},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
@@ -1100,14 +1100,14 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
     // browser restore flow is the point). Pairs with the GAME door on the
-    // second settings row (the y=119..134 band belongs to the grey SETTINGS
+    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
     // heading drawn by main_menu_draw_content at y=125 — no button may sit
     // there). Appended after the note, so its materialized ordinal is 9 on
     // every variant (exactly one QUIT row survives materialization).
     {.id = "cloud", .label = "CLOUD",
-     .x = 152, .y = 154, .w = 68, .h = 15,
+     .x = 152, .y = 135, .w = 68, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 3, .down = 6, .left = 4}},
+     .nav = {.up = 2, .down = 3, .left = 4}},
 };
 
 // The CLOUD row's materialized ordinal (table length - 2: exactly one QUIT

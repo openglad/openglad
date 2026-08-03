@@ -265,10 +265,11 @@ async function openWebDisplayOptions(page) {
   // on the old player-count buttons and still sits among live menu faces.
   await clickCanvasGameCoord(page, 10, 10);
 
-  // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
-  // arrow keys and Enter. From CONTINUE, LEVEL EDITOR, DIFFICULTY, then GAME
-  // SETTINGS are three downward steps in the web layout.
-  for (let i = 0; i < 3; ++i) {
+  // Picker nav uses player 1's bindings: S/A/W and Z, not browser arrow
+  // keys and Enter. With no company the top row links straight to LEVEL
+  // EDITOR, and the GAME door (leading the settings group's GAME | CLOUD
+  // pair) is two downward steps in the web layout.
+  for (let i = 0; i < 2; ++i) {
     await pressPickerKey(page, 's');
   }
   await pressPickerKey(page, 'z', 300);
