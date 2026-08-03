@@ -109,11 +109,27 @@ local function hud_score_line(slot, team, score, limit)
   og.set_hud_line(slot, og.team_color_name(team) .. " " .. score .. "/" .. limit, team)
 end
 
--- Register one mode's hook table for every manifest row carrying its name
--- (the D8 manifest: an array of { id = level_id, mode = "ctf", ... }).
+-- The D9 level-id band the manifest may populate (mirrors mode_match).
+local FIRST_LEVEL_ID = 300
+local LAST_LEVEL_ID = 899
+
+-- Register one mode's hook table for every manifest row carrying its name.
+-- Accepts either a row ARRAY ({ id = level_id, mode = "ctf", ... } entries)
+-- or the og.use("mode_levels") module itself — an id-keyed map with holes,
+-- scanned over the D9 band because the sandbox has no pairs.
 local function register_mode(levels, mode_name, hooks)
-  for i = 1, #levels do
-    local row = levels[i]
+  local rows = levels
+  if levels.levels ~= nil then
+    rows = {}
+    for id = FIRST_LEVEL_ID, LAST_LEVEL_ID do
+      local row = levels.levels[id]
+      if row ~= nil then
+        rows[#rows + 1] = { id = id, mode = row.mode }
+      end
+    end
+  end
+  for i = 1, #rows do
+    local row = rows[i]
     if row.mode == mode_name then
       og.register_level_hooks(row.id, hooks)
     end

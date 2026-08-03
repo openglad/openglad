@@ -95,7 +95,7 @@ namespace {
 namespace fs = std::filesystem;
 
 constexpr const char* kCampaignId = "org.openglad.modes";
-constexpr const char* kPackId = "org.openglad.modes.rules";
+constexpr const char* kPackId = "org.openglad.modes.core";
 
 // ---------------------------------------------------------------------------
 // Campaign descriptor + icon.

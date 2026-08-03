@@ -691,7 +691,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     // must be the same bytes (regenerate-and-diff discipline), and the
     // chunk must execute clean in the script sandbox.
     const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/org.openglad.modes.rules/lib/mode_levels.lua");
+        "packs/org.openglad.modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
     std::ifstream committed_in("tools/modes_mapgen/pack/lib/mode_levels.lua",
                                std::ios::binary);
@@ -707,7 +707,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
 
     og::script::ScriptHost host;
     EXPECT_TRUE(host.run_chunk("mode_levels.lua", member_text,
-                               "org.openglad.modes.rules"))
+                               "org.openglad.modes.core"))
         << "the manifest chunk failed to execute";
     EXPECT_TRUE(host.errors().empty());
 
@@ -736,10 +736,10 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
 {
     const struct { const char* path; int w; int h; int frames; } sprites[] = {
         {"icon.png", 32, 32, 1},
-        {"packs/org.openglad.modes.rules/sprites/flag.png", 10, 14, 4},
-        {"packs/org.openglad.modes.rules/sprites/ctfpoint.png", 16, 16, 1},
-        {"packs/org.openglad.modes.rules/sprites/ball.png", 12, 12, 1},
-        {"packs/org.openglad.modes.rules/sprites/aura.png", 16, 16, 4},
+        {"packs/org.openglad.modes.core/sprites/flag.png", 10, 14, 4},
+        {"packs/org.openglad.modes.core/sprites/ctfpoint.png", 16, 16, 1},
+        {"packs/org.openglad.modes.core/sprites/ball.png", 12, 12, 1},
+        {"packs/org.openglad.modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)
     {
@@ -755,13 +755,13 @@ TEST_F(ModesLevels, embedded_pack_rides_the_mount_cycle)
 {
     // Mounted: the pack lib member resolves through the VFS.
     EXPECT_FALSE(og::resources::read_file(
-                     "packs/org.openglad.modes.rules/lib/mode_levels.lua")
+                     "packs/org.openglad.modes.core/lib/mode_levels.lua")
                      .empty());
     // Unmounted: it leaves with its campaign.
     ASSERT_EQ(CampaignPackageIoError::None,
               unmount_campaign_package_with_error("org.openglad.modes"));
     EXPECT_TRUE(og::resources::read_file(
-                    "packs/org.openglad.modes.rules/lib/mode_levels.lua")
+                    "packs/org.openglad.modes.core/lib/mode_levels.lua")
                     .empty());
     // Remount so teardown finds the state it expects.
     ASSERT_EQ(CampaignPackageIoError::None,
