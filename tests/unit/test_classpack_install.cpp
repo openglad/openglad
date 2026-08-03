@@ -145,10 +145,9 @@ namespace {
 
 // Loads the committed core pack the way the loader does: every
 // families/*.lua in sorted filename order, evaluated by the declaration
-// pass into ONE ClasspackData. Core ships no classpack.yaml and no
-// descriptor YAML any more — the header is og.pack in families/00-pack.lua
-// — so this reads the Lua front end only. Every committed-core test goes
-// through it.
+// pass into ONE ClasspackData. The pack header is og.pack, declared in
+// families/00-pack.lua like everything else. Every committed-core test
+// goes through it.
 void load_committed_core_pack(ClasspackData& data)
 {
     const auto read_all = [](const std::filesystem::path& p) {
@@ -157,14 +156,10 @@ void load_committed_core_pack(ClasspackData& data)
         buffer << in.rdbuf();
         return buffer.str();
     };
-    ASSERT_FALSE(std::filesystem::exists("packs/core/classpack.yaml"))
-        << "core is v3: the pack header is og.pack in families/00-pack.lua";
     std::vector<std::filesystem::path> family_chunks;
     for (const auto& entry :
          std::filesystem::directory_iterator("packs/core/families"))
     {
-        ASSERT_NE(entry.path().extension(), ".yaml")
-            << entry.path() << ": families are Lua in v3";
         if (entry.path().extension() == ".lua")
             family_chunks.push_back(entry.path());
     }
@@ -1802,7 +1797,7 @@ TEST(ClasspackLibE2e, mount_registers_loads_transfers_and_unmounts)
 }
 
 // ---------------------------------------------------------------------------
-// packs/<id>/families/ — many files, one pack; and the retired format
+// packs/<id>/families/ — many files, one pack
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -1811,10 +1806,8 @@ namespace {
 // order, a non-Lua note and a subdirectory that must both be ignored.
 // bb.lua re-declares aa.lua's slot with one field, proving the documented
 // precedence: later files overwrite exactly the fields they declare.
-// `stale_yaml` additionally drops a v2 descriptor in beside them.
 std::filesystem::path make_scratch_split_pack(bool second_family,
-                                              bool broken_family_file,
-                                              bool stale_yaml)
+                                              bool broken_family_file)
 {
     std::string templ =
         (std::filesystem::temp_directory_path() / "og_split_XXXXXX")
@@ -1824,8 +1817,7 @@ std::filesystem::path make_scratch_split_pack(bool second_family,
         return {};
     const std::filesystem::path root(made);
     std::error_code ec;
-    std::filesystem::create_directories(root / "families" / "ignored.yaml",
-                                        ec);
+    std::filesystem::create_directories(root / "families" / "nested", ec);
     if (ec)
         return {};
     const auto put = [&](const std::filesystem::path& p,
@@ -1847,12 +1839,6 @@ std::filesystem::path make_scratch_split_pack(bool second_family,
                   "                      wire_id = 30,\n"
                   "                      costs = { hire = 222 },\n"
                   "                      tuning = { split_key = 9 } })\n");
-    if (stale_yaml)
-        put(root / "families" / "cc.yaml",
-            "families:\n"
-            "  living:\n"
-            "    - id: splitpack:leftover\n"
-            "      wire_id: 31\n");
     put(root / "families" / "notes.txt", "not lua; must be ignored\n");
     return root;
 }
@@ -1889,14 +1875,13 @@ private:
 // exactly the data field it declares (costs.hire) while undeclared fields
 // (name) keep aa.lua's values — and the tuning map follows the
 // install-always-replaces rule (bb.lua's map wins whole). notes.txt and the
-// directory named *.yaml are skipped.
+// nested directory are skipped.
 TEST(ClasspackSplitLayout, many_files_install_as_one_pack)
 {
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*second_family=*/true, /*broken_family_file=*/false,
-        /*stale_yaml=*/false);
+        /*second_family=*/true, /*broken_family_file=*/false);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
@@ -1931,8 +1916,7 @@ TEST(ClasspackSplitLayout, a_single_family_file_installs)
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*second_family=*/false, /*broken_family_file=*/false,
-        /*stale_yaml=*/false);
+        /*second_family=*/false, /*broken_family_file=*/false);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
@@ -1952,8 +1936,7 @@ TEST(ClasspackSplitLayout, bad_family_file_rejects_the_whole_pack)
     ModSlotGuard guard;
     TuningStoreGuard tuning_guard;
     const std::filesystem::path root = make_scratch_split_pack(
-        /*second_family=*/true, /*broken_family_file=*/true,
-        /*stale_yaml=*/false);
+        /*second_family=*/true, /*broken_family_file=*/true);
     ASSERT_FALSE(root.empty());
     SplitPackMount mount(root);
     ASSERT_TRUE(mount.ok());
@@ -1963,56 +1946,6 @@ TEST(ClasspackSplitLayout, bad_family_file_rejects_the_whole_pack)
               0);
     EXPECT_EQ(og::script::family_tuning(Order::Living, 30), nullptr)
         << "no tuning may leak from a rejected pack";
-}
-
-// THE v2 TRIPWIRE (format spec V9). A families/*.yaml is a descriptor
-// written for a reader that no longer exists. Loading the pack anyway would
-// install its Lua families and silently drop the YAML ones — a team of
-// gladiators with the right names and nobody's stats — so the whole pack is
-// refused instead, and the refusal says what to run.
-TEST(ClasspackSplitLayout, a_leftover_yaml_descriptor_rejects_the_pack)
-{
-    ModSlotGuard guard;
-    TuningStoreGuard tuning_guard;
-    const std::filesystem::path root = make_scratch_split_pack(
-        /*second_family=*/false, /*broken_family_file=*/false,
-        /*stale_yaml=*/true);
-    ASSERT_FALSE(root.empty());
-    SplitPackMount mount(root);
-    ASSERT_TRUE(mount.ok());
-
-    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
-                                                     "splitpack:alpha"),
-              0)
-        << "the pack's good Lua families must not install either";
-    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
-                                                     "splitpack:leftover"),
-              0)
-        << "and nothing may read the YAML";
-    EXPECT_EQ(og::script::family_tuning(Order::Living, 30), nullptr);
-}
-
-// The same refusal for the monolith the split layout replaced. A pack whose
-// whole descriptor set is one classpack.yaml has no Lua at all, so without
-// this it would mount as an empty pack and say nothing.
-TEST(ClasspackSplitLayout, a_leftover_classpack_yaml_rejects_the_pack)
-{
-    ModSlotGuard guard;
-    TuningStoreGuard tuning_guard;
-    const std::filesystem::path root = make_scratch_split_pack(
-        /*second_family=*/false, /*broken_family_file=*/false,
-        /*stale_yaml=*/false);
-    ASSERT_FALSE(root.empty());
-    {
-        std::ofstream out(root / "classpack.yaml", std::ios::binary);
-        out << "pack: org.test.splitpack\n";
-    }
-    SplitPackMount mount(root);
-    ASSERT_TRUE(mount.ok());
-
-    EXPECT_LT(og::families::resolve_family_string_id(Order::Living,
-                                                     "splitpack:alpha"),
-              0);
 }
 
 // ---------------------------------------------------------------------------

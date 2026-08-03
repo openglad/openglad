@@ -255,9 +255,8 @@ void push_family_ref(lua_State* L);
 
 // og.NIL — the PRESENT-null. A sparse declaration patches only the fields it
 // spells, so leaving a key out means "keep whatever the slot had"; og.NIL is
-// how a pack says "explicitly none" (the YAML `~` it replaces). One process-
-// wide light-userdata sentinel: identity comparison, no allocation, same
-// value in every VM.
+// how a pack says "explicitly none". One process-wide light-userdata
+// sentinel: identity comparison, no allocation, same value in every VM.
 void push_og_nil(lua_State* L);
 bool is_og_nil(lua_State* L, int idx);
 

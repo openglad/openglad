@@ -347,10 +347,9 @@ bool opt_wire_id(Harvest& h, int tbl, const std::string& where,
 
 // --- strict keys (format spec V5) ---------------------------------------
 //
-// The YAML reader skipped what it did not recognize, which is how a typo
-// ships as a missing field. Here it stops the pack. `ext` is the one opaque
-// key: a pack straddling engine releases parks its future data there and
-// gates on og.api.version.
+// A key nobody recognizes stops the pack. Skipping it instead is how a typo
+// ships as a missing field. `ext` is the one opaque key: a pack straddling
+// engine releases parks its future data there and gates on og.api.version.
 //
 // Refusing a typo is only half a diagnostic; the other half is the name the
 // author meant. `hp = 120` misspelled as `hitpoints` is a lookup in the
@@ -435,7 +434,7 @@ bool check_keys(Harvest& h, int tbl, const std::string& where,
 
 // radar_color takes the two sentinel spellings on top of a palette index, so
 // a pack can say "no blip" / "the entity's colour" without knowing the
-// numbers — same vocabulary the YAML reader accepts.
+// numbers.
 bool take_radar_color(Harvest& h, const std::string& where,
                       std::optional<std::int32_t>& out)
 {
@@ -478,14 +477,12 @@ bool harvest_presentation(Harvest& h, int tbl, const std::string& where,
 
 // `tuning = { ... }` — the pack's own numbers, read back by scripts through
 // og.tuning(self). Lua's subtype is the author's spelling: `5` is an
-// integer, `5.0` a number, and a quoted `"5"` a string, exactly as the YAML
-// scalar styles distinguished them.
+// integer, `5.0` a number, and a quoted `"5"` a string.
 //
-// Pairs land SORTED BY KEY. A Lua table has no source order to preserve (the
-// YAML stream did), and the store is keyed by name, so sorting is what makes
-// the harvested vector a function of the declaration's content alone —
-// identical on every peer and comparable field-for-field against the YAML
-// parse it replaces.
+// Pairs land SORTED BY KEY. A Lua table has no source order to preserve and
+// the store is keyed by name, so sorting is what makes the harvested vector
+// a function of the declaration's content alone — identical on every peer,
+// and comparable field-for-field.
 bool harvest_tuning(Harvest& h, int tbl, const std::string& where,
                     std::vector<og::data::ClasspackTuningPair>& out)
 {
@@ -599,16 +596,15 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
         return h.fail(named + ": a special needs an mp_cost");
     if (!h.take_int(named + ".mp_cost", out.mp_cost))
         return false;
-    // The v2 disabled sentinel is dead (format spec V2). A cost at or above
-    // it meant "this slot is a placeholder", which only ever existed because
-    // the fixed five-slot table could not say "absent" — a Lua declaration
-    // says it by not listing the special.
+    // A cost at or above the sentinel is unspellable (format spec V2): that
+    // is the registry's own "this slot holds no special" marker, and a
+    // declaration says the same thing by not listing the special at all.
     if (out.mp_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))
         return h.fail(named + ".mp_cost " + std::to_string(out.mp_cost) +
                       ": " + std::to_string(kSpecialCostDisabled) +
-                      " and up used to mean \"disabled\" — leave the special "
-                      "out of the list instead, which is what absence means "
-                      "now");
+                      " and up is the registry's own \"disabled\" marker — "
+                      "leave the special out of the list instead, which is "
+                      "what absence means");
     if (out.mp_cost < 0)
         return h.fail(named + ".mp_cost " + std::to_string(out.mp_cost) +
                       ": a special cannot cost negative magic");
@@ -769,7 +765,7 @@ bool check_hook_types(Harvest& h, int tbl, const std::string& where,
     return true;
 }
 
-// --- the v2 living blocks -----------------------------------------------
+// --- the living blocks --------------------------------------------------
 //
 // Every member of stats: and combat: is required when the block appears:
 // defaulting one silently would ship, say, a 0-armor class.
@@ -863,8 +859,8 @@ bool harvest_combat(Harvest& h, int tbl, const std::string& where,
     return true;
 }
 
-// `costs.train:` axes are optional (an unpriced axis is 0, which is what v1
-// shipped); `costs.hire` is not.
+// `costs.train` axes are optional — an axis a pack does not price is 0.
+// `costs.hire` is not optional.
 bool harvest_costs(Harvest& h, int tbl, const std::string& where,
                    std::optional<og::data::ClasspackCostsBlock>& out)
 {
@@ -1170,17 +1166,16 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
             return h.fail(order_where + ": this order has no families to "
                                         "declare");
     }
-    // Provenance the YAML front end never claims: the rules that treat a Lua
-    // declaration more strictly than a YAML one read this back after install
-    // (format spec V3).
+    // Provenance only a declaration can claim: the rules that hold a
+    // declared slot to a stricter standard than one a ClasspackData filled
+    // any other way read this back after install (format spec V3).
     out.lua_declarations.push_back({oi->order, id});
     return true;
 }
 
 // og.anims("name", { rows = N, frames = { {0,1,2,1}, false, ... } }).
-// `false` is the null row the YAML reader spelled `~` — the legacy anislime
-// table has eight of them, and nil cannot say it (a nil in a Lua array is a
-// hole, not a value).
+// `false` is a NULL row — the legacy anislime table has eight of them, and
+// nil cannot say it (a nil in a Lua array is a hole, not a value).
 bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
                       og::data::ClasspackAnimSet& out)
 {
@@ -1257,9 +1252,8 @@ bool harvest_pack_header(Harvest& h, int tbl, og::data::ClasspackData& out)
     if (title.has_value())
         out.title = *title;
     if (authors.has_value()) {
-        // One string, comma-separated: the interchange has carried the
-        // authors as free text since the YAML reader, and the installer
-        // hands it straight to the manifest.
+        // One string, comma-separated: the interchange carries the authors
+        // as free text, and the installer hands it straight to the manifest.
         std::string joined;
         for (const std::string& a : *authors) {
             if (!joined.empty())
@@ -1709,7 +1703,7 @@ const std::string* lua_declared_family_pack(Order order, int family_id)
 DeclareResult declare_pack_families(const std::string& pack_id,
                                     og::data::ClasspackData& out)
 {
-    // A YAML-only tree never pays for any of this: no family chunks, no VM.
+    // A pack with no family chunks never pays for any of this: no VM.
     bool any = false;
     for (const PackScript& chunk : pack_family_chunks()) {
         if (chunk.pack_id == pack_id) {

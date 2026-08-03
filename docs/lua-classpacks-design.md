@@ -248,12 +248,6 @@ tree and all read the same way:
 | `<user_path>/packs/` | user-installed packs |
 | `packs/` inside a campaign zip | mounts and unmounts **with that campaign** |
 
-A pack that still ships the retired YAML descriptors — a `classpack.yaml`,
-or any `families/*.yaml` — is REFUSED whole, by name, pointing at
-`scripts/migrate_classpack_v3.py`. Loading it would install its Lua families
-and silently drop the YAML ones: a team with the right names and nobody's
-stats. There is no reader left to fall back to.
-
 Loading is a whole-tree rescan (`refresh_pack_scripts`) triggered by
 `io_init`, campaign mount/unmount, and multiplayer pack transfer. It clears
 the registered chunk set, re-enumerates, and reinstalls descriptor data, so
@@ -480,15 +474,15 @@ leaves the key out or writes `specials = {}`. Each entry takes:
 | `alternate = { name = "..." }` | optional; shown while Shift is held |
 | `slot = N` | optional, 2..5, to skip a hole |
 
-**Absence is how a slot is disabled.** v2 spelled it with a sentinel cost of
-5000; an `mp_cost` at or above that is now a load error telling the author to
-leave the special out of the list, which is what absence means.
+**Absence is how a slot is disabled.** 5000 is the registry's own marker for
+"this slot holds no special", so an `mp_cost` at or above it is a load error
+telling the author to leave the special out of the list instead.
 
 **A castable special with no handler is a pack error at the end of the
 load** — not a warning, and not a surprise at cast time. Three ways to
 answer: give the entry a `cast`, give the list a `default_cast = fn`
-(the any-slot handler, and the exact shape v2's function-form `do_special`
-had), or write `cast = false`, which is the explicit "spends the MP and does
+(the any-slot handler, same shape as the family-level `do_special`), or
+write `cast = false`, which is the explicit "spends the MP and does
 nothing, on purpose" spelling and counts as handled. The check runs after
 the mount-time bind pass, so a cross-file `og.register_hooks` override
 satisfies it too. A slot that arrived through `install_classpack_data` from
@@ -532,8 +526,8 @@ hook name is a load error naming the ones that exist — in `og.family` and in
 override seam**: it binds hooks over an already-declared family without
 restating its data, which is how one pack re-skins another pack's family.
 Inside `packs/core` it is lint-forbidden — the house style is inline, and a
-core family that split its behavior away from its declaration would be
-back where v2 was.
+core family that split its behavior away from its declaration would put the
+rebalance and the code it changes in two different files again.
 
 ### Shared behavior: `lib/` modules
 

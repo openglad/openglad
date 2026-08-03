@@ -204,10 +204,10 @@ struct FamilyDescriptor {
     og::FamilyGlyph glyph{U'?', '?', og::GlyphColor::Default, false, false};
     og::RadarBlip radar{};             // livings blip in their team colour
 
-    // Fully-qualified id the declaring pack gave this family — the YAML
-    // `id:` value, e.g. "core:soldier" or "mypack:warlock". This is the
-    // name resolution matches FIRST, so two packs may ship families with
-    // the same `name:` and stay distinguishable
+    // Fully-qualified id the declaring pack gave this family — the
+    // declaration's `id`, e.g. "core:soldier" or "mypack:warlock". This is
+    // the name resolution matches FIRST, so two packs may ship families
+    // with the same `name` and stay distinguishable
     // (og::families::resolve_family_string_id).
     // nullptr = no pack declared this slot; resolution then falls back to
     // `name`.

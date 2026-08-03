@@ -195,7 +195,7 @@ TEST_F(ScriptHooksTest, order_alias_fx_and_effect_both_resolve)
 
 // ---------------------------------------------------------------------------
 // specials = { charge=fn, ..., default=fn } — the do_special table form.
-// Keys are the ids the family YAML declares (core:soldier: charge,
+// Keys are the ids the family declares (core:soldier: charge,
 // boomerang, whirlwind, disarm at slots 1..4).
 // Contract: current_special() selects,
 // a missing index falls to `default`, a table with neither is a successful

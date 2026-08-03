@@ -74,7 +74,7 @@ std::string number(long long v)
 }
 
 // %.9g round-trips a float exactly, so a value that changed type on its way
-// through a front end shows as a changed line instead of hiding behind a
+// into the descriptor shows as a changed line instead of hiding behind a
 // short print.
 std::string real(double v)
 {
@@ -89,8 +89,7 @@ std::string yes_no(bool v)
 }
 
 // A behavior callback is compared for PRESENCE only: its address is a link
-// artifact, and what matters to the migration is that a pack-installed
-// family still has none.
+// artifact, and what matters is that a pack-installed family has none.
 template <typename Fn>
 std::string callback(Fn fn)
 {

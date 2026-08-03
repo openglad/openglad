@@ -31,10 +31,10 @@
 
 namespace og::script {
 
-// One scalar tuning value. The kind preserves the YAML author's spelling:
-// a plain `5` arrives as Integer, `5.0` as Number (Lua float), `true` as
-// Boolean, anything quoted (or an unparseable plain scalar) as String — so
-// Lua-side arithmetic keeps the integer/float subtype the author wrote.
+// One scalar tuning value. The kind preserves the author's spelling: `5`
+// arrives as Integer, `5.0` as Number (Lua float), `true` as Boolean, a
+// quoted `"5"` as String — so Lua-side arithmetic keeps the integer/float
+// subtype the author wrote.
 struct TuningValue {
     enum class Kind : std::uint8_t { Integer, Number, Boolean, String };
     Kind kind = Kind::Integer;
@@ -49,7 +49,8 @@ struct TuningPair {
     TuningValue value;
 };
 
-// YAML mapping order preserved (deterministic install; irrelevant to reads).
+// Key order as the harvest fixed it (deterministic install; reads are by
+// key, so order is irrelevant to them).
 using TuningMap = std::vector<TuningPair>;
 
 // Installs (or, with an empty map, erases) the tuning for one family slot.

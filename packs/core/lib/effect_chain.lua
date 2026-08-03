@@ -45,7 +45,7 @@ local function on_act(self)
     og.emit_sound(C.SOUND_EXPLODE)
     -- Now make new objects to seek out foes ..
     local t = og.tuning(self)
-    -- shim kept: damage is a C++ float: the fork's damage cut (a YAML
+    -- shim kept: damage is a C++ float: the fork's damage cut (a tuning
     -- float, 0.5) rounds through float.
     local fork_damage = og.fmul(self:damage(), t.fork_damage_mult)
     local foes, foe_count

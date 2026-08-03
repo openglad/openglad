@@ -57,8 +57,8 @@ struct DeclareResult {
 // answers {false, message} and REJECTS the whole pack, exactly as one
 // unusable family file always has.
 //
-// A pack with no family chunks answers {true, ""} without building a VM, so
-// a YAML-only tree never pays for this.
+// A pack with no family chunks — a scripts-only or art-only pack — answers
+// {true, ""} without building a VM, so it never pays for this.
 DeclareResult declare_pack_families(const std::string& pack_id,
                                     og::data::ClasspackData& out);
 
@@ -83,14 +83,15 @@ bool pack_declaration_failed(const std::string& pack_id);
 // bind pass. Two rules key off it:
 //
 //   * a castable special that no cast, do_special or default handles is a
-//     WARNING for a slot some other front end filled, and a pack LOAD ERROR
-//     for a slot an og.family declared — in one file there is no excuse
+//     WARNING for a slot that arrived through install_classpack_data
+//     rather than from a declaration, and a pack LOAD ERROR for a slot an
+//     og.family declared — in one file there is no excuse
 //     (format spec V3). The check runs after the whole bind replay, so a
 //     cross-file og.register_hooks override still counts as a handler.
 //   * diagnostics name the pack that declared the slot.
 //
-// Empty until a pack actually declares families in Lua, which is what keeps
-// this inert for a YAML-only tree.
+// Empty until a pack actually declares families in Lua, so a process whose
+// registries were filled some other way never carries an entry.
 void clear_lua_declared_families();
 void note_lua_declared_family(Order order, int family_id,
                               const std::string& pack_id);

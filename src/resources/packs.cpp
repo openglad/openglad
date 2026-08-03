@@ -687,12 +687,12 @@ void apply_presentation(const og::data::ClasspackPresentation& p,
     }
 }
 
-// Folds a v2 `specials:` list onto the three parallel slot arrays.
+// Folds a `specials =` list onto the three parallel slot arrays.
 //
 // The list is the whole story for a family: declaring it rewrites every
 // slot, so an entry a pack drops from the list goes back to the disabled
 // pair ("NONE" / 5000) instead of lingering from whatever occupied the
-// registry slot before. That is what the v1 six-wide arrays did too.
+// registry slot before.
 void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
                       FamilyDescriptor& d)
 {
@@ -1025,9 +1025,9 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
 int install_pack_families(const og::data::ClasspackData& pack,
                           AutoWireIds& autos)
 {
-    // Same sequence the installers used to take them in — entries in
-    // declaration order, one counter per order — so auto ids land exactly
-    // where they did.
+    // The sequence the installers take them in — entries in declaration
+    // order, one counter per order — so auto ids land in the same slots on
+    // every peer.
     PackWireIds wire_ids;
     for (const auto& e : pack.weapons)
         wire_ids.take(Order::Weapon, e.id, e.wire_id, autos);
@@ -1099,43 +1099,6 @@ int install_classpacks()
         // three orders of magnitude cheaper than the evaluation it skips.
         std::string signature;
 
-        // THE v2 TRIPWIRE. A pack written for the retired YAML format now
-        // loads as a pack with no families at all — every stat, special and
-        // sprite silently absent, a team of default gladiators — so refuse
-        // it by name instead, and say what to run. Checked on every pass
-        // because a mount really can bring these files in (a campaign .glad
-        // may carry its own packs/). A DIRECTORY whose name happens to end
-        // in .yaml is not a document and never was.
-        bool rejected = false;
-        const std::string pack_dir = "packs/" + pack_id;
-        const std::string families_dir = pack_dir + "/families";
-        const auto refuse_v2 = [&](const std::string& what) {
-            LogWarn("class pack '{}' rejected: {} is the retired YAML "
-                    "format; families are Lua now — run "
-                    "scripts/migrate_classpack_v3.py, and see "
-                    "docs/lua-classpacks-design.md\n",
-                    pack_id, what);
-            rejected = true;
-        };
-        for (const std::string& name :
-             og::io::physfs_enumerate_files_sorted(pack_dir)) {
-            if (name == "classpack.yaml" &&
-                !og::io::physfs_is_directory(pack_dir + "/" + name)) {
-                refuse_v2("classpack.yaml");
-                break;
-            }
-        }
-        if (!rejected) {
-            for (const std::string& name :
-                 og::io::physfs_enumerate_files_sorted(families_dir)) {
-                if (name.ends_with(".yaml") &&
-                    !og::io::physfs_is_directory(families_dir + "/" + name)) {
-                    refuse_v2("families/" + name);
-                    break;
-                }
-            }
-        }
-
         // The declaration pass's inputs, already read into the chunk
         // registries by register_mounted_pack_scripts: this pack's
         // families/*.lua (the og.family declarations) and its lib/*.lua
@@ -1149,9 +1112,9 @@ int install_classpacks()
                 family_chunks.push_back(&c);
         }
         auto& memo = parsed_pack_memo();
-        if (rejected || family_chunks.empty()) {
+        if (family_chunks.empty()) {
             // A pack with no family chunks (scripts-only, or art-only) is
-            // fine. Either way this pack has no valid harvest to remember.
+            // fine. It has no harvest to remember.
             memo.erase(pack_id);
             continue;
         }

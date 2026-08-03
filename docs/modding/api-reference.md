@@ -210,9 +210,9 @@ any-slot handler. Both are optional, but a slot that is castable with
 neither — and no family-level `do_special` — is a **pack error at the end of
 the load**, naming the special and what the wasted cast would cost. Say
 `cast = false` if the charged no-op is deliberate; that counts as answered.
-Also refused: an `mp_cost` of 5000 or more (that was the old "disabled"
-sentinel — leave the special out of the list, which is what absence means
-now), and mixing per-entry `cast` with a family-level `do_special`, which is
+Also refused: an `mp_cost` of 5000 or more (the registry's own "disabled"
+marker — leave the special out of the list, which is what absence means),
+and mixing per-entry `cast` with a family-level `do_special`, which is
 two answers to one question.
 
 Per-entry `ai = fn` is sugar for one family-level `check_special_ai` — same

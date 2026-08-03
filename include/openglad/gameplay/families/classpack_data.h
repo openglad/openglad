@@ -14,10 +14,9 @@
 // The Lua declaration pass fills these (gameplay/script/family_decl.h,
 // `og.family`), and exactly one back end consumes them:
 // install_pack_families() in src/resources/packs.cpp. The split is
-// deliberate. It kept the installer byte-identical while the front end
-// changed out from under it — the retired classpack.yaml reader filled the
-// same structs — and it is still the seam a tool can write directly
-// (install_classpack_data; tools/concept_mapgen builds one in C++).
+// deliberate: these structs are the seam a tool can fill directly, with no
+// Lua anywhere in sight (install_classpack_data; tools/concept_mapgen
+// builds one in C++), and the shape a pack takes on the wire.
 //
 // They live under gameplay rather than resources because the declaration
 // pass runs a Lua VM, and Lua headers may only be included from
@@ -28,7 +27,7 @@
 // Every field is optional-by-presence: the registry installer overwrites
 // only the fields a pack actually declares, so a sparse mod entry inherits
 // the rest of the current descriptor. Free-text fields that can carry an
-// explicit null (YAML `~`, Lua `og.NIL`) — e.g. short_name, promotes_to —
+// explicit null (`og.NIL`) — e.g. short_name, promotes_to —
 // use NullableString so "absent", "null", and "value" stay
 // distinguishable.
 
@@ -41,7 +40,7 @@
 
 namespace og::data {
 
-// A string field that distinguishes absent / explicit null (~) / value.
+// A string field that distinguishes absent / explicit null / value.
 struct NullableString {
     bool present = false;
     bool is_null = false;    // meaningful only when present
@@ -68,11 +67,10 @@ struct ClasspackPresentation {
     std::optional<std::int32_t> radar_jitter;
 };
 
-// One scalar value of a family entry's `tuning:` map. The kind preserves
-// the author's YAML spelling — plain `5` is Integer, `5.0` Number, `true`
-// Boolean; anything QUOTED is String even when it looks numeric, and an
-// unparseable plain scalar is a plain-style string. Scripts read the map
-// through `og.tuning(self)` as a frozen table, so the Integer/Number split
+// One scalar value of a family entry's `tuning` map. The kind preserves
+// the author's spelling — `5` is Integer, `5.0` Number, `true` Boolean, and
+// a quoted `"5"` is String even though it looks numeric. Scripts read the
+// map through `og.tuning(self)` as a frozen table, so the Integer/Number split
 // decides nothing here beyond which Lua number subtype the value carries.
 struct ClasspackTuningValue {
     enum class Kind : std::uint8_t { Integer, Number, Boolean, String };
@@ -83,23 +81,24 @@ struct ClasspackTuningValue {
     std::string string;        // Kind::String
 };
 
-// One key/value pair of a `tuning:` map, in YAML order.
+// One key/value pair of a `tuning` map. The harvest sorts them by key.
 struct ClasspackTuningPair {
     std::string key;
     ClasspackTuningValue value;
 };
 
-// One row of an `anims:` frame set. `is_null` is the YAML `~` row, which
-// becomes a nullptr entry in the built table (the legacy anislime table has
-// eight of them).
+// One row of an `anims` frame set. `is_null` is a null row (`false` in the
+// frames list), which becomes a nullptr entry in the built table (the legacy
+// anislime table has eight of them).
 struct ClasspackAnimRow {
     bool is_null = false;
     std::vector<std::int32_t> frames;  // sprite frame indices, 0..127
 };
 
-// One named set under `anims:`. `rows` is the optional total row count; when
-// it exceeds the declared rows the declared rows repeat cyclically, so
-// `rows: 16` over a single row reproduces the legacy 16x-same-row tables.
+// One named set declared by `og.anims`. `rows` is the optional total row
+// count; when it exceeds the declared rows the declared rows repeat
+// cyclically, so `rows = 16` over a single row reproduces the legacy
+// 16x-same-row tables.
 struct ClasspackAnimSet {
     std::string name;
     std::optional<std::int32_t> rows;
@@ -136,10 +135,10 @@ struct ClasspackCombatBlock {
     std::int32_t fire_mp_cost = 0;
 };
 
-// `costs.train:` — gold per training point on each axis. Axes are
-// optional here: an omitted axis is 0, which is what v1 shipped for an
-// unpriced one. `level` is vestigial (levels are priced by the exp curve)
-// and kept only so migrated packs install the bytes v1 did.
+// `costs.train` — gold per training point on each axis. Axes are optional
+// here: an axis a pack does not price is 0. `level` is vestigial — levels
+// are priced by the exp curve — and exists only so a pack can install the
+// byte the descriptor has always carried.
 struct ClasspackTrainCosts {
     std::int32_t strength = 0;
     std::int32_t dexterity = 0;
@@ -156,25 +155,25 @@ struct ClasspackCostsBlock {
 };
 
 // The highest special slot a family has. Slot 0 is an engine artifact the
-// loader zeroes and v2 does not spell; the reachable slots are 1..5, the
-// fifth becoming selectable at level 13. (== FD_NUM_SPECIALS - 1, checked
-// where the two meet in the installer.)
+// loader zeroes and no declaration can spell; the reachable slots are 1..5,
+// the fifth becoming selectable at level 13. (== FD_NUM_SPECIALS - 1,
+// checked where the two meet in the installer.)
 inline constexpr int kMaxSpecialSlot = 5;
 
-// One entry of a `specials:` list. List order gives slots 1..5; an entry
-// may name its own `slot:` to leave a hole, and slots must strictly
+// One entry of a `specials` list. List order gives slots 1..5; an entry
+// may name its own `slot` to leave a hole, and slots must strictly
 // increase. `id` is the key a pack script's specials table uses for the
 // slot.
 struct ClasspackSpecialEntry {
     std::string id;                // required, [a-z0-9_]+, unique per family
     std::string name;              // required, the HUD string
     std::int32_t mp_cost = 0;      // required
-    std::optional<std::string> alternate_name;  // alternate: {name: ...}
-    std::int32_t slot = 0;         // 1..5, resolved from order or `slot:`
+    std::optional<std::string> alternate_name;  // alternate = { name = }
+    std::int32_t slot = 0;         // 1..5, from list order or `slot`
 };
 
-// One entry under families.living. YAML keys per design doc §4; field
-// names match the keys, values mirror FamilyDescriptor's data fields.
+// One entry declared by og.family("living", ...). Keys per design doc §4;
+// field names match the keys, values mirror FamilyDescriptor's data fields.
 struct ClasspackLivingEntry {
     std::string id;                        // required ("core:soldier")
     std::string wire_id;                   // "0".."255", "auto", or "" = absent (auto)
@@ -198,17 +197,18 @@ struct ClasspackLivingEntry {
     std::optional<std::int32_t> promotion_level_req;
     NullableString death_message;
     NullableString sprite;                 // pix filename or pack-relative path
-    std::optional<std::string> animation;  // built-in name or an anims: set
+    std::optional<std::string> animation;  // built-in name or og.anims set
     std::optional<std::int32_t> ai_line_of_sight;
     NullableString description;
     std::optional<std::vector<std::string>> names;  // random-name pool
     std::optional<bool> playable;
     std::optional<std::int32_t> playable_order;
     ClasspackPresentation presentation;
-    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+    std::vector<ClasspackTuningPair> tuning;  // `tuning` map, by key
 };
 
-// One entry under families.weapon (WeaponFamilyDescriptor data fields).
+// One entry declared by og.family("weapon", ...) (WeaponFamilyDescriptor
+// data fields).
 struct ClasspackWeaponEntry {
     std::string id;
     std::string wire_id;
@@ -224,12 +224,13 @@ struct ClasspackWeaponEntry {
     std::optional<std::int32_t> sizez;     // WeaponFamilyDescriptor.init_sizez
     std::optional<bool> can_drop_floors;
     NullableString sprite;
-    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
-    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+    std::vector<ClasspackTuningPair> tuning;  // `tuning` map, by key
 };
 
-// One entry under families.effect (EffectFamilyDescriptor data fields).
+// One entry declared by og.family("effect", ...) (EffectFamilyDescriptor
+// data fields).
 struct ClasspackEffectEntry {
     std::string id;
     std::string wire_id;
@@ -238,12 +239,13 @@ struct ClasspackEffectEntry {
     std::optional<bool> creates_hit_effect;
     std::optional<std::vector<std::string>> init_bit_flags;
     NullableString sprite;
-    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
-    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+    std::vector<ClasspackTuningPair> tuning;  // `tuning` map, by key
 };
 
-// One entry under families.treasure (TreasureFamilyDescriptor data fields).
+// One entry declared by og.family("treasure", ...)
+// (TreasureFamilyDescriptor data fields).
 struct ClasspackTreasureEntry {
     std::string id;
     std::string wire_id;
@@ -251,12 +253,13 @@ struct ClasspackTreasureEntry {
     std::optional<bool> init_ignore;
     std::optional<std::int32_t> init_frame;
     NullableString sprite;
-    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
-    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+    std::vector<ClasspackTuningPair> tuning;  // `tuning` map, by key
 };
 
-// One entry under families.generator (GeneratorFamilyDescriptor data
+// One entry declared by og.family("generator", ...) (GeneratorFamilyDescriptor
+// data
 // fields). default_weapon names the LIVING family the generator produces.
 struct ClasspackGeneratorEntry {
     std::string id;
@@ -267,27 +270,28 @@ struct ClasspackGeneratorEntry {
     std::optional<std::int32_t> spawn_ani_type;
     std::optional<bool> clear_owner;
     NullableString sprite;
-    std::optional<std::string> animation;  // anims: set name
+    std::optional<std::string> animation;  // og.anims set name
     std::optional<std::string> editor_label;  // level-editor palette caption
     ClasspackPresentation presentation;
-    std::vector<ClasspackTuningPair> tuning;  // `tuning:` map, YAML order
+    std::vector<ClasspackTuningPair> tuning;  // `tuning` map, by key
 };
 
 // One family the Lua declaration pass produced, by order and declared id.
 //
-// Provenance the YAML front end never claims. Two rules read it: a castable
-// special that nothing handles is a WARNING for a YAML family and a pack
-// ERROR for an og.family one (v3 rule V3), and diagnostics name the pack
-// that declared the slot. It rides in the parsed data rather than a side
-// channel because the parse is memoized on exact bytes — a side channel
-// would be empty on every memo hit, which is most installs.
+// Provenance only a declaration can claim. Two rules read it: a castable
+// special that nothing handles is a WARNING for a slot filled some other
+// way and a pack ERROR for one an og.family declared (format spec V3), and
+// diagnostics name the pack that declared the slot. It rides in the parsed
+// data rather than a side channel because the parse is memoized on exact
+// bytes — a side channel would be empty on every memo hit, which is most
+// installs.
 struct ClasspackLuaDeclaration {
     ::Order order = ::Order::Living;
     std::string id;   // the entry's declared `id`, e.g. "core:soldier"
 };
 
 struct ClasspackData {
-    std::string pack;      // `pack:` header (informative; mount dir is the id)
+    std::string pack;      // og.pack id (informative; mount dir is the id)
     std::string version;
     std::string title;
     std::string authors;
@@ -296,7 +300,7 @@ struct ClasspackData {
     std::vector<ClasspackEffectEntry> effects;
     std::vector<ClasspackTreasureEntry> treasures;
     std::vector<ClasspackGeneratorEntry> generators;
-    std::vector<ClasspackAnimSet> anims;  // `anims:` section, YAML order
+    std::vector<ClasspackAnimSet> anims;  // og.anims sets, declaration order
     std::vector<ClasspackLuaDeclaration> lua_declarations;
 };
 

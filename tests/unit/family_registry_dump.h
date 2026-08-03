@@ -9,14 +9,11 @@
 
 // A text rendering of every installed family descriptor, field by field.
 //
-// It was built to answer ONE question mechanically: did changing the FRONT
-// END change the DATA? packs/core moved off classpack.yaml onto Lua
-// `og.family` declarations, and the promise of that move was that the
-// installed registry came out identical — same wire ids, same numbers, same
-// strings, same animation frames, same tuning. A promise nobody can diff is
-// a hope, so this dumps the registry into stable text that a golden file can
-// hold and a test can compare byte for byte. The front-end swap is done; the
-// golden stays, now as the regression pin on what packs/core installs.
+// It answers ONE question mechanically: is the registry packs/core installs
+// still the registry it installed yesterday? Same wire ids, same numbers,
+// same strings, same animation frames, same tuning. A claim nobody can diff
+// is a hope, so this dumps the registry into stable text that a golden file
+// can hold and a test can compare byte for byte.
 //
 // Rules the format follows, all so the text is a function of the DATA and
 // nothing else:
@@ -29,11 +26,9 @@
 //     a behavior callback prints only whether it is there;
 //   * floats print with enough digits to round-trip, so a 0.1f that became
 //     a double 0.1 is a visible difference;
-//   * tuning pairs are SORTED by key. The two front ends disagree about
-//     order and only about order: the YAML reader preserves stream order,
-//     the Lua harvest sorts (a Lua table has no source order to preserve).
-//     Reads are by key in both, so sorting here compares the content the
-//     engine can actually observe.
+//   * tuning pairs are SORTED by key. A Lua table has no source order to
+//     preserve and every read is by key, so sorting here compares the
+//     content the engine can actually observe.
 //
 // Test-only: it lives under tests/ and nothing in src/ knows it exists.
 

@@ -272,7 +272,7 @@ TEST(FamilyRegistry, every_core_family_carries_its_pack_declared_id)
         declared(get_generator_family_descriptor(i)->declared_id, "generator", i);
 }
 
-TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_yaml_order)
+TEST(FamilyRegistry, cross_family_references_resolve_regardless_of_file_order)
 {
     og::test::mount_core_pack();
     // A pack may name a family it declares LOWER DOWN the same file. The

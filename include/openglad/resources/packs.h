@@ -45,9 +45,7 @@ int refresh_pack_scripts();
 // wire_id auto/absent assigns the first free id >= 21 in
 // pack-id-lexicographic order — entries beyond a registry's capacity are
 // skipped with a warning. Any chunk that fails to declare rejects that
-// pack only, and so does a leftover classpack.yaml or families/*.yaml
-// from the retired YAML format (see scripts/migrate_classpack_v3.py).
-// Returns the number of family entries installed.
+// pack only. Returns the number of family entries installed.
 //
 // Lifetime: installed descriptor const char* fields point into a
 // process-lifetime ClasspackStore that owns every harvested

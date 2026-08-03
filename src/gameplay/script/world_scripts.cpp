@@ -722,10 +722,10 @@ int og_register_hooks(lua_State* L)
         return luaL_error(L, "og.register_hooks: unknown order '%s'",
                           order_str);
 
-    // Every key must name a hook this order has (format spec V4). The
-    // registration used to walk the known names and take what it found,
-    // which meant a misspelled `on_deatch` registered nothing and said
-    // nothing: the family simply had no death behavior, discovered in play.
+    // Every key must name a hook this order has (format spec V4). Walking
+    // the known names and taking whatever is there would let a misspelled
+    // `on_deatch` register nothing and say nothing: the family would simply
+    // have no death behavior, discovered in play.
     // `specials` is the one extra key, the table form of do_special.
     //
     // Checked BEFORE the declaration pass bows out below: the names are a
@@ -1119,13 +1119,14 @@ int og_family_id(lua_State* L)
 // is also what lets a cross-file og.register_hooks count as the handler.
 //
 // Two severities, and the difference is what the pack could have known
-// (format spec V3). A slot some other front end filled may legitimately
-// have no Lua handler — the descriptor's own C++ do_special may serve it —
-// so that stays a warning. A slot an og.family DECLARED is a slot whose
-// costs, name and cast were written in one table by one author: leaving it
-// castable with nothing to run is a mistake with no other reading, and it
-// is a pack error. `cast = false` is how that author says "nothing, on
-// purpose", and it counts as handled.
+// (format spec V3). A slot that arrived through install_classpack_data
+// rather than from a declaration may legitimately have no Lua handler — the
+// descriptor's own C++ do_special may serve it — so that stays a warning. A
+// slot an og.family DECLARED is a slot whose costs, name and cast were
+// written in one table by one author: leaving it castable with nothing to
+// run is a mistake with no other reading, and it is a pack error.
+// `cast = false` is how that author says "nothing, on purpose", and it
+// counts as handled.
 void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
 {
     lua_rawgeti(L, LUA_REGISTRYINDEX, st.hooks_ref);
@@ -1321,7 +1322,7 @@ WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
     // Family chunks next, before any behavior script: the BIND half of the
     // two-context design. Their og.family calls hang hooks and specials
     // casts on the descriptors the declaration pass already installed, so
-    // this is where a v3 family's behavior enters the VM — and doing it
+    // this is where a family's behavior enters the VM — and doing it
     // BEFORE scripts/ is what makes og.register_hooks an override rather
     // than a race (format spec V4/V7).
     detail_->state.current_chunk = ChunkKind::Family;

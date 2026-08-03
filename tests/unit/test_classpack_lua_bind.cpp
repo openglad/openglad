@@ -51,7 +51,7 @@ namespace {
 constexpr const char* kPack = "v3bind";
 
 // core:soldier is the family every one of these binds against: it is
-// installed from the shipped YAML pack, so the declaration under test is
+// installed from the shipped core pack, so the declaration under test is
 // pure behavior and the data half is somebody else's business — which is
 // exactly the split the bind pass is supposed to make.
 constexpr int kSoldier = FAMILY_SOLDIER;

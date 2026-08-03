@@ -1213,12 +1213,11 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 // data and mutating it changes nothing. The declaration holds the resolved
 // number (the C++ BASE_GUY_HP+90 exports as 120): "hp = 120" ->
 // "hp = 12000" cranks the stat up, "hp = 300" -> "hp = 1" cranks it down.
-// Both keep the key in the anchor, which is what schema v2 bought here —
-// the v1 spelling had to anchor on the flow-sequence prefix "[120" and
-// hope no other column began the same way. The down-crank is an integer
-// on purpose: v2 wrote it "300e-2", which Lua reads as the float 1.5 and
-// og.family refuses, so porting that spelling would fail the whole pack
-// to load instead of leaving one family weak.
+// Both anchors carry the key itself, so no other column that happens to
+// start with the same digits can be mistaken for the one meant. The
+// down-crank is an integer on purpose: an exponent spelling arrives as a
+// Lua float, which og.family refuses — that would fail the whole pack to
+// load instead of leaving one family weak, and prove nothing.
 // check_mutation_pins.py is a build dependency of
 // og_test_parity, so a replacement that deletes its own anchor fails the
 // canary's rebuild instead of being measured.

@@ -8,19 +8,13 @@
 
 // The installed family registry, held against a golden file.
 //
-// The golden text was CAPTURED from the classpack.yaml reader, before
-// packs/core moved onto Lua `og.family` declarations, to check the one
-// claim that move rested on: the front end changes and the data does not.
-// It has not been recaptured since. The reader is gone and the file still
-// matches character for character, which is the proof, kept where it can
-// keep proving itself.
-//
-// From here on it earns its place as a plain regression pin. Every wire id,
-// stat, special cost, sprite name, animation row and tuning value the
-// shipped pack installs is in this file, so an accidental edit to
-// packs/core shows up as a named diff instead of as a subtly different
-// game. The two tests under it are the self-consistency half: the dumper
-// reaches all five orders, and two dumps of one install are the same text.
+// This pins the installed descriptor values of the core pack against
+// accidental drift. Every wire id, stat, special cost, sprite name,
+// animation row and tuning value the shipped pack installs is in the golden
+// file, so an edit to packs/core that nobody meant to make shows up as a
+// named diff instead of as a subtly different game. The two tests under it
+// are the self-consistency half: the dumper reaches all five orders, and
+// two dumps of one install are the same text.
 //
 // REGENERATING. The golden is not sacred, it is a record of a decision.
 // When packs/core changes on purpose:
@@ -28,8 +22,8 @@
 //     OPENGLAD_FAMILY_GOLDEN_WRITE=1 ./build/ci-test/og_unit_data
 //         --gtest_filter='FamilyRegistryGolden.*'
 //
-// then READ THE DIFF before committing it. A migration commit that rewrites
-// this file has, by definition, changed the game.
+// then READ THE DIFF before committing it. A commit that rewrites this file
+// has, by definition, changed the game.
 
 #include <gtest/gtest.h>
 

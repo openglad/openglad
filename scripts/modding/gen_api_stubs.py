@@ -973,7 +973,7 @@ def og_function_fields(entries: List[Tuple[str, str]],
         apply_comment_names(sig, comment, lua_name, skip_first=False)
         if lua_name in return_overrides:
             # A return shape the body-walking inference cannot see (the
-            # og.tuning table is built from YAML-typed TuningValue pushes,
+            # og.tuning table is built from typed TuningValue pushes,
             # which read as a scalar union): declared here, kept in ONE
             # place so a real signature change still regenerates cleanly.
             sig.returns = [return_overrides[lua_name]]
@@ -1130,9 +1130,9 @@ def generate(repo_root: Path) -> str:
                        "Entries return")
             out.append("-- like do_special itself.")
             out.append(f"---@class {cls[:-5]}Specials")
-            out.append("-- Keys are the special ids declared in the family")
-            out.append("-- YAML; registration resolves them to slot ints")
-            out.append("-- (an unknown id, or a bare slot number, is a load")
+            out.append("-- Keys are the special ids the family declared;")
+            out.append("-- registration resolves them to slot ints (an")
+            out.append("-- unknown id, or a bare slot number, is a load")
             out.append("-- error).")
             out.append(f"---@field [string] {branch_fun}")
             out.append(f"---@field default? {branch_fun}")

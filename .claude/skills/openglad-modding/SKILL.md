@@ -78,10 +78,10 @@ The rules worth knowing before your first load error:
   damage belongs to the weapon family, reach is `ai_line_of_sight`, armor
   is `stats.armor`.
 - Up to five specials; omit the key for a family with none. Absence IS the
-  disabled state — an `mp_cost` of 5000 or more (the old sentinel) is a
-  load error. A declared slot that is castable with no `cast`, no
-  `default_cast` and no `do_special` is a pack error; `cast = false` is the
-  deliberate charged no-op.
+  disabled state — an `mp_cost` of 5000 or more (the registry's own "no
+  special here" marker) is a load error. A declared slot that is castable
+  with no `cast`, no `default_cast` and no `do_special` is a pack error;
+  `cast = false` is the deliberate charged no-op.
 - `costs.train.level` is vestigial — nothing reads it — but the core files
   ship 200, so an override must restate it.
 - Omitting a key keeps whatever the slot already had; `og.NIL` on a

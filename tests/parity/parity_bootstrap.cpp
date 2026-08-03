@@ -122,8 +122,8 @@ BootstrapScope::BootstrapScope(const char* argv0)
     if (og::resources::mount(scen_path_.c_str(),      "scen/", 1))
         mounted_scen_ = true;
 
-    // Class packs: all family behavior AND descriptor data live in pack Lua
-    // + YAML now, so a bootstrap that owns PhysFS (parity_runner_smoke) must
+    // Class packs: all family behavior AND descriptor data live in pack
+    // Lua, so a bootstrap that owns PhysFS (parity_runner_smoke) must
     // mount packs/ and install them or the registries stay empty and no
     // walker can spawn ("Order: 0, Family 0"). Same idempotent shape as
     // og::test::mount_core_pack(): inside og_test_parity, io_init already

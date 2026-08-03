@@ -55,7 +55,7 @@ local function exploding_shot(self)
   arrow:set_skip_exit(5000)
   -- Keep the old "buffed arrow" hitpoint pool.
   arrow.hp = t.exploding_shot_hp
-  -- damage is a C++ float: per-op rounding (the multiplier is a YAML
+  -- damage is a C++ float: per-op rounding (the multiplier is a tuning
   -- float, 2.0)
   arrow:set_damage(og.fmul(arrow:damage(), t.exploding_shot_damage_mult))
   return true

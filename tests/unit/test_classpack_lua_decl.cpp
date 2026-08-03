@@ -244,8 +244,8 @@ TEST_F(LuaFamilyDeclTest, a_full_living_declaration_lands_every_block)
     EXPECT_TRUE(saw_int && saw_num && saw_bool && saw_str)
         << "a tuning value must keep its Lua subtype";
 
-    // Provenance: the rules that hold a Lua declaration to a higher
-    // standard than a YAML one read this back after the install.
+    // Provenance: the rules that hold a declared slot to a higher
+    // standard than one filled any other way read this back after install.
     ASSERT_EQ(1u, data.lua_declarations.size());
     EXPECT_EQ(Order::Living, data.lua_declarations[0].order);
     EXPECT_EQ("v3:soldier", data.lua_declarations[0].id);
@@ -270,10 +270,10 @@ TEST_F(LuaFamilyDeclTest, tuning_harvests_in_a_content_determined_order)
     EXPECT_EQ("zeta", a.effects[0].tuning[2].key);
 }
 
-// V6. The YAML `~` was a PRESENT null, and the installer copies and patches:
-// an absent key keeps whatever the slot held, an explicit null clears it.
-// Both spellings have to stay expressible or the migration cannot be
-// value-preserving.
+// V6. og.NIL is a PRESENT null, and the installer copies and patches: an
+// absent key keeps whatever the slot held, an explicit null clears it. Both
+// spellings have to stay expressible or a sparse declaration could not say
+// "clear this" at all.
 TEST_F(LuaFamilyDeclTest, og_nil_is_the_present_null_and_absence_is_not)
 {
     ClasspackData nil_data;
@@ -494,14 +494,14 @@ TEST_F(LuaFamilyDeclTest, an_inline_hook_of_the_wrong_type_is_a_load_error)
 // V2 — specials
 // ---------------------------------------------------------------------------
 
-TEST_F(LuaFamilyDeclTest, the_dead_disabled_sentinel_is_refused_by_name)
+TEST_F(LuaFamilyDeclTest, the_disabled_sentinel_is_refused_by_name)
 {
-    // 5000 and up used to mean "this slot is a placeholder" because a fixed
-    // five-slot table could not say "absent". A list can, so the sentinel is
-    // now a mistake with a specific fix.
+    // 5000 is the registry's own "this slot holds no special" marker, so a
+    // declaration cannot spell it as a price. A list says the same thing by
+    // leaving the special out, and the refusal points at that.
     const DeclareResult r =
         declare(soldier_with("mp_cost = 25 },", "mp_cost = 5000 },"));
-    expect_rejected(r, "5000 and up used to mean \"disabled\"");
+    expect_rejected(r, "5000 and up is the registry's own \"disabled\"");
     EXPECT_NE(std::string::npos, r.error.find("leave the special out"));
 }
 
@@ -659,7 +659,7 @@ TEST_F(LuaFamilyDeclTest, a_malformed_anim_set_is_a_load_error)
 // V9 — og.pack
 // ---------------------------------------------------------------------------
 
-TEST_F(LuaFamilyDeclTest, the_pack_header_replaces_the_yaml_scalars)
+TEST_F(LuaFamilyDeclTest, the_pack_header_fills_the_manifest_scalars)
 {
     ClasspackData data;
     ASSERT_TRUE(declare(R"LUA(
