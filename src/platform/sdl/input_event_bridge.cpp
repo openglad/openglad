@@ -179,6 +179,13 @@ void handle_key_event(const void* native_event)
             break;
         }
         #endif
+        // Event-layer feed for the direction resolver: repeats included on
+        // purpose — a repeat=true keydown is the only visible signal of a
+        // physical re-press of a key whose keyup the browser swallowed (the
+        // sampled keystate never went up, so it can't edge). See
+        // input_direction_grace.h.
+        note_direction_key_event(static_cast<int>(event.key.key));
+
         og::runtime::current_session->raw_key_ = static_cast<int>(event.key.key);
         if(og::runtime::current_session->raw_key_ == SDLK_ESCAPE)
             og::runtime::current_session->input_continue_ = true;

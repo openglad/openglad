@@ -24,6 +24,7 @@
 
 #include <openglad/core/scale_mode.h>
 #include <openglad/interface/base.h>
+#include <openglad/interface/web_control_defaults.h>
 #include <cctype>
 #include <string>
 #include <utility>
@@ -260,7 +261,11 @@ enum class ControlDirectionMode : int
 
 class cfg_store;
 
-bool reset_default_player_controls_for_player(int player_index);
+// web_mode substitutes browser-safe FIRE/SPECIAL defaults for profile 0
+// (see web_control_defaults.h); the default argument keeps native call
+// sites unchanged and lets native tests exercise the web branch.
+bool reset_default_player_controls_for_player(
+    int player_index, bool web_mode = og::input::kWebControlDefaults);
 // Compact active profiles after a seat leaves and rotate the freed profile to
 // the inactive tail, ready for the next seat added on this machine.
 bool compact_player_controls_after_removal(int removed_player_index, int active_player_count);
@@ -270,7 +275,8 @@ void set_player_control_mode(int player_index, int mode);
 bool player_allows_diagonal_movement(int player_index);
 int get_player_key_binding_for_mode(int player_index, int mode, int key_enum);
 void set_player_key_binding(int player_index, int key_enum, int keycode);
-void load_player_control_settings_from_cfg(cfg_store& config);
+void load_player_control_settings_from_cfg(
+    cfg_store& config, bool web_mode = og::input::kWebControlDefaults);
 void save_player_control_settings_to_cfg(cfg_store& config);
 
 

@@ -56,6 +56,20 @@
             letter-spacing: 0.1em;
         }
 
+        .warning {
+            max-width: 44rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.25rem;
+            text-align: left;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #f5e6c4;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid #d9a441;
+            border-left-width: 4px;
+            border-radius: 4px;
+        }
+
         .play-button {
             display: inline-block;
             padding: 1rem 3rem;
@@ -96,6 +110,14 @@
 <body>
     <main>
         <h1>Openglad</h1>
+        <div id="browser-warning" class="warning" hidden role="note">
+            <strong>Heads up, Firefox players</strong> &mdash; Firefox reserves
+            Ctrl+W (close tab), and a web page cannot intercept it, even in
+            fullscreen. Openglad's browser defaults therefore use Z to attack
+            and X for your special, so you never hold Ctrl while moving. If
+            you rebind attack to Ctrl in Options &rarr; Controls, walking up
+            will close this tab.
+        </div>
         <a href="play.html" class="play-button">Play</a>
     </main>
     <footer>
@@ -104,5 +126,17 @@
         <a href="https://github.com/openglad/openglad">Source code</a> &middot;
         <a href="help.html">Help</a>
     </footer>
+    <script>
+        // Firefox reserves Ctrl+W at browser-chrome level: page script
+        // cannot preventDefault it, and Keyboard Lock is Chromium-only.
+        // UA-based on purpose (Playwright drives it with a UA override);
+        // extend the regex if another engine needs the warning.
+        function isCtrlReservedBrowser() {
+            return /(?:Firefox|FxiOS)\//.test(navigator.userAgent);
+        }
+        if (isCtrlReservedBrowser()) {
+            document.getElementById('browser-warning').hidden = false;
+        }
+    </script>
 </body>
 </html>

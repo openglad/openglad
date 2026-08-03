@@ -28,6 +28,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
+#include <openglad/interface/web_control_defaults.h>
 #include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -287,8 +288,10 @@ static const char* controls_help_lines[] = {
 	"ACTION KEYS",
 	"========================",
 	"         P1      P2      P3      P4",
-	"Fire:    LCtrl   .       Space   5",
-	"Special: LAlt    /       ;       6",
+	og::input::kWebControlDefaults ? "Fire:    Z       .       Space   5"
+	                               : "Fire:    LCtrl   .       Space   5",
+	og::input::kWebControlDefaults ? "Special: X       /       ;       6"
+	                               : "Special: LAlt    /       ;       6",
 	"Switch:  ~/`     Enter   -       =",
 	"Shifter: LShift  RShift  0       8",
 	"Yell:    E       \\       U       Y",
