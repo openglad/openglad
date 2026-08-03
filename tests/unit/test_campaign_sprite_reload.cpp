@@ -88,10 +88,26 @@ protected:
             (void)unmount_campaign_package_with_error(mounted);
         og::test162::remove_sprite_campaign(kFixtureId);
         remove_sheet_fixture();
-        if (!previous_mount_.empty())
+
+        // EXACT restore, never a forced default mount. This binary carries a
+        // PhysFS-roundtrip landmine (PhysfsWrappers deinit/init destroys all
+        // mounts while mounted_campaign_state() keeps its value, and the
+        // unit_main structural reset re-mounts only the user dir + packs), so
+        // every fixture must collapse the tracked campaign mount back to the
+        // state it found — for the process's default order that is EMPTY.
+        // Leaving a campaign force-mounted here makes the NEXT
+        // mount_campaign_package_with_error after the roundtrip fail its
+        // unmount-previous step with physfs=not mounted.
+        const std::string now = get_mounted_campaign();
+        if (previous_mount_.empty())
+        {
+            if (!now.empty())
+                (void)unmount_campaign_package_with_error(now);
+        }
+        else if (now != previous_mount_)
+        {
             (void)mount_campaign_package_with_error(previous_mount_);
-        else
-            (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        }
     }
 
     static std::filesystem::path sheet_dir()
