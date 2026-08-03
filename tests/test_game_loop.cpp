@@ -1737,7 +1737,7 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
     entry.team = 0;
     entry.ticks_left = 60;
     entry.walker_entity_id = corpse->entity_id();
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.push_back(entry);
 
     viewscreen* const view = game_screen->viewob[0].get();
     walker* const saved_control = view->control;
@@ -1760,7 +1760,7 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
     // Revived (alive, user tag intact), entry consumed, ControlChange not yet
     // applied: still retained through the one-tick window.
     corpse->set_dead(0);
-    world.ctf.respawn_queue.clear();
+    world.respawn.respawn_queue.clear();
     EXPECT_EQ(corpse,
               og::runtime::detail::select_control_for_view(
                   view, controlled_entity_ids, &world, 0u));
@@ -1773,7 +1773,7 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
                   view, controlled_entity_ids, &world, 0u));
 
     // Outside an active CTF match the keep-alive never engages.
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.push_back(entry);
     world.ctf.active = false;
     EXPECT_EQ(nullptr,
               og::runtime::detail::select_control_for_view(
@@ -1867,7 +1867,7 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
     respawn.team = 0;
     respawn.ticks_left = 30;
     respawn.walker_entity_id = hero_a->entity_id();
-    world.ctf.respawn_queue.push_back(respawn);
+    world.respawn.respawn_queue.push_back(respawn);
     og::runtime::detail::update_display_view_follow(
         follow, view, 3u, ids, &world);
     EXPECT_TRUE(follow.engaged);
@@ -1875,7 +1875,7 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
     EXPECT_EQ(nullptr, og::runtime::detail::select_control_for_view(
                            view, ids, &world, 3u, &follow));
     hero_a->set_dead(0);
-    world.ctf.respawn_queue.clear();
+    world.respawn.respawn_queue.clear();
     og::runtime::detail::update_display_view_follow(
         follow, view, 3u, ids, &world);
     EXPECT_TRUE(follow.engaged);

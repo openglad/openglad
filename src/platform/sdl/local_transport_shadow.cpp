@@ -156,7 +156,7 @@ walker* respawn_retained_control(viewscreen* view,
             return previous;
         }
         if (previous->dead() && previous->myguy != nullptr &&
-            og::sim::ctf_pending_player_respawn(world->ctf,
+            og::sim::ctf_pending_player_respawn(world->respawn,
                                                 previous->entity_id()))
         {
             return previous;
@@ -276,7 +276,7 @@ void update_display_view_follow(
             og::sim::default_follow_target_id(*world, controlled_entity_ids);
     }
     else if (target->dead() && target->myguy != nullptr &&
-             og::sim::ctf_pending_player_respawn(world->ctf,
+             og::sim::ctf_pending_player_respawn(world->respawn,
                                                  target->entity_id()))
     {
         // A spectator may be following somebody else's respawning hero.

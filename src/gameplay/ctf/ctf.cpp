@@ -475,7 +475,7 @@ void run_death_scan(GameWorld& world)
             continue;
         if (w->myguy == nullptr && w->owner() != nullptr)
             continue;
-        if (already_scheduled(world.ctf, w->entity_id()))
+        if (already_scheduled(world.respawn, w->entity_id()))
             continue;
         if (live_duplicate_exists(world, w))
             continue;
@@ -745,7 +745,7 @@ void run_win_check(GameWorld& world)
             place_at_anchor(world, w, team);
         }
     }
-    ctf.respawn_queue.clear();
+    world.respawn.respawn_queue.clear();
 
     bool winner_is_player = false;
     for (const auto& uptr : world.oblist)
@@ -791,6 +791,7 @@ void spawn_bot_squad(GameWorld& world, int team)
 void ctf_initialize_for_level(GameWorld& world)
 {
     world.ctf = CtfState{};
+    world.respawn = RespawnState{};
     CtfState& ctf = world.ctf;
     ctf.init_attempted = true;
 
@@ -972,7 +973,7 @@ void ctf_initialize_for_level(GameWorld& world)
         static_cast<std::uint8_t>(std::clamp<std::int32_t>(limit, 1, 255));
 
     const short requested_respawn = world.ctf_requested_respawn_ticks;
-    ctf.respawn_ticks = (requested_respawn > 0)
+    world.respawn.respawn_ticks = (requested_respawn > 0)
         ? static_cast<std::uint16_t>(requested_respawn)
         : kCtfDefaultRespawnTicks;
     ctf.flag_return_ticks = kCtfDefaultFlagReturnTicks;
@@ -1379,7 +1380,7 @@ walker* classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry)
     const bool eligible = hero_eligible || ai_eligible;
     if (!eligible)
         return false;
-    if (already_scheduled(world.ctf, w->entity_id()))
+    if (already_scheduled(world.respawn, w->entity_id()))
         return false;
     if (live_duplicate_exists(world, w))
         return false;
@@ -1415,15 +1416,14 @@ void classic_respawn_run_tick(GameWorld& world)
     if (!classic_respawn_active(world))
         return;
 
-    CtfState& ctf = world.ctf;
+    RespawnState& respawn = world.respawn;
     // Lazy config resolution. Idempotent, so re-running it every active tick
     // is safe: nothing else writes respawn_ticks on a non-CTF level, and a
-    // snapshot restore rewrites this and the requested knob coherently. The
-    // rest of CtfState (anchors, flags, CPs, team_active, init_attempted,
-    // active) is deliberately untouched — every CTF-only consumer keys on
+    // snapshot restore rewrites this and the requested knob coherently.
+    // CtfState is deliberately untouched — every CTF-only consumer keys on
     // ctf.active staying false here.
     const short requested = world.ctf_requested_respawn_ticks;
-    ctf.respawn_ticks =
+    respawn.respawn_ticks =
         (requested >= kClassicMinRespawnTicks &&
          requested <= kClassicMaxRespawnTicks)
             ? static_cast<std::uint16_t>(requested)
@@ -1449,20 +1449,20 @@ void classic_respawn_flush_pending(GameWorld& world)
 {
     if (!classic_respawn_active(world))
         return;
-    CtfState& ctf = world.ctf;
+    RespawnState& respawn = world.respawn;
     // Scan first, matching ctf_run_tick's death-scan-before-win-check order:
     // a hero dying on the very tick the level ends (a mutual kill with the
     // last foe, or a death the synchronous exit-accept path hasn't scanned
     // yet) gets its entry here and revives below. Timer values don't matter.
     classic_run_death_scan(world);
     // The player fire path never mutates the queue; iterate then clear.
-    for (std::size_t i = 0; i < ctf.respawn_queue.size(); ++i)
+    for (std::size_t i = 0; i < respawn.respawn_queue.size(); ++i)
     {
-        const CtfRespawnEntry entry = ctf.respawn_queue[i];
+        const CtfRespawnEntry entry = respawn.respawn_queue[i];
         if (entry.kind == 0)
             classic_fire_player_respawn(world, entry);
     }
-    ctf.respawn_queue.clear();
+    respawn.respawn_queue.clear();
 }
 
 bool classic_respawn_pending_hostile_foe(GameWorld& world)
@@ -1471,7 +1471,7 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
         return false;
     // Entries scheduled on earlier ticks. Kind-1 (AI) entries only exist in
     // mode 2; kind-0 covers hostile heroes (other players' teams) too.
-    for (const CtfRespawnEntry& entry : world.ctf.respawn_queue)
+    for (const CtfRespawnEntry& entry : world.respawn.respawn_queue)
     {
         if (entry.kind == 1 &&
             world.respawn_mode == kRespawnModeEveryone &&

@@ -55,10 +55,11 @@ struct CtfControlPoint
     std::uint32_t next_pulse_tick = 0;
 };
 
-// CTF-only match state, layered over the shared respawn engine state (the
-// base carries respawn_ticks / respawn_serial / anchors / respawn_queue —
-// see respawn/respawn_state.h for why the storage still lives here).
-struct CtfState : RespawnState
+// CTF-only match state. The shared respawn engine state (respawn_ticks /
+// respawn_serial / anchors / respawn_queue) lives in its own storage —
+// GameWorld::respawn (og::sim::RespawnState) — since the physical split;
+// this struct carries only what the CTF engine owns exclusively.
+struct CtfState
 {
     bool active = false;                    // set only by ctf_initialize_for_level / apply_snapshot
     bool init_attempted = false;            // lazy-init latch

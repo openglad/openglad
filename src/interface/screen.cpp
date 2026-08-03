@@ -204,7 +204,7 @@ void cleanup_dead_view_controls(screen& self)
         if (control == nullptr || !control->dead())
             continue;
         if (respawn_keepalive && control->myguy != nullptr &&
-            og::sim::ctf_pending_player_respawn(world.ctf,
+            og::sim::ctf_pending_player_respawn(world.respawn,
                                                 control->entity_id()))
         {
             continue;

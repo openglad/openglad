@@ -461,14 +461,11 @@ public:
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     og::sim::CtfState ctf;
-    // The respawn engine's handle on its own state. Storage still lives
-    // inside `ctf` (RespawnState is CtfState's base — see respawn_state.h),
-    // so snapshot v9 capture and every existing world.ctf.respawn_queue
-    // reader keep their bytes and spellings; engine code and scripted modes
-    // read/write through this alias. Safe as a reference member: GameWorld
-    // is neither copyable nor movable. The physical split lands with the
-    // CTF retirement + snapshot v10.
-    og::sim::RespawnState& respawn = ctf;
+    // The respawn engine's own state (queue, timers, rotation serial, team
+    // anchor arrays). Physically split off CtfState: CTF, classic, and
+    // scripted modes all read/write this SAME storage, and the snapshot
+    // carries it as its own block.
+    og::sim::RespawnState respawn;
     // Scripted-mode (TYPE_SCRIPTED) match state. Reset at level load beside
     // `ctf`; carried across the LevelRuntimeData world handoff. Not yet in
     // WorldSnapshot (the coordinated bump lands with the CTF retirement).

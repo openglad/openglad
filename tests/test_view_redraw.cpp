@@ -512,7 +512,7 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
     world.respawn_mode = og::sim::kRespawnModeHeroes;
     world.type = 0;
     world.ctf = {};
-    world.ctf.respawn_ticks = 120;
+    world.respawn.respawn_ticks = 120;
 
     og::sim::CtfRespawnEntry entry;
     entry.kind = 0;
@@ -522,7 +522,7 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
     entry.x = 160;
     entry.y = 176;
     entry.floor = 1;
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.push_back(entry);
     vs->control = control;
 
     ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));

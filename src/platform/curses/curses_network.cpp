@@ -481,7 +481,7 @@ void maintain_curses_follow(CursesFollowState& follow,
             const walker* w = up.get();
             if (w && w->dead() && w->myguy != nullptr &&
                 w->user() == static_cast<int>(local_player_index) &&
-                og::sim::ctf_pending_player_respawn(mirror.ctf,
+                og::sim::ctf_pending_player_respawn(mirror.respawn,
                                                     w->entity_id())) {
                 follow = {};
                 return;

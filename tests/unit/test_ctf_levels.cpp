@@ -323,7 +323,7 @@ TEST_F(CtfCampaignTest, first_blood_bot_match_smoke)
                 flag_left_home = true;
             }
         }
-        if (!world.ctf.respawn_queue.empty())
+        if (!world.respawn.respawn_queue.empty())
             respawn_seen = true;
     }
 

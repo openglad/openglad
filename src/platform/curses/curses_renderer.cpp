@@ -375,7 +375,7 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                         break;
                     }
                 }
-                for (const auto& entry : world.ctf.respawn_queue) {
+                for (const auto& entry : world.respawn.respawn_queue) {
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
                         line1 += "  RESPAWN " + std::to_string(

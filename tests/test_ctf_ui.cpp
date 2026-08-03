@@ -370,8 +370,8 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
     unrelated.team = 1;
     unrelated.ticks_left = 1;
     unrelated.walker_entity_id = control->entity_id() + 1;
-    s->world().ctf.respawn_queue.push_back(unrelated);
-    s->world().ctf.respawn_queue.push_back(entry);
+    s->world().respawn.respawn_queue.push_back(unrelated);
+    s->world().respawn.respawn_queue.push_back(entry);
 
     const int lm = v->xloc;
     const int tm = v->yloc;
@@ -382,7 +382,7 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
         << "a dead control with a queued revive should see RESPAWN IN <s>";
 
     // Without a queue entry the dead viewport stays blank.
-    s->world().ctf.respawn_queue.clear();
+    s->world().respawn.respawn_queue.clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
@@ -425,8 +425,8 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
     entry.team = 0;
     entry.ticks_left = 60;
     entry.walker_entity_id = control->entity_id();
-    world.ctf.respawn_queue.clear();
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.clear();
+    world.respawn.respawn_queue.push_back(entry);
 
     const int lm = v->xloc;
     const int tm = v->yloc;
@@ -475,7 +475,7 @@ TEST(CtfUi, dead_pending_respawn_control_survives_cleanup_and_shows_countdown)
     entry.team = 0;
     entry.ticks_left = 60;
     entry.walker_entity_id = control->entity_id();
-    s->world().ctf.respawn_queue.push_back(entry);
+    s->world().respawn.respawn_queue.push_back(entry);
 
     // The cleanup runs at the head of every dispatched event batch.
     const og::sim::SimEventBatch empty_batch;
@@ -493,13 +493,13 @@ TEST(CtfUi, dead_pending_respawn_control_survives_cleanup_and_shows_countdown)
         << "the retained dead control should render RESPAWN IN <s>";
 
     // Entry gone (live-duplicate cancel): the cleanup nulls it again.
-    s->world().ctf.respawn_queue.clear();
+    s->world().respawn.respawn_queue.clear();
     ASSERT_TRUE(s->dispatch_sim_event_batch(empty_batch));
     EXPECT_EQ(nullptr, v->control)
         << "without a pending entry a dead control must still be nulled";
 
     // Inactive CTF: classic behavior, dead controls always nulled.
-    s->world().ctf.respawn_queue.push_back(entry);
+    s->world().respawn.respawn_queue.push_back(entry);
     s->world().ctf.active = false;
     v->control = control.get();
     ASSERT_TRUE(s->dispatch_sim_event_batch(empty_batch));

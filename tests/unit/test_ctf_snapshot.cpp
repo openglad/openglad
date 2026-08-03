@@ -119,16 +119,17 @@ struct CtfWorld : TestGameWorld
 void populate_full_ctf_state(GameWorld& world)
 {
     og::sim::CtfState& ctf = world.ctf;
+    og::sim::RespawnState& respawn = world.respawn;
     ctf.active = true;
     ctf.init_attempted = true;
     ctf.team_count = 4;
     ctf.capture_limit = 7;
-    ctf.respawn_ticks = 90;
+    respawn.respawn_ticks = 90;
     ctf.flag_return_ticks = 240;
     ctf.time_limit_ticks = 7200;
     ctf.winner_team = 2;
     ctf.winner_is_player = true;
-    ctf.respawn_serial = 13;
+    respawn.respawn_serial = 13;
     for (int t = 0; t < 4; ++t)
     {
         ctf.captures[t] = static_cast<std::uint16_t>(10 + t);
@@ -145,11 +146,11 @@ void populate_full_ctf_state(GameWorld& world)
         f.flag_entity_id = static_cast<std::uint32_t>(200 + t);
         f.present = true;
 
-        ctf.anchor_count[t] = og::sim::kCtfMaxAnchorsPerTeam;
+        respawn.anchor_count[t] = og::sim::kCtfMaxAnchorsPerTeam;
         for (int i = 0; i < og::sim::kCtfMaxAnchorsPerTeam; ++i)
         {
-            ctf.anchor_x[t][i] = static_cast<std::int16_t>(t * 100 + i + 1);
-            ctf.anchor_y[t][i] = static_cast<std::int16_t>(t * 100 + i + 2);
+            respawn.anchor_x[t][i] = static_cast<std::int16_t>(t * 100 + i + 1);
+            respawn.anchor_y[t][i] = static_cast<std::int16_t>(t * 100 + i + 2);
         }
     }
     ctf.cp_count = og::sim::kCtfMaxControlPoints;
@@ -177,7 +178,7 @@ void populate_full_ctf_state(GameWorld& world)
         entry.x = static_cast<std::int16_t>(500 + i);
         entry.y = static_cast<std::int16_t>(600 + i);
         entry.floor = static_cast<std::uint8_t>(i % 3);
-        ctf.respawn_queue.push_back(entry);
+        respawn.respawn_queue.push_back(entry);
     }
     world.ctf_requested_team_count = 4;
     world.ctf_requested_capture_limit = 9;
@@ -192,16 +193,17 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
                                    const GameWorld& world)
 {
     const og::sim::CtfState& ctf = world.ctf;
+    const og::sim::RespawnState& respawn = world.respawn;
     EXPECT_EQ(ctf.active, snapshot.ctf_active);
     EXPECT_EQ(ctf.init_attempted, snapshot.ctf_init_attempted);
     EXPECT_EQ(ctf.team_count, snapshot.ctf_team_count);
     EXPECT_EQ(ctf.capture_limit, snapshot.ctf_capture_limit);
-    EXPECT_EQ(ctf.respawn_ticks, snapshot.ctf_respawn_ticks);
+    EXPECT_EQ(respawn.respawn_ticks, snapshot.ctf_respawn_ticks);
     EXPECT_EQ(ctf.flag_return_ticks, snapshot.ctf_flag_return_ticks);
     EXPECT_EQ(ctf.time_limit_ticks, snapshot.ctf_time_limit_ticks);
     EXPECT_EQ(ctf.winner_team, snapshot.ctf_winner_team);
     EXPECT_EQ(ctf.winner_is_player, snapshot.ctf_winner_is_player);
-    EXPECT_EQ(ctf.respawn_serial, snapshot.ctf_respawn_serial);
+    EXPECT_EQ(respawn.respawn_serial, snapshot.ctf_respawn_serial);
     for (int t = 0; t < 4; ++t)
     {
         EXPECT_EQ(ctf.captures[t], snapshot.ctf_captures[t]) << "team " << t;
@@ -219,12 +221,12 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
         EXPECT_EQ(expected.flag_entity_id, actual.flag_entity_id) << "flag " << t;
         EXPECT_EQ(expected.present, actual.present) << "flag " << t;
 
-        EXPECT_EQ(ctf.anchor_count[t], snapshot.ctf_anchor_count[t]) << "team " << t;
-        for (int i = 0; i < ctf.anchor_count[t]; ++i)
+        EXPECT_EQ(respawn.anchor_count[t], snapshot.ctf_anchor_count[t]) << "team " << t;
+        for (int i = 0; i < respawn.anchor_count[t]; ++i)
         {
-            EXPECT_EQ(ctf.anchor_x[t][i], snapshot.ctf_anchor_x[t][i])
+            EXPECT_EQ(respawn.anchor_x[t][i], snapshot.ctf_anchor_x[t][i])
                 << "anchor " << t << "/" << i;
-            EXPECT_EQ(ctf.anchor_y[t][i], snapshot.ctf_anchor_y[t][i])
+            EXPECT_EQ(respawn.anchor_y[t][i], snapshot.ctf_anchor_y[t][i])
                 << "anchor " << t << "/" << i;
         }
     }
@@ -242,10 +244,10 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
         EXPECT_EQ(expected.entity_id, actual.entity_id) << "cp " << i;
         EXPECT_EQ(expected.next_pulse_tick, actual.next_pulse_tick) << "cp " << i;
     }
-    ASSERT_EQ(ctf.respawn_queue.size(), snapshot.ctf_respawn_queue.size());
-    for (std::size_t i = 0; i < ctf.respawn_queue.size(); ++i)
+    ASSERT_EQ(respawn.respawn_queue.size(), snapshot.ctf_respawn_queue.size());
+    for (std::size_t i = 0; i < respawn.respawn_queue.size(); ++i)
     {
-        const og::sim::CtfRespawnEntry& expected = ctf.respawn_queue[i];
+        const og::sim::CtfRespawnEntry& expected = respawn.respawn_queue[i];
         const og::sim::CtfRespawnEntry& actual = snapshot.ctf_respawn_queue[i];
         EXPECT_EQ(expected.kind, actual.kind) << "entry " << i;
         EXPECT_EQ(expected.team, actual.team) << "entry " << i;
@@ -433,9 +435,9 @@ TEST(CtfSnapshot, apply_clears_stale_ctf_state_from_default_snapshot)
     og::sim::apply_snapshot(target.world(), decoded);
     EXPECT_FALSE(target.world().ctf.active);
     EXPECT_FALSE(target.world().ctf.init_attempted);
-    EXPECT_TRUE(target.world().ctf.respawn_queue.empty());
+    EXPECT_TRUE(target.world().respawn.respawn_queue.empty());
     EXPECT_EQ(0, target.world().ctf.cp_count);
-    EXPECT_EQ(0, target.world().ctf.anchor_count[0]);
+    EXPECT_EQ(0, target.world().respawn.anchor_count[0]);
     EXPECT_EQ(0, target.world().ctf.captures[2]);
     EXPECT_EQ(-1, target.world().ctf.winner_team);
     EXPECT_EQ(0, target.world().ctf_requested_team_count);
@@ -543,9 +545,9 @@ TEST(CtfSnapshot, apply_clamps_out_of_cap_counts_from_crafted_snapshots)
     CtfWorld target;
     og::sim::apply_snapshot(target.world(), snapshot);
     EXPECT_EQ(og::sim::kCtfMaxControlPoints, target.world().ctf.cp_count);
-    EXPECT_EQ(og::sim::kCtfMaxAnchorsPerTeam, target.world().ctf.anchor_count[1]);
+    EXPECT_EQ(og::sim::kCtfMaxAnchorsPerTeam, target.world().respawn.anchor_count[1]);
     EXPECT_EQ(static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries),
-              target.world().ctf.respawn_queue.size());
+              target.world().respawn.respawn_queue.size());
 }
 
 // --- Snapshot-restore equivalence -------------------------------------------
@@ -597,8 +599,8 @@ void run_equivalence_window_one(CtfWorld& fx, EquivalenceActors& actors)
     actors.runner->set_dead(1);
     fx.tick(10); // tick 120: flag dropped, player respawn entry still pending
     ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state);
-    ASSERT_EQ(1u, fx.world().ctf.respawn_queue.size());
-    ASSERT_EQ(0, fx.world().ctf.respawn_queue.front().kind);
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size());
+    ASSERT_EQ(0, fx.world().respawn.respawn_queue.front().kind);
 }
 
 // Snapshots intentionally do not carry queued commands or computed paths;
@@ -651,7 +653,7 @@ TEST(CtfSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
             og::sim::capture_keyframe_snapshot(original.world()));
 
         original.tick(120); // tick 240: player respawn fires inside this window
-        ASSERT_TRUE(original.world().ctf.respawn_queue.empty());
+        ASSERT_TRUE(original.world().respawn.respawn_queue.empty());
         ASSERT_FALSE(actors.runner->dead());
         uninterrupted_end = og::sim::serialize_snapshot(
             og::sim::capture_keyframe_snapshot(original.world()));
@@ -663,10 +665,10 @@ TEST(CtfSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
     og::sim::apply_snapshot(restored.world(), mid_snapshot);
     ASSERT_TRUE(restored.world().ctf.active);
     ASSERT_TRUE(restored.world().ctf.init_attempted);
-    ASSERT_EQ(1u, restored.world().ctf.respawn_queue.size());
+    ASSERT_EQ(1u, restored.world().respawn.respawn_queue.size());
 
     restored.tick(120);
-    ASSERT_TRUE(restored.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(restored.world().respawn.respawn_queue.empty());
     const std::vector<std::uint8_t> restored_end = og::sim::serialize_snapshot(
         og::sim::capture_keyframe_snapshot(restored.world()));
 

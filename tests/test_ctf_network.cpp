@@ -228,8 +228,8 @@ TEST(CtfNetwork, two_client_match_converges_through_full_lifecycle)
         EXPECT_TRUE(client.ctf.init_attempted) << "client " << index;
         EXPECT_TRUE(client.ctf.flags[0].present) << "client " << index;
         EXPECT_TRUE(client.ctf.flags[1].present) << "client " << index;
-        EXPECT_EQ(8, client.ctf.respawn_ticks) << "client " << index;
-        EXPECT_GE(client.ctf.anchor_count[0], 1) << "client " << index;
+        EXPECT_EQ(8, client.respawn.respawn_ticks) << "client " << index;
+        EXPECT_GE(client.respawn.anchor_count[0], 1) << "client " << index;
     }
 
     // A carried flag replicates: walk the bound control onto the enemy flag.
@@ -253,14 +253,14 @@ TEST(CtfNetwork, two_client_match_converges_through_full_lifecycle)
     // track the pending entry and the respawned replacement walker.
     fixture.with_server_context([&] { runner->set_dead(1); });
     fixture.step_ticks(2);
-    ASSERT_FALSE(fixture.server_world().ctf.respawn_queue.empty());
+    ASSERT_FALSE(fixture.server_world().respawn.respawn_queue.empty());
     fixture.expect_clients_match_server();
-    EXPECT_FALSE(fixture.client_world(0).ctf.respawn_queue.empty());
+    EXPECT_FALSE(fixture.client_world(0).respawn.respawn_queue.empty());
     EXPECT_NE(og::sim::CtfFlagState::Carried,
               fixture.client_world(0).ctf.flags[1].state);
 
     fixture.step_ticks(12);
-    ASSERT_TRUE(fixture.server_world().ctf.respawn_queue.empty())
+    ASSERT_TRUE(fixture.server_world().respawn.respawn_queue.empty())
         << "respawn should have fired within the configured 8 ticks";
     fixture.expect_clients_match_server();
 
@@ -304,8 +304,8 @@ TEST(CtfNetwork, four_client_match_state_replicates)
         EXPECT_TRUE(client.ctf.active) << "client " << index;
         EXPECT_EQ(fixture.server_world().ctf.team_count, client.ctf.team_count)
             << "client " << index;
-        EXPECT_EQ(fixture.server_world().ctf.respawn_serial,
-                  client.ctf.respawn_serial)
+        EXPECT_EQ(fixture.server_world().respawn.respawn_serial,
+                  client.respawn.respawn_serial)
             << "client " << index;
     }
 }
@@ -338,7 +338,7 @@ TEST(CtfNetwork, team_wipe_is_suppressed_during_ctf_match)
         << "an active CTF match must keep ticking through a team wipe";
     EXPECT_FALSE(fixture.server_world().game_ended);
     EXPECT_EQ(0, fixture.server_world().ending);
-    EXPECT_FALSE(fixture.server_world().ctf.respawn_queue.empty())
+    EXPECT_FALSE(fixture.server_world().respawn.respawn_queue.empty())
         << "the wiped walkers should be waiting on the respawn queue";
     fixture.expect_clients_match_server();
     EXPECT_FALSE(fixture.client_world(0).game_ended);
@@ -403,7 +403,7 @@ TEST(CtfNetwork, solo_team_player_retains_control_through_respawn)
     fixture.with_server_context([&] { player->set_dead(1); });
     fixture.step_ticks(2);
     ASSERT_TRUE(og::sim::ctf_pending_player_respawn(
-        fixture.server_world().ctf, player_id))
+        fixture.server_world().respawn, player_id))
         << "the death scan should schedule the player corpse";
     ASSERT_EQ(player, fixture.server_control(0));
     ASSERT_EQ(player_id, fixture.client(0).controlled_entity_ids()[0]);

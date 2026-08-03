@@ -193,8 +193,8 @@ TEST(CtfRespawn, player_corpse_revives_in_place_with_control_preserved)
 
     arena.kill(runner);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
-    const og::sim::CtfRespawnEntry& entry = arena.world().ctf.respawn_queue[0];
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
+    const og::sim::CtfRespawnEntry& entry = arena.world().respawn.respawn_queue[0];
     ASSERT_EQ(0, entry.kind);
     ASSERT_EQ(corpse_id, entry.walker_entity_id);
     ASSERT_EQ(6, entry.ticks_left);
@@ -213,7 +213,7 @@ TEST(CtfRespawn, player_corpse_revives_in_place_with_control_preserved)
     ASSERT_EQ(ACT_CONTROL, runner->act_type());
     ASSERT_EQ(128, runner->xpos());
     ASSERT_EQ(128, runner->ypos());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(CtfRespawn, user_conflict_demotes_revived_walker_to_ai)
@@ -251,11 +251,11 @@ TEST(CtfRespawn, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
 
     arena.kill(bot);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
-    ASSERT_EQ(1, arena.world().ctf.respawn_queue[0].kind);
-    ASSERT_EQ(FAMILY_ARCHER, arena.world().ctf.respawn_queue[0].family);
-    ASSERT_EQ(2, arena.world().ctf.respawn_queue[0].level);
-    ASSERT_EQ(1, arena.world().ctf.respawn_queue[0].team);
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
+    ASSERT_EQ(1, arena.world().respawn.respawn_queue[0].kind);
+    ASSERT_EQ(FAMILY_ARCHER, arena.world().respawn.respawn_queue[0].family);
+    ASSERT_EQ(2, arena.world().respawn.respawn_queue[0].level);
+    ASSERT_EQ(1, arena.world().respawn.respawn_queue[0].team);
     ASSERT_FALSE(any_alive_with(arena.world(), FAMILY_ARCHER, 1));
 
     arena.fx.tick(6);
@@ -266,7 +266,7 @@ TEST(CtfRespawn, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
     ASSERT_EQ(255, fresh->real_team_num());
     ASSERT_EQ(512, fresh->xpos());
     ASSERT_EQ(832, fresh->ypos());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(CtfRespawn, anchors_rotate_and_impassable_anchors_are_skipped)
@@ -335,7 +335,7 @@ TEST(CtfRespawn, live_duplicate_character_cancels_the_revive)
 
     ASSERT_TRUE(runner->dead()) << "duplicate character must cancel the revive";
     ASSERT_FALSE(duplicate->dead());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(CtfRespawn, owned_walkers_are_left_to_their_generator)
@@ -347,7 +347,7 @@ TEST(CtfRespawn, owned_walkers_are_left_to_their_generator)
     summon->set_dead(1);
     arena.fx.tick();
 
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty())
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
         << "walkers with an owner are not CTF-respawned";
 }
 
@@ -360,7 +360,7 @@ TEST(CtfRespawn, match_end_revive_restores_all_player_corpses)
 
     arena.kill(runner);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
     ASSERT_TRUE(runner->dead());
 
     arena.world().ctf.captures[1] = arena.world().ctf.capture_limit;
@@ -370,7 +370,7 @@ TEST(CtfRespawn, match_end_revive_restores_all_player_corpses)
     ASSERT_EQ(1, arena.world().ctf.winner_team);
     ASSERT_FALSE(runner->dead())
         << "match end must revive pending player corpses before the merge";
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(CtfRespawn, queue_cap_evicts_oldest_ai_entry_for_a_player)
@@ -380,7 +380,7 @@ TEST(CtfRespawn, queue_cap_evicts_oldest_ai_entry_for_a_player)
     runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     runner->myguy->id = 41;
 
-    auto& queue = arena.world().ctf.respawn_queue;
+    auto& queue = arena.world().respawn.respawn_queue;
     for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
     {
         og::sim::CtfRespawnEntry filler;
@@ -415,7 +415,7 @@ TEST(CtfRespawn, queue_full_of_players_drops_incoming_ai_entry)
     RespawnArena arena;
     walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
 
-    auto& queue = arena.world().ctf.respawn_queue;
+    auto& queue = arena.world().respawn.respawn_queue;
     for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
     {
         og::sim::CtfRespawnEntry filler;
@@ -451,12 +451,12 @@ TEST(CtfRespawn, owning_a_control_point_doubles_the_respawn_decrement)
     friendly_bot->set_dead(1);
     enemy_bot->set_dead(1);
     arena.fx.tick();
-    ASSERT_EQ(2u, arena.world().ctf.respawn_queue.size());
-    ASSERT_EQ(6, arena.world().ctf.respawn_queue[0].ticks_left);
-    ASSERT_EQ(6, arena.world().ctf.respawn_queue[1].ticks_left);
+    ASSERT_EQ(2u, arena.world().respawn.respawn_queue.size());
+    ASSERT_EQ(6, arena.world().respawn.respawn_queue[0].ticks_left);
+    ASSERT_EQ(6, arena.world().respawn.respawn_queue[1].ticks_left);
 
     arena.fx.tick();
-    const auto& queue = arena.world().ctf.respawn_queue;
+    const auto& queue = arena.world().respawn.respawn_queue;
     ASSERT_EQ(2u, queue.size());
     int team0_left = -1;
     int team1_left = -1;

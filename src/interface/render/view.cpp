@@ -264,7 +264,7 @@ std::optional<ClassicRespawnCameraFocus> classic_respawn_camera_focus(
         return std::nullopt;
     }
 
-    for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
+    for (const og::sim::CtfRespawnEntry& entry : world.respawn.respawn_queue)
     {
         if (entry.kind != 0 ||
             entry.walker_entity_id != control->entity_id() ||

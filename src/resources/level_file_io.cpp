@@ -222,6 +222,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         world.type = 0;
     }
     world.ctf = {};
+    world.respawn = {};
     world.mode = {};
 
     if (version >= 8)

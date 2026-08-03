@@ -199,7 +199,7 @@ WorldDigest digest_world(GameWorld& world)
     d.tick_count = world.tick_count_;
     d.ctf_active = world.ctf.active;
     d.ctf_init_attempted = world.ctf.init_attempted;
-    d.respawn_queue_size = world.ctf.respawn_queue.size();
+    d.respawn_queue_size = world.respawn.respawn_queue.size();
     for (int t = 0; t < 4; ++t)
         d.captures[t] = world.ctf.captures[t];
     for (const auto& uptr : world.oblist)
@@ -300,8 +300,8 @@ TEST(CtfCore, lazy_init_activates_two_team_map)
     ASSERT_EQ(flag0->entity_id(), ctf.flags[0].flag_entity_id);
     ASSERT_EQ(flag1->entity_id(), ctf.flags[1].flag_entity_id);
     ASSERT_EQ(og::sim::kCtfDefaultCaptureLimit, ctf.capture_limit);
-    ASSERT_EQ(1, ctf.anchor_count[0]);
-    ASSERT_EQ(1, ctf.anchor_count[1]);
+    ASSERT_EQ(1, fx.world().respawn.anchor_count[0]);
+    ASSERT_EQ(1, fx.world().respawn.anchor_count[1]);
     ASSERT_TRUE(has_notification(fx.events, "CAPTURE THE FLAG! TO 3"));
 }
 
@@ -1643,7 +1643,7 @@ TEST(CtfCore, strip_scenario_troops_removes_roster_team_authored_entities)
 
     // The init-stripped corpses must be invisible to run_death_scan: no
     // kind-1 (bot) respawn entry may exist for the roster team.
-    for (const auto& entry : ctf.respawn_queue)
+    for (const auto& entry : fx.world().respawn.respawn_queue)
     {
         EXPECT_FALSE(entry.kind == 1 && entry.team == 0)
             << "init-stripped troop entered the bot respawn queue";
@@ -1663,7 +1663,7 @@ TEST(CtfCore, strip_scenario_troops_removes_roster_team_authored_entities)
     EXPECT_EQ(1, alive_after[0])
         << "stripped troops must stay gone past the respawn window";
     EXPECT_FALSE(actors.hero->dead());
-    for (const auto& entry : ctf.respawn_queue)
+    for (const auto& entry : fx.world().respawn.respawn_queue)
     {
         EXPECT_FALSE(entry.kind == 1 && entry.team == 0)
             << "bot respawn queued for the roster team after the window";

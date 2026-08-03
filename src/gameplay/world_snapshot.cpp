@@ -2334,24 +2334,26 @@ void capture_ctf_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot)
         world.ctf_requested_strip_scenario_troops;
 }
 
-// Rebuilds the world's CtfState from the snapshot. Constructing a fresh state
-// zeroes everything past the carried counts, mirroring capture normalization,
-// and the counts are clamped so a hand-crafted snapshot cannot overflow.
+// Rebuilds the world's CtfState + RespawnState from the snapshot.
+// Constructing fresh states zeroes everything past the carried counts,
+// mirroring capture normalization, and the counts are clamped so a
+// hand-crafted snapshot cannot overflow.
 void apply_ctf_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
 {
     og::sim::CtfState ctf;
+    og::sim::RespawnState respawn;
     ctf.active = snapshot.ctf_active;
     ctf.init_attempted = snapshot.ctf_init_attempted;
     ctf.team_count = snapshot.ctf_team_count;
     ctf.capture_limit = snapshot.ctf_capture_limit;
-    ctf.respawn_ticks = snapshot.ctf_respawn_ticks;
+    respawn.respawn_ticks = snapshot.ctf_respawn_ticks;
     ctf.flag_return_ticks = snapshot.ctf_flag_return_ticks;
     ctf.time_limit_ticks = snapshot.ctf_time_limit_ticks;
     ctf.winner_team = snapshot.ctf_winner_team;
     ctf.winner_is_player = snapshot.ctf_winner_is_player;
     std::copy(std::begin(snapshot.ctf_captures), std::end(snapshot.ctf_captures),
               std::begin(ctf.captures));
-    ctf.respawn_serial = snapshot.ctf_respawn_serial;
+    respawn.respawn_serial = snapshot.ctf_respawn_serial;
     std::copy(std::begin(snapshot.ctf_team_active),
               std::end(snapshot.ctf_team_active),
               std::begin(ctf.team_active));
@@ -2365,16 +2367,16 @@ void apply_ctf_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
 
     for (int team = 0; team < 4; ++team)
     {
-        ctf.anchor_count[team] = std::min<std::uint8_t>(
+        respawn.anchor_count[team] = std::min<std::uint8_t>(
             snapshot.ctf_anchor_count[team], og::sim::kCtfMaxAnchorsPerTeam);
-        for (int i = 0; i < ctf.anchor_count[team]; ++i)
+        for (int i = 0; i < respawn.anchor_count[team]; ++i)
         {
-            ctf.anchor_x[team][i] = snapshot.ctf_anchor_x[team][i];
-            ctf.anchor_y[team][i] = snapshot.ctf_anchor_y[team][i];
+            respawn.anchor_x[team][i] = snapshot.ctf_anchor_x[team][i];
+            respawn.anchor_y[team][i] = snapshot.ctf_anchor_y[team][i];
         }
     }
 
-    ctf.respawn_queue.assign(
+    respawn.respawn_queue.assign(
         snapshot.ctf_respawn_queue.begin(),
         snapshot.ctf_respawn_queue.begin() +
             static_cast<std::ptrdiff_t>(std::min<std::size_t>(
@@ -2382,6 +2384,7 @@ void apply_ctf_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
                 og::sim::kCtfMaxRespawnEntries)));
 
     world.ctf = std::move(ctf);
+    world.respawn = std::move(respawn);
     world.ctf_requested_team_count = snapshot.ctf_requested_team_count;
     world.ctf_requested_capture_limit = snapshot.ctf_requested_capture_limit;
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;

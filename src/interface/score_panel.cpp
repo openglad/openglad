@@ -103,7 +103,7 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
     if (og::sim::classic_respawn_active(world))
     {
         const unsigned char viewer_team = viewer->team_num();
-        for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
+        for (const og::sim::CtfRespawnEntry& entry : world.respawn.respawn_queue)
         {
             // Viewer-relative mirror of the engine's strict team-color rule.
             // entry.team is the corpse's true (charm-broken) team recorded
@@ -227,12 +227,13 @@ static void draw_respawn_countdown(screen* s, walker* control,
     if (control == nullptr || !control->dead())
         return;
 
-    const og::sim::CtfState& ctf = s->world_.ctf;
-    for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
+    for (const og::sim::CtfRespawnEntry& entry :
+         s->world_.respawn.respawn_queue)
     {
         if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
             continue;
-        const int seconds = og::sim::ctf_respawn_seconds_left(ctf, entry);
+        const int seconds =
+            og::sim::ctf_respawn_seconds_left(s->world_.ctf, entry);
         const std::string message = std::format("RESPAWN IN {}", seconds);
         s->text_normal.write_xy(lm + 4, tm + 12, message.c_str(),
                                 static_cast<unsigned char>(YELLOW),

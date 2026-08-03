@@ -268,12 +268,12 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     entry.kind = 0;
     entry.ticks_left = 36; // 3 s at 12 ticks/s
     entry.walker_entity_id = id;
-    ctf.respawn_queue.push_back(entry);
+    hw.world().respawn.respawn_queue.push_back(entry);
     renderer.draw(term, hw.world(), id);
     row1 = term.text_row(1);
     EXPECT_NE(row1.find("RESPAWN 3"), std::string::npos)
         << "respawn countdown expected: " << row1;
-    ctf.respawn_queue.clear();
+    hw.world().respawn.respawn_queue.clear();
 
     // A contested waypoint shows the capture meter, riding the CTF group
     // (after Caps, before Sp:/Score) so narrow terminals clip Score first.
@@ -334,9 +334,9 @@ TEST(CursesCtf, two_client_round_replicates_ctf_state_to_both_mirrors)
     EXPECT_TRUE(host_mirror.ctf.flags[1].present);
     EXPECT_TRUE(join_mirror.ctf.flags[0].present);
     EXPECT_TRUE(join_mirror.ctf.flags[1].present);
-    EXPECT_EQ(24, host_mirror.ctf.respawn_ticks)
+    EXPECT_EQ(24, host_mirror.respawn.respawn_ticks)
         << "the injected respawn config must replicate";
-    EXPECT_EQ(24, join_mirror.ctf.respawn_ticks);
+    EXPECT_EQ(24, join_mirror.respawn.respawn_ticks);
     for (int team = 0; team < 4; ++team) {
         EXPECT_EQ(host_mirror.ctf.captures[team], join_mirror.ctf.captures[team])
             << "capture counts must agree between mirrors (team " << team << ")";

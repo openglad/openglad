@@ -291,6 +291,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.respawn_mode = loaded_world.respawn_mode;
     dst.generator_rate = loaded_world.generator_rate;
     dst.ctf = std::move(loaded_world.ctf);
+    dst.respawn = std::move(loaded_world.respawn);
     dst.mode = loaded_world.mode;
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
@@ -641,6 +642,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->respawn_mode = old_world->respawn_mode;
         next_world->generator_rate = old_world->generator_rate;
         next_world->ctf = std::move(old_world->ctf);
+        next_world->respawn = std::move(old_world->respawn);
         next_world->mode = old_world->mode;
         next_world->current_scenario = old_world->current_scenario;
         next_world->completed_levels = old_world->completed_levels;
@@ -661,6 +663,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         old_world->withdraw_requested = false;
         old_world->withdraw_level = -1;
         old_world->ctf = og::sim::CtfState{};
+        old_world->respawn = og::sim::RespawnState{};
         old_world->mode = og::sim::ModeState{};
         old_world->mysmoother.reset();
         if (!old_world->myobmap)

@@ -662,7 +662,7 @@ int curses_network_testing_exercise_internal_helpers()
             mirror.type = static_cast<char>(
                 mirror.type | GameWorld::TYPE_CTF);
             mirror.ctf.active = true;
-            mirror.ctf.respawn_queue.push_back(
+            mirror.respawn.respawn_queue.push_back(
                 og::sim::CtfRespawnEntry{
                     .kind = 0,
                     .walker_entity_id =
