@@ -271,13 +271,13 @@ async function openWebDisplayOptions(page) {
   for (let i = 0; i < 3; ++i) {
     await pressPickerKey(page, 's');
   }
-  await pressPickerKey(page, 'Control', 300);
+  await pressPickerKey(page, 'z', 300);
 
   // GAME SETTINGS starts on BACK; DISPLAY is two rows below it. On web the
   // mode/resolution rows are hidden, so DISPLAY jumps BACK -> overscan -> Zoom.
   await pressPickerKey(page, 's');
   await pressPickerKey(page, 's');
-  await pressPickerKey(page, 'Control', 300);
+  await pressPickerKey(page, 'z', 300);
   await pressPickerKey(page, 's');
   await pressPickerKey(page, 's');
 }
@@ -748,7 +748,7 @@ test.describe('Game Interaction', () => {
     // Walk 1.0 to the deepest step that fits this browser's CSS-logical
     // window, world-surface budget, and renderer texture limit.
     for (let i = 0; i < 10 - scaleContract.minimumZoomSteps; ++i) {
-      await pressPickerKey(page, 'Control');
+      await pressPickerKey(page, 'z');
     }
     const deepestZoomLabel = await getCanvasGameRegionScreenshot(
       page,
@@ -844,7 +844,7 @@ test.describe('Game Interaction', () => {
       82,
       9,
     );
-    await pressPickerKey(page, 'Control');
+    await pressPickerKey(page, 'z');
     const saiLabel = await getCanvasGameRegionScreenshot(page, 125, 130, 82, 9);
     expect(saiLabel.equals(defaultSmoothingLabel)).toBe(false);
 
@@ -852,7 +852,7 @@ test.describe('Game Interaction', () => {
     // fits both the CPU work budget and the renderer texture limit.
     await pressPickerKey(page, 'w');
     for (let i = 0; i < 10 - scaleContract.minimumSmartZoomSteps; ++i) {
-      await pressPickerKey(page, 'Control');
+      await pressPickerKey(page, 'z');
     }
     const smartZoomLabel = await getCanvasGameRegionScreenshot(
       page,
