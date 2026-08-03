@@ -195,14 +195,34 @@ constexpr std::array<int, 4> kDefaultControlModes = {
 // pin them against the real constants here.
 static_assert(og::input::kWebKeySlotFire == KEY_FIRE);
 static_assert(og::input::kWebKeySlotSpecial == KEY_SPECIAL);
+static_assert(og::input::kWebKeySlotYell == KEY_YELL);
+static_assert(og::input::kWebKeySlotLookup == KEY_LOOKUP);
 static_assert(og::input::kWebModeFourIndex == kModeFourIndex);
 static_assert(og::input::kWebModeEightIndex == kModeEightIndex);
 static_assert(og::input::kWebFourDirFireKey == KEYCODE_z);
 static_assert(og::input::kWebFourDirSpecialKey == KEYCODE_x);
-static_assert(og::input::kWebEightDirFireKey == KEYCODE_SPACE);
-static_assert(og::input::kWebEightDirSpecialKey == KEYCODE_LEFTBRACKET);
+static_assert(og::input::kWebEightDirFireKey == KEYCODE_s);
+static_assert(og::input::kWebEightDirYellKey == KEYCODE_v);
+static_assert(og::input::kWebEightDirLookupKey == KEYCODE_UNKNOWN);
 static_assert(og::input::kWebLegacyFireKey == KEYCODE_LCTRL);
 static_assert(og::input::kWebLegacySpecialKey == KEYCODE_LALT);
+static_assert(og::input::kWebLegacyEightDirYellKey == KEYCODE_s);
+static_assert(og::input::kWebLegacyEightDirLookupKey == KEYCODE_v);
+
+// The migration only ever rewrites a value still equal to the native factory
+// default, so pin those against the tables above: editing profile 0's native
+// keymap without revisiting the migration would silently leave it chasing a
+// value nobody has stored.
+static_assert(kDefaultFourDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
+static_assert(kDefaultFourDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
+static_assert(kDefaultEightDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
+static_assert(kDefaultEightDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
+static_assert(kDefaultEightDirKeys[0][KEY_YELL] ==
+              og::input::kWebLegacyEightDirYellKey);
+static_assert(kDefaultEightDirKeys[0][KEY_LOOKUP] ==
+              og::input::kWebLegacyEightDirLookupKey);
+// That S is free of every OTHER player's bindings — the substitution's whole
+// justification — is swept at runtime by the web collision-matrix test.
 
 int normalize_control_mode(int mode)
 {
@@ -383,13 +403,12 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
 {
     reset_default_player_controls();
 
-    // One-shot web-defaults migration (issue #144): a persisted FIRE/SPECIAL
-    // binding still equal to the old native factory default (LCtrl/LAlt)
-    // predates the browser-safe defaults, and on web the whole controls
-    // block is written back on every boot — so without this rewrite the new
-    // defaults would never reach a returning player. Version-keyed: once
-    // controls/web_default_keys_version is current, a deliberate LCtrl
-    // rebind is left alone forever.
+    // One-shot web-defaults migration (issue #144): a persisted binding still
+    // equal to profile 0's native factory value predates the browser-safe
+    // defaults, and on web the whole controls block is written back on every
+    // boot — so without this rewrite the new defaults would never reach a
+    // returning player. Version-keyed: once controls/web_default_keys_version
+    // is current, a deliberate LCtrl rebind is left alone forever.
     const bool migrate_web_defaults =
         web_mode &&
         parse_int_strict(
@@ -478,9 +497,9 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
 
         if (default_profile == 0)
         {
-            // Only the profile-0 seat carries the LCtrl/LAlt factory
-            // defaults; rewrite a stored value only while it still equals
-            // that old default (never a user's own choice).
+            // Only the profile-0 seat carries the factory layout the web
+            // defaults move; rewrite a stored value only while it still
+            // equals that old default (never a user's own choice).
             hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE] =
                 og::input::migrate_persisted_control_key(
                     hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE],
@@ -491,16 +510,24 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
                     hw().player_mode_keys[p][kModeFourIndex][KEY_SPECIAL],
                     KEYCODE_LALT, og::input::kWebFourDirSpecialKey,
                     migrate_web_defaults);
+            // 8-direction: FIRE takes S, so YELL moves to V and look-up (V
+            // natively) goes unbound. SPECIAL is deliberately absent — Left
+            // Alt is browser-safe and stays put.
             hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE] =
                 og::input::migrate_persisted_control_key(
                     hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE],
                     KEYCODE_LCTRL, og::input::kWebEightDirFireKey,
                     migrate_web_defaults);
-            hw().player_mode_keys[p][kModeEightIndex][KEY_SPECIAL] =
+            hw().player_mode_keys[p][kModeEightIndex][KEY_YELL] =
                 og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeEightIndex][KEY_SPECIAL],
-                    KEYCODE_LALT, og::input::kWebEightDirSpecialKey,
-                    migrate_web_defaults);
+                    hw().player_mode_keys[p][kModeEightIndex][KEY_YELL],
+                    og::input::kWebLegacyEightDirYellKey,
+                    og::input::kWebEightDirYellKey, migrate_web_defaults);
+            hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP] =
+                og::input::migrate_persisted_control_key(
+                    hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP],
+                    og::input::kWebLegacyEightDirLookupKey,
+                    og::input::kWebEightDirLookupKey, migrate_web_defaults);
         }
 
         hw().player_control_modes[p] = mode_str.empty()
