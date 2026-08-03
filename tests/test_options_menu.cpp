@@ -8,9 +8,13 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include <algorithm>
+#include <cstring>
+#include <vector>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -136,6 +140,8 @@ struct OptionsState {
     bool entered_fx[kFxScreenCount];
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
+    bool gore_sprite_followed_toggle;
+    bool gore_sprite_matches_cfg;
     bool cycled_zoom;
     bool cycled_smoothing;
     bool entered_display;
@@ -152,6 +158,24 @@ struct OptionsState {
     std::string zoom_label_when_unset;
     std::string smoothing_label_when_unset;
 };
+
+// blood.png is solid palette index 40 (the red); blood_friendly.png is drawn
+// from the grey/white indices instead. Whether the loader's live BLOOD sprite
+// carries index 40 is therefore an exact read of which variant is installed —
+// the check that fails whenever the gore setting is only applied at startup.
+static bool live_blood_is_gory()
+{
+    loader* game_loader = og::runtime::current_session->myscreen_->myloader;
+    if (game_loader == nullptr)
+        return false;
+    const PixieData& blood = game_loader->graphics[PIX(Order::Weapon, FAMILY_BLOOD)];
+    if (!blood.valid())
+        return false;
+    const std::size_t len =
+        static_cast<std::size_t>(blood.frames) * blood.w * blood.h;
+    return std::find(blood.data.get(), blood.data.get() + len,
+                     static_cast<unsigned char>(40)) != blood.data.get() + len;
+}
 
 // Click an FX-subscreen toggle and report whether its cfg key flipped.
 // Under machine load a single click can be dropped (the press is still held
@@ -547,11 +571,35 @@ static int options_injector(void* data)
             fprintf(stderr, "  [test] toggling %s effects\n", screen.opener_id);
             for (int t = 0; t < screen.toggle_count; ++t) {
                 const FxToggleSpec& toggle = screen.toggles[t];
+                const bool is_gore =
+                    std::strcmp(toggle.button_id, "toggle_gore") == 0;
+                bool blood_was_gory = false;
+                if (is_gore) {
+                    // Bring the loader in line with cfg first, so the click's
+                    // direction is known whatever earlier tests left behind.
+                    loader* game_loader =
+                        og::runtime::current_session->myscreen_->myloader;
+                    if (game_loader != nullptr)
+                        game_loader->sync_gore_graphics();
+                    blood_was_gory = live_blood_is_gory();
+                }
                 state->toggled_fx[s][t] = toggle.cycle
                     ? cycle_effect_and_check_lap(
                           toggle.button_id, toggle.category, toggle.key)
                     : toggle_effect_and_check_flip(
                           toggle.button_id, toggle.category, toggle.key);
+                if (is_gore && state->toggled_fx[s][t]) {
+                    // The click must repaint the live sprite, not just cfg.
+                    const Uint64 deadline = SDL_GetTicks() + 3000;
+                    while (live_blood_is_gory() == blood_was_gory &&
+                           SDL_GetTicks() < deadline) {
+                        SDL_Delay(50);
+                    }
+                    state->gore_sprite_followed_toggle =
+                        live_blood_is_gory() != blood_was_gory;
+                    state->gore_sprite_matches_cfg =
+                        live_blood_is_gory() == cfg.is_on("effects", "gore");
+                }
             }
 
             fprintf(stderr, "  [test] leaving %s subscreen\n", screen.opener_id);
@@ -803,6 +851,15 @@ TEST(OptionsMenu, options_menu) {
         ASSERT_TRUE(state.exited_fx[s])
             << "should have returned to main options via " << screen.back_id;
     }
+    // Issue #158: the gore row used to change nothing but a cfg key, so the
+    // blood sprite kept whatever variant the loader picked at startup until the
+    // next launch. Both halves have to move together.
+    EXPECT_TRUE(state.gore_sprite_followed_toggle)
+        << "clicking Gore must swap the live blood sprite, not just cfg "
+           "effects/gore (the toggle must not need a restart)";
+    EXPECT_TRUE(state.gore_sprite_matches_cfg)
+        << "after the click the installed blood sprite must match cfg "
+           "effects/gore";
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
     EXPECT_EQ("Zoom: 1.0x", state.zoom_label_when_unset)
         << "empty cfg (graphics, zoom) must fall back to 'Zoom: 1.0x' on the button face";

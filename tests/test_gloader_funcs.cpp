@@ -1,5 +1,6 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/button.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/gloader.h>
@@ -17,6 +18,7 @@ bool apply_sprite_sheet_setting();
 
 #include <algorithm>
 #include <cstddef>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -361,6 +363,152 @@ TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
         << "gore toggle should select distinct blood sprite data";
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
+}
+
+
+// ---------------------------------------------------------------------------
+// Live gore toggle (issue #158)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::vector<unsigned char> gore_pixels(const PixieData& pix)
+{
+    if (!pix.valid())
+        return {};
+    const std::size_t len =
+        static_cast<std::size_t>(pix.frames) * pix.w * pix.h;
+    return std::vector<unsigned char>(pix.data.get(), pix.data.get() + len);
+}
+
+} // namespace
+
+TEST(GloaderFuncs, gore_toggle_applies_without_reload)
+{
+    const std::string prev_gore = cfg.get_setting("effects", "gore");
+    const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
+    const int stain_idx = PIX(Order::Treasure, FAMILY_STAIN);
+
+    cfg.apply_setting("effects", "gore", "on");
+    loader live;
+    const std::vector<unsigned char> gory_blood = gore_pixels(live.graphics[blood_idx]);
+    const std::vector<unsigned char> gory_stain = gore_pixels(live.graphics[stain_idx]);
+    ASSERT_FALSE(gory_blood.empty());
+    ASSERT_FALSE(gory_stain.empty());
+
+    cfg.apply_setting("effects", "gore", "off");
+    loader reference_off;
+    const std::vector<unsigned char> friendly_blood =
+        gore_pixels(reference_off.graphics[blood_idx]);
+    const std::vector<unsigned char> friendly_stain =
+        gore_pixels(reference_off.graphics[stain_idx]);
+    ASSERT_NE(gory_blood, friendly_blood);
+    ASSERT_NE(gory_stain, friendly_stain);
+
+    // cfg already says "off"; the live loader must follow without a reload.
+    live.sync_gore_graphics();
+    EXPECT_EQ(friendly_blood, gore_pixels(live.graphics[blood_idx]))
+        << "gore=off must swap in the friendly blood sprite on the spot";
+    EXPECT_EQ(friendly_stain, gore_pixels(live.graphics[stain_idx]))
+        << "gore=off must swap in the friendly stain sprite on the spot";
+
+    cfg.apply_setting("effects", "gore", "on");
+    live.sync_gore_graphics();
+    EXPECT_EQ(gory_blood, gore_pixels(live.graphics[blood_idx]))
+        << "toggling back must restore the gory blood sprite";
+    EXPECT_EQ(gory_stain, gore_pixels(live.graphics[stain_idx]))
+        << "toggling back must restore the gory stain sprite";
+
+    cfg.apply_setting("effects", "gore", prev_gore);
+}
+
+TEST(GloaderFuncs, gore_swap_does_not_free_live_pixels)
+{
+    // pixieN caches a raw facings pointer into the loader's buffer, and menu
+    // buttons hold persistent pixies, so the toggle must never free anything.
+    // Under ci-asan this is a genuine use-after-free detector: an
+    // implementation built on reload_graphics() fails here.
+    const std::string prev_gore = cfg.get_setting("effects", "gore");
+
+    cfg.apply_setting("effects", "gore", "on");
+    loader live;
+    const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
+    ASSERT_TRUE(live.graphics[blood_idx].valid());
+
+    const unsigned char* held = live.graphics[blood_idx].data.get();
+    const std::size_t len = static_cast<std::size_t>(live.graphics[blood_idx].frames) *
+        live.graphics[blood_idx].w * live.graphics[blood_idx].h;
+    const std::vector<unsigned char> before(held, held + len);
+
+    cfg.apply_setting("effects", "gore", "off");
+    live.sync_gore_graphics();
+
+    ASSERT_NE(held, live.graphics[blood_idx].data.get())
+        << "the active slot should now hold the other variant's buffer";
+    const std::vector<unsigned char> after_through_held(held, held + len);
+    EXPECT_EQ(before, after_through_held)
+        << "the gory buffer must stay alive and unchanged behind the swap";
+
+    cfg.apply_setting("effects", "gore", prev_gore);
+}
+
+TEST(GloaderFuncs, gore_toggle_repoints_blood_already_on_the_ground)
+{
+    // The whole click, through the real ButtonAction handler: the loader swaps
+    // AND anything already splattered follows, so the change is visible without
+    // waiting for the next splat.
+    const std::string prev_gore = cfg.get_setting("effects", "gore");
+    loader* game_loader = og::runtime::current_session->myscreen_->myloader;
+    ASSERT_TRUE(game_loader != nullptr);
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
+
+    cfg.apply_setting("effects", "gore", "on");
+    game_loader->sync_gore_graphics();
+    const unsigned char* gory = game_loader->graphics[blood_idx].data.get();
+
+    walker* blood = world.add_ob(Order::Weapon, FAMILY_BLOOD);
+    ASSERT_TRUE(blood != nullptr);
+    blood->set_frame(0);
+    ASSERT_EQ(gory, blood->bmp_data())
+        << "a fresh splat should draw the gory sprite while gore is on";
+
+    vbutton gore_row(0, 0, 10, 10,
+                     static_cast<Sint32>(ButtonAction::ToggleGore), 0, "", 0);
+    gore_row.do_call(static_cast<Sint32>(ButtonAction::ToggleGore), 0);
+
+    EXPECT_FALSE(cfg.is_on("effects", "gore")) << "the click should flip the setting";
+    const unsigned char* friendly = game_loader->graphics[blood_idx].data.get();
+    ASSERT_NE(gory, friendly) << "the loader should have swapped variants";
+    blood->set_frame(0);
+    EXPECT_EQ(friendly, blood->bmp_data())
+        << "blood already on the ground must be re-pointed at the friendly sprite";
+
+    world.remove_ob(blood);
+    cfg.apply_setting("effects", "gore", prev_gore);
+    game_loader->sync_gore_graphics();
+}
+
+TEST(GloaderFuncs, gore_sync_is_a_no_op_when_the_setting_is_unchanged)
+{
+    const std::string prev_gore = cfg.get_setting("effects", "gore");
+
+    cfg.apply_setting("effects", "gore", "on");
+    loader live;
+    const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
+    const int stain_idx = PIX(Order::Treasure, FAMILY_STAIN);
+    const unsigned char* blood = live.graphics[blood_idx].data.get();
+    const unsigned char* stain = live.graphics[stain_idx].data.get();
+
+    live.sync_gore_graphics();
+    live.sync_gore_graphics();
+
+    EXPECT_EQ(blood, live.graphics[blood_idx].data.get())
+        << "syncing an unchanged setting must not swap the blood sprite";
+    EXPECT_EQ(stain, live.graphics[stain_idx].data.get())
+        << "syncing an unchanged setting must not swap the stain sprite";
+
+    cfg.apply_setting("effects", "gore", prev_gore);
 }
 
 

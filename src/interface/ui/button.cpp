@@ -24,6 +24,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -501,6 +503,44 @@ void toggle_effect(const std::string& category, const std::string& setting)
         config.apply_setting(category, setting, "on");
 }
 
+// Put effects/gore into force immediately. The setting picks between the gory
+// and friendly blood/stain sprites, and that choice used to be read exactly
+// once — in the loader constructor, long before any menu exists — so toggling
+// it did nothing until the next launch.
+//
+// The swap inside sync_gore_graphics() frees nothing, which is what makes this
+// callable from a menu handler: reload_graphics() would drop every sprite
+// buffer while on-screen buttons and any resident level's walkers still hold
+// raw pointers into them.
+static void apply_gore_setting_now()
+{
+    if (og::runtime::current_session == nullptr) return;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    if (scr == nullptr) return;
+    loader* const game_loader = scr->myloader;
+    if (game_loader == nullptr) return;
+
+    game_loader->sync_gore_graphics();
+
+    // Re-point anything already splattered on the floor. Both variants are the
+    // same size and frame count, so this only changes which pixels get blitted.
+    auto repoint = [game_loader](walker* w, int family) {
+        if (w == nullptr || static_cast<int>(w->family()) != family) return;
+        const PixieData* art =
+            game_loader->graphics_for(w->query_order(), w->family());
+        if (art == nullptr || !art->valid()) return;
+        const short current_frame = w->frame();
+        w->set_data(*art);
+        w->set_direct_frame(current_frame);
+    };
+
+    GameWorld& world = scr->world();
+    for (auto& entry : world.weaplist)
+        repoint(entry.get(), FAMILY_BLOOD);
+    for (auto& entry : world.fxlist)
+        repoint(entry.get(), FAMILY_STAIN);
+}
+
 // Retained for the reserved ToggleRenderingEngine action id. No current menu
 // exposes graphics/render; display creation migrates only a legacy sai/eagle
 // preference when graphics/smoothing is absent.
@@ -705,6 +745,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
+        apply_gore_setting_now();
         return REDRAW;
     case ButtonAction::ToggleShadows:
         toggle_effect("effects", "shadows");
