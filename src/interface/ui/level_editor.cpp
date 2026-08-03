@@ -495,11 +495,35 @@ public:
         }
     }
     
-    walker* get_object(LevelRuntimeData* /*level_data*/)
+    walker* get_object(LevelRuntimeData* level_data)
     {
-        if(!valid)
+        if(!valid || target == nullptr)
             return nullptr;
-        
+        // `target` is a raw pointer and the walker may have been destroyed
+        // since the selection was made (clear-objects, delete button, floor
+        // strip). Hand it out only while it is still a member of the
+        // level's lists; otherwise invalidate the selection instead of
+        // returning a dangling walker (ASan: heap-use-after-free in
+        // display_panel via the AI/Delay info lines).
+        if(level_data != nullptr)
+        {
+            auto& w = level_data->world();
+            auto alive = [&](const auto& list)
+            {
+                for(const auto& up : list)
+                {
+                    if(up.get() == target)
+                        return true;
+                }
+                return false;
+            };
+            if(!alive(w.oblist) && !alive(w.fxlist) && !alive(w.weaplist))
+            {
+                clear();
+                target = nullptr;
+                return nullptr;
+            }
+        }
         return target;
     }
 };
