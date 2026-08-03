@@ -252,6 +252,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/graphlib.cpp
     ${SRC_DIR}/gameplay/guy.cpp
     ${SRC_DIR}/interface/ui/help.cpp
+    ${SRC_DIR}/interface/ui/scroll_view_layout.cpp
     ${SRC_DIR}/interface/input/input.cpp
     ${SRC_DIR}/interface/input/input_state.cpp
     ${SRC_DIR}/interface/ui/intro.cpp
@@ -513,6 +514,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
+    ${SRC_DIR}/interface/ui/scroll_view_layout.cpp
 )
 
 set(OG_IO_SDL_SOURCES
@@ -2873,6 +2875,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scroll_view_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_text_wrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
         )

@@ -31,6 +31,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/interface/base.h>
+#include <openglad/interface/ui/scroll_view_layout.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>
@@ -58,10 +59,53 @@ inline short& help_end_of_file()
     return og::runtime::current_session->help_end_of_file_;
 }
 
+// Edge-trigger with hold-repeat over a polled key state (issue #156). The
+// old `(now - start_time) % N` phase gate was open only ~13.6ms out of
+// every 136ms, so a short PageDown tap did nothing about half the time.
+// This fires on the press edge, then repeats while held.
+struct KeyRepeat
+{
+	bool was_down = false;
+	Sint32 next_tick = 0;
+};
+
+// query_timer() ticks every ~13.6ms.
+inline constexpr Sint32 kKeyFirstDelayTicks = 20;  // ~270ms before repeat
+inline constexpr Sint32 kLineRepeatTicks = 4;      // ~55ms per line step
+inline constexpr Sint32 kPageRepeatTicks = 12;     // ~165ms per page step
+
+bool key_repeat_fired(KeyRepeat& k, bool down, Sint32 now,
+                      Sint32 first_delay, Sint32 repeat_every)
+{
+	if (!down)
+	{
+		k.was_down = false;
+		return false;
+	}
+	if (!k.was_down)
+	{
+		k.was_down = true;
+		k.next_tick = now + first_delay;
+		return true;
+	}
+	if (now >= k.next_tick)
+	{
+		k.next_tick = now + repeat_every;
+		return true;
+	}
+	return false;
+}
+
 #ifdef TESTING
 bool s_help_force_scroll_text = false;
 std::atomic<bool> s_help_test_page_up{false};
 std::atomic<bool> s_help_test_page_down{false};
+std::atomic<bool> s_help_test_line_up{false};
+std::atomic<bool> s_help_test_line_down{false};
+std::atomic<bool> s_help_test_home{false};
+std::atomic<bool> s_help_test_end{false};
+std::atomic<Sint32> s_help_last_linesdown{0};
+std::atomic<bool> s_help_scroll_chrome{false};
 #endif
 } // namespace
 
@@ -101,101 +145,206 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 	Sint32 linesdown = 0;
 	Sint32 changed = 1;
 	Sint32 templines;
-	Sint32 text_delay = 1;
-	Sint32 key_presses = 0;
 
 	text& mytext = scr->text_normal;
-	Sint32 start_time = query_timer();
-	Sint32 now_time;
 	Sint32 bottomrow = screenlines - ((DISPLAY_LINES-1)*8);
+	if (bottomrow < 0)
+		bottomrow = 0;
+
+	// Scroll chrome geometry (issue #156): the gutter with up/down arrows
+	// and a thumb exists only when the text overflows, so short briefings
+	// render byte-identically to the legacy dialog. up/down/track do not
+	// depend on linesdown; only the thumb does (recomputed per draw).
+	const og::ui::ScrollViewLayout layout = og::ui::compute_scroll_view_layout(
+		num_lines, box_width, 0, bottomrow, buf_x, buf_y, buf_w, buf_h);
+#ifdef TESTING
+	s_help_scroll_chrome.store(layout.scrollable, std::memory_order_release);
+	s_help_last_linesdown.store(0, std::memory_order_release);
+#endif
 
 	clear_keyboard();
+	// Drain a click still held from the button that opened this dialog (and
+	// any queued collapsed tap) so it cannot register as a scroll press or
+	// an instant dismissal.
+	reset_mouse_click_tracking();
 
-	// Do the loop until person hits escape
-	while (!query_input_continue())
+	KeyRepeat page_down_key, page_up_key, line_down_key, line_up_key;
+	KeyRepeat home_key, end_key;
+	// Baseline from the current state so a button still held from the
+	// surface that opened this dialog is not a fresh press edge.
+	bool prev_left = query_mouse_no_poll().left;
+
+	// Loop until dismissed (Escape/keypress/click sets input_continue; a
+	// click or tap on the scroll controls is swallowed instead).
+	for (;;)
 	{
 		YIELD_SLEEP(10);
 		get_input_events(POLL);
+		const Sint32 now_tick = query_timer();
+		const Sint32 old_linesdown = linesdown;
 
 		short scroll_delta = get_and_reset_scroll_amount();
 		if (scroll_delta < 0)
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && (linesdown < bottomrow))
+			while (linesdown < bottomrow && scroll_delta != 0)
 			{
-				while (linesdown < bottomrow && scroll_delta != 0)
-				{
-					linesdown++;
-					scroll_delta++;
-				}
-				changed = 1;
+				linesdown++;
+				scroll_delta++;
 			}
 		}
-
-		// scrolling one page down
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
-#ifdef TESTING
-		    || s_help_test_page_down.load(std::memory_order_acquire)
-#endif
-		)
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && (linesdown < bottomrow))
-			{
-				templines = linesdown + (DISPLAY_LINES * 7);
-				if (templines > bottomrow)
-					templines = bottomrow;
-				// we actually moved down
-				if (linesdown != templines)
-				{
-					linesdown = templines;
-					changed = 1;
-				}
-			}
-		}
-
 		if (scroll_delta > 0)
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && linesdown)
+			while (linesdown && scroll_delta != 0)
 			{
-				while (linesdown && scroll_delta != 0)
-				{
-					linesdown--;
-					scroll_delta--;
-				}
-				changed = 1;
+				linesdown--;
+				scroll_delta--;
 			}
+		}
+
+		bool page_down_held =
+			og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN];
+		bool page_up_held =
+			og::runtime::current_session->keystates_[KEYSTATE_PAGEUP];
+		bool line_down_held =
+			og::runtime::current_session->keystates_[KEYSTATE_DOWN];
+		bool line_up_held =
+			og::runtime::current_session->keystates_[KEYSTATE_UP];
+		bool home_held =
+			og::runtime::current_session->keystates_[KEYSTATE_HOME];
+		bool end_held =
+			og::runtime::current_session->keystates_[KEYSTATE_END];
+#ifdef TESTING
+		page_down_held = page_down_held ||
+			s_help_test_page_down.load(std::memory_order_acquire);
+		page_up_held = page_up_held ||
+			s_help_test_page_up.load(std::memory_order_acquire);
+		line_down_held = line_down_held ||
+			s_help_test_line_down.load(std::memory_order_acquire);
+		line_up_held = line_up_held ||
+			s_help_test_line_up.load(std::memory_order_acquire);
+		home_held = home_held ||
+			s_help_test_home.load(std::memory_order_acquire);
+		end_held = end_held ||
+			s_help_test_end.load(std::memory_order_acquire);
+#endif
+
+		// scrolling one page down
+		if (key_repeat_fired(page_down_key, page_down_held, now_tick,
+		                     kKeyFirstDelayTicks, kPageRepeatTicks))
+		{
+			linesdown += (DISPLAY_LINES * 7);
+			if (linesdown > bottomrow)
+				linesdown = bottomrow;
 		}
 
 		// scrolling one page up
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
-#ifdef TESTING
-		    || s_help_test_page_up.load(std::memory_order_acquire)
-#endif
-		)
+		if (key_repeat_fired(page_up_key, page_up_held, now_tick,
+		                     kKeyFirstDelayTicks, kPageRepeatTicks))
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && linesdown)
+			linesdown -= (DISPLAY_LINES * 7);
+			if (linesdown < 0)
+				linesdown = 0;
+		}
+
+		// one text line at a time (issue #156: arrow keys)
+		if (key_repeat_fired(line_down_key, line_down_held, now_tick,
+		                     kKeyFirstDelayTicks, kLineRepeatTicks))
+		{
+			linesdown += 8;
+			if (linesdown > bottomrow)
+				linesdown = bottomrow;
+		}
+		if (key_repeat_fired(line_up_key, line_up_held, now_tick,
+		                     kKeyFirstDelayTicks, kLineRepeatTicks))
+		{
+			linesdown -= 8;
+			if (linesdown < 0)
+				linesdown = 0;
+		}
+		if (key_repeat_fired(home_key, home_held, now_tick,
+		                     kKeyFirstDelayTicks, kPageRepeatTicks))
+			linesdown = 0;
+		if (key_repeat_fired(end_key, end_held, now_tick,
+		                     kKeyFirstDelayTicks, kPageRepeatTicks))
+			linesdown = bottomrow;
+
+		// Clicks/taps on the scroll controls scroll; everywhere else keeps
+		// tap-to-dismiss. FingerDown writes mouse_state.x/y and FingerUp
+		// leaves them, so a collapsed tap still hit-tests correctly. The
+		// rects are padded 3px: touch coords can land a pixel or two off
+		// the UI canvas at fractional zoom. query_mouse() (not _no_poll)
+		// marks standing presses as observed, so a click consumed by the
+		// edge detector below is not double-counted by the collapsed-tap
+		// pending queue on release.
+		MouseState& mouse = query_mouse();
+		const int mx = static_cast<int>(mouse.x);
+		const int my = static_cast<int>(mouse.y);
+		const bool click_edge =
+			(mouse.left && !prev_left) || take_pending_left_click();
+		prev_left = mouse.left;
+		bool on_scroll_control = false;
+		if (layout.scrollable)
+		{
+			const bool on_up = layout.up.contains_padded(mx, my, 3);
+			const bool on_down =
+				!on_up && layout.down.contains_padded(mx, my, 3);
+			const bool on_track = !on_up && !on_down &&
+				layout.track.contains_padded(mx, my, 3);
+			on_scroll_control = on_up || on_down || on_track;
+			if (click_edge && on_scroll_control)
 			{
-				linesdown -= (DISPLAY_LINES * 7);
-				if (linesdown < 0)
-					linesdown = 0;
-				changed = 1;
+				if (on_up)
+				{
+					linesdown -= 8;
+					if (linesdown < 0)
+						linesdown = 0;
+				}
+				else if (on_down)
+				{
+					linesdown += 8;
+					if (linesdown > bottomrow)
+						linesdown = bottomrow;
+				}
+				else
+				{
+					// Track: page toward the click, relative to the thumb.
+					const og::ui::ScrollViewLayout current =
+						og::ui::compute_scroll_view_layout(
+							num_lines, box_width, linesdown, bottomrow,
+							buf_x, buf_y, buf_w, buf_h);
+					if (my < current.thumb.y)
+					{
+						linesdown -= (DISPLAY_LINES * 7);
+						if (linesdown < 0)
+							linesdown = 0;
+					}
+					else if (my >= current.thumb.y + current.thumb.h)
+					{
+						linesdown += (DISPLAY_LINES * 7);
+						if (linesdown > bottomrow)
+							linesdown = bottomrow;
+					}
+				}
 			}
 		}
+
+		if (linesdown != old_linesdown)
+			changed = 1;
+#ifdef TESTING
+		s_help_last_linesdown.store(linesdown, std::memory_order_release);
+#endif
 
 		// did we scroll, etc.?
 		if (changed)
 		{
 			// which TEXT line are we at?
 			templines = linesdown/8;
-			scr->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
-			                 HELPTEXT_LEFT+box_width, HELPTEXT_TOP+107, 3, 1);
+			const og::ui::ScrollViewLayout frame =
+				og::ui::compute_scroll_view_layout(
+					num_lines, box_width, linesdown, bottomrow, buf_x,
+					buf_y, buf_w, buf_h);
+			scr->draw_button(frame.frame_x1, frame.frame_y1,
+			                 frame.frame_x2, frame.frame_y2, 3, 1);
 			for (Sint32 j = 0; j < DISPLAY_LINES; j++)
 			{
 				const int line_idx = j + templines;
@@ -204,6 +353,27 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8),
 					                flowed[static_cast<std::size_t>(line_idx)].c_str(),
 					                static_cast<unsigned char>(DARK_BLUE), 1);
+			}
+
+			if (frame.scrollable)
+			{
+				// Trough, thumb, then the arrow faces with their glyphs.
+				scr->draw_text_bar(frame.track.x, frame.track.y,
+				                   frame.track.x + frame.track.w - 1,
+				                   frame.track.y + frame.track.h - 1);
+				scr->draw_button(frame.thumb.x, frame.thumb.y,
+				                 frame.thumb.x + frame.thumb.w - 1,
+				                 frame.thumb.y + frame.thumb.h - 1, 1, 1);
+				scr->draw_button(frame.up.x, frame.up.y,
+				                 frame.up.x + frame.up.w - 1,
+				                 frame.up.y + frame.up.h - 1, 1, 1);
+				scr->draw_button(frame.down.x, frame.down.y,
+				                 frame.down.x + frame.down.w - 1,
+				                 frame.down.y + frame.down.h - 1, 1, 1);
+				mytext.write_xy(frame.up.x + 4, frame.up.y + 4, "^",
+				                static_cast<unsigned char>(RED), 1);
+				mytext.write_xy(frame.down.x + 4, frame.down.y + 4, "v",
+				                static_cast<unsigned char>(RED), 1);
 			}
 
 			// Draw a bounding box (top and bottom edges) ..
@@ -217,8 +387,24 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			int cont_x = HELPTEXT_LEFT + box_width/2 - cont_len*3;
 			mytext.write_xy(cont_x, HELPTEXT_TOP+98,
 			                CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
-			scr->buffer_to_screen(buf_x, buf_y, buf_w, buf_h);
+			scr->buffer_to_screen(frame.blit_x, frame.blit_y,
+			                      frame.blit_w, frame.blit_h);
 			changed = 0;
+		}
+
+		if (query_input_continue())
+		{
+			if (on_scroll_control)
+			{
+				// That click/tap was a scroll action: swallow the shared
+				// modal latch (mouse-down and touch FingerUp both set it)
+				// instead of dismissing.
+				input_continue_ref() = false;
+			}
+			else
+			{
+				break;
+			}
 		}
 	}
 
@@ -507,11 +693,9 @@ Sint32 show_general_help()
 	Sint32 linesdown;
 	Sint32 changed;
 	Sint32 templines;
-	Sint32 text_delay = 1;
-	Sint32 key_presses = 0;
+	KeyRepeat gh_page_down_key, gh_page_up_key;
 
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
-	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
 	if (bottomrow < 0) bottomrow = 0;
 
@@ -530,7 +714,6 @@ Sint32 show_general_help()
 	clear_keyboard();
 	linesdown = 0;
 	changed = 1;
-	start_time = query_timer();
 
 	// Track previous mouse state for click detection
 	bool prev_mouse_left = false;
@@ -597,72 +780,61 @@ Sint32 show_general_help()
 		key3_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_3];
 
 		short scroll_delta = get_and_reset_scroll_amount();
-		if (scroll_delta < 0)
+		if (scroll_delta < 0 && linesdown < bottomrow)
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && (linesdown < bottomrow))
+			while(linesdown < bottomrow && scroll_delta != 0)
 			{
-				while(linesdown < bottomrow && scroll_delta != 0)
-				{
-					linesdown++;
-					scroll_delta++;
-				}
-				changed = 1;
+				linesdown++;
+				scroll_delta++;
 			}
+			changed = 1;
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN]
+		bool gh_page_down_held =
+			og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN];
+		bool gh_page_up_held =
+			og::runtime::current_session->keystates_[KEYSTATE_PAGEUP];
 #ifdef TESTING
-		    || s_help_test_page_down.load(std::memory_order_acquire)
+		gh_page_down_held = gh_page_down_held ||
+			s_help_test_page_down.load(std::memory_order_acquire);
+		gh_page_up_held = gh_page_up_held ||
+			s_help_test_page_up.load(std::memory_order_acquire);
 #endif
-		)
+		// Edge-triggered with hold-repeat (issue #156): the old phase-modulo
+		// gate swallowed short PageUp/PageDown taps here too.
+		if (key_repeat_fired(gh_page_down_key, gh_page_down_held,
+		                     query_timer(), kKeyFirstDelayTicks,
+		                     kPageRepeatTicks) &&
+		    linesdown < bottomrow)
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && (linesdown < bottomrow))
+			templines = linesdown + (DISPLAY_LINES * 7);
+			if (templines > bottomrow)
+				templines = bottomrow;
+			if (linesdown != templines)
 			{
-				templines = linesdown + (DISPLAY_LINES * 7);
-				if (templines > bottomrow)
-					templines = bottomrow;
-				if (linesdown != templines)
-				{
-					linesdown = templines;
-					changed = 1;
-				}
-			}
-		}
-
-		if (scroll_delta > 0)
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && linesdown)
-			{
-				while(linesdown && scroll_delta != 0)
-				{
-					linesdown--;
-					scroll_delta--;
-				}
+				linesdown = templines;
 				changed = 1;
 			}
 		}
 
-		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP]
-#ifdef TESTING
-		    || s_help_test_page_up.load(std::memory_order_acquire)
-#endif
-		)
+		if (scroll_delta > 0 && linesdown)
 		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && linesdown)
+			while(linesdown && scroll_delta != 0)
 			{
-				linesdown -= (DISPLAY_LINES * 7);
-				if (linesdown < 0)
-					linesdown = 0;
-				changed = 1;
+				linesdown--;
+				scroll_delta--;
 			}
+			changed = 1;
+		}
+
+		if (key_repeat_fired(gh_page_up_key, gh_page_up_held, query_timer(),
+		                     kKeyFirstDelayTicks, kPageRepeatTicks) &&
+		    linesdown)
+		{
+			linesdown -= (DISPLAY_LINES * 7);
+			if (linesdown < 0)
+				linesdown = 0;
+			changed = 1;
 		}
 
 		if (changed)
