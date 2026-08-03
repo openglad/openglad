@@ -1957,11 +1957,10 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
      ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
-     ButtonAction::OpenDifficultyMenu, -1,
-     MenuNav{.up = 2, .down = 4, .right = 9}},
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
-     ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 5}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
+     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 2, .down = 4}},
+    {"options", "GAME", KEYSTATE_UNKNOWN, 80, 154, 68, 15,
+     ButtonAction::MainOptions, -1, MenuNav{.up = 3, .down = 5, .right = 9}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
      ButtonAction::ShowHelp, -1, MenuNav{.up = 4, .down = 0, .right = 6}},
 };
@@ -1969,10 +1968,10 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
     "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .down = 0, .left = 5}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 9, .down = 0, .left = 5}};
 constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
     "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 4, .down = 0, .left = 5}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 9, .down = 0, .left = 5}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
@@ -1981,10 +1980,10 @@ constexpr ExpectedSpecRow kMainMenuMPNote = {
     ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
 // #155: the always-visible CLOUD door (MenuSpecRow arg == materialized
 // ordinal 9 on every variant — exactly one QUIT row survives), paired
-// with DIFFICULTY on one row (y=119..134 holds the SETTINGS heading).
+// with the GAME door (y=119..134 holds the SETTINGS heading).
 constexpr ExpectedSpecRow kMainMenuMPCloud = {
-    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
-    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 2, .down = 4, .left = 3}};
+    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 154, 68, 15,
+    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 3, .down = 6, .left = 4}};
 
 // Main geometry no longer changes with multiplayer support: every build
 // manages seats in Base Camp and reaches persistent profiles via CONTROLS.

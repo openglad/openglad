@@ -207,16 +207,17 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: DIFFICULTY pairs with the #155 CLOUD door on one 68px row
-    // (the y=119..134 band above belongs to the grey SETTINGS heading), and
-    // GAME SETTINGS keeps the full-width row below — the same narrow-pair-
-    // over-full-width shape as CONTINUE|LOAD over LEVEL EDITOR.
+    // SETTINGS: DIFFICULTY keeps the full-width row (under the grey
+    // SETTINGS heading that owns the y=119..134 band), and the GAME door
+    // pairs with the #155 CLOUD door on the 68px row below — the same
+    // full-width-over-narrow-pair rhythm as the footer's HELP | QUIT.
     EXPECT_EQ("difficulty", buttons[3].id);
     EXPECT_EQ("options", buttons[4].id);
     EXPECT_EQ(buttons[2].x, buttons[3].x);
-    EXPECT_EQ(68, buttons[3].sizex);
+    EXPECT_EQ(140, buttons[3].sizex);
     EXPECT_EQ(buttons[3].x, buttons[4].x);
-    EXPECT_EQ(140, buttons[4].sizex);
+    EXPECT_EQ(68, buttons[4].sizex);
+    EXPECT_EQ("GAME", buttons[4].label);
     EXPECT_EQ(kWithinGroupGutter,
               buttons[4].y - (buttons[3].y + buttons[3].sizey));
 
@@ -231,23 +232,25 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
     EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
 
-    // #155: the CLOUD door shares the DIFFICULTY row as an aligned 68px
-    // pair (always visible — reachable with zero companies), wired into the
-    // chain on both sides. Both build variants share the geometry (the
-    // tables differ only in the QUIT fork). It must NOT sit in the
-    // y=119..134 band — main_menu_draw_content paints the grey SETTINGS
-    // heading there, over any button face.
+    // #155: the CLOUD door shares the GAME row as an aligned 68px pair
+    // (always visible — reachable with zero companies), wired into the
+    // chain column-wise: down lands on QUIT, whose up returns to CLOUD.
+    // Both build variants share the geometry (the tables differ only in
+    // the QUIT fork). No button may sit in the y=119..134 band —
+    // main_menu_draw_content paints the grey SETTINGS heading there, over
+    // any button face.
     ASSERT_EQ(10, count);
     EXPECT_EQ("cloud", buttons[9].id);
     EXPECT_EQ(152, buttons[9].x);
-    EXPECT_EQ(buttons[3].y, buttons[9].y);
-    EXPECT_EQ(buttons[3].sizex, buttons[9].sizex);
+    EXPECT_EQ(buttons[4].y, buttons[9].y);
+    EXPECT_EQ(buttons[4].sizex, buttons[9].sizex);
     EXPECT_EQ(15, buttons[9].sizey);
-    EXPECT_EQ(4, buttons[9].x - (buttons[3].x + buttons[3].sizex));
-    EXPECT_EQ(2, buttons[9].nav.up);
-    EXPECT_EQ(4, buttons[9].nav.down);
-    EXPECT_EQ(3, buttons[9].nav.left) << "cloud links left to DIFFICULTY";
-    EXPECT_EQ(9, buttons[3].nav.right) << "difficulty links right to CLOUD";
+    EXPECT_EQ(4, buttons[9].x - (buttons[4].x + buttons[4].sizex));
+    EXPECT_EQ(3, buttons[9].nav.up);
+    EXPECT_EQ(6, buttons[9].nav.down) << "cloud links down to QUIT";
+    EXPECT_EQ(4, buttons[9].nav.left) << "cloud links left to GAME";
+    EXPECT_EQ(9, buttons[4].nav.right) << "GAME links right to CLOUD";
+    EXPECT_EQ(9, buttons[6].nav.up) << "QUIT links up to CLOUD";
     EXPECT_EQ(3, buttons[2].nav.down) << "level_edit links down to DIFFICULTY";
     EXPECT_EQ(2, buttons[3].nav.up) << "difficulty links up to LEVEL EDITOR";
     // 5-char label within the 68px face's 11-char budget.
