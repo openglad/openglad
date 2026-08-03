@@ -11,6 +11,7 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -483,6 +484,13 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         set_gameplay_rng_override(nullptr);
         return 1;
     }
+
+    // #162: the LevelRuntimeData above realized the headless loader BEFORE
+    // the --campaign mount; refresh it so campaign-shipped entity art and
+    // pack-family sprites resolve (level.load() re-checks too, via the
+    // headless wire chokepoint — this keeps the session correct even if
+    // that path changes).
+    headless_entity_loader()->reload_graphics_if_stale();
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 

@@ -10,6 +10,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
@@ -412,6 +413,13 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
                  save.scen_num,
                  current_level);
     }
+
+    // #162: server_main constructs LevelRuntimeData (and with it the headless
+    // loader) before this per-level campaign load; refresh so entity sprites
+    // (and the sizex/sizey they feed into collision) match the mounted
+    // campaign. Runs once per level, so between-level campaign changes are
+    // covered; a same-campaign advance is a generation-check no-op.
+    headless_entity_loader()->reload_graphics_if_stale();
 
     GameWorld& world = level_data.world();
     sync_world_from_save_data(world, save);

@@ -712,15 +712,23 @@ Each subdirectory name is the pack identifier. Files shadow built-in `pix/` asse
 ### How It Works
 
 1. **Settings persistence** — Active pack stored in `openglad.yaml` under `graphics` / `sprite_sheet` (empty string = no override).
-2. **Startup mount** — `apply_sprite_sheet_setting()` in `src/resources/platform_io.cpp` is called in `glad.cpp` after `cfg.load_settings()` and before `GameSession` construction. It mounts the chosen pack directory at the PhysFS `"pix/"` mount point with prepend priority.
-3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics()` reloads all sprite data. This is safe because no live walkers exist while the options menu is open.
+2. **Startup mount** — `apply_sprite_sheet_setting()` in `src/resources/io/platform_io_common.cpp` is called in `glad.cpp` after `cfg.load_settings()` and before `GameSession` construction. It mounts the chosen pack directory at the PhysFS `"pix/"` mount point with prepend priority.
+3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics_if_stale()` reloads all sprite data. Reloading frees buffers that live render components still borrow (menu buttons hold `pixieN` facings pointers into loader memory, and the SCENARIO screen keeps a loaded world), so it is only safe from a handler that returns `MENU_REDRAW`: the menu frame skeleton then re-creates every button pixie (`reset_buttons` → `init_buttons`) and re-runs the level-reload guard **before** anything draws. It is *not* safe because "no live walkers exist while the options menu is open" — that was never true.
+
+### Precedence vs. campaign art (issue #162)
+
+Campaign packages (`.glad`) also PREPEND on mount and may ship their own `pix/` entity art, which would silently outrank the sheet after any mid-session campaign switch. The rule is: **an explicitly configured user sprite sheet wins `pix/` lookups for the exact filenames it ships; the campaign wins for everything else.** `mount_campaign_package_with_error()` enforces it by calling `reassert_sprite_sheet_mount()` (re-prepend of the sheet) after every successful campaign mount, so the outcome no longer depends on mount order. Campaign class-pack sprites (`packs/<id>/sprites/*.png`) resolve by full virtual path and can never be shadowed by a sheet.
+
+### Campaign-switch reloads (issue #162)
+
+Loaders record the `og::resources::sprite_source_generation()` they last rebuilt at; campaign mounts/unmounts and sprite-sheet (re)mounts bump the counter (the editor-save `remount_campaign_package_with_error()` deliberately does **not** — it restores the identical source set). Every campaign-switch flow calls `loader::reload_graphics_if_stale()` at a render-safe point (picker campaign handlers, the gameplay-entry net in `game.cpp`, editor entry/campaign-switch, replay bootstrap, the headless wire chokepoint in `platform_headless.cpp`, and the text/curses pickers); a same-campaign level advance is a generation-check no-op. The networked lobby-poll campaign sync deliberately never reloads mid-menu-frame — the gameplay-entry net covers it. Under `TESTING`, `create_walker_owned` traces when a walker is created from a stale loader so tests can pin that the enumerated flows never enter gameplay stale.
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `src/resources/platform_io.cpp` | `apply_sprite_sheet_setting()` — PhysFS mount/unmount logic |
-| `include/openglad/resources/gloader.h` | `loader::reload_graphics()` public method |
+| `src/resources/io/platform_io_common.cpp` | `apply_sprite_sheet_setting()` / `reassert_sprite_sheet_mount()` — PhysFS mount/unmount logic, campaign-mount precedence |
+| `include/openglad/resources/gloader.h` | `loader::reload_graphics()` / `reload_graphics_if_stale()`, `og::resources::sprite_source_generation()` |
 | `src/interface/ui/picker.cpp` | `pick_spritesheet()` submenu and Options menu button |
 
 ---

@@ -101,6 +101,14 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	screenp->initialize_views();
 	screenp->sync_world_from_save_data();
 
+	// #162 safety net: every path into gameplay funnels through here after
+	// the save's campaign is mounted — including the networked joiner's
+	// lobby sync, which deliberately never reloads mid-menu-frame. The old
+	// world was just torn down and nothing draws until load_level() rebuilds
+	// it, so freeing loader buffers is safe; a same-campaign level advance
+	// is a generation-check no-op.
+	screenp->myloader->reload_graphics_if_stale();
+
 	// And load the scenario ..
 	screenp->world().id = screenp->save_data.scen_num;
 	if(!screenp->load_level())

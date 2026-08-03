@@ -206,6 +206,12 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
 void headless_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
 {
     (void)level;
+    // #162 chokepoint: wiring runs at every headless LevelRuntimeData
+    // construction AND load(), so every curses/text/server level build gets
+    // a loader that matches the currently mounted campaign. Headless render
+    // components hold no pixie borrows (attach_render is empty; walkers copy
+    // size/frame scalars at attach), so rebuilding here is always safe.
+    headless_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, headless_entity_loader());
 }
 

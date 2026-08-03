@@ -404,51 +404,10 @@ void io_exit()
     og::resources::deinit();
 }
 
-static std::string s_mounted_sprite_sheet_dir;
-
-// A sprite-sheet pack is always a single directory living directly under
-// extra_pix/. Reject any name containing a path separator or a "."/".."
-// component so a hand-edited config can't escape extra_pix/ and mount an
-// arbitrary host directory over pix/.
-static bool is_safe_sprite_sheet_name(const std::string& name)
-{
-    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
-        return false;
-    return name != "." && name != "..";
-}
-
-bool apply_sprite_sheet_setting()
-{
-    std::string name = cfg.get_setting("graphics", "sprite_sheet");
-    if (!name.empty() && !is_safe_sprite_sheet_name(name)) {
-        LogWarn("Sprite sheet '{}': invalid pack name, ignoring\n", name);
-        name.clear();
-    }
-    const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
-
-    if (s_mounted_sprite_sheet_dir == new_dir)
-        return true;
-
-    if (!s_mounted_sprite_sheet_dir.empty()) {
-        const std::string old_dir = s_mounted_sprite_sheet_dir;
-        if (!og::resources::unmount(old_dir.c_str())) {
-            LogWarn("Sprite sheet '{}': failed to unmount, keeping previous mount state\n", old_dir);
-            return false;
-        }
-        s_mounted_sprite_sheet_dir.clear();
-    }
-
-    if (!new_dir.empty()) {
-        if (!og::resources::mount(new_dir.c_str(), "pix/", 0)) {
-            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
-            return false;
-        }
-        Log("Sprite sheet mounted: {}\n", new_dir);
-        s_mounted_sprite_sheet_dir = new_dir;
-    }
-
-    return true;
-}
+// apply_sprite_sheet_setting / reassert_sprite_sheet_mount moved to
+// src/resources/io/platform_io_common.cpp (issue #162): the campaign mount
+// path re-asserts the sheet's front-of-search position, so the sheet state
+// has to live beside mount_campaign_package_with_error in every build.
 
 void sync_filesystem()
 {

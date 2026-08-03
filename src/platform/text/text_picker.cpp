@@ -13,6 +13,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -191,6 +192,8 @@ public:
         // previously loaded save selected.
         config_.campaign = save_data_.current_campaign;
         (void)sync_campaign_mount_to_save(save_data_);
+        // #162: between prompts in a printf/read_line client — no pixies.
+        headless_entity_loader()->reload_graphics_if_stale();
 
         sync_config_from_save();
         show_new_game_team_build_notice_ = true;
@@ -251,6 +254,9 @@ public:
         // GO loads levels straight from the mounted package; selecting a
         // campaign without mounting it would silently play the old one.
         (void)sync_campaign_mount_to_save(save_data_);
+        // #162: follow the mount with the sprite set (campaign entity art,
+        // pack families) before GO builds the level.
+        headless_entity_loader()->reload_graphics_if_stale();
         return config_.campaign;
     }
 

@@ -39,6 +39,17 @@ struct EntityFactory
     std::function<void(const std::string&)> report_error;
 };
 
+namespace og::resources {
+// Monotonic counter naming the current set of sprite byte sources: mounted
+// campaign packages plus the extra_pix sprite-sheet mount. Bumped by every
+// campaign mount/unmount and by sprite-sheet (re)mounts — but NOT by an
+// editor-save remount (remount_campaign_package_with_error), which restores
+// the identical source set and must not mark live loaders stale. A loader
+// records the value it last rebuilt at; reload_graphics_if_stale() compares.
+unsigned sprite_source_generation();
+void note_sprite_source_changed();
+} // namespace og::resources
+
 class loader
 {
 	public:
@@ -70,6 +81,13 @@ class loader
 		// component still points at graphics data from this loader.
 		void reload_graphics();
 
+		// Reloads iff the sprite sources changed (campaign mount/unmount or
+		// sprite-sheet remount) since this loader last rebuilt its graphics.
+		// Carries reload_graphics()'s live-render contract when it fires;
+		// answers false as a cheap no-op when the loader is current, so
+		// same-campaign level advances cost one integer compare.
+		bool reload_graphics_if_stale();
+
 		// Brings the BLOOD/STAIN sprite pair in line with the current
 		// effects/gore setting by swapping the active and held-back variants.
 		// Unlike reload_graphics() this frees nothing: both variants stay
@@ -78,13 +96,24 @@ class loader
 		// a menu handler with live render components and buttons on screen.
 		void sync_gore_graphics();
 	private:
+		// TESTING tripwire: TRACEs when a walker is created while this
+		// loader is stale (a campaign-switch flow missed its
+		// reload_graphics_if_stale() call). No-op in production builds.
+		void trace_if_sprites_stale() const;
+
 		EntityFactory entity_factory_;
 		// The BLOOD/STAIN variants that effects/gore is NOT currently using,
 		// parked here so the toggle is a swap rather than a reload.
 		PixieData gore_alt_blood_;
 		PixieData gore_alt_stain_;
 		bool gore_graphics_gory_ = true;
+		// The og::resources::sprite_source_generation() this loader's
+		// graphics were last rebuilt at (stamped by reload_graphics()).
+		unsigned built_generation_ = 0;
 };
 
 // Link-time dispatch: SDL build provides the real instance; headless build provides nothing.
 loader* sdl_entity_loader();
+// The headless twin (platform_headless.cpp): openglad_text, openglad_server,
+// openglad_curses and the mapgen tools resolve this one instead.
+loader* headless_entity_loader();

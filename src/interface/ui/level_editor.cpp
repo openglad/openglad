@@ -2263,6 +2263,11 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 
                                 if(levels.size() > 0)
                                 {
+                                    // #162: reload only right before the
+                                    // level rebuild — the no-levels branch
+                                    // keeps the OLD level's walkers alive,
+                                    // and they still borrow loader pixels.
+                                    og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
                                     loadLevel(levels.front());
                                     // Update minimap
                                     myradar.start(level.get());
@@ -2331,6 +2336,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         
                         if(load_first_level)
                         {
+                            // #162: reload only when we are about to rebuild
+                            // the level. Declining the prompt keeps the OLD
+                            // campaign's level open (cross-campaign level
+                            // transfer), and its live walkers still borrow
+                            // the loader's pixel buffers — the loader then
+                            // stays stale until a level load or re-entry.
+                            og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
                             // Load first scenario
                             if(loadLevel(result.first_level))
                             {
@@ -3566,7 +3578,11 @@ Sint32 level_editor()
     if(old_campaign.size() > 0)
         (void)unmount_campaign_package_with_error(old_campaign);
     (void)mount_campaign_package_with_error(data.campaign->id);
-    
+    // #162: pick up campaign-shipped entity art before any editor level
+    // objects or pane previews are built from the loader (the editor's
+    // SimpleButtons are text+rects and hold no loader pixies).
+    og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
+
 
     std::list<int> levels = list_levels();
     if(levels.size() > 0)

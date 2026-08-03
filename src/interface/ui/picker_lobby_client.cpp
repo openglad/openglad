@@ -853,6 +853,13 @@ private:
         // shape). sync_campaign_mount_to_save no-ops when already coherent;
         // if the package cannot be mounted, refuse the override and keep the
         // save on the campaign that IS mounted.
+        //
+        // #162: deliberately NO reload_graphics_if_stale() here. This runs
+        // from picker_lobby_poll at the TOP of a live menu frame; the
+        // handler return stays 0, so reset_buttons never re-inits and the
+        // frame's draw_buttons would read the freed pixels. The loader stays
+        // stale (joiner previews may show the old campaign's sprites) until
+        // the gameplay-entry safety net in game.cpp reloads it.
         if (!og::ui::sync_campaign_mount_to_save(save))
         {
             // The failed mount put the previously mounted package back;
