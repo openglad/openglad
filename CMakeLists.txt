@@ -3079,6 +3079,20 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
         )
 
+        og_add_unit_group(og_unit_soccer FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
+        )
+        target_compile_definitions(og_unit_soccer PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+        )
+
+        og_add_unit_group(og_unit_onslaught FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_onslaught.cpp
+        )
+        target_compile_definitions(og_unit_onslaught PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+        )
+
         og_add_unit_group(og_unit_mapgen FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_mapgen_builders.cpp
         )
