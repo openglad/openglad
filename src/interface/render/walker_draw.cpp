@@ -23,6 +23,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/smooth.h>
 #include <algorithm>
+#include <cstdint>
 #include <span>
 #include <cmath>
 
@@ -362,6 +363,9 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 		view_buf->project_world_point_to_gameplay_ui(
 			world_x, world_y + static_cast<float>(w->sizey()));
 	(void)unused_x;
+	// Read the WORLD pane width before the layout scope swaps view_buf over to
+	// the gameplay-UI pane; afterwards view_buf->xview is already ui.w.
+	const Sint32 world_pane_w = view_buf->xview;
 	ScopedGameplayUiViewLayout gameplay_ui_layout(
 		*view_buf, *og::runtime::current_session->myscreen_);
 	const Sint32 portstartx = view_buf->xloc;
@@ -371,7 +375,17 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 
     const Sint32 bar_x = walkerstartx;
 	const Sint32 bar_y = walkerbottom + 1;
-    const Sint32 bar_w = w->sizex();
+    // The gameplay-UI overlay stays at zoom-1.0 density while the world canvas
+    // grows by 1/zoom, so a bar sized in raw sprite pixels is drawn 1/zoom times
+    // too wide. Project the sprite footprint with the same pane ratio the anchor
+    // projection uses: exactly identity at zoom 1.0 (the UI pane and the world
+    // pane are the same rectangle), and identity again on the overlay-allocation
+    // fallback and the classic-pinned editor canvas, where the layout scope is a
+    // no-op. Integer math keeps len*n/n == len bit-exact.
+    const Sint32 bar_w = std::max<Sint32>(
+        1, static_cast<Sint32>(static_cast<std::int64_t>(w->sizex()) *
+                               view_buf->xview /
+                               std::max<Sint32>(1, world_pane_w)));
     const Sint32 bar_h = 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
         return;

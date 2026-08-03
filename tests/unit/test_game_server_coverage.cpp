@@ -5,6 +5,8 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/sound_ids.h>
 
 #include <gtest/gtest.h>
 
@@ -260,6 +262,24 @@ std::optional<og::sim::PauseBroadcastMessage> find_pause_broadcast(
             continue;
         if (auto pause = og::sim::deserialize_pause_broadcast_message(sent.data))
             return pause;
+    }
+    return std::nullopt;
+}
+
+std::optional<og::sim::SimEventBatch> find_sim_event_batch(
+    const CoverageTransport& transport,
+    og::sim::PeerId peer_id)
+{
+    for (const auto& sent : transport.sent())
+    {
+        if (sent.peer_id != peer_id)
+            continue;
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(sent.data, envelope))
+            continue;
+        if (envelope.message_type != og::sim::kSimEventBatchMessageType)
+            continue;
+        return og::sim::deserialize_sim_event_batch(sent.data);
     }
     return std::nullopt;
 }
@@ -787,6 +807,68 @@ TEST(GameServerCoverage, backward_wall_clock_does_not_timeout_a_client)
 
     EXPECT_TRUE(transport.disconnected().empty());
     EXPECT_EQ(1u, fixture.world().tick_count_);
+}
+
+// Issue #145: the server drops SimInputResult.play_sound / .notify_text, so a
+// yell only reaches the clients if the sim layer emits it into the event log
+// that step() drains into the tick's broadcast batch.
+TEST(GameServerCoverage, yell_input_broadcasts_yo_sound_and_notification)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+    server.connect_client(96u);
+
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    control->set_yo_delay(0);
+    server.bind_player(96u, 0u, fixture.world().my_team, control);
+
+    // Event batches only go out to clients that hold an initial snapshot AND
+    // have reported ready: one step to push the initial setup + keyframe, then
+    // the ready message, then the yell.
+    server.step();
+    transport.queue_raw(
+        96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+    server.step();
+
+    InputState yell;
+    yell.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    const auto input_bytes =
+        og::sim::serialize_input(fixture.world().tick_count_ + 1u, yell);
+    transport.queue_raw(
+        96u, std::vector<std::uint8_t>(input_bytes.begin(), input_bytes.end()));
+
+    transport.clear_sent();
+    server.step();
+
+    EXPECT_EQ(30, control->yo_delay()) << "the yell should have been applied";
+
+    const auto batch = find_sim_event_batch(transport, 96u);
+    ASSERT_TRUE(batch.has_value()) << "the tick should broadcast a sim event batch";
+
+    const bool has_sound = std::any_of(
+        batch->events.begin(), batch->events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::PlaySound &&
+                   event.a == static_cast<std::uint32_t>(SOUND_YO);
+        });
+    const bool has_notification = std::any_of(
+        batch->events.begin(), batch->events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::Notification &&
+                   event.text == "Yo!";
+        });
+
+    EXPECT_TRUE(has_sound) << "the broadcast batch should carry the yo sound";
+    EXPECT_TRUE(has_notification)
+        << "the broadcast batch should carry the Yo! notification";
 }
 
 } // namespace
