@@ -2220,6 +2220,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_stair_overlay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_sprite_uaf.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
@@ -2579,6 +2580,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_palette.cpp
             test_loader_and_walker.cpp
             test_gloader_funcs.cpp
+            test_campaign_sprite_uaf.cpp
             test_game_loop.cpp
             test_game_launch.cpp
             test_go_no_team.cpp
@@ -2998,6 +3000,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_packs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_sprite_reload.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
@@ -3075,6 +3078,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         add_executable(og_unit_headless_platform
             ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_platform_headless.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_text_campaign_sprites.cpp
             ${SRC_DIR}/test_trace.cpp
             ${HEADLESS_TEST_SOURCES}
         )

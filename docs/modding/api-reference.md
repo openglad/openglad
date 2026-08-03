@@ -871,9 +871,15 @@ explicitly instead — the mount point is what fixes the pack id and makes the
 
 ```cpp
 og::resources::mount("docs/modding/examples/emberwisp", "packs/emberwisp/", 1);
-og::resources::refresh_pack_scripts();   // re-evaluates and reinstalls
-loader.reload_graphics();                // picks up the pack's sprites
+og::resources::refresh_pack_scripts();      // re-evaluates and reinstalls
+og::resources::note_sprite_source_changed(); // raw mounts don't auto-bump
+loader.reload_graphics_if_stale();          // picks up the pack's sprites
 ```
+
+(A campaign-embedded pack needs none of this by hand: mounting the campaign
+bumps the sprite-source generation and every campaign-switch flow calls
+`reload_graphics_if_stale()` — see `docs/ARCHITECTURE.md`, "Campaign-switch
+reloads".)
 
 Its README covers the art pipeline. The parts worth reading here are the
 data block, the animation table, and the hooks — all three in one file.
