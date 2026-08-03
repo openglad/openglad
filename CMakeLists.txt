@@ -252,6 +252,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/graphlib.cpp
     ${SRC_DIR}/gameplay/guy.cpp
     ${SRC_DIR}/interface/ui/help.cpp
+    ${SRC_DIR}/interface/ui/scroll_view_layout.cpp
     ${SRC_DIR}/interface/input/input.cpp
     ${SRC_DIR}/interface/input/input_state.cpp
     ${SRC_DIR}/interface/ui/intro.cpp
@@ -297,6 +298,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/walker_specials.cpp
 	    ${SRC_DIR}/gameplay/weap.cpp
 	    ${SRC_DIR}/platform/sdl/sai2x.cpp
+		    ${SRC_DIR}/core/text_wrap.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
             ${SRC_DIR}/platform/sdl/physfs_rwops_bridge.cpp
@@ -379,6 +381,7 @@ set(OG_CORE_SOURCES
     ${SRC_DIR}/core/frame_pacing.cpp
     ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
+    ${SRC_DIR}/core/text_wrap.cpp
     ${SRC_DIR}/core/util.cpp
     ${SRC_DIR}/core/weather.cpp
 )
@@ -511,6 +514,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
+    ${SRC_DIR}/interface/ui/scroll_view_layout.cpp
 )
 
 set(OG_IO_SDL_SOURCES
@@ -2871,6 +2875,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scroll_view_layout.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_text_wrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_control_defaults.cpp
         )

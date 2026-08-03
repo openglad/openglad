@@ -387,6 +387,10 @@ og.family("living", {
   death_message = "SOLDIER SLAIN",
   ai_line_of_sight = 7,
   description = "Your basic grunt...",
+                                   -- auto-flowed at render time: write
+                                   -- plain prose, do NOT hand-wrap. '\n\n'
+                                   -- is a paragraph break; a single '\n'
+                                   -- is soft (joins with a space).
   names = { "Lothar", "Arthur" },  -- random-name pool
   playable = true,
   playable_order = 0,

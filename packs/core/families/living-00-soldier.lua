@@ -168,7 +168,7 @@ og.family("living", {
   sprite = "footman.png",
   animation = "standard",
   ai_line_of_sight = 7,
-  description = "Your basic grunt, can     \nabsorb and deal damage and\nmove moderately fast. A   \ngood all-around fighter. A\nsoldier's normal weapon is\na magical returning blade.\n\nSpecial: Charge",
+  description = "Your basic grunt, can absorb and deal damage and move moderately fast. A good all-around fighter. A soldier's normal weapon is a magical returning blade.\n\nSpecial: Charge",
   names = { "Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace",
             "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam",
             "Hector", "Tom", "Bigfoot" },

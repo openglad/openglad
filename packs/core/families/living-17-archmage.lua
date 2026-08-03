@@ -559,7 +559,7 @@ og.family("living", {
   sprite = "archmage.png",
   animation = "mage",
   ai_line_of_sight = 10,
-  description = "An Archmage takes the     \nlearnings of the Magi one \nstep further, possessing  \nextraordinary firepower at\nthe expense of physical   \nweakness.                 \n\nSpecial: Teleport",
+  description = "An Archmage takes the learnings of the Magi one step further, possessing extraordinary firepower at the expense of physical weakness.\n\nSpecial: Teleport",
   names = { "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando",
             "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry",
             "Manannan", "Mordack", "Jace" },

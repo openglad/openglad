@@ -64,7 +64,7 @@ og.family("living", {
   sprite = "skeleton.png",
   animation = "skeleton",
   ai_line_of_sight = 7,
-  description = "Skeletons are the pathetic\nremains of those who once \nwere among the living.    \nThey are not particularly \ndangerous, but they move  \nwith blinding speed.      \n\nSpecial: Tunnel",
+  description = "Skeletons are the pathetic remains of those who once were among the living. They are not particularly dangerous, but they move with blinding speed.\n\nSpecial: Tunnel",
   names = { "Drybones", "Blackbeard", "Boney", "Femur", "Patella", "Humerus",
             "Scapula" },
   playable = true,

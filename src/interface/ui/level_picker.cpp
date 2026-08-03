@@ -26,6 +26,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/core/text_wrap.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -747,15 +748,25 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                 entries[i]->draw(og::runtime::current_session->myscreen_);
         }
         
-        // Description
+        // Description, flowed to the box's character budget (issue #152):
+        // scenario briefings are authored for the 33-char SCENARIO
+        // INFORMATION dialog and overflow this 30-char box without wrapping.
         if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
         {
             og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+            std::list<std::string> raw_desc;
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
+                raw_desc.push_back(entries[selected_entry]->scentext[static_cast<std::size_t>(i)]);
+            const std::vector<std::string> desc_lines =
+                og::core::wrap_lines(raw_desc, descbox.w / 6);
+            for(std::size_t i = 0; i < desc_lines.size(); i++)
             {
-                if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
+                // Clip against the box the text is drawn into (the old test
+                // compared against prev.y + 20, 5px below the box top).
+                const int line_y = 10*static_cast<int>(i) + 1;
+                if(line_y + 6 > descbox.h)
                     break;
-                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[static_cast<std::size_t>(i)].c_str(), BLACK, 1);
+                loadtext.write_xy(descbox.x, descbox.y + line_y, desc_lines[i].c_str(), BLACK, 1);
             }
         }
         

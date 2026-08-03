@@ -24,6 +24,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
@@ -148,7 +149,19 @@ public:
         for (const std::string& line : lines) {
             if (row >= footer)
                 break;
-            term_.put_str(row++, 0, line, kNormalColor, Color::Default, false);
+            if (line.empty()) {
+                ++row;
+                continue;
+            }
+            // Defensive terminal-width wrap (issue #152): a line wider than
+            // the terminal wraps instead of being cut off at the edge.
+            for (const std::string& wrapped :
+                 og::core::wrap_text(line, term_.cols())) {
+                if (row >= footer)
+                    break;
+                term_.put_str(row++, 0, wrapped, kNormalColor, Color::Default,
+                              false);
+            }
         }
         if (footer >= 0)
             term_.put_str(footer, 0, "[ press any key ]", kHintColor, Color::Default, false);

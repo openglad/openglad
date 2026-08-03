@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <openglad/core/text_wrap.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -343,6 +344,36 @@ TEST(PickerCommon, reset_for_new_game)
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         ASSERT_TRUE(save.team_list[i] == nullptr);
     }
+}
+
+// --- class description budget (issue #152) ---
+
+// Every playable family's description, flowed exactly as the HIRE screen
+// flows it (Paragraphs mode at the description box's 27-char budget:
+// description_box_content.w / 6 = 164 / 6), must fit the box — at most 10
+// lines (the 8px fallback pitch ceiling) and no line over 27 chars. This is
+// the regression guard that a future pack edit cannot silently overflow the
+// box.
+TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
+{
+    init_family_registry();
+    int checked = 0;
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const auto* fd = get_family_descriptor(family_id);
+        if (fd == nullptr || !fd->is_playable || fd->description == nullptr)
+            continue;
+        const std::vector<std::string> flowed = og::core::wrap_text(
+            fd->description, 27, og::core::WrapMode::Paragraphs);
+        EXPECT_LE(flowed.size(), 10u)
+            << "family " << family_id
+            << " description overflows the HIRE box (27 chars x 10 lines)";
+        for (const std::string& line : flowed)
+            EXPECT_LE(line.size(), 27u)
+                << "family " << family_id << " over-wide line: " << line;
+        checked++;
+    }
+    EXPECT_GE(checked, 10) << "core class pack not installed";
 }
 
 // --- family_display_name ---

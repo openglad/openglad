@@ -33,7 +33,7 @@ og.family("living", {
   sprite = "faerie.png",
   animation = "standard",
   ai_line_of_sight = 8,
-  description = "The faerie are small,     \nflying above friends and  \nenemies alike unnoticed.  \nAlthough they are delicate\nand easily destroyed,     \nfaeries can sprinkle a    \nmagic powder which freezes\ntheir enemies.",
+  description = "The faerie are small, flying above friends and enemies alike unnoticed. Although they are delicate and easily destroyed, faeries can sprinkle a magic powder which freezes their enemies.",
   names = { "Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin",
             "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle",
             "Violet", "Daisy", "Lily" },

@@ -293,9 +293,10 @@ make_metadata(int out_id, const std::vector<std::string>& description)
     metadata.grid_file = std::format("scen{:04d}", out_id);
     for (const std::string& line : description)
     {
-        // SCENARIO INFORMATION dialog budget: text x=42, frame edge x=240,
-        // 6px per glyph -> at most 33 characters per line.
-        if (line.size() > 33)
+        // The SCENARIO INFORMATION dialog word-wraps at render time (issue
+        // #152); this is a sanity bound against runaway generated lines
+        // (the .glad serializer caps a line at 255 bytes).
+        if (line.size() > 120)
             fail(std::format("description line too long: {}", line));
         metadata.description.push_back(line);
     }

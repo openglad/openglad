@@ -27,6 +27,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <algorithm>
 #include <format>
@@ -283,19 +284,25 @@ void CampaignEntry::draw(const UiRect& area, int team_power)
     UiRect descbox = {160 - 225/2, area.y + area.h + 35, 225, 60};
     og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
     
-    // Print description
-    std::string desc = description;
+    // Print description, flowed to the box's character budget (issue #152):
+    // text starts at descbox.x+5 and glyphs advance 6px. Campaign blurbs are
+    // prose, so Paragraphs mode reflows the authored hand-wrap. When the
+    // text is taller than the box, the last visible row becomes a
+    // "(more...)" pointer at the full-text campaign intro scroller.
+    const std::vector<std::string> desc_lines = og::core::wrap_text(
+        description, (descbox.w - 10) / 6, og::core::WrapMode::Paragraphs);
     int j = 10;
-    while(desc.size() > 0)
+    for(size_t li = 0; li < desc_lines.size(); li++)
     {
         if(j + 10 > descbox.h)
             break;
-        size_t pos = desc.find_first_of('\n');
-        std::string line = desc.substr(0, pos);
-        loadtext.write_xy(descbox.x + 5, descbox.y + j, line.c_str(), BLACK, 1);
-        if(pos == std::string::npos)
+        const bool last_visible_row = (j + 20 > descbox.h);
+        if(last_visible_row && li + 1 < desc_lines.size())
+        {
+            loadtext.write_xy(descbox.x + 5, descbox.y + j, "(more...)", BLACK, 1);
             break;
-        desc = desc.substr(pos+1, std::string::npos);
+        }
+        loadtext.write_xy(descbox.x + 5, descbox.y + j, desc_lines[li].c_str(), BLACK, 1);
         j += 10;
     }
     y = descbox.y + descbox.h + 2;

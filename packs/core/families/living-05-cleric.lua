@@ -334,7 +334,7 @@ og.family("living", {
   sprite = "cleric.png",
   animation = "standard",
   ai_line_of_sight = 4,
-  description = "Clerics, like mages, are  \nslow, but have a stronger \nhand-to-hand attack.      \nClerics possess abilities \nrelated to healing and    \ninteraction with the dead.\n\nSpecial: Heal",
+  description = "Clerics, like mages, are slow, but have a stronger hand-to-hand attack. Clerics possess abilities related to healing and interaction with the dead.\n\nSpecial: Heal",
   names = { "Tuck", "Brother", "Pater", "Drake", "Friar", "Francis",
             "John Paul", "Medic" },
   playable = true,

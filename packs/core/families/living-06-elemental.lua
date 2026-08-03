@@ -101,7 +101,7 @@ og.family("living", {
   sprite = "firelem.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Strong and quick, fire    \nelementals can expel      \nflaming meteors in all    \ndirections to decimate    \nenemies.                  \n\nSpecial: Starburst",
+  description = "Strong and quick, fire elementals can expel flaming meteors in all directions to decimate enemies.\n\nSpecial: Starburst",
   names = { "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny",
             "Lava", "Heatwave", "Torch", "Scorch" },
   playable = true,
