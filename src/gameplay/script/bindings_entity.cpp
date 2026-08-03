@@ -22,7 +22,6 @@
 #include <openglad/core/order.h>
 #include <openglad/core/sound_ids.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>

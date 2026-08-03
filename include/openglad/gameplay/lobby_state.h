@@ -1,7 +1,6 @@
 #pragma once
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/mode/mode_state.h>
 
 #include <cstddef>
@@ -190,7 +189,7 @@ struct LobbySettings {
     std::int16_t scenario_id = 0;
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
-    // CTF match settings; only TYPE_CTF maps consume them (0 = map/default).
+    // Match settings (og.match_setting); scripted maps consume them (0 = map/default).
     std::int16_t ctf_team_count = 0; // 0 = Auto
     // Lower SCORE_TEAM_COUNT bits identify the teams with authored flags in
     // the selected CTF level (protocol v9). Zero means the level metadata is

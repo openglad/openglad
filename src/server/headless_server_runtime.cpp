@@ -246,9 +246,9 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
-    // CTF/scripted rematches replay the full map: flags, mode objectives,
-    // and bot squads must survive a "level already completed" reload.
-    if (world.type & (GameWorld::TYPE_CTF | GameWorld::TYPE_SCRIPTED))
+    // Scripted rematches replay the full map: mode objectives and bot
+    // squads must survive a "level already completed" reload.
+    if (world.type & GameWorld::TYPE_SCRIPTED)
         return;
 
     clear_completed_level_entities(world.oblist);
@@ -494,7 +494,7 @@ bool complete_headless_level_and_load_next(LevelRuntimeData& level_data,
             active_save,
             static_cast<int>(team_index));
     }
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         world, active_save, static_cast<short>(next_level));
     fold_ctx.finished_level = active_save.scen_num;
     fold_ctx.outcome.ending = 0;

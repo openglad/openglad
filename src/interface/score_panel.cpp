@@ -19,7 +19,6 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
@@ -103,7 +102,7 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
     if (og::sim::classic_respawn_active(world))
     {
         const unsigned char viewer_team = viewer->team_num();
-        for (const og::sim::CtfRespawnEntry& entry : world.respawn.respawn_queue)
+        for (const og::sim::RespawnEntry& entry : world.respawn.respawn_queue)
         {
             // Viewer-relative mirror of the engine's strict team-color rule.
             // entry.team is the corpse's true (charm-broken) team recorded
@@ -203,37 +202,20 @@ inline constexpr int OVERSCAN_PADDING = 6;
 inline constexpr int OVERSCAN_PADDING = 0;
 #endif
 
-// Flag-state glyph for the per-team CTF readout: that team's flag is at
-// (H)ome, (T)aken by an enemy carrier, or (D)ropped in the field.
-static char ctf_flag_state_glyph(const og::sim::CtfFlag& flag)
-{
-    switch (flag.state)
-    {
-        case og::sim::CtfFlagState::Carried: return 'T';
-        case og::sim::CtfFlagState::Dropped: return 'D';
-        case og::sim::CtfFlagState::AtHome:
-        default: return 'H';
-    }
-}
-
-// Shared CTF/classic/scripted countdown. Classic and scripted modes
-// deliberately call only this helper: capture scores, flags and waypoint
-// progress remain CTF-only (scripted modes surface theirs through the
-// generic ModeState HUD lines). The queue storage is the shared RespawnState
-// base, so every engine's pending entries read identically here.
+// Shared classic/scripted respawn countdown; scripted modes surface their
+// scores through the generic ModeState HUD lines.
 static void draw_respawn_countdown(screen* s, walker* control,
                                    Sint32 lm, Sint32 tm)
 {
     if (control == nullptr || !control->dead())
         return;
 
-    for (const og::sim::CtfRespawnEntry& entry :
+    for (const og::sim::RespawnEntry& entry :
          s->world_.respawn.respawn_queue)
     {
         if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
             continue;
-        const int seconds =
-            og::sim::ctf_respawn_seconds_left(s->world_.ctf, entry);
+        const int seconds = og::sim::respawn_seconds_left(entry);
         const std::string message = std::format("RESPAWN IN {}", seconds);
         s->text_normal.write_xy(lm + 4, tm + 12, message.c_str(),
                                 static_cast<unsigned char>(YELLOW),
@@ -253,7 +235,7 @@ static unsigned char mode_hud_color(std::uint8_t team)
 }
 
 // Per-viewport scripted-mode overlay: the four Lua-written ModeState HUD
-// lines, rendered at the slots the CTF panel proved out. Reads only
+// lines, rendered at the slots the retired CTF panel proved out. Reads only
 // ModeState (replicated once the mode snapshot block lands), never mode
 // names in C++ — Lua is the only writer.
 //   slot 0 -> right-aligned ending at rm-60 on the tm+4 caps row
@@ -262,7 +244,7 @@ static unsigned char mode_hud_color(std::uint8_t team)
 //   slot 3 -> lm+2, tm+28 (the FLAG!-tag position)
 // The >2-view suppression rule is kept: small panes cannot fit the
 // right-aligned rows beside the name, so slots 0-1 are suppressed exactly
-// like the CTF caps groups; the left-column slots 2-3 draw in every layout.
+// like the retired CTF caps groups; left-column slots 2-3 draw in every layout.
 static void draw_mode_panel(screen* s, Sint32 lm, Sint32 tm, Sint32 rm)
 {
     const og::sim::ModeState& mode = s->world_.mode;
@@ -407,122 +389,6 @@ static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
     }
 }
 
-// Per-viewport CTF overlay. Reads only replicated world state (CtfState rides
-// the snapshot), so it works identically on the server and network mirrors.
-static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
-                           Sint32 rm)
-{
-    const og::sim::CtfState& ctf = s->world_.ctf;
-    text& mytext = s->text_normal;
-
-    // Capture counts. Suppressed in small (>2-way) split-screen panes; the
-    // two larger layouts right-align the group ending at rm-60 so it clears
-    // both 12-char names at lm+3 and the TEAM/FOES column at rm-55.
-    if (s->numviews == 1)
-    {
-        // Full-width pane: one "<caps><flag-glyph>" segment per active team
-        // in its team ramp color, 6px apart.
-        std::array<std::string, 4> segments;
-        Sint32 total_width = 0;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (!ctf.team_active[team])
-                continue;
-            segments[static_cast<std::size_t>(team)] = std::format(
-                "{}{}",
-                ctf.captures[team],
-                ctf_flag_state_glyph(ctf.flags[team]));
-            if (total_width > 0)
-                total_width += 6;
-            total_width += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6;
-        }
-        Sint32 x = rm - 60 - total_width;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (segments[static_cast<std::size_t>(team)].empty())
-                continue;
-            mytext.write_xy(x, tm + 4, segments[static_cast<std::size_t>(team)].c_str(),
-                            static_cast<unsigned char>(team * 16 + 40),
-                            static_cast<short>(1));
-            x += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6 + 6;
-        }
-    }
-    else if (s->numviews == 2)
-    {
-        // Half-width panes cannot fit the glyph segments beside the name:
-        // compact digits-only group ("2:1:0:3", counts in team ramp colors,
-        // neutral separators) on the tm+28 row, clear of the name and the
-        // HP/MP rows. The carrier's FLAG! stays left at lm+2 on that row.
-        std::array<std::string, 7> pieces;
-        std::array<unsigned char, 7> piece_colors;
-        int piece_count = 0;
-        Sint32 total_width = 0;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (!ctf.team_active[team])
-                continue;
-            if (piece_count > 0)
-            {
-                pieces[static_cast<std::size_t>(piece_count)] = ":";
-                piece_colors[static_cast<std::size_t>(piece_count)] = WHITE;
-                total_width += 6;
-                ++piece_count;
-            }
-            pieces[static_cast<std::size_t>(piece_count)] = std::format("{}", ctf.captures[team]);
-            piece_colors[static_cast<std::size_t>(piece_count)] =
-                static_cast<unsigned char>(team * 16 + 40);
-            total_width +=
-                static_cast<Sint32>(pieces[static_cast<std::size_t>(piece_count)].size()) * 6;
-            ++piece_count;
-        }
-        Sint32 x = rm - 60 - total_width;
-        for (int i = 0; i < piece_count; ++i)
-        {
-            mytext.write_xy(x, tm + 28, pieces[static_cast<std::size_t>(i)].c_str(),
-                            piece_colors[static_cast<std::size_t>(i)],
-                            static_cast<short>(1));
-            x += static_cast<Sint32>(pieces[static_cast<std::size_t>(i)].size()) * 6;
-        }
-    }
-
-    // Waypoint capture feedback: while any control point has a contending
-    // team, a compact "WP n/36" meter in that team's ramp color shows the
-    // accruing (or decaying) progress — partial progress was previously
-    // invisible until the flip. Drawn on the tm+36 row: below the HP/MP rows
-    // (tm+10/tm+18) and the FLAG!/compact-caps row (tm+28), above the
-    // score block at the pane bottom, so it collides with nothing in any
-    // split layout. First contested point in index order (deterministic).
-    for (int i = 0; i < ctf.cp_count; ++i)
-    {
-        const og::sim::CtfControlPoint& cp = ctf.cps[i];
-        if (cp.progress_team < 0)
-            continue;
-        const std::string meter =
-            std::format("WP {}/{}", cp.progress, og::sim::kCtfCpCaptureTicks);
-        mytext.write_xy(lm + 2, tm + 36, meter.c_str(),
-                        static_cast<unsigned char>(cp.progress_team * 16 + 40),
-                        static_cast<short>(1));
-        break;
-    }
-
-    if (control != nullptr && !control->dead())
-    {
-        // The viewport's control carries an enemy flag.
-        for (int team = 0; team < 4; ++team)
-        {
-            const og::sim::CtfFlag& flag = ctf.flags[team];
-            if (flag.state == og::sim::CtfFlagState::Carried &&
-                flag.carrier_entity_id == control->entity_id())
-            {
-                mytext.write_xy(lm + 2, tm + 28, "FLAG!",
-                                static_cast<unsigned char>(team * 16 + 40),
-                                static_cast<short>(1));
-                break;
-            }
-        }
-    }
-}
-
 short new_score_panel(screen* s, short /*do_it*/)
 {
 #define L_D(x) x*8
@@ -573,8 +439,7 @@ short new_score_panel(screen* s, short /*do_it*/)
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
 
         // Scripted-mode (TYPE_SCRIPTED) worlds render the generic ModeState
-        // HUD; CTF worlds keep the CTF renderer. The two gates are disjoint
-        // (no CTF level is scripted until the CTF engine retirement).
+        // HUD (mode Lua owns the scoreboard text).
         const bool scripted_mode_hud =
             (s->world_.type & GameWorld::TYPE_SCRIPTED) &&
             s->world_.mode.active;
@@ -583,15 +448,8 @@ short new_score_panel(screen* s, short /*do_it*/)
             draw_mode_panel(s, lm, tm, rm);
             draw_mode_beacons(s, s->viewob[players].get(), lm, tm, rm, bm);
         }
-        if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
-            draw_ctf_panel(s, control, lm, tm, rm);
-        if (((s->world_.type & GameWorld::TYPE_CTF) &&
-             s->world_.ctf.active) ||
-            og::sim::classic_respawn_active(s->world_) ||
-            scripted_mode_hud)
-        {
+        if (og::sim::classic_respawn_active(s->world_) || scripted_mode_hud)
             draw_respawn_countdown(s, control, lm, tm);
-        }
 
         // §2.8 follow caption: a follow-engaged view names its watched
         // target on a black strip at the viewport's bottom-center,

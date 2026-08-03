@@ -1005,7 +1005,7 @@ TEST(CursesRenderer, scripted_mode_hud_shows_name_lines_and_respawn)
     std::strncpy(world.mode.hud[0].text.data(), "FRAGS 3:1",
                  world.mode.hud[0].text.size() - 1);
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.ticks_left = 60; // 5 s at the 12 Hz sim rate
     entry.walker_entity_id = hero->entity_id();

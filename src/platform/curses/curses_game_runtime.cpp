@@ -219,7 +219,7 @@ public:
         // The CTF loss/rematch shape rides the classic WIN shape (ending==0,
         // next_level == this level) but the match was LOST: treat it like
         // every other loss so the level is never marked completed.
-        if (is_ctf_rematch_end(server_world(), ending(), next_level()))
+        if (is_mode_rematch_end(server_world(), ending(), next_level()))
             return;
 
         advance_save_after_win(server_save_, server_world(), next_level());
@@ -416,11 +416,11 @@ std::string mission_verdict_line(const GameRunResult& result,
                                  const SaveData* save, const GameWorld* world)
 {
     std::string verdict;
-    if (result.ctf_match) {
-        if (result.ctf_winner_team < 0 || result.local_team < 0)
+    if (result.mode_match) {
+        if (result.mode_winner_team < 0 || result.local_team < 0)
             verdict = "Match over.";
         else
-            verdict = result.local_team == result.ctf_winner_team ? "Victory!"
+            verdict = result.local_team == result.mode_winner_team ? "Victory!"
                                                                   : "Defeat.";
     } else {
         verdict = result.ending == 0 ? "Victory!" : "Defeat.";
@@ -441,12 +441,12 @@ std::string mission_verdict_line(const GameRunResult& result,
     return verdict;
 }
 
-bool is_ctf_rematch_end(const GameWorld& world, int ending, int next_level)
+bool is_mode_rematch_end(const GameWorld& world, int ending, int next_level)
 {
     // Thin (world, ending, next) adapter over the shared predicate: the
     // curses call sites read the finished level id from the mirror world.
     return ending == 0 &&
-           og::progression::ctf_rematch_shape(world,
+           og::progression::mode_rematch_shape(world,
                                               static_cast<short>(world.id),
                                               static_cast<short>(next_level));
 }
@@ -459,7 +459,7 @@ void advance_save_after_win(SaveData& save, const GameWorld& finished_world, int
     // bonus (the curses client never awarded one — do not unify bonus math
     // here) and caller-resolved next_level < 0 -> scen_num + 1.
     og::progression::WinFoldContext fold_ctx;
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         finished_world, save, static_cast<short>(next_level));
     fold_ctx.finished_level = save.scen_num; // pre-advance cursor
     fold_ctx.outcome.ending = 0;
@@ -570,16 +570,16 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
             result.ended = true;
             result.ending = session.ending();
             result.next_level = session.next_level();
-            // CTF verdict context from the replicated mirror state: the
+            // Mode verdict context from the replicated mirror state: the
             // winner, the followed walker's team (match end revives every
             // player corpse, so it normally resolves alive), and whether
             // this is the loss/rematch shape.
             GameWorld& world = session.mirror_world();
-            if ((world.type & GameWorld::TYPE_CTF) && world.ctf.active) {
-                result.ctf_match = true;
-                result.ctf_winner_team = world.ctf.winner_team;
-                result.ctf_rematch =
-                    is_ctf_rematch_end(world, result.ending, result.next_level);
+            if ((world.type & GameWorld::TYPE_SCRIPTED) && world.mode.active) {
+                result.mode_match = true;
+                result.mode_winner_team = world.mode.winner_team;
+                result.mode_rematch =
+                    is_mode_rematch_end(world, result.ending, result.next_level);
                 const std::uint32_t followed = session.followed_entity_id();
                 const walker* avatar =
                     followed != 0 ? world.find_by_id(followed) : nullptr;

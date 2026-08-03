@@ -190,6 +190,16 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
 void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
 {
     (void)level;
+    // #162 chokepoint: wiring runs at every SDL LevelRuntimeData
+    // construction AND load(), so every scratch/preview level build (the
+    // picker's VIEW LEVEL and MATCHUP loads included) gets a loader that
+    // matches the currently mounted campaign — the modes campaign ships
+    // pack families (flag/waypoint on wire 13/14) whose sprites only exist
+    // after its mount. Safe here: the walkers of THIS world are created
+    // after the wiring with fresh pixie borrows, and every other world
+    // reloads through its own enumerated flow site (or the gameplay-entry
+    // safety net) before its next draw.
+    sdl_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, sdl_entity_loader());
 }
 

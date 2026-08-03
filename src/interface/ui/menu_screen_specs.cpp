@@ -18,7 +18,6 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/interface/base.h>

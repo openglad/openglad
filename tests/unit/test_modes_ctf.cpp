@@ -30,7 +30,12 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
+
+// The modes pack's flag/waypoint treasure wire bytes (the pack families
+// claim the retired core CTF slots; the shipped maps author these bytes).
+inline constexpr int kModesFlagFamily = 13;
+inline constexpr int kModesWaypointFamily = 14;
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -479,64 +484,6 @@ TEST_F(ModesCtf, strip_scenario_troops_inert_when_ctf_does_not_activate)
     EXPECT_FALSE(authored->dead())
         << "non-activating CTF maps keep classic rules";
 }
-
-// ===========================================================================
-// Flag state machine
-// PORTS: enemy_touch_picks_up_and_carry_visual_follows,
-// pickup_fires_through_obmap_collision (+ the descriptor-slot-empty assert
-// from the retired flag_touch_runs_entirely_through_the_pack_hook),
-// own_team_touch_returns_dropped_flag,
-// regrab_of_dropped_flag_emits_no_second_taken,
-// notifications_fit_25_char_budget,
-// capture_requires_own_flag_home_and_awards_score,
-// multi_carry_capture_awards_all_flags, charm_flipped_carrier_drops_flag,
-// dropped_flag_auto_returns_after_countdown,
-// drop_on_impassable_tile_returns_home_instantly.
-// ===========================================================================
-
-// The shipped maps author the CORE families (wire bytes 13/14 —
-// campaign.md §2.0b): the init scan must count them and their touches must
-// run the Lua rules through the scripts/mode_ctf_touch.lua override. The
-// override takes core's DECLARED hook mark, so it is silent — no duplicate
-// registration error may be recorded. This is the case that would have
-// caught the family mismatch the integration self-check found.
-TEST_F(ModesCtf, authored_core_families_activate_and_run_lua_rules)
-{
-    ModesCtfWorld fx;
-    walker* flag0 = fx.spawn_flag(og::FAMILY_FLAG, 0, 96, 96);
-    walker* flag1 = fx.spawn_flag(og::FAMILY_FLAG, 1, 544, 800);
-    walker* point = fx.spawn_point(og::FAMILY_CTF_POINT, 320, 320);
-    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
-    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.ctf_active())
-        << "core-family flags must activate the match";
-    EXPECT_EQ(3, fx.var(kSlotTeamMask));
-    EXPECT_EQ(1, fx.var(kSlotCpCount))
-        << "the core-family waypoint scans as a control point";
-    EXPECT_EQ(static_cast<std::int32_t>(flag1->entity_id()),
-              fx.team_var(kSlotFlagEntity, 1));
-    EXPECT_FALSE(has_script_error(fx.world(), "duplicate hook"))
-        << "overriding core's DECLARED on_eat must be silent";
-
-    ASSERT_TRUE(flag1->eat_me(runner));
-    EXPECT_TRUE(fx.flag_carried(1));
-    EXPECT_EQ(runner->entity_id(), fx.carrier_id(1));
-    EXPECT_EQ(1, flag1->ignore());
-    EXPECT_TRUE(has_notification(fx.events, "GREEN FLAG TAKEN!"));
-
-    // The waypoint touch stays the preserved no-op through the override.
-    EXPECT_EQ(1, point->eat_me(runner));
-    EXPECT_EQ(0, fx.var(kSlotCpOwner1));
-
-    // Capture through the authored flag pair banks on the Lua counters.
-    ASSERT_TRUE(flag0->eat_me(runner));
-    EXPECT_EQ(1, fx.captures(0));
-    EXPECT_TRUE(has_notification(fx.events, "TEAM 1 SCORES! 1/3"));
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
 TEST_F(ModesCtf, enemy_touch_picks_up_and_carry_visual_follows)
 {
     ModesCtfWorld fx;
@@ -2330,7 +2277,7 @@ TEST_F(ModesCtf, other_mode_manifest_rows_do_not_bind_ctf)
     // The authored core family falls through to the shipped C++ delegation
     // when no scripted CTF match is live — inert on a non-TYPE_CTF world,
     // exactly what core's own hook did.
-    walker* core_flag = fx.spawn_flag(og::FAMILY_FLAG, 1, 500, 700);
+    walker* core_flag = fx.spawn_flag(kModesFlagFamily, 1, 500, 700);
     ASSERT_NE(nullptr, core_flag);
     EXPECT_EQ(1, core_flag->eat_me(runner));
     EXPECT_EQ(0, core_flag->ignore());
@@ -2412,7 +2359,7 @@ TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
         walker* flag1 =
             fx.world().find_by_id(static_cast<std::uint32_t>(flag1_id));
         ASSERT_NE(nullptr, flag1);
-        EXPECT_EQ(og::FAMILY_FLAG, flag1->family())
+        EXPECT_EQ(kModesFlagFamily, flag1->family())
             << "the shipped maps author the core flag family";
 
         walker* runner = fx.world().add_ob(Order::Living, FAMILY_SOLDIER);

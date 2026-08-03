@@ -207,7 +207,7 @@ inline constexpr int SHIFT_BLOCKY       = 6;
 inline constexpr char SCEN_TYPE_CAN_EXIT = 1;
 inline constexpr char SCEN_TYPE_GEN_EXIT = 2;
 inline constexpr char SCEN_TYPE_SAVE_ALL = 4;
-// 8 is SCEN_TYPE_CTF (ctf_constants.h, mirroring GameWorld::TYPE_CTF).
+// 8 was SCEN_TYPE_CTF, retired with the CTF engine (bit stays reserved).
 // Tower-authored level (mirrors GameWorld::TYPE_TOWER). Display-only in v1:
 // the sole reader is floor_hud_label; sim rules never consult it, and it is
 // never runtime-mutated (unlike CTF's activation-time bit drop).

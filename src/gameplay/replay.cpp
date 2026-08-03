@@ -323,7 +323,7 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
         {
             return false;
         }
-        for (int i = 0; i < kCtfMaxAnchorsPerTeam; ++i)
+        for (int i = 0; i < kRespawnMaxAnchorsPerTeam; ++i)
         {
             if (!compare_value(std::format("respawn.anchor_x[{}][{}]", team, i),
                                expected_respawn.anchor_x[team][i],
@@ -348,8 +348,8 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
     }
     for (std::size_t i = 0; i < expected_respawn.respawn_queue.size(); ++i)
     {
-        const CtfRespawnEntry& expected_entry = expected_respawn.respawn_queue[i];
-        const CtfRespawnEntry& actual_entry = actual_respawn.respawn_queue[i];
+        const RespawnEntry& expected_entry = expected_respawn.respawn_queue[i];
+        const RespawnEntry& actual_entry = actual_respawn.respawn_queue[i];
         const std::string prefix = std::format("respawn.respawn_queue[{}].", i);
 
 #define OG_REPLAY_COMPARE(field) \

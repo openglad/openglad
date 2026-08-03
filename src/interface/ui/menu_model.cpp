@@ -52,8 +52,8 @@ constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
     // The SDL picker groups the CTF match settings into MATCHUP;
     // terminal clients keep them as flat team-build items.
-    {"ctf_teams", "CTF Teams", PickerMenuCommand::CycleCtfTeamCount},
-    {"ctf_caps", "Capture Limit", PickerMenuCommand::CycleCtfCaptureLimit},
+    {"ctf_teams", "Match Teams", PickerMenuCommand::CycleCtfTeamCount},
+    {"ctf_caps", "Score Limit", PickerMenuCommand::CycleCtfCaptureLimit},
     {"ctf_troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
 }};
 

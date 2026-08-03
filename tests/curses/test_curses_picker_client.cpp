@@ -324,11 +324,11 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
 TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
 {
     PickerFixture f;
-    f.config.campaign = "org.openglad.ctf";
-    f.save().current_campaign = "org.openglad.ctf";
+    f.config.campaign = "org.openglad.modes";
+    f.save().current_campaign = "org.openglad.modes";
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"))
-        << "the ctf package ships with the game and should mount";
+              mount_campaign_package_with_error("org.openglad.modes"))
+        << "the modes package ships with the game and should mount";
 
     // §2.2: accept the generated company name at the name-entry prompt.
     f.t().push_special(KeyCode::Enter);
@@ -515,10 +515,10 @@ TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
     EXPECT_EQ(0, (int)f.save().ctf_team_count);
-    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
 
-    // CTF campaign: both settings cycle (Auto -> 2).
-    f.save().current_campaign = "org.openglad.ctf";
+    // Versus campaign: both settings cycle (Auto -> 2).
+    f.save().current_campaign = "org.openglad.modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
     EXPECT_EQ(2, (int)f.save().ctf_team_count);
@@ -1104,14 +1104,14 @@ TEST(CursesPickerClient, progress_level_title_requires_matching_mount)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
-    f.config.campaign = "org.openglad.ctf"; // configured != mounted
+    f.config.campaign = "org.openglad.modes"; // configured != mounted
     f.config.level = 4;
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *item);
 
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Campaign: Capture the Flag"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Campaign: Multiplayer Game Modes"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Level: 4"), std::string::npos) << dump;
     EXPECT_EQ(dump.find("Level: 4."), std::string::npos)
         << "a mismatched mount must not show another campaign's title";
@@ -2018,10 +2018,10 @@ TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
 
-    // CTF campaign: Scen -> Own -> Scen.
-    f.save().current_campaign = "org.openglad.ctf";
+    // Versus campaign: Scen -> Own -> Scen.
+    f.save().current_campaign = "org.openglad.modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
     EXPECT_EQ(1, (int)f.save().ctf_strip_scenario_troops);

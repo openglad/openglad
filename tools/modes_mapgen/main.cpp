@@ -22,7 +22,6 @@
 #include "modes_mapgen.h"
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
@@ -393,14 +392,14 @@ void self_check_level(const ExpectedLevel& row)
             }
             else if (order == Order::Treasure)
             {
-                if (family == og::FAMILY_FLAG)
+                if (family == modesgen::kFlagFamily)
                 {
                     ++flags_per_team[team];
                     if (!tile_passable(world, probe.get(), t))
                         fail(std::format("{}: flag ({}, {}) impassable",
                                          where, t.tx, t.ty));
                 }
-                else if (family == og::FAMILY_CTF_POINT)
+                else if (family == modesgen::kWaypointFamily)
                 {
                     ++cps;
                     if (!tile_passable(world, probe.get(), t))
@@ -575,8 +574,8 @@ void self_check_level(const ExpectedLevel& row)
         walker* fx = uptr.get();
         if (fx == nullptr || fx->query_order() != Order::Treasure)
             continue;
-        if (fx->family() == og::FAMILY_FLAG ||
-            fx->family() == og::FAMILY_CTF_POINT)
+        if (fx->family() == modesgen::kFlagFamily ||
+            fx->family() == modesgen::kWaypointFamily)
             add_target({static_cast<short>(fx->xpos() / GRID_SIZE),
                         static_cast<short>(fx->ypos() / GRID_SIZE)});
     }

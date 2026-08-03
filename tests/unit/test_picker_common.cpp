@@ -5,7 +5,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -1331,21 +1331,6 @@ TEST(PickerCommon, format_ctf_labels)
     ASSERT_LE(og::ui::format_ctf_caps_label(save).size(), 12u);
 }
 
-TEST(PickerCommon, is_ctf_campaign_matches_id_exactly)
-{
-    SaveData save;
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
-        << "the classic campaign is not CTF";
-    save.current_campaign = "org.openglad.ctf";
-    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
-    save.current_campaign = "org.openglad.ctf2";
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
-        << "the match is exact, not a prefix";
-}
-
-// is_versus_campaign keys on the campaign.yaml `matchup:` axis, not on any
-// campaign id. The versus package here is a throwaway one-file .glad; the
-// lookup rides campaign_matchup's private mount, so no mount state changes.
 TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
 {
     SaveData save;
@@ -1669,18 +1654,6 @@ TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
     ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
 }
 
-TEST(PickerCommon, is_ctf_campaign_matches_constant)
-{
-    SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
-    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
-    ASSERT_EQ("org.openglad.ctf", std::string(og::kCtfCampaignId));
-    save.current_campaign = "org.openglad.gladiator";
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save));
-}
-
-// --- Team choice helpers ---
-
 TEST(PickerCommon, team_has_members_and_set_preferred_team)
 {
     SaveData save;
@@ -1887,13 +1860,12 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 {
     // The full shipped set arrives in alphabetical list_campaigns() order
     // and leaves in shelf order: classics, the two original story
-    // campaigns, the multiplayer packages, concept trailing.
+    // campaigns, the multiplayer package, concept trailing.
     std::list<std::string> ids = {
-        "org.openglad.arenas",
         "org.openglad.concept",
-        "org.openglad.ctf",
         "org.openglad.gladiator",
         "org.openglad.longseason",
+        "org.openglad.modes",
         "org.openglad.tower",
         "org.openglad.tryxian",
         "org.openglad.westlands",
@@ -1903,8 +1875,7 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
         "org.openglad.tryxian",
         "org.openglad.westlands",
         "org.openglad.longseason",
-        "org.openglad.ctf",
-        "org.openglad.arenas",
+        "org.openglad.modes",
         "org.openglad.tower",
         "org.openglad.concept",
     };
@@ -1918,14 +1889,14 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     // User-made packages keep their relative order after every shelved id.
     std::list<std::string> with_extras = {
         "a.campaign",
-        "org.openglad.ctf",
+        "org.openglad.modes",
         "b.campaign",
         "org.openglad.gladiator",
     };
     og::ui::order_campaigns_for_select(with_extras);
     ASSERT_EQ((std::list<std::string>{
                   "org.openglad.gladiator",
-                  "org.openglad.ctf",
+                  "org.openglad.modes",
                   "a.campaign",
                   "b.campaign",
               }),
@@ -1936,10 +1907,10 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     og::ui::order_campaigns_for_select(no_anchors);
     ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
 
-    // Only CTF: a single-element list stays put.
-    std::list<std::string> only_ctf = {"org.openglad.ctf"};
-    og::ui::order_campaigns_for_select(only_ctf);
-    ASSERT_EQ((std::list<std::string>{"org.openglad.ctf"}), only_ctf);
+    // Only the modes package: a single-element list stays put.
+    std::list<std::string> only_modes = {"org.openglad.modes"};
+    og::ui::order_campaigns_for_select(only_modes);
+    ASSERT_EQ((std::list<std::string>{"org.openglad.modes"}), only_modes);
 
     // Empty list survives.
     std::list<std::string> empty;
@@ -1954,7 +1925,7 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
     const std::list<std::string> full = {
         "org.openglad.gladiator",
         "org.openglad.tower",
-        "org.openglad.ctf",
+        "org.openglad.modes",
         "a.campaign",
     };
 
@@ -1968,7 +1939,7 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
     og::ui::filter_campaigns_for_networked_lobby(networked, true);
     ASSERT_EQ((std::list<std::string>{
                   "org.openglad.gladiator",
-                  "org.openglad.ctf",
+                  "org.openglad.modes",
                   "a.campaign",
               }),
               networked);
@@ -2036,7 +2007,7 @@ struct ReportWorld : TestGameWorld
                 if (entity != nullptr)
                     game_loader->set_derived_stats(entity, order, family);
             };
-        world().type = ctf_map ? GameWorld::TYPE_CTF : 0;
+        world().type = ctf_map ? GameWorld::TYPE_SCRIPTED : 0;
     }
 
     walker* spawn_living_named(int family, int team, int guy_level,
@@ -2060,23 +2031,6 @@ struct ReportWorld : TestGameWorld
         w->setxy(256, 256);
         w->set_team_num(static_cast<unsigned char>(team));
         return w;
-    }
-
-    walker* spawn_flag(int team, int flag_level = 0)
-    {
-        walker* flag = world().add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        flag->setxy(96, 96);
-        flag->set_team_num(static_cast<unsigned char>(team));
-        if (flag_level > 0 && flag->stats() != nullptr)
-            flag->stats()->set_level(flag_level);
-        return flag;
-    }
-
-    walker* spawn_point()
-    {
-        walker* point = world().add_fx_ob(Order::Treasure, og::FAMILY_CTF_POINT);
-        point->setxy(320, 320);
-        return point;
     }
 
     walker* spawn_anchor(int team)
@@ -2155,7 +2109,7 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_FALSE(report.is_ctf);
+    EXPECT_FALSE(report.is_versus);
     EXPECT_EQ(0, report.your_team);
 
     const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
@@ -2190,17 +2144,14 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     EXPECT_TRUE(any_line_contains(lines, "2x SOLDIER Lv 3"));
     EXPECT_TRUE(any_line_contains(lines, "GONZO - ARCHER Lv 5"));
     EXPECT_TRUE(any_line_contains(lines, "2x GENERATOR"));
-    EXPECT_FALSE(any_line_contains(lines, "CTF"));
+    EXPECT_FALSE(any_line_contains(lines, "MATCH:"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
+TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0, /*level=*/7); // map capture limit 7
-    fx.spawn_flag(1);
-    fx.spawn_point();
     fx.spawn_anchor(0);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2211,7 +2162,7 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
     fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "org.openglad.modes";
     save.my_team = 0;
     save.ctf_strip_scenario_troops = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2221,18 +2172,16 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_TRUE(report.ctf_will_activate);
-    EXPECT_TRUE(report.team_has_flag[0]);
-    EXPECT_TRUE(report.team_has_flag[1]);
-    EXPECT_FALSE(report.team_has_flag[2]);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_TRUE(report.will_activate);
+    EXPECT_TRUE(report.team_authored[0]);
+    EXPECT_TRUE(report.team_authored[1]);
+    EXPECT_FALSE(report.team_authored[2]);
     EXPECT_TRUE(report.team_active[0]);
     EXPECT_TRUE(report.team_active[1]);
     EXPECT_FALSE(report.team_active[2]);
-    EXPECT_EQ(1, report.cp_count);
     EXPECT_EQ(2, report.team_anchor_count[0]);
     EXPECT_EQ(1, report.team_anchor_count[1]);
-    EXPECT_EQ(7, report.capture_limit) << "map flag level drives the limit";
 
     const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(roster_troops != nullptr);
@@ -2262,9 +2211,8 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "CTF: 2 FLAG TEAMS, 1 CONTROL POINTS"));
-    EXPECT_TRUE(any_line_contains(lines, "CAPTURE LIMIT: 7"));
-    EXPECT_TRUE(any_line_contains(lines, "RED FLAG  ANCHORS: 2  ACTIVE"));
+    EXPECT_TRUE(any_line_contains(lines, "MATCH: 2 AUTHORED TEAMS"));
+    EXPECT_TRUE(any_line_contains(lines, "RED TEAM  MARKERS: 2  ACTIVE"));
     EXPECT_TRUE(any_line_contains(lines, "RED TEAM (YOURS)"));
     EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM"))
         << "score teams keep color-name headers";
@@ -2283,15 +2231,15 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0, /*level=*/7);
-    fx.spawn_flag(1);
-    fx.spawn_flag(3);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_anchor(3);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
     fx.spawn_living_named(FAMILY_ARCHER, 3, 5, nullptr);
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "org.openglad.modes";
     save.allied_mode = 1;
     save.my_team = 2;
     save.ctf_capture_limit = 5;
@@ -2303,7 +2251,6 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
     EXPECT_EQ(2, report.your_team)
         << "local Together mode keeps the selected playing team";
 
@@ -2322,11 +2269,11 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0); // single flag team: the match will not activate
+    fx.spawn_anchor(0); // single authored team: the match will not activate
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "org.openglad.modes";
     save.ctf_strip_scenario_troops = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
@@ -2335,26 +2282,27 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_FALSE(report.ctf_will_activate);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_FALSE(report.will_activate);
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
-        << "the strip is inert on non-activating CTF maps";
+        << "the strip is inert on non-activating versus maps";
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "CTF INACTIVE"));
+    EXPECT_TRUE(any_line_contains(lines, "MATCH INACTIVE"));
 }
 
-TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
+TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaign)
 {
-    // The sim consumes ctf_strip_scenario_troops on ANY TYPE_CTF map (no
-    // campaign gate); the preview must mirror it exactly or a custom CTF map
-    // outside the shipped campaign strips in-sim with no '*' in the viewer.
+    // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
+    // campaign gate); the preview must mirror it exactly or a custom
+    // scripted map outside the shipped campaign strips in-sim with no '*'
+    // in the viewer.
     ReportWorld fx(true);
-    fx.spawn_flag(0);
-    fx.spawn_flag(1);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
 
@@ -2369,8 +2317,8 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_TRUE(report.ctf_will_activate);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_TRUE(report.will_activate);
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, troops->strip_reason);

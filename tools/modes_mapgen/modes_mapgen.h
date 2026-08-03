@@ -26,6 +26,12 @@ class walker;
 
 namespace modesgen {
 
+// The pack's flag/waypoint treasure wire bytes (tools/modes_mapgen/pack/
+// families/treasure-flag.lua and treasure-waypoint.lua claim the retired
+// core CTF slots). The builders author these bytes into the .fss grids.
+inline constexpr int kFlagFamily = 13;
+inline constexpr int kWaypointFamily = 14;
+
 struct TilePos
 {
     short tx = -1;

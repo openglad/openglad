@@ -1737,7 +1737,7 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 {
     SaveData save;
     init_team_save(save, 2, FAMILY_ELF, "Mismatch");
-    save.current_campaign = "org.openglad.ctf"; // not the mounted campaign
+    save.current_campaign = "org.openglad.modes"; // not the mounted campaign
     save.scen_num = 1; // collides with gladiator's scen1
 
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -1754,7 +1754,7 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    EXPECT_TRUE(status_contains(*lobby, "Campaign: Capture the Flag"));
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
     EXPECT_FALSE(status_contains(*lobby, "Level: 1."))
         << "a mismatched mount must not serve another campaign's scen1 title";

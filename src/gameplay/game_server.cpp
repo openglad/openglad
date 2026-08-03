@@ -4,7 +4,6 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -1212,14 +1211,13 @@ void GameServer::bind_player(PeerId peer_id,
     client.spectator_admitted = false;
     if (control == nullptr)
     {
-        // Versus matches (CTF / scripted modes): prefer the binding player's
-        // OWN hero. Several humans may share a team in versus lobbies, and
-        // the generic first-unclaimed scan would hand the first binder a
+        // Versus matches (scripted modes): prefer the binding player's OWN
+        // hero. Several humans may share a team in versus lobbies, and the
+        // generic first-unclaimed scan would hand the first binder a
         // teammate's character. Classic and allied worlds keep the original
         // pool claim (allied deliberately treats the combined roster as a
         // shared pool in oblist order).
-        if ((world_.type & (GameWorld::TYPE_CTF | GameWorld::TYPE_SCRIPTED)) !=
-            0)
+        if ((world_.type & GameWorld::TYPE_SCRIPTED) != 0)
         {
             for (const auto& uptr : world_.oblist)
             {
@@ -2637,11 +2635,9 @@ void GameServer::remember_snapshot_hash(ConnectedClientState& client,
 
 walker* GameServer::find_match_reclaim_control(std::size_t player_index) const
 {
-    // Gate on an active CTF/scripted match or an active classic respawn mode
+    // Gate on an active scripted match or an active classic respawn mode
     // so plain non-respawning behavior is untouched.
-    const bool ctf_active =
-        (world_.type & GameWorld::TYPE_CTF) != 0 && world_.ctf.active;
-    if (!ctf_active && !og::sim::mode_scripted_active(world_) &&
+    if (!og::sim::mode_scripted_active(world_) &&
         !og::sim::classic_respawn_active(world_))
         return nullptr;
 

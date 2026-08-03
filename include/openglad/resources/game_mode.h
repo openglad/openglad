@@ -23,7 +23,7 @@
 // behind og::mode::IProgression. Design theorem: a Tier-B mode must be
 // implementable with no og_gameplay edits and no wire changes.
 //
-// Classic-respawn is NOT a mode. It is a shared engine (CtfState respawn
+// Classic-respawn is NOT a mode. It is a shared engine (RespawnState
 // substate with ctf.active false) that composes with modes via the
 // respawn_mode knob; clamp_respawn_mode below is how a mode constrains it.
 //

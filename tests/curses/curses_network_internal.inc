@@ -515,9 +515,11 @@ int curses_network_testing_exercise_internal_helpers()
     GameWorld rematch_world;
     rematch_world.id = 7;
     rematch_world.type = static_cast<char>(
-        rematch_world.type | GameWorld::TYPE_CTF);
-    rematch_world.ctf.active = true;
-    rematch_world.ctf.winner_team = 1;
+        rematch_world.type | GameWorld::TYPE_SCRIPTED);
+    rematch_world.mode.active = true;
+    rematch_world.mode.init_attempted = true;
+    rematch_world.mode.win_latched = true;
+    rematch_world.mode.winner_team = 1;
     const std::string active_company_before =
         og::data::active_company_slot();
     const std::string rematch_probe_slot =
@@ -657,13 +659,14 @@ int curses_network_testing_exercise_internal_helpers()
         if (pending_corpse != nullptr) {
             const short dead_before = pending_corpse->dead();
             const char type_before = mirror.type;
-            const og::sim::CtfState ctf_before = mirror.ctf;
+            const og::sim::ModeState mode_before = mirror.mode;
             pending_corpse->set_dead(1);
             mirror.type = static_cast<char>(
-                mirror.type | GameWorld::TYPE_CTF);
-            mirror.ctf.active = true;
+                mirror.type | GameWorld::TYPE_SCRIPTED);
+            mirror.mode.active = true;
+            mirror.mode.init_attempted = true;
             mirror.respawn.respawn_queue.push_back(
-                og::sim::CtfRespawnEntry{
+                og::sim::RespawnEntry{
                     .kind = 0,
                     .walker_entity_id =
                         pending_corpse->entity_id(),
@@ -678,7 +681,7 @@ int curses_network_testing_exercise_internal_helpers()
                 pending_follow.target_entity_id == 0);
             pending_corpse->set_dead(dead_before);
             mirror.type = type_before;
-            mirror.ctf = ctf_before;
+            mirror.mode = mode_before;
         }
 
         host->request_abort();
@@ -757,7 +760,7 @@ int curses_network_testing_exercise_internal_helpers()
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.
     CursesNetworkTestingMountRestore mount_restore;
-    const std::string ctf_campaign = "org.openglad.ctf";
+    const std::string ctf_campaign = "org.openglad.modes";
     const CampaignPackageIoError ctf_mount =
         mount_campaign_package_with_error(ctf_campaign);
     check(ctf_mount == CampaignPackageIoError::None);

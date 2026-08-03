@@ -24,7 +24,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>

@@ -21,7 +21,6 @@
 */
 #include <openglad/core/colors.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/test_trace.h>
@@ -414,15 +413,13 @@ short radar::draw(LevelRuntimeData* data)
 					blip.color > 0 || blip.color == og::kRadarColorTeam;
 				// WHICH treasures ignore view_all: navigation markers and
 				// mode objectives are landmarks every player can see;
-				// everything else is loot that needs treasure sight. The
-				// descriptor schema now carries this as `radar_landmark`
-				// (set by pack flag/waypoint families); the four hardcoded
-				// core families keep their entries until their descriptors
-				// declare it (the CTF engine retirement).
+				// everything else is loot that needs treasure sight. Pack
+				// families declare this via `radar_landmark`; the two core
+				// navigation families keep their hardcoded entries (their
+				// descriptors declare no landmark flag, and classic
+				// behavior must stay identical).
 				const bool ignores_view_all =
 					obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER
-					|| obfamily == og::FAMILY_FLAG
-					|| obfamily == og::FAMILY_CTF_POINT
 					|| blip.landmark;
 				if (has_blip && blip.landmark && !can_see)
 				{

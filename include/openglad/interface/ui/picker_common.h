@@ -165,11 +165,10 @@ void cycle_ctf_team_count(SaveData& save);
 void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign is the CTF campaign.
-bool is_ctf_campaign(const SaveData& save);
 
 // True when the save's current campaign declares `matchup: versus` in its
 // campaign.yaml — the generic competitive-matchup predicate. New scripted-mode
-// surfaces key on this; the CTF campaign-id compares (is_ctf_campaign, the
+// surfaces key on this; the retired CTF campaign-id compares (the
 // MATCHUP settings gate, the lobby shared-teams rule) stay untouched until
 // the CTF engine retirement swaps them over.
 bool is_versus_campaign(const SaveData& save);
@@ -581,13 +580,11 @@ struct ScenarioRosterRow {
 };
 
 struct ScenarioRosterReport {
-    bool is_ctf = false;            // world.type & TYPE_CTF
-    bool ctf_will_activate = false; // >= 2 authored flag teams
+    bool is_versus = false;         // world.type & TYPE_SCRIPTED
+    bool will_activate = false;     // >= 2 authored marker teams
     short your_team = 0;            // 0 when allied, else save.my_team
-    int cp_count = 0;
-    int capture_limit = 0;          // effective: requested > map > default
-    std::array<bool, 4> team_has_flag = {};
-    std::array<bool, 4> team_active = {}; // mirror of the init clamp
+    std::array<bool, 4> team_authored = {};  // start-marker teams
+    std::array<bool, 4> team_active = {};    // the activation clamp
     std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
     bool any_troops_off = false;
@@ -596,9 +593,10 @@ struct ScenarioRosterReport {
 
 // Scan a (scratch-loaded) world's authored entities into a roster report.
 // Named NPCs get individual rows; unnamed livings group by (team, family,
-// level); generators aggregate per team. Strip annotations mirror the CTF
-// init rules using save-side knowledge (roster teams = distinct team_list
-// teamnums, collapsed to {0} when allied).
+// level); generators aggregate per team. Strip annotations mirror the
+// scripted-mode init rules (authored team mask = start markers, activation
+// = og::sim::effective_team_mask) using save-side knowledge (roster teams =
+// distinct team_list teamnums, collapsed to {0} when allied).
 ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                                                   const SaveData& save);
 

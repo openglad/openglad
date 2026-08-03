@@ -148,7 +148,7 @@ void mode_run_tick(GameWorld& world)
         const short requested = world.ctf_requested_respawn_ticks;
         world.respawn.respawn_ticks =
             (requested > 0) ? static_cast<std::uint16_t>(requested)
-                            : kCtfDefaultRespawnTicks;
+                            : kRespawnDefaultTicks;
         respawn_scan_anchors(world);
         if (og::script::hooks::level_mode_init(&world))
             world.mode.active = true;

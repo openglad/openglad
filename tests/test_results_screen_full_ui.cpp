@@ -1,5 +1,4 @@
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
@@ -560,14 +559,13 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
-    screen_ref.world().type |= GameWorld::TYPE_CTF;
-    screen_ref.world().ctf = og::sim::CtfState{};
-    screen_ref.world().ctf.active = true;
-    screen_ref.world().ctf.winner_team = 1; // bots won
-    screen_ref.world().ctf.winner_is_player = false;
-    screen_ref.world().ctf.team_active[0] = true;
-    screen_ref.world().ctf.team_active[1] = true;
-
+    screen_ref.world().type |= GameWorld::TYPE_SCRIPTED;
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().mode.active = true;
+    screen_ref.world().mode.init_attempted = true;
+    screen_ref.world().mode.win_latched = true;
+    screen_ref.world().mode.winner_team = 1; // bots won
+    screen_ref.world().mode.winner_is_player = false;
     // One rostered human on the LOSING team with huge classic MVP points.
     std::map<int, guy*> before;
     std::map<int, walker*> after;
@@ -607,7 +605,7 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
         << "a losing-team human must not be picked as MVP";
     EXPECT_FALSE(trace_contains("results", "LOSERHERO"));
 
-    screen_ref.world().ctf = og::sim::CtfState{};
+    screen_ref.world().mode = og::sim::ModeState{};
     screen_ref.world().type = saved_type;
     screen_ref.world().end = saved_end;
 }
@@ -692,7 +690,7 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     const short saved_my_team = screen_ref.world().my_team;
     screen_ref.world().end = 0;
     screen_ref.world().type = static_cast<char>(
-        screen_ref.world().type & ~GameWorld::TYPE_CTF);
+        screen_ref.world().type & ~GameWorld::TYPE_SCRIPTED);
     screen_ref.world().my_team = 0;
 
     screen_ref.save_data.current_campaign = "org.openglad.gladiator";

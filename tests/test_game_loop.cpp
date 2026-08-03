@@ -1703,13 +1703,13 @@ TEST(GameLoop, select_control_for_view_resolves_high_global_player_indices)
     world.delete_objects();
 }
 
-// Playtest bug A (display side): while a CTF respawn is pending the mapped id
+// Playtest bug A (display side): while a mode respawn is pending the mapped id
 // is 0, but the view must keep following the dead corpse so the camera holds
 // and the RESPAWN IN countdown renders. A nonzero mapped id always wins, an
 // already-revived walker wearing this player's user tag is kept through the
 // one-tick reclaim window, and a corpse whose pending entry disappeared falls
 // back to nullptr.
-TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
+TEST(GameLoop, select_control_for_view_keeps_pending_mode_respawn_corpse)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -1718,9 +1718,10 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
     GameWorld& world = game_screen->world();
     world.delete_objects();
     const char saved_type = world.type;
-    world.type |= GameWorld::TYPE_CTF;
-    world.ctf = og::sim::CtfState{};
-    world.ctf.active = true;
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode = og::sim::ModeState{};
+    world.mode.active = true;
+    world.mode.init_attempted = true;
 
     walker* const corpse = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* const other = world.add_ob(Order::Living, FAMILY_ARCHER);
@@ -1732,7 +1733,7 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
     corpse->set_dead(1);
     other->set_team_num(3); // off the view's team: no same-team fallback hits
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
     entry.ticks_left = 60;
@@ -1772,15 +1773,15 @@ TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
               og::runtime::detail::select_control_for_view(
                   view, controlled_entity_ids, &world, 0u));
 
-    // Outside an active CTF match the keep-alive never engages.
+    // Outside an active scripted match the keep-alive never engages.
     world.respawn.respawn_queue.push_back(entry);
-    world.ctf.active = false;
+    world.mode.active = false;
     EXPECT_EQ(nullptr,
               og::runtime::detail::select_control_for_view(
                   view, controlled_entity_ids, &world, 0u));
 
     view->control = saved_control;
-    world.ctf = og::sim::CtfState{};
+    world.mode = og::sim::ModeState{};
     world.type = saved_type;
     world.delete_objects();
 }
@@ -1858,11 +1859,12 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
     // A selected foreign hero stays selected through its respawn window.
     // The view points at the watched body, but that must not be mistaken for
     // this spectator seat's own retained corpse and clear follow state.
-    world.type |= GameWorld::TYPE_CTF;
-    world.ctf.active = true;
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.init_attempted = true;
     view->control = hero_a;
     hero_a->set_dead(1);
-    og::sim::CtfRespawnEntry respawn;
+    og::sim::RespawnEntry respawn;
     respawn.kind = 0;
     respawn.team = 0;
     respawn.ticks_left = 30;
@@ -1919,7 +1921,7 @@ TEST(GameLoop, display_view_follow_engages_cycles_and_never_stamps_user_tags)
         << "a genuinely mapped seat keeps today's authoritative tag stamp";
 
     view->control = saved_control;
-    world.ctf = og::sim::CtfState{};
+    world.mode = og::sim::ModeState{};
     world.type = saved_type;
     world.delete_objects();
 }
@@ -4938,7 +4940,6 @@ TEST(GameLoop, zz_capture_longseason)
 
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/statistics.h>
 
 namespace {

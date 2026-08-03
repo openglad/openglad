@@ -144,7 +144,7 @@ walker* respawn_retained_control(viewscreen* view,
                                  GameWorld* world,
                                  std::optional<std::size_t> player_index)
 {
-    if ((((world->type & GameWorld::TYPE_CTF) && world->ctf.active) ||
+    if ((og::sim::mode_scripted_active(*world) ||
          og::sim::classic_respawn_active(*world)) &&
         view->control != nullptr &&
         world->find_by_id(view->control->entity_id()) == view->control)
@@ -156,7 +156,7 @@ walker* respawn_retained_control(viewscreen* view,
             return previous;
         }
         if (previous->dead() && previous->myguy != nullptr &&
-            og::sim::ctf_pending_player_respawn(world->respawn,
+            og::sim::respawn_pending_player(world->respawn,
                                                 previous->entity_id()))
         {
             return previous;
@@ -276,7 +276,7 @@ void update_display_view_follow(
             og::sim::default_follow_target_id(*world, controlled_entity_ids);
     }
     else if (target->dead() && target->myguy != nullptr &&
-             og::sim::ctf_pending_player_respawn(world->respawn,
+             og::sim::respawn_pending_player(world->respawn,
                                                  target->entity_id()))
     {
         // A spectator may be following somebody else's respawning hero.
@@ -589,7 +589,7 @@ bool finalize_level_and_advance_cursor(
         fold_ctx.time_bonus[team_index] =
             get_time_bonus(static_cast<int>(team_index));
     }
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         gameplay_screen.world(),
         gameplay_screen.save_data,
         static_cast<short>(next_level));

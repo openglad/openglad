@@ -1,15 +1,18 @@
-// Capture-the-flag respawn tests: player revive-in-place, AI respawns,
-// anchor rotation, stain scrubbing, match-end revive, queue capping, and
-// the team-wipe / input gates.
+// Respawn engine tests (retargeted off the retired CTF engine): player
+// revive-in-place, AI respawns, stain/gem scrubbing, win-latch revive-all,
+// queue capping, spawn probes, and the team-wipe / input gates — all through
+// the scripted-mode frame (Lua owns eligibility via og.respawn_schedule;
+// respawn_schedule_corpse is that binding's backend).
 
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/gloader.h>
@@ -21,22 +24,18 @@
 
 namespace {
 
-loader& ctf_test_loader()
+loader& respawn_test_loader()
 {
     static loader instance{EntityFactory{}};
-    static const bool registered = [] {
-        return true;
-    }();
-    (void)registered;
     return instance;
 }
 
-struct CtfWorld : TestGameWorld
+struct ScriptedWorld : TestGameWorld
 {
-    explicit CtfWorld(int level_id = 500)
+    explicit ScriptedWorld(int level_id = 500)
         : TestGameWorld(level_id)
     {
-        loader* game_loader = &ctf_test_loader();
+        loader* game_loader = &respawn_test_loader();
         world().entity_factory =
             [game_loader](Order order, std::int32_t family) {
                 return game_loader->create_walker_owned(order, family);
@@ -53,17 +52,11 @@ struct CtfWorld : TestGameWorld
                 if (entity != nullptr)
                     game_loader->set_derived_stats(entity, order, family);
             };
-        world().type = GameWorld::TYPE_CTF;
-    }
-
-    walker* spawn_flag(int team, int x, int y)
-    {
-        walker* flag = world().add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        if (flag == nullptr)
-            return nullptr;
-        flag->setxy(x, y);
-        flag->set_team_num(static_cast<unsigned char>(team));
-        return flag;
+        world().type = GameWorld::TYPE_SCRIPTED;
+        // Hand-arm the mode (a mounted pack's on_mode_init would do this on
+        // the first scripted tick).
+        world().mode.active = true;
+        world().mode.init_attempted = true;
     }
 
     walker* spawn_anchor(int team, int x, int y)
@@ -95,26 +88,31 @@ struct CtfWorld : TestGameWorld
     }
 };
 
-// Standard respawn arena: two flag teams, anchors for team 0, one stationary
-// living per team, short respawn timer.
+// Standard respawn arena: anchors for both teams (scanned, then consumed the
+// way the level bootstrap consumes markers), one stationary living per team,
+// short respawn timer.
 struct RespawnArena
 {
-    CtfWorld fx;
+    ScriptedWorld fx;
     walker* runner = nullptr; // team 0
     walker* enemy = nullptr;  // team 1
 
     RespawnArena()
     {
-        fx.spawn_flag(0, 96, 96);
-        fx.spawn_flag(1, 544, 800);
-        fx.spawn_anchor(0, 128, 128);
-        fx.spawn_anchor(0, 192, 128);
-        fx.spawn_anchor(1, 512, 832);
+        walker* a0 = fx.spawn_anchor(0, 128, 128);
+        walker* a1 = fx.spawn_anchor(0, 192, 128);
+        walker* a2 = fx.spawn_anchor(1, 512, 832);
+        og::sim::respawn_scan_anchors(fx.world());
+        for (walker* marker : {a0, a1, a2})
+        {
+            if (marker != nullptr)
+                marker->set_dead(1);
+        }
         runner = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
         enemy = fx.spawn_living(FAMILY_SOLDIER, 1, 480, 760);
-        fx.world().ctf_requested_respawn_ticks = 6;
+        fx.world().respawn.respawn_ticks = 6;
         fx.tick();
-        EXPECT_TRUE(fx.world().ctf.active);
+        EXPECT_TRUE(fx.world().mode.active);
     }
 
     GameWorld& world() { return fx.world(); }
@@ -123,6 +121,13 @@ struct RespawnArena
     {
         w->set_dead(1);
         w->death();
+    }
+
+    // The mode Lua's on_entity_death eligibility call.
+    bool schedule(walker* w, int ticks_override = 0)
+    {
+        return og::sim::respawn_schedule_corpse(fx.world(), w,
+                                                ticks_override);
     }
 };
 
@@ -179,7 +184,7 @@ int live_stains_for_team(GameWorld& world, int team)
 
 } // namespace
 
-TEST(CtfRespawn, player_corpse_revives_in_place_with_control_preserved)
+TEST(RespawnEngine, player_corpse_revives_in_place_with_control_preserved)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -190,9 +195,9 @@ TEST(CtfRespawn, player_corpse_revives_in_place_with_control_preserved)
     const std::uint32_t corpse_id = runner->entity_id();
 
     arena.kill(runner);
-    arena.fx.tick();
+    ASSERT_TRUE(arena.schedule(runner));
     ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
-    const og::sim::CtfRespawnEntry& entry = arena.world().respawn.respawn_queue[0];
+    const og::sim::RespawnEntry& entry = arena.world().respawn.respawn_queue[0];
     ASSERT_EQ(0, entry.kind);
     ASSERT_EQ(corpse_id, entry.walker_entity_id);
     ASSERT_EQ(6, entry.ticks_left);
@@ -209,12 +214,12 @@ TEST(CtfRespawn, player_corpse_revives_in_place_with_control_preserved)
     ASSERT_TRUE(runner->stats()->commands.empty());
     ASSERT_EQ(0, runner->user()) << "control binding survives the revive";
     ASSERT_EQ(ACT_CONTROL, runner->act_type());
-    ASSERT_EQ(128, runner->xpos());
-    ASSERT_EQ(128, runner->ypos());
+    ASSERT_EQ(320, runner->xpos()) << "engine default: revive in place";
+    ASSERT_EQ(320, runner->ypos());
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(CtfRespawn, user_conflict_demotes_revived_walker_to_ai)
+TEST(RespawnEngine, user_conflict_demotes_revived_walker_to_ai)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -231,6 +236,7 @@ TEST(CtfRespawn, user_conflict_demotes_revived_walker_to_ai)
     replacement->set_act_type(ACT_CONTROL);
 
     arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner));
     arena.fx.tick(7);
 
     ASSERT_FALSE(runner->dead());
@@ -240,7 +246,7 @@ TEST(CtfRespawn, user_conflict_demotes_revived_walker_to_ai)
     ASSERT_EQ(ACT_CONTROL, replacement->act_type());
 }
 
-TEST(CtfRespawn, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
+TEST(RespawnEngine, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
 {
     RespawnArena arena;
     walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
@@ -248,7 +254,7 @@ TEST(CtfRespawn, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
     const std::uint32_t old_id = bot->entity_id();
 
     arena.kill(bot);
-    arena.fx.tick();
+    ASSERT_TRUE(arena.schedule(bot));
     ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
     ASSERT_EQ(1, arena.world().respawn.respawn_queue[0].kind);
     ASSERT_EQ(FAMILY_ARCHER, arena.world().respawn.respawn_queue[0].family);
@@ -256,50 +262,18 @@ TEST(CtfRespawn, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
     ASSERT_EQ(1, arena.world().respawn.respawn_queue[0].team);
     ASSERT_FALSE(any_alive_with(arena.world(), FAMILY_ARCHER, 1));
 
-    arena.fx.tick(6);
+    arena.fx.tick(7);
     const walker* fresh = find_alive_with(arena.world(), FAMILY_ARCHER, 1);
     ASSERT_NE(nullptr, fresh);
     ASSERT_NE(old_id, fresh->entity_id()) << "AI respawn is a fresh walker";
     ASSERT_EQ(2, fresh->stats()->level());
     ASSERT_EQ(255, fresh->real_team_num());
-    ASSERT_EQ(512, fresh->xpos());
-    ASSERT_EQ(832, fresh->ypos());
+    ASSERT_EQ(480, fresh->xpos()) << "the entry carries the corpse spot";
+    ASSERT_EQ(700, fresh->ypos());
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(CtfRespawn, anchors_rotate_and_impassable_anchors_are_skipped)
-{
-    RespawnArena arena;
-    walker* bot_a = arena.fx.spawn_living(FAMILY_ARCHER, 0, 320, 200);
-    walker* bot_b = arena.fx.spawn_living(FAMILY_THIEF, 0, 352, 200);
-
-    // First respawn rotates to the first team-0 anchor (128, 128).
-    arena.kill(bot_a);
-    arena.fx.tick(7);
-    walker* first = find_alive_with(arena.world(), FAMILY_ARCHER, 0);
-    ASSERT_NE(nullptr, first);
-    ASSERT_EQ(128, first->xpos());
-    ASSERT_EQ(128, first->ypos());
-
-    // Wall off the second anchor (192, 128): the rotation must skip it and
-    // wrap back to the first anchor. Clear the first anchor of the previous
-    // respawn so the wrap target is open.
-    first->setxy(320, 240);
-    first->set_act_type(ACT_CONTROL);
-    PixieData& grid = arena.world().grid;
-    for (int gy = 7; gy <= 9; ++gy)
-        for (int gx = 11; gx <= 13; ++gx)
-            grid.data[gx + grid.w * gy] = PIX_H_WALL1;
-
-    arena.kill(bot_b);
-    arena.fx.tick(7);
-    const walker* second = find_alive_with(arena.world(), FAMILY_THIEF, 0);
-    ASSERT_NE(nullptr, second);
-    ASSERT_EQ(128, second->xpos()) << "impassable anchor must be skipped";
-    ASSERT_EQ(128, second->ypos());
-}
-
-TEST(CtfRespawn, scheduling_scrubs_the_fresh_corpse_stain)
+TEST(RespawnEngine, scheduling_scrubs_the_fresh_corpse_stain)
 {
     RespawnArena arena;
     walker* bot = arena.fx.spawn_living(FAMILY_SOLDIER, 1, 480, 700);
@@ -308,12 +282,12 @@ TEST(CtfRespawn, scheduling_scrubs_the_fresh_corpse_stain)
     ASSERT_EQ(1, live_stains_for_team(arena.world(), 1))
         << "death must leave a bloodstain before the scrub";
 
-    arena.fx.tick();
+    ASSERT_TRUE(arena.schedule(bot));
     ASSERT_EQ(0, live_stains_for_team(arena.world(), 1))
         << "scheduling a respawn must kill the corpse stain";
 }
 
-TEST(CtfRespawn, live_duplicate_character_cancels_the_revive)
+TEST(RespawnEngine, live_duplicate_character_cancels_the_revive)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -329,6 +303,8 @@ TEST(CtfRespawn, live_duplicate_character_cancels_the_revive)
     EXPECT_FALSE(og::sim::respawn_retains_player_control(
         arena.world(), runner))
         << "a cleric-resurrected copy must be claimable immediately";
+    EXPECT_FALSE(arena.schedule(runner))
+        << "the schedule dedupe must refuse a live duplicate";
     arena.fx.tick(7);
 
     ASSERT_TRUE(runner->dead()) << "duplicate character must cancel the revive";
@@ -336,20 +312,29 @@ TEST(CtfRespawn, live_duplicate_character_cancels_the_revive)
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(CtfRespawn, owned_walkers_are_left_to_their_generator)
+TEST(RespawnEngine, retains_player_control_through_pending_scripted_entry)
 {
     RespawnArena arena;
-    walker* summon = arena.fx.spawn_living(FAMILY_SKELETON, 1, 480, 700);
-    summon->set_owner(arena.enemy);
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 8;
 
-    summon->set_dead(1);
-    arena.fx.tick();
+    arena.kill(runner);
+    EXPECT_FALSE(og::sim::respawn_retains_player_control(arena.world(),
+                                                         runner))
+        << "no queued entry yet: the seat is claimable";
+    ASSERT_TRUE(arena.schedule(runner));
+    EXPECT_TRUE(og::sim::respawn_retains_player_control(arena.world(),
+                                                        runner))
+        << "queued entry + undecided match keeps the seat";
 
-    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
-        << "walkers with an owner are not CTF-respawned";
+    og::sim::mode_declare_winner(arena.world(), 1);
+    EXPECT_FALSE(og::sim::respawn_retains_player_control(arena.world(),
+                                                         runner))
+        << "a decided match releases the seat keep-alive";
 }
 
-TEST(CtfRespawn, match_end_revive_restores_all_player_corpses)
+TEST(RespawnEngine, win_latch_flush_revives_all_player_corpses)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -357,21 +342,23 @@ TEST(CtfRespawn, match_end_revive_restores_all_player_corpses)
     runner->myguy->id = 41;
 
     arena.kill(runner);
-    arena.fx.tick();
+    ASSERT_TRUE(arena.schedule(runner));
     ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
     ASSERT_TRUE(runner->dead());
 
-    arena.world().ctf.captures[1] = arena.world().ctf.capture_limit;
+    // og.declare_winner: first arming flushes the respawn engine (D2)
+    // before winner math, and the engine re-asserts the win every tick.
+    og::sim::mode_declare_winner(arena.world(), 1);
     arena.fx.tick();
 
     ASSERT_TRUE(arena.world().game_ended);
-    ASSERT_EQ(1, arena.world().ctf.winner_team);
+    ASSERT_EQ(1, arena.world().mode.winner_team);
     ASSERT_FALSE(runner->dead())
         << "match end must revive pending player corpses before the merge";
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(CtfRespawn, queue_cap_evicts_oldest_ai_entry_for_a_player)
+TEST(RespawnEngine, queue_cap_evicts_oldest_ai_entry_for_a_player)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -379,9 +366,9 @@ TEST(CtfRespawn, queue_cap_evicts_oldest_ai_entry_for_a_player)
     runner->myguy->id = 41;
 
     auto& queue = arena.world().respawn.respawn_queue;
-    for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
+    for (int i = 0; i < og::sim::kRespawnMaxQueueEntries; ++i)
     {
-        og::sim::CtfRespawnEntry filler;
+        og::sim::RespawnEntry filler;
         filler.kind = 1;
         filler.team = 1;
         filler.family = FAMILY_SOLDIER;
@@ -392,31 +379,31 @@ TEST(CtfRespawn, queue_cap_evicts_oldest_ai_entry_for_a_player)
     }
 
     arena.kill(runner);
-    arena.fx.tick();
+    ASSERT_TRUE(arena.schedule(runner));
 
-    ASSERT_EQ(static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries),
+    ASSERT_EQ(static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries),
               queue.size());
     const bool player_queued = std::any_of(
-        queue.begin(), queue.end(), [&](const og::sim::CtfRespawnEntry& e) {
+        queue.begin(), queue.end(), [&](const og::sim::RespawnEntry& e) {
             return e.kind == 0 && e.walker_entity_id == runner->entity_id();
         });
     ASSERT_TRUE(player_queued);
     const bool oldest_ai_evicted = std::none_of(
-        queue.begin(), queue.end(), [](const og::sim::CtfRespawnEntry& e) {
+        queue.begin(), queue.end(), [](const og::sim::RespawnEntry& e) {
             return e.walker_entity_id == 900000u;
         });
     ASSERT_TRUE(oldest_ai_evicted);
 }
 
-TEST(CtfRespawn, queue_full_of_players_drops_incoming_ai_entry)
+TEST(RespawnEngine, queue_full_of_players_drops_incoming_ai_entry)
 {
     RespawnArena arena;
     walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
 
     auto& queue = arena.world().respawn.respawn_queue;
-    for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
+    for (int i = 0; i < og::sim::kRespawnMaxQueueEntries; ++i)
     {
-        og::sim::CtfRespawnEntry filler;
+        og::sim::RespawnEntry filler;
         filler.kind = 0;
         filler.team = 0;
         filler.ticks_left = 5000;
@@ -425,75 +412,44 @@ TEST(CtfRespawn, queue_full_of_players_drops_incoming_ai_entry)
     }
 
     bot->set_dead(1);
-    arena.fx.tick();
+    (void)arena.schedule(bot);
 
-    ASSERT_EQ(static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries),
+    ASSERT_EQ(static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries),
               queue.size());
     const bool any_ai = std::any_of(
         queue.begin(), queue.end(),
-        [](const og::sim::CtfRespawnEntry& e) { return e.kind == 1; });
+        [](const og::sim::RespawnEntry& e) { return e.kind == 1; });
     ASSERT_FALSE(any_ai) << "player entries are never evicted for AI";
 }
 
-TEST(CtfRespawn, owning_a_control_point_doubles_the_respawn_decrement)
+TEST(RespawnEngine, team_wipe_suppression_tracks_match_lifecycle)
 {
-    RespawnArena arena;
-    arena.world().ctf.cp_count = 1;
-    arena.world().ctf.cps[0].owner = 0;
-    arena.world().ctf.cps[0].x = 600;
-    arena.world().ctf.cps[0].y = 920;
-    arena.world().ctf.cps[0].next_pulse_tick = 0xffffffffu;
-
-    walker* friendly_bot = arena.fx.spawn_living(FAMILY_ARCHER, 0, 320, 200);
-    walker* enemy_bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
-    friendly_bot->set_dead(1);
-    enemy_bot->set_dead(1);
-    arena.fx.tick();
-    ASSERT_EQ(2u, arena.world().respawn.respawn_queue.size());
-    ASSERT_EQ(6, arena.world().respawn.respawn_queue[0].ticks_left);
-    ASSERT_EQ(6, arena.world().respawn.respawn_queue[1].ticks_left);
-
-    arena.fx.tick();
-    const auto& queue = arena.world().respawn.respawn_queue;
-    ASSERT_EQ(2u, queue.size());
-    int team0_left = -1;
-    int team1_left = -1;
-    for (const auto& entry : queue)
+    // Classic world: no suppression (respawn_mode 0).
     {
-        if (entry.team == 0)
-            team0_left = entry.ticks_left;
-        else if (entry.team == 1)
-            team1_left = entry.ticks_left;
-    }
-    ASSERT_EQ(4, team0_left) << "CP owner ticks down twice as fast";
-    ASSERT_EQ(5, team1_left);
-}
-
-TEST(CtfRespawn, team_wipe_suppression_tracks_match_lifecycle)
-{
-    // Classic world: no suppression.
-    {
-        CtfWorld fx;
+        ScriptedWorld fx;
         fx.world().type = 0;
-        ASSERT_FALSE(og::sim::ctf_suppress_team_wipe_endgame(fx.world()));
+        fx.world().mode = og::sim::ModeState{};
+        ASSERT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(fx.world()));
     }
-    // CTF world before init: inactive, no suppression.
+    // Scripted world whose mode failed activation: no suppression.
     {
-        CtfWorld fx;
-        ASSERT_FALSE(og::sim::ctf_suppress_team_wipe_endgame(fx.world()));
+        ScriptedWorld fx;
+        fx.world().mode.active = false;
+        ASSERT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(fx.world()));
     }
-    // Active match: suppressed. After the win: released.
+    // Undecided scripted match: suppressed. After the win latch: released.
     {
         RespawnArena arena;
-        ASSERT_TRUE(og::sim::ctf_suppress_team_wipe_endgame(arena.world()));
-        arena.world().ctf.captures[0] = arena.world().ctf.capture_limit;
+        ASSERT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(arena.world()));
+        og::sim::mode_declare_winner(arena.world(), 0);
         arena.fx.tick();
         ASSERT_TRUE(arena.world().game_ended);
-        ASSERT_FALSE(og::sim::ctf_suppress_team_wipe_endgame(arena.world()));
+        ASSERT_FALSE(
+            og::sim::respawn_suppress_team_wipe_endgame(arena.world()));
     }
 }
 
-TEST(CtfRespawn, charmed_corpse_respawns_on_its_true_team)
+TEST(RespawnEngine, charmed_corpse_respawns_on_its_true_team)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -505,6 +461,7 @@ TEST(CtfRespawn, charmed_corpse_respawns_on_its_true_team)
     runner->set_team_num(1);
 
     arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner));
     arena.fx.tick(7);
 
     ASSERT_FALSE(runner->dead()) << "charmed corpse must still respawn";
@@ -515,7 +472,7 @@ TEST(CtfRespawn, charmed_corpse_respawns_on_its_true_team)
 // Guy ids are only unique per owning player (each networked client numbers
 // its roster from its own counter): a same-id walker owned by ANOTHER player
 // is a different character and must not block the respawn.
-TEST(CtfRespawn, same_guy_id_under_a_different_owner_does_not_block_revive)
+TEST(RespawnEngine, same_guy_id_under_a_different_owner_does_not_block_revive)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -531,6 +488,7 @@ TEST(CtfRespawn, same_guy_id_under_a_different_owner_does_not_block_revive)
     other_players_guy->myguy->owner_save_slot = 0;
 
     arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner));
     arena.fx.tick(7);
 
     ASSERT_FALSE(runner->dead())
@@ -540,61 +498,49 @@ TEST(CtfRespawn, same_guy_id_under_a_different_owner_does_not_block_revive)
 
 // Player corpses drop a LIFE_GEM centered on the body; respawn scheduling
 // must scrub it (and the stain) or respawn cycles farm tiebreaker score.
-TEST(CtfRespawn, scheduling_scrubs_the_corpse_life_gem)
+TEST(RespawnEngine, scheduling_scrubs_the_corpse_life_gem)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
     runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     runner->myguy->id = 31;
 
-    arena.kill(runner);
-    int gems = 0;
-    for (const auto& uptr : arena.world().fxlist)
-    {
-        const walker* w = uptr.get();
-        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_LIFE_GEM)
+    const auto count_gems = [&arena] {
+        int gems = 0;
+        for (const auto& uptr : arena.world().fxlist)
         {
-            ++gems;
+            const walker* w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_LIFE_GEM)
+            {
+                ++gems;
+            }
         }
-    }
-    for (const auto& uptr : arena.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_LIFE_GEM)
+        for (const auto& uptr : arena.world().oblist)
         {
-            ++gems;
+            const walker* w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_LIFE_GEM)
+            {
+                ++gems;
+            }
         }
-    }
-    ASSERT_GE(gems, 1) << "a player corpse must drop its heart first";
+        return gems;
+    };
 
-    arena.fx.tick();
-    gems = 0;
-    for (const auto& uptr : arena.world().fxlist)
-    {
-        const walker* w = uptr.get();
-        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_LIFE_GEM)
-        {
-            ++gems;
-        }
-    }
-    for (const auto& uptr : arena.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_LIFE_GEM)
-        {
-            ++gems;
-        }
-    }
-    ASSERT_EQ(0, gems) << "scheduling the respawn must scrub the fresh gem";
+    arena.kill(runner);
+    ASSERT_GE(count_gems(), 1) << "a player corpse must drop its heart first";
+
+    ASSERT_TRUE(arena.schedule(runner));
+    ASSERT_EQ(0, count_gems())
+        << "scheduling the respawn must scrub the fresh gem";
 }
 
 // A corpse that died charmed revives on its true team at MATCH END too (the
 // win-path revive must not freeze the charm onto the charmer's team).
-TEST(CtfRespawn, match_end_revive_breaks_charm_onto_true_team)
+TEST(RespawnEngine, win_latch_flush_breaks_charm_onto_true_team)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
@@ -604,10 +550,10 @@ TEST(CtfRespawn, match_end_revive_breaks_charm_onto_true_team)
     runner->set_real_team_num(0); // charmed off team 0...
     runner->set_team_num(1);      // ...onto team 1
     arena.kill(runner);
-    arena.fx.tick(); // scheduled, still pending
+    ASSERT_TRUE(arena.schedule(runner)); // scheduled, still pending
 
-    arena.world().ctf.captures[1] = arena.world().ctf.capture_limit;
-    arena.fx.tick(); // win check fires: match-end revive
+    og::sim::mode_declare_winner(arena.world(), 1);
+    arena.fx.tick(); // the win latch re-asserts; the flush already revived
 
     ASSERT_TRUE(arena.world().game_ended);
     ASSERT_FALSE(runner->dead()) << "match end must revive pending corpses";
@@ -617,24 +563,17 @@ TEST(CtfRespawn, match_end_revive_breaks_charm_onto_true_team)
 }
 
 // Spawn probes must see blockers that straddle obmap buckets and blocking
-// scenery (doors), and must never run treasure pickup side effects.
-TEST(CtfRespawn, anchor_probe_rejects_doors_and_cross_bucket_blockers)
+// scenery (doors), and must never run treasure pickup side effects. The
+// probe backs og.spawn_spot_clear — a mode's on_respawn placement runs on
+// exactly these answers.
+TEST(RespawnEngine, spawn_probe_rejects_doors_and_cross_bucket_blockers)
 {
-    CtfWorld fx;
-    fx.spawn_flag(0, 96, 96);
-    fx.spawn_flag(1, 544, 800);
-    // Anchor 1: covered by a door. Anchor 2: unaligned (150,128) so its
-    // 16px spawn bbox spans two 32px obmap buckets; the lurker lives only
-    // in the second bucket. Anchor 3: clear.
-    fx.spawn_anchor(0, 128, 96);
-    fx.spawn_anchor(0, 150, 128);
-    fx.spawn_anchor(0, 224, 128);
-    fx.spawn_anchor(1, 512, 832);
+    ScriptedWorld fx;
+    // Spot 1: covered by a door. Spot 2: unaligned (150,128) so its 16px
+    // spawn bbox spans two 32px obmap buckets; the lurker lives only in the
+    // second bucket. Spot 3: clear.
     walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
     ASSERT_NE(nullptr, runner);
-    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    runner->myguy->id = 61;
-    fx.world().ctf_requested_respawn_ticks = 6;
 
     walker* door = fx.world().add_weap_ob(Order::Weapon, FAMILY_DOOR);
     ASSERT_NE(nullptr, door);
@@ -642,16 +581,12 @@ TEST(CtfRespawn, anchor_probe_rejects_doors_and_cross_bucket_blockers)
     door->set_team_num(7);
     walker* lurker = fx.spawn_living(FAMILY_SOLDIER, 1, 162, 128);
     ASSERT_NE(nullptr, lurker);
-
     fx.tick();
-    ASSERT_TRUE(fx.world().ctf.active);
 
-    runner->set_dead(1);
-    runner->death();
-    fx.tick(7);
-
-    ASSERT_FALSE(runner->dead());
-    EXPECT_EQ(224, runner->xpos()) << "door and cross-bucket living must "
-                                      "both veto their anchors";
-    EXPECT_EQ(128, runner->ypos());
+    EXPECT_FALSE(og::sim::respawn_spot_clear(fx.world(), runner, 128, 96, -1))
+        << "a door must veto the spot";
+    EXPECT_FALSE(og::sim::respawn_spot_clear(fx.world(), runner, 150, 128, -1))
+        << "a cross-bucket living must veto the spot";
+    EXPECT_TRUE(og::sim::respawn_spot_clear(fx.world(), runner, 224, 128, -1))
+        << "a clear spot must pass the probe";
 }

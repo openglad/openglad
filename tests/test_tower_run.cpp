@@ -443,7 +443,7 @@ TEST_F(TowerRunE2E, shadow_finalize_honors_the_ctf_rematch_gate)
 
     GameWorld& world = scr().world();
     const char type_before = world.type;
-    const auto ctf_before = world.ctf;
+    const auto mode_before = world.mode;
     world.end = 0;
     world.id = 500;
     world.current_scenario = 500;
@@ -451,16 +451,18 @@ TEST_F(TowerRunE2E, shadow_finalize_honors_the_ctf_rematch_gate)
     world.completed_levels.clear();
     for (auto& score : world.m_score)
         score = 0;
-    world.type = static_cast<char>(world.type | GameWorld::TYPE_CTF);
-    world.ctf.active = true;
-    world.ctf.winner_team = 1;
+    world.type = static_cast<char>(world.type | GameWorld::TYPE_SCRIPTED);
+    world.mode.active = true;
+    world.mode.init_attempted = true;
+    world.mode.win_latched = true;
+    world.mode.winner_team = 1;
 
     // Decided match, next level == this level: the rematch shape.
     trace_clear();
     ASSERT_TRUE(og::runtime::local_transport_shadow_testing_finalize_win(
         scr(), /*next_level=*/500, /*networked=*/false, 0u));
     EXPECT_FALSE(save.is_level_completed(500))
-        << "a decided-but-rematch CTF match must not mark the level";
+        << "a decided-but-rematch scripted match must not mark the level";
     EXPECT_EQ(500, save.scen_num) << "rematch keeps the cursor on the level";
 
     // A decided ADVANCE (different next level) still marks it.
@@ -473,7 +475,7 @@ TEST_F(TowerRunE2E, shadow_finalize_honors_the_ctf_rematch_gate)
 
     // Restore the shared world's mode bits for later tests in this binary.
     world.type = type_before;
-    world.ctf = ctf_before;
+    world.mode = mode_before;
 }
 
 TEST_F(TowerRunE2E, shadow_withdraw_finalize_routes_the_run_end)

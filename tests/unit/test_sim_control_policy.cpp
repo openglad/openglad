@@ -225,11 +225,11 @@ TEST(SimControlPolicy, policy_off_matches_legacy_across_the_four_shapes)
     fx.add({.team = 0, .user = -1, .hero = false});
     expect_decisions_match_legacy(fx, "allied");
 
-    // CTF: the scans are mode-agnostic; the CTF own-hero preference lives in
-    // bind_player (§4.4 site 3), not here.
+    // Versus (scripted): the scans are mode-agnostic; the versus own-hero
+    // preference lives in bind_player (§4.4 site 3), not here.
     fx.clear_walkers();
     fx.world().allied_mode = 0;
-    fx.world().type = static_cast<char>(fx.world().type | GameWorld::TYPE_CTF);
+    fx.world().type = static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
     fx.add({.team = 0, .user = -1, .hero = true, .owner = 0});
     fx.add({.team = 1, .user = -1, .hero = true, .owner = 2});
     fx.add({.team = 1, .user = 2, .hero = true, .owner = 2, .dead = true});
@@ -239,7 +239,7 @@ TEST(SimControlPolicy, policy_off_matches_legacy_across_the_four_shapes)
     // scans must skip them identically (the respawn endgame suppression is a
     // downstream server concern).
     fx.clear_walkers();
-    fx.world().type = static_cast<char>(fx.world().type & ~GameWorld::TYPE_CTF);
+    fx.world().type = static_cast<char>(fx.world().type & ~GameWorld::TYPE_SCRIPTED);
     fx.world().respawn_mode = 2;
     fx.add({.team = 0, .user = -1, .hero = true, .owner = 0, .dead = true});
     fx.add({.team = 0, .user = -1, .hero = true, .owner = 1, .dead = true});

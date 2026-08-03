@@ -42,7 +42,6 @@
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -598,12 +597,11 @@ std::string matchup_summary(const std::vector<og::sim::LobbyPlayer>& players)
 }
 
 // One frame's full MATCHUP state: the nav wiring inputs plus the CTF
-// map context (authored flag teams from the LIVE picker world, scanned before
-// any CTF init could mutate flags — the picker never runs ctf init).
+// map context (authored marker teams from the LIVE picker world).
 struct TeamsMenuFrameState
 {
-    bool is_ctf = false;   // CTF campaign selected
-    bool ctf_map = false;  // loaded picker world is a TYPE_CTF level
+    bool is_ctf = false;   // versus campaign selected
+    bool ctf_map = false;  // loaded picker world is a TYPE_SCRIPTED level
     bool campaign_mounted = true; // mounted campaign matches the save's
     bool authored[4] = {};
     // Per-team member/player detail line, paginated; detail_page is the
@@ -620,7 +618,7 @@ TeamsMenuFrameState compute_teams_menu_state()
 {
     TeamsMenuFrameState state;
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    state.is_ctf = og::ui::is_ctf_campaign(save);
+    state.is_ctf = og::ui::is_versus_campaign(save);
     state.wiring.show_ctf =
         state.is_ctf && picker_lobby_host_controls_visible();
     state.wiring.networked = picker_lobby_is_networked();
@@ -740,9 +738,13 @@ TeamsMenuFrameState compute_teams_menu_state()
 
     const GameWorld& world = og::runtime::current_session->myscreen_->world();
     state.ctf_map = state.campaign_mounted &&
-        (world.type & GameWorld::TYPE_CTF) != 0;
+        (world.type & GameWorld::TYPE_SCRIPTED) != 0;
     if (state.ctf_map)
-        og::sim::ctf_authored_flag_teams(world, state.authored);
+    {
+        const std::uint8_t authored = og::sim::authored_team_mask(world);
+        for (int t = 0; t < 4; ++t)
+            state.authored[t] = (authored & (1u << t)) != 0;
+    }
 
     for (int t = 0; t < 4; ++t)
         state.wiring.join_visible[t] = false;

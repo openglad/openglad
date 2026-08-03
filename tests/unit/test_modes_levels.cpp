@@ -23,7 +23,12 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
+
+// The modes pack's flag/waypoint treasure wire bytes (the pack families
+// claim the retired core CTF slots).
+inline constexpr int kModesFlagFamily = 13;
+inline constexpr int kModesWaypointFamily = 14;
 #include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
@@ -334,9 +339,9 @@ Census take_census(GameWorld& world)
                 ++c.markers[static_cast<std::size_t>(team)];
             else if (order == Order::Treasure)
             {
-                if (family == og::FAMILY_FLAG)
+                if (family == kModesFlagFamily)
                     ++c.flags[static_cast<std::size_t>(team)];
-                else if (family == og::FAMILY_CTF_POINT)
+                else if (family == kModesWaypointFamily)
                     ++c.cps;
                 else if (family == FAMILY_EXIT)
                     ++c.exits;
@@ -593,7 +598,7 @@ TEST_F(ModesLevels, crossfire_capture_limit_is_five)
     for (const auto& uptr : crossfire.world().fxlist)
     {
         walker* fx = uptr.get();
-        if (fx == nullptr || fx->family() != og::FAMILY_FLAG)
+        if (fx == nullptr || fx->family() != kModesFlagFamily)
             continue;
         ++flags_seen;
         ASSERT_NE(nullptr, fx->stats());

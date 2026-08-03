@@ -151,7 +151,7 @@ TEST(LoadLevels, completed_non_ctf_level_purges_only_replayable_hostiles)
 
     ASSERT_EQ(LoadSavedGameError::None,
               load_saved_game_with_error(nullptr, scr));
-    ASSERT_EQ(0, scr->world().type & GameWorld::TYPE_CTF);
+    ASSERT_EQ(0, scr->world().type & GameWorld::TYPE_SCRIPTED);
 
     const auto protected_replay_object = [](const walker& object) {
         const Order order = object.query_order();

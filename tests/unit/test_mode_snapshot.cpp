@@ -100,16 +100,16 @@ void populate_full_mode_state(GameWorld& world)
     respawn.respawn_serial = 13;
     for (int t = 0; t < 4; ++t)
     {
-        respawn.anchor_count[t] = og::sim::kCtfMaxAnchorsPerTeam;
-        for (int i = 0; i < og::sim::kCtfMaxAnchorsPerTeam; ++i)
+        respawn.anchor_count[t] = og::sim::kRespawnMaxAnchorsPerTeam;
+        for (int i = 0; i < og::sim::kRespawnMaxAnchorsPerTeam; ++i)
         {
             respawn.anchor_x[t][i] = static_cast<std::int16_t>(t * 100 + i + 1);
             respawn.anchor_y[t][i] = static_cast<std::int16_t>(t * 100 + i + 2);
         }
     }
-    for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
+    for (int i = 0; i < og::sim::kRespawnMaxQueueEntries; ++i)
     {
-        og::sim::CtfRespawnEntry entry;
+        og::sim::RespawnEntry entry;
         entry.kind = static_cast<std::uint8_t>(i % 2);
         entry.team = static_cast<std::uint8_t>(i % 4);
         entry.family = static_cast<std::uint8_t>((i % 6) + 1);
@@ -175,8 +175,8 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
               snapshot.respawn.respawn_queue.size());
     for (std::size_t i = 0; i < respawn.respawn_queue.size(); ++i)
     {
-        const og::sim::CtfRespawnEntry& expected = respawn.respawn_queue[i];
-        const og::sim::CtfRespawnEntry& actual =
+        const og::sim::RespawnEntry& expected = respawn.respawn_queue[i];
+        const og::sim::RespawnEntry& actual =
             snapshot.respawn.respawn_queue[i];
         EXPECT_EQ(expected.kind, actual.kind) << "entry " << i;
         EXPECT_EQ(expected.team, actual.team) << "entry " << i;
@@ -231,7 +231,7 @@ void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
     for (int t = 0; t < 4; ++t)
     {
         EXPECT_EQ(0, snapshot.respawn.anchor_count[t]) << t;
-        for (int i = 0; i < og::sim::kCtfMaxAnchorsPerTeam; ++i)
+        for (int i = 0; i < og::sim::kRespawnMaxAnchorsPerTeam; ++i)
         {
             EXPECT_EQ(0, snapshot.respawn.anchor_x[t][i]) << t << "/" << i;
             EXPECT_EQ(0, snapshot.respawn.anchor_y[t][i]) << t << "/" << i;
@@ -448,13 +448,13 @@ TEST(ModeSnapshot, delta_payload_carries_mode_changes_onto_baseline)
 TEST(ModeSnapshot, serializer_rejects_out_of_cap_counts)
 {
     og::sim::WorldSnapshot anchor_snapshot;
-    anchor_snapshot.respawn.anchor_count[2] = og::sim::kCtfMaxAnchorsPerTeam + 1;
+    anchor_snapshot.respawn.anchor_count[2] = og::sim::kRespawnMaxAnchorsPerTeam + 1;
     EXPECT_THROW((void)og::sim::serialize_snapshot(anchor_snapshot),
                  std::runtime_error);
 
     og::sim::WorldSnapshot queue_snapshot;
     queue_snapshot.respawn.respawn_queue.resize(
-        og::sim::kCtfMaxRespawnEntries + 1);
+        og::sim::kRespawnMaxQueueEntries + 1);
     EXPECT_THROW((void)og::sim::serialize_snapshot(queue_snapshot),
                  std::runtime_error);
 }
@@ -522,7 +522,7 @@ TEST(ModeSnapshot, apply_clamps_out_of_cap_counts_from_crafted_snapshots)
     og::sim::WorldSnapshot snapshot;
     snapshot.mode.active = true;
     snapshot.respawn.anchor_count[1] = 0xff;
-    snapshot.respawn.respawn_queue.resize(og::sim::kCtfMaxRespawnEntries + 40);
+    snapshot.respawn.respawn_queue.resize(og::sim::kRespawnMaxQueueEntries + 40);
     // In-memory snapshots bypass the decoder's terminator enforcement; apply
     // must re-terminate before the state reaches any renderer.
     snapshot.mode.name.fill('A');
@@ -530,9 +530,9 @@ TEST(ModeSnapshot, apply_clamps_out_of_cap_counts_from_crafted_snapshots)
 
     ModeWorld target;
     og::sim::apply_snapshot(target.world(), snapshot);
-    EXPECT_EQ(og::sim::kCtfMaxAnchorsPerTeam,
+    EXPECT_EQ(og::sim::kRespawnMaxAnchorsPerTeam,
               target.world().respawn.anchor_count[1]);
-    EXPECT_EQ(static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries),
+    EXPECT_EQ(static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries),
               target.world().respawn.respawn_queue.size());
     EXPECT_TRUE(target.world().mode.active);
     EXPECT_EQ('\0', target.world().mode.name.back());

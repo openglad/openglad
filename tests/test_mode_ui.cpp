@@ -9,11 +9,9 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/irandom.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/guy.h>
@@ -95,7 +93,6 @@ struct ModeScreenWorld
         s->world().id = 1;
         EXPECT_TRUE(s->load_level()) << "level 1 should load for the stamp";
         GameWorld& world = s->world();
-        world.ctf = og::sim::CtfState{};
         world.mode = og::sim::ModeState{};
         world.type |= GameWorld::TYPE_SCRIPTED;
         world.mode.active = true;
@@ -106,7 +103,6 @@ struct ModeScreenWorld
     {
         GameWorld& world = s->world();
         world.mode = og::sim::ModeState{};
-        world.ctf = og::sim::CtfState{};
         world.type = static_cast<char>(world.type & ~GameWorld::TYPE_SCRIPTED);
         world.id = 1;
         (void)s->load_level();
@@ -488,7 +484,7 @@ TEST(ModeUi, respawn_countdown_draws_on_scripted_worlds)
     silence_hud_prefs(v);
     control->set_dead(1);
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
     entry.ticks_left = 120; // 10 s at the 12 Hz sim rate
@@ -533,7 +529,7 @@ TEST(ModeUi, dead_pending_control_survives_cleanup_on_scripted_worlds)
     v->control = control.get();
     silence_hud_prefs(v);
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
     entry.ticks_left = 60;
@@ -581,7 +577,7 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
     walker* old_control = v->control;
     v->control = hero;
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
     entry.ticks_left = 120;
@@ -748,7 +744,7 @@ TEST(ModeUi, format_mode_scoreboard_segments_reads_hud_slot_zero)
     mode.hud[0].team = 2;
     std::strncpy(mode.hud[0].text.data(), "GOALS 1:3",
                  mode.hud[0].text.size() - 1);
-    std::vector<CtfCapsSegment> segments =
+    std::vector<ScoreboardSegment> segments =
         format_mode_scoreboard_segments(mode);
     ASSERT_EQ(1u, segments.size());
     EXPECT_EQ("GOALS 1:3", segments[0].text);

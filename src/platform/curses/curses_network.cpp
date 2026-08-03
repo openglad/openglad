@@ -28,9 +28,7 @@
 #include <openglad/platform/curses/terminal.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/game_client.h>
@@ -237,7 +235,7 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
 
 std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save)
 {
-    if (!og::ui::is_ctf_campaign(save) ||
+    if (!og::ui::is_versus_campaign(save) ||
         get_mounted_campaign() != save.current_campaign)
     {
         return 0;
@@ -481,13 +479,13 @@ void maintain_curses_follow(CursesFollowState& follow,
 
     // A dead own corpse with a pending revive entry keeps today's
     // "(spectating)" respawn-countdown shape instead of engaging.
-    if (((mirror.type & GameWorld::TYPE_CTF) && mirror.ctf.active) ||
+    if (og::sim::mode_scripted_active(mirror) ||
         og::sim::classic_respawn_active(mirror)) {
         for (const auto& up : mirror.oblist) {
             const walker* w = up.get();
             if (w && w->dead() && w->myguy != nullptr &&
                 w->user() == static_cast<int>(local_player_index) &&
-                og::sim::ctf_pending_player_respawn(mirror.respawn,
+                og::sim::respawn_pending_player(mirror.respawn,
                                                     w->entity_id())) {
                 follow = {};
                 return;
@@ -634,7 +632,7 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 void persist_curses_networked_win(SaveData& session_save, const GameWorld& world,
                                   std::size_t player_index, int next_level)
 {
-    if (is_ctf_rematch_end(world, /*ending=*/0, next_level))
+    if (is_mode_rematch_end(world, /*ending=*/0, next_level))
         return;
 
     og::server::sync_headless_server_save_data_from_world(session_save, world);
@@ -643,7 +641,7 @@ void persist_curses_networked_win(SaveData& session_save, const GameWorld& world
     for (std::size_t team = 0; team < fold_ctx.time_bonus.size(); ++team)
         fold_ctx.time_bonus[team] = og::progression::calculate_win_time_bonus(
             world, session_save, static_cast<int>(team));
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         world, session_save, static_cast<short>(next_level));
     fold_ctx.finished_level = session_save.scen_num;
     fold_ctx.outcome.ending = 0;
@@ -766,7 +764,7 @@ public:
 
 #ifdef TESTING
     // Turn the loaded classic level into a CTF map on the authoritative server
-    // world: flags + respawn anchors for teams 0/1 and the TYPE_CTF bit. Runs
+    // world: armed ModeState + respawn anchors for teams 0/1. Runs
     // under the server context so the obmap writes land in the server's grid;
     // the host's own mirror gets the (authored, non-replicated) type bit too.
     bool inject_mode_scenario_for_testing(short requested_respawn_ticks)
@@ -1490,7 +1488,7 @@ public:
                 last_team_request_seat_id_ = selected->seat_id;
                 team_status_ = "Requested P" +
                     std::to_string(selected->player_index + 1) + " -> " +
-                    og::sim::ctf_team_color_name(target);
+                    og::sim::team_color_name(target);
                 if (request_seat_team_change(
                         selected->player_index, selected->seat_id, target)) {
                     last_team_request_ = -1;
@@ -1578,7 +1576,7 @@ public:
                     is_me && player.seat_id == selected_local_seat_id_;
                 std::string line =
                     "  Player " + std::to_string(player.player_index + 1) +
-                    " (" + og::sim::ctf_team_color_name(player.team) + ")" +
+                    " (" + og::sim::team_color_name(player.team) + ")" +
                     (player.is_host ? " [host]" : "") +
                     (player.ready ? " [ready]" : "") +
                     (is_me ? " [you]" : "") +

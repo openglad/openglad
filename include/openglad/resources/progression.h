@@ -29,9 +29,9 @@ namespace og::progression {
 // Centralizes the predicate previously duplicated at screen::endgame and the
 // curses is_ctf_rematch_end (and missing from the shadow finalize). Only
 // meaningful in the WIN shape (ending == 0) — callers evaluate it there.
-bool ctf_rematch_shape(const GameWorld& world, short current_level,
+bool mode_rematch_shape(const GameWorld& world, short current_level,
                        short next_level);
-bool ctf_rematch_shape(const GameWorld& world, const SaveData& save,
+bool mode_rematch_shape(const GameWorld& world, const SaveData& save,
                        short next_level);
 
 struct WinFoldContext {
@@ -41,7 +41,7 @@ struct WinFoldContext {
     // curses client). Compute it BEFORE calling the fold, from the LIVE
     // m_score.
     std::array<std::uint32_t, 4> time_bonus{};
-    bool rematch_shape = false; // caller fills via ctf_rematch_shape
+    bool rematch_shape = false; // caller fills via mode_rematch_shape
     // The level that was just FINISHED (fill from save.scen_num when the
     // context is built, i.e. before the fold moves the cursor). This is what
     // makes a literal second fold of the same context on the same SaveData a

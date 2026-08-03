@@ -1057,15 +1057,15 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     world.allied_mode = 1;
     world.respawn.respawn_queue.clear();
 
-    og::sim::CtfRespawnEntry ai_foe; // mode-2 AI replacement: hostile
+    og::sim::RespawnEntry ai_foe; // mode-2 AI replacement: hostile
     ai_foe.kind = 1;
     ai_foe.team = 1;
     ai_foe.ticks_left = 30;
-    og::sim::CtfRespawnEntry same_team; // the viewer's own team: never hostile
+    og::sim::RespawnEntry same_team; // the viewer's own team: never hostile
     same_team.kind = 1;
     same_team.team = 0;
     same_team.ticks_left = 5;
-    og::sim::CtfRespawnEntry hero; // different-color company hero: hostile
+    og::sim::RespawnEntry hero; // different-color company hero: hostile
     hero.kind = 0;
     hero.team = 2;
     hero.ticks_left = 3;
@@ -1184,7 +1184,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
 
     world.respawn_mode = 2;
     world.respawn.respawn_queue.clear();
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 1;
     entry.team = 1;
     entry.ticks_left = 55; // (55 + 11) / 12 -> 5 s at 12 Hz

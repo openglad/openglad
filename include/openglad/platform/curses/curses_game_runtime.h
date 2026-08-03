@@ -32,13 +32,13 @@ struct GameRunResult {
     bool withdrew = false;  // player chose "quit this mission"
     bool quit_app = false;  // player asked to exit the whole client
     // CTF match outcome (filled when the ended world was an active CTF
-    // match). A CTF match end always carries the classic WIN shape
+    // match). A scripted match end always carries the classic WIN shape
     // (ending == 0) even when the local player LOST, so the post-level
     // verdict must come from these fields, never from `ending` alone.
-    bool ctf_match = false;     // world was an active CTF match at level end
-    int ctf_winner_team = -1;   // ctf.winner_team at level end
+    bool mode_match = false;     // world was an active scripted match at level end
+    int mode_winner_team = -1;   // mode.winner_team at level end
     int local_team = -1;        // followed walker's team at level end (-1 unknown)
-    bool ctf_rematch = false;   // loss shape: next_level == the finished level
+    bool mode_rematch = false;   // loss shape: next_level == the finished level
 };
 
 // "Victory!" / "Defeat." / "Match over." for the post-level dialog, CTF-aware
@@ -53,7 +53,7 @@ std::string mission_verdict_line(const GameRunResult& result,
 // True for the CTF loss/rematch end shape: a decided CTF match that ended
 // with the classic WIN shape but whose next level IS the finished level —
 // the match was LOST and must not mark the campaign level completed.
-bool is_ctf_rematch_end(const GameWorld& world, int ending, int next_level);
+bool is_mode_rematch_end(const GameWorld& world, int ending, int next_level);
 
 // Abstracts one in-flight game session (local in-process host, networked host, or
 // networked join). The level loop drives it uniformly; only construction differs.

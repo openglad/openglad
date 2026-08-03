@@ -594,7 +594,7 @@ void serialize_respawn_state(std::vector<std::uint8_t>& buffer,
 
     for (int team = 0; team < 4; ++team)
     {
-        if (respawn.anchor_count[team] > og::sim::kCtfMaxAnchorsPerTeam)
+        if (respawn.anchor_count[team] > og::sim::kRespawnMaxAnchorsPerTeam)
         {
             throw std::runtime_error(
                 "snapshot serialization: respawn anchor count exceeds maximum");
@@ -608,13 +608,13 @@ void serialize_respawn_state(std::vector<std::uint8_t>& buffer,
     }
 
     if (respawn.respawn_queue.size() >
-        static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries))
+        static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries))
     {
         throw std::runtime_error(
             "snapshot serialization: respawn queue exceeds maximum");
     }
     append_u8(buffer, static_cast<std::uint8_t>(respawn.respawn_queue.size()));
-    for (const og::sim::CtfRespawnEntry& entry : respawn.respawn_queue)
+    for (const og::sim::RespawnEntry& entry : respawn.respawn_queue)
     {
         append_u8(buffer, entry.kind);
         append_u8(buffer, entry.team);
@@ -638,7 +638,7 @@ void deserialize_respawn_state(ByteReader& reader,
     for (int team = 0; team < 4; ++team)
     {
         respawn.anchor_count[team] = reader.read_u8("world.respawn_anchor_count");
-        if (respawn.anchor_count[team] > og::sim::kCtfMaxAnchorsPerTeam)
+        if (respawn.anchor_count[team] > og::sim::kRespawnMaxAnchorsPerTeam)
         {
             throw std::runtime_error(
                 "respawn anchor count exceeds maximum count");
@@ -651,7 +651,7 @@ void deserialize_respawn_state(ByteReader& reader,
     }
 
     const std::uint8_t queue_size = reader.read_u8("world.respawn_queue_size");
-    if (queue_size > og::sim::kCtfMaxRespawnEntries)
+    if (queue_size > og::sim::kRespawnMaxQueueEntries)
     {
         throw std::runtime_error("respawn queue exceeds maximum count");
     }
@@ -659,7 +659,7 @@ void deserialize_respawn_state(ByteReader& reader,
     respawn.respawn_queue.reserve(queue_size);
     for (std::uint8_t i = 0; i < queue_size; ++i)
     {
-        og::sim::CtfRespawnEntry entry;
+        og::sim::RespawnEntry entry;
         entry.kind = reader.read_u8("respawn_entry.kind");
         entry.team = reader.read_u8("respawn_entry.team");
         entry.family = reader.read_u8("respawn_entry.family");
@@ -2279,7 +2279,7 @@ void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot
     for (int team = 0; team < 4; ++team)
     {
         snapshot.respawn.anchor_count[team] = std::min<std::uint8_t>(
-            respawn.anchor_count[team], og::sim::kCtfMaxAnchorsPerTeam);
+            respawn.anchor_count[team], og::sim::kRespawnMaxAnchorsPerTeam);
         for (int i = 0; i < snapshot.respawn.anchor_count[team]; ++i)
         {
             snapshot.respawn.anchor_x[team][i] = respawn.anchor_x[team][i];
@@ -2291,7 +2291,7 @@ void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot
         respawn.respawn_queue.begin() +
             static_cast<std::ptrdiff_t>(std::min<std::size_t>(
                 respawn.respawn_queue.size(),
-                og::sim::kCtfMaxRespawnEntries)));
+                og::sim::kRespawnMaxQueueEntries)));
 
     snapshot.mode = world.mode;
 
@@ -2316,7 +2316,7 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     {
         respawn.anchor_count[team] = std::min<std::uint8_t>(
             snapshot.respawn.anchor_count[team],
-            og::sim::kCtfMaxAnchorsPerTeam);
+            og::sim::kRespawnMaxAnchorsPerTeam);
         for (int i = 0; i < respawn.anchor_count[team]; ++i)
         {
             respawn.anchor_x[team][i] = snapshot.respawn.anchor_x[team][i];
@@ -2328,7 +2328,7 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
         snapshot.respawn.respawn_queue.begin() +
             static_cast<std::ptrdiff_t>(std::min<std::size_t>(
                 snapshot.respawn.respawn_queue.size(),
-                og::sim::kCtfMaxRespawnEntries)));
+                og::sim::kRespawnMaxQueueEntries)));
     world.respawn = std::move(respawn);
 
     world.mode = snapshot.mode;

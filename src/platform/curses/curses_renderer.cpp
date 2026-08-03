@@ -352,56 +352,9 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
             if (!flr.empty())
                 line1 += "  " + flr;
         }
-        if (world.ctf.active) {
-            // Per-team capture counts (replicated CtfState; the mirror world
-            // carries it in every snapshot). Active teams only, matching the
-            // SDL panel's filter.
-            line1 += "  Caps ";
-            bool first = true;
-            for (int t = 0; t < 4; ++t) {
-                if (!world.ctf.team_active[t])
-                    continue;
-                if (!first)
-                    line1 += ":";
-                first = false;
-                line1 += std::to_string(world.ctf.captures[t]);
-            }
-            if (followed_id != 0) {
-                for (int t = 0; t < 4; ++t) {
-                    const auto& flag = world.ctf.flags[t];
-                    if (flag.state == og::sim::CtfFlagState::Carried &&
-                        flag.carrier_entity_id == followed_id) {
-                        line1 += "  FLAG";
-                        break;
-                    }
-                }
-                for (const auto& entry : world.respawn.respawn_queue) {
-                    if (entry.kind == 0 &&
-                        entry.walker_entity_id == followed_id) {
-                        line1 += "  RESPAWN " + std::to_string(
-                            og::sim::ctf_respawn_seconds_left(world.ctf,
-                                                              entry));
-                        break;
-                    }
-                }
-            }
-            // Waypoint capture meter: first contested control point in index
-            // order, mirroring the SDL panel's "WP n/36" readout. Rides the
-            // CTF group so narrow terminals clip Sp:/Score first.
-            for (int i = 0; i < world.ctf.cp_count; ++i) {
-                const auto& cp = world.ctf.cps[i];
-                if (cp.progress_team < 0)
-                    continue;
-                line1 += "  WP " + std::to_string(cp.progress) + "/" +
-                         std::to_string(og::sim::kCtfCpCaptureTicks);
-                break;
-            }
-        }
         // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
         // non-empty ModeState HUD line, then the followed walker's respawn
-        // seconds — the terminal twin of the SDL mode panel. Disjoint from
-        // the ctf branch (no CTF level is scripted until the CTF engine
-        // retirement); same clip-priority position.
+        // seconds — the terminal twin of the SDL mode panel.
         if ((world.type & GameWorld::TYPE_SCRIPTED) && world.mode.active) {
             if (world.mode.name[0] != '\0') {
                 line1 += "  ";
@@ -418,8 +371,7 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
                         line1 += "  RESPAWN " + std::to_string(
-                            og::sim::ctf_respawn_seconds_left(world.ctf,
-                                                              entry));
+                            og::sim::respawn_seconds_left(entry));
                         break;
                     }
                 }

@@ -22,8 +22,8 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/core/weather.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/irandom.h>
@@ -138,15 +138,15 @@ public:
     static constexpr char TYPE_CAN_EXIT_WHENEVER = 0x1;
     static constexpr char TYPE_MUST_DESTROY_GENERATORS = 0x2;
     static constexpr char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;
-    static constexpr char TYPE_CTF = 0x8;
+    // 0x8 was TYPE_CTF, retired with the CTF engine: a stray map carrying
+    // it falls to classic completion rules (the tick fork has no CTF
+    // branch). The bit stays reserved so old .fss bytes keep round-tripping.
     // Tower-authored level (SCEN_TYPE_TOWER in .fss files). Display-only in
-    // v1 — the sole reader is floor_hud_label; never runtime-mutated. A level
-    // authored with both TYPE_CTF and TYPE_TOWER resolves CTF-first (v1
-    // content never authors both).
+    // v1 — the sole reader is floor_hud_label; never runtime-mutated.
     static constexpr char TYPE_TOWER = 0x10;
     // Scripted-mode level (SCEN_TYPE_SCRIPTED in .fss files): match rules
     // live in campaign-pack Lua level hooks; the tick fork dispatches
-    // og::sim::mode_run_tick ahead of the CTF branch. One bit for ALL
+    // og::sim::mode_run_tick ahead of the classic branch. One bit for ALL
     // scripted modes — mode identity comes from the pack's per-level
     // og.register_level_hooks registration, not from type bits.
     static constexpr char TYPE_SCRIPTED = 0x20;
@@ -460,11 +460,9 @@ public:
     std::array<std::uint8_t, 16> player_machine = {
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    og::sim::CtfState ctf;
-    // The respawn engine's own state (queue, timers, rotation serial, team
-    // anchor arrays). Physically split off CtfState: CTF, classic, and
-    // scripted modes all read/write this SAME storage, and the snapshot
-    // carries it as its own block.
+    // The respawn engine's state (queue, timers, rotation serial, team
+    // anchor arrays). Classic and scripted modes read/write this SAME
+    // storage, and the snapshot carries it as its own block.
     og::sim::RespawnState respawn;
     // Scripted-mode (TYPE_SCRIPTED) match state. Reset at level load beside
     // `ctf`; carried across the LevelRuntimeData world handoff. Not yet in

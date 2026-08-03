@@ -26,7 +26,6 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
@@ -645,7 +644,7 @@ void teams_screen(Menu& menu, SaveData& save)
             actions.push_back(RowAction{});
             entries.push_back(ListEntry{std::format(
                 "P1 plays {}",
-                og::sim::ctf_team_color_name(save.my_team)), true});
+                og::sim::team_color_name(save.my_team)), true});
             actions.push_back(RowAction{.cycle_player = true});
         }
 
@@ -1226,7 +1225,7 @@ void CursesPickerClient::run_game()
     const GameRunResult result =
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
-    if (result.ended && result.ending == 0 && !result.ctf_rematch) {
+    if (result.ended && result.ending == 0 && !result.mode_rematch) {
         // §3.8: the curses win commit (run_level_loop already folded the win
         // into save_data_ via commit_result_to_save, gated on this same
         // shape) persists through the company autosave choke point against
@@ -1247,7 +1246,7 @@ void CursesPickerClient::run_game()
         // back to "N. Level N" if it cannot be read.
         menu.show_text("Mission complete",
             {mission_verdict_line(result),
-             (result.next_level >= 0 && !result.ctf_rematch)
+             (result.next_level >= 0 && !result.mode_rematch)
                  ? std::format("Next level: {}",
                        og::data::scenario_display_name(result.next_level))
                  : std::string("Returning to team build.")});

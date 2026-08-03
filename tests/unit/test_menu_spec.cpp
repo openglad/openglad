@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -247,7 +247,7 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
 
     // A save-backed binding without a save falls back to the fixed label.
     MenuLabelContext no_save;
-    EXPECT_EQ("CTF Teams", og::ui::menu_item_label(*ctf_teams, no_save));
+    EXPECT_EQ("Match Teams", og::ui::menu_item_label(*ctf_teams, no_save));
 
     // Spectator context does not alter any current label (documents Layer-E
     // behavior; Layer F adds spectator-aware bindings).
@@ -316,19 +316,19 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::LocalOnly, nullptr, {}},
                                  networked_client));
 
-    // CTF campaign gate: follows the save; a context without a save is
-    // gated closed.
+    // Versus campaign gate: follows the save's matchup: yaml key; a
+    // context without a save is gated closed.
     save.current_campaign = "org.openglad.gladiator";
     EXPECT_EQ(RowState::Hidden,
-              og::ui::gate_state(GateBinding{MenuGate::CtfCampaignOnly, nullptr, {}},
+              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
                                  local));
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "org.openglad.modes";
     EXPECT_EQ(RowState::Visible,
-              og::ui::gate_state(GateBinding{MenuGate::CtfCampaignOnly, nullptr, {}},
+              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
                                  local));
     MenuLabelContext no_save;
     EXPECT_EQ(RowState::Hidden,
-              og::ui::gate_state(GateBinding{MenuGate::CtfCampaignOnly, nullptr, {}},
+              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
                                  no_save));
 
     // Custom gate: follows the predicate; a null predicate reads Visible.
@@ -355,12 +355,12 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
     for (const PickerMenuCommand command : ctf_commands) {
         const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
         ASSERT_NE(nullptr, item);
-        EXPECT_EQ("CTF settings apply to CTF maps only.",
+        EXPECT_EQ("Matchup settings apply to versus maps only.",
                   og::ui::terminal_gate_message(*item, context_for(save)));
     }
 
-    // On the CTF campaign the gate passes: no guard message.
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    // On the versus campaign the gate passes: no guard message.
+    save.current_campaign = "org.openglad.modes";
     for (const PickerMenuCommand command : ctf_commands) {
         const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
         ASSERT_NE(nullptr, item);

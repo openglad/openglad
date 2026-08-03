@@ -19,7 +19,6 @@
 #include "grid_canvas.h"
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
@@ -162,7 +161,7 @@ void build_foundry_line(const ExpectedLevel& row)
                    {38, 21}, {40, 26}, {38, 26}, {37, 11}, {37, 17},
                    {37, 23}});
 
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {24, 17});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {24, 17});
 
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {24, 4});
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {25, 4});
@@ -287,8 +286,8 @@ void build_twin_spires(const ExpectedLevel& row)
                    {34, 38}, {20, 36}, {39, 36}, {27, 36}, {32, 36},
                    {29, 34}});
 
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {15, 30});
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {44, 30});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {15, 30});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {44, 30});
 
     for (const TilePos t :
          {TilePos{8, 26}, TilePos{20, 26}, TilePos{40, 26}, TilePos{51, 26},
@@ -390,7 +389,7 @@ void build_the_marches(const ExpectedLevel& row)
                    {44, 52}, {40, 44}, {32, 47}, {48, 47}, {38, 53},
                    {42, 53}});
 
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {40, 36});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {40, 36});
 
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {20, 4});
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {21, 4});
@@ -500,8 +499,8 @@ void build_last_bastion(const ExpectedLevel& row)
                    {53, 31}, {55, 39}, {53, 39}, {55, 43}, {53, 43},
                    {54, 49}});
 
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {34, 21});
-    place_at(world, Order::Treasure, og::FAMILY_CTF_POINT, 7, {35, 48});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {34, 21});
+    place_at(world, Order::Treasure, modesgen::kWaypointFamily, 7, {35, 48});
 
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {33, 25});
     place_at(world, Order::Weapon, FAMILY_DOOR, 4, {34, 25});

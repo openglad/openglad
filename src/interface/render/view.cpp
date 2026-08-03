@@ -20,7 +20,6 @@
 	buffers: 7/31/02: *include cleanup
 */
 
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/web_back_key.h>
@@ -264,7 +263,7 @@ std::optional<ClassicRespawnCameraFocus> classic_respawn_camera_focus(
         return std::nullopt;
     }
 
-    for (const og::sim::CtfRespawnEntry& entry : world.respawn.respawn_queue)
+    for (const og::sim::RespawnEntry& entry : world.respawn.respawn_queue)
     {
         if (entry.kind != 0 ||
             entry.walker_entity_id != control->entity_id() ||

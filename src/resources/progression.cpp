@@ -19,17 +19,17 @@
 
 namespace og::progression {
 
-bool ctf_rematch_shape(const GameWorld& world, short current_level,
-                       short next_level)
+bool mode_rematch_shape(const GameWorld& world, short current_level,
+                        short next_level)
 {
-    return (world.type & GameWorld::TYPE_CTF) && world.ctf.active &&
-        world.ctf.winner_team >= 0 && next_level == current_level;
+    return (world.type & GameWorld::TYPE_SCRIPTED) && world.mode.active &&
+        world.mode.win_latched && next_level == current_level;
 }
 
-bool ctf_rematch_shape(const GameWorld& world, const SaveData& save,
-                       short next_level)
+bool mode_rematch_shape(const GameWorld& world, const SaveData& save,
+                        short next_level)
 {
-    return ctf_rematch_shape(world, save.scen_num, next_level);
+    return mode_rematch_shape(world, save.scen_num, next_level);
 }
 
 void apply_win_fold(SaveData& save, const GameWorld& world,

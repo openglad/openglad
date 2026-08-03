@@ -8,7 +8,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -954,7 +953,7 @@ private:
                 } else {
                     std::printf("Preferred-team metadata is now %s; "
                                 "the text simulator has no player controls.\n",
-                        og::sim::ctf_team_color_name(value - 1));
+                        og::sim::team_color_name(value - 1));
                 }
                 continue;
             }
@@ -972,7 +971,7 @@ private:
                     std::printf("Invalid slot or team.\n");
                 } else {
                     std::printf("Moved slot %d to %s.\n", slot,
-                        og::sim::ctf_team_color_name(value - 1));
+                        og::sim::team_color_name(value - 1));
                     autosave_company_after_mutation();  // §3.8 team cycle
                 }
                 continue;
@@ -1003,7 +1002,7 @@ private:
                     t, hero_count, false, false, false, "").c_str());
             std::printf("%s", members.c_str());
         }
-        if (is_ctf_campaign(save_data_))
+        if (is_versus_campaign(save_data_))
             std::printf("[%s]\n", format_ctf_teams_label(save_data_).c_str());
     }
 

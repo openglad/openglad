@@ -5,7 +5,6 @@
 #pragma once
 
 #include <openglad/core/order.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/dirty_field_bits.h>

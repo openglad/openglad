@@ -4,7 +4,6 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/legacy/base.h>

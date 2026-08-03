@@ -1,8 +1,8 @@
 #include <openglad/gameplay/lobby_server.h>
 
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/core/tower_constants.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 
 #include <algorithm>
 #include <format>

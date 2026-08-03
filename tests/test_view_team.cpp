@@ -20,7 +20,6 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
@@ -2390,9 +2389,10 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_TRUE(trace_contains("popup", "CHANGE DENIED"));
     EXPECT_EQ(2, save.team_list[0]->teamnum);
 
-    // Explicit two-team CTF wraps the same exact P5 target within {1,2}.
+    // Explicit two-team versus wraps the same exact P5 target within {1,2}
+    // (the shipped modes campaign carries matchup: versus).
     lobby.seat_team_accept = true;
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "org.openglad.modes";
     save.ctf_team_count = 2;
     local->team = 1;
     og::ui::base_camp_refresh_rows(state);
@@ -2406,35 +2406,35 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_EQ(expected_ctf_request, lobby.seat_team_calls.back());
     EXPECT_EQ(2, save.team_list[0]->teamnum);
 
-    // Auto follows authored flag teams rather than exposing NOT ON MAP
-    // choices. Stamp flags for teams 1 and 3 onto the mounted picker world:
-    // a P5 seat on team 1 must advance directly to team 3.
+    // Auto follows authored marker teams rather than exposing NOT ON MAP
+    // choices. Stamp start markers for teams 0 and 2 onto the mounted picker
+    // world: a P5 seat on team 0 must advance directly to team 2.
     const std::string old_mounted_campaign = get_mounted_campaign();
-    set_mounted_campaign_for_testing("org.openglad.ctf");
+    set_mounted_campaign_for_testing("org.openglad.modes");
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     const int old_world_id = world.id;
     const auto old_world_type = world.type;
-    const std::size_t old_fx_size = world.fxlist.size();
-    std::vector<std::pair<walker*, unsigned char>> old_flag_teams;
-    for (const auto& effect : world.fxlist)
+    const std::size_t old_ob_size = world.oblist.size();
+    std::vector<std::pair<walker*, unsigned char>> old_marker_teams;
+    for (const auto& ob : world.oblist)
     {
-        if (effect && effect->query_order() == Order::Treasure &&
-            effect->family() == og::FAMILY_FLAG)
+        if (ob && ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM)
         {
-            old_flag_teams.emplace_back(effect.get(), effect->team_num());
-            effect->set_team_num(0);
+            old_marker_teams.emplace_back(ob.get(), ob->team_num());
+            ob->set_team_num(0);
         }
     }
     world.id = save.scen_num;
-    world.type |= GameWorld::TYPE_CTF;
-    walker* flag0 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-    walker* flag2 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-    EXPECT_NE(nullptr, flag0);
-    EXPECT_NE(nullptr, flag2);
-    if (flag0 != nullptr)
-        flag0->set_team_num(0);
-    if (flag2 != nullptr)
-        flag2->set_team_num(2);
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    walker* marker0 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    walker* marker2 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    EXPECT_NE(nullptr, marker0);
+    EXPECT_NE(nullptr, marker2);
+    if (marker0 != nullptr)
+        marker0->set_team_num(0);
+    if (marker2 != nullptr)
+        marker2->set_team_num(2);
     save.ctf_team_count = 0;
     local->team = 0;
     og::ui::base_camp_refresh_rows(state);
@@ -2449,7 +2449,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_EQ(2, save.team_list[0]->teamnum);
 
     // Explicit N is also authored-order, not a numeric [0,N) range. With
-    // sparse flags {0,2}, explicit 2 keeps both and advances 0 directly to 2.
+    // sparse markers {0,2}, explicit 2 keeps both and advances 0 to 2.
     save.ctf_team_count = 2;
     local->team = 0;
     og::ui::base_camp_refresh_rows(state);
@@ -2461,10 +2461,10 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_EQ(expected_sparse_explicit, lobby.seat_team_calls.back());
     EXPECT_EQ(2, save.team_list[0]->teamnum);
 
-    for (const auto& [flag, team] : old_flag_teams)
-        flag->set_team_num(team);
-    while (world.fxlist.size() > old_fx_size)
-        world.fxlist.pop_back();
+    for (const auto& [marker, team] : old_marker_teams)
+        marker->set_team_num(team);
+    while (world.oblist.size() > old_ob_size)
+        world.oblist.pop_back();
     world.id = old_world_id;
     world.type = old_world_type;
     set_mounted_campaign_for_testing(old_mounted_campaign);
