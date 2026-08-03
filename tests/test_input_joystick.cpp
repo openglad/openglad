@@ -344,9 +344,49 @@ TEST(InputJoystick, input_joydata_getState_handles_all_mapping_types_with_neutra
     ASSERT_FALSE(j.getState(KEY_FIRE)) << "unbound joystick should not be held";
 }
 
+namespace
+{
+// This test used to be order-dependent (failed standalone / under shuffle):
+// nothing in it initialized SDL's joystick subsystem, so it only worked when
+// an earlier test happened to leave the subsystem up (resetJoystick in the
+// press/release test), and SDL_UpdateJoysticks() is a silent no-op while the
+// subsystem is down — the virtual button press never landed. Subsystem init
+// is refcounted, so the paired init/quit restores the prior state exactly.
+struct JoystickSubsystemGuard
+{
+    JoystickSubsystemGuard()
+    {
+        og::input_native::joystick_init_subsystem();
+    }
+    ~JoystickSubsystemGuard()
+    {
+        og::input_native::joystick_quit_subsystem();
+    }
+};
+
+// Second, independent gate: SDL drops joystick button PRESSES while its
+// window lacks keyboard focus (SDL_PrivateJoystickShouldIgnoreEvent). Focus
+// timing depends on which tests pumped events earlier, so allow background
+// events for the duration of the virtual-button reads.
+struct BackgroundJoystickEventsGuard
+{
+    BackgroundJoystickEventsGuard()
+    {
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    }
+    ~BackgroundJoystickEventsGuard()
+    {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS);
+    }
+};
+} // namespace
+
 TEST(InputJoystick, joydata_discovers_and_reads_real_virtual_joystick_capabilities)
 {
+    // Declared first so its teardown runs after the virtual devices detach.
+    JoystickSubsystemGuard subsystem_guard;
     PlayerJoyGuard player_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
     // SDL virtual devices exercise the same public joystick API as hardware,
     // while remaining deterministic and self-contained on headless CI.
     VirtualJoystick axes_device(2, 6, 0, "OpenGlad axes test pad");

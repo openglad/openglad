@@ -149,6 +149,14 @@
             transition: width 0.2s;
         }
 
+        #firefox-ctrl-note {
+            max-width: 320px;
+            margin-top: 14px;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #d9c48a;
+        }
+
         .hidden {
             display: none !important;
         }
@@ -462,6 +470,14 @@
         <div id="loading-progress">
             <div id="loading-bar"></div>
         </div>
+        <!-- Installed-PWA and bookmarked players start here (manifest
+             start_url is play.html) and never see the landing-page browser
+             warning; give them the one-sentence version while loading. -->
+        <div id="firefox-ctrl-note" hidden>
+            Firefox reserves Ctrl+W (closes this tab), so the browser
+            defaults use Z to attack and X for specials &mdash; avoid
+            rebinding attack to Ctrl.
+        </div>
     </div>
 
     <script>
@@ -473,6 +489,13 @@
         var fullscreenStatus = document.getElementById('fullscreen-status');
         var fullscreenTarget = document.documentElement;
         var fullscreenControlReady = false;
+
+        // Same predicate as the landing page's isCtrlReservedBrowser():
+        // Firefox reserves Ctrl+W at browser-chrome level and no page
+        // script can intercept it (Keyboard Lock is Chromium-only).
+        if (/(?:Firefox|FxiOS)\//.test(navigator.userAgent)) {
+            document.getElementById('firefox-ctrl-note').hidden = false;
+        }
 
         function currentFullscreenElement() {
             return document.fullscreenElement ||

@@ -2872,6 +2872,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_web_control_defaults.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES

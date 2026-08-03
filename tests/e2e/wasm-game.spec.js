@@ -362,6 +362,47 @@ test.describe('Landing Page', () => {
   });
 });
 
+test.describe('Landing page browser warning', () => {
+  // Firefox reserves Ctrl+W at browser-chrome level, so the landing page
+  // warns Firefox players before they reach the game. Playwright ships only
+  // chromium + webkit engines here, which is exactly why the page detects
+  // via navigator.userAgent (isCtrlReservedBrowser) — a UA override drives
+  // both sides of the branch.
+  test.describe('firefox UA', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    });
+
+    test('warns about Ctrl+W above the play button', async ({ page }) => {
+      await page.goto('/');
+
+      const warning = page.locator('#browser-warning');
+      await expect(warning).toBeVisible();
+      await expect(warning).toContainText('Ctrl+W');
+
+      // The warning must precede the Play button in DOM order so it is read
+      // before the player commits.
+      const warningPrecedesButton = await page.evaluate(() => {
+        const warningEl = document.getElementById('browser-warning');
+        const button = document.querySelector('a.play-button');
+        return Boolean(
+          warningEl.compareDocumentPosition(button) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      });
+      expect(warningPrecedesButton).toBe(true);
+    });
+  });
+
+  test.describe('default UA', () => {
+    test('stays hidden outside Firefox', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.locator('#browser-warning')).toBeHidden();
+    });
+  });
+});
+
 test.describe('Game Loading', () => {
   test('WASM module loads and initializes', async ({ page }) => {
     const errors = [];
