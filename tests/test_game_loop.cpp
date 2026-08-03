@@ -36,6 +36,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <openglad/core/util.h>
@@ -5354,6 +5355,30 @@ void expect_pane_matches_layout(screen* s, int i, int canvas_w, int canvas_h)
     EXPECT_LE(vs->endy, canvas_h) << "view " << i;
 }
 
+// Palette index of one pixel on the ACTIVE canvas.
+int pixel_index(screen* s, int x, int y)
+{
+    int index = -1;
+    s->get_pixel(x, y, &index);
+    return index;
+}
+
+struct MiniHpBarCfgGuard
+{
+    std::string old_value;
+
+    MiniHpBarCfgGuard()
+        : old_value(cfg.get_setting("effects", "mini_hp_bar"))
+    {
+        cfg.apply_setting("effects", "mini_hp_bar", "on");
+    }
+
+    ~MiniHpBarCfgGuard()
+    {
+        cfg.apply_setting("effects", "mini_hp_bar", old_value);
+    }
+};
+
 // The fixed 60x44 radar block must land inside its pane at any pane size.
 void expect_radar_inside_pane(viewscreen* vs)
 {
@@ -5564,3 +5589,103 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
         canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_4p", 0);
 }
 
+// Issue #149: the mini HP bar is painted on the gameplay-UI overlay, which is
+// pinned at zoom-1.0 density while the world canvas grows by 1/zoom. Its anchor
+// was projected between the two panes but its WIDTH was taken raw from the
+// sprite, so at zoom 0.5 the bar came out twice as wide as the walker it
+// belongs to.
+TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
+    canvas_zoom_gameplay::MiniHpBarCfgGuard hp_bar_on;
+
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
+                             {FAMILY_SOLDIER}, 4);
+    s->set_active_canvas(CanvasTarget::UI);
+    glad_init();
+    ASSERT_TRUE(s->gameplay_ui_canvas_available())
+        << "the fixed overlay must exist for the pane projection to apply";
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+
+    viewscreen* const vs = s->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr);
+    walker* const w = vs->control;
+    ASSERT_TRUE(w != nullptr);
+
+    w->stats()->set_max_hitpoints(100.0f);
+    w->stats()->set_hitpoints(50.0f);
+    w->set_last_hitpoints(50.0f);
+
+    // Settle the camera and allocate/clear the overlay before sampling it.
+    s->redraw();
+
+    const og::view_layout::ViewLayout ui =
+        og::view_layout::compute_view_layout(
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW],
+            s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h());
+    ASSERT_TRUE(ui.applies);
+    const Sint32 sprite_w = w->sizex();
+    const Sint32 expected_bar_w = sprite_w * ui.w / vs->xview;
+    ASSERT_EQ(sprite_w, expected_bar_w * 2)
+        << "the harness must produce a 2x world canvas (window 640x400, zoom 0.5)";
+
+    // project_world_point_to_gameplay_ui only projects while the gameplay-UI
+    // canvas is the active one (otherwise it falls back to identity for the
+    // overlay-allocation case), so enter the same scope the renderer uses
+    // before computing the anchor.
+    ScopedGameplayUiCanvas gameplay_ui(*s);
+
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*w, vs->interpolation_alpha);
+    const float world_x = draw_pos.xpos - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_y = draw_pos.ypos - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc);
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(
+            world_x, world_y + static_cast<float>(w->sizey()));
+    const Sint32 bar_y = walker_bottom + 1;
+    ASSERT_LT(bar_x + sprite_w + 8, ui.x + ui.w)
+        << "the sampled columns must stay inside the gameplay-UI pane";
+    ASSERT_GT(bar_x, ui.x) << "the bar must start inside the pane";
+    ASSERT_GT(bar_y, ui.y) << "the bar must sit inside the pane";
+    ASSERT_LT(bar_y, ui.y + ui.h) << "the bar must sit inside the pane";
+
+    s->clearbuffer();
+    const int background_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 8, bar_y);
+    draw_small_health_bar(w, vs);
+
+    const int hp_index = canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y);
+    ASSERT_NE(background_index, hp_index) << "the bar must have been drawn";
+
+    int run = 0;
+    while (bar_x + run < ui.x + ui.w &&
+           canvas_zoom_gameplay::pixel_index(s, bar_x + run, bar_y) == hp_index)
+    {
+        ++run;
+    }
+
+    // Same expression the renderer uses: (Sint32)((float)bar_w * ratio).
+    const Sint32 expected_cur_w =
+        static_cast<Sint32>(static_cast<float>(expected_bar_w) * (50.0f / 100.0f));
+    EXPECT_EQ(expected_cur_w + 1, run)
+        << "the filled HP run must track the PROJECTED sprite footprint, not "
+           "the raw world-canvas sprite width";
+
+    // The 1-px black outline hugs the projected footprint too. Before the fix
+    // its right edge sat at bar_x + sprite_w + 1, twice as far out.
+    const int outline_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x - 1, bar_y);
+    ASSERT_NE(background_index, outline_index) << "the outline must be drawn";
+    EXPECT_EQ(outline_index,
+              canvas_zoom_gameplay::pixel_index(
+                  s, bar_x + expected_bar_w + 1, bar_y))
+        << "the outline's right edge must sit one pixel past the projected width";
+    EXPECT_EQ(background_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 1, bar_y))
+        << "nothing may be drawn out at the unprojected sprite width";
+}

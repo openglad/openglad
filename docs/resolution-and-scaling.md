@@ -129,6 +129,15 @@ starts at 320x200 and expands one axis to match the zoom-1 world aspect:
 That keeps bitmap text, HUD controls, sprites, and tiles at their historical
 readable scale when zoom is 1.0.
 
+The one chrome element that does track zoom is the mini health bar's
+footprint. Its anchor and its width are both projected from the world pane
+into the gameplay-UI pane, so the bar stays exactly as wide as the sprite it
+belongs to at every zoom level. Its 1-pixel stroke and 1-pixel black outline
+stay at gameplay-UI density: the UI-to-world ratio never exceeds 1, so a
+scaled stroke would round back to 1 anyway, and a sub-pixel stroke would
+vanish at deep zoom. Score-panel bars, the radar, messages, and damage numbers
+remain fully pinned.
+
 ## Aspect ratio and pointer mapping
 
 Every active canvas is aspect-fitted inside the overscan viewport. An
