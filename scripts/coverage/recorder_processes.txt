@@ -12,7 +12,6 @@
 # Regenerate after adding or removing a test binary:
 #   grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
 og_test_basecamp
-og_test_ctf
 og_test_curses
 og_test_effects
 og_test_external
@@ -24,6 +23,7 @@ og_test_io
 og_test_level
 og_test_living
 og_test_mass_coverage
+og_test_matchup
 og_test_menu_engine
 og_test_menu_ui
 og_test_parity
@@ -43,7 +43,6 @@ og_test_walker_combat
 og_test_walker_core
 og_test_walker_move
 og_unit_core
-og_unit_ctf
 og_unit_data
 og_unit_emscripten_transport
 og_unit_entity
@@ -53,6 +52,7 @@ og_unit_mapgen
 og_unit_mode
 og_unit_modes
 og_unit_onslaught
+og_unit_respawn
 og_unit_script
 og_unit_server
 og_unit_sim

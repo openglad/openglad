@@ -853,9 +853,9 @@ int text_picker_testing_exercise_internal_paths()
 
     // Exercise the CTF-only settings through the same terminal gate and
     // dispatch path users reach from the final three Base Camp rows.
-    config.campaign = "org.openglad.ctf";
+    config.campaign = "org.openglad.modes";
     check(client.save_game() &&
-          save.current_campaign == "org.openglad.ctf");
+          save.current_campaign == "org.openglad.modes");
     const short previous_ctf_teams = save.ctf_team_count;
     handle_team_item(PickerMenuCommand::CycleCtfTeamCount, "", [&] {
         return save.ctf_team_count != previous_ctf_teams;
@@ -875,12 +875,12 @@ int text_picker_testing_exercise_internal_paths()
         ScopedTextPickerStdoutCapture output;
         check(output.ready());
         handle_team_item(PickerMenuCommand::ViewScenario, "", [&] {
-            return config.campaign == "org.openglad.ctf";
+            return config.campaign == "org.openglad.modes";
         });
         const std::string text = output.finish();
         check(output.finish_ok() &&
             text.find(
-                "Campaign 'org.openglad.ctf' is not mounted.") !=
+                "Campaign 'org.openglad.modes' is not mounted.") !=
                 std::string::npos);
     }
 

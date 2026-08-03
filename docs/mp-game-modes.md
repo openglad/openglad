@@ -1,10 +1,28 @@
-# Capture the Flag
+# Multiplayer Game Modes
 
-OpenGlad ships a Capture-the-Flag game mode as a built-in campaign:
-**`org.openglad.ctf`** ("Capture the Flag"), levels 500–509. Pick it from
-SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
+OpenGlad ships five competitive game modes in one built-in campaign:
+**`org.openglad.modes`** ("Multiplayer Game Modes"), 28 scenarios. Pick it
+from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
+Every scenario title is prefixed with its mode:
 
-## Rules
+| Mode | Levels | One line |
+|------|--------|----------|
+| Team Deathmatch | 300-305 | First team to the frag limit wins; kills of score-team fighters count. |
+| Capture the Flag | 500-509 | Carry enemy flags home; first to the capture limit wins. |
+| Onslaught | 800-803 | Destroy generators to FLIP them to your team; a team with none left is eliminated. |
+| Soccer | 820-823 | Smack the ball into the enemy goal; first to the goal limit wins. |
+| Mutant | 840-843 | FFA until first blood; only the Mutant can be hurt, kill it to take its place. |
+
+Every mode's rules, scoring, win logic, and AI directors live in the
+campaign's embedded Lua pack (`org.openglad.modes.core`, source under
+`tools/modes_mapgen/pack/`) — the engine provides only the generic scripted
+frame (`SCEN_TYPE_SCRIPTED` levels, `ModeState` replication, the respawn
+engine, and the og.* mode bindings). All five modes work in local
+split-screen, networked play (mid-join included), the text and curses
+clients, the dedicated server, and the web build.
+
+## Capture the Flag rules
+
 
 - Each active team owns a flag standing at its base. Touch an enemy flag to
   pick it up (multiple enemy flags can be carried at once).
@@ -32,16 +50,17 @@ SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 
 ## Match setup
 
-Three CTF match settings appear in **MATCHUP**
-(Base Camp → SCENARIO → MATCHUP) when the CTF campaign is active. In
+Three match settings appear in **MATCHUP**
+(Base Camp → SCENARIO → MATCHUP) when a versus campaign (one whose
+campaign.yaml carries `matchup: versus`) is active. In
 networked play, only the host can change them, and the lobby synchronizes them
 to every client:
 
-- **CTF Teams** — `Auto` fields every team the map authors (2, 3, or 4);
+- **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads.
-- **Capture Limit** — `Map default` uses the map's authored limit
-  (3 unless the map says otherwise; the CROSSFIRE finale plays to 5),
-  or force 1–10.
+- **Score Limit** — `Map default` uses the map's authored limit (each mode
+  reads it as its own win threshold: captures, frags, goals), or force
+  1–10.
 - **Scenario Troops** — keep the level's authored fighters, or field only
   the players' selected company fighters.
 
@@ -54,13 +73,13 @@ for a versus or mixed-team match. Remote cards are read-only.
 The same editor selects 4- or 8-direction movement, remaps that local player's
 keys, resets that player's controls, and removes the seat. Removing a machine's
 last network seat leaves it connected as a spectator; **+** brings it back.
-Seat membership and CTF team choices belong to the current session, not the
+Seat membership and match team choices belong to the current session, not the
 company file. A fighter's color remains its combat allegiance, so changing a
 player-seat assignment does not recolor the company roster. The assignments
 work locally, in split-screen and networked games, and through the dedicated
 server.
 
-## The maps
+## The CTF maps
 
 The roster ramps playable area, walk time, and team count, alternating
 originals and adapted classics (the playtest cut the giant maps — short
@@ -81,31 +100,51 @@ walks and dense fights won):
 
 Maps authored for more teams than the match fields simply mothball the extra
 bases. An explicit team count takes the first N authored flag teams in team-ID
-order, so a sparse custom map with flags on teams 0, 2, and 3 uses teams 0 and
-2 in a two-team match. The campaign loops: winning CROSSFIRE (509) wraps the
+order, so a sparse custom map authored for teams 0, 2, and 3 uses teams 0 and
+2 in a two-team match (the authored domain comes from team start markers). The campaign loops: winning CROSSFIRE (509) wraps the
 rotation back to FIRST BLOOD (500).
 
-## AI
+## CTF AI
 
 Bots play the objective. Each squad fields attackers (fetch the nearest
 enemy flag), escorts (shadow the carrier), defenders (hold the flag home),
 interceptors (hunt the enemy carrying *your* flag), and a retriever (race to
 a dropped flag). Carriers run home and fight only when cornered.
 
-## Making your own CTF map
+## The other modes, briefly
 
-`tools/ctf_mapgen` (built via `scripts/generate_ctf_campaign.sh`) generates
-the shipped campaign and is the reference for authoring:
+- **Team Deathmatch** (300-305, the six adapted arenas): kills of fighters
+  on scoring teams count; wildlife, suicides, and environment deaths score
+  nothing. Everyone respawns.
+- **Onslaught** (800-803): sprawling generator fields. A lethal hit on a
+  generator never destroys it — it flips, full-HP, to the attacker's team
+  and starts pumping that team's fighters (existing troops keep their old
+  colors). A team whose last generator flips away has a short grace to take
+  one back; otherwise it is eliminated. Last team standing wins.
+- **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
+  and bounces off whoever it hits. Fully inside the enemy goal strip = a
+  goal for the last-touching team. Dead heroes respawn.
+- **Mutant** (840-843): free-for-all until the first kill crowns the
+  Mutant — buffed, marked on every HUD, health always decaying, healed
+  only by kills. Non-mutants cannot hurt each other; kill the Mutant to
+  become it. Teleports are range-clamped so nobody blinks across the map.
 
-1. A CTF level is a normal `.fss` scenario whose **type byte has bit `0x8`**
-   set (`SCEN_TYPE_CTF`).
-2. Place one **FLAG** treasure (family 13) per team, team byte = owner. Its
-   position is that team's base. A flag's stat level ≥ 2 sets the map's
-   capture limit.
-3. Give each team a cluster of team start markers — they double as respawn
-   anchors.
-4. Optionally place **CTF POINT** treasures (family 14, team 7) at contested
-   spots, and remove exits (CTF maps should not have portals).
+## Making your own mode map
 
-The engine validates maps at match start; a map with fewer than two flag
-teams falls back to classic rules.
+`tools/modes_mapgen` (built via `scripts/generate_modes_campaign.sh`)
+generates the shipped campaign and is the reference for authoring:
+
+1. A mode level is a normal `.fss` scenario whose **type byte has bit
+   `0x20`** set (`SCEN_TYPE_SCRIPTED`). The campaign pack's Lua registers
+   per-level hooks by scenario id (`pack/lib/mode_levels.lua` is the
+   generated manifest).
+2. Give each team a cluster of team start markers — they define the
+   authored team domain AND double as respawn anchors.
+3. CTF maps place one **flag** treasure (wire byte 13, `modes:flag`) per
+   team and optional **waypoint** treasures (wire byte 14,
+   `modes:waypoint`); both families ship IN the campaign pack.
+4. Remove exits (mode maps should not have portals).
+
+The mode's Lua validates maps at match start; a scripted map whose mode
+fails to activate (or that registers no hooks) falls back to classic
+rules on the next tick.

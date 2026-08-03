@@ -327,6 +327,10 @@ TEST(CampaignSpriteUaf, gameplay_entry_net_reloads_before_walkers_spawn)
     // (picker_lobby_client.cpp deliberately cannot reload mid-frame).
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(kFixtureId));
+    // The stale window opens HERE; every later wire point (the SDL
+    // level-construction chokepoint included) may close it, and the pin is
+    // that SOME render-safe reload runs before any walker spawns.
+    trace_clear();
 
     og::runtime::GameSession::Config session_config;
     session_config.allocate_screen = true;
@@ -344,7 +348,6 @@ TEST(CampaignSpriteUaf, gameplay_entry_net_reloads_before_walkers_spawn)
     save.scen_num = 1;
     save.numplayers = 0; // spectator: authored objects only
 
-    trace_clear();
     ASSERT_EQ(LoadSavedGameError::None,
               load_saved_game_with_error(nullptr, scr));
 

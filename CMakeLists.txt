@@ -2798,7 +2798,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             golden_evaluation_helper.cpp
         )
 
-        og_add_test_group(og_test_ctf FILES
+        og_add_test_group(og_test_matchup FILES
             test_ctf_ui.cpp
             test_mode_ui.cpp
         )
@@ -3025,7 +3025,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
-        og_add_unit_group(og_unit_ctf FILES
+        og_add_unit_group(og_unit_respawn FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_respawn_engine.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
         )

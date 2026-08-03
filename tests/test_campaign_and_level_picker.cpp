@@ -1330,19 +1330,19 @@ TEST(CampaignAndLevelPicker, sync_campaign_mount_follows_save_and_restores_on_fa
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));
 
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "org.openglad.modes";
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save))
         << "the ctf package ships with the game and should mount";
-    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign());
+    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign());
 
     // Same campaign again: success without touching the mount.
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
-    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign());
+    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign());
 
     // Missing package: report failure and restore the previous mount.
     save.current_campaign = "org.openglad.this_campaign_should_not_exist";
     ASSERT_FALSE(og::ui::sync_campaign_mount_to_save(save));
-    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign())
+    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign())
         << "failed sync must put the previous mount back";
 
     save.current_campaign = old_save_campaign;
@@ -1383,10 +1383,10 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 
     // Simulate "the last session played CTF": the save selects it and its
     // package is the one mounted (SaveData::load() would have done both).
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "org.openglad.modes";
     save.scen_num = 505;
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"));
+              mount_campaign_package_with_error("org.openglad.modes"));
     // team_size == 0 keeps the flow from raising the "restart?" prompt.
     for (int i = 0; i < MAX_TEAM_SIZE; i++)
         save.team_list[i].reset();

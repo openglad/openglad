@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <openglad/interface/screen.h>
+#include <openglad/resources/campaign_yaml.h>
 
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
@@ -35,9 +36,20 @@ std::vector<int> get_accessible_levels()
     std::set<int> accessible;
     std::set<int> to_process;
 
-    // Start with level 1 (always accessible) and current level
-    accessible.insert(1);
-    to_process.insert(1);
+    // Start with the campaign's entry level (always accessible; the mounted
+    // campaign.yaml names it — level 1 for classics, 300 for the modes
+    // campaign, whose PROGRESS list used to show a phantom "1" row) and the
+    // current level.
+    int first_level = 1;
+    og::data::CampaignYaml metadata;
+    if (og::data::read_campaign_yaml("campaign.yaml", metadata) ==
+            og::data::CampaignYamlReadResult::Ok &&
+        metadata.saw_first_level)
+    {
+        first_level = metadata.first_level;
+    }
+    accessible.insert(first_level);
+    to_process.insert(first_level);
 
     // Add current level
     accessible.insert(game->save_data.scen_num);

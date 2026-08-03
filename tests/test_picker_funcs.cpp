@@ -2899,7 +2899,11 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.current_campaign = "org.openglad.modes";
     save.scen_num = 7;
     save.ctf_team_count = 0;
-    set_mounted_campaign_for_testing(save.current_campaign);
+    // A REAL mount: the versus predicate reads the campaign's matchup: yaml
+    // key through the mounted package (a faked mount id would read another
+    // campaign's yaml).
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(save.current_campaign));
     world.id = save.scen_num;
     world.type |= GameWorld::TYPE_SCRIPTED;
     for (const short team : {short{0}, short{2}, short{3}})
@@ -2959,7 +2963,8 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
         world.oblist.pop_back();
     world.id = original_world_id;
     world.type = original_world_type;
-    set_mounted_campaign_for_testing(original_mount);
+    if (!original_mount.empty())
+        (void)mount_campaign_package_with_error(original_mount);
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
         save.team_list[slot] = std::move(original_roster[slot]);
     save.team_size = original_team_size;

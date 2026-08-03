@@ -1582,7 +1582,7 @@ TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
     } restore{picker_screen, save, original_campaign, original_level,
               original_mount};
 
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "org.openglad.modes";
     save.scen_num = 500;
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
 
@@ -2964,7 +2964,7 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
                             310, campaign_y + 7);
     EXPECT_NE(blank_campaign, gladiator_campaign);
     output.clearbuffer();
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "org.openglad.modes";
     scenario.draw_content(nullptr);
     const std::uint64_t ctf_campaign =
         indexed_region_hash(output, 114, campaign_y - 1,
