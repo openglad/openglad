@@ -6,7 +6,9 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
@@ -493,4 +495,38 @@ TEST(ModeBindings, bit_32768_reads_back_truthy)
         "    og.log('cleared', w:s_query_bit_flags(32768) and 1 or 0)\n");
     EXPECT_TRUE(fx.logged("truthy\t1"));
     EXPECT_TRUE(fx.logged("cleared\t0"));
+}
+
+TEST(ModeBindings, radar_landmark_declares_on_treasure_and_fx_only)
+{
+    og::script::clear_pack_family_chunks();
+    og::data::ClasspackData data;
+    og::script::register_pack_family_chunk(
+        {"modes", "modes/families/a.lua",
+         "og.family('treasure', { id = 'modes:flag', name = 'FLAG',\n"
+         "                        radar_landmark = true })\n"
+         "og.family('effect', { id = 'modes:ball', name = 'BALL',\n"
+         "                      radar_landmark = true })\n"});
+    const og::script::DeclareResult ok =
+        og::script::declare_pack_families("modes", data);
+    ASSERT_TRUE(ok.ok) << ok.error;
+    ASSERT_EQ(1u, data.treasures.size());
+    EXPECT_TRUE(data.treasures[0].presentation.radar_landmark.value_or(false));
+    ASSERT_EQ(1u, data.effects.size());
+    EXPECT_TRUE(data.effects[0].presentation.radar_landmark.value_or(false));
+
+    // The key is landmark-map furniture vocabulary: livings (and the other
+    // orders) reject it as unknown.
+    og::script::clear_pack_family_chunks();
+    og::data::ClasspackData rejected;
+    og::script::register_pack_family_chunk(
+        {"modes", "modes/families/b.lua",
+         "og.family('living', { id = 'modes:guy', name = 'GUY',\n"
+         "                      radar_landmark = true })\n"});
+    const og::script::DeclareResult bad =
+        og::script::declare_pack_families("modes", rejected);
+    EXPECT_FALSE(bad.ok);
+    EXPECT_NE(std::string::npos, bad.error.find("radar_landmark"))
+        << "error was: " << bad.error;
+    og::script::clear_pack_family_chunks();
 }
