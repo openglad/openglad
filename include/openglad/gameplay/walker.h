@@ -167,6 +167,15 @@ class walker : public og::sim::SimEntity
 		std::int32_t  turn_undead(std::int32_t range, std::int32_t power);
 		virtual short shove(walker  *target, short x, short y);
 		virtual bool eat_me(walker  *eater);
+		// #160 exit-pad re-trigger latch (full contract on exit_latched_ in
+		// the private section). latch_exit_contact is called by ob_pass_check
+		// on the first movement probe that eats an exit pad; while latched,
+		// further exit-pad eats are skipped. update_exit_latch runs every
+		// living::act tick and clears the latch once this walker's bbox has
+		// fully left the latched pad's rect.
+		void latch_exit_contact(const walker* pad);
+		[[nodiscard]] bool exit_latched() const noexcept { return exit_latched_; }
+		void update_exit_latch();
 		virtual void set_direct_frame(short whichframe);
 		bool turn(short targetdir);
 		short spaces_clear(); // how many (of 8) spaces around us are clear
@@ -489,6 +498,28 @@ class walker : public og::sim::SimEntity
 		bool z_stair_latched_ = false;
 		std::int32_t z_latch_cx_ = -1;
 		std::int32_t z_latch_cy_ = -1;
+		// Exit-pad re-trigger LATCH (#160). Same non-replicated
+		// server-transient contract as z_stair_latched_ above (no dirty bit,
+		// absent from EntitySnapshot/saves/wire): a mirror or late joiner
+		// re-arms cleared — worst case one extra exit prompt after a resync,
+		// never a wedge. Exit pads are eaten from ob_pass_check on EVERY
+		// movement probe, so held-direction walking on the pad used to re-run
+		// the exit prompt / "Foes remain!" toast each time the skip_exit
+		// cooldown expired (~10 ticks), and in MP each re-prompt froze the
+		// sim for everyone. Armed with the PAD's bbox on the first eaten
+		// contact; while this walker's own bbox still overlaps the stored
+		// rect, exit-pad eats are skipped entirely (rect-based: one exit per
+		// spot by construction; declining the prompt leaves you latched).
+		// Cleared by update_exit_latch() (living::act, every tick) once the
+		// walker has fully left the rect — stepping back on is a deliberate
+		// act and prompts again. skip_exit stays untouched as a secondary
+		// bound (teleporter/door toasts, and the game_server skip_exit==10
+		// prompt-routing sniff).
+		bool exit_latched_ = false;
+		std::int16_t exit_latch_x_ = 0;
+		std::int16_t exit_latch_y_ = 0;
+		std::int16_t exit_latch_w_ = 0;
+		std::int16_t exit_latch_h_ = 0;
 		// Fall-damage accumulator: stories fallen in one uninterrupted air
 		// cascade, resolved ONCE at settle by resolve_fall_landing(). Same
 		// non-replicated server-transient acceptance as z_cooldown_ /
