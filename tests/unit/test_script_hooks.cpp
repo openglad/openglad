@@ -982,32 +982,6 @@ TEST_F(ScriptBindingTest, scenario_title_uses_the_installed_provider)
     EXPECT_EQ("t\tTitle of scen7", vm_log()[0]);
 }
 
-TEST_F(ScriptBindingTest, ctf_flag_touch_forwards_to_the_ctf_engine)
-{
-    // TYPE_CTF without an initialized match: the engine's own gate returns
-    // true and touches nothing. Both spellings are the same wrapper.
-    world.type = GameWorld::TYPE_CTF;
-    ASSERT_FALSE(world.ctf.active);
-    run("og.log('ctf', og.ctf_on_flag_touch(gen, spawn), "
-        "og.ctf_flag_touch == og.ctf_on_flag_touch, "
-        "og.world_can_exit_whenever())\n");
-    ASSERT_EQ(1u, vm_log().size());
-    EXPECT_EQ("ctf\ttrue\ttrue\tfalse", vm_log()[0]);
-    EXPECT_EQ(0u, world.m_score[0]);
-}
-
-// ---------------------------------------------------------------------------
-// Binding-table reachability
-//
-// Every row of kWalkerMethods / kOgWorldFuncs is public modding API: a pack
-// author reads docs/modding/api-reference.md and calls it. A row that no
-// test and no shipped script exercises is a row that can be renamed, given
-// the wrong arity, or wired to the wrong C++ member without anything going
-// red. The tests below drive the rows the core pack happens not to use, and
-// assert the value actually round-trips through the intended C++ member —
-// not merely that the call did not raise.
-// ---------------------------------------------------------------------------
-
 TEST_F(ScriptBindingTest, walker_field_rows_round_trip_through_the_members)
 {
     spawn->set_sizez(7);

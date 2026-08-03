@@ -22,7 +22,6 @@
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/core/test_trace.h>

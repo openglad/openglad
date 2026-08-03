@@ -5,7 +5,7 @@ local ctf = og.use("mode_ctf_impl")
 
 og.family("treasure", {
   id = "modes:waypoint",
-  wire_id = "auto",
+  wire_id = 14,
   name = "WAYPOINT",
   init_ignore = false,
   init_frame = 0,

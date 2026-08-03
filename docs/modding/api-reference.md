@@ -679,7 +679,6 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |
-| `og.ctf_on_flag_touch(flag, eater) → bool` | The whole CTF flag-touch operation, wrapped as one call exactly as the C++ treasure hook delegates to it. CTF rules stay in the CTF engine. `og.ctf_flag_touch` is the same function under the `og.*` verb spelling. |
 
 ### Shared helpers
 

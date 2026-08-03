@@ -3186,42 +3186,6 @@
   cb.on_eat = none
   tuning.count = 1
   tuning[duration_per_level] = int 50
-[treasure 13]
-  declared_id = "core:flag"
-  family_id = 13
-  name = "FLAG"
-  init_ignore = false
-  init_frame = 0
-  pix_filename = ~
-  anim_row_count = 0
-  anim_table = ~
-  glyph.codepoint = 70
-  glyph.ascii = 70
-  glyph.color = 9
-  glyph.bold = true
-  glyph.transparent = false
-  radar.color = -2
-  radar.jitter = 7
-  cb.on_eat = none
-  tuning = ~
-[treasure 14]
-  declared_id = "core:waypoint"
-  family_id = 14
-  name = "WAYPOINT"
-  init_ignore = false
-  init_frame = 0
-  pix_filename = ~
-  anim_row_count = 0
-  anim_table = ~
-  glyph.codepoint = 79
-  glyph.ascii = 79
-  glyph.color = 9
-  glyph.bold = true
-  glyph.transparent = false
-  radar.color = -2
-  radar.jitter = 7
-  cb.on_eat = none
-  tuning = ~
 [generator 0]
   declared_id = "core:tent"
   family_id = 0

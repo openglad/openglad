@@ -127,8 +127,6 @@ const std::vector<PackagePins>& package_pins()
          {{103, 5}, {104, 8}, {105, 10}, {106, 0}, {107, 0}, {108, 0},
           {109, 9}, {110, 23}, {111, 0}, {112, 1}, {113, 0}, {114, 6},
           {115, 266}}},
-        {"org.openglad.arenas", true,
-         {{300, 1}, {301, 1}, {302, 26}, {303, 34}, {304, 16}, {305, 24}}},
         // (scen3 75 -> 74 and scen4 49 -> 46: the 2026-07 content batch
         // scaled the Ford/Refuge waves and added the Refuge muster — the
         // ambience scatters skip cells near entities, so the bigger armies
@@ -143,9 +141,6 @@ const std::vector<PackagePins>& package_pins()
           {13, 71}, {14, 70}, {15, 147}, {16, 77}, {17, 187}, {19, 397},
           {20, 114}, {21, 91}, {22, 145}, {23, 417}, {24, 270}, {25, 88},
           {26, 38}}},
-        {"org.openglad.ctf", false,
-         {{500, 8}, {501, 4}, {502, 10}, {503, 10}, {504, 30}, {505, 0},
-          {506, 0}, {507, 12}, {508, 9}, {509, 48}}},
     };
     return pins;
 }

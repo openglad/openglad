@@ -17,7 +17,7 @@
 namespace {
 
 constexpr const char* kGladiatorId = "org.openglad.gladiator";
-constexpr const char* kCtfId = "org.openglad.ctf";
+constexpr const char* kModesId = "org.openglad.modes";
 
 // Mounts the shipped Gladiator campaign for the duration of one test and
 // restores the previous mount in teardown so sibling tests see an untouched
@@ -89,7 +89,8 @@ TEST_F(CampaignMetadataTest, mounted_campaign_title_from_yaml)
 
 TEST_F(CampaignMetadataTest, unmounted_campaign_title_via_private_mount)
 {
-    ASSERT_EQ("Capture the Flag", og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ("Multiplayer Game Modes",
+              og::data::campaign_display_title(kModesId));
 
     // The private-mountpoint lookup must not disturb the active mount.
     ASSERT_EQ(kGladiatorId, get_mounted_campaign());
@@ -162,10 +163,10 @@ TEST_F(CampaignMetadataTest, scenario_names_are_keyed_by_mounted_campaign)
     const std::string gladiator_name = og::data::scenario_display_name(1);
     ASSERT_NE("1. Level 1", gladiator_name);
 
-    // CTF levels start at 500, so scen1 only resolves under gladiator. A
+    // Modes levels start at 300, so scen1 only resolves under gladiator. A
     // stale cache entry keyed on number alone would leak the gladiator title.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error(kCtfId));
+              mount_campaign_package_with_error(kModesId));
     EXPECT_EQ("1. Level 1", og::data::scenario_display_name(1));
 
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -234,16 +235,16 @@ TEST_F(CampaignMetadataTest, failed_lookup_heals_once_package_is_mounted)
 
 TEST_F(CampaignMetadataTest, cache_survives_repeat_calls_and_clear)
 {
-    const std::string title_first = og::data::campaign_display_title(kCtfId);
+    const std::string title_first = og::data::campaign_display_title(kModesId);
     const std::string scen_first = og::data::scenario_display_name(1);
 
     // Memoized second call.
-    ASSERT_EQ(title_first, og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
 
     // Fresh lookups after invalidation return the same values.
     og::data::clear_campaign_metadata_cache();
-    ASSERT_EQ(title_first, og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
 }
 

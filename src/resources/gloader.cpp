@@ -15,7 +15,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
@@ -663,21 +662,31 @@ void loader::reload_graphics()
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
-	register_ctf_loader_entries(*this);
-
-	// Pack-claimed families of the four non-living orders. Their core ids all
-	// come from the EntityDef table above; ids >= NUM_FAMILIES exist only
-	// while a class pack is mounted.
-	for (int i = NUM_FAMILIES; i < NUM_FAMILY_SLOTS; i++)
+	// Pack-claimed families of the four non-living orders. Ids >=
+	// NUM_FAMILIES exist only while a class pack is mounted; a campaign pack
+	// may also reclaim a retired core slot (the modes pack ships its flag/
+	// waypoint treasures on wire ids 13/14), so sub-core slots install too —
+	// but only when the claiming descriptor ships its own art, keeping every
+	// legacy core slot byte-identical (no shipped core descriptor of these
+	// four orders declares a pix_filename).
+	const auto claims_art = [](const auto* d) {
+		return d != nullptr && d->pix_filename != nullptr;
+	};
+	for (int i = 0; i < NUM_FAMILY_SLOTS; i++)
 	{
-		install_pack_entity(*this, Order::Weapon, i,
-		                    get_weapon_family_descriptor(i));
-		install_pack_entity(*this, Order::FX, i,
-		                    get_effect_family_descriptor(i));
-		install_pack_entity(*this, Order::Treasure, i,
-		                    get_treasure_family_descriptor(i));
-		install_pack_entity(*this, Order::Generator, i,
-		                    get_generator_family_descriptor(i));
+		const bool core_slot = i < NUM_FAMILIES;
+		const auto* weapon_d = get_weapon_family_descriptor(i);
+		const auto* effect_d = get_effect_family_descriptor(i);
+		const auto* treasure_d = get_treasure_family_descriptor(i);
+		const auto* generator_d = get_generator_family_descriptor(i);
+		if (!core_slot || claims_art(weapon_d))
+			install_pack_entity(*this, Order::Weapon, i, weapon_d);
+		if (!core_slot || claims_art(effect_d))
+			install_pack_entity(*this, Order::FX, i, effect_d);
+		if (!core_slot || claims_art(treasure_d))
+			install_pack_entity(*this, Order::Treasure, i, treasure_d);
+		if (!core_slot || claims_art(generator_d))
+			install_pack_entity(*this, Order::Generator, i, generator_d);
 	}
 
 	// Record each animation table's length (parallel to `animations`) so animate()

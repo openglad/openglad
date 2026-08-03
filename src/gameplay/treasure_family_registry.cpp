@@ -6,14 +6,18 @@
  * (at your option) any later version.
  */
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 
 #include "family_registry_base.h"
 
-static constexpr int NUM_TREASURE_FAMILIES = 15;
+// Core span 0..12 (BLOOD..SPEED_POTION). Wire ids 13/14 were the retired
+// core CTF flag/waypoint slots: they sit ABOVE the core span on purpose, so
+// a campaign pack (the modes campaign) can claim them with its own
+// declarations and they unmount with it (reset_mod_slots frees ids above
+// this span). Registry capacity stays NUM_FAMILY_SLOTS.
+static constexpr int NUM_TREASURE_FAMILIES = 13;
 
 static FamilyRegistryBase<TreasureFamilyDescriptor, NUM_TREASURE_FAMILIES> s_registry;
 

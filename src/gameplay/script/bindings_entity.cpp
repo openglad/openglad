@@ -1780,18 +1780,6 @@ int og_scenario_title(lua_State* L)
     return 1;
 }
 
-// og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch
-// operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped
-// as one call exactly like the C++ treasure hook delegates to it. CTF rules
-// stay in the CTF engine.
-int og_ctf_on_flag_touch(lua_State* L)
-{
-    walker* flag = resolve_walker(L, 1, /*required=*/true);
-    walker* eater = resolve_walker(L, 2, /*required=*/true);
-    lua_pushboolean(L, og::sim::ctf_on_flag_touch(flag, eater) ? 1 : 0);
-    return 1;
-}
-
 // ---------------------------------------------------------------------------
 // Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
@@ -2824,11 +2812,6 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"emit_exit_confirmation", og_emit_exit_confirmation},
     {"emit_withdraw_to_level", og_emit_withdraw_to_level},
     {"scenario_title", og_scenario_title},
-    // Both spellings resolve to the same wrapper: ctf_on_flag_touch matches
-    // the C++ entry point it delegates to, ctf_flag_touch the og.* verb
-    // shape used elsewhere in this table.
-    {"ctf_on_flag_touch", og_ctf_on_flag_touch},
-    {"ctf_flag_touch", og_ctf_on_flag_touch},
     // Scripted-mode (TYPE_SCRIPTED) surface.
     {"end_level", og_end_level},
     {"declare_winner", og_declare_winner},
@@ -3139,18 +3122,6 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
     for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
         if (is_unfenced(r->name))
             continue;
-        // Two spellings of one entry point (og.ctf_flag_touch /
-        // og.ctf_on_flag_touch) must stay the SAME Lua value: a pack may
-        // compare them, and a test does. Wrapping each row independently
-        // would hand out two closures that behave alike and compare unequal,
-        // so an alias copies the wrapper its twin already got.
-        const luaL_Reg* twin = kOgWorldFuncs;
-        for (; twin != r && twin->func != r->func; twin++) {}
-        if (twin != r) {
-            lua_getfield(L, -1, twin->name);
-            lua_setfield(L, -2, r->name);
-            continue;
-        }
         fence_world_entry(L, st, r->name);
     }
     lua_newtable(L);

@@ -713,12 +713,10 @@ end
 local function on_mode_init(level)
   -- Scan authored flags and control points (fxlist, list order). The first
   -- flag with a stats level above 1 sets the per-map capture limit. The
-  -- shipped maps author the CORE families (wire bytes 13/14 — the .fss
-  -- grids predate this pack), so both spellings of each family count.
+  -- shipped maps author wire bytes 13/14, which this pack's families claim
+  -- outright since the core CTF retirement.
   local flag_family = og.family_id("treasure", "modes:flag")
-  local core_flag_family = og.family_id("treasure", "core:flag")
   local point_family = og.family_id("treasure", "modes:waypoint")
-  local core_point_family = og.family_id("treasure", "core:waypoint")
   local authored_mask = 0
   local map_capture_limit = 0
   local cp_count = 0
@@ -728,8 +726,8 @@ local function on_mode_init(level)
     if e:dead() == 0 then
       if e:order() == C.ORDER_TREASURE then
         local fam = e:family()
-        local is_flag = fam == flag_family or fam == core_flag_family
-        local is_point = fam == point_family or fam == core_point_family
+        local is_flag = fam == flag_family
+        local is_point = fam == point_family
         if is_flag then
           local team = e:team_num()
           if team >= C.SCORE_TEAM_COUNT then
@@ -1047,17 +1045,6 @@ local function waypoint_on_eat(self, eater)
   return true
 end
 
--- The authored core:flag override body (scripts/mode_ctf_touch.lua rebinds
--- the core declaration here while this pack is mounted): a live scripted
--- CTF match takes the Lua rules; any other world keeps the shipped C++
--- delegation byte for byte, exactly what core's own hook did.
-local function core_flag_on_eat(self, eater)
-  if ctf_active() then
-    return flag_on_eat(self, eater)
-  end
-  return og.ctf_on_flag_touch(self, eater)
-end
-
 return {
   S = S,
   T = T,
@@ -1065,6 +1052,5 @@ return {
   on_mode_tick = on_mode_tick,
   on_respawn = on_respawn,
   flag_on_eat = flag_on_eat,
-  core_flag_on_eat = core_flag_on_eat,
   waypoint_on_eat = waypoint_on_eat,
 }

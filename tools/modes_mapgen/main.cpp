@@ -777,14 +777,31 @@ int main(int argc, char* argv[])
     write_icon(user + "temp/icon.png");
     copy_pack_tree(user + "temp/");
 
+    // Mount a scen-less preliminary package BEFORE building the levels: the
+    // flag/waypoint/ball families live in THIS pack (wire ids 13/14 left
+    // core with the CTF engine retirement), so their descriptors and
+    // sprites must be installed for the level builders to place them.
+    const std::string glad_path =
+        user + std::format("campaigns/{}.glad", kCampaignId);
+    std::remove(glad_path.c_str());
+    if (zip_contents_with_error(user + "temp/", glad_path) !=
+        ArchiveIoError::None)
+    {
+        fail(std::format("failed to zip preliminary pack into {}", glad_path));
+    }
+    else if (mount_campaign_package_with_error(kCampaignId) !=
+             CampaignPackageIoError::None)
+    {
+        fail("failed to mount the preliminary pack");
+    }
+
     build_tdm();
     build_ctf();
     build_onslaught();
     build_soccer();
     build_mutant();
 
-    const std::string glad_path =
-        user + std::format("campaigns/{}.glad", kCampaignId);
+    (void)unmount_campaign_package_with_error(kCampaignId);
     std::remove(glad_path.c_str());
     if (g_errors == 0 &&
         zip_contents_with_error(user + "temp/", glad_path) !=

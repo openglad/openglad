@@ -33,7 +33,6 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 
@@ -269,25 +268,6 @@ inline bool install_modes_test_campaign()
                     kTestRegistrationLua))
         return false;
 
-    // The pack declares sprites/flag.png + sprites/ctfpoint.png; the mapgen
-    // wave ships them. Until it lands, inject the shipped CTF art as donors
-    // (file-presence coordination: repo copies win once they exist) so the
-    // loader can build the treasure slots and create_walker_owned does not
-    // fall back to family 0.
-    const fs::path sprites = pack_dst / "sprites";
-    fs::create_directories(sprites, ec);
-    const std::array<const char*, 3> donor_names = {"flag.png", "flag.json",
-                                                    "ctfpoint.png"};
-    for (const char* name : donor_names)
-    {
-        if (fs::exists(sprites / name))
-            continue;
-        fs::copy_file(fs::path(get_asset_path()) / "pix" / name,
-                      sprites / name, ec);
-        if (ec)
-            return false;
-    }
-
     const fs::path archive = fs::path(get_user_path()) / "campaigns" /
                              (std::string(kCampaignId) + ".glad");
     fs::create_directories(archive.parent_path(), ec);
@@ -352,15 +332,15 @@ private:
     std::string previous_mount_;
 };
 
-// The shared test loader: a plain headless loader plus the CTF loader
-// entries, so the AUTHORED core families (flag 13 / waypoint 14 — what the
-// shipped maps carry) create real treasures instead of falling back to
-// family 0.
+// The shared test loader: a plain headless loader. The authored flag/
+// waypoint bytes (13/14 — what the shipped maps carry) are claimed by the
+// modes pack's own families, whose sprites install through the generic
+// pack-entity path, so the loader must be built AFTER the fixture mounts
+// the pack (the lazy first use below guarantees that).
 inline loader& modes_test_loader()
 {
     static loader* instance = [] {
         auto* l = new loader{EntityFactory{}};
-        register_ctf_loader_entries(*l);
         return l;
     }();
     return *instance;

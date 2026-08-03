@@ -638,60 +638,6 @@ TEST(GloaderFuncs, custom_spritesheet_failed_mount_can_be_retried)
 }
 
 
-TEST(GloaderFuncs, custom_spritesheet_reload_reapplies_ctf_entries)
-{
-    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
-    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
-
-    loader* l = og::runtime::current_session->myscreen_->myloader;
-    ASSERT_TRUE(l != nullptr) << "loader exists";
-
-    const PixieSnapshot standard_flag =
-        snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG));
-    const PixieSnapshot key_sprite =
-        snapshot_pixie(l->graphics_for(Order::Treasure, FAMILY_KEY));
-    ASSERT_FALSE(standard_flag.pixels.empty()) << "standard flag sprite must be present";
-    ASSERT_FALSE(key_sprite.pixels.empty()) << "key sprite must be present";
-    ASSERT_NE(standard_flag, key_sprite)
-        << "test fixture expects key.png to be visually distinct from flag.png";
-
-    const std::vector<std::uint8_t> key_png = og::resources::read_file("pix/key.png");
-    ASSERT_FALSE(key_png.empty()) << "key.png must be present";
-
-    const std::filesystem::path pack_dir =
-        std::filesystem::path(config_dir) / "extra_pix" / "ctf_pack";
-    std::filesystem::create_directories(pack_dir);
-    write_file_bytes(pack_dir / "flag.png", key_png);
-    {
-        std::ofstream sidecar(pack_dir / "flag.json", std::ios::binary);
-        sidecar << R"({"frames":{"flag 0.aseprite":{"frame":{"x":0,"y":0,"w":10,"h":10}}},"meta":{"size":{"w":10,"h":10}}})";
-    }
-
-    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
-    cfg.apply_setting("graphics", "sprite_sheet", "");
-    ASSERT_TRUE(apply_sprite_sheet_setting());
-
-    cfg.apply_setting("graphics", "sprite_sheet", "ctf_pack");
-    ASSERT_TRUE(apply_sprite_sheet_setting());
-    l->reload_graphics();
-    EXPECT_EQ(key_sprite, snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG)))
-        << "hot reload must apply custom CTF flag graphics";
-
-    cfg.apply_setting("graphics", "sprite_sheet", "");
-    ASSERT_TRUE(apply_sprite_sheet_setting());
-    l->reload_graphics();
-    EXPECT_EQ(standard_flag, snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG)))
-        << "hot reload must restore standard CTF flag graphics after unmount";
-
-    cfg.apply_setting("graphics", "sprite_sheet", orig);
-    ASSERT_TRUE(apply_sprite_sheet_setting());
-    l->reload_graphics();
-    std::filesystem::remove_all(pack_dir);
-}
-
-
-// A pack name with a path separator or ".." component must be rejected so a
-// hand-edited config can't mount an arbitrary host directory over pix/.
 TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
 {
     const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");

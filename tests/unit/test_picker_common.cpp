@@ -15,7 +15,6 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/io_common.h>
 #include "test_game_world_fixture.h"
 #include <array>
@@ -2007,7 +2006,6 @@ loader& report_test_loader()
 {
     static loader instance{EntityFactory{}};
     static const bool registered = [] {
-        register_ctf_loader_entries(instance);
         return true;
     }();
     (void)registered;

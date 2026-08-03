@@ -167,8 +167,9 @@ void load_committed_core_pack(ClasspackData& data)
             family_chunks.push_back(entry.path());
     }
     std::sort(family_chunks.begin(), family_chunks.end());
-    // 71 declaration files (the slime trio shares one) plus the header.
-    ASSERT_EQ(family_chunks.size(), 72u);
+    // 69 declaration files (the slime trio shares one; the CTF flag/
+    // waypoint pair left with the CTF retirement) plus the header.
+    ASSERT_EQ(family_chunks.size(), 70u);
     for (const std::filesystem::path& p : family_chunks) {
         og::script::register_pack_family_chunk(
             {"core", "packs/core/families/" + p.filename().string(),
@@ -195,7 +196,7 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
     ASSERT_EQ(data.living.size(), static_cast<std::size_t>(NUM_FAMILIES));
     ASSERT_EQ(data.weapons.size(), 20u);
     ASSERT_EQ(data.effects.size(), 13u);
-    ASSERT_EQ(data.treasures.size(), 15u);
+    ASSERT_EQ(data.treasures.size(), 13u);
     ASSERT_EQ(data.generators.size(), 4u);
 
     init_all_registries();
@@ -968,7 +969,7 @@ TEST(FamilyStringIds, two_packs_may_ship_the_same_family_name)
         << "a namespace that exists does not invent families";
 }
 
-// With the real core pack installed, EVERY id it declares — all 73 across
+// With the real core pack installed, EVERY id it declares — all 71 across
 // the five orders, positional escapes included — must resolve to the byte
 // the pack pinned. This is what every `og.family_id(order, "core:...")` in
 // packs/core/families/*.lua depends on.
@@ -994,9 +995,9 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     collect(Order::FX, data.effects);
     collect(Order::Treasure, data.treasures);
     collect(Order::Generator, data.generators);
-    ASSERT_EQ(expected.size(), 73u) << "the whole core pack";
+    ASSERT_EQ(expected.size(), 71u) << "the whole core pack";
 
-    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 73);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 71);
 
     for (const auto& [order, id, wire] : expected) {
         EXPECT_EQ(og::families::resolve_family_string_id(order, id.c_str()),
@@ -1158,8 +1159,6 @@ TEST(CommittedCorePack, carries_ui_presentation)
     EXPECT_EQ(
         data.treasures[FAMILY_SPEED_POTION].presentation.radar_color.value_or(0),
         og::kRadarColorNone);
-    EXPECT_EQ(data.treasures[og::FAMILY_FLAG].presentation.radar_color.value_or(0),
-              og::kRadarColorTeam);
     EXPECT_EQ(data.generators[FAMILY_TOWER].editor_label.value_or(""),
               "MAGE TOWER");
     EXPECT_EQ(data.generators[FAMILY_BONES].editor_label.value_or(""),

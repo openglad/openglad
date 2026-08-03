@@ -311,7 +311,6 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
-    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
@@ -405,7 +404,6 @@ set(OG_SIM_SOURCES
 set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
-    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
@@ -1657,30 +1655,6 @@ if(NOT EMSCRIPTEN)
         )
         add_runtime_assets_dependency(openglad_server)
     endif()
-
-    # --- ctf_mapgen (CTF campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.ctf.glad.
-    # Not part of the default build; run via scripts/generate_ctf_campaign.sh.
-    add_executable(ctf_mapgen EXCLUDE_FROM_ALL
-        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/main.cpp
-        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/grid_painters.cpp
-        ${SRC_DIR}/platform/text/platform_headless.cpp
-        ${SRC_DIR}/platform/text/walker_headless.cpp
-        ${SRC_DIR}/interface/input/input_state.cpp
-        ${SRC_DIR}/platform/game_context.cpp
-        ${SRC_DIR}/interface/session_state.cpp
-        ${SRC_DIR}/interface/level_runtime_data.cpp
-        ${SRC_DIR}/interface/platform_bridge.cpp
-    )
-    configure_openglad_library(ctf_mapgen)
-    target_link_libraries(ctf_mapgen PRIVATE
-        og_core
-        og_gameplay
-        og_resources
-        m
-        pthread
-    )
-    add_runtime_assets_dependency(ctf_mapgen)
 
     # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
     # SDL-free authoring tool that produces builtin/org.openglad.concept.glad.
@@ -3058,7 +3032,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_core.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_respawn.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_ai.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
         )
 

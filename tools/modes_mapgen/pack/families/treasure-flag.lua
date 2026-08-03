@@ -5,7 +5,7 @@ local ctf = og.use("mode_ctf_impl")
 
 og.family("treasure", {
   id = "modes:flag",
-  wire_id = "auto",
+  wire_id = 13,
   name = "FLAG",
   init_ignore = false,
   init_frame = 0,
